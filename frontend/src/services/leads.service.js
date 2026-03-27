@@ -1,0 +1,196 @@
+/**
+ * Leads service — all 14 API call functions.
+ *
+ * Route contracts sourced from Build Status Phase 2A (do not invent new routes).
+ * Base URL: /api/v1  ·  Auth: Authorization: Bearer <token>
+ * Response envelope: { success, data, message, error }
+ * Paginated envelope: { success, data: { items, total, page, page_size, has_more } }
+ *
+ * SECURITY (Technical Spec §11.1):
+ *   - org_id is NEVER sent in any request body — always derived from JWT server-side.
+ *   - Authorization header is injected automatically via the request interceptor.
+ *   - 401 responses auto-clear the auth store (see interceptor below).
+ */
+import axios from 'axios'
+import useAuthStore from '../store/authStore'
+
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+// ─── Axios instance with auth interceptor ────────────────────────────────────
+
+const api = axios.create({ baseURL: BASE })
+
+/** Inject Bearer token on every outgoing request */
+api.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
+/** On 401 — clear auth so the app shows the login screen */
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      useAuthStore.getState().clearAuth()
+    }
+    return Promise.reject(err)
+  },
+)
+
+// ─── Helper ──────────────────────────────────────────────────────────────────
+
+/** Strip undefined values so they are not sent as query params */
+const clean = (obj) =>
+  Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== ''))
+
+// ─── Lead list ───────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/leads
+ * Returns paginated envelope.
+ * @param {object} params — stage, score, assigned_to, source, from_date, to_date, page, page_size
+ */
+export async function listLeads(params = {}) {
+  const res = await api.get('/api/v1/leads', { params: clean(params) })
+  return res.data
+}
+
+// ─── Lead CRUD ───────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/leads
+ * Required: full_name, source.  All other fields optional.
+ * org_id is NOT in payload — derived from JWT server-side.
+ */
+export async function createLead(payload) {
+  const res = await api.post('/api/v1/leads', payload)
+  return res.data
+}
+
+/**
+ * GET /api/v1/leads/{id}
+ * Returns single lead object inside { success, data }.
+ */
+export async function getLead(id) {
+  const res = await api.get(`/api/v1/leads/${id}`)
+  return res.data
+}
+
+/**
+ * PATCH /api/v1/leads/{id}
+ * Partial update — send only changed fields.
+ * org_id is NOT in payload.
+ */
+export async function updateLead(id, payload) {
+  const res = await api.patch(`/api/v1/leads/${id}`, payload)
+  return res.data
+}
+
+/**
+ * DELETE /api/v1/leads/{id}
+ * Admin only — returns 204 on success.
+ */
+export async function deleteLead(id) {
+  const res = await api.delete(`/api/v1/leads/${id}`)
+  return res.data
+}
+
+// ─── Lead actions ────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/leads/{id}/score
+ * Triggers AI scoring via Claude.  Returns { score, score_reason }.
+ * Body is empty — all context comes from the lead record server-side.
+ */
+export async function scoreLead(id) {
+  const res = await api.post(`/api/v1/leads/${id}/score`, {})
+  return res.data
+}
+
+/**
+ * POST /api/v1/leads/{id}/move-stage
+ * Validates transition against state machine before moving.
+ * @param {string} id
+ * @param {string} new_stage — one of: new|contacted|demo_done|proposal_sent
+ */
+export async function moveStage(id, new_stage) {
+  const res = await api.post(`/api/v1/leads/${id}/move-stage`, { new_stage })
+  return res.data
+}
+
+/**
+ * POST /api/v1/leads/{id}/convert
+ * Terminal transition — creates customer + subscription records.
+ * Returns { lead, customer_id }.
+ */
+export async function convertLead(id) {
+  const res = await api.post(`/api/v1/leads/${id}/convert`, {})
+  return res.data
+}
+
+/**
+ * POST /api/v1/leads/{id}/mark-lost
+ * @param {string} id
+ * @param {{ lost_reason: string, reengagement_date?: string }} payload
+ *   lost_reason: not_ready|price|competitor|wrong_size|wrong_contact|other
+ *   reengagement_date: ISO date string (optional, typically used with not_ready)
+ */
+export async function markLost(id, payload) {
+  const res = await api.post(`/api/v1/leads/${id}/mark-lost`, payload)
+  return res.data
+}
+
+/**
+ * POST /api/v1/leads/{id}/reactivate
+ * Creates a new lead with previous_lead_id set to id.
+ * Returns the new lead object.
+ */
+export async function reactivateLead(id) {
+  const res = await api.post(`/api/v1/leads/${id}/reactivate`, {})
+  return res.data
+}
+
+// ─── Lead sub-resources ──────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/leads/{id}/timeline
+ * Returns list of LeadTimelineEntry objects, chronological.
+ */
+export async function getTimeline(id) {
+  const res = await api.get(`/api/v1/leads/${id}/timeline`)
+  return res.data
+}
+
+/**
+ * GET /api/v1/leads/{id}/tasks
+ * Returns list of task objects linked to this lead.
+ */
+export async function getLeadTasks(id) {
+  const res = await api.get(`/api/v1/leads/${id}/tasks`)
+  return res.data
+}
+
+// ─── CSV import ──────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/leads/import
+ * Multipart form upload.  Returns { job_id, ... }.
+ * @param {FormData} formData — must include the CSV file under the 'file' key
+ */
+export async function importLeads(formData) {
+  const res = await api.post('/api/v1/leads/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+/**
+ * GET /api/v1/leads/import/{job_id}
+ * Poll this until status is 'done' or 'failed'.
+ * Returns LeadImportStatus: { job_id, status, total_rows, processed, succeeded, failed, errors }
+ */
+export async function getImportStatus(jobId) {
+  const res = await api.get(`/api/v1/leads/import/${jobId}`)
+  return res.data
+}

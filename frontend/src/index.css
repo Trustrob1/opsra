@@ -1,0 +1,96 @@
+/**
+ * index.css — Opsra global stylesheet
+ *
+ * Imported by main.jsx.
+ * Provides: Tailwind directives, CSS variable declarations (matching demo),
+ * base resets, scrollbar styling, and keyframe animations used across modules.
+ *
+ * Google Fonts are loaded here so they are available immediately — the App.jsx
+ * useEffect fallback is only a safety net for environments where CSS is slow.
+ */
+
+/* ── Google Fonts ──────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
+
+/* ── Tailwind ──────────────────────────────────────────────────────────────── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS variables (mirror demo CSS variables exactly) ────────────────────── */
+:root {
+  --teal:        #028090;
+  --teal-light:  #00A896;
+  --teal-dark:   #015F6B;
+  --mint:        #E0F4F6;
+  --dark:        #0D1B2A;
+  --dark2:       #112233;
+  --accent:      #F4A261;
+  --green:       #27AE60;
+  --red:         #E05252;
+  --purple:      #7B2FBE;
+  --gray:        #6B7C8E;
+  --light:       #F5FAFB;
+  --white:       #FFFFFF;
+  --border:      #D6E8EC;
+  --sidebar-w:   248px;
+  --topbar-h:    60px;
+}
+
+/* ── Base resets ───────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--light);
+  color: var(--dark);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ── Scrollbar styling (matches demo) ─────────────────────────────────────── */
+::-webkit-scrollbar        { width: 6px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #B0CDD8; border-radius: 10px; }
+
+/* ── Keyframes used across all modules ────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ── Form input focus ring — applied via Tailwind @layer if needed ─────────── */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--teal) !important;
+  box-shadow: 0 0 0 3px rgba(2, 128, 144, 0.1);
+}
+
+/* ── Drag-and-drop visual helpers (referenced by LeadsPipeline) ────────────── */
+.kanban-card-dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}

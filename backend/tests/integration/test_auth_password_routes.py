@@ -1,0 +1,303 @@
+"""
+tests/integration/test_auth_password_routes.py
+-----------------------------------------------
+Integration tests for the two remaining Phase 1 auth routes:
+
+    POST  /api/v1/auth/reset-password
+    PATCH /api/v1/auth/update-password
+
+These tests use FastAPI's TestClient with all external calls mocked:
+  - Supabase Auth calls mocked via unittest.mock
+  - Redis rate-limit calls mocked to control rate-limit behaviour
+  - No real network connections made
+
+Response shape tested against Technical Spec Section 9.2.
+Rate-limit logic tested against Section 11.4.
+
+Run with:
+    pytest tests/integration/test_auth_password_routes.py -v
+"""
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+from fastapi.testclient import TestClient
+
+
+# ---------------------------------------------------------------------------
+# App fixture — import app with all dependencies overridden
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def client():
+    """Build a TestClient with mocked Supabase and Redis."""
+    from app.main import app
+    from app.database import get_supabase
+
+    mock_supabase = _build_mock_supabase()
+
+    app.dependency_overrides[get_supabase] = lambda: mock_supabase
+    app.state.redis = None  # disable Redis rate-limit check in tests
+
+    with TestClient(app) as c:
+        yield c
+
+    app.dependency_overrides.clear()
+
+
+def _build_mock_supabase(
+    user_is_active: bool = True,
+    update_raises: bool = False,
+):
+    """Factory for a Supabase mock pre-configured for happy-path use."""
+    mock = MagicMock()
+
+    # reset_password_for_email — always succeeds silently
+    mock.auth.reset_password_for_email = MagicMock(return_value=None)
+
+    # get_user — returns a mock user
+    mock_user = MagicMock()
+    mock_user.user = MagicMock(id="user-uuid-123")
+    mock.auth.get_user = MagicMock(return_value=mock_user)
+
+    # users table lookup
+    mock.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+        "id": "user-uuid-123",
+        "org_id": "org-uuid-456",
+        "is_active": user_is_active,
+    }
+
+    # update_user
+    if update_raises:
+        mock.auth.update_user = MagicMock(side_effect=Exception("Token expired"))
+    else:
+        mock.auth.update_user = MagicMock(return_value=MagicMock())
+
+    # audit_logs insert chain
+    mock.table.return_value.insert.return_value.execute.return_value = MagicMock()
+
+    return mock
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/auth/reset-password
+# ---------------------------------------------------------------------------
+
+class TestResetPasswordRoute:
+    def test_returns_200_with_envelope(self, client):
+        resp = client.post(
+            "/api/v1/auth/reset-password",
+            json={"email": "user@example.com"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["sent"] is True
+        assert body["error"] is None
+
+    def test_invalid_email_returns_422(self, client):
+        resp = client.post(
+            "/api/v1/auth/reset-password",
+            json={"email": "not-an-email"},
+        )
+        assert resp.status_code == 422
+
+    def test_missing_email_returns_422(self, client):
+        resp = client.post("/api/v1/auth/reset-password", json={})
+        assert resp.status_code == 422
+
+    def test_returns_success_even_for_unknown_email(self, client):
+        """
+        Security: must not reveal whether an account exists.
+        Even an unknown email returns success=true.
+        """
+        resp = client.post(
+            "/api/v1/auth/reset-password",
+            json={"email": "nobody@nowhere.example"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+    def test_response_has_message(self, client):
+        resp = client.post(
+            "/api/v1/auth/reset-password",
+            json={"email": "user@example.com"},
+        )
+        assert resp.json()["message"] is not None
+
+    def test_rate_limit_blocks_after_5_attempts(self):
+        """
+        Section 11.4: 5 attempts per IP per 60 min.
+        When the Redis counter exceeds 5, the route must return 429.
+        """
+        from app.main import app
+        from app.database import get_supabase
+
+        mock_supabase = _build_mock_supabase()
+        mock_redis = MagicMock()
+
+        # Simulate counter already at 6
+        mock_redis.pipeline.return_value.__enter__ = MagicMock(
+            return_value=mock_redis.pipeline.return_value
+        )
+        mock_redis.pipeline.return_value.execute.return_value = [6, True]
+
+        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        app.state.redis = mock_redis
+
+        with TestClient(app) as c:
+            resp = c.post(
+                "/api/v1/auth/reset-password",
+                json={"email": "user@example.com"},
+            )
+            assert resp.status_code == 429
+            assert "Retry-After" in resp.headers
+
+        app.dependency_overrides.clear()
+        app.state.redis = None
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/auth/update-password
+# ---------------------------------------------------------------------------
+
+class TestUpdatePasswordRoute:
+    @pytest.fixture(scope="class")
+    def authed_client(self):
+        """TestClient with a valid mock JWT."""
+        from app.main import app
+        from app.database import get_supabase
+
+        mock_supabase = _build_mock_supabase(user_is_active=True)
+        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        app.state.redis = None
+
+        with TestClient(app) as c:
+            yield c
+
+        app.dependency_overrides.clear()
+
+    def _headers(self):
+        return {"Authorization": "Bearer valid.mock.token"}
+
+    def test_happy_path_returns_200(self, authed_client):
+        resp = authed_client.patch(
+            "/api/v1/auth/update-password",
+            json={"new_password": "NewPassword1"},
+            headers=self._headers(),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["updated"] is True
+        assert body["error"] is None
+
+    def test_short_password_returns_422(self, authed_client):
+        """Pydantic min_length=8 must block before hitting service layer."""
+        resp = authed_client.patch(
+            "/api/v1/auth/update-password",
+            json={"new_password": "Short1"},
+            headers=self._headers(),
+        )
+        assert resp.status_code == 422
+
+    def test_missing_body_returns_422(self, authed_client):
+        resp = authed_client.patch(
+            "/api/v1/auth/update-password",
+            json={},
+            headers=self._headers(),
+        )
+        assert resp.status_code == 422
+
+    def test_no_auth_header_returns_403_or_422(self, authed_client):
+        """No Bearer token must not succeed."""
+        resp = authed_client.patch(
+            "/api/v1/auth/update-password",
+            json={"new_password": "NewPassword1"},
+        )
+        assert resp.status_code in (403, 422)
+
+    def test_invalid_token_returns_401_envelope(self):
+        from app.main import app
+        from app.database import get_supabase
+
+        mock_supabase = MagicMock()
+        mock_supabase.auth.get_user = MagicMock(side_effect=Exception("Invalid JWT"))
+        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        app.state.redis = None
+
+        with TestClient(app) as c:
+            resp = c.patch(
+                "/api/v1/auth/update-password",
+                json={"new_password": "NewPassword1"},
+                headers={"Authorization": "Bearer expired.token"},
+            )
+
+        assert resp.status_code == 200  # envelope wraps the 401
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "UNAUTHORIZED"
+        # Restore class fixture override so subsequent tests in this class still work
+        app.dependency_overrides[get_supabase] = lambda: _build_mock_supabase(user_is_active=True)
+
+    def test_deactivated_user_returns_403_envelope(self):
+        """Section 11.1 — deactivated user must be blocked even with valid JWT."""
+        from app.main import app
+        from app.database import get_supabase
+
+        mock_supabase = _build_mock_supabase(user_is_active=False)
+        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        app.state.redis = None
+
+        with TestClient(app) as c:
+            resp = c.patch(
+                "/api/v1/auth/update-password",
+                json={"new_password": "NewPassword1"},
+                headers={"Authorization": "Bearer valid.mock.token"},
+            )
+
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "FORBIDDEN"
+        # Restore class fixture override so subsequent tests in this class still work
+        app.dependency_overrides[get_supabase] = lambda: _build_mock_supabase(user_is_active=True)
+
+    def test_supabase_error_returns_integration_error_envelope(self):
+        """Supabase Auth failure returns INTEGRATION_ERROR envelope."""
+        from app.main import app
+        from app.database import get_supabase
+
+        mock_supabase = _build_mock_supabase(update_raises=True)
+        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        app.state.redis = None
+
+        with TestClient(app) as c:
+            resp = c.patch(
+                "/api/v1/auth/update-password",
+                json={"new_password": "NewPassword1"},
+                headers={"Authorization": "Bearer valid.mock.token"},
+            )
+
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "INTEGRATION_ERROR"
+        # Restore class fixture override so subsequent tests in this class still work
+        app.dependency_overrides[get_supabase] = lambda: _build_mock_supabase(user_is_active=True)
+
+    def test_password_over_128_chars_returns_422(self, authed_client):
+        """Pydantic max_length=128 must block passwords that are too long."""
+        resp = authed_client.patch(
+            "/api/v1/auth/update-password",
+            json={"new_password": "A" * 129},
+            headers=self._headers(),
+        )
+        assert resp.status_code == 422
+
+    def test_response_envelope_keys_match_spec(self, authed_client):
+        """Section 9.2 — success response must have success, data, message, error."""
+        resp = authed_client.patch(
+            "/api/v1/auth/update-password",
+            json={"new_password": "NewPassword1"},
+            headers=self._headers(),
+        )
+        body = resp.json()
+        assert set(body.keys()) == {"success", "data", "message", "error"}
