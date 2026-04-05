@@ -38,33 +38,35 @@ async def get_current_user(
 ) -> object:
     """
     Verify the Bearer JWT with Supabase Auth.
-
-    Returns the Supabase Auth user object on success.
-    Raises HTTP 401 if the token is missing, expired, or invalid.
-
-    This is the first layer of authentication — it only confirms the token
-    is cryptographically valid. Organisation and role checks happen in
-    get_current_org().
+    Retries once on network/SSL timeout before raising 401.
     """
-    try:
-        auth_response = supabase.auth.get_user(token.credentials)
-        if not auth_response or not auth_response.user:
-            raise ValueError("No user returned from Supabase Auth.")
-        return auth_response.user
-    except Exception as exc:
-        logger.warning("JWT verification failed: %s", exc)
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "success": False,
-                "data": None,
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Invalid or expired authentication token.",
-                    "field": None,
-                },
+    last_exc = None
+    for attempt in range(2):
+        try:
+            auth_response = supabase.auth.get_user(token.credentials)
+            if not auth_response or not auth_response.user:
+                raise ValueError("No user returned from Supabase Auth.")
+            return auth_response.user
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("JWT verification failed (attempt %d/2): %s", attempt + 1, exc)
+            if attempt == 0:
+                # Brief pause before retry — gives the SSL connection time to recover
+                import asyncio
+                await asyncio.sleep(0.5)
+
+    raise HTTPException(
+        status_code=401,
+        detail={
+            "success": False,
+            "data": None,
+            "error": {
+                "code": "UNAUTHORIZED",
+                "message": "Invalid or expired authentication token.",
+                "field": None,
             },
-        )
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

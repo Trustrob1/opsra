@@ -1,22 +1,19 @@
 # Python
-backend/venv/
-backend/__pycache__/
-backend/**/__pycache__/
-backend/*.pyc
-backend/.pytest_cache/
-backend/**/.pytest_cache/
-backend/.coverage
-backend/htmlcov/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Environment — NEVER commit these
-backend/.env
-backend/.env.test
-frontend/.env
+# Env
+.env
+.env.*
 
 # Node
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+node_modules/
+dist/
+.vite/
 
 # OS
 .DS_Store

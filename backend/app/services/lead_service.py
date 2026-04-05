@@ -717,24 +717,20 @@ def convert_lead(
     customer_id = customer.get("id", "")
 
     # Create subscription stub — Section 3.5
-    # Wrapped in try/except: subscriptions table is built in Phase 5A.
-    # Failure here must not roll back the lead conversion or customer creation.
-    try:
-        subscription_data: dict = {
-            "org_id": org_id,
-            "customer_id": customer_id,
-            "plan_name": "Starter Plan",
-            "plan_tier": "starter",
-            "amount": 0,
-            "currency": "NGN",
-            "billing_cycle": "monthly",
-            "status": "trial",
-            "current_period_start": datetime.now(timezone.utc).date().isoformat(),
-            "current_period_end": datetime.now(timezone.utc).date().isoformat(),
-        }
-        db.table("subscriptions").insert(subscription_data).execute()
-    except Exception:
-        pass  # subscriptions table not yet created — Phase 5A
+    # TEMP-3 resolved: subscriptions table created in Phase 5A.
+    subscription_data: dict = {
+        "org_id": org_id,
+        "customer_id": customer_id,
+        "plan_name": "Starter Plan",
+        "plan_tier": "starter",
+        "amount": 0,
+        "currency": "NGN",
+        "billing_cycle": "monthly",
+        "status": "trial",
+        "current_period_start": datetime.now(timezone.utc).date().isoformat(),
+        "current_period_end": datetime.now(timezone.utc).date().isoformat(),
+    }
+    db.table("subscriptions").insert(subscription_data).execute()
 
     write_timeline_event(
         db, org_id, lead_id,

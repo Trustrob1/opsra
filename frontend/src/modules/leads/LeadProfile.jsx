@@ -22,6 +22,8 @@ import LeadScoreButton from './LeadScoreButton'
 import LeadTimeline    from './LeadTimeline'
 import LeadTasks       from './LeadTasks'
 import MarkLostModal   from './MarkLostModal'
+import LogInteractionPanel from '../../shared/LogInteractionPanel'
+import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
 
 // Stages reachable via move-stage (not convert or mark-lost)
 const MOVABLE_STAGES = ['new', 'contacted', 'demo_done', 'proposal_sent']
@@ -226,9 +228,11 @@ export default function LeadProfile({ leadId, onBack }) {
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: 4, padding: '10px 16px', borderBottom: `1px solid ${ds.border}`, background: ds.light }}>
           {[
-            { key: 'profile',  label: '👤 Profile'  },
-            { key: 'timeline', label: '📋 Timeline' },
-            { key: 'tasks',    label: '✅ Tasks'    },
+            { key: 'profile',         label: '👤 Profile'         },
+            { key: 'timeline',        label: '📋 Timeline'        },
+            { key: 'tasks',           label: '✅ Tasks'           },
+            { key: 'log-interaction', label: '📞 Log Interaction' },
+            { key: 'create-ticket',   label: '🎫 Create Ticket'   },
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -257,6 +261,18 @@ export default function LeadProfile({ leadId, onBack }) {
           {tab === 'profile'  && <ProfileTab lead={lead} />}
           {tab === 'timeline' && <LeadTimeline leadId={leadId} />}
           {tab === 'tasks'    && <LeadTasks    leadId={leadId} />}
+          {tab === 'log-interaction' && (
+            <LogInteractionPanel
+              linkedTo={{ type: 'lead', id: leadId }}
+              contextName={lead.full_name}
+            />
+          )}
+          {tab === 'create-ticket' && (
+            <LinkedTicketsPanel
+              linkedTo={{ type: 'lead', id: leadId }}
+              contextName={lead.full_name}
+            />
+          )}
         </div>
       </div>
 

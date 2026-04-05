@@ -16,6 +16,7 @@ Security rules applied:
   - Section 11.4: reset-password rate-limited 5/60min/IP via Redis
   - Section 9.4:  org_id always from JWT, never from request body
   - Section 9.2:  all responses use the ApiResponse envelope
+  - S15:          login rate-limited 10 failed attempts/15min/IP via Redis
 """
 
 from __future__ import annotations
@@ -124,15 +125,82 @@ def _check_reset_rate_limit(client_ip: str, redis_client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Login rate-limit helpers — S15
+# Tracks *failed* login attempts only (successful login is not penalised).
+# Key: rate:login_fail:{ip}   Limit: 10 failures / 900 s (15 min) / IP
+# Uses the same Redis client stored on app.state as the reset-password helper.
+# Fails open gracefully if Redis is unavailable.
+# ---------------------------------------------------------------------------
+
+_LOGIN_FAIL_LIMIT = 10
+_LOGIN_FAIL_WINDOW = 900  # seconds — 15 minutes
+
+
+def _is_login_rate_limited(client_ip: str, redis_client) -> bool:
+    """
+    Returns True if this IP has already exceeded _LOGIN_FAIL_LIMIT failed
+    login attempts within the current window.
+    Read-only: does NOT increment the counter.
+    """
+    if redis_client is None:
+        return False
+    try:
+        raw = redis_client.get(f"rate:login_fail:{client_ip}")
+        return int(raw or 0) >= _LOGIN_FAIL_LIMIT
+    except Exception as exc:
+        logger.warning("S15: login rate-limit peek failed — %s. Failing open.", exc)
+        return False
+
+
+def _record_login_failure(client_ip: str, redis_client) -> None:
+    """
+    Increment the failed-login counter for this IP.
+    Called ONLY after a confirmed authentication failure — successful logins
+    do not increment the counter.
+    Silently no-ops if Redis is unavailable.
+    """
+    if redis_client is None:
+        return
+    try:
+        key = f"rate:login_fail:{client_ip}"
+        pipe = redis_client.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, _LOGIN_FAIL_WINDOW)
+        pipe.execute()
+    except Exception as exc:
+        logger.warning("S15: login failure counter update failed — %s.", exc)
+
+
+# ---------------------------------------------------------------------------
 # POST /api/v1/auth/login — Public
 # ---------------------------------------------------------------------------
 
 @router.post("/login", response_model=ApiResponse[LoginResponse])
 async def login(
     body: LoginRequest,
+    request: Request,
     supabase=Depends(get_supabase),
 ) -> ApiResponse:
     """Email + password login via Supabase Auth. Returns JWT access and refresh tokens."""
+    # S15: reject IPs that have already exceeded the failed-login threshold
+    client_ip = request.client.host if request.client else "unknown"
+    redis_client = getattr(request.app.state, "redis", None)
+    if _is_login_rate_limited(client_ip, redis_client):
+        logger.warning("S15: login blocked for IP %s — rate limit exceeded.", client_ip)
+        raise HTTPException(
+            status_code=429,
+            headers={"Retry-After": str(_LOGIN_FAIL_WINDOW)},
+            detail={
+                "success": False,
+                "data": None,
+                "error": {
+                    "code": ErrorCode.RATE_LIMITED,
+                    "message": "Too many failed login attempts. Try again in 15 minutes.",
+                    "field": None,
+                },
+            },
+        )
+
     try:
         response = supabase.auth.sign_in_with_password({
             "email": body.email.strip().lower(),
@@ -142,6 +210,8 @@ async def login(
             raise ValueError("No session returned from Supabase Auth.")
     except Exception as exc:
         logger.warning("Login failed for %s: %s", body.email, exc)
+        # S15: only increment the counter on a genuine auth failure
+        _record_login_failure(client_ip, redis_client)
         return err(
             code=ErrorCode.UNAUTHORIZED,
             message="Invalid email or password.",

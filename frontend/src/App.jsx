@@ -27,17 +27,21 @@ import { ds } from './utils/ds'
 import LeadsPipeline from './modules/leads/LeadsPipeline'
 import LeadProfile   from './modules/leads/LeadProfile'
 import WhatsAppModule from './modules/whatsapp/WhatsAppModule'
+import SupportModule from './modules/support/SupportModule'
+import RenewalModule from './modules/renewal/RenewalModule'
+import OpsModule     from './modules/ops/OpsModule'
+import TaskBoard     from './modules/tasks/TaskBoard'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 // ─── Sidebar navigation definition ───────────────────────────────────────────
-// Only Leads is active in Phase 2B — other modules show 'Coming soon'
 const NAV = [
   { id: 'leads',    label: 'Lead Command Center', icon: '🎯', module: '01', active: true  },
   { id: 'whatsapp', label: 'WhatsApp Engine',      icon: '💬', module: '02', active: true },
-  { id: 'support',  label: 'Support Tickets',      icon: '🎫', module: '03', active: false },
-  { id: 'renewal',  label: 'Renewal & Upsell',     icon: '🔄', module: '04', active: false },
-  { id: 'ops',      label: 'Operations Intel',     icon: '📊', module: '05', active: false },
+  { id: 'support',  label: 'Support Tickets',      icon: '🎫', module: '03', active: true },
+  { id: 'renewal',  label: 'Renewal & Upsell',     icon: '🔄', module: '04', active: true  },
+  { id: 'ops',      label: 'Operations Intel',     icon: '📊', module: '05', active: true  },
+  { id: 'tasks',    label: 'Task Board',            icon: '✅', module: '—',  active: true  },
 ]
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -372,8 +376,28 @@ function AppShell() {
             <WhatsAppModule org={org} />
           </div>
         )}
+        {view === 'support' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <SupportModule user={user} />
+          </div>
+        )}
+        {view === 'renewal' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <RenewalModule user={user} />
+          </div>
+        )}
+        {view === 'ops' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <OpsModule user={user} />
+          </div>
+        )}
+        {view === 'tasks' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <TaskBoard user={user} />
+          </div>
+        )}
         {/* Placeholder for modules not yet built */}
-        {!['leads', 'lead-profile', 'whatsapp'].includes(view) && (
+        {!['leads', 'lead-profile', 'whatsapp', 'support', 'renewal', 'ops', 'tasks'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

@@ -1,0 +1,258 @@
+"""
+app/models/tickets.py
+Pydantic request/response models for Module 03 — Support.
+Tables: tickets, ticket_messages, ticket_attachments,
+        knowledge_base_articles, interaction_logs.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# ---------------------------------------------------------------------------
+# Domain constants  (Technical Spec §3.4 / §4.2)
+# ---------------------------------------------------------------------------
+TICKET_CATEGORIES: frozenset = frozenset(
+    {
+        "technical_bug",
+        "billing",
+        "feature_question",
+        "onboarding_help",
+        "account_access",
+        "hardware",
+    }
+)
+
+TICKET_URGENCIES: frozenset = frozenset({"critical", "high", "medium", "low"})
+
+TICKET_STATUSES: frozenset = frozenset(
+    {"open", "in_progress", "awaiting_customer", "resolved", "closed"}
+)
+
+TICKET_MESSAGE_TYPES: frozenset = frozenset(
+    {"customer", "agent_reply", "internal_note", "ai_draft", "system"}
+)
+
+AI_HANDLING_MODES: frozenset = frozenset({"auto", "draft_review", "human_only"})
+
+INTERACTION_TYPES: frozenset = frozenset(
+    {"outbound_call", "inbound_call", "whatsapp", "in_person", "email"}
+)
+
+KB_CATEGORIES: frozenset = frozenset(
+    {
+        "product_overview",
+        "pricing",
+        "faq",
+        "troubleshooting",
+        "hardware",
+        "contact",
+    }
+)
+
+# Technical Spec §11.5 — allowed MIME types and size ceiling
+ALLOWED_ATTACHMENT_TYPES: frozenset = frozenset(
+    {
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "video/mp4",
+        "video/3gpp",
+        "audio/mpeg",
+        "audio/ogg",
+        "application/pdf",
+        "text/csv",
+    }
+)
+
+MAX_ATTACHMENT_BYTES: int = 25 * 1024 * 1024  # 25 MB
+
+
+# ---------------------------------------------------------------------------
+# Ticket models
+# ---------------------------------------------------------------------------
+class TicketCreate(BaseModel):
+    """
+    Manually create a support ticket.
+    category / urgency / title are optional — AI triage fills them if omitted.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    customer_id: Optional[UUID] = None
+    lead_id: Optional[UUID] = None
+    category: Optional[str] = None
+    urgency: Optional[str] = None
+    title: Optional[str] = None
+    content: str                    # problem description — always required
+    ai_handling_mode: str = "draft_review"
+    assigned_to: Optional[UUID] = None
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in TICKET_CATEGORIES:
+            raise ValueError(
+                f"category must be one of {sorted(TICKET_CATEGORIES)}"
+            )
+        return v
+
+    @field_validator("urgency")
+    @classmethod
+    def validate_urgency(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in TICKET_URGENCIES:
+            raise ValueError(
+                f"urgency must be one of {sorted(TICKET_URGENCIES)}"
+            )
+        return v
+
+    @field_validator("ai_handling_mode")
+    @classmethod
+    def validate_ai_handling_mode(cls, v: str) -> str:
+        if v not in AI_HANDLING_MODES:
+            raise ValueError(
+                f"ai_handling_mode must be one of {sorted(AI_HANDLING_MODES)}"
+            )
+        return v
+
+
+class TicketUpdate(BaseModel):
+    """
+    PATCH /tickets/{id} — only category, urgency, assigned_to are mutable.
+    Technical Spec §5.4.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: Optional[str] = None
+    urgency: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in TICKET_CATEGORIES:
+            raise ValueError(
+                f"category must be one of {sorted(TICKET_CATEGORIES)}"
+            )
+        return v
+
+    @field_validator("urgency")
+    @classmethod
+    def validate_urgency(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in TICKET_URGENCIES:
+            raise ValueError(
+                f"urgency must be one of {sorted(TICKET_URGENCIES)}"
+            )
+        return v
+
+
+class AddMessageRequest(BaseModel):
+    """Body for POST /tickets/{id}/messages."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message_type: str
+    content: str
+
+    @field_validator("message_type")
+    @classmethod
+    def validate_message_type(cls, v: str) -> str:
+        if v not in TICKET_MESSAGE_TYPES:
+            raise ValueError(
+                f"message_type must be one of {sorted(TICKET_MESSAGE_TYPES)}"
+            )
+        return v
+
+
+class ResolveRequest(BaseModel):
+    """Body for POST /tickets/{id}/resolve — resolution_notes required."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resolution_notes: str
+
+
+# ---------------------------------------------------------------------------
+# Knowledge-base models
+# ---------------------------------------------------------------------------
+class KBArticleCreate(BaseModel):
+    """
+    Technical Spec §11.2:
+      title   — max 255 chars
+      content — max 10,000 chars (KB articles / ticket content limit)
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    category:     str
+    title:        str                      = Field(..., max_length=255)
+    content:      str                      = Field(..., max_length=10000)
+    tags:         Optional[List[str]]      = None
+    is_published: bool                     = True
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str) -> str:
+        if v not in KB_CATEGORIES:
+            raise ValueError(
+                f"category must be one of {sorted(KB_CATEGORIES)}"
+            )
+        return v
+
+
+class KBArticleUpdate(BaseModel):
+    """
+    All fields optional; content/title changes auto-increment version.
+    Technical Spec §11.2: title max 255, content max 10,000 chars.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    category:     Optional[str]       = None
+    title:        Optional[str]       = Field(None, max_length=255)
+    content:      Optional[str]       = Field(None, max_length=10000)
+    tags:         Optional[List[str]] = None
+    is_published: Optional[bool]      = None
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in KB_CATEGORIES:
+            raise ValueError(
+                f"category must be one of {sorted(KB_CATEGORIES)}"
+            )
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Interaction log models
+# ---------------------------------------------------------------------------
+class InteractionLogCreate(BaseModel):
+    """
+    POST /interaction-logs — logged_by is always derived from the JWT,
+    never sent in the payload.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    lead_id: Optional[UUID] = None
+    customer_id: Optional[UUID] = None
+    ticket_id: Optional[UUID] = None
+    interaction_type: str
+    duration_minutes: Optional[int] = None
+    outcome: Optional[str] = None
+    raw_notes: Optional[str] = None
+    interaction_date: datetime
+
+    @field_validator("interaction_type")
+    @classmethod
+    def validate_interaction_type(cls, v: str) -> str:
+        if v not in INTERACTION_TYPES:
+            raise ValueError(
+                f"interaction_type must be one of {sorted(INTERACTION_TYPES)}"
+            )
+        return v

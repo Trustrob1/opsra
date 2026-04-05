@@ -21,6 +21,8 @@ import {
 } from '../../services/whatsapp.service'
 import { listTemplates } from '../../services/whatsapp.service'
 import MessageComposer from './MessageComposer'
+import LogInteractionPanel from '../../shared/LogInteractionPanel'
+import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
 
 // ── Churn risk badge ──────────────────────────────────────────────────────────
 const RISK_STYLE = {
@@ -142,8 +144,15 @@ export default function CustomerProfile({ customerId, onBack }) {
     }
   }
 
-  const TABS = ['profile', 'messages', 'tasks', 'nps']
-  const TAB_LABELS = { profile: 'Profile', messages: 'Messages', tasks: 'Tasks', nps: 'NPS History' }
+  const TABS = ['profile', 'messages', 'tasks', 'nps', 'log-interaction', 'create-ticket']
+  const TAB_LABELS = {
+    profile:          'Profile',
+    messages:         'Messages',
+    tasks:            'Tasks',
+    nps:              'NPS History',
+    'log-interaction':'📞 Log Interaction',
+    'create-ticket':  '🎫 Create Ticket',
+  }
 
   const S = {
     wrap: { padding: 28 },
@@ -456,6 +465,22 @@ export default function CustomerProfile({ customerId, onBack }) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* ── Log Interaction tab ─────────────────────────────────────────── */}
+      {tab === 'log-interaction' && (
+        <LogInteractionPanel
+          linkedTo={{ type: 'customer', id: customerId }}
+          contextName={customer?.full_name ?? 'this customer'}
+        />
+      )}
+
+      {/* ── Create Ticket tab ───────────────────────────────────────────── */}
+      {tab === 'create-ticket' && (
+        <LinkedTicketsPanel
+          linkedTo={{ type: 'customer', id: customerId }}
+          contextName={customer?.full_name ?? 'this customer'}
+        />
       )}
     </div>
   )
