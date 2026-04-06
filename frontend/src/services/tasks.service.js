@@ -19,8 +19,10 @@ function authHeaders() {
 /**
  * List tasks — personal or team view.
  * Backend silently scopes team view to own tasks for non-managers.
- * @param {object} params — team, assigned_to, module, priority, status,
- *                          completed, page, page_size
+ * Pass source_record_id to get all tasks linked to a specific record
+ * (used by ticket thread, lead profile, customer profile widgets).
+ * @param {object} params — team, assigned_to, module, source_record_id,
+ *                          priority, status, completed, page, page_size
  */
 export async function listTasks(params = {}) {
   const res = await axios.get(`${BASE}/api/v1/tasks`, {

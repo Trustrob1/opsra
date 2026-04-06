@@ -11,10 +11,14 @@
 # POST      /api/v1/admin/integrations/{name}/reconnect
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from app.database import get_supabase
 from app.dependencies import get_current_org, require_permission
+import httpx
+import os
+from app.services import admin_service
+
 
 router = APIRouter()
 
@@ -63,11 +67,26 @@ class RoutingRuleItem(BaseModel):
 class UpdateRoutingRulesRequest(BaseModel):
     rules: list[RoutingRuleItem]
 
+class CreateOverrideRequest(BaseModel):
+    user_id:        str
+    permission_key: str  = Field(max_length=100)
+    granted:        bool
+
+
+class UpdateRoutingRuleRequest(BaseModel):
+    event_type:             Optional[str]  = Field(None, max_length=100)
+    route_to_role_id:       Optional[str]  = None
+    route_to_user_id:       Optional[str]  = None
+    also_notify_role_id:    Optional[str]  = None
+    channel:                Optional[str]  = Field(None, max_length=50)
+    within_hours_only:      Optional[bool] = None
+    escalate_after_minutes: Optional[int]  = None
+    escalate_to_role_id:    Optional[str]  = None
 
 # ── Valid role templates — Technical Spec Section 3.1 ─────────
 VALID_TEMPLATES = {
     "owner", "ops_manager", "sales_agent",
-    "customer_success", "support_agent", "finance", "read_only"
+    "customer_success", "support_agent", "finance", "read_only", "affiliate_partner"
 }
 
 
@@ -150,20 +169,41 @@ async def create_user(
             detail={"code": "NOT_FOUND", "message": "Role not found in this organisation"},
         )
 
-    # Create Supabase Auth user
+    # Create Supabase Auth user via Admin REST API
+    # Direct httpx call is more reliable than db.auth.admin.create_user()
+    # across different supabase-py versions and project configurations.
+    _supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    _service_key  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+    print("KEY_REPR:", repr(_service_key[:30]), flush=True)
     try:
-        auth_response = db.auth.admin.create_user({
-            "email": payload.email,
-            "password": payload.password,
-            "email_confirm": True,
-        })
+        _resp = httpx.post(
+            f"{_supabase_url}/auth/v1/admin/users",
+            headers={
+                "Authorization": f"Bearer {_service_key}",
+                "apikey":        _service_key,
+                "Content-Type":  "application/json",
+            },
+            json={
+                "email":         payload.email,
+                "password":      payload.password,
+                "email_confirm": True,
+            },
+            timeout=10.0,
+        )
+        _resp.raise_for_status()
+        new_user_id = _resp.json()["id"]
+    except httpx.HTTPStatusError as e:
+        _body = e.response.json()
+        _msg  = _body.get("message") or _body.get("msg") or str(e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "VALIDATION_ERROR", "message": _msg},
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "VALIDATION_ERROR", "message": str(e)},
         )
-
-    new_user_id = auth_response.user.id
 
     # Insert into users table
     user_data = {
@@ -685,3 +725,140 @@ async def reconnect_integration(
         "data": {"integration": name, "status": "reconnect_initiated"},
         "error": None,
     }
+
+
+
+# ============================================================
+# ROLE USER OVERRIDES  (Phase 8A)
+# user_permission_overrides table — individual grant/revoke
+# ============================================================
+
+@router.get("/roles/{role_id}/overrides")
+async def list_user_overrides(
+    role_id: str,
+    org=Depends(require_permission("manage_roles")),
+    db=Depends(get_supabase),
+):
+    """
+    Lists all user_permission_overrides for users assigned to this role.
+    Returns each override with an attached 'user' sub-object for display.
+    """
+    overrides = admin_service.list_user_overrides(
+        role_id=role_id, org_id=org["org_id"], db=db
+    )
+    return {"success": True, "data": overrides, "error": None}
+
+
+@router.post("/roles/{role_id}/overrides", status_code=status.HTTP_201_CREATED)
+async def create_user_override(
+    role_id: str,
+    payload: CreateOverrideRequest,
+    org=Depends(require_permission("manage_roles")),
+    db=Depends(get_supabase),
+):
+    """
+    Grants (or explicitly denies) a single permission to a specific user.
+    The user must already be assigned to the specified role in this org.
+    Writes to audit_logs.
+    """
+    override = admin_service.create_user_override(
+        role_id=role_id,
+        user_id=payload.user_id,
+        org_id=org["org_id"],
+        db=db,
+        permission_key=payload.permission_key,
+        granted=payload.granted,
+        caller_id=org["id"],
+    )
+    return {"success": True, "data": override, "error": None}
+
+
+@router.delete("/roles/{role_id}/overrides/{override_id}")
+async def delete_user_override(
+    role_id: str,
+    override_id: str,
+    org=Depends(require_permission("manage_roles")),
+    db=Depends(get_supabase),
+):
+    """
+    Removes a single user permission override by its UUID.
+    Writes to audit_logs.
+    """
+    admin_service.delete_user_override(
+        override_id=override_id,
+        org_id=org["org_id"],
+        db=db,
+        caller_id=org["id"],
+    )
+    return {"success": True, "data": {"message": "Override removed"}, "error": None}
+
+
+# ============================================================
+# INDIVIDUAL ROUTING RULE CRUD  (Phase 8A)
+# These sit alongside the existing PUT /routing-rules (full-replace).
+# Use POST to add one rule; PATCH / DELETE to manage specific rules.
+# ============================================================
+
+@router.post("/routing-rules", status_code=status.HTTP_201_CREATED)
+async def create_routing_rule(
+    payload: RoutingRuleItem,
+    org=Depends(require_permission("manage_routing_rules")),
+    db=Depends(get_supabase),
+):
+    """
+    Creates a single routing rule.  Writes to audit_logs.
+    """
+    rule = admin_service.create_routing_rule(
+        org_id=org["org_id"],
+        db=db,
+        data=payload.model_dump(),
+        caller_id=org["id"],
+    )
+    return {"success": True, "data": rule, "error": None}
+
+
+@router.patch("/routing-rules/{rule_id}")
+async def update_routing_rule(
+    rule_id: str,
+    payload: UpdateRoutingRuleRequest,
+    org=Depends(require_permission("manage_routing_rules")),
+    db=Depends(get_supabase),
+):
+    """
+    Partially updates a single routing rule.
+    Only fields explicitly provided in the payload are changed.
+    Raises 422 if no fields are provided.
+    Writes to audit_logs.
+    """
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "VALIDATION_ERROR", "message": "No fields provided to update"},
+        )
+    rule = admin_service.update_routing_rule(
+        rule_id=rule_id,
+        org_id=org["org_id"],
+        db=db,
+        data=update_data,
+        caller_id=org["id"],
+    )
+    return {"success": True, "data": rule, "error": None}
+
+
+@router.delete("/routing-rules/{rule_id}")
+async def delete_routing_rule(
+    rule_id: str,
+    org=Depends(require_permission("manage_routing_rules")),
+    db=Depends(get_supabase),
+):
+    """
+    Deletes a single routing rule.  Writes to audit_logs.
+    """
+    admin_service.delete_routing_rule(
+        rule_id=rule_id,
+        org_id=org["org_id"],
+        db=db,
+        caller_id=org["id"],
+    )
+    return {"success": True, "data": {"message": "Routing rule deleted"}, "error": None}

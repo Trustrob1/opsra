@@ -17,6 +17,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { getLead, moveStage, convertLead, reactivateLead } from '../../services/leads.service'
+import useAuthStore from '../../store/authStore'
 import { ds, SCORE_STYLE, STAGE_STYLE, STAGES, SOURCE_LABELS, LOST_REASON_LABELS, BRANCHES_OPTIONS } from '../../utils/ds'
 import LeadScoreButton from './LeadScoreButton'
 import LeadTimeline    from './LeadTimeline'
@@ -95,6 +96,7 @@ export default function LeadProfile({ leadId, onBack }) {
   const stageLabel = STAGES.find(s => s.key === lead.stage)?.label ?? lead.stage
   const isTerminal = ['converted', 'lost', 'not_ready'].includes(lead.stage)
   const isLostState = ['lost', 'not_ready'].includes(lead.stage)
+  const isAffiliate = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
 
   return (
     <div style={{ padding: 28 }}>
@@ -147,7 +149,8 @@ export default function LeadProfile({ leadId, onBack }) {
             </div>
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons — hidden for affiliate_partner (read-only) */}
+          {!isAffiliate && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {/* Move stage — only for non-terminal stages */}
             {!isTerminal && (
@@ -202,6 +205,7 @@ export default function LeadProfile({ leadId, onBack }) {
               </ActionBtn>
             )}
           </div>
+          )}
         </div>
 
         {/* Action error */}

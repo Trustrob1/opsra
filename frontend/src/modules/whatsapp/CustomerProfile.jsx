@@ -23,6 +23,7 @@ import { listTemplates } from '../../services/whatsapp.service'
 import MessageComposer from './MessageComposer'
 import LogInteractionPanel from '../../shared/LogInteractionPanel'
 import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
+import { listTasks } from '../../services/tasks.service'
 
 // ── Churn risk badge ──────────────────────────────────────────────────────────
 const RISK_STYLE = {
@@ -99,7 +100,9 @@ export default function CustomerProfile({ customerId, onBack }) {
       getCustomerMessages(customerId).then(res => setMessages(res.data?.data?.items ?? []))
     }
     if (tab === 'tasks') {
-      getCustomerTasks(customerId).then(res => setTasks(res.data?.data ?? []))
+      listTasks({ source_record_id: customerId, completed: true, page_size: 50 })
+        .then(res => setTasks(res?.items ?? []))
+        .catch(() => setTasks([]))
     }
     if (tab === 'nps') {
       getCustomerNps(customerId).then(res => setNps(res.data?.data ?? []))
@@ -407,19 +410,33 @@ export default function CustomerProfile({ customerId, onBack }) {
             <div style={S.empty}>No tasks linked to this customer.</div>
           ) : tasks.map(t => {
             const overdue = t.due_at && new Date(t.due_at) < new Date() && t.status !== 'completed'
+            const isComplete = t.status === 'completed'
             return (
               <div key={t.id} style={{
                 ...S.taskCard,
-                borderLeft: overdue ? `3px solid #E05252` : `3px solid ${ds.teal}`,
+                borderLeft: isComplete ? `3px solid #27AE60`
+                          : overdue    ? `3px solid #E05252`
+                          :              `3px solid ${ds.teal}`,
                 background: overdue ? '#FFFAFA' : '#fff',
+                opacity: isComplete ? 0.7 : 1,
               }}>
-                <div style={{ fontWeight: 600, fontSize: 13.5, color: ds.dark, marginBottom: 4 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, color: ds.dark, marginBottom: 4,
+                  textDecoration: isComplete ? 'line-through' : 'none' }}>
                   {t.title}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: ds.gray, flexWrap: 'wrap' }}>
                   {t.status && (
-                    <span style={{ background: '#EAF0F2', color: ds.dark, borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+                    <span style={{ background: '#EAF0F2', color: ds.dark, borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>
                       {t.status}
+                    </span>
+                  )}
+                  {t.priority && (
+                    <span style={{
+                      borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
+                      background: t.priority === 'critical' ? '#FFE8E8' : t.priority === 'high' ? '#FFF3E0' : '#EAF0F2',
+                      color:      t.priority === 'critical' ? '#C0392B' : t.priority === 'high' ? '#E07B3A' : ds.gray,
+                    }}>
+                      {t.priority}
                     </span>
                   )}
                   {overdue && (
@@ -428,9 +445,14 @@ export default function CustomerProfile({ customerId, onBack }) {
                     </span>
                   )}
                   {t.due_at && <span>Due: {new Date(t.due_at).toLocaleDateString()}</span>}
-                  {t.ai_recommended && (
+                  {t.task_type === 'ai_recommended' && (
                     <span style={{ background: '#FFF3E0', color: '#8B4513', borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
                       🤖 AI Recommended
+                    </span>
+                  )}
+                  {t.task_type === 'system_event' && (
+                    <span style={{ background: '#EAF0F2', color: ds.gray, borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+                      📋 System Event
                     </span>
                   )}
                 </div>

@@ -129,6 +129,7 @@ def list_tasks(
     team_view: bool = False,
     assigned_to_filter: Optional[str] = None,
     source_module: Optional[str] = None,
+    source_record_id: Optional[str] = None,
     priority: Optional[str] = None,
     status: Optional[str] = None,
     include_completed: bool = False,
@@ -140,6 +141,9 @@ def list_tasks(
 
     Personal view (default): returns only tasks assigned to the current user.
     Team view: returns all org tasks — only available to managers.
+    Record-scoped view: when source_record_id is provided, returns all tasks
+      linked to that specific record regardless of assigned_to — used by
+      ticket thread, lead profile, and customer profile task widgets.
 
     All filtering is Python-side (Pattern 33).
     Overdue tasks sorted first, then by priority, then due_at (Pattern 37 safe).
@@ -162,8 +166,11 @@ def list_tasks(
     )
     rows: list = [r for r in (result.data or []) if not r.get("deleted_at")]
 
-    # Scope: personal vs team (Pattern 33 — filter Python-side)
-    if team_view and is_manager:
+    # Record-scoped view: source_record_id bypasses personal/team scoping.
+    # Used by profile widgets and ticket thread to show all tasks for one record.
+    if source_record_id:
+        rows = [r for r in rows if r.get("source_record_id") == source_record_id]
+    elif team_view and is_manager:
         pass  # all org tasks
     else:
         rows = [r for r in rows if r.get("assigned_to") == user_id]

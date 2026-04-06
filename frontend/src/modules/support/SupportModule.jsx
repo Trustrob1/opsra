@@ -13,6 +13,7 @@
 
 import { useState } from 'react'
 import { ds } from '../../utils/ds'
+import useAuthStore from '../../store/authStore'
 import TicketList         from './TicketList'
 import TicketDetail       from './TicketDetail'
 import KBManager          from './KBManager'
@@ -26,6 +27,9 @@ const TABS = [
 ]
 
 export default function SupportModule({ user }) {
+  // Phase 9B: affiliate_partner cannot access Knowledge Base
+  const isAffiliate  = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
+  const visibleTabs  = isAffiliate ? TABS.filter(t => t.id !== 'kb') : TABS
   const [tab, setTab]                       = useState('tickets')
   const [selectedTicketId, setSelectedTicketId] = useState(null)
   const [kbTick, setKbTick] = useState(0)
@@ -65,7 +69,7 @@ export default function SupportModule({ user }) {
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: '4px', borderBottom: `2px solid ${ds.border}`, marginBottom: '26px' }}>
-        {TABS.map(t => (
+        {visibleTabs.map(t => (
           <button
             key={t.id}
             onClick={() => { setTab(t.id); if (t.id !== 'tickets') setSelectedTicketId(null) }}

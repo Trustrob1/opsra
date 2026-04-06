@@ -1,0 +1,193 @@
+/**
+ * frontend/src/modules/admin/AdminModule.jsx
+ * Admin Dashboard — Phase 8B
+ *
+ * Client-facing admin for Owner/Admin users.
+ * On mount: calls listUsers() to verify access.
+ *   → 403 response: renders "Access Restricted" screen (TEMP-1 workaround)
+ *   → success: renders tab nav with 4 sections
+ *
+ * Tabs: Users | Roles | Routing Rules | Integrations
+ * Plus 2 nav links (no data): Knowledge Base → Support, WA Templates → WhatsApp
+ *
+ * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
+ * table state, filters, and open modals when switching between tabs.
+ */
+import { useState, useEffect } from 'react'
+import { ds } from '../../utils/ds'
+import * as adminSvc from '../../services/admin.service'
+import UserManagement  from './UserManagement'
+import RoleBuilder     from './RoleBuilder'
+import RoutingRules    from './RoutingRules'
+import IntegrationStatus from './IntegrationStatus'
+
+const TABS = [
+  { id: 'users',        label: '👥 Users' },
+  { id: 'roles',        label: '🎭 Roles' },
+  { id: 'routing',      label: '🔀 Routing Rules' },
+  { id: 'integrations', label: '🔌 Integrations' },
+  { id: 'kb',           label: '📚 Knowledge Base', link: true },
+  { id: 'templates',    label: '💬 WA Templates',   link: true },
+]
+
+export default function AdminModule({ user }) {
+  const [tab, setTab]               = useState('users')
+  const [accessDenied, setAccessDenied] = useState(false)
+  const [checking, setChecking]     = useState(true)
+
+  // Verify admin access on mount — TEMP-1 workaround.
+  // Roles are not in the auth store, so we probe the backend.
+  // A 403 from the admin API means this user is not an owner/admin.
+  useEffect(() => {
+    adminSvc.listUsers()
+      .then(() => setChecking(false))
+      .catch(err => {
+        if (err?.response?.status === 403) setAccessDenied(true)
+        setChecking(false)
+      })
+  }, [])
+
+  // ── Loading state ────────────────────────────────────────────────────────
+  if (checking) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+        <div style={{ fontSize: 24, marginBottom: 8 }}>⚙️</div>
+        Checking access…
+      </div>
+    )
+  }
+
+  // ── Access denied ────────────────────────────────────────────────────────
+  if (accessDenied) {
+    return (
+      <div style={{ padding: 64, textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 20, color: '#0a1a24', margin: '0 0 10px' }}>
+          Access Restricted
+        </h2>
+        <p style={{ fontSize: 14, color: '#7A9BAD', maxWidth: 360, margin: '0 auto', lineHeight: 1.6 }}>
+          You need Owner or Admin access to view this section.
+          Contact your organisation administrator.
+        </p>
+      </div>
+    )
+  }
+
+  // ── Admin panel ──────────────────────────────────────────────────────────
+  return (
+    <div>
+      {/* Module header */}
+      <div style={{
+        background:    '#0a1a24',
+        padding:       '28px 32px 0',
+        borderBottom:  '1px solid #1a2f3f',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{
+            background:     ds.teal,
+            color:          'white',
+            borderRadius:   8,
+            width:          36,
+            height:         36,
+            display:        'flex',
+            alignItems:     'center',
+            justifyContent: 'center',
+            fontFamily:     ds.fontSyne,
+            fontWeight:     800,
+            fontSize:       12,
+            flexShrink:     0,
+          }}>
+            08
+          </div>
+          <div>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: 0 }}>
+              Admin Dashboard
+            </h1>
+            <p style={{ fontSize: 12, color: '#5a8a9f', margin: '2px 0 0' }}>
+              Users · Roles · Routing rules · Integrations
+            </p>
+          </div>
+        </div>
+
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: 0 }}>
+          {TABS.map(t => {
+            const isActive = tab === t.id
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                title={t.link ? 'View-only — manage in the respective module' : undefined}
+                style={{
+                  background:    'none',
+                  border:        'none',
+                  borderBottom:  isActive ? `2px solid ${ds.teal}` : '2px solid transparent',
+                  padding:       '10px 18px',
+                  cursor:        'pointer',
+                  fontFamily:    ds.fontDm,
+                  fontSize:      13.5,
+                  fontWeight:    isActive ? 600 : 400,
+                  color:         isActive ? ds.teal : '#5a8a9f',
+                  transition:    'all 0.15s',
+                  opacity:       t.link ? 0.7 : 1,
+                  whiteSpace:    'nowrap',
+                }}
+              >
+                {t.label}{t.link ? ' ↗' : ''}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Tab content ─────────────────────────────────────────────────────── */}
+      <div style={{ padding: 28 }}>
+
+        {/* Pattern 26: mount-and-hide — preserves table state + open modals */}
+        <div style={{ display: tab === 'users' ? 'block' : 'none' }}>
+          <UserManagement />
+        </div>
+        <div style={{ display: tab === 'roles' ? 'block' : 'none' }}>
+          <RoleBuilder />
+        </div>
+        <div style={{ display: tab === 'routing' ? 'block' : 'none' }}>
+          <RoutingRules />
+        </div>
+        <div style={{ display: tab === 'integrations' ? 'block' : 'none' }}>
+          <IntegrationStatus />
+        </div>
+
+        {/* Nav links — no state to preserve, conditional render is fine */}
+        {tab === 'kb' && (
+          <LinkMessage
+            icon="📚"
+            title="Knowledge Base"
+            body="KB articles are managed in the Support Tickets module."
+            hint="Navigate to Support → KB Manager tab to create and publish articles."
+          />
+        )}
+        {tab === 'templates' && (
+          <LinkMessage
+            icon="💬"
+            title="WhatsApp Templates"
+            body="Message templates are managed in the WhatsApp Engine module."
+            hint="Navigate to WhatsApp → Templates tab to create and manage templates."
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LinkMessage({ icon, title, body, hint }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '48px 32px' }}>
+      <div style={{ fontSize: 40, marginBottom: 14 }}>{icon}</div>
+      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 10px' }}>
+        {title}
+      </h3>
+      <p style={{ fontSize: 14, color: '#4a7a8a', margin: '0 0 6px' }}>{body}</p>
+      <p style={{ fontSize: 13, color: '#7A9BAD' }}>{hint}</p>
+    </div>
+  )
+}

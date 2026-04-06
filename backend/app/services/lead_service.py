@@ -623,6 +623,34 @@ def reactivate_lead(
     new_lead = result.data[0] if result.data else new_lead_data
     new_lead_id = new_lead.get("id", "")
 
+    # Gap 7 — auto-create a task for the rep so reactivation appears on the Task Board
+    assigned_rep = new_lead_data.get("assigned_to") or user_id
+    if assigned_rep and new_lead_id:
+        try:
+            _now = datetime.now(timezone.utc).isoformat()
+            prior_context = old_lead.get("problem_stated") or ""
+            db.table("tasks").insert({
+                "org_id":           org_id,
+                "assigned_to":      assigned_rep,
+                "title":            f"Follow up: {old_lead.get('full_name', 'Lead')} reactivated",
+                "description":      (
+                    f"This lead was reactivated from a previous record.\n"
+                    + (f"Previous context: {prior_context}" if prior_context else "")
+                ).strip(),
+                "task_type":        "system_event",
+                "source_module":    "leads",
+                "source_record_id": new_lead_id,
+                "priority":         "high",
+                "status":           "open",
+                "created_at":       _now,
+                "updated_at":       _now,
+            }).execute()
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "reactivate_lead: task creation failed — %s", exc
+            )
+
     write_timeline_event(
         db, org_id, new_lead_id,
         event_type="lead_created",
@@ -713,8 +741,25 @@ def convert_lead(
     customer_data = {k: v for k, v in customer_data.items() if v is not None}
 
     customer_result = db.table("customers").insert(customer_data).execute()
+    print(f"[DEBUG] customer insert result: data={customer_result.data}")
     customer = customer_result.data[0] if customer_result.data else customer_data
     customer_id = customer.get("id", "")
+    print(f"[DEBUG] customer_id resolved to: '{customer_id}'")
+
+    # Gap 4 — re-link any tasks created against this lead to the new customer record
+    # so they surface correctly on the customer profile Tasks tab.
+    if customer_id:
+        try:
+            _now_relink = datetime.now(timezone.utc).isoformat()
+            db.table("tasks").update({
+                "source_record_id": customer_id,
+                "updated_at":       _now_relink,
+            }).eq("source_record_id", lead_id).eq("org_id", org_id).execute()
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "convert_lead: task re-linking failed — %s", exc
+            )
 
     # Create subscription stub — Section 3.5
     # TEMP-3 resolved: subscriptions table created in Phase 5A.
@@ -732,6 +777,24 @@ def convert_lead(
     }
     db.table("subscriptions").insert(subscription_data).execute()
 
+    # Phase 9C: auto-create commission row if this lead had an assigned rep
+    # S14: never fail the core conversion due to commission creation
+    if lead.get("assigned_to") and customer_id:
+        try:
+            from app.services.commissions_service import auto_create_commission
+            auto_create_commission(
+                db=db,
+                org_id=org_id,
+                affiliate_user_id=lead["assigned_to"],
+                event_type="lead_converted",
+                lead_id=lead_id,
+                customer_id=customer_id,
+            )
+        except Exception as _ce:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "convert_lead: commission creation failed — %s", _ce
+            )
     write_timeline_event(
         db, org_id, lead_id,
         event_type="stage_changed",

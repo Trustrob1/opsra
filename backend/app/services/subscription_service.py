@@ -393,6 +393,38 @@ def _confirm_payment_internal(
         .eq("org_id", org_id)
         .execute()
     )
+
+    # Phase 9C: auto-create commission if customer has an assigned rep
+    # S14: never fail the core payment confirmation
+    try:
+        from app.services.commissions_service import auto_create_commission
+        _cust = (
+            db.table("customers")
+            .select("assigned_to")
+            .eq("id", subscription.get("customer_id", ""))
+            .eq("org_id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        _cust_row = _cust.data
+        if isinstance(_cust_row, list):
+            _cust_row = _cust_row[0] if _cust_row else None
+        _assigned = (_cust_row or {}).get("assigned_to")
+        if _assigned:
+            auto_create_commission(
+                db=db,
+                org_id=org_id,
+                affiliate_user_id=_assigned,
+                event_type="payment_confirmed",
+                customer_id=subscription.get("customer_id"),
+                subscription_id=subscription_id,
+            )
+    except Exception as _ce:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "confirm_payment: commission creation failed — %s", _ce
+        )
+
     return result.data[0] if result.data else {**subscription, **updates}
 
 

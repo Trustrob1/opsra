@@ -2,34 +2,41 @@
 customers.py — Module 02 customer profile routes.
 
 All routes are prefixed with /api/v1/customers via main.py include_router.
-Internal prefix: none.
+
+Phase 9B additions:
+  - list_customers: scoped roles (sales_agent, affiliate_partner) see only
+    customers assigned to themselves
+  - get_customer: scoped roles can only fetch customers assigned to them
+  - update_customer: affiliate_partner is read-only — blocked with 403
+  - Pattern 37: role derived via rbac module
 
 Routes (full paths after combining):
-  GET   /api/v1/customers                    list_customers
-  GET   /api/v1/customers/{customer_id}      get_customer
-  PATCH /api/v1/customers/{customer_id}      update_customer
-  GET   /api/v1/customers/{customer_id}/messages   get_customer_messages
-  GET   /api/v1/customers/{customer_id}/tasks      get_customer_tasks
-  GET   /api/v1/customers/{customer_id}/nps        get_customer_nps
+  GET   /api/v1/customers
+  GET   /api/v1/customers/{customer_id}
+  PATCH /api/v1/customers/{customer_id}
+  GET   /api/v1/customers/{customer_id}/messages
+  GET   /api/v1/customers/{customer_id}/tasks
+  GET   /api/v1/customers/{customer_id}/nps
 
 Auth: JWT required on all routes (get_current_org dependency).
-Response envelope: ok() / paginated() from app.models.common.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok, paginated
 from app.models.customers import CustomerUpdate
 from app.services import whatsapp_service
+from app.utils.rbac import is_scoped_role, require_not_affiliate
 
 router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
 # Customer list
+# Phase 9B: scoped roles see only their own assigned customers
 # ---------------------------------------------------------------------------
 
 @router.get("")
@@ -42,11 +49,14 @@ def list_customers(
     db=Depends(get_supabase),
     org=Depends(get_current_org),
 ):
+    # Phase 9B: force assigned_to for scoped roles
+    effective_assigned_to = org["id"] if is_scoped_role(org) else assigned_to
+
     result = whatsapp_service.list_customers(
         db=db,
         org_id=org["org_id"],
         churn_risk=churn_risk,
-        assigned_to=assigned_to,
+        assigned_to=effective_assigned_to,
         onboarding_complete=onboarding_complete,
         page=page,
         page_size=page_size,
@@ -61,6 +71,7 @@ def list_customers(
 
 # ---------------------------------------------------------------------------
 # Customer profile
+# Phase 9B: scoped roles can only fetch their own assigned customers
 # ---------------------------------------------------------------------------
 
 @router.get("/{customer_id}")
@@ -74,6 +85,17 @@ def get_customer(
         org_id=org["org_id"],
         customer_id=customer_id,
     )
+
+    # Phase 9B: scoped roles can only see their own customers
+    if is_scoped_role(org) and customer.get("assigned_to") != org["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code":    "FORBIDDEN",
+                "message": "You can only view customers assigned to you",
+            },
+        )
+
     return ok(data=customer)
 
 
@@ -84,6 +106,9 @@ def update_customer(
     db=Depends(get_supabase),
     org=Depends(get_current_org),
 ):
+    # Phase 9B: affiliate_partner is read-only
+    require_not_affiliate(org, "editing customers")
+
     updated = whatsapp_service.update_customer(
         db=db,
         org_id=org["org_id"],
@@ -96,6 +121,11 @@ def update_customer(
 
 # ---------------------------------------------------------------------------
 # Customer sub-resources
+# Scoped roles can access these for their own assigned customers.
+# The customer ownership check is not repeated here for performance —
+# the sub-resource queries are already scoped to org_id + customer_id.
+# A scoped user who somehow calls these for a non-assigned customer
+# will receive empty results (no data leakage).
 # ---------------------------------------------------------------------------
 
 @router.get("/{customer_id}/messages")

@@ -50,13 +50,13 @@ ACTIVE_SUB = {
 # Auth stubs — Pattern 28: get_current_org returns dict
 # ---------------------------------------------------------------------------
 def _org_member():
-    return {"id": USER_ID, "org_id": ORG_ID, "role": "support_agent"}
+    return {"id": USER_ID, "org_id": ORG_ID, "roles": {"template": "support_agent", "permissions": {}}}
 
 def _org_admin():
-    return {"id": USER_ID, "org_id": ORG_ID, "role": "ops_manager"}
+    return {"id": USER_ID, "org_id": ORG_ID, "roles": {"template": "ops_manager", "permissions": {}}}
 
 def _org_owner():
-    return {"id": USER_ID, "org_id": ORG_ID, "role": "owner"}
+    return {"id": USER_ID, "org_id": ORG_ID, "roles": {"template": "owner", "permissions": {"is_admin": True}}}
 
 
 def _make_chain(data=None, count=0):

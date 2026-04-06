@@ -33,6 +33,7 @@ from app.models.whatsapp import (
     TemplateUpdate,
 )
 from app.services import whatsapp_service
+from app.utils.rbac import require_not_affiliate, require_permission_key
 
 router = APIRouter()
 
@@ -99,6 +100,7 @@ def create_broadcast(
     db=Depends(get_supabase),
     org=Depends(get_current_org),
 ):
+    require_not_affiliate(org, "creating broadcasts")
     broadcast = whatsapp_service.create_broadcast(
         db=db,
         org_id=org["org_id"],
@@ -171,6 +173,10 @@ def create_template(
     db=Depends(get_supabase),
     org=Depends(get_current_org),
 ):
+    require_permission_key(
+        org, "manage_templates",
+        "Template management requires owner, admin, or the manage_templates permission",
+    )
     template = whatsapp_service.create_template(
         db=db,
         org_id=org["org_id"],
@@ -187,6 +193,10 @@ def update_template(
     db=Depends(get_supabase),
     org=Depends(get_current_org),
 ):
+    require_permission_key(
+        org, "manage_templates",
+        "Template management requires owner, admin, or the manage_templates permission",
+    )
     template = whatsapp_service.update_template(
         db=db,
         org_id=org["org_id"],

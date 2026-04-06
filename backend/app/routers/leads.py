@@ -2,6 +2,13 @@
 app/routers/leads.py
 All 14 lead routes from Technical Spec Section 5.2.
 
+Phase 9B additions:
+  - list_leads: scoped roles (sales_agent, affiliate_partner) see only
+    leads assigned to themselves — assigned_to forced to org["id"]
+  - Mutating routes (create, update, move-stage, convert, mark-lost,
+    reactivate, import): blocked for affiliate_partner (read-only role)
+  - Pattern 37: role derived from org["roles"]["template"] via rbac module
+
 Conventions:
   - All routes prefixed /api/v1/leads (registered in main.py)
   - org_id from JWT only — never from request body
@@ -29,6 +36,11 @@ from app.models.leads import (
     MoveStageRequest,
 )
 from app.services import lead_service
+from app.utils.rbac import (
+    get_role_template,
+    is_scoped_role,
+    require_not_affiliate,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -48,6 +60,7 @@ def _user_id(org: dict) -> str:
 
 # ---------------------------------------------------------------------------
 # GET /api/v1/leads — list leads
+# Phase 9B: scoped roles see only their own assigned leads
 # ---------------------------------------------------------------------------
 
 @router.get("")
@@ -63,12 +76,17 @@ async def list_leads(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    # Phase 9B: force assigned_to filter for scoped roles (Pattern 37)
+    effective_assigned_to = (
+        _user_id(org) if is_scoped_role(org) else assigned_to
+    )
+
     result = lead_service.list_leads(
         db=db,
         org_id=_org_id(org),
         stage=stage,
         score=score,
-        assigned_to=assigned_to,
+        assigned_to=effective_assigned_to,
         source=source,
         from_date=from_date,
         to_date=to_date,
@@ -85,6 +103,7 @@ async def list_leads(
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/leads — create lead
+# Phase 9B: affiliate_partner cannot create leads
 # ---------------------------------------------------------------------------
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -93,6 +112,7 @@ async def create_lead(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    require_not_affiliate(org, "creating leads")
     lead = lead_service.create_lead(
         db=db,
         org_id=_org_id(org),
@@ -104,6 +124,7 @@ async def create_lead(
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/leads/import — CSV/Excel bulk import
+# Phase 9B: affiliate_partner cannot import leads
 # MUST be declared before /{id} routes to avoid route shadowing
 # ---------------------------------------------------------------------------
 
@@ -114,6 +135,8 @@ async def import_leads(
     db=Depends(get_supabase),
 ):
     """Accept a CSV file and create leads in bulk. Returns job_id for polling."""
+    require_not_affiliate(org, "importing leads")
+
     org_id = _org_id(org)
     user_id = _user_id(org)
 
@@ -149,7 +172,6 @@ async def import_leads(
             },
         ) from exc
 
-    # Process synchronously (Celery queue in full implementation)
     lead_service.process_csv_import(db=db, org_id=org_id, user_id=user_id, job_id=job_id, rows=rows)
 
     job = lead_service.get_import_job(org_id, job_id)
@@ -173,6 +195,9 @@ async def get_import_status(
 
 # ---------------------------------------------------------------------------
 # GET /api/v1/leads/{id} — get single lead
+# Phase 9B: scoped roles can only read their own assigned leads
+# The lead_service.get_lead returns 404 if not in org, so we add an
+# ownership check for scoped roles after the fetch.
 # ---------------------------------------------------------------------------
 
 @router.get("/{lead_id}")
@@ -182,11 +207,20 @@ async def get_lead(
     db=Depends(get_supabase),
 ):
     lead = lead_service.get_lead(db=db, org_id=_org_id(org), lead_id=lead_id)
+
+    # Phase 9B: scoped roles can only see their own leads
+    if is_scoped_role(org) and lead.get("assigned_to") != _user_id(org):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "You can only view leads assigned to you"},
+        )
+
     return ok(data=lead)
 
 
 # ---------------------------------------------------------------------------
 # PATCH /api/v1/leads/{id} — update lead fields
+# Phase 9B: affiliate_partner cannot edit leads
 # ---------------------------------------------------------------------------
 
 @router.patch("/{lead_id}")
@@ -196,6 +230,7 @@ async def update_lead(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    require_not_affiliate(org, "editing leads")
     lead = lead_service.update_lead(
         db=db,
         org_id=_org_id(org),
@@ -245,6 +280,7 @@ async def score_lead(
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/leads/{id}/move-stage
+# Phase 9B: affiliate_partner cannot move stages
 # ---------------------------------------------------------------------------
 
 @router.post("/{lead_id}/move-stage")
@@ -254,6 +290,7 @@ async def move_stage(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    require_not_affiliate(org, "moving pipeline stages")
     lead = lead_service.move_stage(
         db=db,
         org_id=_org_id(org),
@@ -266,6 +303,7 @@ async def move_stage(
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/leads/{id}/convert
+# Phase 9B: affiliate_partner cannot convert leads
 # ---------------------------------------------------------------------------
 
 @router.post("/{lead_id}/convert")
@@ -274,6 +312,7 @@ async def convert_lead(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    require_not_affiliate(org, "converting leads")
     result = lead_service.convert_lead(
         db=db,
         org_id=_org_id(org),
@@ -285,6 +324,7 @@ async def convert_lead(
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/leads/{id}/mark-lost
+# Phase 9B: affiliate_partner cannot mark leads lost
 # ---------------------------------------------------------------------------
 
 @router.post("/{lead_id}/mark-lost")
@@ -294,6 +334,7 @@ async def mark_lost(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    require_not_affiliate(org, "marking leads as lost")
     lead = lead_service.mark_lost(
         db=db,
         org_id=_org_id(org),
@@ -307,6 +348,7 @@ async def mark_lost(
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/leads/{id}/reactivate
+# Phase 9B: affiliate_partner cannot reactivate leads
 # ---------------------------------------------------------------------------
 
 @router.post("/{lead_id}/reactivate", status_code=status.HTTP_201_CREATED)
@@ -315,6 +357,7 @@ async def reactivate_lead(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    require_not_affiliate(org, "reactivating leads")
     new_lead = lead_service.reactivate_lead(
         db=db,
         org_id=_org_id(org),

@@ -22,6 +22,7 @@ import {
   closeTicket, reopenTicket, escalateTicket,
   updateTicket, suggestKBArticle, createKBArticle,
 } from '../../services/support.service'
+import { listTasks, completeTask } from '../../services/tasks.service'
 
 // ---------------------------------------------------------------------------
 // Badge helpers (duplicated locally — no shared component layer yet)
@@ -167,6 +168,11 @@ export default function TicketDetail({ ticketId, onBack, onUpdated, onKBArticleP
   const [replyType, setReplyType]       = useState('agent_reply')
   const [sending, setSending]           = useState(false)
 
+  // Linked tasks state
+  const [tasks,        setTasks]        = useState([])
+  const [tasksLoading, setTasksLoading] = useState(true)
+  const [tasksOpen,    setTasksOpen]    = useState(true)  // collapsed state
+
   const loadTicket = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -180,7 +186,20 @@ export default function TicketDetail({ ticketId, onBack, onUpdated, onKBArticleP
     }
   }, [ticketId])
 
+  const loadTasks = useCallback(async () => {
+    setTasksLoading(true)
+    try {
+      const data = await listTasks({ source_record_id: ticketId, completed: true, page_size: 50 })
+      setTasks(data?.items ?? [])
+    } catch {
+      // Non-critical — task widget failure must not break ticket view
+    } finally {
+      setTasksLoading(false)
+    }
+  }, [ticketId])
+
   useEffect(() => { loadTicket() }, [loadTicket])
+  useEffect(() => { loadTasks()  }, [loadTasks])
 
   async function handleSendReply() {
     if (!replyContent.trim()) return
@@ -324,6 +343,96 @@ export default function TicketDetail({ ticketId, onBack, onUpdated, onKBArticleP
         {actionError && (
           <div style={{ marginTop: '12px', padding: '10px 14px', background: '#FFF0F0', border: '1px solid #FFD0D0', borderRadius: '8px', fontSize: '13px', color: '#C0392B' }}>
             {actionError}
+          </div>
+        )}
+      </div>
+
+      {/* ── Linked Tasks ─────────────────────────────────────────────────── */}
+      <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: '14px', padding: '18px 24px', marginBottom: '20px' }}>
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+          onClick={() => setTasksOpen(o => !o)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 600, fontSize: '14px', color: ds.dark }}>
+              ✅ Tasks
+            </span>
+            {tasks.length > 0 && (
+              <span style={{ background: ds.teal, color: 'white', fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: '10px' }}>
+                {tasks.length}
+              </span>
+            )}
+          </div>
+          <span style={{ fontSize: '12px', color: ds.gray }}>{tasksOpen ? '▲ collapse' : '▼ expand'}</span>
+        </div>
+
+        {tasksOpen && (
+          <div style={{ marginTop: '14px' }}>
+            {tasksLoading && (
+              <div style={{ fontSize: '13px', color: ds.gray, padding: '8px 0' }}>Loading tasks…</div>
+            )}
+            {!tasksLoading && tasks.length === 0 && (
+              <div style={{ fontSize: '13px', color: ds.gray, padding: '8px 0' }}>
+                No tasks linked to this ticket yet.
+              </div>
+            )}
+            {!tasksLoading && tasks.map(task => {
+              const overdue = task.due_at && new Date(task.due_at) < new Date() && task.status !== 'completed'
+              const isComplete = task.status === 'completed'
+              return (
+                <div key={task.id} style={{
+                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px',
+                  padding: '10px 12px', borderRadius: '8px', marginBottom: '8px',
+                  background: isComplete ? '#F8FFF8' : overdue ? '#FFFAFA' : ds.light,
+                  border: `1px solid ${isComplete ? '#B0DDB8' : overdue ? '#FFD0D0' : ds.border}`,
+                  borderLeft: `3px solid ${isComplete ? ds.green : overdue ? '#C0392B' : ds.teal}`,
+                  opacity: isComplete ? 0.7 : 1,
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: ds.dark, textDecoration: isComplete ? 'line-through' : 'none', marginBottom: '4px' }}>
+                      {task.title}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '11px', color: ds.gray, background: '#EAF0F2', borderRadius: '8px', padding: '1px 7px', textTransform: 'capitalize' }}>
+                        {task.status}
+                      </span>
+                      {task.priority && (
+                        <span style={{ fontSize: '11px', fontWeight: 600, padding: '1px 7px', borderRadius: '8px', textTransform: 'capitalize',
+                          background: task.priority === 'critical' ? '#FFE8E8' : task.priority === 'high' ? '#FFF3E0' : '#EAF0F2',
+                          color:      task.priority === 'critical' ? '#C0392B' : task.priority === 'high' ? '#E07B3A' : ds.gray,
+                        }}>
+                          {task.priority}
+                        </span>
+                      )}
+                      {overdue && (
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#C0392B' }}>Overdue</span>
+                      )}
+                      {task.due_at && !overdue && (
+                        <span style={{ fontSize: '11px', color: ds.gray }}>
+                          Due {new Date(task.due_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {!isComplete && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await completeTask(task.id)
+                          loadTasks()
+                        } catch { /* non-critical */ }
+                      }}
+                      style={{ fontSize: '11px', fontWeight: 600, background: ds.mint, color: ds.teal, border: 'none', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      ✓ Done
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            <p style={{ fontSize: '11px', color: '#9ca3af', margin: '10px 0 0', textAlign: 'center' }}>
+              Create tasks from the Task Board — link to this ticket using source record.
+            </p>
           </div>
         )}
       </div>

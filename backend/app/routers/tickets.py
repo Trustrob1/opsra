@@ -46,6 +46,7 @@ from app.models.tickets import (
     TicketUpdate,
 )
 from app.services import ticket_service
+from app.utils.rbac import get_role_template, is_scoped_role, require_permission_key
 
 router = APIRouter()
 
@@ -69,6 +70,19 @@ async def list_tickets(
     org: dict = Depends(get_current_org),
 ):
     org_id: str = org["org_id"]
+
+    # Phase 9B: resolve scope for sales_agent / affiliate_partner
+    scope_customer_ids = None
+    scope_lead_ids     = None
+    if is_scoped_role(org):
+        _cust = db.table("customers").select("id") \
+            .eq("org_id", org_id).eq("assigned_to", org["id"]).execute()
+        scope_customer_ids = [r["id"] for r in (_cust.data or [])]
+        _lead = db.table("leads").select("id") \
+            .eq("org_id", org_id).eq("assigned_to", org["id"]) \
+            .is_("deleted_at", "null").execute()
+        scope_lead_ids = [r["id"] for r in (_lead.data or [])]
+
     result = ticket_service.list_tickets(
         db=db,
         org_id=org_id,
@@ -81,7 +95,10 @@ async def list_tickets(
         lead_id=lead_id,
         page=page,
         page_size=page_size,
-    )
+        scope_customer_ids=scope_customer_ids,
+        scope_lead_ids=scope_lead_ids,
+     )
+ 
     return paginated(
         items=result["items"],
         total=result["total"],
@@ -362,6 +379,10 @@ async def create_kb_article(
     db=Depends(get_supabase),
     org: dict = Depends(get_current_org),
 ):
+    require_permission_key(
+        org, "manage_kb",
+        "KB management requires owner, admin, support agent, or the manage_kb permission",
+    )
     org_id: str = org["org_id"]
     user_id: str = org["id"]
     article = ticket_service.create_kb_article(
@@ -390,6 +411,10 @@ async def update_kb_article(
     db=Depends(get_supabase),
     org: dict = Depends(get_current_org),
 ):
+    require_permission_key(
+        org, "manage_kb",
+        "KB management requires owner, admin, support agent, or the manage_kb permission",
+    )
     org_id: str = org["org_id"]
     user_id: str = org["id"]
     article = ticket_service.update_kb_article(

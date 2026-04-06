@@ -30,24 +30,27 @@ router = APIRouter()
 
 @router.get("/tasks")
 async def list_tasks(
-    team:       bool          = Query(False,  description="true = team view (managers only)"),
-    assigned_to: Optional[str] = Query(None,  description="Filter by user UUID (managers only)"),
-    module:     Optional[str] = Query(None,  description="leads|whatsapp|support|renewal|ops"),
-    priority:   Optional[str] = Query(None,  description="critical|high|medium|low"),
-    status:     Optional[str] = Query(None,  description="open|in_progress|completed|snoozed|escalated"),
-    completed:  bool          = Query(False,  description="Include completed tasks"),
-    page:       int           = Query(1,      ge=1),
-    page_size:  int           = Query(20,     ge=1, le=100),
+    team:             bool          = Query(False,  description="true = team view (managers only)"),
+    assigned_to:      Optional[str] = Query(None,   description="Filter by user UUID (managers only)"),
+    module:           Optional[str] = Query(None,   description="leads|whatsapp|support|renewal|ops"),
+    source_record_id: Optional[str] = Query(None,   description="UUID — returns all tasks for this specific record"),
+    priority:         Optional[str] = Query(None,   description="critical|high|medium|low"),
+    status:           Optional[str] = Query(None,   description="open|in_progress|completed|snoozed|escalated"),
+    completed:        bool          = Query(False,   description="Include completed tasks"),
+    page:             int           = Query(1,       ge=1),
+    page_size:        int           = Query(20,      ge=1, le=100),
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    """List tasks — personal view by default; team view for managers."""
+    """List tasks — personal view by default; team view for managers;
+    record-scoped when source_record_id is supplied."""
     result = task_service.list_tasks(
         org,
         db,
         team_view=team,
         assigned_to_filter=assigned_to,
         source_module=module,
+        source_record_id=source_record_id,
         priority=priority,
         status=status,
         include_completed=completed,

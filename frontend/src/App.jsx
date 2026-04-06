@@ -31,6 +31,9 @@ import SupportModule from './modules/support/SupportModule'
 import RenewalModule from './modules/renewal/RenewalModule'
 import OpsModule     from './modules/ops/OpsModule'
 import TaskBoard     from './modules/tasks/TaskBoard'
+import AdminModule   from './modules/admin/AdminModule'
+import NotificationsDrawer from './modules/notifications/NotificationsDrawer'
+import CommissionsModule   from './modules/commissions/CommissionsModule'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -42,6 +45,7 @@ const NAV = [
   { id: 'renewal',  label: 'Renewal & Upsell',     icon: '🔄', module: '04', active: true  },
   { id: 'ops',      label: 'Operations Intel',     icon: '📊', module: '05', active: true  },
   { id: 'tasks',    label: 'Task Board',            icon: '✅', module: '—',  active: true  },
+  { id: 'commissions', label: 'Commissions',        icon: '💼', module: '—',  active: true  },
 ]
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -91,7 +95,15 @@ function LoginScreen({ onAuth }) {
       const res = await axios.post(`${BASE}/api/v1/auth/login`, { email, password })
       if (res.data.success) {
         const { access_token, user } = res.data.data
-        onAuth(access_token, user)
+        // TEMP-1 fix: fetch full profile including roles.template
+        try {
+          const meRes = await axios.get(`${BASE}/api/v1/auth/me`, {
+            headers: { Authorization: `Bearer ${access_token}` },
+          })
+          onAuth(access_token, meRes.data?.data ?? user)
+        } catch {
+          onAuth(access_token, user)
+        }
       } else {
         setError(res.data.error ?? 'Login failed')
       }
@@ -200,8 +212,36 @@ function AppShell() {
   const { user, clearAuth }       = useAuthStore()
   const org = user
   const [activeNav, setActiveNav] = useState('leads')
+  // Phase 9B: filter nav items based on role template
+  const _userTemplate = user?.roles?.template ?? ''
+  const visibleNav = NAV.filter(item => {
+    // sales_agent + affiliate_partner cannot see Ops dashboard
+    if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
+    // affiliate_partner cannot see Renewals
+    if (item.id === 'renewal' && _userTemplate === 'affiliate_partner') return false
+    // commissions only visible to affiliates, managers, and owners
+    // (hide for support_agent, finance, read_only, customer_success)
+    if (item.id === 'commissions') {
+      return ['owner', 'ops_manager', 'sales_agent', 'affiliate_partner'].includes(_userTemplate)
+        || useAuthStore.getState().hasPermission('is_admin')
+    }
+    return true
+  })
   const [view, setView]           = useState('leads')          // 'leads' | 'lead-profile'
   const [selectedLeadId, setSelectedLeadId] = useState(null)
+  const [showNotif, setShowNotif]     = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  // Fetch unread count on mount and whenever drawer closes
+  useEffect(() => {
+    const token = useAuthStore.getState().token
+    if (!token) return
+    axios.get(`${BASE}/api/v1/notifications?page_size=1`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(res => {
+      setUnreadCount(res.data?.data?.unread_count ?? 0)
+    }).catch(() => {})
+  }, [showNotif])
 
   const openLeadProfile = (leadId) => {
     setSelectedLeadId(leadId)
@@ -214,7 +254,7 @@ function AppShell() {
   }
 
   const handleNavClick = (navId) => {
-    if (!NAV.find(n => n.id === navId)?.active) return // not built yet
+    if (!visibleNav.find(n => n.id === navId)?.active) return // not built yet
     setActiveNav(navId)
     setView(navId)
     setSelectedLeadId(null)
@@ -262,6 +302,30 @@ function AppShell() {
             <div style={{ width: 8, height: 8, background: ds.green, borderRadius: '50%', animation: 'pulse 2s infinite' }} />
             <span style={{ fontSize: 12, color: '#7A9BAD' }}>Live</span>
           </div>
+          {/* Bell icon */}
+          <button
+            onClick={() => setShowNotif(true)}
+            style={{
+              position: 'relative', background: 'none',
+              border: '1px solid #2a4a5a', borderRadius: 7,
+              padding: '5px 10px', cursor: 'pointer',
+              fontSize: 16, lineHeight: 1, color: '#7A9BAD',
+              transition: 'all 0.15s',
+            }}
+          >
+            🔔
+            {unreadCount > 0 && (
+              <span style={{
+                position: 'absolute', top: -6, right: -6,
+                background: '#EF4444', color: 'white',
+                borderRadius: '50%', width: 18, height: 18,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne,
+              }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
           {/* User chip */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 30, height: 30, background: ds.tealDark, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: 'white' }}>
@@ -289,7 +353,7 @@ function AppShell() {
         <div style={{ padding: '20px 16px 8px', fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
           Modules
         </div>
-        {NAV.map(item => {
+        {visibleNav.map(item => {
           const isActive = activeNav === item.id
           return (
             <div
@@ -340,23 +404,32 @@ function AppShell() {
         <div style={{ padding: '20px 16px 8px', fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 8 }}>
           Admin
         </div>
-        {[
-          { label: 'Users & Roles',   icon: '👥' },
-          { label: 'Integrations',    icon: '🔌' },
-          { label: 'Routing Rules',   icon: '🔀' },
-        ].map(item => (
-          <div key={item.label} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '11px 16px', margin: '2px 8px', borderRadius: 9,
-            cursor: 'default', opacity: 0.4,
-            fontSize: 13.5, fontWeight: 500, color: '#7A9BAD',
-          }}>
-            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, background: 'rgba(255,255,255,0.07)', flexShrink: 0 }}>
-              {item.icon}
+        {(() => {
+          const isActive = activeNav === 'admin'
+          return (
+            <div
+              onClick={() => { setActiveNav('admin'); setView('admin'); setSelectedLeadId(null) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '11px 16px', margin: '2px 8px', borderRadius: 9,
+                cursor: 'pointer', transition: 'all 0.18s',
+                fontSize: 13.5, fontWeight: 500,
+                color:      isActive ? 'white'  : '#7A9BAD',
+                background: isActive ? ds.teal  : 'none',
+              }}
+            >
+              <div style={{
+                width: 30, height: 30, borderRadius: 7,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 15, flexShrink: 0,
+                background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)',
+              }}>
+                ⚙️
+              </div>
+              <span style={{ flex: 1 }}>Admin Dashboard</span>
             </div>
-            <span>{item.label}</span>
-          </div>
-        ))}
+          )
+        })()}
       </nav>
 
       {/* ── Main content ──────────────────────────────────────────── */}
@@ -396,11 +469,29 @@ function AppShell() {
             <TaskBoard user={user} />
           </div>
         )}
+        {view === 'admin' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <AdminModule user={user} />
+          </div>
+        )}
+        {view === 'commissions' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <CommissionsModule user={user} />
+          </div>
+        )}
         {/* Placeholder for modules not yet built */}
-        {!['leads', 'lead-profile', 'whatsapp', 'support', 'renewal', 'ops', 'tasks'].includes(view) && (
+        {!['leads', 'lead-profile', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'commissions'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>
+ 
+      {/* Notifications drawer */}
+      {showNotif && (
+        <NotificationsDrawer
+          onClose={() => setShowNotif(false)}
+          onUnreadChange={setUnreadCount}
+        />
+      )}
     </div>
   )
 }

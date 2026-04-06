@@ -410,6 +410,7 @@ def _structure_notes_with_ai(raw_notes: Optional[str], interaction_type: str) ->
     )
 
     try:
+        print(f"[DEBUG] Calling Claude Haiku for interaction log — notes length: {len(safe_notes)}")
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
@@ -425,6 +426,16 @@ def _structure_notes_with_ai(raw_notes: Optional[str], interaction_type: str) ->
             ],
         )
         raw = response.content[0].text.strip()
+
+        # Haiku wraps JSON in ```json fences despite prompt instructions — strip them
+        import re as _re
+        fence_match = _re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, _re.DOTALL)
+        if fence_match:
+            raw = fence_match.group(1).strip()
+
+        if not raw:
+            return _fallback
+
         data = json.loads(raw)
         return {
             "structured_notes": str(data.get("structured_notes") or "")[:5000] or None,
@@ -432,9 +443,8 @@ def _structure_notes_with_ai(raw_notes: Optional[str], interaction_type: str) ->
                 str(data.get("ai_recommended_action") or "")[:500] or None
             ),
         }
-    except Exception:
+    except Exception as exc:
         return _fallback
-
 
 # ---------------------------------------------------------------------------
 # Ticket CRUD
@@ -451,12 +461,19 @@ def list_tickets(
     lead_id: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
+    # Phase 9B: role scoping — provided by router for sales_agent/affiliate_partner.
+    # When set, only tickets whose customer_id OR lead_id is in the respective
+    # set are returned. Filtering is Python-side (Pattern 33).
+    scope_customer_ids: Optional[list] = None,
+    scope_lead_ids: Optional[list] = None,
 ) -> dict:
     """
     List tickets with optional filters.  Returns paginated envelope data.
     Joins assigned_user for display (Pattern 16).
     customer_id and lead_id allow scoping to a specific profile page.
+    scope_customer_ids / scope_lead_ids: Phase 9B role scoping — Python-side filter.
     """
+    is_scoped = scope_customer_ids is not None or scope_lead_ids is not None
     query = (
         db.table("tickets")
         .select("*, assigned_user:users!assigned_to(id, full_name)", count="exact")
@@ -479,16 +496,33 @@ def list_tickets(
     if lead_id:
         query = query.eq("lead_id", lead_id)
 
-    offset = (page - 1) * page_size
-    result = (
-        query.order("created_at", desc=True)
-        .range(offset, offset + page_size - 1)
-        .execute()
-    )
+    if is_scoped:
+        # Fetch all matching tickets — Python-side scope filter + paginate (Pattern 33)
+        result     = query.order("created_at", desc=True).execute()
+        all_items  = _normalise_list(result.data)
+        scoped_cids = set(scope_customer_ids or [])
+        scoped_lids = set(scope_lead_ids     or [])
+        filtered = [
+            t for t in all_items
+            if (t.get("customer_id") and t["customer_id"] in scoped_cids)
+            or (t.get("lead_id")     and t["lead_id"]     in scoped_lids)
+        ]
+        total = len(filtered)
+        start = (page - 1) * page_size
+        items = filtered[start: start + page_size]
+    else:
+        offset = (page - 1) * page_size
+        result = (
+            query.order("created_at", desc=True)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        items = _normalise_list(result.data)
+        total = result.count or 0
 
     return {
-        "items": _normalise_list(result.data),
-        "total": result.count or 0,
+        "items": items,
+        "total": total,
         "page": page,
         "page_size": page_size,
     }

@@ -54,6 +54,7 @@ from app.services.subscription_service import (
     process_bulk_confirm,
     update_subscription,
 )
+from app.utils.rbac import get_role_template
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -65,18 +66,26 @@ _ADMIN_ROLES: frozenset[str] = frozenset({"owner", "ops_manager"})
 _CEO_ROLES: frozenset[str] = frozenset({"owner"})
 
 
+
 def _require_role(
     org: dict,
     allowed: frozenset[str],
-    detail: str = "Insufficient permissions for this action",
+     detail: str = "Insufficient permissions for this action",
 ) -> None:
-    """Raise 403 if the authenticated user's role is not in allowed."""
-    if org.get("role") not in allowed:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "FORBIDDEN", "message": detail},
-        )
-
+    """
+     Raise 403 if the authenticated user's role template is not in allowed.
+     Pattern 37: role is at org["roles"]["template"] — never a flat "role" key.
+     Also grants to is_admin permission holders.
+    """
+    roles       = org.get("roles") or {}
+    template    = (roles.get("template") or "").lower() if isinstance(roles, dict) else ""
+    permissions = (roles.get("permissions") or {}) if isinstance(roles, dict) else {}
+    if template in allowed or permissions.get("is_admin"):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "FORBIDDEN", "message": detail},
+    )
 
 # ---------------------------------------------------------------------------
 # Allowed MIME types for CSV/Excel bulk upload (S10)
@@ -114,6 +123,13 @@ async def list_subscriptions_route(
     customer_name — case-insensitive partial match on customer full_name.
     Ordered by current_period_end ascending — most urgent first.
     """
+    
+    # Phase 9B: affiliate_partner has no access to subscription data
+    if get_role_template(org) == "affiliate_partner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Affiliate partners cannot access subscription data"},
+        )
     org_id = org["org_id"]
     result = list_subscriptions(
         db=db,

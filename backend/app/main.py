@@ -44,6 +44,8 @@ from app.routers import tickets as tickets_router       # ← Phase 4A
 from app.routers import subscriptions as subscriptions_router  # ← Phase 5A
 from app.routers import ops as ops_router                      # ← Phase 6A
 from app.routers import tasks as tasks_router                  # ← Phase 7A
+from app.routers import notifications as notifications_router
+from app.routers import commissions as commissions_router
 
 app.include_router(
     auth_router.router,
@@ -100,6 +102,18 @@ app.include_router(
     tasks_router.router,
     prefix="/api/v1",
     tags=["tasks"],
+)
+# Phase 9 — Notifications
+app.include_router(
+    notifications_router.router,
+    prefix="/api/v1",
+    tags=["notifications"],
+)
+# Phase 9C — Commissions
+app.include_router(
+    commissions_router.router,
+    prefix="/api/v1",
+    tags=["commissions"],
 )
 # ---------------------------------------------------------------------------
 # Health check — Technical Spec Section 5.8

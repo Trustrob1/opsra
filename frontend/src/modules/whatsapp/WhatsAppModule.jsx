@@ -7,11 +7,13 @@
  * Handles view-state routing for CustomerProfile (Zustand-free — local state
  * only, following Pattern 13: no react-router, no Zustand for module routing).
  *
- * isOwner is derived from the org's role template — passed in from App.jsx
- * so no org-specific logic lives here.
+ * TEMP-1 resolved (Phase 9):
+ *   isOwner is now derived from org.roles.template — the org prop is the full
+ *   user profile returned by GET /api/v1/auth/me and stored in the auth store.
+ *   No hardcoding required now that roles are available after login.
  *
  * Props:
- *   org — the current org object from get_current_org (has org.roles.template)
+ *   org — the current user object from the auth store (includes roles after TEMP-1 fix)
  */
 
 import { useState } from 'react'
@@ -34,8 +36,17 @@ export default function WhatsAppModule({ org }) {
   const [view, setView]               = useState('customers')
   const [selectedCustomerId, setSel]  = useState(null)
 
-  // TEMPORARY — always true for local dev until auth/me endpoint returns roles
-  const isOwner = true
+  // TEMP-1 fix (Phase 9): derived from roles.template — no longer hardcoded.
+  // org.roles is populated by GET /api/v1/auth/me called immediately after login.
+  // Falls back to false if roles are not yet loaded (safe default — restrictive).
+  const isOwner = org?.roles?.template === 'owner'
+  // Phase 9B: affiliate_partner cannot access broadcasts or templates
+  const isAffiliate = org?.roles?.template === 'affiliate_partner'
+  const visibleViews = VIEWS.filter(v => {
+    if (isAffiliate && v === 'broadcasts') return false
+    if (isAffiliate && v === 'templates')  return false
+    return true
+  })
 
   const S = {
     wrap: { minHeight: 'calc(100vh - 60px)' },
@@ -55,7 +66,6 @@ export default function WhatsAppModule({ org }) {
 
   function handleSelectCustomer(id) {
     setSel(id)
-    // stay on customers view — CustomerProfile replaces CustomerList
   }
 
   function handleBack() {
@@ -66,7 +76,7 @@ export default function WhatsAppModule({ org }) {
     <div style={S.wrap}>
       {/* Sub-navigation */}
       <div style={S.subNav}>
-        {VIEWS.map(v => (
+        {visibleViews.map(v => (
           <button
             key={v}
             style={S.navBtn(view === v)}

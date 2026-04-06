@@ -1,26 +1,24 @@
 /**
  * LeadsPipeline — Kanban board
  *
+ * Phase 9B:
+ *   - affiliate_partner users see a read-only board:
+ *     - "+ New Lead" and "Import CSV" buttons hidden
+ *     - Cards are not draggable (draggable={false})
+ *     - Drop zones still render visually but onDrop is no-op for affiliates
+ *   - isAffiliate derived from authStore.getRoleTemplate() (TEMP-1 fix applied)
+ *
  * 7 columns (one per stage): new → contacted → demo_done → proposal_sent
  *   → converted (terminal) | lost | not_ready
- *
- * Drag mechanics (HTML5 native — no library):
- *   - Dragging to converted  → confirm + POST /convert
- *   - Dragging to lost       → open MarkLostModal
- *   - Dragging to not_ready  → open MarkLostModal with defaultReason='not_ready'
- *   - Dragging to any other  → POST /move-stage
- *
- * Stage transition rules come from the backend state machine — invalid
- * transitions are rejected by the server with a 422.  The UI does not
- * try to mirror the full state machine locally; it surfaces server errors.
  */
 import { useState, useCallback, useMemo } from 'react'
 import { useLeads }       from '../../hooks/useLeads'
 import { moveStage, convertLead } from '../../services/leads.service'
 import { ds, STAGES, SCORE_STYLE, SOURCE_SHORT } from '../../utils/ds'
-import LeadCreateModal  from './LeadCreateModal'
-import LeadImportModal  from './LeadImportModal'
-import MarkLostModal    from './MarkLostModal'
+import useAuthStore       from '../../store/authStore'
+import LeadCreateModal    from './LeadCreateModal'
+import LeadImportModal    from './LeadImportModal'
+import MarkLostModal      from './MarkLostModal'
 
 const SCORE_FILTERS  = ['', 'hot', 'warm', 'cold', 'unscored']
 const SOURCE_FILTERS = [
@@ -31,20 +29,22 @@ const SOURCE_FILTERS = [
 export default function LeadsPipeline({ onOpenLead }) {
   const { leads, loading, error, refresh, total } = useLeads({}, 200)
 
+  // Phase 9B: affiliate_partner is read-only
+  const isAffiliate = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
+
   const [draggedId, setDraggedId]     = useState(null)
-  const [dragTarget, setDragTarget]   = useState(null) // stage key being hovered
+  const [dragTarget, setDragTarget]   = useState(null)
   const [movingId, setMovingId]       = useState(null)
   const [moveError, setMoveError]     = useState(null)
 
   const [showCreate, setShowCreate]   = useState(false)
   const [showImport, setShowImport]   = useState(false)
-  const [markLostCtx, setMarkLostCtx] = useState(null) // { id, defaultReason }
+  const [markLostCtx, setMarkLostCtx] = useState(null)
 
   const [filterScore, setFilterScore]   = useState('')
   const [filterSource, setFilterSource] = useState('')
   const [filterSearch, setFilterSearch] = useState('')
 
-  // ── Filtering ───────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = filterSearch.toLowerCase()
     return leads.filter((l) => {
@@ -56,7 +56,6 @@ export default function LeadsPipeline({ onOpenLead }) {
     })
   }, [leads, filterScore, filterSource, filterSearch])
 
-  // Group by stage
   const byStage = useMemo(() => {
     const map = {}
     STAGES.forEach(s => { map[s.key] = [] })
@@ -64,33 +63,34 @@ export default function LeadsPipeline({ onOpenLead }) {
     return map
   }, [filtered])
 
-  // ── Drag handlers ───────────────────────────────────────────────────────────
+  // Drag handlers — disabled for affiliate_partner
   const onDragStart = useCallback((e, leadId) => {
+    if (isAffiliate) return
     setDraggedId(leadId)
     setMoveError(null)
     e.dataTransfer.effectAllowed = 'move'
-    // Store id in dataTransfer for robustness
     e.dataTransfer.setData('text/plain', leadId)
-  }, [])
+  }, [isAffiliate])
 
   const onDragOver = useCallback((e, stageKey) => {
+    if (isAffiliate) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     setDragTarget(stageKey)
-  }, [])
+  }, [isAffiliate])
 
   const onDragLeave = useCallback(() => setDragTarget(null), [])
 
   const onDrop = useCallback(async (e, targetStage) => {
     e.preventDefault()
     setDragTarget(null)
+    if (isAffiliate) return  // read-only
     const id = e.dataTransfer.getData('text/plain') || draggedId
     setDraggedId(null)
     if (!id || movingId) return
     const lead = leads.find(l => l.id === id)
     if (!lead || lead.stage === targetStage) return
 
-    // ── Path: convert ─────────────────────────────────────────────
     if (targetStage === 'converted') {
       if (!window.confirm(`Convert ${lead.full_name} to a customer?`)) return
       setMovingId(id)
@@ -104,7 +104,6 @@ export default function LeadsPipeline({ onOpenLead }) {
       return
     }
 
-    // ── Path: mark lost / not_ready ────────────────────────────────
     if (targetStage === 'lost' || targetStage === 'not_ready') {
       setMarkLostCtx({
         id,
@@ -113,7 +112,6 @@ export default function LeadsPipeline({ onOpenLead }) {
       return
     }
 
-    // ── Path: move stage ───────────────────────────────────────────
     setMovingId(id)
     try {
       const res = await moveStage(id, targetStage)
@@ -122,11 +120,10 @@ export default function LeadsPipeline({ onOpenLead }) {
     } catch (err) {
       setMoveError(err?.response?.data?.error ?? 'Stage move failed')
     } finally { setMovingId(null) }
-  }, [draggedId, movingId, leads, refresh])
+  }, [draggedId, movingId, leads, refresh, isAffiliate])
 
   const onDragEnd = useCallback(() => { setDraggedId(null); setDragTarget(null) }, [])
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: 28, minHeight: 'calc(100vh - 60px)' }}>
 
@@ -145,19 +142,22 @@ export default function LeadsPipeline({ onOpenLead }) {
             {loading ? 'Loading…' : `${total} leads · ${filtered.length} shown`}
           </p>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button onClick={() => setShowImport(true)} style={secondaryBtn}>
-            ⬆ Import CSV
-          </button>
-          <button onClick={() => setShowCreate(true)} style={primaryBtn}>
-            + New Lead
-          </button>
-        </div>
+
+        {/* Action buttons — hidden for affiliate_partner */}
+        {!isAffiliate && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button onClick={() => setShowImport(true)} style={secondaryBtn}>
+              ⬆ Import CSV
+            </button>
+            <button onClick={() => setShowCreate(true)} style={primaryBtn}>
+              + New Lead
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Filters bar ──────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Search */}
         <input
           type="text"
           placeholder="Search name, business, email…"
@@ -170,24 +170,14 @@ export default function LeadsPipeline({ onOpenLead }) {
             width: 240,
           }}
         />
-        {/* Score filter */}
-        <select
-          value={filterScore}
-          onChange={e => setFilterScore(e.target.value)}
-          style={filterSelect}
-        >
+        <select value={filterScore} onChange={e => setFilterScore(e.target.value)} style={filterSelect}>
           <option value="">All Scores</option>
           <option value="hot">🔥 Hot</option>
           <option value="warm">☀️ Warm</option>
           <option value="cold">❄️ Cold</option>
           <option value="unscored">— Unscored</option>
         </select>
-        {/* Source filter */}
-        <select
-          value={filterSource}
-          onChange={e => setFilterSource(e.target.value)}
-          style={filterSelect}
-        >
+        <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={filterSelect}>
           <option value="">All Sources</option>
           <option value="facebook_ad">Facebook Ad</option>
           <option value="instagram_ad">Instagram Ad</option>
@@ -223,8 +213,8 @@ export default function LeadsPipeline({ onOpenLead }) {
       {/* ── Kanban columns ────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
         {STAGES.map(stage => {
-          const cards       = byStage[stage.key] ?? []
-          const isDropTarget = dragTarget === stage.key && draggedId
+          const cards        = byStage[stage.key] ?? []
+          const isDropTarget = !isAffiliate && dragTarget === stage.key && draggedId
           return (
             <div
               key={stage.key}
@@ -242,30 +232,16 @@ export default function LeadsPipeline({ onOpenLead }) {
                 transition:  'all 0.15s',
               }}
             >
-              {/* Column header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                <span style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: stage.dot, flexShrink: 0,
-                }} />
-                <span style={{
-                  fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 11,
-                  textTransform: 'uppercase', letterSpacing: '0.8px', color: ds.gray,
-                  flex: 1,
-                }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.dot, flexShrink: 0 }} />
+                <span style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: ds.gray, flex: 1 }}>
                   {stage.label}
                 </span>
-                <span style={{
-                  background: ds.teal, color: 'white',
-                  width: 18, height: 18, borderRadius: '50%',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 10, fontWeight: 700, flexShrink: 0,
-                }}>
+                <span style={{ background: ds.teal, color: 'white', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                   {cards.length}
                 </span>
               </div>
 
-              {/* Cards */}
               {loading && cards.length === 0 && <LoadingCard />}
               {cards.map(lead => (
                 <KanbanCard
@@ -275,20 +251,13 @@ export default function LeadsPipeline({ onOpenLead }) {
                   onDragStart={e => onDragStart(e, lead.id)}
                   onDragEnd={onDragEnd}
                   isMoving={movingId === lead.id}
+                  canDrag={!isAffiliate}
                 />
               ))}
 
-              {/* Empty state */}
               {!loading && cards.length === 0 && (
-                <div style={{
-                  border:       `1px dashed ${ds.border}`,
-                  borderRadius: ds.radius.md,
-                  padding:      '20px 10px',
-                  textAlign:    'center',
-                  fontSize:     12,
-                  color:        ds.border,
-                }}>
-                  Drop here
+                <div style={{ border: `1px dashed ${ds.border}`, borderRadius: ds.radius.md, padding: '20px 10px', textAlign: 'center', fontSize: 12, color: ds.border }}>
+                  {isAffiliate ? 'No leads' : 'Drop here'}
                 </div>
               )}
             </div>
@@ -324,13 +293,13 @@ export default function LeadsPipeline({ onOpenLead }) {
 
 // ─── Kanban card ──────────────────────────────────────────────────────────────
 
-function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving }) {
+function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag }) {
   const scoreStyle = SCORE_STYLE[lead.score] ?? SCORE_STYLE.unscored
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
+      draggable={canDrag}
+      onDragStart={canDrag ? onDragStart : undefined}
+      onDragEnd={canDrag ? onDragEnd : undefined}
       onClick={onOpen}
       style={{
         background:   'white',
@@ -338,7 +307,7 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving }) {
         borderRadius: ds.radius.md,
         padding:      12,
         marginBottom: 9,
-        cursor:       isMoving ? 'wait' : 'grab',
+        cursor:       isMoving ? 'wait' : (canDrag ? 'grab' : 'pointer'),
         opacity:      isMoving ? 0.4 : 1,
         boxShadow:    ds.cardShadow,
         transition:   'all 0.15s',
@@ -356,19 +325,11 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving }) {
         </p>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-        <span style={{
-          background: scoreStyle.bg, color: scoreStyle.color,
-          padding: '2px 8px', borderRadius: 20,
-          fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne,
-        }}>
+        <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>
           {scoreStyle.label}
         </span>
         {lead.source && (
-          <span style={{
-            background: ds.mint, color: ds.tealDark,
-            padding: '2px 7px', borderRadius: 10,
-            fontSize: 10, fontWeight: 600,
-          }}>
+          <span style={{ background: ds.mint, color: ds.tealDark, padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>
             {SOURCE_SHORT[lead.source] ?? lead.source}
           </span>
         )}
@@ -385,8 +346,6 @@ function LoadingCard() {
     </div>
   )
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const primaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 8,

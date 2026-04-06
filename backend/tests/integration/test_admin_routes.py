@@ -89,28 +89,33 @@ def test_create_user_success():
     from app.main import app
     from app.database import get_supabase
     from app.dependencies import get_current_org
+    from unittest.mock import patch
 
     mock_db = MagicMock()
     # role check returns a role
     mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value \
         .maybe_single.return_value.execute.return_value.data = {"id": "role-uuid-001"}
-    # auth create
-    mock_db.auth.admin.create_user.return_value = MagicMock(user=MagicMock(id="new-user-uuid"))
     # insert returns new user
     mock_db.table.return_value.insert.return_value.execute.return_value.data = [
         {"id": "new-user-uuid", "email": "newrep@test.com"}
     ]
 
+    # Phase 8B: auth creation now uses httpx.post directly — mock at that level
+    mock_httpx_resp = MagicMock()
+    mock_httpx_resp.json.return_value = {"id": "new-user-uuid"}
+    mock_httpx_resp.raise_for_status.return_value = None
+
     app.dependency_overrides[get_supabase] = lambda: mock_db
     app.dependency_overrides[get_current_org] = lambda: make_mock_org()
 
-    with TestClient(app) as c:
-        resp = c.post(
-            "/api/v1/admin/users",
-            json={"email": "newrep@test.com", "full_name": "New Rep",
-                  "role_id": "role-uuid-001", "password": "SecurePass123"},
-            headers={"Authorization": "Bearer mock-token"},
-        )
+    with patch("app.routers.admin.httpx.post", return_value=mock_httpx_resp):
+        with TestClient(app) as c:
+            resp = c.post(
+                "/api/v1/admin/users",
+                json={"email": "newrep@test.com", "full_name": "New Rep",
+                      "role_id": "role-uuid-001", "password": "SecurePass123"},
+                headers={"Authorization": "Bearer mock-token"},
+            )
 
     app.dependency_overrides.clear()
 
@@ -316,3 +321,388 @@ def test_get_integration_status_returns_all_services():
     data = body["data"]
     for key in ("whatsapp", "meta_lead_ads", "anthropic", "email", "redis"):
         assert key in data
+
+
+
+
+# ---------------------------------------------------------------------------
+# UUID constants (Pattern 24) — shared across Phase 8A integration tests
+# ---------------------------------------------------------------------------
+_ROLE_ID     = "00000000-0000-0000-0000-000000000002"
+_USER_ID     = "00000000-0000-0000-0000-000000000003"
+_OVERRIDE_ID = "00000000-0000-0000-0000-000000000004"
+_RULE_ID     = "00000000-0000-0000-0000-000000000005"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/admin/roles/{id}/overrides
+# ---------------------------------------------------------------------------
+
+class TestListUserOverridesRoute:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+
+        self.mock_db = MagicMock()
+        self.mock_db.table.return_value.select.return_value \
+            .eq.return_value.eq.return_value.execute.return_value.data = []
+
+        app.dependency_overrides[get_supabase]    = lambda: self.mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org()
+        yield
+        app.dependency_overrides.pop(get_supabase, None)
+        app.dependency_overrides.pop(get_current_org, None)
+
+    def test_returns_200_with_list(self):
+        from app.main import app
+        with TestClient(app) as c:
+            resp = c.get(
+                f"/api/v1/admin/roles/{_ROLE_ID}/overrides",
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert isinstance(body["data"], list)
+
+    def test_auth_required(self):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+
+        app.dependency_overrides.pop(get_current_org, None)
+        with TestClient(app) as c:
+            resp = c.get(f"/api/v1/admin/roles/{_ROLE_ID}/overrides")
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org()
+        assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/admin/roles/{id}/overrides
+# ---------------------------------------------------------------------------
+
+class TestCreateUserOverrideRoute:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+        from unittest.mock import patch
+
+        self.mock_db = MagicMock()
+
+        # Patch admin_service.create_user_override so we don't need deep DB mocks
+        self._patcher = patch(
+            "app.routers.admin.admin_service.create_user_override",
+            return_value={
+                "id": _OVERRIDE_ID,
+                "user_id": _USER_ID,
+                "permission_key": "view_revenue",
+                "granted": True,
+            },
+        )
+        self._patcher.start()
+
+        app.dependency_overrides[get_supabase]    = lambda: self.mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org()
+        yield
+        self._patcher.stop()
+        app.dependency_overrides.pop(get_supabase, None)
+        app.dependency_overrides.pop(get_current_org, None)
+
+    def test_returns_201_on_success(self):
+        from app.main import app
+        with TestClient(app) as c:
+            resp = c.post(
+                f"/api/v1/admin/roles/{_ROLE_ID}/overrides",
+                json={"user_id": _USER_ID, "permission_key": "view_revenue", "granted": True},
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        assert resp.status_code == 201
+        assert resp.json()["success"] is True
+
+    def test_422_missing_required_field(self):
+        from app.main import app
+        with TestClient(app) as c:
+            resp = c.post(
+                f"/api/v1/admin/roles/{_ROLE_ID}/overrides",
+                json={"user_id": _USER_ID},   # missing permission_key and granted
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        assert resp.status_code == 422
+
+    def test_404_propagated_when_user_not_in_role(self):
+        from app.main import app
+        from unittest.mock import patch
+        from fastapi import HTTPException
+
+        self._patcher.stop()
+        patcher_404 = patch(
+            "app.routers.admin.admin_service.create_user_override",
+            side_effect=HTTPException(status_code=404,
+                                      detail={"code": "NOT_FOUND", "message": "User not in role"}),
+        )
+        patcher_404.start()
+
+        with TestClient(app) as c:
+            resp = c.post(
+                f"/api/v1/admin/roles/{_ROLE_ID}/overrides",
+                json={"user_id": _USER_ID, "permission_key": "view_revenue", "granted": True},
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        patcher_404.stop()
+        self._patcher = patch(
+            "app.routers.admin.admin_service.create_user_override",
+            return_value={},
+        )
+        self._patcher.start()
+
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/v1/admin/roles/{id}/overrides/{override_id}
+# ---------------------------------------------------------------------------
+
+class TestDeleteUserOverrideRoute:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+        from unittest.mock import patch
+
+        self.mock_db = MagicMock()
+        self._patcher = patch(
+            "app.routers.admin.admin_service.delete_user_override",
+            return_value=None,
+        )
+        self._patcher.start()
+
+        app.dependency_overrides[get_supabase]    = lambda: self.mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org()
+        yield
+        self._patcher.stop()
+        app.dependency_overrides.pop(get_supabase, None)
+        app.dependency_overrides.pop(get_current_org, None)
+
+    def test_returns_200_on_success(self):
+        from app.main import app
+        with TestClient(app) as c:
+            resp = c.delete(
+                f"/api/v1/admin/roles/{_ROLE_ID}/overrides/{_OVERRIDE_ID}",
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+    def test_404_propagated_when_override_not_found(self):
+        from app.main import app
+        from unittest.mock import patch
+        from fastapi import HTTPException
+
+        self._patcher.stop()
+        patcher_404 = patch(
+            "app.routers.admin.admin_service.delete_user_override",
+            side_effect=HTTPException(status_code=404,
+                                      detail={"code": "NOT_FOUND", "message": "Override not found"}),
+        )
+        patcher_404.start()
+
+        with TestClient(app) as c:
+            resp = c.delete(
+                f"/api/v1/admin/roles/{_ROLE_ID}/overrides/{_OVERRIDE_ID}",
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        patcher_404.stop()
+        self._patcher = patch("app.routers.admin.admin_service.delete_user_override",
+                              return_value=None)
+        self._patcher.start()
+
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/admin/routing-rules
+# ---------------------------------------------------------------------------
+
+class TestCreateRoutingRuleRoute:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+        from unittest.mock import patch
+
+        self.mock_db = MagicMock()
+        self._patcher = patch(
+            "app.routers.admin.admin_service.create_routing_rule",
+            return_value={
+                "id": _RULE_ID, "org_id": "org-uuid-001",
+                "event_type": "new_hot_lead", "channel": "whatsapp_inapp",
+            },
+        )
+        self._patcher.start()
+
+        app.dependency_overrides[get_supabase]    = lambda: self.mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org()
+        yield
+        self._patcher.stop()
+        app.dependency_overrides.pop(get_supabase, None)
+        app.dependency_overrides.pop(get_current_org, None)
+
+    def test_returns_201_on_success(self):
+        from app.main import app
+        with TestClient(app) as c:
+            resp = c.post(
+                "/api/v1/admin/routing-rules",
+                json={"event_type": "new_hot_lead", "channel": "whatsapp_inapp",
+                      "within_hours_only": True},
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        assert resp.status_code == 201
+        assert resp.json()["success"] is True
+        assert resp.json()["data"]["event_type"] == "new_hot_lead"
+
+    def test_422_missing_event_type(self):
+        from app.main import app
+        with TestClient(app) as c:
+            resp = c.post(
+                "/api/v1/admin/routing-rules",
+                json={"channel": "whatsapp_inapp"},   # missing event_type
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        assert resp.status_code == 422
+
+   
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/admin/routing-rules/{id}
+# ---------------------------------------------------------------------------
+
+class TestUpdateRoutingRuleRoute:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+        from unittest.mock import patch
+
+        self.mock_db = MagicMock()
+        self._patcher = patch(
+            "app.routers.admin.admin_service.update_routing_rule",
+            return_value={
+                "id": _RULE_ID, "event_type": "new_hot_lead", "channel": "email",
+            },
+        )
+        self._patcher.start()
+
+        app.dependency_overrides[get_supabase]    = lambda: self.mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org()
+        yield
+        self._patcher.stop()
+        app.dependency_overrides.pop(get_supabase, None)
+        app.dependency_overrides.pop(get_current_org, None)
+
+    def test_returns_200_on_success(self):
+        from app.main import app
+        with TestClient(app) as c:
+            resp = c.patch(
+                f"/api/v1/admin/routing-rules/{_RULE_ID}",
+                json={"channel": "email"},
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+    def test_404_propagated_when_rule_not_found(self):
+        from app.main import app
+        from unittest.mock import patch
+        from fastapi import HTTPException
+
+        self._patcher.stop()
+        patcher_404 = patch(
+            "app.routers.admin.admin_service.update_routing_rule",
+            side_effect=HTTPException(status_code=404,
+                                      detail={"code": "NOT_FOUND", "message": "Rule not found"}),
+        )
+        patcher_404.start()
+
+        with TestClient(app) as c:
+            resp = c.patch(
+                f"/api/v1/admin/routing-rules/{_RULE_ID}",
+                json={"channel": "email"},
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        patcher_404.stop()
+        self._patcher = patch("app.routers.admin.admin_service.update_routing_rule",
+                              return_value={})
+        self._patcher.start()
+
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/v1/admin/routing-rules/{id}
+# ---------------------------------------------------------------------------
+
+class TestDeleteRoutingRuleRoute:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+        from unittest.mock import patch
+
+        self.mock_db = MagicMock()
+        self._patcher = patch(
+            "app.routers.admin.admin_service.delete_routing_rule",
+            return_value=None,
+        )
+        self._patcher.start()
+
+        app.dependency_overrides[get_supabase]    = lambda: self.mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org()
+        yield
+        self._patcher.stop()
+        app.dependency_overrides.pop(get_supabase, None)
+        app.dependency_overrides.pop(get_current_org, None)
+
+    def test_returns_200_on_success(self):
+        from app.main import app
+        with TestClient(app) as c:
+            resp = c.delete(
+                f"/api/v1/admin/routing-rules/{_RULE_ID}",
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        assert "deleted" in resp.json()["data"]["message"].lower()
+
+    def test_404_propagated_when_rule_not_found(self):
+        from app.main import app
+        from unittest.mock import patch
+        from fastapi import HTTPException
+
+        self._patcher.stop()
+        patcher_404 = patch(
+            "app.routers.admin.admin_service.delete_routing_rule",
+            side_effect=HTTPException(status_code=404,
+                                      detail={"code": "NOT_FOUND", "message": "Rule not found"}),
+        )
+        patcher_404.start()
+
+        with TestClient(app) as c:
+            resp = c.delete(
+                f"/api/v1/admin/routing-rules/{_RULE_ID}",
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        patcher_404.stop()
+        self._patcher = patch("app.routers.admin.admin_service.delete_routing_rule",
+                              return_value=None)
+        self._patcher.start()
+
+        assert resp.status_code == 404

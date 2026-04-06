@@ -1,34 +1,37 @@
 /**
  * modules/tasks/TaskBoard.jsx
- * Task Management module container — Phase 7B.
+ * Task Management module container — Phase 7B (fixed Phase 7C, TEMP-6 resolved Phase 9).
  *
- * Tabs: 👤 My Tasks (Personal) · 👥 Team View
+ * Tabs: 👤 My Tasks (Personal) · 👥 Team View (managers only)
  * Pattern 26: both tab panels stay mounted, hidden with display:none.
  *
- * ⚠️ TEMP-6: Team tab shown to all users.
- * The frontend cannot gate it on roles.template because the login response
- * only stores id and email in Zustand (TEMP-1 not yet resolved).
- * The backend silently returns only the caller's own tasks for non-managers
- * even when team=true — so the UX is correct, just not visually gated.
- * RESOLVE in Phase 9 when TEMP-1 is fixed and roles are stored in authStore.
+ * TEMP-6 resolved (Phase 9):
+ *   Team tab now gated on isManager — derived from authStore.isManager()
+ *   which reads roles.template from the full user profile loaded by auth/me.
+ *   Non-manager users see only the Personal tab with no tab bar visible.
  *
  * Props:
- *   user — current user object from Zustand auth store
+ *   user — current user object from Zustand auth store (includes roles after TEMP-1 fix)
  */
 
 import { useState } from 'react'
 import { ds } from '../../utils/ds'
+import useAuthStore from '../../store/authStore'
 import useTasks from '../../hooks/useTasks'
 import TaskList from './TaskList'
 import CreateTaskModal from './CreateTaskModal'
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
-function TabBar({ active, onChange }) {
+function TabBar({ active, onChange, showTeam }) {
   const tabs = [
-    { id: 'personal', label: 'My Tasks',    icon: '👤' },
-    { id: 'team',     label: 'Team View',   icon: '👥' },
+    { id: 'personal', label: 'My Tasks',  icon: '👤' },
+    ...(showTeam ? [{ id: 'team', label: 'Team View', icon: '👥' }] : []),
   ]
+
+  // Only one tab — no bar needed
+  if (tabs.length === 1) return null
+
   return (
     <div style={{
       display: 'flex', gap: 4,
@@ -66,7 +69,7 @@ function TabBar({ active, onChange }) {
 
 // ── Module header ─────────────────────────────────────────────────────────────
 
-function ModuleHeader({ onNewTask, totalOpen }) {
+function ModuleHeader({ onNewTask }) {
   return (
     <div style={{
       background: ds.dark, padding: '20px 28px',
@@ -111,66 +114,69 @@ function ModuleHeader({ onNewTask, totalOpen }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function TaskBoard({ user }) {
-  const [activeTab,      setActiveTab]      = useState('personal')
-  const [showCreate,     setShowCreate]     = useState(false)
+  // TEMP-6 fix: gate Team tab on roles.template (Phase 9)
+  // isManager() reads roles.template from the full user profile loaded by auth/me.
+  // Matches backend _is_manager(): owner | ops_manager | manage_tasks permission.
+  const isManager = useAuthStore.getState().isManager()
 
-  // Personal view hook
-  const personal = useTasks(20)
+  const [activeTab,  setActiveTab]  = useState('personal')
+  const [showCreate, setShowCreate] = useState(false)
 
-  // Team view hook — separate instance so each tab maintains its own state
-  const team = useTasks(20)
+  // Single hook instance — teamView flag switches what the backend returns.
+  // Two instances caused both to mount simultaneously and double-fetch.
+  const {
+    tasks, loading, error,
+    filters, applyFilters,
+    refresh, setTeamView,
+  } = useTasks(20)
 
   const handleTabChange = (tabId) => {
+    // Guard: non-managers cannot access team view even if they somehow trigger it
+    if (tabId === 'team' && !isManager) return
     setActiveTab(tabId)
-    // Sync team view flag to the correct hook
-    if (tabId === 'team') {
-      team.setTeamView(true)
-      team.refresh()
-    } else {
-      personal.setTeamView(false)
-    }
+    setTeamView(tabId === 'team')
   }
 
   const handleCreated = () => {
     setShowCreate(false)
-    personal.refresh()
-    team.refresh()
+    refresh()
   }
-
-  // Current hook based on active tab
-  const current = activeTab === 'personal' ? personal : team
 
   return (
     <div style={{ minHeight: 'calc(100vh - 60px)', background: ds.light }}>
       <ModuleHeader onNewTask={() => setShowCreate(true)} />
-      <TabBar active={activeTab} onChange={handleTabChange} />
+      <TabBar active={activeTab} onChange={handleTabChange} showTeam={isManager} />
 
-      {/* Pattern 26: both panels stay mounted */}
+      {/* Pattern 26: both panels stay mounted, hidden with display:none */}
       <div style={{ padding: '24px 28px' }}>
         <div style={{ display: activeTab === 'personal' ? 'block' : 'none' }}>
           <TaskList
-            tasks={personal.tasks}
-            loading={personal.loading}
-            error={personal.error}
+            tasks={tasks}
+            loading={loading}
+            error={error}
             teamView={false}
-            filters={personal.filters}
-            applyFilters={personal.applyFilters}
-            onRefresh={personal.refresh}
-            onActionDone={personal.refresh}
+            filters={filters}
+            applyFilters={applyFilters}
+            onRefresh={refresh}
+            onActionDone={refresh}
           />
         </div>
-        <div style={{ display: activeTab === 'team' ? 'block' : 'none' }}>
-          <TaskList
-            tasks={team.tasks}
-            loading={team.loading}
-            error={team.error}
-            teamView={true}
-            filters={team.filters}
-            applyFilters={team.applyFilters}
-            onRefresh={team.refresh}
-            onActionDone={team.refresh}
-          />
-        </div>
+
+        {/* Team panel only rendered for managers — Pattern 26 */}
+        {isManager && (
+          <div style={{ display: activeTab === 'team' ? 'block' : 'none' }}>
+            <TaskList
+              tasks={tasks}
+              loading={loading}
+              error={error}
+              teamView={true}
+              filters={filters}
+              applyFilters={applyFilters}
+              onRefresh={refresh}
+              onActionDone={refresh}
+            />
+          </div>
+        )}
       </div>
 
       {showCreate && (
