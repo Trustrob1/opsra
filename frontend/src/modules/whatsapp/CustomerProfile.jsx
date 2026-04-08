@@ -247,9 +247,10 @@ export default function CustomerProfile({ customerId, onBack }) {
     </div>
   )
 
-  // Window status requires an active Meta integration and inbound messages.
-  // Default to true for development — production will check whatsapp_messages table.
-  const windowOpen = customer?.last_window_open ?? true
+  // Phase 9E — TEMP-2 resolved: window_open is now computed server-side by
+  // GET /customers/{id} using the whatsapp_messages table (24-hour window check).
+  // Default is false — window closed until an inbound message is confirmed.
+  const windowOpen = customer?.window_open ?? false
 
   return (
     <div style={S.wrap}>
@@ -358,6 +359,87 @@ export default function CustomerProfile({ customerId, onBack }) {
               </div>
             </div>
           )}
+
+          {/* Payment Details — Feature 1 (Module 01 gaps) */}
+          <div style={S.card}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 14, color: ds.dark }}>
+                Payment Details
+              </div>
+              <button
+                onClick={loadCustomer}
+                title="Refresh payment details"
+                style={{
+                  background: 'none', border: `1px solid ${ds.border}`,
+                  borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+                  fontSize: 12, color: ds.gray, fontFamily: ds.fontDm,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                ↻ Refresh
+              </button>
+            </div>
+            {customer.subscription ? (
+              <div style={S.grid2}>
+                <ProfileField
+                  label="Plan"
+                  value={[customer.subscription.plan_name, customer.subscription.plan_tier]
+                    .filter(Boolean).join(' — ') || null}
+                />
+                <ProfileField
+                  label="Subscription Type"
+                  value={
+                    customer.subscription.status === 'trial' ? 'Trial'
+                    : customer.subscription.billing_cycle === 'annual' ? 'Annual'
+                    : customer.subscription.billing_cycle === 'monthly' ? 'Monthly'
+                    : customer.subscription.billing_cycle ?? null
+                  }
+                />
+                <ProfileField
+                  label="Status"
+                  value={customer.subscription.status
+                    ? customer.subscription.status.charAt(0).toUpperCase()
+                      + customer.subscription.status.slice(1)
+                    : null}
+                />
+                <ProfileField
+                  label="Amount"
+                  value={customer.subscription.amount != null
+                    ? `₦${Number(customer.subscription.amount).toLocaleString()}`
+                    : null}
+                />
+                <ProfileField
+                  label="Next Due"
+                  value={customer.subscription.next_due
+                    ? new Date(customer.subscription.next_due).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
+                    : null}
+                />
+                <ProfileField
+                  label="Last Paid Amount"
+                  value={customer.subscription.last_paid_amount != null
+                    ? `₦${Number(customer.subscription.last_paid_amount).toLocaleString()}`
+                    : null}
+                />
+                <ProfileField
+                  label="Date Paid"
+                  value={customer.subscription.last_paid_date
+                    ? new Date(customer.subscription.last_paid_date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
+                    : null}
+                />
+                <ProfileField
+                  label="Payment Method"
+                  value={customer.subscription.payment_channel
+                    ? customer.subscription.payment_channel.charAt(0).toUpperCase()
+                      + customer.subscription.payment_channel.slice(1).replace(/_/g, ' ')
+                    : null}
+                />
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: '#9CA3AF', margin: 0 }}>
+                No active subscription found.
+              </p>
+            )}
+          </div>
 
           {/* Message compose */}
           <div style={S.card}>

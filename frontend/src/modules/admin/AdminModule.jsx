@@ -20,12 +20,16 @@ import UserManagement  from './UserManagement'
 import RoleBuilder     from './RoleBuilder'
 import RoutingRules    from './RoutingRules'
 import IntegrationStatus from './IntegrationStatus'
+import CommissionSettings  from './CommissionSettings'
+import ScoringRubric       from './ScoringRubric'
 
 const TABS = [
   { id: 'users',        label: '👥 Users' },
   { id: 'roles',        label: '🎭 Roles' },
   { id: 'routing',      label: '🔀 Routing Rules' },
   { id: 'integrations', label: '🔌 Integrations' },
+  { id: 'commission',   label: '💼 Commissions' },
+  { id: 'scoring',      label: '🎯 Lead Scoring' },
   { id: 'kb',           label: '📚 Knowledge Base', link: true },
   { id: 'templates',    label: '💬 WA Templates',   link: true },
 ]
@@ -155,6 +159,12 @@ export default function AdminModule({ user }) {
         </div>
         <div style={{ display: tab === 'integrations' ? 'block' : 'none' }}>
           <IntegrationStatus />
+        </div>
+        <div style={{ display: tab === 'commission' ? 'block' : 'none' }}>
+          <CommissionSettings />
+        </div>
+        <div style={{ display: tab === 'scoring' ? 'block' : 'none' }}>
+          <ScoringRubric />
         </div>
 
         {/* Nav links — no state to preserve, conditional render is fine */}

@@ -21,9 +21,13 @@ Security rules applied:
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 from typing import Optional
 
+import httpx
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
@@ -33,6 +37,8 @@ from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ApiResponse, ErrorCode, err, ok
 from app.services.auth_service import request_password_reset, update_user_password
+
+load_dotenv()  # Pattern 29
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -53,6 +59,8 @@ class LoginResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user: dict
+    mfa_required: bool = False
+    factor_id: Optional[str] = None
 
 
 class LogoutResponse(BaseModel):
@@ -83,6 +91,21 @@ class UpdatePasswordRequest(BaseModel):
 
 class UpdatePasswordResponse(BaseModel):
     updated: bool = True
+
+
+# MFA models — Phase 9E
+class MFAEnrollRequest(BaseModel):
+    friendly_name: str = Field(default="Opsra Auth", max_length=100)
+
+
+class MFAChallengeRequest(BaseModel):
+    factor_id: str = Field(..., max_length=200)
+
+
+class MFAVerifyRequest(BaseModel):
+    factor_id: str   = Field(..., max_length=200)
+    challenge_id: str = Field(..., max_length=200)
+    code: str        = Field(..., min_length=6, max_length=6)
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +195,119 @@ def _record_login_failure(client_ip: str, redis_client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Device alert helpers — Phase 9E (9E-4)
+# ---------------------------------------------------------------------------
+
+_SUPABASE_URL     = os.getenv("SUPABASE_URL", "").strip()
+_SUPABASE_SVC_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+_META_WA_TOKEN    = os.getenv("META_WHATSAPP_TOKEN", "").strip()
+_GRAPH_BASE       = "https://graph.facebook.com/v18.0"
+
+
+def _check_new_device(
+    db,
+    user_id: str,
+    org_id: str,
+    user_name: str,
+    whatsapp_number: Optional[str],
+    ip_address: str,
+    user_agent: str,
+) -> None:
+    """
+    Check whether this login IP is known for the user.
+    New IP → insert device row + in-app notification + WhatsApp alert (if configured).
+    S14: entire body is wrapped — this function NEVER raises under any circumstances.
+    """
+    try:
+        # --- Lookup existing device ---
+        result = (
+            db.table("user_devices")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("ip_address", ip_address)
+            .maybe_single()
+            .execute()
+        )
+        device = result.data
+        if isinstance(device, list):
+            device = device[0] if device else None
+
+        if device:
+            # Known IP — just refresh last_seen_at
+            db.table("user_devices").update(
+                {"last_seen_at": "now()"}
+            ).eq("id", device["id"]).execute()
+            return
+
+        # New IP — insert device row
+        db.table("user_devices").insert({
+            "user_id":    user_id,
+            "org_id":     org_id,
+            "ip_address": ip_address,
+            "user_agent": (user_agent or "")[:500],
+        }).execute()
+        logger.warning(
+            "New device login detected — user %s from IP %s", user_id, ip_address
+        )
+
+        # In-app notification
+        try:
+            db.table("notifications").insert({
+                "org_id":        org_id,
+                "user_id":       user_id,
+                "title":         "New device login",
+                "body":          f"Your account was accessed from a new location: {ip_address}",
+                "type":          "security_alert",
+                "resource_type": "user",
+                "resource_id":   user_id,
+            }).execute()
+        except Exception as _exc:
+            logger.warning("Device alert: in-app notification failed: %s", _exc)
+
+        # WhatsApp direct alert — only if user has a number and org has phone_id
+        if not whatsapp_number or not _META_WA_TOKEN:
+            return
+        try:
+            org_row = (
+                db.table("organisations")
+                .select("whatsapp_phone_id")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            org_data = org_row.data
+            if isinstance(org_data, list):
+                org_data = org_data[0] if org_data else None
+            phone_id = (org_data or {}).get("whatsapp_phone_id")
+            if not phone_id:
+                return
+            import httpx as _httpx
+            msg = (
+                f"🔐 *Security alert — Opsra*\n\n"
+                f"Hi {user_name or 'there'}, your account was accessed from a new "
+                f"IP address: *{ip_address}*.\n\n"
+                f"If this wasn't you, contact your administrator immediately."
+            )
+            _httpx.post(
+                f"{_GRAPH_BASE}/{phone_id}/messages",
+                headers={"Authorization": f"Bearer {_META_WA_TOKEN}"},
+                json={
+                    "messaging_product": "whatsapp",
+                    "to":   whatsapp_number,
+                    "type": "text",
+                    "text": {"body": msg},
+                },
+                timeout=5.0,
+            )
+        except Exception as _exc:
+            logger.warning("Device alert: WhatsApp send failed: %s", _exc)
+
+    except Exception as exc:  # pylint: disable=broad-except
+        # S14 outer guard — no error inside this function must ever propagate
+        logger.warning("_check_new_device failed (non-fatal): %s", exc)
+
+
+# ---------------------------------------------------------------------------
 # POST /api/v1/auth/login — Public
 # ---------------------------------------------------------------------------
 
@@ -206,6 +342,14 @@ async def login(
             "email": body.email.strip().lower(),
             "password": body.password,
         })
+        # supabase-py calls postgrest.auth(user_jwt) on SIGNED_IN event, which
+        # replaces the service-key header with the user JWT on the singleton client.
+        # Every subsequent table() call would then run under RLS as the user.
+        # Restore the service key immediately so the singleton stays privileged.
+        try:
+            supabase.postgrest.auth(settings.SUPABASE_SERVICE_KEY)
+        except Exception:
+            pass
         if not response.session:
             raise ValueError("No session returned from Supabase Auth.")
     except Exception as exc:
@@ -217,13 +361,65 @@ async def login(
             message="Invalid email or password.",
         )
 
-    # Update last_login_at — best-effort, don't block login if it fails
+    # Update last_login_at and fetch user profile for device alert — best-effort
+    user_profile: dict = {}
     try:
-        supabase.table("users").update({"last_login_at": "now()"}).eq(
-            "id", response.user.id
-        ).execute()
+        user_row = (
+            supabase.table("users")
+            .select("id, org_id, full_name, whatsapp_number")
+            .eq("id", response.user.id)
+            .maybe_single()
+            .execute()
+        )
+        data = user_row.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if data:
+            user_profile = data
+            supabase.table("users").update({"last_login_at": "now()"}).eq(
+                "id", response.user.id
+            ).execute()
     except Exception as exc:
         logger.warning("Failed to update last_login_at for %s: %s", response.user.id, exc)
+
+    # 9E-4: New device / IP alert — S14: never block login
+    try:
+        _check_new_device(
+            db=supabase,
+            user_id=response.user.id,
+            org_id=user_profile.get("org_id", ""),
+            user_name=user_profile.get("full_name", ""),
+            whatsapp_number=user_profile.get("whatsapp_number"),
+            ip_address=client_ip,
+            user_agent=request.headers.get("user-agent", ""),
+        )
+    except Exception as exc:
+        logger.warning("Device check failed (non-blocking): %s", exc)
+
+    # 9E-3: Detect MFA requirement for owner/admin users
+    # If the user has verified TOTP factors, the frontend must complete
+    # the MFA challenge before calling /auth/me (to get an aal2 session).
+    user_factors = []
+    try:
+        raw_factors = getattr(response.user, "factors", None) or []
+        for f in raw_factors:
+            if isinstance(f, dict):
+                user_factors.append(f)
+            else:
+                user_factors.append({
+                    "id":          getattr(f, "id", None),
+                    "factor_type": getattr(f, "factor_type", None),
+                    "status":      getattr(f, "status", None),
+                })
+    except Exception:
+        user_factors = []
+
+    verified_totp = [
+        f for f in user_factors
+        if f.get("factor_type") == "totp" and f.get("status") == "verified"
+    ]
+    mfa_required = bool(verified_totp)
+    first_factor_id = verified_totp[0]["id"] if verified_totp else None
 
     return ok(
         data=LoginResponse(
@@ -231,6 +427,8 @@ async def login(
             refresh_token=response.session.refresh_token,
             token_type="bearer",
             user={"id": response.user.id, "email": response.user.email},
+            mfa_required=mfa_required,
+            factor_id=first_factor_id,
         )
     )
 
@@ -277,6 +475,11 @@ async def refresh_token(
     """Refresh an expired access token using the refresh token."""
     try:
         response = supabase.auth.refresh_session(body.refresh_token)
+        # Same singleton contamination fix as login — restore service key
+        try:
+            supabase.postgrest.auth(settings.SUPABASE_SERVICE_KEY)
+        except Exception:
+            pass
         if not response.session:
             raise ValueError("No session returned.")
     except Exception as exc:
@@ -415,3 +618,165 @@ async def update_password(
         data=UpdatePasswordResponse(updated=True),
         message="Password updated successfully. Please log in with your new password.",
     )
+
+
+# ---------------------------------------------------------------------------
+# MFA routes — Phase 9E (9E-3)
+# All calls proxied directly to Supabase Auth REST API (Pattern 38).
+# Requires the caller's own access token — Bearer JWT from Authorization header.
+# ---------------------------------------------------------------------------
+
+def _supabase_auth_headers(access_token: str) -> dict:
+    return {
+        "Authorization": f"Bearer {access_token}",
+        "apikey":        _SUPABASE_SVC_KEY,
+        "Content-Type":  "application/json",
+    }
+
+
+@router.post("/mfa/enroll")
+async def mfa_enroll(
+    body: MFAEnrollRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> ApiResponse:
+    """
+    Start TOTP MFA enrollment for the calling user.
+    Returns a QR code (SVG data URI), TOTP secret, and otpauth URI.
+    The user must scan the QR code in an authenticator app and then call
+    POST /mfa/verify-enrollment with the first generated code to activate.
+    Technical Spec §11.1 — MFA for Owner/Admin.
+    """
+    token = credentials.credentials
+    try:
+        resp = httpx.post(
+            f"{_SUPABASE_URL}/auth/v1/factors",
+            headers=_supabase_auth_headers(token),
+            json={
+                "factor_type":   "totp",
+                "issuer":        "Opsra",
+                "friendly_name": body.friendly_name,
+            },
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        logger.error("MFA enroll failed: %s %s", exc.response.status_code, exc.response.text)
+        raise HTTPException(status_code=exc.response.status_code, detail="MFA enrollment failed")
+    except Exception as exc:
+        logger.error("MFA enroll error: %s", exc)
+        raise HTTPException(status_code=500, detail="MFA enrollment failed")
+
+    return ok(data={
+        "factor_id": data.get("id"),
+        "totp": {
+            "qr_code": data.get("totp", {}).get("qr_code"),
+            "secret":  data.get("totp", {}).get("secret"),
+            "uri":     data.get("totp", {}).get("uri"),
+        },
+    }, message="Scan the QR code with your authenticator app, then verify with the first code.")
+
+
+@router.post("/mfa/challenge")
+async def mfa_challenge(
+    body: MFAChallengeRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> ApiResponse:
+    """
+    Create a new MFA challenge for the given factor.
+    Returns a challenge_id — pass it with the TOTP code to POST /mfa/verify.
+    Called by the frontend immediately before showing the code-entry screen.
+    """
+    token = credentials.credentials
+    try:
+        resp = httpx.post(
+            f"{_SUPABASE_URL}/auth/v1/factors/{body.factor_id}/challenge",
+            headers=_supabase_auth_headers(token),
+            json={},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=exc.response.status_code, detail="MFA challenge failed")
+    except Exception as exc:
+        logger.error("MFA challenge error: %s", exc)
+        raise HTTPException(status_code=500, detail="MFA challenge failed")
+
+    return ok(data={"challenge_id": data.get("id"), "factor_id": body.factor_id})
+
+
+@router.post("/mfa/verify")
+async def mfa_verify(
+    body: MFAVerifyRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> ApiResponse:
+    """
+    Verify a TOTP code to complete MFA login or enrollment.
+    On success, Supabase upgrades the session to aal2 and returns new tokens.
+    The frontend must replace its stored access_token with the one returned here.
+    """
+    token = credentials.credentials
+    try:
+        resp = httpx.post(
+            f"{_SUPABASE_URL}/auth/v1/factors/{body.factor_id}/verify",
+            headers=_supabase_auth_headers(token),
+            json={
+                "challenge_id": body.challenge_id,
+                "code":         body.code,
+            },
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        detail = "Invalid MFA code." if exc.response.status_code == 422 else "MFA verification failed."
+        raise HTTPException(status_code=exc.response.status_code, detail=detail)
+    except Exception as exc:
+        logger.error("MFA verify error: %s", exc)
+        raise HTTPException(status_code=500, detail="MFA verification failed")
+
+    session = data.get("session") or {}
+    return ok(
+        data={
+            "access_token":  session.get("access_token"),
+            "refresh_token": session.get("refresh_token"),
+            "token_type":    "bearer",
+            "aal":           session.get("aal", "aal2"),
+        },
+        message="MFA verified. Session upgraded to aal2.",
+    )
+
+
+@router.delete("/mfa/unenroll/{factor_id}")
+async def mfa_unenroll(
+    factor_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    org: dict = Depends(get_current_org),
+) -> ApiResponse:
+    """
+    Remove a TOTP factor from the current user's account.
+    Owner/Admin only — cannot remove another user's factor.
+    """
+    from app.utils.rbac import get_role_template
+    role = get_role_template(org)
+    if role not in ("owner", "ops_manager") and not (
+        (org.get("roles") or {}).get("permissions", {}).get("is_admin")
+    ):
+        raise HTTPException(status_code=403, detail="Owner or admin required to remove MFA factor")
+
+    token = credentials.credentials
+    try:
+        resp = httpx.delete(
+            f"{_SUPABASE_URL}/auth/v1/factors/{factor_id}",
+            headers=_supabase_auth_headers(token),
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=exc.response.status_code, detail="MFA unenroll failed")
+    except Exception as exc:
+        logger.error("MFA unenroll error: %s", exc)
+        raise HTTPException(status_code=500, detail="MFA unenroll failed")
+
+    return ok(data={"unenrolled": True}, message="MFA factor removed.")

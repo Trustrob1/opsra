@@ -20,7 +20,9 @@
 
 import { useState } from 'react'
 import { ds } from '../../utils/ds'
-import { completeTask, snoozeTask } from '../../services/tasks.service'
+import { completeTask, snoozeTask, updateTask } from '../../services/tasks.service'
+import useAuthStore from '../../store/authStore'
+import UserSelect   from '../../shared/UserSelect'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -123,10 +125,12 @@ function TypeBadge({ taskType }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function TaskCard({ task, onComplete, onSnooze, onError }) {
-  const [mode,        setMode]        = useState(null)   // null | 'completing' | 'snoozing'
+export default function TaskCard({ task, onComplete, onSnooze, onError, onReassigned }) {
+  const isManager = useAuthStore.getState().isManager()
+  const [mode,        setMode]        = useState(null)   // null | 'completing' | 'snoozing' | 'reassigning'
   const [notes,       setNotes]       = useState('')
   const [snoozeDate,  setSnoozeDate]  = useState(tomorrowDate)
+  const [newAssignee, setNewAssignee] = useState('')
   const [submitting,  setSubmitting]  = useState(false)
 
   const overdue = isOverdue(task)
@@ -162,7 +166,21 @@ export default function TaskCard({ task, onComplete, onSnooze, onError }) {
     }
   }
 
-  const cancel = () => { setMode(null); setNotes('') }
+  const handleReassign = async () => {
+    if (!newAssignee) return
+    setSubmitting(true)
+    try {
+      await updateTask(task.id, { assigned_to: newAssignee })
+      setMode(null); setNewAssignee('')
+      onReassigned?.(task.id)
+    } catch {
+      onError?.('Failed to reassign task. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const cancel = () => { setMode(null); setNotes(''); setNewAssignee('') }
 
   return (
     <div style={{
@@ -205,6 +223,11 @@ export default function TaskCard({ task, onComplete, onSnooze, onError }) {
         <PriorityBadge priority={task.priority} />
         <ModuleBadge module={task.source_module} />
         <TypeBadge taskType={task.task_type} />
+        {task.assigned_user?.full_name && (
+          <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 'auto' }}>
+            → {task.assigned_user.full_name}
+          </span>
+        )}
       </div>
 
       {/* ── Inline complete form ── */}
@@ -255,6 +278,33 @@ export default function TaskCard({ task, onComplete, onSnooze, onError }) {
         </div>
       )}
 
+      {/* ── Inline reassign form (managers only) ── */}
+      {mode === 'reassigning' && (
+        <div style={{ marginTop: 10, borderTop: '1px solid #f3f4f6', paddingTop: 10 }}>
+          <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 6px' }}>Reassign to:</p>
+          <UserSelect
+            value={newAssignee}
+            onChange={setNewAssignee}
+            placeholder="— Select user —"
+            style={{
+              border: '1px solid #d1d5db', borderRadius: 7,
+              padding: '7px 10px', fontSize: 13, fontFamily: ds.fontDm,
+              width: '100%', boxSizing: 'border-box', marginBottom: 8,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleReassign}
+              disabled={submitting || !newAssignee}
+              style={{ ...(newAssignee ? btnPrimary : btnGhost) }}
+            >
+              {submitting ? 'Reassigning…' : '↔ Confirm Reassign'}
+            </button>
+            <button onClick={cancel} style={btnGhost}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* ── Action buttons (hidden when inline form open or task done) ── */}
       {mode === null && !isCompleted && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -264,6 +314,11 @@ export default function TaskCard({ task, onComplete, onSnooze, onError }) {
           {!isSnoozed && (
             <button onClick={() => setMode('snoozing')} style={btnGhost}>
               💤 Snooze
+            </button>
+          )}
+        {isManager && (
+            <button onClick={() => setMode('reassigning')} style={btnGhost}>
+              ↔ Reassign
             </button>
           )}
         </div>

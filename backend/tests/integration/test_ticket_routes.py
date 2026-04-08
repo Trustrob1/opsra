@@ -524,9 +524,14 @@ class TestListAttachments:
 class TestUploadAttachment:
     @pytest.fixture(autouse=True)
     def _setup(self):
+        # Phase 9E: db must be a MagicMock (not None) so db.storage.from_().upload()
+        # can be called by the real storage upload added in Phase 9E.
+        # create_attachment is still patched per-test, so no DB row is written.
+        mock_db = MagicMock()
+        mock_db.storage.from_.return_value.upload.return_value = MagicMock()
         app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
         app.dependency_overrides[get_current_org]  = lambda: _FAKE_ORG
-        app.dependency_overrides[get_supabase]     = lambda: None
+        app.dependency_overrides[get_supabase]     = lambda: mock_db
         yield
         app.dependency_overrides.pop(get_current_user, None)
         app.dependency_overrides.pop(get_current_org, None)

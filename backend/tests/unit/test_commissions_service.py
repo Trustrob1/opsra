@@ -78,14 +78,28 @@ def _list_db(rows):
 class TestAutoCreateCommission:
     def test_inserts_commission_row(self):
         db = MagicMock()
-        db.table.return_value.insert.return_value.execute.return_value.data = [
-            _sample_commission()
-        ]
+
+        # Wire organisations table to return commission_enabled=False
+        # so the service takes the simple path and inserts directly
+        org_chain = MagicMock()
+        org_chain.select.return_value.eq.return_value.maybe_single.return_value \
+            .execute.return_value.data = {"commission_enabled": False}
+
+        comm_chain = MagicMock()
+
+        def _tbl(name):
+            if name == "organisations":
+                return org_chain
+            return comm_chain
+
+        db.table.side_effect = _tbl
+
         auto_create_commission(
             db=db, org_id=ORG_ID, affiliate_user_id=AFFILIATE_ID,
             event_type="lead_converted", lead_id=LEAD_ID, customer_id=CUSTOMER_ID,
         )
-        db.table.assert_called_with("commissions")
+        called_tables = [c.args[0] for c in db.table.call_args_list]
+        assert "commissions" in called_tables
 
     def test_silent_noop_when_affiliate_user_id_blank(self):
         db = MagicMock()

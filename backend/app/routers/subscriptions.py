@@ -211,7 +211,7 @@ async def bulk_confirm_route(
             },
         )
 
-    job_id = create_bulk_confirm_job(org_id)
+    job_id = create_bulk_confirm_job(org_id, db=db)
     background_tasks.add_task(
         process_bulk_confirm, db, org_id, user_id, job_id, rows
     )
@@ -235,7 +235,7 @@ async def get_bulk_confirm_job_route(
 ):
     """Poll bulk confirmation job status."""
     org_id = org["org_id"]
-    job = get_bulk_confirm_job(org_id, job_id)
+    job = get_bulk_confirm_job(org_id, job_id, db=db)
     return ok(data=job)
 
 

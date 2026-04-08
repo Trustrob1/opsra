@@ -18,9 +18,11 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 from typing import Optional
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.config import settings
@@ -28,6 +30,12 @@ from app.database import get_supabase
 from app.models.common import ErrorCode
 from app.models.leads import LeadSource, LeadCreate
 from app.services import lead_service
+from app.services.subscription_service import (
+    process_paystack_webhook,
+    process_flutterwave_webhook,
+)
+
+load_dotenv()  # Pattern 29 — required for os.getenv() in service files
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -56,6 +64,36 @@ def _verify_meta_signature(payload_bytes: bytes, signature_header: Optional[str]
         ).hexdigest()
     )
     return hmac.compare_digest(expected, signature_header)
+
+
+def _verify_paystack_signature(payload_bytes: bytes, sig_header: Optional[str]) -> bool:
+    """
+    Verify X-Paystack-Signature header using HMAC-SHA512 with PAYSTACK_SECRET_KEY.
+    Technical Spec §6 — payment webhooks verified using provider-specific headers.
+    Returns False if header is missing, key is not configured, or signature mismatches.
+    """
+    secret = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
+    if not secret or not sig_header:
+        return False
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        payload_bytes,
+        hashlib.sha512,
+    ).hexdigest()
+    return hmac.compare_digest(expected, sig_header)
+
+
+def _verify_flutterwave_hash(hash_header: Optional[str]) -> bool:
+    """
+    Verify verif-hash header by direct comparison with FLUTTERWAVE_SECRET_HASH.
+    Flutterwave sends the secret hash value verbatim — no HMAC computation needed.
+    Technical Spec §6 — payment webhooks verified using provider-specific headers.
+    Returns False if header is missing or key is not configured.
+    """
+    secret = os.getenv("FLUTTERWAVE_SECRET_HASH", "").strip()
+    if not secret or not hash_header:
+        return False
+    return hmac.compare_digest(secret, hash_header)
 
 
 # ---------------------------------------------------------------------------
@@ -260,22 +298,324 @@ async def receive_meta_lead_ad(
 
 
 # ---------------------------------------------------------------------------
-# POST /webhooks/meta/whatsapp — stub (Phase 3A)
+# POST /webhooks/meta/whatsapp
+# Inbound WhatsApp messages and delivery status updates — Technical Spec §6.2
 # ---------------------------------------------------------------------------
 
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """
+    Find a customer or lead matching the given WhatsApp phone number.
+    Searches ALL orgs — returns (org_id, customer_id, lead_id, assigned_to).
+    Customers take priority over leads.
+    Uses Python-side filtering (Pattern 33 — no ILIKE).
+    Returns (None, None, None, None) if no match found.
+    """
+    # Normalise phone — strip spaces, dashes, leading zeros; try with/without +
+    clean = phone.replace(" ", "").replace("-", "")
+    variants = {clean}
+    if clean.startswith("+"):
+        variants.add(clean[1:])
+    else:
+        variants.add("+" + clean)
+
+    # Search customers first
+    try:
+        cust_result = (
+            db.table("customers")
+            .select("id, org_id, whatsapp, phone, assigned_to")
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        for row in (cust_result.data or []):
+            wa = (row.get("whatsapp") or "").replace(" ", "").replace("-", "")
+            ph = (row.get("phone") or "").replace(" ", "").replace("-", "")
+            if wa in variants or ph in variants:
+                return row["org_id"], row["id"], None, row.get("assigned_to")
+    except Exception as exc:
+        logger.warning("Customer phone lookup failed: %s", exc)
+
+    # Fall back to leads
+    try:
+        lead_result = (
+            db.table("leads")
+            .select("id, org_id, whatsapp, phone, assigned_to")
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        for row in (lead_result.data or []):
+            wa = (row.get("whatsapp") or "").replace(" ", "").replace("-", "")
+            ph = (row.get("phone") or "").replace(" ", "").replace("-", "")
+            if wa in variants or ph in variants:
+                return row["org_id"], None, row["id"], row.get("assigned_to")
+    except Exception as exc:
+        logger.warning("Lead phone lookup failed: %s", exc)
+
+    return None, None, None, None
+
+
+def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_id: str) -> None:
+    """
+    Process one inbound WhatsApp text message.
+    - Looks up customer/lead by sender phone number
+    - Saves row to whatsapp_messages
+    - Inserts in-app notification for assigned rep (S14 — failures swallowed)
+    """
+    from datetime import datetime, timezone, timedelta
+
+    sender_phone = message.get("from", "")
+    msg_id       = message.get("id", "")
+    msg_type     = message.get("type", "text")
+    content: Optional[str] = None
+
+    if msg_type == "text":
+        content = (message.get("text") or {}).get("body")
+    elif msg_type == "image":
+        content = "[Image]"
+    elif msg_type == "video":
+        content = "[Video]"
+    elif msg_type == "audio":
+        content = "[Audio]"
+    elif msg_type == "document":
+        content = "[Document]"
+    else:
+        content = f"[{msg_type}]"
+
+    org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
+
+    if not org_id:
+        logger.info("Inbound WhatsApp from unknown number %s — no matching record", sender_phone)
+        return
+
+    now_ts = _now_iso()
+    window_expires = (
+        datetime.now(timezone.utc) + timedelta(hours=24)
+    ).isoformat()
+
+    row: dict = {
+        "org_id":          org_id,
+        "direction":       "inbound",
+        "message_type":    msg_type,
+        "content":         content,
+        "status":          "delivered",
+        "meta_message_id": msg_id,
+        "window_open":     True,
+        "window_expires_at": window_expires,
+        "sent_by":         None,
+        "created_at":      now_ts,
+    }
+    if customer_id:
+        row["customer_id"] = customer_id
+    if lead_id:
+        row["lead_id"] = lead_id
+
+    try:
+        db.table("whatsapp_messages").insert(row).execute()
+    except Exception as exc:
+        logger.error("Failed to save inbound WhatsApp message: %s", exc)
+        return
+
+    # Notify assigned rep in-app (S14 — failure must never affect message save)
+    if not assigned_to:
+        return
+    try:
+        resource_id   = customer_id or lead_id
+        resource_type = "customer" if customer_id else "lead"
+        # Fetch actual full_name from matched record — more reliable than
+        # the WhatsApp contact profile name which may differ or be absent.
+        display_name = contact_name or sender_phone
+        try:
+            name_table  = "customers" if customer_id else "leads"
+            name_id     = customer_id or lead_id
+            name_result = (
+                db.table(name_table)
+                .select("full_name")
+                .eq("id", name_id)
+                .maybe_single()
+                .execute()
+            )
+            name_data = name_result.data
+            if isinstance(name_data, list):
+                name_data = name_data[0] if name_data else None
+            if name_data and name_data.get("full_name"):
+                display_name = name_data["full_name"]
+        except Exception:
+            pass  # fall back to contact_name / sender_phone
+
+        db.table("notifications").insert({
+            "org_id":         org_id,
+            "user_id":        assigned_to,
+            "title":          f"New WhatsApp reply from {display_name}",
+            "body":           content or f"[{msg_type}]",
+            "type":           "whatsapp_reply",
+            "resource_type":  resource_type,
+            "resource_id":    resource_id,
+            "is_read":        False,
+            "created_at":     now_ts,
+        }).execute()
+    except Exception as exc:
+        logger.warning("Failed to insert reply notification for user %s: %s", assigned_to, exc)
+
+
+def _handle_status_update(db, status_update: dict) -> None:
+    """
+    Process a delivery/read status update from Meta.
+    Updates the whatsapp_messages row matched by meta_message_id.
+    S14 — failures are logged and swallowed.
+    """
+    meta_msg_id = status_update.get("id")
+    new_status  = status_update.get("status")  # sent | delivered | read | failed
+
+    if not meta_msg_id or not new_status:
+        return
+
+    updates: dict = {"status": new_status}
+    now_ts = _now_iso()
+
+    if new_status == "delivered":
+        updates["delivered_at"] = now_ts
+    elif new_status == "read":
+        updates["read_at"] = now_ts
+
+    try:
+        db.table("whatsapp_messages") \
+            .update(updates) \
+            .eq("meta_message_id", meta_msg_id) \
+            .execute()
+    except Exception as exc:
+        logger.warning("Status update failed for meta_message_id=%s: %s", meta_msg_id, exc)
+
+
 @router.post("/meta/whatsapp", status_code=status.HTTP_200_OK)
-async def receive_whatsapp_message(request: Request):
+async def receive_whatsapp_message(
+    request: Request,
+    db=Depends(get_supabase),
+):
     """
-    WhatsApp inbound message handler stub.
-    Full implementation in Phase 3A — Module 02 WhatsApp Backend.
-    Returns 200 so Meta does not retry.
+    WhatsApp inbound message and status update handler — Technical Spec §6.2.
+
+    Handles two event types:
+      1. Inbound messages — saves to whatsapp_messages, notifies assigned rep
+      2. Status updates (sent/delivered/read/failed) — updates message row
+
+    Security: X-Hub-Signature-256 verified before any processing.
+    S14: all processing errors after signature check are swallowed — always returns 200.
     """
-    raw_body = await request.body()
+    raw_body  = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
+
     if not _verify_meta_signature(raw_body, signature):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid webhook signature",
         )
-    logger.debug("WhatsApp webhook received — Phase 3A handler pending")
-    return {"status": "received"}
+
+    payload: dict = json.loads(raw_body)
+
+    if payload.get("object") != "whatsapp_business_account":
+        return {"status": "ignored", "reason": "not a whatsapp_business_account event"}
+
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            if change.get("field") != "messages":
+                continue
+            value = change.get("value", {})
+            phone_number_id = (value.get("metadata") or {}).get("phone_number_id", "")
+            contacts        = value.get("contacts", [])
+            contact_name    = (contacts[0].get("profile") or {}).get("name", "") if contacts else ""
+
+            # Process inbound messages
+            for message in value.get("messages", []):
+                try:
+                    _handle_inbound_message(db, message, contact_name, phone_number_id)
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.error("Inbound message processing error: %s", exc)
+
+            # Process delivery/read status updates
+            for status_upd in value.get("statuses", []):
+                try:
+                    _handle_status_update(db, status_upd)
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.error("Status update processing error: %s", exc)
+
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# POST /webhooks/payment/paystack  — Technical Spec §6.3
+# ---------------------------------------------------------------------------
+
+@router.post("/payment/paystack", status_code=status.HTTP_200_OK)
+async def receive_paystack_webhook(
+    request: Request,
+    db=Depends(get_supabase),
+):
+    """
+    Paystack charge.success webhook handler.
+    Technical Spec §6.3.  Route: POST /webhooks/payment/paystack.
+
+    Security: HMAC-SHA512 of raw body verified against PAYSTACK_SECRET_KEY
+    using X-Paystack-Signature header before any processing.
+
+    Always returns 200 after signature check — Paystack retries on non-200.
+    S14: processing errors are logged and swallowed; never return 5xx.
+    """
+    raw_body = await request.body()
+    sig = request.headers.get("X-Paystack-Signature")
+    if not _verify_paystack_signature(raw_body, sig):
+        logger.warning("Paystack webhook: invalid signature — rejecting")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid Paystack signature",
+        )
+
+    payload: dict = json.loads(raw_body)
+    try:
+        process_paystack_webhook(db=db, payload=payload)
+    except Exception as exc:  # pylint: disable=broad-except
+        # S14 — never return 5xx to Paystack; log and acknowledge
+        logger.error("Paystack webhook processing error: %s", exc)
+
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# POST /webhooks/payment/flutterwave  — Technical Spec §6
+# ---------------------------------------------------------------------------
+
+@router.post("/payment/flutterwave", status_code=status.HTTP_200_OK)
+async def receive_flutterwave_webhook(
+    request: Request,
+    db=Depends(get_supabase),
+):
+    """
+    Flutterwave charge.completed webhook handler.
+    Route: POST /webhooks/payment/flutterwave.
+
+    Security: verif-hash header compared directly against FLUTTERWAVE_SECRET_HASH
+    env var (Flutterwave sends the secret verbatim — no HMAC computation).
+
+    Always returns 200 after hash check — Flutterwave retries on non-200.
+    S14: processing errors are logged and swallowed; never return 5xx.
+    """
+    raw_body = await request.body()
+    hash_header = request.headers.get("verif-hash")
+    if not _verify_flutterwave_hash(hash_header):
+        logger.warning("Flutterwave webhook: invalid hash — rejecting")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid Flutterwave hash",
+        )
+
+    payload: dict = json.loads(raw_body)
+    try:
+        process_flutterwave_webhook(db=db, payload=payload)
+    except Exception as exc:  # pylint: disable=broad-except
+        # S14 — never return 5xx to Flutterwave; log and acknowledge
+        logger.error("Flutterwave webhook processing error: %s", exc)
+
+    return {"status": "ok"}

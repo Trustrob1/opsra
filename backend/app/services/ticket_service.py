@@ -14,6 +14,7 @@ Graceful AI degradation on API failure (Technical Spec §12.7).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import uuid as _uuid_mod
@@ -21,6 +22,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 from app.models.tickets import (
     ALLOWED_ATTACHMENT_TYPES,
@@ -37,6 +40,8 @@ from app.models.tickets import (
     TicketUpdate,
 )
 from app.services.lead_service import write_audit_log
+from app.services.whatsapp_service import send_whatsapp_message
+from app.models.whatsapp import SendMessageRequest
 
 
 # ---------------------------------------------------------------------------
@@ -789,6 +794,30 @@ def add_message(
         resource_id=ticket_id,
         new_value={"message_type": data.message_type},
     )
+
+    # ── WhatsApp delivery (Phase 9D) ──────────────────────────────────────
+    # Agent replies on tickets linked to a customer are delivered via
+    # WhatsApp after the message row is saved.  S14: failures are swallowed —
+    # the core message save must never be rolled back due to delivery errors.
+    # Applies to agent_reply only (not internal_note, ai_draft, or customer).
+    # DRD §7: "Rep sends replies via WhatsApp directly from the ticket".
+    if data.message_type == "agent_reply" and ticket.get("customer_id"):
+        try:
+            wa_payload = SendMessageRequest(
+                customer_id=ticket["customer_id"],
+                content=data.content,
+            )
+            send_whatsapp_message(db, org_id, user_id, wa_payload)
+            logger.info(
+                "WhatsApp delivery succeeded for ticket %s customer %s",
+                ticket_id, ticket["customer_id"],
+            )
+        except Exception as _wa_exc:  # pylint: disable=broad-except
+            # S14 — delivery failure must never surface to caller
+            logger.warning(
+                "WhatsApp delivery skipped for ticket %s: %s",
+                ticket_id, _wa_exc,
+            )
 
     return message
 

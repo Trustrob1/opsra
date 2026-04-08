@@ -87,6 +87,7 @@ export async function updateLead(id, payload) {
   return res.data
 }
 
+
 /**
  * DELETE /api/v1/leads/{id}
  * Admin only — returns 204 on success.
@@ -192,5 +193,31 @@ export async function importLeads(formData) {
  */
 export async function getImportStatus(jobId) {
   const res = await api.get(`/api/v1/leads/import/${jobId}`)
+  return res.data
+}
+
+/**
+ * POST /api/v1/leads/{id}/score-override
+ * Manager/owner manually overrides AI score — Feature 2 (Module 01 gaps).
+ * Sets score_source = 'human' on the lead record.
+ * @param {string} id       — lead UUID
+ * @param {string} score    — 'hot' | 'warm' | 'cold'
+ */
+export async function overrideLeadScore(id, score) {
+  const res = await api.post(`/api/v1/leads/${id}/score-override`, { score })
+  return res.data
+}
+
+/**
+ * GET /api/v1/leads/{id}/messages
+ * Returns paginated WhatsApp message history for a lead.
+ * @param {string} id         — lead UUID
+ * @param {number} page       — page number (default 1)
+ * @param {number} pageSize   — page size (default 20)
+ */
+export async function getLeadMessages(id, page = 1, pageSize = 20) {
+  const res = await api.get(`/api/v1/leads/${id}/messages`, {
+    params: { page, page_size: pageSize },
+  })
   return res.data
 }

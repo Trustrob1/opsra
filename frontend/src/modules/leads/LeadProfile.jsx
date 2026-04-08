@@ -16,12 +16,15 @@
  * SECURITY: org_id never sent in any payload — derived from JWT server-side.
  */
 import { useState, useEffect, useCallback } from 'react'
-import { getLead, moveStage, convertLead, reactivateLead } from '../../services/leads.service'
+import { getLead, moveStage, convertLead, reactivateLead, updateLead, overrideLeadScore } from '../../services/leads.service'
+import { getUnreadCounts } from '../../services/whatsapp.service'
 import useAuthStore from '../../store/authStore'
+import UserSelect   from '../../shared/UserSelect'
 import { ds, SCORE_STYLE, STAGE_STYLE, STAGES, SOURCE_LABELS, LOST_REASON_LABELS, BRANCHES_OPTIONS } from '../../utils/ds'
 import LeadScoreButton from './LeadScoreButton'
 import LeadTimeline    from './LeadTimeline'
 import LeadTasks       from './LeadTasks'
+import LeadMessages    from './LeadMessages'
 import MarkLostModal   from './MarkLostModal'
 import LogInteractionPanel from '../../shared/LogInteractionPanel'
 import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
@@ -37,13 +40,20 @@ export default function LeadProfile({ leadId, onBack }) {
   const [actionError, setActionError] = useState(null)
   const [actionLoading, setActionLoading] = useState(null) // key of in-flight action
   const [showMarkLost, setShowMarkLost]   = useState(false)
+  const [assignedTo,   setAssignedTo]     = useState('')
+  const [assignSaving, setAssignSaving]   = useState(false)
+  const [overrideLoading, setOverrideLoading] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   const fetchLead = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const res = await getLead(leadId)
-      if (res.success) setLead(res.data)
+      if (res.success) {
+        setLead(res.data)
+        setAssignedTo(res.data?.assigned_to ?? '')
+      }
       else setError(res.error ?? 'Failed to load lead')
     } catch (err) {
       setError(err?.response?.data?.error ?? 'Failed to load lead')
@@ -53,6 +63,13 @@ export default function LeadProfile({ leadId, onBack }) {
   }, [leadId])
 
   useEffect(() => { fetchLead() }, [fetchLead])
+
+  useEffect(() => {
+    if (!leadId) return
+    getUnreadCounts()
+      .then(res => setUnreadCount((res.data?.data?.leads ?? {})[leadId] ?? 0))
+      .catch(() => {})
+  }, [leadId])
 
   const runAction = async (key, fn) => {
     setActionError(null)
@@ -82,6 +99,19 @@ export default function LeadProfile({ leadId, onBack }) {
     runAction('reactivate', () => reactivateLead(leadId))
   }
 
+  const handleOverrideScore = async (score) => {
+    setOverrideLoading(true)
+    setActionError(null)
+    try {
+      const res = await overrideLeadScore(leadId, score)
+      if (res?.success) setLead(prev => ({ ...prev, ...res.data }))
+    } catch (err) {
+      setActionError(err?.response?.data?.error ?? 'Score override failed')
+    } finally {
+      setOverrideLoading(false)
+    }
+  }
+
   if (loading) return <ProfileSkeleton onBack={onBack} />
   if (error)   return (
     <div style={{ padding: 28 }}>
@@ -97,6 +127,7 @@ export default function LeadProfile({ leadId, onBack }) {
   const isTerminal = ['converted', 'lost', 'not_ready'].includes(lead.stage)
   const isLostState = ['lost', 'not_ready'].includes(lead.stage)
   const isAffiliate = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
+  const isManager   = useAuthStore.getState().isManager()
 
   return (
     <div style={{ padding: 28 }}>
@@ -136,6 +167,16 @@ export default function LeadProfile({ leadId, onBack }) {
               <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, fontFamily: ds.fontSyne }}>
                 {scoreStyle.label}
               </span>
+              {/* Score source indicator — Feature 2 */}
+              {lead.score && lead.score !== 'unscored' && (
+                <span style={{
+                  background: lead.score_source === 'human' ? '#FFF3E0' : '#E0F7FA',
+                  color:      lead.score_source === 'human' ? '#92400E' : '#006064',
+                  padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600,
+                }}>
+                  {lead.score_source === 'human' ? '👤 Human' : '🤖 AI'}
+                </span>
+              )}
               {/* Stage badge */}
               <span style={{ background: stageStyle.bg, color: stageStyle.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, fontFamily: ds.fontSyne }}>
                 {stageLabel}
@@ -222,8 +263,88 @@ export default function LeadProfile({ leadId, onBack }) {
             leadId={leadId}
             currentScore={lead.score}
             currentReason={lead.score_reason}
-            onScored={(result) => setLead(prev => ({ ...prev, ...result }))}
+            onScored={(result) => setLead(prev => ({ ...prev, ...result, score_source: 'ai' }))}
           />
+
+          {/* Feature 2: manager-only human score override */}
+          {isManager && !isAffiliate && (
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: ds.gray, fontWeight: 600 }}>Override:</span>
+              {['hot', 'warm', 'cold'].map(s => {
+                const st = SCORE_STYLE[s] || {}
+                const isActive = lead.score === s && lead.score_source === 'human'
+                return (
+                  <button
+                    key={s}
+                    disabled={overrideLoading}
+                    onClick={() => handleOverrideScore(s)}
+                    style={{
+                      background:   isActive ? st.bg    : 'white',
+                      color:        isActive ? st.color : '#6B7280',
+                      border:       `1.5px solid ${isActive ? st.bg : '#E5E7EB'}`,
+                      borderRadius: 20,
+                      padding:      '3px 12px',
+                      fontSize:     11,
+                      fontWeight:   700,
+                      cursor:       overrideLoading ? 'not-allowed' : 'pointer',
+                      fontFamily:   ds.fontSyne,
+                      transition:   'all 0.15s',
+                    }}
+                  >
+                    {st.label ?? s}
+                  </button>
+                )
+              })}
+              {overrideLoading && (
+                <span style={{ fontSize: 11, color: ds.gray }}>Saving…</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Assigned To — Phase 9C */}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${ds.border}` }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 10 }}>
+            Assigned To
+          </p>
+          {isManager ? (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', maxWidth: 380 }}>
+              <div style={{ flex: 1 }}>
+                <UserSelect
+                  value={assignedTo}
+                  onChange={setAssignedTo}
+                  placeholder="— Unassigned —"
+                />
+              </div>
+              <button
+                disabled={assignSaving || assignedTo === (lead.assigned_to ?? '')}
+                onClick={async () => {
+                  setAssignSaving(true)
+                  try {
+                    await updateLead(leadId, { assigned_to: assignedTo || null })
+                    await fetchLead()
+                  } catch {
+                    setActionError('Failed to reassign lead.')
+                  } finally {
+                    setAssignSaving(false)
+                  }
+                }}
+                style={{
+                  background: (assignSaving || assignedTo === (lead.assigned_to ?? '')) ? '#9ca3af' : ds.teal,
+                  color: 'white', border: 'none', borderRadius: 8,
+                  padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                  cursor: (assignSaving || assignedTo === (lead.assigned_to ?? '')) ? 'not-allowed' : 'pointer',
+                  fontFamily: ds.fontSyne, whiteSpace: 'nowrap',
+                }}
+              >
+                {assignSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          ) : (
+            <p style={{ fontSize: 13.5, color: lead.assigned_to ? ds.dark : ds.gray, margin: 0 }}>
+              {lead.assigned_user?.full_name ?? (lead.assigned_to ? lead.assigned_to.slice(0, 8) + '…' : 'Unassigned')}
+            </p>
+          )}
         </div>
       </div>
 
@@ -233,11 +354,12 @@ export default function LeadProfile({ leadId, onBack }) {
         <div style={{ display: 'flex', gap: 4, padding: '10px 16px', borderBottom: `1px solid ${ds.border}`, background: ds.light }}>
           {[
             { key: 'profile',         label: '👤 Profile'         },
+            { key: 'messages',        label: '💬 Messages', unread: unreadCount },
             { key: 'timeline',        label: '📋 Timeline'        },
             { key: 'tasks',           label: '✅ Tasks'           },
             { key: 'log-interaction', label: '📞 Log Interaction' },
             { key: 'create-ticket',   label: '🎫 Create Ticket'   },
-          ].map(({ key, label }) => (
+          ].map(({ key, label, unread }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -253,9 +375,22 @@ export default function LeadProfile({ leadId, onBack }) {
                 fontFamily:   ds.fontDm,
                 boxShadow:    tab === key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
                 transition:   'all 0.15s',
+                position:     'relative',
+                display:      'inline-flex',
+                alignItems:   'center',
+                gap:          5,
               }}
             >
               {label}
+              {(unread ?? 0) > 0 && tab !== key && (
+                <span style={{
+                  background: '#E53E3E', color: 'white',
+                  borderRadius: 20, padding: '1px 5px',
+                  fontSize: 9, fontWeight: 700, lineHeight: '14px',
+                }}>
+                  {unread}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -263,6 +398,7 @@ export default function LeadProfile({ leadId, onBack }) {
         {/* Tab panels */}
         <div style={{ padding: '24px' }}>
           {tab === 'profile'  && <ProfileTab lead={lead} />}
+          {tab === 'messages' && <LeadMessages leadId={leadId} leadName={lead.full_name} />}
           {tab === 'timeline' && <LeadTimeline leadId={leadId} />}
           {tab === 'tasks'    && <LeadTasks    leadId={leadId} />}
           {tab === 'log-interaction' && (

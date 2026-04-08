@@ -16,6 +16,7 @@
 import { useState } from 'react'
 import { createLead } from '../../services/leads.service'
 import { ds, SOURCE_LABELS, BRANCHES_OPTIONS } from '../../utils/ds'
+import UserSelect from '../../shared/UserSelect'
 
 const SOURCES = Object.entries(SOURCE_LABELS)
 
@@ -31,6 +32,7 @@ const INITIAL = {
   branches:       '',
   problem_stated: '',
   referrer:       '',
+  assigned_to:    '',
 }
 
 export default function LeadCreateModal({ onClose, onCreated }) {
@@ -206,6 +208,20 @@ export default function LeadCreateModal({ onClose, onCreated }) {
             onChange={set('problem_stated')}
             style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
           />
+        </Field>
+
+        {/* Assignment */}
+        <SectionLabel>Assignment</SectionLabel>
+        <Field label="Assign To (optional)">
+          <UserSelect
+            value={form.assigned_to}
+            onChange={val => setForm(f => ({ ...f, assigned_to: val }))}
+            placeholder="— Unassigned —"
+            style={inputStyle}
+          />
+          <p style={{ fontSize: 11, color: ds.gray, margin: '4px 0 0' }}>
+            Shows active Sales Agents and Affiliate Partners only.
+          </p>
         </Field>
 
         {/* Error */}

@@ -468,6 +468,62 @@ def get_customer_messages(
     }
 
 
+def get_lead_messages(
+    db,
+    org_id: str,
+    lead_id: str,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """
+    Return paginated WhatsApp message history for a lead.
+    Mirrors get_customer_messages — filters by lead_id instead of customer_id.
+    Raises 404 if lead does not exist in this org.
+    Also marks all unread inbound messages as read (S14 — failure swallowed).
+    """
+    # Verify lead exists and belongs to org
+    lead_check = (
+        db.table("leads")
+        .select("id")
+        .eq("id", lead_id)
+        .eq("org_id", org_id)
+        .is_("deleted_at", "null")
+        .maybe_single()
+        .execute()
+    )
+    lead_data = _normalise_data(lead_check.data)
+    if not lead_data:
+        raise HTTPException(status_code=404, detail=ErrorCode.NOT_FOUND)
+
+    result = (
+        db.table("whatsapp_messages")
+        .select("*", count="exact")
+        .eq("org_id", org_id)
+        .eq("lead_id", lead_id)
+        .order("created_at", desc=True)
+        .range((page - 1) * page_size, page * page_size - 1)
+        .execute()
+    )
+    items = result.data if isinstance(result.data, list) else []
+    total = result.count if result.count is not None else len(items)
+
+    # Mark all unread inbound messages as read — S14: failure never blocks fetch
+    try:
+        db.table("whatsapp_messages")             .update({"read_at": _now_iso()})             .eq("org_id", org_id)             .eq("lead_id", lead_id)             .eq("direction", "inbound")             .is_("read_at", "null")             .execute()
+    except Exception as exc:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "Failed to mark lead messages as read for %s: %s", lead_id, exc
+        )
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
 def get_customer_tasks(db, org_id: str, customer_id: str) -> list:
     """Return all tasks linked to this customer (source_module = whatsapp)."""
     _customer_or_404(db, org_id, customer_id)
@@ -883,3 +939,46 @@ def update_drip_sequence(
         new_value={"message_count": len(inserted)},
     )
     return inserted
+
+# ---------------------------------------------------------------------------
+# Unread message counts
+# ---------------------------------------------------------------------------
+
+def get_unread_counts(db, org_id: str) -> dict:
+    """
+    Return unread inbound message counts for all leads and customers in the org.
+    An inbound message is "unread" when read_at IS NULL.
+
+    Returns:
+        {
+            "leads":     {"lead_id_1": 2, ...},
+            "customers": {"customer_id_1": 3, ...},
+        }
+
+    S14: on any DB failure returns empty dicts — never blocks list views.
+    """
+    leads_counts:     dict = {}
+    customers_counts: dict = {}
+
+    try:
+        result = (
+            db.table("whatsapp_messages")
+            .select("lead_id, customer_id")
+            .eq("org_id", org_id)
+            .eq("direction", "inbound")
+            .is_("read_at", "null")
+            .execute()
+        )
+        rows = result.data if isinstance(result.data, list) else []
+        for row in rows:
+            if row.get("lead_id"):
+                lid = row["lead_id"]
+                leads_counts[lid] = leads_counts.get(lid, 0) + 1
+            elif row.get("customer_id"):
+                cid = row["customer_id"]
+                customers_counts[cid] = customers_counts.get(cid, 0) + 1
+    except Exception as exc:
+        import logging as _log
+        _log.getLogger(__name__).warning("get_unread_counts failed: %s", exc)
+
+    return {"leads": leads_counts, "customers": customers_counts}

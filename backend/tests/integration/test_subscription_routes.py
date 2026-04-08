@@ -368,7 +368,37 @@ class TestBulkConfirmJobPollRoute:
     @pytest.fixture(autouse=True)
     def setup(self):
         self.mock_db = MagicMock()
-        self.mock_db.table.return_value = _make_chain(data=[], count=0)
+
+        # bulk_confirm_jobs needs to be stateful:
+        #   create_bulk_confirm_job  → INSERT  (captures the row)
+        #   get_bulk_confirm_job     → SELECT  (returns the captured row)
+        #   _update_bulk_job         → UPDATE  (no-op in mock)
+        # All other tables use the generic empty chain.
+        stored: dict = {}   # job_id → row dict
+
+        bj_chain = MagicMock()
+        bj_chain.select.return_value      = bj_chain
+        bj_chain.eq.return_value          = bj_chain
+        bj_chain.maybe_single.return_value = bj_chain
+        bj_chain.update.return_value      = bj_chain
+
+        def _bj_insert(row):
+            stored[row["job_id"]] = row   # remember the inserted job
+            return bj_chain
+        bj_chain.insert.side_effect = _bj_insert
+
+        def _bj_execute():
+            # SELECT path: return the most recently stored row (or None)
+            row = list(stored.values())[-1] if stored else None
+            return MagicMock(data=row)
+        bj_chain.execute.side_effect = _bj_execute
+
+        def tbl(name):
+            if name == "bulk_confirm_jobs":
+                return bj_chain
+            return _make_chain(data=[], count=0)
+
+        self.mock_db.table.side_effect    = tbl
         app.dependency_overrides[get_supabase]    = lambda: self.mock_db
         app.dependency_overrides[get_current_org] = _org_member
         self.client = TestClient(app)

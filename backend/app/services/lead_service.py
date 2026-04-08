@@ -14,15 +14,19 @@ Conventions:
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from dotenv import load_dotenv
 from fastapi import HTTPException, status
 
 from app.models.common import ErrorCode
 from app.models.leads import LeadCreate, LeadUpdate, LostReason, LeadStage
 from app.services.ai_service import sanitise_for_prompt, score_lead_with_ai
+
+load_dotenv()  # Pattern 29 — required for os.getenv() calls in notification helper
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +129,134 @@ def write_timeline_event(
             "metadata": metadata or {},
         }
     ).execute()
+
+
+# ---------------------------------------------------------------------------
+# New lead notification helper — Feature 3 (Module 01 gap)
+# ---------------------------------------------------------------------------
+
+_GRAPH_BASE = "https://graph.facebook.com/v18.0"
+_META_WA_TOKEN = os.getenv("META_WHATSAPP_TOKEN", "").strip()
+
+
+def _notify_new_lead(db: Any, org_id: str, lead: dict, lead_id: str) -> None:
+    """
+    Notify assigned rep + all owner/ops_manager users when a new lead arrives.
+    Sends both in-app notification and WhatsApp (if org's WhatsApp is configured).
+    S14: entire body wrapped — NEVER raises, never blocks lead creation.
+    DRD §5 Channel 1: "Assigned rep notified via WhatsApp and in-app."
+    """
+    try:
+        lead_name  = lead.get("full_name", "New lead")
+        assigned_to = lead.get("assigned_to")
+        source      = (lead.get("source") or "unknown").replace("_", " ").title()
+        biz_name    = lead.get("business_name") or ""
+
+        # Fetch all active users in org with their roles
+        users_result = (
+            db.table("users")
+            .select("id, whatsapp_number, roles(template)")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        all_users: list[dict] = users_result.data or []
+        if isinstance(all_users, dict):
+            all_users = [all_users]
+
+        # Collect users to notify: assigned rep + all owner/ops_manager
+        notify_users: list[dict] = []
+        seen: set[str] = set()
+        for u in all_users:
+            uid = u.get("id")
+            if not uid or uid in seen:
+                continue
+            roles = u.get("roles") or {}
+            if isinstance(roles, list):
+                roles = roles[0] if roles else {}
+            template = (roles.get("template") or "").lower()
+            if template in ("owner", "ops_manager") or uid == assigned_to:
+                seen.add(uid)
+                notify_users.append(u)
+
+        if not notify_users:
+            return
+
+        title = f"New lead: {lead_name}"
+        body  = (
+            f"A new {source} lead has arrived."
+            + (f" Business: {biz_name}." if biz_name else "")
+            + " Open Opsra to view and action."
+        )
+
+        # In-app notifications
+        for u in notify_users:
+            try:
+                db.table("notifications").insert({
+                    "org_id":        org_id,
+                    "user_id":       u["id"],
+                    "title":         title,
+                    "body":          body,
+                    "type":          "new_lead",
+                    "resource_type": "lead",
+                    "resource_id":   lead_id,
+                }).execute()
+            except Exception as _exc:
+                logger.warning("New lead in-app notification failed for %s: %s", u.get("id"), _exc)
+
+        # WhatsApp notifications — only if META token + org phone_id configured
+        wa_token = _META_WA_TOKEN or os.getenv("META_WHATSAPP_TOKEN", "").strip()
+        if not wa_token:
+            return
+
+        try:
+            org_result = (
+                db.table("organisations")
+                .select("whatsapp_phone_id")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            org_data = org_result.data
+            if isinstance(org_data, list):
+                org_data = org_data[0] if org_data else None
+            phone_id = (org_data or {}).get("whatsapp_phone_id")
+        except Exception:
+            phone_id = None
+
+        if not phone_id:
+            return
+
+        import httpx as _httpx
+        wa_msg = (
+            f"🎯 *New Lead: {lead_name}*\n\n"
+            f"Source: {source}\n"
+            + (f"Business: {biz_name}\n" if biz_name else "")
+            + "\nOpen Opsra to view, score, and action this lead."
+        )
+
+        for u in notify_users:
+            wa_num = u.get("whatsapp_number")
+            if not wa_num:
+                continue
+            try:
+                _httpx.post(
+                    f"{_GRAPH_BASE}/{phone_id}/messages",
+                    headers={"Authorization": f"Bearer {wa_token}"},
+                    json={
+                        "messaging_product": "whatsapp",
+                        "to":   wa_num,
+                        "type": "text",
+                        "text": {"body": wa_msg},
+                    },
+                    timeout=5.0,
+                )
+            except Exception as _exc:
+                logger.warning("New lead WhatsApp alert failed for %s: %s", u.get("id"), _exc)
+
+    except Exception as exc:
+        # S14 outer guard — lead creation must never fail due to notification errors
+        logger.warning("_notify_new_lead failed entirely (non-fatal): %s", exc)
 
 
 def _normalise_phone(value: Optional[str]) -> Optional[str]:
@@ -350,6 +482,10 @@ def create_lead(
         resource_id=lead_id,
         new_value={"stage": "new", "source": data.get("source")},
     )
+
+    # Feature 3: notify assigned rep + all owner/ops_manager users (S14 — never blocks)
+    _notify_new_lead(db, org_id, lead, lead_id)
+
     return lead
 
 
@@ -830,19 +966,42 @@ def score_lead(
 ) -> dict:
     """
     Trigger AI scoring via Claude Sonnet.
-    Updates lead.score and lead.score_reason.
+    Fetches org scoring rubric from organisations table — Feature 4.
+    Updates lead.score, lead.score_reason, and lead.score_source = 'ai'.
     Writes timeline event + audit log.
     Gracefully handles AI unavailability — Section 12.7.
     """
     lead = _lead_or_404(db, org_id, lead_id)
 
-    score_result = score_lead_with_ai(lead)
+    # Feature 4: fetch org-configurable scoring rubric
+    rubric: dict = {}
+    try:
+        org_result = (
+            db.table("organisations")
+            .select(
+                "scoring_business_context, scoring_hot_criteria, "
+                "scoring_warm_criteria, scoring_cold_criteria, "
+                "scoring_qualification_questions"
+            )
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else None
+        rubric = org_data or {}
+    except Exception as _exc:
+        logger.warning("Could not fetch scoring rubric for org %s: %s", org_id, _exc)
+
+    score_result = score_lead_with_ai(lead, rubric=rubric)
 
     db.table("leads").update(
         {
-            "score": score_result["score"],
+            "score":        score_result["score"],
             "score_reason": score_result["score_reason"],
-            "updated_at": _now_iso(),
+            "score_source": "ai",
+            "updated_at":   _now_iso(),
         }
     ).eq("id", lead_id).eq("org_id", org_id).execute()
 
@@ -859,15 +1018,70 @@ def score_lead(
         resource_type="lead",
         resource_id=lead_id,
         old_value={"score": lead.get("score")},
-        new_value=score_result,
+        new_value={**score_result, "score_source": "ai"},
     )
 
-    return {**lead, **score_result}
+    return {**lead, **score_result, "score_source": "ai"}
 
 
 # ---------------------------------------------------------------------------
-# get_timeline
+# override_lead_score — Feature 2 (Module 01 gaps)
 # ---------------------------------------------------------------------------
+
+def override_lead_score(
+    db: Any,
+    org_id: str,
+    lead_id: str,
+    user_id: str,
+    score: str,
+) -> dict:
+    """
+    Manager/owner manually overrides the AI lead score.
+    Sets score_source = 'human' — displayed as '👤 Human' in the UI.
+    The AI score is preserved in audit history; timeline records the override.
+    """
+    if score not in {"hot", "warm", "cold"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": ErrorCode.VALIDATION_ERROR,
+                "message": "score must be one of: hot, warm, cold",
+            },
+        )
+
+    lead = _lead_or_404(db, org_id, lead_id)
+
+    db.table("leads").update({
+        "score":        score,
+        "score_reason": "Manually scored by team member",
+        "score_source": "human",
+        "updated_at":   _now_iso(),
+    }).eq("id", lead_id).eq("org_id", org_id).execute()
+
+    write_timeline_event(
+        db, org_id, lead_id,
+        event_type="score_updated",
+        actor_id=user_id,
+        description=f"Score manually overridden to {score}",
+        metadata={"score": score, "score_source": "human",
+                  "previous_score": lead.get("score"),
+                  "previous_source": lead.get("score_source")},
+    )
+    write_audit_log(
+        db, org_id, user_id,
+        action="lead.score_overridden",
+        resource_type="lead",
+        resource_id=lead_id,
+        old_value={"score": lead.get("score"), "score_source": lead.get("score_source")},
+        new_value={"score": score, "score_source": "human"},
+    )
+
+    return {
+        **lead,
+        "score":        score,
+        "score_reason": "Manually scored by team member",
+        "score_source": "human",
+    }
 
 def get_timeline(db: Any, org_id: str, lead_id: str) -> list[dict]:
     """Return lead timeline events ordered by created_at descending."""

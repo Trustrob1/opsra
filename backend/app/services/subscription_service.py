@@ -418,6 +418,7 @@ def _confirm_payment_internal(
                 event_type="payment_confirmed",
                 customer_id=subscription.get("customer_id"),
                 subscription_id=subscription_id,
+                deal_amount=float(amount),
             )
     except Exception as _ce:
         import logging as _log
@@ -550,33 +551,70 @@ def cancel_subscription(
 
 # ---------------------------------------------------------------------------
 # Bulk confirm job store — Method 3: CSV/Excel bulk upload
+# Durability: persisted to bulk_confirm_jobs Supabase table (Phase 9D).
+# Replaces the in-memory _bulk_jobs dict — survives server restarts and
+# is visible across multiple Celery workers.
 # ---------------------------------------------------------------------------
 
-_bulk_jobs: dict[str, dict] = {}
+
+def _update_bulk_job(db, job_id: str, updates: dict) -> None:
+    """Patch a bulk_confirm_jobs row. Silently swallows DB errors (S14)."""
+    try:
+        db.table("bulk_confirm_jobs").update(updates).eq("job_id", job_id).execute()
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("bulk_confirm_jobs update failed for %s: %s", job_id, exc)
 
 
-def create_bulk_confirm_job(org_id: str) -> str:
-    """Create a new bulk confirmation job, return its job_id."""
+def create_bulk_confirm_job(org_id: str, db=None) -> str:
+    """
+    Create a new bulk confirmation job row in Supabase, return its job_id.
+
+    db=None triggers a lazy get_supabase() call so the router call site
+    does not need to change — the existing subscriptions.py router passes
+    only org_id and this default handles the rest.  Pattern 1 compliant:
+    get_supabase() is called inside the function (lazy), never at module level.
+    """
+    if db is None:
+        from app.database import get_supabase as _get_db
+        db = _get_db()
     job_id = str(uuid.uuid4())
-    _bulk_jobs[job_id] = {
-        "job_id": job_id,
-        "org_id": org_id,
-        "status": "pending",
-        "total_rows": 0,
-        "confirmed": 0,
+    db.table("bulk_confirm_jobs").insert({
+        "job_id":    job_id,
+        "org_id":    org_id,
+        "status":    "pending",
+        "total":     0,
+        "succeeded": 0,
         "unmatched": 0,
-        "failed": 0,
-        "errors": [],
-        "created_at": _now_iso(),
-        "completed_at": None,
-    }
+        "failed":    0,
+        "errors":    [],
+    }).execute()
     return job_id
 
 
-def get_bulk_confirm_job(org_id: str, job_id: str) -> dict:
-    """Return bulk confirmation job status. Raises 404 if not found or wrong org."""
-    job = _bulk_jobs.get(job_id)
-    if not job or job.get("org_id") != org_id:
+def get_bulk_confirm_job(org_id: str, job_id: str, db=None) -> dict:
+    """
+    Return bulk confirmation job status. Raises 404 if not found or wrong org.
+
+    db=None uses same lazy factory as create_bulk_confirm_job.
+
+    The returned dict uses the original key names (total_rows, confirmed,
+    unmatched) so the router and frontend require no changes.
+    """
+    if db is None:
+        from app.database import get_supabase as _get_db
+        db = _get_db()
+    result = (
+        db.table("bulk_confirm_jobs")
+        .select("*")
+        .eq("job_id", job_id)
+        .eq("org_id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    row = result.data
+    if isinstance(row, list):
+        row = row[0] if row else None
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -584,7 +622,19 @@ def get_bulk_confirm_job(org_id: str, job_id: str) -> dict:
                 "message": f"Bulk confirmation job {job_id} not found",
             },
         )
-    return job
+    # Map DB column names → legacy dict keys expected by router + frontend
+    return {
+        "job_id":       row["job_id"],
+        "org_id":       row["org_id"],
+        "status":       row["status"],
+        "total_rows":   row.get("total", 0),
+        "confirmed":    row.get("succeeded", 0),
+        "unmatched":    row.get("unmatched", 0),
+        "failed":       row.get("failed", 0),
+        "errors":       row.get("errors") or [],
+        "created_at":   row.get("created_at"),
+        "completed_at": row.get("completed_at"),
+    }
 
 
 def process_bulk_confirm(
@@ -598,24 +648,26 @@ def process_bulk_confirm(
     Method 3 — CSV/Excel Bulk Upload processing.
     Matches each row to a subscription by subscription_id or customer phone.
     Unmatched rows flagged for manual review.
-    Summary: confirmed, unmatched, error count — DRD §6.4.
+    Uses local counters; single DB update at completion — DRD §6.4.
     """
-    job = _bulk_jobs[job_id]
-    job["status"] = "processing"
-    job["total_rows"] = len(rows)
+    _update_bulk_job(db, job_id, {"status": "processing", "total": len(rows)})
 
     if not rows:
-        job["status"] = "done"
-        job["completed_at"] = _now_iso()
+        _update_bulk_job(db, job_id, {"status": "done", "completed_at": _now_iso()})
         return
+
+    succeeded = 0
+    unmatched = 0
+    failed    = 0
+    errors: list[dict] = []
 
     for i, row in enumerate(rows):
         try:
             parsed = BulkConfirmRow(**row)
 
             if not parsed.subscription_id and not parsed.phone:
-                job["unmatched"] += 1
-                job["errors"].append({
+                unmatched += 1
+                errors.append({
                     "row": i + 1,
                     "message": "Row must have subscription_id or phone to match a subscription",
                 })
@@ -666,8 +718,8 @@ def process_bulk_confirm(
                         subscription = sub_data
 
             if subscription is None:
-                job["unmatched"] += 1
-                job["errors"].append({
+                unmatched += 1
+                errors.append({
                     "row": i + 1,
                     "message": "No subscription found matching the provided phone or subscription_id",
                 })
@@ -677,8 +729,8 @@ def process_bulk_confirm(
             if parsed.reference and _check_duplicate_reference(
                 db, org_id, parsed.reference
             ):
-                job["failed"] += 1
-                job["errors"].append({
+                failed += 1
+                errors.append({
                     "row": i + 1,
                     "message": f"Duplicate payment reference: {parsed.reference}",
                 })
@@ -709,21 +761,27 @@ def process_bulk_confirm(
                     "amount": parsed.amount,
                 },
             )
-            job["confirmed"] += 1
+            succeeded += 1
 
         except HTTPException as exc:
-            job["failed"] += 1
+            failed += 1
             detail = exc.detail or {}
-            job["errors"].append({
+            errors.append({
                 "row": i + 1,
                 "message": detail.get("message", str(exc)),
             })
         except Exception as exc:  # pylint: disable=broad-except
-            job["failed"] += 1
-            job["errors"].append({"row": i + 1, "message": str(exc)})
+            failed += 1
+            errors.append({"row": i + 1, "message": str(exc)})
 
-    job["status"] = "done"
-    job["completed_at"] = _now_iso()
+    _update_bulk_job(db, job_id, {
+        "status":       "done",
+        "succeeded":    succeeded,
+        "unmatched":    unmatched,
+        "failed":       failed,
+        "errors":       errors,
+        "completed_at": _now_iso(),
+    })
 
 
 # ---------------------------------------------------------------------------

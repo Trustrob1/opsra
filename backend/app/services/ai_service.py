@@ -181,7 +181,7 @@ Respond EXACTLY in the format shown — no additional commentary.
 Respond in under 80 words total."""
 
 
-def score_lead_with_ai(lead: dict) -> dict:
+def score_lead_with_ai(lead: dict, rubric: Optional[dict] = None) -> dict:
     """
     Score a lead using Claude Sonnet — Section 8.1.
 
@@ -191,6 +191,9 @@ def score_lead_with_ai(lead: dict) -> dict:
     - Structural separation: user data inside <lead_data> block (Section 11.3 Layer 1)
     - Format contract: SCORE / REASON (Section 8.4)
     - Graceful degradation: returns unscored on API failure (Section 12.7)
+    - rubric: optional org-configurable scoring criteria (Module 01 gap — Feature 4)
+      When provided, injected into system prompt + user prompt for org-aware scoring.
+      When None/empty, falls back to generic scoring (backward compatible).
 
     Returns:
         {"score": str, "score_reason": str | None}
@@ -203,6 +206,16 @@ def score_lead_with_ai(lead: dict) -> dict:
     location = sanitise_for_prompt(lead.get("location") or "")
     branches = lead.get("branches") or ""
     source = lead.get("source") or ""
+
+    # Build system prompt — inject business context from rubric if available
+    system = LEAD_SCORING_SYSTEM
+    if rubric:
+        biz_ctx = sanitise_for_prompt(rubric.get("scoring_business_context") or "", max_length=800)
+        if biz_ctx:
+            system += (
+                f"\n\nORGANISATION CONTEXT:\n{biz_ctx}\n"
+                "Use this context to understand what makes a good lead for this specific business."
+            )
 
     # Layer 1 — structural separation (Section 11.3)
     prompt = (
@@ -217,12 +230,31 @@ def score_lead_with_ai(lead: dict) -> dict:
         f"Problem stated: {problem}\n"
         f"Lead source: {source}\n"
         "</lead_data>\n\n"
+    )
+
+    # Inject org-specific scoring criteria if provided
+    if rubric:
+        criteria = []
+        hot  = sanitise_for_prompt(rubric.get("scoring_hot_criteria")  or "", max_length=300)
+        warm = sanitise_for_prompt(rubric.get("scoring_warm_criteria") or "", max_length=300)
+        cold = sanitise_for_prompt(rubric.get("scoring_cold_criteria") or "", max_length=300)
+        if hot:  criteria.append(f"HOT criteria:  {hot}")
+        if warm: criteria.append(f"WARM criteria: {warm}")
+        if cold: criteria.append(f"COLD criteria: {cold}")
+        if criteria:
+            prompt += (
+                "<scoring_criteria>\n"
+                + "\n".join(criteria)
+                + "\n</scoring_criteria>\n\n"
+            )
+
+    prompt += (
         "Respond EXACTLY as:\n"
         "SCORE: [hot|warm|cold]\n"
         "REASON: [one sentence, max 20 words]"
     )
 
-    raw = call_claude(prompt, model=SONNET, max_tokens=120, system=LEAD_SCORING_SYSTEM)
+    raw = call_claude(prompt, model=SONNET, max_tokens=120, system=system)
 
     if not raw:
         # Graceful degradation — Section 12.7

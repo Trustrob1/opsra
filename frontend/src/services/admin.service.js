@@ -136,3 +136,33 @@ export async function getIntegrationStatus() {
   const r = await axios.get(`${BASE}/api/v1/admin/integrations`, { headers: _h() })
   return r.data.data
 }
+
+
+export async function getCommissionSettings() {
+  const r = await axios.get(`${BASE}/api/v1/admin/commission-settings`, { headers: _h() })
+  return r.data.data
+}
+
+export async function updateCommissionSettings(payload) {
+  const r = await axios.patch(
+    `${BASE}/api/v1/admin/commission-settings`,
+    payload,
+    { headers: _h() },
+  )
+  return r.data.data
+}
+// ── Lead Scoring Rubric — Feature 4 (Module 01 gaps) ────────────────────────
+
+export async function getScoringRubric() {
+  const r = await axios.get(`${BASE}/api/v1/admin/scoring-rubric`, { headers: _h() })
+  return r.data.data  // returns rubric fields directly: { scoring_business_context, ... }
+}
+
+export async function updateScoringRubric(payload) {
+  const r = await axios.patch(
+    `${BASE}/api/v1/admin/scoring-rubric`,
+    payload,
+    { headers: _h() },
+  )
+  return r.data.data
+}

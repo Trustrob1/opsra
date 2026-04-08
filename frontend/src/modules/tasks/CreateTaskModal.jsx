@@ -14,6 +14,8 @@
 import { useState } from 'react'
 import { ds } from '../../utils/ds'
 import { createTask } from '../../services/tasks.service'
+import useAuthStore from '../../store/authStore'
+import UserSelect   from '../../shared/UserSelect'
 
 const PRIORITIES = ['critical', 'high', 'medium', 'low']
 const MODULES    = [
@@ -26,10 +28,12 @@ const MODULES    = [
 ]
 
 export default function CreateTaskModal({ onClose, onCreated }) {
+  const isManager  = useAuthStore.getState().isManager()
   const [title,    setTitle]    = useState('')
   const [desc,     setDesc]     = useState('')
   const [dueAt,    setDueAt]    = useState('')
   const [priority, setPriority] = useState('medium')
+  const [assignedTo, setAssignedTo] = useState('')
   const [module,   setModule]   = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState(null)
@@ -44,6 +48,7 @@ export default function CreateTaskModal({ onClose, onCreated }) {
       if (desc.trim())   payload.description   = desc.trim()
       if (dueAt)         payload.due_at         = new Date(`${dueAt}T09:00:00`).toISOString()
       if (module)        payload.source_module  = module
+      if (isManager && assignedTo)  payload.assigned_to  = assignedTo
       // Pattern 12: org_id never sent — derived server-side
       await createTask(payload)
       onCreated?.()
@@ -156,6 +161,22 @@ export default function CreateTaskModal({ onClose, onCreated }) {
             ))}
           </select>
 
+          {/* Assign To — managers only */}
+          {isManager && (
+            <>
+              <label style={{ ...labelStyle, marginTop: 8 }}>Assign To</label>
+              <UserSelect
+                value={assignedTo}
+                onChange={setAssignedTo}
+                placeholder="— Assign to user —"
+                style={{ ...inputStyle, marginBottom: 4 }}
+              />
+              <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px' }}>
+                Leave blank to assign to yourself.
+              </p>
+            </>
+          )}
+          
           {error && (
             <p style={{ fontSize: 13, color: '#dc2626', margin: '8px 0 0' }}>⚠ {error}</p>
           )}

@@ -6,17 +6,20 @@
  *   - If window closed: template ONLY (shown as info hint)
  *
  * Props:
- *   customerId  — UUID (required)
- *   windowOpen  — bool (from CustomerProfile state)
+ *   customerId  — UUID (pass for customer conversations)
+ *   leadId      — UUID (pass for lead conversations)
+ *   windowOpen  — bool (from parent state)
  *   templates   — array of approved templates
  *   onSent      — callback after successful send
+ *
+ * Exactly one of customerId / leadId must be supplied.
  */
 
 import { useState } from 'react'
 import { ds } from '../../utils/ds'
 import { sendMessage } from '../../services/whatsapp.service'
 
-export default function MessageComposer({ customerId, windowOpen, templates = [], onSent }) {
+export default function MessageComposer({ customerId, leadId, windowOpen, templates = [], onSent }) {
   const [mode, setMode]               = useState(windowOpen ? 'free' : 'template')
   const [content, setContent]         = useState('')
   const [templateName, setTemplateName] = useState('')
@@ -30,7 +33,13 @@ export default function MessageComposer({ customerId, windowOpen, templates = []
     setError(null)
     setSending(true)
     try {
-      const payload = { customer_id: customerId }
+      const payload = {}
+      if (customerId) payload.customer_id = customerId
+      if (leadId)     payload.lead_id     = leadId
+      if (!payload.customer_id && !payload.lead_id) {
+        setError('No recipient specified.')
+        return
+      }
       if (mode === 'free') {
         if (!content.trim()) { setError('Message cannot be empty.'); return }
         payload.content = content.trim()

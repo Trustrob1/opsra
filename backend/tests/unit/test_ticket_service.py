@@ -1253,3 +1253,119 @@ class TestSuggestKBArticleFromTicket:
 
         # Invalid category replaced by ticket's own category
         assert result["category"] in ("billing", "faq")
+
+class TestAddMessageWhatsApp:
+    """Phase 9D: WhatsApp delivery from ticket thread."""
+
+    ORG_ID  = "00000000-0000-0000-0000-000000000001"
+    TICKET_ID = "00000000-0000-0000-0000-000000000010"
+    USER_ID = "00000000-0000-0000-0000-000000000099"
+    CUSTOMER_ID = "00000000-0000-0000-0000-000000000002"
+
+    def _make_db(self, with_customer_id=True):
+        ticket_row = {
+            "id": self.TICKET_ID, "org_id": self.ORG_ID,
+            "status": "in_progress", "sla_paused_at": None,
+            "sla_pause_minutes": 0, "deleted_at": None,
+            "customer_id": self.CUSTOMER_ID if with_customer_id else None,
+        }
+        msg_row = {"id": "00000000-0000-0000-0000-000000000020",
+                   "ticket_id": self.TICKET_ID, "content": "Hello"}
+        db = MagicMock()
+        # tickets select
+        t_chain = MagicMock()
+        t_chain.execute.return_value = MagicMock(data=[ticket_row])
+        t_chain.select.return_value = t_chain
+        t_chain.eq.return_value = t_chain
+        t_chain.is_.return_value = t_chain
+        t_chain.maybe_single.return_value = t_chain
+        t_chain.update.return_value = t_chain
+        # messages insert
+        m_chain = MagicMock()
+        m_chain.execute.return_value = MagicMock(data=[msg_row])
+        m_chain.insert.return_value = m_chain
+        # audit insert
+        a_chain = MagicMock()
+        a_chain.execute.return_value = MagicMock(data=[])
+        a_chain.insert.return_value = a_chain
+
+        call_count = {"n": 0}
+        def tbl(name):
+            call_count["n"] += 1
+            if name == "tickets":     return t_chain
+            if name == "ticket_messages": return m_chain
+            if name == "audit_logs":  return a_chain
+            return MagicMock()
+        db.table.side_effect = tbl
+        return db
+
+    def test_agent_reply_calls_whatsapp(self):
+        """agent_reply with customer_id triggers send_whatsapp_message."""
+        from app.services import ticket_service
+        from app.models.tickets import AddMessageRequest
+        db = self._make_db(with_customer_id=True)
+        req = AddMessageRequest(message_type="agent_reply", content="Hi there")
+        with patch(
+            "app.services.ticket_service.send_whatsapp_message"
+        ) as mock_wa, patch(
+            "app.services.ticket_service.SendMessageRequest"
+        ) as mock_sr:
+            # Must make the import succeed inside the try block
+            import sys
+            import app.services.whatsapp_service as _ws
+            import app.models.whatsapp as _wm
+            sys.modules.setdefault("app.services.whatsapp_service", _ws)
+            ticket_service.add_message(db, self.TICKET_ID, self.ORG_ID, self.USER_ID, req)
+            mock_wa.assert_called_once()
+
+    def test_agent_reply_no_customer_id_skips_whatsapp(self):
+        """agent_reply without customer_id must not call send_whatsapp_message."""
+        from app.services import ticket_service
+        from app.models.tickets import AddMessageRequest
+        db = self._make_db(with_customer_id=False)
+        req = AddMessageRequest(message_type="agent_reply", content="Hi there")
+        with patch("app.services.ticket_service.send_whatsapp_message") as mock_wa:
+            ticket_service.add_message(db, self.TICKET_ID, self.ORG_ID, self.USER_ID, req)
+            mock_wa.assert_not_called()
+
+    def test_internal_note_skips_whatsapp(self):
+        """internal_note must not trigger WhatsApp delivery."""
+        from app.services import ticket_service
+        from app.models.tickets import AddMessageRequest
+        db = self._make_db(with_customer_id=True)
+        req = AddMessageRequest(message_type="internal_note", content="Note")
+        with patch("app.services.ticket_service.send_whatsapp_message") as mock_wa:
+            ticket_service.add_message(db, self.TICKET_ID, self.ORG_ID, self.USER_ID, req)
+            mock_wa.assert_not_called()
+
+    def test_whatsapp_failure_does_not_raise(self):
+        """S14: WhatsApp delivery failure must never fail the core message save."""
+        from app.services import ticket_service
+        from app.models.tickets import AddMessageRequest
+        db = self._make_db(with_customer_id=True)
+        req = AddMessageRequest(message_type="agent_reply", content="Hi")
+        with patch(
+            "app.services.ticket_service.send_whatsapp_message",
+            side_effect=Exception("Meta API down"),
+        ):
+            # Must not raise
+            result = ticket_service.add_message(
+                db, self.TICKET_ID, self.ORG_ID, self.USER_ID, req
+            )
+            assert result is not None
+
+    def test_message_row_saved_even_when_whatsapp_raises(self):
+        """Core message insert completes before WhatsApp is attempted."""
+        from app.services import ticket_service
+        from app.models.tickets import AddMessageRequest
+        db = self._make_db(with_customer_id=True)
+        req = AddMessageRequest(message_type="agent_reply", content="Hi")
+        with patch(
+            "app.services.ticket_service.send_whatsapp_message",
+            side_effect=RuntimeError("crash"),
+        ):
+            result = ticket_service.add_message(
+                db, self.TICKET_ID, self.ORG_ID, self.USER_ID, req
+            )
+        # message dict still returned
+        assert result["ticket_id"] == self.TICKET_ID

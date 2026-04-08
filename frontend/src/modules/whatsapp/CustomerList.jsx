@@ -10,8 +10,9 @@
  * All colours from ds.js — no hardcoded hex.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
+import { getUnreadCounts } from '../../services/whatsapp.service'
 import useCustomers from '../../hooks/useCustomers'
 
 // ── Churn risk badge ──────────────────────────────────────────────────────────
@@ -54,13 +55,21 @@ function OnboardBadge({ done }) {
 export default function CustomerList({ onSelectCustomer }) {
   const [filterRisk, setFilterRisk] = useState('')
   const [filterOnboard, setFilterOnboard] = useState('')
-
   const builtFilters = {}
   if (filterRisk)    builtFilters.churn_risk = filterRisk
   if (filterOnboard !== '') builtFilters.onboarding_complete = filterOnboard === 'true'
 
   const { customers, total, page, pageSize, hasMore, loading, error, goToPage, applyFilters } =
     useCustomers(builtFilters, 50)
+
+  const [unreadCounts, setUnreadCounts] = useState({})
+
+  // Fetch unread counts on mount — refetches whenever customers list changes
+  useEffect(() => {
+    getUnreadCounts()
+      .then(res => setUnreadCounts(res.data?.data?.customers ?? {}))
+      .catch(() => {})
+  }, [customers.length])
 
   // Re-apply when filter dropdowns change
   useEffect(() => {
@@ -241,7 +250,19 @@ export default function CustomerList({ onSelectCustomer }) {
                 onMouseLeave={e => e.currentTarget.style.background = ''}
               >
                 <td style={S.td}>
-                  <div style={{ fontWeight: 600 }}>{c.full_name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontWeight: 600 }}>{c.full_name}</div>
+                    {(unreadCounts[c.id] ?? 0) > 0 && (
+                      <span style={{
+                        background: '#E53E3E', color: 'white',
+                        borderRadius: 20, padding: '1px 6px',
+                        fontSize: 10, fontWeight: 700, flexShrink: 0,
+                        lineHeight: '16px',
+                      }} title={`${unreadCounts[c.id]} unread message${unreadCounts[c.id] > 1 ? 's' : ''}`}>
+                        💬 {unreadCounts[c.id]}
+                      </span>
+                    )}
+                  </div>
                   {c.email && (
                     <div style={{ fontSize: 11, color: ds.gray, marginTop: 2 }}>{c.email}</div>
                   )}

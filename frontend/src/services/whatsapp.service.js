@@ -142,3 +142,10 @@ export const getDripSequence = () =>
  */
 export const updateDripSequence = payload =>
   api.put('/api/v1/drip-sequences', payload)
+
+/** GET /api/v1/messages/unread-counts
+ *  Returns { leads: {id: count}, customers: {id: count} }
+ *  Used by pipeline and customer list to show unread message badges.
+ */
+export const getUnreadCounts = () =>
+  api.get('/api/v1/messages/unread-counts')

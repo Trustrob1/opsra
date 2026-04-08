@@ -18,9 +18,12 @@ Routes (Technical Spec §5.4):
 """
 from __future__ import annotations
 
+import logging
 import re
 import uuid as _uuid_mod
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     import filetype as _filetype  # S16: magic byte MIME verification (pip install filetype)
@@ -29,7 +32,7 @@ except ImportError:  # pragma: no cover
     _filetype = None  # type: ignore[assignment]
     _FILETYPE_AVAILABLE = False
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from app.database import get_supabase
 from app.dependencies import get_current_org
@@ -332,8 +335,24 @@ async def upload_attachment(
         f"tickets/{org_id}/{ticket_id}/{_uuid_mod.uuid4()}_{safe_name}"
     )
 
-    # TODO: upload `contents` to Supabase Storage bucket "attachments"
-    # using storage_client.storage.from_("attachments").upload(storage_path, contents)
+    # Upload bytes to Supabase Storage — Phase 9E (was stubbed TODO).
+    # Bucket: "ticket-attachments" — must exist in Supabase Storage dashboard.
+    # Upload happens BEFORE the DB row insert so a storage failure never
+    # leaves an orphaned metadata row with no backing bytes.
+    # Tech Spec §11.5 — storage_path is already sanitised above.
+    try:
+        db.storage.from_("ticket-attachments").upload(
+            path=storage_path,
+            file=contents,
+            file_options={"content-type": file.content_type},
+        )
+        logger.info("Attachment uploaded to storage: %s (%d bytes)", storage_path, file_size)
+    except Exception as exc:
+        logger.error("Supabase Storage upload failed for %s: %s", storage_path, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="File upload to storage failed. Please try again.",
+        )
 
     attachment = ticket_service.create_attachment(
         db=db,

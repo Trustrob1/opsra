@@ -11,9 +11,10 @@
  * 7 columns (one per stage): new → contacted → demo_done → proposal_sent
  *   → converted (terminal) | lost | not_ready
  */
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useLeads }       from '../../hooks/useLeads'
 import { moveStage, convertLead } from '../../services/leads.service'
+import { getUnreadCounts } from '../../services/whatsapp.service'
 import { ds, STAGES, SCORE_STYLE, SOURCE_SHORT } from '../../utils/ds'
 import useAuthStore       from '../../store/authStore'
 import LeadCreateModal    from './LeadCreateModal'
@@ -28,6 +29,13 @@ const SOURCE_FILTERS = [
 
 export default function LeadsPipeline({ onOpenLead }) {
   const { leads, loading, error, refresh, total } = useLeads({}, 200)
+  const [unreadCounts, setUnreadCounts] = useState({})
+
+  useEffect(() => {
+    getUnreadCounts()
+      .then(res => setUnreadCounts(res.data?.data?.leads ?? {}))
+      .catch(() => {})
+  }, [leads])
 
   // Phase 9B: affiliate_partner is read-only
   const isAffiliate = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
@@ -252,6 +260,7 @@ export default function LeadsPipeline({ onOpenLead }) {
                   onDragEnd={onDragEnd}
                   isMoving={movingId === lead.id}
                   canDrag={!isAffiliate}
+                  unreadCount={unreadCounts[lead.id] ?? 0}
                 />
               ))}
 
@@ -293,7 +302,7 @@ export default function LeadsPipeline({ onOpenLead }) {
 
 // ─── Kanban card ──────────────────────────────────────────────────────────────
 
-function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag }) {
+function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, unreadCount = 0 }) {
   const scoreStyle = SCORE_STYLE[lead.score] ?? SCORE_STYLE.unscored
   return (
     <div
@@ -316,9 +325,21 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag })
       onMouseEnter={e => { e.currentTarget.style.boxShadow = ds.hoverShadow; e.currentTarget.style.borderColor = ds.teal }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = ds.cardShadow;  e.currentTarget.style.borderColor = ds.border }}
     >
-      <p style={{ fontWeight: 600, fontSize: 12.5, color: ds.dark, margin: '0 0 3px', lineHeight: 1.4 }}>
-        {lead.full_name}
-      </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 }}>
+        <p style={{ fontWeight: 600, fontSize: 12.5, color: ds.dark, margin: '0 0 3px', lineHeight: 1.4, flex: 1 }}>
+          {lead.full_name}
+        </p>
+        {unreadCount > 0 && (
+          <span style={{
+            background: '#E53E3E', color: 'white',
+            borderRadius: 20, padding: '1px 6px',
+            fontSize: 10, fontWeight: 700, flexShrink: 0,
+            lineHeight: '16px',
+          }} title={`${unreadCount} unread message${unreadCount > 1 ? 's' : ''}`}>
+            💬 {unreadCount}
+          </span>
+        )}
+      </div>
       {lead.business_name && (
         <p style={{ color: ds.gray, fontSize: 11.5, margin: '0 0 7px' }}>
           {lead.business_name}

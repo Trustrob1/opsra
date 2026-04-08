@@ -69,6 +69,21 @@ def send_message(
     return ok(data=msg, message="Message sent")
 
 
+@router.get("/messages/unread-counts")
+def get_unread_counts(
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    Returns unread inbound message counts keyed by lead_id and customer_id.
+    An inbound message is unread when read_at IS NULL.
+    Used by LeadsPipeline and CustomerList to show 💬 unread badges.
+    Response: { leads: {lead_id: count}, customers: {customer_id: count} }
+    """
+    counts = whatsapp_service.get_unread_counts(db=db, org_id=org["org_id"])
+    return ok(data=counts)
+
+
 # ---------------------------------------------------------------------------
 # Broadcasts
 # ---------------------------------------------------------------------------

@@ -37,6 +37,12 @@ import CommissionsModule   from './modules/commissions/CommissionsModule'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
+// ─── Session timeout (Phase 9D) ───────────────────────────────────────────────
+// Module-level flag: set true before clearAuth() so LoginScreen can show the
+// inactivity message.  Not stored in any browser storage — F1/F2 compliant.
+let _idleLogout = false
+const IDLE_MS = 30 * 60 * 1000  // 30 minutes
+
 // ─── Sidebar navigation definition ───────────────────────────────────────────
 const NAV = [
   { id: 'leads',    label: 'Lead Command Center', icon: '🎯', module: '01', active: true  },
@@ -87,6 +93,19 @@ function LoginScreen({ onAuth }) {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
 
+  // Show inactivity message once if session was terminated by idle timer
+  const [idleMsg] = useState(() => {
+    if (_idleLogout) { _idleLogout = false; return true }
+    return false
+  })
+
+  // MFA state — Phase 9E
+  // pendingAuth holds the aal1 token + factor_id returned by the login endpoint
+  // while the user completes the TOTP challenge.
+  const [mfaStep, setMfaStep]       = useState(false)
+  const [mfaCode, setMfaCode]       = useState('')
+  const [pendingAuth, setPendingAuth] = useState(null)  // { access_token, factor_id, user }
+
   const handleLogin = async () => {
     if (!email || !password) { setError('Email and password are required.'); return }
     setLoading(true)
@@ -94,16 +113,17 @@ function LoginScreen({ onAuth }) {
     try {
       const res = await axios.post(`${BASE}/api/v1/auth/login`, { email, password })
       if (res.data.success) {
-        const { access_token, user } = res.data.data
-        // TEMP-1 fix: fetch full profile including roles.template
-        try {
-          const meRes = await axios.get(`${BASE}/api/v1/auth/me`, {
-            headers: { Authorization: `Bearer ${access_token}` },
-          })
-          onAuth(access_token, meRes.data?.data ?? user)
-        } catch {
-          onAuth(access_token, user)
+        const { access_token, user, mfa_required, factor_id } = res.data.data
+
+        if (mfa_required && factor_id) {
+          // aal1 session — park it and show TOTP entry screen
+          setPendingAuth({ access_token, factor_id, user })
+          setMfaStep(true)
+          return
         }
+
+        // No MFA — proceed directly
+        await _finishLogin(access_token, user)
       } else {
         setError(res.data.error ?? 'Login failed')
       }
@@ -116,7 +136,55 @@ function LoginScreen({ onAuth }) {
     }
   }
 
-  const handleKeyDown = (e) => { if (e.key === 'Enter') handleLogin() }
+  const handleMfaVerify = async () => {
+    if (!mfaCode || mfaCode.length !== 6) { setError('Enter the 6-digit code from your authenticator app.'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      const { access_token, factor_id, user } = pendingAuth
+
+      // Step 1: create challenge
+      const challengeRes = await axios.post(
+        `${BASE}/api/v1/auth/mfa/challenge`,
+        { factor_id },
+        { headers: { Authorization: `Bearer ${access_token}` } },
+      )
+      const { challenge_id } = challengeRes.data.data
+
+      // Step 2: verify TOTP code — response contains aal2 tokens
+      const verifyRes = await axios.post(
+        `${BASE}/api/v1/auth/mfa/verify`,
+        { factor_id, challenge_id, code: mfaCode },
+        { headers: { Authorization: `Bearer ${access_token}` } },
+      )
+      const aal2Token = verifyRes.data.data.access_token
+
+      // Step 3: fetch full profile with aal2 token
+      await _finishLogin(aal2Token, user)
+    } catch (err) {
+      const status = err?.response?.status
+      if (status === 422) setError('Invalid code. Please try again.')
+      else setError('Verification failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Shared finalisation: fetch /auth/me with the final token then call onAuth
+  const _finishLogin = async (access_token, user) => {
+    try {
+      const meRes = await axios.get(`${BASE}/api/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+      })
+      onAuth(access_token, meRes.data?.data ?? user)
+    } catch {
+      onAuth(access_token, user)
+    }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') mfaStep ? handleMfaVerify() : handleLogin()
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: ds.dark, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -146,61 +214,124 @@ function LoginScreen({ onAuth }) {
           Sign in to access your operations dashboard.
         </p>
 
-        {/* Email */}
-        <label style={loginLabel}>Email address</label>
-        <input
-          type="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          onKeyDown={handleKeyDown}
-          autoComplete="email"
-          style={loginInput}
-        />
+        {/* MFA step — shown after password login when mfa_required */}
+        {mfaStep ? (
+          <>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 8px' }}>
+              Two-factor authentication
+            </h1>
+            <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 24, lineHeight: 1.6 }}>
+              Enter the 6-digit code from your authenticator app.
+            </p>
 
-        {/* Password */}
-        <label style={loginLabel}>Password</label>
-        <input
-          type="password"
-          placeholder="••••••••"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          onKeyDown={handleKeyDown}
-          autoComplete="current-password"
-          style={{ ...loginInput, marginBottom: 24 }}
-        />
+            <label style={loginLabel}>Authentication code</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="000000"
+              maxLength={6}
+              value={mfaCode}
+              onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={handleKeyDown}
+              autoComplete="one-time-code"
+              style={{ ...loginInput, marginBottom: 24, letterSpacing: '0.3em', textAlign: 'center', fontSize: 22 }}
+            />
 
-        {/* Error */}
-        {error && (
-          <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16, lineHeight: 1.5 }}>
-            ⚠ {error}
-          </p>
+            {error && (
+              <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16, lineHeight: 1.5 }}>⚠ {error}</p>
+            )}
+
+            <button
+              onClick={handleMfaVerify}
+              disabled={loading}
+              style={{
+                width: '100%', background: loading ? '#015F6B' : ds.teal,
+                color: 'white', border: 'none', borderRadius: 10, padding: 15,
+                fontSize: 15, fontWeight: 600, fontFamily: ds.fontSyne,
+                cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 0.2s',
+              }}
+            >
+              {loading ? 'Verifying…' : 'Verify code'}
+            </button>
+
+            <button
+              onClick={() => { setMfaStep(false); setPendingAuth(null); setMfaCode(''); setError(null) }}
+              style={{ width: '100%', background: 'none', border: 'none', marginTop: 12,
+                fontSize: 13, color: '#7A9BAD', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              ← Back to sign in
+            </button>
+          </>
+        ) : (
+          <>
+            {/* Email */}
+            <label style={loginLabel}>Email address</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              onKeyDown={handleKeyDown}
+              autoComplete="email"
+              style={loginInput}
+            />
+
+            {/* Password */}
+            <label style={loginLabel}>Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={handleKeyDown}
+              autoComplete="current-password"
+              style={{ ...loginInput, marginBottom: 24 }}
+            />
+
+            {/* Inactivity message */}
+            {idleMsg && (
+              <div style={{
+                background: '#0e2a38', border: '1px solid #1e4a60',
+                borderRadius: 8, padding: '10px 14px', marginBottom: 16,
+                fontSize: 13, color: '#7ecfea', lineHeight: 1.5,
+              }}>
+                🔒 You have been logged out due to inactivity.
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16, lineHeight: 1.5 }}>
+                ⚠ {error}
+              </p>
+            )}
+
+            {/* Submit */}
+            <button
+              onClick={handleLogin}
+              disabled={loading}
+              style={{
+                width:        '100%',
+                background:   loading ? '#015F6B' : ds.teal,
+                color:        'white',
+                border:       'none',
+                borderRadius: 10,
+                padding:      15,
+                fontSize:     15,
+                fontWeight:   600,
+                fontFamily:   ds.fontSyne,
+                cursor:       loading ? 'not-allowed' : 'pointer',
+                transition:   'background 0.2s',
+              }}
+            >
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+
+            <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16, lineHeight: 1.5 }}>
+              Forgot your password? Contact your administrator.
+            </p>
+          </>
         )}
-
-        {/* Submit */}
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          style={{
-            width:        '100%',
-            background:   loading ? '#015F6B' : ds.teal,
-            color:        'white',
-            border:       'none',
-            borderRadius: 10,
-            padding:      15,
-            fontSize:     15,
-            fontWeight:   600,
-            fontFamily:   ds.fontSyne,
-            cursor:       loading ? 'not-allowed' : 'pointer',
-            transition:   'background 0.2s',
-          }}
-        >
-          {loading ? 'Signing in…' : 'Sign In'}
-        </button>
-
-        <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16, lineHeight: 1.5 }}>
-          Forgot your password? Contact your administrator.
-        </p>
       </div>
     </div>
   )
@@ -212,6 +343,28 @@ function AppShell() {
   const { user, clearAuth }       = useAuthStore()
   const org = user
   const [activeNav, setActiveNav] = useState('leads')
+
+  // ── Session idle timeout (Phase 9D) — auto-logout after 30 min inactivity ──
+  useEffect(() => {
+    let timer = null
+
+    const resetTimer = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        _idleLogout = true   // signal LoginScreen to show inactivity message
+        clearAuth()
+      }, IDLE_MS)
+    }
+
+    const EVENTS = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll']
+    EVENTS.forEach(ev => window.addEventListener(ev, resetTimer, { passive: true }))
+    resetTimer()  // start timer immediately on mount
+
+    return () => {
+      if (timer) clearTimeout(timer)
+      EVENTS.forEach(ev => window.removeEventListener(ev, resetTimer))
+    }
+  }, [clearAuth])
   // Phase 9B: filter nav items based on role template
   const _userTemplate = user?.roles?.template ?? ''
   const visibleNav = NAV.filter(item => {

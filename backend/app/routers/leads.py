@@ -25,6 +25,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from pydantic import BaseModel, Field
 
 from app.database import get_supabase
 from app.dependencies import get_current_org, require_admin
@@ -44,6 +45,15 @@ from app.utils.rbac import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Request models
+# ---------------------------------------------------------------------------
+
+class ScoreOverrideRequest(BaseModel):
+    """Feature 2 (Module 01 gaps): human score override — manager/owner only."""
+    score: str = Field(..., pattern="^(hot|warm|cold)$")
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +289,38 @@ async def score_lead(
 
 
 # ---------------------------------------------------------------------------
+# POST /api/v1/leads/{id}/score-override — Human score override
+# Feature 2 (Module 01 gaps): manager/owner overrides AI score
+# score_source is set to 'human'; displayed as 👤 Human in LeadProfile
+# ---------------------------------------------------------------------------
+
+@router.post("/{lead_id}/score-override")
+async def override_score(
+    lead_id: str,
+    payload: ScoreOverrideRequest,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    template = get_role_template(org)
+    if template not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "FORBIDDEN",
+                "message": "Only managers and owners can override lead scores",
+            },
+        )
+    lead = lead_service.override_lead_score(
+        db=db,
+        org_id=_org_id(org),
+        lead_id=lead_id,
+        user_id=_user_id(org),
+        score=payload.score,
+    )
+    return ok(data=lead, message=f"Score overridden to {payload.score}")
+
+
+# ---------------------------------------------------------------------------
 # POST /api/v1/leads/{id}/move-stage
 # Phase 9B: affiliate_partner cannot move stages
 # ---------------------------------------------------------------------------
@@ -393,3 +435,33 @@ async def get_lead_tasks(
 ):
     tasks = lead_service.get_lead_tasks(db=db, org_id=_org_id(org), lead_id=lead_id)
     return ok(data=tasks)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/leads/{id}/messages
+# Returns paginated WhatsApp message history for a lead.
+# Uses whatsapp_service.get_lead_messages — same pattern as customer messages.
+# ---------------------------------------------------------------------------
+
+@router.get("/{lead_id}/messages")
+async def get_lead_messages(
+    lead_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=500),
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    from app.services import whatsapp_service
+    result = whatsapp_service.get_lead_messages(
+        db=db,
+        org_id=_org_id(org),
+        lead_id=lead_id,
+        page=page,
+        page_size=page_size,
+    )
+    return paginated(
+        items=result["items"],
+        total=result["total"],
+        page=page,
+        page_size=page_size,
+    )

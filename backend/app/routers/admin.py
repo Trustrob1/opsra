@@ -83,6 +83,25 @@ class UpdateRoutingRuleRequest(BaseModel):
     escalate_after_minutes: Optional[int]  = None
     escalate_to_role_id:    Optional[str]  = None
 
+class CommissionSettingsUpdate(BaseModel):
+    """Payload for PATCH /admin/commission-settings."""
+    commission_enabled:             Optional[bool]  = None
+    commission_eligible_templates:  Optional[list]  = None
+    commission_rate_type:           Optional[str]   = Field(None, max_length=20)
+    commission_rate_value:          Optional[float] = Field(None, ge=0)
+    commission_trigger:             Optional[str]   = Field(None, max_length=20)
+    commission_whatsapp_notify:     Optional[bool]  = None
+
+
+class ScoringRubricUpdate(BaseModel):
+    """Payload for PATCH /admin/scoring-rubric — Feature 4 (Module 01 gaps)."""
+    scoring_business_context:        Optional[str] = None
+    scoring_hot_criteria:            Optional[str] = None
+    scoring_warm_criteria:           Optional[str] = None
+    scoring_cold_criteria:           Optional[str] = None
+    scoring_qualification_questions: Optional[str] = None
+
+
 # ── Valid role templates — Technical Spec Section 3.1 ─────────
 VALID_TEMPLATES = {
     "owner", "ops_manager", "sales_agent",
@@ -862,3 +881,110 @@ async def delete_routing_rule(
         caller_id=org["id"],
     )
     return {"success": True, "data": {"message": "Routing rule deleted"}, "error": None}
+
+# ============================================================
+# COMMISSION SETTINGS  (Phase 9C)
+# Stored as columns on the organisations table.
+# ============================================================
+
+@router.get("/commission-settings")
+async def get_commission_settings(
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Get the org's commission configuration from the organisations table."""
+    result = (
+        db.table("organisations")
+        .select(
+            "commission_enabled, commission_eligible_templates, "
+            "commission_rate_type, commission_rate_value, "
+            "commission_trigger, commission_whatsapp_notify"
+        )
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return {"success": True, "data": data or {}, "error": None}
+
+@router.patch("/commission-settings")
+async def update_commission_settings(
+    payload: CommissionSettingsUpdate,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Update commission configuration for this org."""
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "VALIDATION_ERROR", "message": "No fields provided"},
+        )
+    db.table("organisations").update(update_data).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="commission_settings.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value=update_data,
+    )
+    return {"success": True, "data": {"message": "Commission settings updated"}, "error": None}
+ 
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/admin/scoring-rubric — Feature 4 (Module 01 gaps)
+# ---------------------------------------------------------------------------
+
+@router.get("/scoring-rubric")
+async def get_scoring_rubric(
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Return the org's AI lead scoring rubric from the organisations table."""
+    result = (
+        db.table("organisations")
+        .select(
+            "scoring_business_context, scoring_hot_criteria, "
+            "scoring_warm_criteria, scoring_cold_criteria, "
+            "scoring_qualification_questions"
+        )
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return {"success": True, "data": data or {}, "error": None}
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/admin/scoring-rubric
+# ---------------------------------------------------------------------------
+
+@router.patch("/scoring-rubric")
+async def update_scoring_rubric(
+    payload: ScoringRubricUpdate,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Update the org's AI lead scoring rubric. All fields are optional."""
+    # Allow explicit empty string (clears the field) but exclude unset fields
+    update_data = {
+        k: v for k, v in payload.model_dump().items()
+        if v is not None
+    }
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "VALIDATION_ERROR", "message": "No fields provided"},
+        )
+    db.table("organisations").update(update_data).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="scoring_rubric.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value=update_data,
+    )
+    return {"success": True, "data": {"message": "Scoring rubric updated"}, "error": None}

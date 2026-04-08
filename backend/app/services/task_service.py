@@ -133,6 +133,10 @@ def list_tasks(
     priority: Optional[str] = None,
     status: Optional[str] = None,
     include_completed: bool = False,
+    created_from: Optional[str] = None,
+    created_to: Optional[str] = None,
+    due_from: Optional[str] = None,
+    due_to: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
@@ -159,7 +163,8 @@ def list_tasks(
             "id, org_id, title, description, task_type, source_module, "
             "source_record_id, assigned_to, created_by, status, priority, "
             "due_at, completed_at, snoozed_until, completion_notes, "
-            "ai_confirmed_by, created_at, updated_at"
+            "ai_confirmed_by, created_at, updated_at",
+            "assigned_user:users!assigned_to(id, full_name)"
         )
         .eq("org_id", org_id)
         .execute()
@@ -186,6 +191,16 @@ def list_tasks(
         rows = [r for r in rows if (r.get("status") or "").lower() == status.lower()]
     if not include_completed:
         rows = [r for r in rows if (r.get("status") or "open").lower() != "completed"]
+    
+    # Date filters (Pattern 33 — Python-side)
+    if created_from:
+        rows = [r for r in rows if r.get("created_at") and r["created_at"] >= created_from]
+    if created_to:
+        rows = [r for r in rows if r.get("created_at") and r["created_at"] <= created_to]
+    if due_from:
+        rows = [r for r in rows if r.get("due_at") and r["due_at"] >= due_from]
+    if due_to:
+        rows = [r for r in rows if r.get("due_at") and r["due_at"] <= due_to]
 
     # Sort: overdue first, then priority, then due_at
     rows.sort(key=_sort_key)

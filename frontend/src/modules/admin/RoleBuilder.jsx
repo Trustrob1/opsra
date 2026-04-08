@@ -32,6 +32,7 @@ const PERMISSION_KEYS = [
 const VALID_TEMPLATES = [
   'owner', 'ops_manager', 'sales_agent',
   'customer_success', 'support_agent', 'finance', 'read_only',
+  'affiliate_partner',
 ]
 
 const OVERLAY = {
