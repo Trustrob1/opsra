@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { ds } from '../../utils/ds'
 import useTickets from '../../hooks/useTickets'
 import TicketCreateModal from './TicketCreateModal'
+import Pagination from '../../shared/Pagination'
 
 // ---------------------------------------------------------------------------
 // Badge helpers
@@ -193,15 +194,7 @@ export default function TicketList({ onSelectTicket }) {
       )}
 
       {/* Pagination */}
-      {total > pageSize && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px' }}>
-          <span style={{ fontSize: '12px', color: ds.gray }}>Page {page} · {total} total tickets</span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button disabled={page <= 1} onClick={() => goToPage(page - 1)} style={{ padding: '6px 14px', borderRadius: '7px', border: `1px solid ${ds.border}`, background: 'white', fontSize: '12px', cursor: page <= 1 ? 'not-allowed' : 'pointer', opacity: page <= 1 ? 0.5 : 1 }}>← Prev</button>
-            <button disabled={!hasMore} onClick={() => goToPage(page + 1)} style={{ padding: '6px 14px', borderRadius: '7px', border: `1px solid ${ds.border}`, background: 'white', fontSize: '12px', cursor: !hasMore ? 'not-allowed' : 'pointer', opacity: !hasMore ? 0.5 : 1 }}>Next →</button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} total={total} pageSize={pageSize} onGoToPage={goToPage} />
 
       {showCreate && <TicketCreateModal onCreated={onCreated} onClose={() => setShowCreate(false)} />}
     </div>

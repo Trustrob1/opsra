@@ -18,6 +18,8 @@ from app.dependencies import get_current_org, require_permission
 import httpx
 import os
 from app.services import admin_service
+from datetime import datetime
+from app.models.common import ok
 
 
 router = APIRouter()
@@ -100,6 +102,32 @@ class ScoringRubricUpdate(BaseModel):
     scoring_warm_criteria:           Optional[str] = None
     scoring_cold_criteria:           Optional[str] = None
     scoring_qualification_questions: Optional[str] = None
+
+class QualificationBotUpdate(BaseModel):
+    """M01-3: Update org qualification bot config."""
+    org_whatsapp_number:          Optional[str] = Field(None, max_length=20)
+    org_business_contact_number:  Optional[str] = Field(None, max_length=20)
+    qualification_bot_name:       Optional[str] = Field(None, max_length=100)
+    qualification_opening_message: Optional[str] = Field(None, max_length=2000)
+    qualification_script:         Optional[str] = Field(None, max_length=3000)
+    qualification_fields:         Optional[list] = None
+    qualification_handoff_triggers: Optional[str] = Field(None, max_length=500)
+    qualification_fallback_hours: Optional[int]  = Field(None, ge=1, le=168)
+    qualification_sending_mode: Optional[str] = Field(
+            None,
+            pattern=r"^(full_approval|review_window|auto_send)$",
+        )
+    review_window_minutes: Optional[int] = Field(None, ge=1, le=60) 
+
+
+class SlaConfigUpdate(BaseModel):
+    """M01-6: Update org-level lead response SLA targets per score tier."""
+    sla_hot_hours:  Optional[int] = Field(None, ge=1, le=72,
+        description="Hours before a Hot lead is considered overdue (default 1)")
+    sla_warm_hours: Optional[int] = Field(None, ge=1, le=168,
+        description="Hours before a Warm lead is considered overdue (default 4)")
+    sla_cold_hours: Optional[int] = Field(None, ge=1, le=720,
+        description="Hours before a Cold lead is considered overdue (default 24)")
 
 
 # ── Valid role templates — Technical Spec Section 3.1 ─────────
@@ -958,7 +986,6 @@ async def get_scoring_rubric(
         data = data[0] if data else {}
     return {"success": True, "data": data or {}, "error": None}
 
-
 # ---------------------------------------------------------------------------
 # PATCH /api/v1/admin/scoring-rubric
 # ---------------------------------------------------------------------------
@@ -988,3 +1015,272 @@ async def update_scoring_rubric(
         new_value=update_data,
     )
     return {"success": True, "data": {"message": "Scoring rubric updated"}, "error": None}
+
+@router.get("/qualification-bot")
+def get_qualification_bot(
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    result = (
+        db.table("organisations")
+        .select(
+            "org_whatsapp_number, org_business_contact_number, "
+            "qualification_bot_name, qualification_opening_message, "
+            "qualification_script, qualification_fields, "
+            "qualification_handoff_triggers, qualification_fallback_hours, "
+            "qualification_sending_mode, review_window_minutes"
+        )
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return ok(data=data or {})
+
+
+@router.patch("/qualification-bot")
+def update_qualification_bot(
+    payload: QualificationBotUpdate,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    updates = {
+        k: v for k, v in payload.model_dump(exclude_unset=True).items()
+        if v is not None
+    }
+    if not updates:
+        return ok(data={}, message="No changes to save")
+    updates["updated_at"] = datetime.utcnow().isoformat()
+    result = (
+        db.table("organisations")
+        .update(updates)
+        .eq("id", org["org_id"])
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else updates
+    return ok(data=data, message="Qualification bot settings saved")
+
+
+@router.post("/qualification-bot/ai-recommendations")
+def get_qualification_ai_recommendations(
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    org_result = (
+        db.table("organisations")
+        .select("name, industry")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    org_data = org_result.data
+    if isinstance(org_data, list):
+        org_data = org_data[0] if org_data else {}
+    from app.services.ai_service import generate_qualification_defaults
+    suggestions = generate_qualification_defaults(org_data or {})
+    return ok(data=suggestions, message="AI recommendations generated")
+
+# ── M01-6 — Lead SLA Config ──────────────────────────────────────────────────
+
+@router.get("/sla-config")
+def get_sla_config(
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Return org SLA hour targets for hot / warm / cold leads."""
+    result = (
+        db.table("organisations")
+        .select("sla_hot_hours, sla_warm_hours, sla_cold_hours")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    # Return defaults if columns not yet set
+    return ok(data={
+        "sla_hot_hours":  (data or {}).get("sla_hot_hours",  1),
+        "sla_warm_hours": (data or {}).get("sla_warm_hours", 4),
+        "sla_cold_hours": (data or {}).get("sla_cold_hours", 24),
+    })
+
+
+@router.patch("/sla-config")
+def update_sla_config(
+    payload: SlaConfigUpdate,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Update org SLA hour targets. Only supplied fields are changed."""
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if not updates:
+        return ok(data={}, message="No changes to save")
+    updates["updated_at"] = datetime.utcnow().isoformat()
+    result = (
+        db.table("organisations")
+        .update(updates)
+        .eq("id", org["org_id"])
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else updates
+    return ok(data=data, message="SLA targets saved")
+
+
+# ── M01-10a — Nurture Config ──────────────────────────────────────────────────
+
+class NurtureConfigUpdate(BaseModel):
+    """M01-10a: Update org nurture track configuration."""
+    nurture_track_enabled:   Optional[bool] = None
+    conversion_attempt_days: Optional[int]  = Field(None, ge=1, le=365,
+        description="Days of inactivity before a lead is graduated to nurture (default 14)")
+    nurture_interval_days:   Optional[int]  = Field(None, ge=1, le=365,
+        description="Days between nurture messages for a lead (default 7)")
+    nurture_sequence:        Optional[list] = None
+
+
+class TriageConfigUpdate(BaseModel):
+    """WH-0: Update org WhatsApp triage menu config and unknown-contact behavior."""
+    whatsapp_triage_config:    Optional[dict] = None
+    unknown_contact_behavior:  Optional[str]  = Field(
+        None,
+        pattern=r"^(triage_first|qualify_immediately)$",
+        description="triage_first (default) or qualify_immediately",
+    )
+
+
+@router.get("/nurture-config")
+def get_nurture_config(
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Return org nurture track configuration with defaults."""
+    result = (
+        db.table("organisations")
+        .select(
+            "nurture_track_enabled, conversion_attempt_days, "
+            "nurture_interval_days, nurture_sequence"
+        )
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    defaults = {
+        "nurture_track_enabled":   False,
+        "conversion_attempt_days": 14,
+        "nurture_interval_days":   7,
+        "nurture_sequence":        [],
+    }
+    return ok(data={**defaults, **(data or {})})
+
+
+@router.patch("/nurture-config")
+def update_nurture_config(
+    payload: NurtureConfigUpdate,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Update nurture track configuration for this org."""
+    # exclude_unset keeps only fields the caller explicitly sent;
+    # filter None to avoid overwriting booleans/lists with null unintentionally,
+    # but False and [] are kept (both are not None).
+    updates = {
+        k: v for k, v in payload.model_dump(exclude_unset=True).items()
+        if v is not None
+    }
+    # Explicit False for the toggle must survive the filter above
+    if payload.nurture_track_enabled is False:
+        updates["nurture_track_enabled"] = False
+    # Explicit empty list (clearing the sequence) must survive too
+    if payload.nurture_sequence is not None:
+        updates["nurture_sequence"] = payload.nurture_sequence
+
+    if not updates:
+        return ok(data={}, message="No changes to save")
+
+    updates["updated_at"] = datetime.utcnow().isoformat()
+    result = (
+        db.table("organisations")
+        .update(updates)
+        .eq("id", org["org_id"])
+        .execute()
+    )
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="nurture_config.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={k: v for k, v in updates.items() if k != "updated_at"},
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else updates
+    return ok(data=data, message="Nurture configuration saved")
+
+
+# ============================================================
+# WH-0 — TRIAGE CONFIG
+# ============================================================
+
+@router.get("/triage-config")
+def get_triage_config(
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Return org WhatsApp triage config and unknown-contact behavior. WH-0."""
+    result = (
+        db.table("organisations")
+        .select("whatsapp_triage_config, unknown_contact_behavior")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    defaults = {
+        "whatsapp_triage_config":   None,
+        "unknown_contact_behavior": "triage_first",
+    }
+    return ok(data={**defaults, **(data or {})})
+
+
+@router.patch("/triage-config")
+def update_triage_config(
+    payload: TriageConfigUpdate,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """Update org WhatsApp triage config and/or unknown-contact behavior. WH-0."""
+    updates = {
+        k: v for k, v in payload.model_dump(exclude_unset=True).items()
+        if v is not None
+    }
+    if not updates:
+        return ok(data={}, message="No changes to save")
+
+    updates["updated_at"] = datetime.utcnow().isoformat()
+    result = (
+        db.table("organisations")
+        .update(updates)
+        .eq("id", org["org_id"])
+        .execute()
+    )
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="triage_config.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={k: v for k, v in updates.items() if k != "updated_at"},
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else updates
+    return ok(data=data, message="Triage configuration saved")

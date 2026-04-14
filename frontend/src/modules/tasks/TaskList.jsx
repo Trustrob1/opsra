@@ -1,28 +1,52 @@
 /**
  * modules/tasks/TaskList.jsx
- * Grouped task list — Phase 7B (updated Phase 9C).
+ * Grouped task list — Phase 7B (updated Phase 9C, M01-9b).
  *
- * Phase 9C filter additions:
- *   - Assigned To dropdown (team view only — sales_agent + affiliate_partner)
- *   - Created Date preset: Today | Last 7 days | Last 30 days | Custom
- *   - Due Date preset: Today | Next 7 days | Next 30 days | Overdue | Custom
- *   - FilterBar now visible in BOTH personal and team view
+ * M01-9b restructure:
+ *   Three inner tabs (Active | Completed | Archived) replace the single
+ *   scrollable list + bottom-of-page completed section.
+ *
+ *   Active tab:
+ *     - Existing grouped view (Overdue / Today / This Week / Upcoming /
+ *       No Due Date / Snoozed)
+ *     - Pagination controls wired to page/goToPage/total from useTasks
+ *     - Delete → optimistic removal from list, onDelete fires
+ *
+ *   Completed tab:
+ *     - Session-only optimistic state (Option 1 — no server re-fetch)
+ *     - Tasks moved here when ✓ Complete is confirmed
+ *     - Archive action available on completed cards
+ *
+ *   Archived tab:
+ *     - Server-fetched on first activation (lazy load)
+ *     - Separate local pagination state
+ *     - Restore action on each card
+ *
+ * Pattern 26: all three tab panels stay mounted after first activation,
+ *   hidden with display:none.
+ * Pattern 51: full rewrite — no sed edits.
  *
  * Props:
- *   tasks      — array of task objects (now includes assigned_user join)
- *   loading    — bool
- *   error      — string or null
- *   teamView   — bool: whether team tab is active
- *   filters    — current filter state from useTasks
- *   applyFilters(newFilters) — update filters
- *   onRefresh() — re-fetch callback
- *   onActionDone() — called after complete/snooze/reassign to refresh list
+ *   tasks        — active task objects from useTasks hook
+ *   total        — total active task count (for pagination)
+ *   loading      — bool
+ *   error        — string or null
+ *   teamView     — bool: whether team tab is active
+ *   filters      — current filter state from useTasks
+ *   applyFilters — update filters
+ *   page         — current page number
+ *   goToPage(n)  — navigate to page n
+ *   onRefresh()  — re-fetch active tasks
+ *   onActionDone()— called after snooze/reassign (NOT after complete/delete)
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
 import TaskCard from './TaskCard'
+import { listTasks } from '../../services/tasks.service'
 import { listUsers } from '../../services/admin.service'
+
+const PAGE_SIZE = 20
 
 // ── Grouping logic ────────────────────────────────────────────────────────────
 
@@ -43,13 +67,12 @@ function groupTasks(tasks) {
   for (const task of tasks) {
     const status = (task.status || 'open').toLowerCase()
     if (status === 'completed') continue
-    if (status === 'snoozed')   { groups.snoozed.push(task); continue }
-
+    if (status === 'snoozed')   { groups.snoozed.push(task);   continue }
     const due = task.due_at
-    if (!due)                   { groups.noDueDate.push(task); continue }
-    if (due < now.toISOString()){ groups.overdue.push(task);   continue }
-    if (due.startsWith(todayStr)){ groups.today.push(task);    continue }
-    if (due <= in7)             { groups.thisWeek.push(task);  continue }
+    if (!due)                    { groups.noDueDate.push(task); continue }
+    if (due < now.toISOString()) { groups.overdue.push(task);   continue }
+    if (due.startsWith(todayStr)){ groups.today.push(task);     continue }
+    if (due <= in7)              { groups.thisWeek.push(task);  continue }
     groups.upcoming.push(task)
   }
 
@@ -57,12 +80,12 @@ function groupTasks(tasks) {
 }
 
 const GROUP_META = [
-  { key: 'overdue',   label: '🔴 Overdue',     accent: '#dc2626' },
-  { key: 'today',     label: '📅 Today',        accent: '#d97706' },
-  { key: 'thisWeek',  label: '📆 This Week',    accent: '#2563eb' },
-  { key: 'upcoming',  label: '🔮 Upcoming',     accent: '#6b7280' },
-  { key: 'noDueDate', label: '📌 No Due Date',  accent: '#9ca3af' },
-  { key: 'snoozed',   label: '💤 Snoozed',      accent: '#a855f7' },
+  { key: 'overdue',   label: '🔴 Overdue',    accent: '#dc2626' },
+  { key: 'today',     label: '📅 Today',       accent: '#d97706' },
+  { key: 'thisWeek',  label: '📆 This Week',   accent: '#2563eb' },
+  { key: 'upcoming',  label: '🔮 Upcoming',    accent: '#6b7280' },
+  { key: 'noDueDate', label: '📌 No Due Date', accent: '#9ca3af' },
+  { key: 'snoozed',   label: '💤 Snoozed',     accent: '#a855f7' },
 ]
 
 // ── Filter bar ────────────────────────────────────────────────────────────────
@@ -94,15 +117,12 @@ const LBL = {
   display: 'block', fontSize: 10, fontWeight: 600, color: '#6b7280',
   textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 4,
 }
-const DATE_INPUT = {
-  ...SEL, cursor: 'text', fontSize: 12,
-}
+const DATE_INPUT = { ...SEL, cursor: 'text', fontSize: 12 }
 
 function FilterBar({ filters, applyFilters, showAssignedTo }) {
-  const [local,  setLocal]  = useState({ ...filters })
-  const [users,  setUsers]  = useState([])
+  const [local, setLocal] = useState({ ...filters })
+  const [users, setUsers] = useState([])
 
-  // Load assignable users for team view filter
   useEffect(() => {
     if (!showAssignedTo) return
     listUsers()
@@ -117,7 +137,6 @@ function FilterBar({ filters, applyFilters, showAssignedTo }) {
       .catch(() => {})
   }, [showAssignedTo])
 
-  // Keep local in sync if parent resets filters
   useEffect(() => { setLocal({ ...filters }) }, [filters])
 
   const set = (key, val) => setLocal(p => ({ ...p, [key]: val }))
@@ -134,7 +153,7 @@ function FilterBar({ filters, applyFilters, showAssignedTo }) {
     applyFilters(empty)
   }
 
-  const hasActiveFilters = Object.entries(local).some(([k, v]) => v !== '')
+  const hasActiveFilters = Object.values(local).some(v => v !== '')
 
   return (
     <div style={{
@@ -143,8 +162,6 @@ function FilterBar({ filters, applyFilters, showAssignedTo }) {
     }}>
       {/* Row 1 — scalar filters */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
-
-        {/* Priority */}
         <div>
           <label style={LBL}>Priority</label>
           <select value={local.priority} onChange={e => set('priority', e.target.value)} style={SEL}>
@@ -154,19 +171,17 @@ function FilterBar({ filters, applyFilters, showAssignedTo }) {
             ))}
           </select>
         </div>
-
-        {/* Status */}
         <div>
           <label style={LBL}>Status</label>
           <select value={local.status} onChange={e => set('status', e.target.value)} style={SEL}>
             <option value="">All Statuses</option>
             {['open', 'in_progress', 'snoozed'].map(o => (
-              <option key={o} value={o}>{o.replace('_', ' ').charAt(0).toUpperCase() + o.replace('_', ' ').slice(1)}</option>
+              <option key={o} value={o}>
+                {o.replace('_', ' ').charAt(0).toUpperCase() + o.replace('_', ' ').slice(1)}
+              </option>
             ))}
           </select>
         </div>
-
-        {/* Module */}
         <div>
           <label style={LBL}>Module</label>
           <select value={local.module} onChange={e => set('module', e.target.value)} style={SEL}>
@@ -176,8 +191,6 @@ function FilterBar({ filters, applyFilters, showAssignedTo }) {
             ))}
           </select>
         </div>
-
-        {/* Assigned To — team view only */}
         {showAssignedTo && (
           <div>
             <label style={LBL}>Assigned To</label>
@@ -189,8 +202,7 @@ function FilterBar({ filters, applyFilters, showAssignedTo }) {
               <option value="">All Users</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>
-                  {u.full_name}
-                  {u.roles?.template === 'affiliate_partner' ? ' (Affiliate)' : ''}
+                  {u.full_name}{u.roles?.template === 'affiliate_partner' ? ' (Affiliate)' : ''}
                 </option>
               ))}
             </select>
@@ -200,70 +212,40 @@ function FilterBar({ filters, applyFilters, showAssignedTo }) {
 
       {/* Row 2 — date filters */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', paddingTop: 12, borderTop: '1px solid #e5e7eb', marginBottom: 12 }}>
-
-        {/* Created Date preset */}
         <div>
           <label style={LBL}>Created Date</label>
           <select value={local.created_preset} onChange={e => set('created_preset', e.target.value)} style={SEL}>
             {CREATED_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
-
-        {/* Created custom range */}
         {local.created_preset === 'custom' && (
           <>
             <div>
               <label style={LBL}>From</label>
-              <input
-                type="date"
-                value={local.created_from}
-                onChange={e => set('created_from', e.target.value)}
-                style={DATE_INPUT}
-              />
+              <input type="date" value={local.created_from} onChange={e => set('created_from', e.target.value)} style={DATE_INPUT} />
             </div>
             <div>
               <label style={LBL}>To</label>
-              <input
-                type="date"
-                value={local.created_to}
-                onChange={e => set('created_to', e.target.value)}
-                style={DATE_INPUT}
-              />
+              <input type="date" value={local.created_to} onChange={e => set('created_to', e.target.value)} style={DATE_INPUT} />
             </div>
           </>
         )}
-
-        {/* Divider */}
         <div style={{ width: 1, height: 36, background: '#d1d5db', alignSelf: 'flex-end', margin: '0 4px' }} />
-
-        {/* Due Date preset */}
         <div>
           <label style={LBL}>Due Date</label>
           <select value={local.due_preset} onChange={e => set('due_preset', e.target.value)} style={SEL}>
             {DUE_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
-
-        {/* Due custom range */}
         {local.due_preset === 'custom' && (
           <>
             <div>
               <label style={LBL}>From</label>
-              <input
-                type="date"
-                value={local.due_from}
-                onChange={e => set('due_from', e.target.value)}
-                style={DATE_INPUT}
-              />
+              <input type="date" value={local.due_from} onChange={e => set('due_from', e.target.value)} style={DATE_INPUT} />
             </div>
             <div>
               <label style={LBL}>To</label>
-              <input
-                type="date"
-                value={local.due_to}
-                onChange={e => set('due_to', e.target.value)}
-                style={DATE_INPUT}
-              />
+              <input type="date" value={local.due_to} onChange={e => set('due_to', e.target.value)} style={DATE_INPUT} />
             </div>
           </>
         )}
@@ -298,18 +280,206 @@ function FilterBar({ filters, applyFilters, showAssignedTo }) {
   )
 }
 
+// ── Inner tab bar ─────────────────────────────────────────────────────────────
+
+function InnerTabBar({ active, onChange, completedCount, archivedTotal }) {
+  const tabs = [
+    { id: 'active',    label: 'Active',    count: null },
+    { id: 'completed', label: 'Completed', count: completedCount },
+    { id: 'archived',  label: 'Archived',  count: archivedTotal },
+  ]
+
+  return (
+    <div style={{
+      display: 'flex', gap: 6, marginBottom: 20,
+    }}>
+      {tabs.map(tab => {
+        const isActive = active === tab.id
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 16px',
+              background: isActive ? ds.teal : 'white',
+              color: isActive ? 'white' : '#6b7280',
+              border: isActive ? `1px solid ${ds.teal}` : '1px solid #e5e7eb',
+              borderRadius: 20, cursor: 'pointer',
+              fontSize: 12.5, fontWeight: isActive ? 600 : 400,
+              fontFamily: ds.fontDm,
+              transition: 'all 0.15s',
+            }}
+          >
+            {tab.label}
+            {tab.count !== null && tab.count > 0 && (
+              <span style={{
+                background: isActive ? 'rgba(255,255,255,0.25)' : '#f3f4f6',
+                color: isActive ? 'white' : '#374151',
+                fontSize: 10, fontWeight: 700,
+                padding: '1px 6px', borderRadius: 10,
+                minWidth: 18, textAlign: 'center',
+              }}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Pagination controls ───────────────────────────────────────────────────────
+
+function Pagination({ page, total, onGoToPage }) {
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  if (totalPages <= 1) return null
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      gap: 12, marginTop: 24, padding: '16px 0',
+      borderTop: '1px solid #f3f4f6',
+    }}>
+      <button
+        onClick={() => onGoToPage(page - 1)}
+        disabled={page <= 1}
+        style={{
+          background: 'none', border: '1px solid #e5e7eb',
+          borderRadius: 7, padding: '7px 14px', fontSize: 12.5,
+          color: page <= 1 ? '#d1d5db' : '#374151',
+          fontFamily: ds.fontDm, cursor: page <= 1 ? 'default' : 'pointer',
+        }}
+      >
+        ← Previous
+      </button>
+      <span style={{ fontSize: 12.5, color: '#6b7280', fontFamily: ds.fontDm }}>
+        Page <strong style={{ color: ds.dark }}>{page}</strong> of <strong style={{ color: ds.dark }}>{totalPages}</strong>
+      </span>
+      <button
+        onClick={() => onGoToPage(page + 1)}
+        disabled={page >= totalPages}
+        style={{
+          background: 'none', border: '1px solid #e5e7eb',
+          borderRadius: 7, padding: '7px 14px', fontSize: 12.5,
+          color: page >= totalPages ? '#d1d5db' : '#374151',
+          fontFamily: ds.fontDm, cursor: page >= totalPages ? 'default' : 'pointer',
+        }}
+      >
+        Next →
+      </button>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function TaskList({ tasks, loading, error, teamView, filters, applyFilters, onRefresh, onActionDone }) {
-  const [actionError, setActionError] = useState(null)
+export default function TaskList({
+  tasks,
+  total,
+  loading,
+  error,
+  teamView,
+  filters,
+  applyFilters,
+  page,
+  goToPage,
+  onRefresh,
+  onActionDone,
+}) {
+  const [innerTab,     setInnerTab]     = useState('active')
+  const [actionError,  setActionError]  = useState(null)
 
-  const groups       = groupTasks(tasks)
-  const totalVisible = Object.values(groups).flat().length
+  // ── Optimistic completed state (M01-9b — session-only, Option 1) ───────────
+  const [completedIds,   setCompletedIds]   = useState(new Set())
+  const [completedTasks, setCompletedTasks] = useState([])
+
+  // ── Optimistic deleted state (removed from active + completed lists) ───────
+  const [deletedIds, setDeletedIds] = useState(new Set())
+
+  // ── Archived tab local state ───────────────────────────────────────────────
+  const [archivedLoaded,  setArchivedLoaded]  = useState(false)
+  const [archivedTasks,   setArchivedTasks]   = useState([])
+  const [archivedTotal,   setArchivedTotal]   = useState(0)
+  const [archivedPage,    setArchivedPage]    = useState(1)
+  const [archivedLoading, setArchivedLoading] = useState(false)
+  const [archivedError,   setArchivedError]   = useState(null)
+
+  const fetchArchived = useCallback(async (pageNum) => {
+    setArchivedLoading(true)
+    setArchivedError(null)
+    try {
+      const data = await listTasks({
+        archived:  true,
+        team:      teamView,
+        page:      pageNum,
+        page_size: PAGE_SIZE,
+      })
+      setArchivedTasks(data.items || [])
+      setArchivedTotal(data.total || 0)
+      setArchivedPage(pageNum)
+    } catch {
+      setArchivedError('Could not load archived tasks.')
+    } finally {
+      setArchivedLoading(false)
+    }
+  }, [teamView])
+
+  // Lazy-load archived tab on first activation
+  const handleInnerTabChange = (tab) => {
+    setInnerTab(tab)
+    if (tab === 'archived' && !archivedLoaded) {
+      setArchivedLoaded(true)
+      fetchArchived(1)
+    }
+  }
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleCompleteOptimistic = (id) => {
+    const task = tasks.find(t => t.id === id)
+    if (!task) return
+    setCompletedIds(prev => new Set([...prev, id]))
+    setCompletedTasks(prev => [...prev, { ...task, status: 'completed' }])
+    // No onActionDone — re-fetch with completed:false would vanish the task
+  }
+
+  const handleDeleteOptimistic = (id) => {
+    // Remove from active list and completed list immediately
+    setDeletedIds(prev => new Set([...prev, id]))
+    setCompletedTasks(prev => prev.filter(t => t.id !== id))
+    // Refresh archived count
+    fetchArchived(archivedPage)
+  }
+
+  const handleRestoreFromArchived = (id) => {
+    // Remove from archived list optimistically
+    setArchivedTasks(prev => prev.filter(t => t.id !== id))
+    setArchivedTotal(prev => Math.max(0, prev - 1))
+    // Remove from deletedIds so it can reappear in active list on next refresh
+    setDeletedIds(prev => { const s = new Set(prev); s.delete(id); return s })
+    // Refresh active list
+    onRefresh?.()
+  }
+
+  // Active tasks = fetched tasks minus optimistically completed/deleted ones
+  const activeTasks     = tasks.filter(t => !completedIds.has(t.id) && !deletedIds.has(t.id))
+  const activeCompleted = completedTasks.filter(t => !deletedIds.has(t.id))
+  const groups          = groupTasks(activeTasks)
+  const totalVisible    = Object.values(groups).flat().length
+
+  // ── Loading / error states ─────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div style={{ padding: '40px 0', textAlign: 'center', color: '#9ca3af' }}>
-        <div style={{ width: 28, height: 28, border: `3px solid #e5e7eb`, borderTopColor: ds.teal, borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+        <div style={{
+          width: 28, height: 28,
+          border: '3px solid #e5e7eb', borderTopColor: ds.teal,
+          borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+          margin: '0 auto 12px',
+        }} />
         <p style={{ fontSize: 13 }}>Loading tasks…</p>
       </div>
     )
@@ -319,65 +489,182 @@ export default function TaskList({ tasks, loading, error, teamView, filters, app
     return (
       <div style={{ padding: '20px 0' }}>
         <p style={{ fontSize: 13, color: '#dc2626' }}>⚠ {error}</p>
-        <button onClick={onRefresh} style={{ fontSize: 13, color: ds.teal, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Retry</button>
+        <button
+          onClick={onRefresh}
+          style={{ fontSize: 13, color: ds.teal, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          Retry
+        </button>
       </div>
     )
   }
 
   return (
     <div>
-      {/* Filter bar — shown in both personal and team view */}
-      <FilterBar
-        filters={filters}
-        applyFilters={applyFilters}
-        showAssignedTo={teamView}
+      {/* Inner tab bar — Active | Completed | Archived */}
+      <InnerTabBar
+        active={innerTab}
+        onChange={handleInnerTabChange}
+        completedCount={activeCompleted.length}
+        archivedTotal={archivedTotal}
       />
 
+      {/* Action error banner */}
       {actionError && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#dc2626', marginBottom: 16 }}>
-          ⚠ {actionError}
-          <button onClick={() => setActionError(null)} style={{ marginLeft: 12, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        <div style={{
+          background: '#fef2f2', border: '1px solid #fca5a5',
+          borderRadius: 8, padding: '10px 14px',
+          fontSize: 13, color: '#dc2626', marginBottom: 16,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ flex: 1 }}>⚠ {actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 14 }}
+          >
+            ✕
+          </button>
         </div>
       )}
 
-      {totalVisible === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-          <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 15, color: '#6b7280', margin: '0 0 6px' }}>
-            {teamView ? 'No tasks match the filters' : 'All clear — no pending tasks!'}
-          </p>
-          <p style={{ fontSize: 13 }}>
-            {teamView ? 'Try adjusting the filters above.' : 'Use + New Task to create one.'}
-          </p>
-        </div>
-      )}
+      {/* ── ACTIVE TAB ──────────────────────────────────────────────────────── */}
+      <div style={{ display: innerTab === 'active' ? 'block' : 'none' }}>
+        <FilterBar
+          filters={filters}
+          applyFilters={applyFilters}
+          showAssignedTo={teamView}
+        />
 
-      {GROUP_META.map(({ key, label, accent }) => {
-        const items = groups[key]
-        if (!items.length) return null
-        return (
-          <div key={key} style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: accent }}>
-                {label}
-              </span>
-              <span style={{ background: accent, color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10 }}>
-                {items.length}
-              </span>
+        {totalVisible === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 15, color: '#6b7280', margin: '0 0 6px' }}>
+              {teamView ? 'No tasks match the filters' : 'All clear — no pending tasks!'}
+            </p>
+            <p style={{ fontSize: 13 }}>
+              {teamView ? 'Try adjusting the filters above.' : 'Use + New Task to create one.'}
+            </p>
+          </div>
+        )}
+
+        {GROUP_META.map(({ key, label, accent }) => {
+          const items = groups[key]
+          if (!items.length) return null
+          return (
+            <div key={key} style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: accent }}>
+                  {label}
+                </span>
+                <span style={{
+                  background: accent, color: 'white',
+                  fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                }}>
+                  {items.length}
+                </span>
+              </div>
+              {items.map(task => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onComplete={handleCompleteOptimistic}
+                  onSnooze={() => onActionDone?.()}
+                  onDelete={handleDeleteOptimistic}
+                  onError={msg => setActionError(msg)}
+                  onReassigned={() => onActionDone?.()}
+                />
+              ))}
             </div>
-            {items.map(task => (
+          )
+        })}
+
+        <Pagination page={page} total={total} onGoToPage={goToPage} />
+      </div>
+
+      {/* ── COMPLETED TAB ───────────────────────────────────────────────────── */}
+      <div style={{ display: innerTab === 'completed' ? 'block' : 'none' }}>
+        {activeCompleted.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>☑️</div>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 15, color: '#6b7280', margin: '0 0 6px' }}>
+              No tasks completed this session
+            </p>
+            <p style={{ fontSize: 13 }}>Tasks you complete will appear here.</p>
+          </div>
+        ) : (
+          <>
+            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16, fontFamily: ds.fontDm }}>
+              Tasks completed in this session. Archived tasks move to the Archived tab.
+            </p>
+            {activeCompleted.map(task => (
               <TaskCard
                 key={task.id}
                 task={task}
-                onComplete={() => onActionDone?.()}
-                onSnooze={() => onActionDone?.()}
+                onDelete={handleDeleteOptimistic}
                 onError={msg => setActionError(msg)}
-                onReassigned={() => onActionDone?.()}
               />
             ))}
+          </>
+        )}
+      </div>
+
+      {/* ── ARCHIVED TAB ────────────────────────────────────────────────────── */}
+      <div style={{ display: innerTab === 'archived' ? 'block' : 'none' }}>
+        {archivedLoading && (
+          <div style={{ padding: '40px 0', textAlign: 'center', color: '#9ca3af' }}>
+            <div style={{
+              width: 28, height: 28,
+              border: '3px solid #e5e7eb', borderTopColor: '#9ca3af',
+              borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+              margin: '0 auto 12px',
+            }} />
+            <p style={{ fontSize: 13 }}>Loading archived tasks…</p>
           </div>
-        )
-      })}
+        )}
+
+        {archivedError && !archivedLoading && (
+          <div style={{ padding: '20px 0' }}>
+            <p style={{ fontSize: 13, color: '#dc2626' }}>⚠ {archivedError}</p>
+            <button
+              onClick={() => fetchArchived(archivedPage)}
+              style={{ fontSize: 13, color: ds.teal, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!archivedLoading && !archivedError && archivedTasks.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>🗄</div>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 15, color: '#6b7280', margin: '0 0 6px' }}>
+              No archived tasks
+            </p>
+            <p style={{ fontSize: 13 }}>Tasks you archive will appear here and can be restored.</p>
+          </div>
+        )}
+
+        {!archivedLoading && !archivedError && archivedTasks.length > 0 && (
+          <>
+            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16, fontFamily: ds.fontDm }}>
+              Archived tasks are hidden from the active list. Restore to make them active again.
+            </p>
+            {archivedTasks.map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                onRestore={handleRestoreFromArchived}
+                onError={msg => setActionError(msg)}
+              />
+            ))}
+            <Pagination
+              page={archivedPage}
+              total={archivedTotal}
+              onGoToPage={(p) => fetchArchived(p)}
+            />
+          </>
+        )}
+      </div>
     </div>
   )
 }

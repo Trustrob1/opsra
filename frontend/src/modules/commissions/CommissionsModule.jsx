@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
 import useAuthStore from '../../store/authStore'
 import * as commSvc from '../../services/commissions.service'
+import Pagination from '../../shared/Pagination'
 
 const STATUS_COLORS = {
   pending:  { bg: '#FEF9C3', color: '#92400E' },
@@ -339,27 +340,7 @@ export default function CommissionsModule({ user }) {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 18 }}>
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            style={{ ...BTN, opacity: page === 1 ? 0.4 : 1 }}
-          >
-            ← Prev
-          </button>
-          <span style={{ fontSize: 13, color: '#7A9BAD' }}>
-            Page {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            style={{ ...BTN, opacity: page >= totalPages ? 0.4 : 1 }}
-          >
-            Next →
-          </button>
-        </div>
-      )}
+      <Pagination page={page} total={total} pageSize={PAGE_SIZE} onGoToPage={setPage} />
     </div>
   )
 }

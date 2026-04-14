@@ -1,9 +1,14 @@
 /**
  * services/tasks.service.js
- * Task Management API functions — Phase 7B.
+ * Task Management API functions — Phase 7B (updated M01-9b).
  *
  * Pattern 11: JWT from Zustand store only — never localStorage
  * Pattern 12: org_id never in any payload
+ *
+ * M01-9b additions:
+ *   deleteTask(id)    — soft-delete (archive) a task
+ *   restoreTask(id)   — restore an archived task
+ *   listTasks now accepts archived param for the Archived tab fetch
  */
 
 import axios from 'axios'
@@ -19,10 +24,12 @@ function authHeaders() {
 /**
  * List tasks — personal or team view.
  * Backend silently scopes team view to own tasks for non-managers.
- * Pass source_record_id to get all tasks linked to a specific record
- * (used by ticket thread, lead profile, customer profile widgets).
+ * Pass source_record_id to get all tasks linked to a specific record.
+ * Pass archived=true to fetch the Archived tab contents.
  * @param {object} params — team, assigned_to, module, source_record_id,
- *                          priority, status, completed, page, page_size
+ *                          priority, status, completed, archived,
+ *                          page, page_size, created_from, created_to,
+ *                          due_from, due_to
  */
 export async function listTasks(params = {}) {
   const res = await axios.get(`${BASE}/api/v1/tasks`, {
@@ -87,6 +94,34 @@ export async function snoozeTask(id, snoozedUntil) {
   const res = await axios.post(
     `${BASE}/api/v1/tasks/${id}/snooze`,
     { snoozed_until: snoozedUntil },
+    { headers: authHeaders() },
+  )
+  return res.data.data
+}
+
+/**
+ * Soft-delete (archive) a task.
+ * Sets deleted_at on the backend. Task moves to the Archived tab.
+ * RBAC: own task (created or assigned) or manager.
+ * @param {string} id
+ */
+export async function deleteTask(id) {
+  const res = await axios.delete(`${BASE}/api/v1/tasks/${id}`, {
+    headers: authHeaders(),
+  })
+  return res.data.data
+}
+
+/**
+ * Restore an archived task.
+ * Clears deleted_at. Task returns to its previous status.
+ * RBAC: own task (created or assigned) or manager.
+ * @param {string} id
+ */
+export async function restoreTask(id) {
+  const res = await axios.post(
+    `${BASE}/api/v1/tasks/${id}/restore`,
+    {},
     { headers: authHeaders() },
   )
   return res.data.data

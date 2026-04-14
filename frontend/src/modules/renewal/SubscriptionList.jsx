@@ -13,6 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { ds } from '../../utils/ds'
 import useSubscriptions from '../../hooks/useSubscriptions'
 import ConfirmPaymentModal from './ConfirmPaymentModal'
+import Pagination from '../../shared/Pagination'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -358,27 +359,8 @@ export default function SubscriptionList({ user, onSelect, externalTick = 0 }) {
         })}
 
         {/* Pagination */}
-        {!loading && totalPages > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderTop: '1px solid #f0f5f8', background: '#fafcfd' }}>
-            <span style={{ fontSize: 12, color: ds.gray }}>
-              {total} subscription{total !== 1 ? 's' : ''} total
-            </span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={() => goToPage(page - 1)}
-                disabled={page === 1}
-                style={{ ...paginBtn, opacity: page === 1 ? 0.4 : 1 }}
-              >← Prev</button>
-              <span style={{ fontSize: 13, color: ds.gray, padding: '6px 12px' }}>
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => goToPage(page + 1)}
-                disabled={!hasMore}
-                style={{ ...paginBtn, opacity: !hasMore ? 0.4 : 1 }}
-              >Next →</button>
-            </div>
-          </div>
+        {!loading && (
+          <Pagination page={page} total={total} pageSize={pageSize} onGoToPage={goToPage} />
         )}
       </div>
 

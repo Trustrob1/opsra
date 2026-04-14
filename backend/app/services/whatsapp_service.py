@@ -121,6 +121,90 @@ def _call_meta_send(phone_id: str, meta_payload: dict) -> dict:
         )
 
 
+def send_triage_menu(
+    db,
+    org_id: str,
+    phone_number: str,
+    section: str = "unknown",
+) -> None:
+    """
+    WH-0: Send an Interactive List Message to an unknown contact.
+    Fetches the org's triage config and builds the WhatsApp interactive payload.
+
+    Guards:
+      - No whatsapp_phone_id → log warning, return (cannot send).
+      - No triage_config or section key absent → log warning, return.
+        Caller is responsible for fallback — we do NOT fall back to qualification.
+      - WhatsApp API hard limits enforced: label[:24], description[:72], items[:10].
+
+    S14: entire function body wrapped in try/except — never raises.
+    """
+    try:
+        org_result = (
+            db.table("organisations")
+            .select("whatsapp_phone_id, whatsapp_triage_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else None
+
+        phone_id = (org_data or {}).get("whatsapp_phone_id")
+        if not phone_id:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "send_triage_menu: no whatsapp_phone_id for org %s — skipping", org_id
+            )
+            return
+
+        triage_config = (org_data or {}).get("whatsapp_triage_config")
+        if not triage_config or section not in triage_config:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "send_triage_menu: no triage_config[%s] for org %s — skipping",
+                section, org_id,
+            )
+            return
+
+        config = triage_config[section]
+
+        rows = [
+            {
+                "id":          item["id"],
+                "title":       item["label"][:24],
+                "description": item.get("description", "")[:72],
+            }
+            for item in (config.get("items") or [])[:10]
+        ]
+
+        meta_payload = {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "interactive",
+            "interactive": {
+                "type": "list",
+                "body": {"text": config.get("greeting", "How can we help you today?")},
+                "action": {
+                    "button": "See options",
+                    "sections": [{
+                        "title": config.get("section_title", "Choose an option"),
+                        "rows":  rows,
+                    }],
+                },
+            },
+        }
+
+        _call_meta_send(phone_id, meta_payload)
+
+    except Exception as exc:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "send_triage_menu failed org=%s phone=%s: %s", org_id, phone_number, exc
+        )
+
+
 # ---------------------------------------------------------------------------
 # Conversation window
 # ---------------------------------------------------------------------------
@@ -982,3 +1066,407 @@ def get_unread_counts(db, org_id: str) -> dict:
         _log.getLogger(__name__).warning("get_unread_counts failed: %s", exc)
 
     return {"leads": leads_counts, "customers": customers_counts}
+
+"""
+
+New functions:
+  - queue_outbox_message()      — respects org sending mode; auto-sends or parks in outbox
+  - list_outbox()               — paginated outbox listing for the approval UI
+  - approve_outbox_message()    — rep approves a pending/scheduled message → sends it
+  - cancel_outbox_message()     — rep cancels a pending/scheduled message
+  - _dispatch_outbox_row()      — internal: calls Meta API + writes whatsapp_messages row
+
+These functions are called by:
+  - webhooks.py _send_qualification_reply() (replace direct Meta call with queue_outbox_message)
+  - qualification_worker.py (review window auto-sender reads scheduled rows)
+  - whatsapp.py router (new outbox routes)
+"""
+
+
+# ---------------------------------------------------------------------------
+# Outbox — internal dispatch helper
+# ---------------------------------------------------------------------------
+
+def _dispatch_outbox_row(
+    db,
+    org_id: str,
+    outbox_row: dict,
+    actioned_by: Optional[str],
+) -> dict:
+    """
+    Send a queued outbox message via Meta Cloud API, write to whatsapp_messages,
+    and mark the outbox row as sent.
+
+    S14: on Meta API failure, marks outbox row as failed — never raises to caller.
+    Returns the updated outbox row.
+    """
+    import logging as _log
+    logger = _log.getLogger(__name__)
+
+    
+    outbox_id = outbox_row["id"]
+    lead_id_str    = outbox_row.get("lead_id")
+    customer_id_str = outbox_row.get("customer_id")
+    content        = outbox_row.get("content")
+    template_name  = outbox_row.get("template_name")
+    now_ts         = _now_iso()
+
+    # ── Resolve phone_id ──────────────────────────────────────────────────
+    try:
+        org_result = (
+            db.table("organisations")
+            .select("whatsapp_phone_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = _normalise_data(org_result.data) if org_result else None
+    except Exception:
+        org_data = None
+    phone_id: str = (org_data or {}).get("whatsapp_phone_id") or ""
+
+    # ── Resolve recipient number ──────────────────────────────────────────
+    to_number: Optional[str] = None
+    if lead_id_str:
+        try:
+            lr = (
+                db.table("leads")
+                .select("whatsapp, phone")
+                .eq("id", lead_id_str)
+                .eq("org_id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            ld = _normalise_data(lr.data)
+            to_number = (ld or {}).get("whatsapp") or (ld or {}).get("phone")
+        except Exception:
+            pass
+    elif customer_id_str:
+        try:
+            cr = (
+                db.table("customers")
+                .select("whatsapp, phone")
+                .eq("id", customer_id_str)
+                .eq("org_id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            cd = _normalise_data(cr.data)
+            to_number = (cd or {}).get("whatsapp") or (cd or {}).get("phone")
+        except Exception:
+            pass
+
+    if not to_number or not phone_id:
+        logger.warning(
+            "_dispatch_outbox_row: missing phone_id or to_number for outbox %s", outbox_id
+        )
+        db.table("whatsapp_outbox").update(
+            {"status": "failed", "updated_at": now_ts}
+        ).eq("id", outbox_id).execute()
+        return {**outbox_row, "status": "failed"}
+
+    # ── Build Meta payload ────────────────────────────────────────────────
+    if template_name:
+        meta_payload = {
+            "messaging_product": "whatsapp",
+            "to": to_number,
+            "type": "template",
+            "template": {"name": template_name, "language": {"code": "en"}},
+        }
+    else:
+        meta_payload = {
+            "messaging_product": "whatsapp",
+            "to": to_number,
+            "type": "text",
+            "text": {"body": content},
+        }
+
+    # ── Call Meta API ─────────────────────────────────────────────────────
+    meta_message_id: Optional[str] = None
+    try:
+        meta_resp = _call_meta_send(phone_id, meta_payload)
+        msgs = meta_resp.get("messages")
+        if isinstance(msgs, list) and msgs:
+            meta_message_id = msgs[0].get("id")
+    except Exception as exc:
+        logger.warning("_dispatch_outbox_row: Meta API failed for outbox %s: %s", outbox_id, exc)
+        db.table("whatsapp_outbox").update(
+            {"status": "failed", "updated_at": now_ts}
+        ).eq("id", outbox_id).execute()
+        return {**outbox_row, "status": "failed"}
+
+    # ── Write to whatsapp_messages ────────────────────────────────────────
+    window_expires = (
+        datetime.now(timezone.utc) + timedelta(hours=24)
+    ).isoformat()
+    msg_row: dict = {
+        "org_id": org_id,
+        "direction": "outbound",
+        "message_type": "text",
+        "content": content,
+        "template_name": template_name,
+        "status": "sent",
+        "meta_message_id": meta_message_id,
+        "window_open": True,
+        "window_expires_at": window_expires,
+        "sent_by": actioned_by,
+        "created_at": now_ts,
+    }
+    if lead_id_str:
+        msg_row["lead_id"] = lead_id_str
+    if customer_id_str:
+        msg_row["customer_id"] = customer_id_str
+
+    try:
+        db.table("whatsapp_messages").insert(msg_row).execute()
+    except Exception as exc:
+        logger.warning(
+            "_dispatch_outbox_row: failed to write whatsapp_messages for outbox %s: %s",
+            outbox_id, exc,
+        )
+
+    # ── Mark outbox row sent ──────────────────────────────────────────────
+    updates: dict = {
+        "status": "sent",
+        "meta_message_id": meta_message_id,
+        "actioned_by": actioned_by,
+        "actioned_at": now_ts,
+        "updated_at": now_ts,
+    }
+    upd_result = (
+        db.table("whatsapp_outbox")
+        .update(updates)
+        .eq("id", outbox_id)
+        .execute()
+    )
+    updated = _normalise_data(upd_result.data)
+    return updated if updated else {**outbox_row, **updates}
+
+
+# ---------------------------------------------------------------------------
+# Outbox — queue (M01-4 core)
+# ---------------------------------------------------------------------------
+
+VALID_SENDING_MODES = frozenset({"full_approval", "review_window", "auto_send"})
+
+
+def queue_outbox_message(
+    db,
+    org_id: str,
+    lead_id: Optional[str],
+    customer_id: Optional[str],
+    content: Optional[str],
+    template_name: Optional[str],
+    source_type: str,
+    queued_by: Optional[str] = None,
+) -> dict:
+    """
+    Queue an AI-drafted message into whatsapp_outbox, respecting the org's
+    qualification_sending_mode:
+
+      full_approval  → status=pending   (rep must manually approve)
+      review_window  → status=scheduled, send_after=now+review_window_minutes
+                       (Celery worker auto-sends unless rep cancels first)
+      auto_send      → immediately dispatched via _dispatch_outbox_row()
+
+    Returns the outbox row (with status reflecting the mode applied).
+    """
+    # ── Fetch org sending mode config ─────────────────────────────────────
+    try:
+        org_res = (
+            db.table("organisations")
+            .select("qualification_sending_mode, review_window_minutes")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_cfg = _normalise_data(org_res.data) or {}
+    except Exception:
+        org_cfg = {}
+
+    mode = org_cfg.get("qualification_sending_mode") or "full_approval"
+    if mode not in VALID_SENDING_MODES:
+        mode = "full_approval"
+    window_minutes: int = int(org_cfg.get("review_window_minutes") or 5)
+
+    now_ts = _now_iso()
+    now_dt = datetime.now(timezone.utc)
+
+    # ── Build base row ────────────────────────────────────────────────────
+    row: dict = {
+        "org_id": org_id,
+        "content": content,
+        "template_name": template_name,
+        "source_type": source_type,
+        "queued_by": queued_by,
+        "created_at": now_ts,
+        "updated_at": now_ts,
+    }
+    if lead_id:
+        row["lead_id"] = lead_id
+    if customer_id:
+        row["customer_id"] = customer_id
+
+    if mode == "auto_send":
+        # Insert as pending first, then immediately dispatch
+        row["status"] = "pending"
+        insert_res = db.table("whatsapp_outbox").insert(row).execute()
+        inserted = _normalise_data(insert_res.data)
+        if not inserted:
+            inserted = row
+        return _dispatch_outbox_row(db, org_id, inserted, actioned_by=queued_by)
+
+    elif mode == "review_window":
+        send_after = (now_dt + timedelta(minutes=window_minutes)).isoformat()
+        row["status"] = "scheduled"
+        row["send_after"] = send_after
+        insert_res = db.table("whatsapp_outbox").insert(row).execute()
+        inserted = _normalise_data(insert_res.data)
+        return inserted if inserted else row
+
+    else:  # full_approval
+        row["status"] = "pending"
+        insert_res = db.table("whatsapp_outbox").insert(row).execute()
+        inserted = _normalise_data(insert_res.data)
+        return inserted if inserted else row
+
+
+# ---------------------------------------------------------------------------
+# Outbox — list / approve / cancel
+# ---------------------------------------------------------------------------
+
+def list_outbox(
+    db,
+    org_id: str,
+    status: Optional[str] = None,
+    lead_id: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """Return paginated outbox rows for the org, newest first."""
+    query = (
+        db.table("whatsapp_outbox")
+        .select("*", count="exact")
+        .eq("org_id", org_id)
+    )
+    if status:
+        query = query.eq("status", status)
+    if lead_id:
+        query = query.eq("lead_id", lead_id)
+
+    result = (
+        query
+        .order("created_at", desc=True)
+        .range((page - 1) * page_size, page * page_size - 1)
+        .execute()
+    )
+    items = result.data if isinstance(result.data, list) else []
+    total = result.count if result.count is not None else len(items)
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+def approve_outbox_message(
+    db,
+    org_id: str,
+    outbox_id: str,
+    user_id: str,
+) -> dict:
+    """
+    Rep approves a pending or scheduled outbox message → dispatches immediately.
+    Raises 404 if not found, 400 if not in an approvable state.
+    """
+    result = (
+        db.table("whatsapp_outbox")
+        .select("*")
+        .eq("id", outbox_id)
+        .eq("org_id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    row = _normalise_data(result.data)
+    if not row:
+        raise HTTPException(status_code=404, detail=ErrorCode.NOT_FOUND)
+
+    if row["status"] not in ("pending", "scheduled"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot approve a message with status '{row['status']}'",
+        )
+
+    dispatched = _dispatch_outbox_row(db, org_id, row, actioned_by=user_id)
+
+    write_audit_log(
+        db=db,
+        org_id=org_id,
+        user_id=user_id,
+        action="outbox.approved",
+        resource_type="whatsapp_outbox",
+        resource_id=outbox_id,
+        old_value={"status": row["status"]},
+        new_value={"status": dispatched.get("status")},
+    )
+    return dispatched
+
+
+def cancel_outbox_message(
+    db,
+    org_id: str,
+    outbox_id: str,
+    user_id: str,
+) -> dict:
+    """
+    Rep cancels a pending or scheduled outbox message before it is sent.
+    Raises 404 if not found, 400 if already sent/cancelled/failed.
+    """
+    result = (
+        db.table("whatsapp_outbox")
+        .select("*")
+        .eq("id", outbox_id)
+        .eq("org_id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    row = _normalise_data(result.data)
+    if not row:
+        raise HTTPException(status_code=404, detail=ErrorCode.NOT_FOUND)
+
+    if row["status"] not in ("pending", "scheduled"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel a message with status '{row['status']}'",
+        )
+
+    now_ts = _now_iso()
+    updates: dict = {
+        "status": "cancelled",
+        "actioned_by": user_id,
+        "actioned_at": now_ts,
+        "updated_at": now_ts,
+    }
+    upd_result = (
+        db.table("whatsapp_outbox")
+        .update(updates)
+        .eq("id", outbox_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    updated = _normalise_data(upd_result.data)
+    if not updated:
+        updated = {**row, **updates}
+
+    write_audit_log(
+        db=db,
+        org_id=org_id,
+        user_id=user_id,
+        action="outbox.cancelled",
+        resource_type="whatsapp_outbox",
+        resource_id=outbox_id,
+        old_value={"status": row["status"]},
+        new_value={"status": "cancelled"},
+    )
+    return updated

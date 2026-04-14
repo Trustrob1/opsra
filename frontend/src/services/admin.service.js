@@ -12,6 +12,10 @@
  *   Role Overrides     — listUserOverrides, createUserOverride, deleteUserOverride
  *   Routing Rules      — listRoutingRules, createRoutingRule, updateRoutingRule, deleteRoutingRule
  *   Integration Status — getIntegrationStatus
+ *   Commission Settings — getCommissionSettings, updateCommissionSettings
+ *   Lead Scoring Rubric — getScoringRubric, updateScoringRubric
+ *   Qualification Bot  — getQualificationBot, updateQualificationBot, getQualificationAiRecommendations
+ *   Lead SLA Config    — getSlaConfig, updateSlaConfig  (M01-6)
  */
 import axios from 'axios'
 import useAuthStore from '../store/authStore'
@@ -106,9 +110,6 @@ export async function listRoutingRules() {
 }
 
 export async function createRoutingRule(payload) {
-  // payload: { event_type, channel, route_to_role_id?, route_to_user_id?,
-  //            also_notify_role_id?, within_hours_only?, escalate_after_minutes?,
-  //            escalate_to_role_id? }
   const r = await axios.post(`${BASE}/api/v1/admin/routing-rules`, payload, { headers: _h() })
   return r.data.data
 }
@@ -137,6 +138,7 @@ export async function getIntegrationStatus() {
   return r.data.data
 }
 
+// ── Commission Settings ──────────────────────────────────────────────────────
 
 export async function getCommissionSettings() {
   const r = await axios.get(`${BASE}/api/v1/admin/commission-settings`, { headers: _h() })
@@ -151,16 +153,79 @@ export async function updateCommissionSettings(payload) {
   )
   return r.data.data
 }
+
 // ── Lead Scoring Rubric — Feature 4 (Module 01 gaps) ────────────────────────
 
 export async function getScoringRubric() {
   const r = await axios.get(`${BASE}/api/v1/admin/scoring-rubric`, { headers: _h() })
-  return r.data.data  // returns rubric fields directly: { scoring_business_context, ... }
+  return r.data.data
 }
 
 export async function updateScoringRubric(payload) {
   const r = await axios.patch(
     `${BASE}/api/v1/admin/scoring-rubric`,
+    payload,
+    { headers: _h() },
+  )
+  return r.data.data
+}
+
+// ── Qualification Bot — M01-3 ─────────────────────────────────────────────────
+
+export const getQualificationBot = () =>
+  axios.get('/api/v1/admin/qualification-bot', { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateQualificationBot = (payload) =>
+  axios.patch('/api/v1/admin/qualification-bot', payload, { headers: _h() })
+    .then(r => r.data.data)
+
+export const getQualificationAiRecommendations = () =>
+  axios.post('/api/v1/admin/qualification-bot/ai-recommendations', {}, { headers: _h() })
+    .then(r => r.data.data)
+
+// ── Lead SLA Config — M01-6 ──────────────────────────────────────────────────
+
+export async function getSlaConfig() {
+  const r = await axios.get(`${BASE}/api/v1/admin/sla-config`, { headers: _h() })
+  return r.data.data
+}
+
+export async function updateSlaConfig(payload) {
+  const r = await axios.patch(
+    `${BASE}/api/v1/admin/sla-config`,
+    payload,
+    { headers: _h() },
+  )
+  return r.data.data
+}
+
+// ── Nurture Config — M01-10a ──────────────────────────────────────────────────
+
+export async function getNurtureConfig() {
+  const r = await axios.get(`${BASE}/api/v1/admin/nurture-config`, { headers: _h() })
+  return r.data.data
+}
+
+export async function updateNurtureConfig(payload) {
+  const r = await axios.patch(
+    `${BASE}/api/v1/admin/nurture-config`,
+    payload,
+    { headers: _h() },
+  )
+  return r.data.data
+}
+
+// ── Triage Config — WH-0 ─────────────────────────────────────────────────────
+
+export async function getTriageConfig() {
+  const r = await axios.get(`${BASE}/api/v1/admin/triage-config`, { headers: _h() })
+  return r.data.data
+}
+
+export async function updateTriageConfig(payload) {
+  const r = await axios.patch(
+    `${BASE}/api/v1/admin/triage-config`,
     payload,
     { headers: _h() },
   )

@@ -20,6 +20,10 @@ Routes (full paths after combining):
 Admin check on PUT /drip-sequences: requires roles.template = "owner".
 All other routes: any authenticated staff member.
 """
+import uuid
+from typing import Optional
+from pydantic import BaseModel, Field
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import get_supabase
@@ -34,6 +38,19 @@ from app.models.whatsapp import (
 )
 from app.services import whatsapp_service
 from app.utils.rbac import require_not_affiliate, require_permission_key
+from app.services.whatsapp_service import (
+      queue_outbox_message,
+      list_outbox,
+      approve_outbox_message,
+      cancel_outbox_message,
+  )
+
+class OutboxMessageCreate(BaseModel):
+    lead_id: Optional[uuid.UUID] = None
+    customer_id: Optional[uuid.UUID] = None
+    content: Optional[str] = Field(None, max_length=5000)
+    template_name: Optional[str] = Field(None, max_length=100)
+    source_type: str = Field(..., max_length=50)
 
 router = APIRouter()
 
@@ -249,3 +266,81 @@ def update_drip_sequence(
         messages=payload.messages,
     )
     return ok(data=sequence, message="Drip sequence updated")
+
+
+# ── Route 1 — GET /api/v1/outbox ─────────────────────────────────────────────
+# List outbox messages for the org.
+# Query params: status (str), lead_id (uuid), page (int), page_size (int)
+ 
+@router.get("/outbox")
+def get_outbox(
+    status: Optional[str] = None,
+    lead_id: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    result = list_outbox(
+        db=db,
+        org_id=org["org_id"],
+        status=status,
+        lead_id=lead_id,
+        page=page,
+        page_size=page_size,
+    )
+    return paginated(
+        items=result["items"],
+        total=result["total"],
+        page=result["page"],
+        page_size=result["page_size"],
+    )
+
+
+@router.post("/outbox", status_code=201)
+def create_outbox_message(
+    payload: OutboxMessageCreate,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    result = queue_outbox_message(
+        db=db,
+        org_id=org["org_id"],
+        lead_id=str(payload.lead_id) if payload.lead_id else None,
+        customer_id=str(payload.customer_id) if payload.customer_id else None,
+        content=payload.content,
+        template_name=payload.template_name,
+        source_type=payload.source_type,
+        queued_by=org["id"],
+    )
+    return ok(data=result, message="Message queued")
+
+
+@router.post("/outbox/{outbox_id}/approve")
+def approve_outbox(
+    outbox_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    result = approve_outbox_message(
+        db=db,
+        org_id=org["org_id"],
+        outbox_id=outbox_id,
+        user_id=org["id"],
+    )
+    return ok(data=result, message="Message approved and sent")
+
+
+@router.post("/outbox/{outbox_id}/cancel")
+def cancel_outbox(
+    outbox_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    result = cancel_outbox_message(
+        db=db,
+        org_id=org["org_id"],
+        outbox_id=outbox_id,
+        user_id=org["id"],
+    )
+    return ok(data=result, message="Message cancelled")

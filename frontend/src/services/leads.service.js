@@ -221,3 +221,105 @@ export async function getLeadMessages(id, page = 1, pageSize = 20) {
   })
   return res.data
 }
+// ─── M01-7 Demo Scheduling ────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/leads/{id}/demos
+ * Create a demo request (status=pending_assignment).
+ * Admin is notified to confirm date, time and assign a rep.
+ * @param {string} leadId
+ * @param {{ lead_preferred_time?: string, medium?: string, notes?: string }} payload
+ */
+export async function createDemoRequest(leadId, payload) {
+  const res = await api.post(`/api/v1/leads/${leadId}/demos`, payload)
+  return res.data
+}
+
+/**
+ * GET /api/v1/leads/{id}/demos
+ * List all demos for a lead, newest first.
+ * @param {string} leadId
+ */
+export async function listDemos(leadId) {
+  const res = await api.get(`/api/v1/leads/${leadId}/demos`)
+  return res.data
+}
+
+/**
+ * POST /api/v1/leads/{id}/demos/{demoId}/confirm
+ * Admin/manager confirms a pending_assignment demo.
+ * Auto-sends WA confirmation to lead. Creates rep task. In-app notification to rep.
+ * @param {string} leadId
+ * @param {string} demoId
+ * @param {{ scheduled_at: string, medium: string, assigned_to: string, duration_minutes?: number, notes?: string }} payload
+ */
+export async function confirmDemo(leadId, demoId, payload) {
+  const res = await api.post(`/api/v1/leads/${leadId}/demos/${demoId}/confirm`, payload)
+  return res.data
+}
+
+/**
+ * PATCH /api/v1/leads/{id}/demos/{demoId}
+ * Log demo outcome: attended | no_show | rescheduled.
+ * attended   → pipeline auto-advances to demo_done.
+ * no_show    → follow-up task + WA rescheduling message auto-sent.
+ * rescheduled → new pending_assignment demo created for admin to confirm.
+ * @param {string} leadId
+ * @param {string} demoId
+ * @param {{ outcome: string, outcome_notes?: string }} payload
+ */
+export async function logDemoOutcome(leadId, demoId, payload) {
+  const res = await api.patch(`/api/v1/leads/${leadId}/demos/${demoId}`, payload)
+  return res.data
+}
+
+
+// ─── M01-7a Demo Queue ────────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/leads/demos/pending
+ * Org-wide list of all pending_assignment demos.
+ * Admin / owner / ops_manager only.
+ * Returns { success, data: [ { id, lead_id, lead_full_name, lead_phone,
+ *   lead_preferred_time, medium, notes, created_at, ... } ] }
+ */
+export async function getPendingDemos() {
+  const res = await api.get('/api/v1/leads/demos/pending')
+  return res.data
+}
+
+// ─── M01-7a Attention Summary ─────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/leads/attention-summary
+ * Returns { lead_id: { has_attention, unread_messages, pending_demos,
+ *                       open_tickets, reasons } }
+ * Used by LeadsPipeline to render attention badges on Kanban cards.
+ * Scoped roles receive only their assigned leads.
+ */
+export async function getLeadAttentionSummary() {
+  const res = await api.get('/api/v1/leads/attention-summary')
+  return res.data
+}
+
+export const reactivateFromNurture = async (leadId, reason = null) => {
+  const res = await api.patch(`/api/v1/leads/${leadId}/reactivate-from-nurture`, { reason })
+  return { success: true, data: res.data?.data ?? res.data }
+}
+
+/**
+ * GET /api/v1/leads/nurture-queue
+ * Paginated list of leads currently on the nurture track.
+ * Managers only — returns 403 for other roles.
+ *
+ * @param {object} params
+ * @param {number} [params.page=1]
+ * @param {number} [params.page_size=20]
+ * @param {boolean} [params.include_opted_out=false] — include opted-out leads
+ */
+export async function getNurtureQueue(params = {}) {
+  const res = await api.get('/api/v1/leads/nurture-queue', {
+    params: clean(params),
+  })
+  return res.data
+}

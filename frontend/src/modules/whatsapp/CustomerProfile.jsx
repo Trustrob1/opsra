@@ -1,9 +1,23 @@
 /**
  * CustomerProfile.jsx — Module 02 customer detail panel.
  *
- * Tabs: Profile | Messages | Tasks | NPS
- * Includes inline MessageComposer, edit mode for basic fields.
- * Mirrors the LeadProfile pattern (tabs, sticky header, back button).
+ * Tabs: Profile | Messages | Tasks | NPS History | Interaction Log | Tickets
+ *
+ * Profile badges update:
+ *   - Fetches getCustomerAttentionSummary() on mount — one call, three signals:
+ *     unread_messages, open_tickets, pending_tasks
+ *   - Each relevant tab shows an inline badge pill when its signal > 0
+ *   - Badge hidden when that tab is currently active
+ *   - Tab renames: "Log Interaction" → "Interaction Log"
+ *                  "Create Ticket"   → "Tickets"
+ *
+ * Tasks tab fix (post M01-9):
+ *   - Removed incorrect `completed: true` param that was filtering to show
+ *     only completed tasks instead of all tasks.
+ *   - Replaced inline read-only task cards with real TaskCard component so
+ *     reps and managers can complete tasks directly from the customer profile.
+ *   - Completion updates local state immediately (optimistic update).
+ *   - Completed tasks shown in a collapsible section at the bottom.
  *
  * Props:
  *   customerId — UUID
@@ -16,14 +30,22 @@ import {
   getCustomer,
   updateCustomer,
   getCustomerMessages,
-  getCustomerTasks,
   getCustomerNps,
+  listTemplates,
 } from '../../services/whatsapp.service'
-import { listTemplates } from '../../services/whatsapp.service'
+import { getCustomerAttentionSummary } from '../../services/customers.service'
+import {
+  getCustomerContacts,
+  addCustomerContact,
+  approveContact,
+  removeContact,
+} from '../../services/customers.service'
+import useAuthStore from '../../store/authStore'
+import { listTasks } from '../../services/tasks.service'
 import MessageComposer from './MessageComposer'
 import LogInteractionPanel from '../../shared/LogInteractionPanel'
 import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
-import { listTasks } from '../../services/tasks.service'
+import TaskCard from '../tasks/TaskCard'
 
 // ── Churn risk badge ──────────────────────────────────────────────────────────
 const RISK_STYLE = {
@@ -83,6 +105,23 @@ export default function CustomerProfile({ customerId, onBack }) {
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving]     = useState(false)
   const [saveErr, setSaveErr]   = useState(null)
+  const [taskActionError, setTaskActionError] = useState(null)
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false)
+
+  // Contacts state (WH-0) — managers only
+  const isManager = useAuthStore.getState().isManager()
+  const [contacts, setContacts]         = useState([])
+  const [contactsLoading, setContactsLoading] = useState(false)
+  const [contactForm, setContactForm]   = useState({ phone_number: '', name: '', contact_role: '' })
+  const [contactSaving, setContactSaving] = useState(false)
+  const [contactErr, setContactErr]     = useState(null)
+
+  // Attention signals
+  const [attention, setAttention] = useState({
+    unread_messages: 0,
+    open_tickets:    0,
+    pending_tasks:   0,
+  })
 
   const loadCustomer = useCallback(() => {
     setLoading(true)
@@ -95,33 +134,86 @@ export default function CustomerProfile({ customerId, onBack }) {
 
   useEffect(() => { loadCustomer() }, [loadCustomer])
 
+  // Fetch attention summary on mount
+  useEffect(() => {
+    if (!customerId) return
+    getCustomerAttentionSummary()
+      .then(res => {
+        if (res.success) {
+          const signals = (res.data ?? {})[customerId] ?? {}
+          setAttention({
+            unread_messages: signals.unread_messages ?? 0,
+            open_tickets:    signals.open_tickets    ?? 0,
+            pending_tasks:   signals.pending_tasks   ?? 0,
+          })
+        }
+      })
+      .catch(() => {})
+  }, [customerId])
+
+  // Load tab-specific data when tab changes
+  const loadTasks = useCallback(() => {
+    // FIX: removed `completed: true` param — was incorrectly filtering to
+    // show only completed tasks. Fetch all tasks for this customer instead.
+    listTasks({ source_record_id: customerId, page_size: 50 })
+      .then(res => setTasks(res?.items ?? []))
+      .catch(() => setTasks([]))
+  }, [customerId])
+
   useEffect(() => {
     if (tab === 'messages') {
       getCustomerMessages(customerId).then(res => setMessages(res.data?.data?.items ?? []))
     }
     if (tab === 'tasks') {
-      listTasks({ source_record_id: customerId, completed: true, page_size: 50 })
-        .then(res => setTasks(res?.items ?? []))
-        .catch(() => setTasks([]))
+      loadTasks()
     }
     if (tab === 'nps') {
       getCustomerNps(customerId).then(res => setNps(res.data?.data ?? []))
     }
-  }, [tab, customerId])
+    if (tab === 'contacts' && isManager) {
+      setContactsLoading(true)
+      getCustomerContacts(customerId)
+        .then(res => setContacts(res.data ?? []))
+        .catch(() => setContacts([]))
+        .finally(() => setContactsLoading(false))
+    }
+  }, [tab, customerId, loadTasks])
 
   useEffect(() => {
     listTemplates().then(res => setTemplates(res.data?.data ?? []))
   }, [])
 
+  // Task action handlers
+  const handleTaskComplete = (taskId) => {
+    setTasks(prev => prev.map(t =>
+      t.id === taskId
+        ? { ...t, status: 'completed', completed_at: new Date().toISOString() }
+        : t
+    ))
+    setTaskActionError(null)
+    // Refresh attention badge count
+    getCustomerAttentionSummary()
+      .then(res => {
+        if (res.success) {
+          const signals = (res.data ?? {})[customerId] ?? {}
+          setAttention(prev => ({ ...prev, pending_tasks: signals.pending_tasks ?? 0 }))
+        }
+      })
+      .catch(() => {})
+  }
+
+  const handleTaskSnooze = () => { loadTasks() }
+  const handleTaskReassigned = () => { loadTasks() }
+
   function startEdit() {
     setEditForm({
-      full_name:     customer.full_name,
-      business_name: customer.business_name,
-      business_type: customer.business_type || '',
-      phone:         customer.phone || '',
-      email:         customer.email || '',
-      location:      customer.location || '',
-      branches:      customer.branches || '',
+      full_name:            customer.full_name,
+      business_name:        customer.business_name,
+      business_type:        customer.business_type || '',
+      phone:                customer.phone || '',
+      email:                customer.email || '',
+      location:             customer.location || '',
+      branches:             customer.branches || '',
       onboarding_complete:  customer.onboarding_complete ?? false,
     })
     setEditing(true)
@@ -132,7 +224,6 @@ export default function CustomerProfile({ customerId, onBack }) {
     setSaving(true)
     setSaveErr(null)
     try {
-      // strip empty strings → backend ignores null
       const payload = {}
       Object.entries(editForm).forEach(([k, v]) => {
         if (v !== '') payload[k] = v
@@ -147,14 +238,20 @@ export default function CustomerProfile({ customerId, onBack }) {
     }
   }
 
-  const TABS = ['profile', 'messages', 'tasks', 'nps', 'log-interaction', 'create-ticket']
-  const TAB_LABELS = {
-    profile:          'Profile',
-    messages:         'Messages',
-    tasks:            'Tasks',
-    nps:              'NPS History',
-    'log-interaction':'📞 Log Interaction',
-    'create-ticket':  '🎫 Create Ticket',
+  // Tab definitions with badge signals
+  const TABS = [
+    { key: 'profile',         label: 'Profile'           },
+    { key: 'messages',        label: 'Messages',          badge: attention.unread_messages, color: 'red'   },
+    { key: 'tasks',           label: 'Tasks',             badge: attention.pending_tasks,   color: 'amber' },
+    { key: 'nps',             label: 'NPS History'        },
+    { key: 'log-interaction', label: '📞 Interaction Log' },
+    { key: 'create-ticket',   label: '🎫 Tickets',        badge: attention.open_tickets,    color: 'red'   },
+    ...(isManager ? [{ key: 'contacts', label: '👥 Contacts' }] : []),
+  ]
+
+  const BADGE_STYLE = {
+    red:   { background: '#E53E3E', color: 'white' },
+    amber: { background: '#D97706', color: 'white' },
   }
 
   const S = {
@@ -175,7 +272,8 @@ export default function CustomerProfile({ customerId, onBack }) {
     waNum: { fontSize: 13, color: '#25D366', fontWeight: 600, marginTop: 6 },
     tabBar: {
       display: 'flex', gap: 4, background: '#F5FAFB',
-      padding: 4, borderRadius: 10, marginBottom: 20, width: 'fit-content',
+      padding: 4, borderRadius: 10, marginBottom: 20,
+      flexWrap: 'wrap',
     },
     tabBtn: (active) => ({
       padding: '8px 18px', borderRadius: 7, border: 'none', cursor: 'pointer',
@@ -183,6 +281,8 @@ export default function CustomerProfile({ customerId, onBack }) {
       background: active ? '#fff' : 'none',
       color: active ? ds.teal : ds.gray,
       boxShadow: active ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      whiteSpace: 'nowrap',
     }),
     card: {
       background: '#fff', border: `1px solid ${ds.border}`, borderRadius: 14,
@@ -226,10 +326,6 @@ export default function CustomerProfile({ customerId, onBack }) {
       fontSize: 10.5, color: ds.gray, marginBottom: 4,
       textAlign: dir === 'outbound' ? 'right' : 'left',
     }),
-    taskCard: {
-      background: '#fff', border: `1px solid ${ds.border}`, borderRadius: 10,
-      padding: '12px 16px', marginBottom: 10,
-    },
     empty: { padding: 32, textAlign: 'center', color: ds.gray, fontSize: 13 },
   }
 
@@ -247,10 +343,10 @@ export default function CustomerProfile({ customerId, onBack }) {
     </div>
   )
 
-  // Phase 9E — TEMP-2 resolved: window_open is now computed server-side by
-  // GET /customers/{id} using the whatsapp_messages table (24-hour window check).
-  // Default is false — window closed until an inbound message is confirmed.
   const windowOpen = customer?.window_open ?? false
+
+  const activeTasks    = tasks.filter(t => (t.status || '').toLowerCase() !== 'completed')
+  const completedTasks = tasks.filter(t => (t.status || '').toLowerCase() === 'completed')
 
   return (
     <div style={S.wrap}>
@@ -280,11 +376,24 @@ export default function CustomerProfile({ customerId, onBack }) {
         )}
       </div>
 
-      {/* Tabs */}
+      {/* Tab bar */}
       <div style={S.tabBar}>
-        {TABS.map(t => (
-          <button key={t} style={S.tabBtn(tab === t)} onClick={() => setTab(t)}>
-            {TAB_LABELS[t]}
+        {TABS.map(({ key, label, badge, color }) => (
+          <button key={key} style={S.tabBtn(tab === key)} onClick={() => setTab(key)}>
+            {label}
+            {badge > 0 && tab !== key && (
+              <span style={{
+                ...BADGE_STYLE[color],
+                borderRadius: 20,
+                padding: '1px 5px',
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: '14px',
+                fontFamily: ds.fontHead,
+              }}>
+                {badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -318,7 +427,6 @@ export default function CustomerProfile({ customerId, onBack }) {
                 ))}
               </div>
 
-              {/* Onboarding toggle — separate from text fields */}
               <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
                 <input
                   type="checkbox"
@@ -331,7 +439,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                   Onboarding Complete
                 </label>
               </div>
-              
+
               {saveErr && <div style={{ color: '#C0392B', fontSize: 12, margin: '10px 0' }}>⚠ {saveErr}</div>}
               <div style={{ marginTop: 16 }}>
                 <button style={S.saveBtn} onClick={handleSave} disabled={saving}>
@@ -360,7 +468,7 @@ export default function CustomerProfile({ customerId, onBack }) {
             </div>
           )}
 
-          {/* Payment Details — Feature 1 (Module 01 gaps) */}
+          {/* Payment Details */}
           <div style={S.card}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 14, color: ds.dark }}>
@@ -469,7 +577,9 @@ export default function CustomerProfile({ customerId, onBack }) {
               {messages.map(m => (
                 <div key={m.id}>
                   <div style={S.msgMeta(m.direction)}>
-                    {m.direction === 'outbound' ? `Sent · ${new Date(m.created_at).toLocaleString()}` : `Received · ${new Date(m.created_at).toLocaleString()}`}
+                    {m.direction === 'outbound'
+                      ? `Sent · ${new Date(m.created_at).toLocaleString()}`
+                      : `Received · ${new Date(m.created_at).toLocaleString()}`}
                     {m.template_name && ` · Template: ${m.template_name}`}
                   </div>
                   <div style={S.msgBubble(m.direction)}>
@@ -488,59 +598,74 @@ export default function CustomerProfile({ customerId, onBack }) {
           <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 14, color: ds.dark, marginBottom: 14 }}>
             Tasks
           </div>
+
+          {taskActionError && (
+            <p style={{ color: ds.red, fontSize: 13, marginBottom: 10 }}>⚠ {taskActionError}</p>
+          )}
+
           {tasks.length === 0 ? (
             <div style={S.empty}>No tasks linked to this customer.</div>
-          ) : tasks.map(t => {
-            const overdue = t.due_at && new Date(t.due_at) < new Date() && t.status !== 'completed'
-            const isComplete = t.status === 'completed'
-            return (
-              <div key={t.id} style={{
-                ...S.taskCard,
-                borderLeft: isComplete ? `3px solid #27AE60`
-                          : overdue    ? `3px solid #E05252`
-                          :              `3px solid ${ds.teal}`,
-                background: overdue ? '#FFFAFA' : '#fff',
-                opacity: isComplete ? 0.7 : 1,
-              }}>
-                <div style={{ fontWeight: 600, fontSize: 13.5, color: ds.dark, marginBottom: 4,
-                  textDecoration: isComplete ? 'line-through' : 'none' }}>
-                  {t.title}
+          ) : (
+            <>
+              {/* Active tasks */}
+              {activeTasks.length === 0 ? (
+                <p style={{ color: ds.gray, fontSize: 13, fontStyle: 'italic', marginBottom: 12 }}>
+                  All tasks completed. ✅
+                </p>
+              ) : (
+                <div>
+                  {activeTasks.map(task => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      onComplete={handleTaskComplete}
+                      onSnooze={handleTaskSnooze}
+                      onReassigned={handleTaskReassigned}
+                      onError={setTaskActionError}
+                    />
+                  ))}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: ds.gray, flexWrap: 'wrap' }}>
-                  {t.status && (
-                    <span style={{ background: '#EAF0F2', color: ds.dark, borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>
-                      {t.status}
-                    </span>
-                  )}
-                  {t.priority && (
+              )}
+
+              {/* Completed tasks — collapsible */}
+              {completedTasks.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <button
+                    onClick={() => setShowCompletedTasks(prev => !prev)}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      fontSize: 12, fontWeight: 600, color: ds.gray,
+                      fontFamily: ds.fontSyne, padding: '4px 0', marginBottom: 8,
+                    }}
+                  >
                     <span style={{
-                      borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
-                      background: t.priority === 'critical' ? '#FFE8E8' : t.priority === 'high' ? '#FFF3E0' : '#EAF0F2',
-                      color:      t.priority === 'critical' ? '#C0392B' : t.priority === 'high' ? '#E07B3A' : ds.gray,
+                      background: '#E8F8EE', color: '#276749',
+                      borderRadius: 20, padding: '2px 8px', fontSize: 11,
                     }}>
-                      {t.priority}
+                      ✓ {completedTasks.length} completed
                     </span>
-                  )}
-                  {overdue && (
-                    <span style={{ background: '#FFE8E8', color: '#C0392B', borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
-                      Overdue
-                    </span>
-                  )}
-                  {t.due_at && <span>Due: {new Date(t.due_at).toLocaleDateString()}</span>}
-                  {t.task_type === 'ai_recommended' && (
-                    <span style={{ background: '#FFF3E0', color: '#8B4513', borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
-                      🤖 AI Recommended
-                    </span>
-                  )}
-                  {t.task_type === 'system_event' && (
-                    <span style={{ background: '#EAF0F2', color: ds.gray, borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
-                      📋 System Event
-                    </span>
+                    <span style={{ fontSize: 10 }}>{showCompletedTasks ? '▲ Hide' : '▼ Show'}</span>
+                  </button>
+
+                  {showCompletedTasks && (
+                    <div style={{ opacity: 0.8 }}>
+                      {completedTasks.map(task => (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          onComplete={handleTaskComplete}
+                          onSnooze={handleTaskSnooze}
+                          onReassigned={handleTaskReassigned}
+                          onError={setTaskActionError}
+                        />
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
-            )
-          })}
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -571,7 +696,7 @@ export default function CustomerProfile({ customerId, onBack }) {
         </div>
       )}
 
-      {/* ── Log Interaction tab ─────────────────────────────────────────── */}
+      {/* ── Interaction Log tab ─────────────────────────────────────────── */}
       {tab === 'log-interaction' && (
         <LogInteractionPanel
           linkedTo={{ type: 'customer', id: customerId }}
@@ -579,12 +704,144 @@ export default function CustomerProfile({ customerId, onBack }) {
         />
       )}
 
-      {/* ── Create Ticket tab ───────────────────────────────────────────── */}
+      {/* ── Tickets tab ─────────────────────────────────────────────────── */}
       {tab === 'create-ticket' && (
         <LinkedTicketsPanel
           linkedTo={{ type: 'customer', id: customerId }}
           contextName={customer?.full_name ?? 'this customer'}
         />
+      )}
+
+      {/* ── Contacts tab (managers only) — WH-0 ─────────────────────────── */}
+      {tab === 'contacts' && isManager && (
+        <div style={S.card}>
+          <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 14, color: ds.dark, marginBottom: 14 }}>
+            Linked Contacts
+          </div>
+          <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 14px', lineHeight: 1.6 }}>
+            B2B employees who have identified themselves as contacts for this customer via WhatsApp.
+            Approve a contact to allow their phone number to be recognised as this customer&apos;s account.
+          </p>
+
+          {contactErr && (
+            <p style={{ color: '#C0392B', fontSize: 13, marginBottom: 10 }}>⚠ {contactErr}</p>
+          )}
+
+          {contactsLoading ? (
+            <div style={S.empty}>Loading contacts…</div>
+          ) : contacts.length === 0 ? (
+            <div style={S.empty}>No contacts linked to this customer yet.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 20 }}>
+              <thead>
+                <tr style={{ background: '#F5FAFB' }}>
+                  {['Name', 'Phone', 'Role', 'Status', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#7A9BAD', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid #E2EFF4' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map(c => (
+                  <tr key={c.id} style={{ borderBottom: '1px solid #F0F6F8' }}>
+                    <td style={{ padding: '10px 12px', color: ds.dark }}>{c.name || '—'}</td>
+                    <td style={{ padding: '10px 12px', color: ds.dark }}>{c.phone_number}</td>
+                    <td style={{ padding: '10px 12px', color: ds.gray }}>{c.contact_role || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span style={{
+                        padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                        background: c.status === 'active' ? '#E8F8EE' : '#FFF9E0',
+                        color:      c.status === 'active' ? '#27AE60' : '#D4AC0D',
+                      }}>
+                        {c.status === 'active' ? 'Active' : 'Pending'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px', display: 'flex', gap: 6 }}>
+                      {c.status === 'pending' && (
+                        <button
+                          onClick={() => {
+                            setContactErr(null)
+                            approveContact(c.id)
+                              .then(() => setContacts(prev => prev.map(x => x.id === c.id ? { ...x, status: 'active' } : x)))
+                              .catch(() => setContactErr('Failed to approve contact.'))
+                          }}
+                          style={{ padding: '4px 10px', background: '#E0F4F6', color: ds.teal, border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Approve
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setContactErr(null)
+                          removeContact(c.id)
+                            .then(() => setContacts(prev => prev.filter(x => x.id !== c.id)))
+                            .catch(() => setContactErr('Failed to remove contact.'))
+                        }}
+                        style={{ padding: '4px 10px', background: '#FFE8E8', color: '#C0392B', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Add contact form */}
+          <div style={{ borderTop: '1px solid #E2EFF4', paddingTop: 16 }}>
+            <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 13, color: ds.dark, marginBottom: 12 }}>
+              Add Contact Manually
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+              {[
+                ['phone_number', 'Phone number *'],
+                ['name',         'Name'],
+                ['contact_role', 'Role'],
+              ].map(([field, label]) => (
+                <div key={field}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 500, marginBottom: 4 }}>
+                    {label}
+                  </label>
+                  <input
+                    style={{ border: '1.5px solid #D6E8EC', borderRadius: 8, padding: '8px 11px', fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                    value={contactForm[field]}
+                    onChange={e => setContactForm(f => ({ ...f, [field]: e.target.value }))}
+                    placeholder={label.replace(' *', '')}
+                  />
+                </div>
+              ))}
+            </div>
+            <button
+              disabled={contactSaving || !contactForm.phone_number.trim()}
+              onClick={() => {
+                if (!contactForm.phone_number.trim()) return
+                setContactSaving(true)
+                setContactErr(null)
+                addCustomerContact(customerId, {
+                  phone_number: contactForm.phone_number.trim(),
+                  name:         contactForm.name.trim() || undefined,
+                  contact_role: contactForm.contact_role.trim() || undefined,
+                })
+                  .then(res => {
+                    setContacts(prev => [...prev, res.data])
+                    setContactForm({ phone_number: '', name: '', contact_role: '' })
+                  })
+                  .catch(() => setContactErr('Failed to add contact.'))
+                  .finally(() => setContactSaving(false))
+              }}
+              style={{
+                padding: '8px 20px', background: ds.teal, color: 'white',
+                border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                fontFamily: ds.fontHead, cursor: contactSaving || !contactForm.phone_number.trim() ? 'not-allowed' : 'pointer',
+                opacity: contactSaving || !contactForm.phone_number.trim() ? 0.55 : 1,
+              }}
+            >
+              {contactSaving ? 'Adding…' : 'Add Contact'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

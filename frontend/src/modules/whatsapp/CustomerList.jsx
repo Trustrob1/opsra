@@ -5,15 +5,24 @@
  * Filters: churn_risk, assigned_to, onboarding_complete.
  * Clicking a row opens CustomerProfile.
  *
- * Design follows the existing app shell (dark topbar, teal accent) and
- * mirrors the demo's data-table / stat-card / filter-bar patterns.
+ * M01-7a additions:
+ *   - Attention badge system — multi-signal per row:
+ *       💬 N  unread WhatsApp messages  (red)
+ *       🎫 N  open tickets              (orange)
+ *       ⚠    high/critical churn risk  (shown separately in Churn Risk column
+ *             but also contributes to has_attention border highlight)
+ *     Fetched via GET /api/v1/customers/attention-summary on mount.
+ *     Replaces the previous getUnreadCounts() call.
+ *
+ * Design follows the existing app shell (dark topbar, teal accent).
  * All colours from ds.js — no hardcoded hex.
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
-import { getUnreadCounts } from '../../services/whatsapp.service'
+import { getCustomerAttentionSummary } from '../../services/customers.service'
 import useCustomers from '../../hooks/useCustomers'
+import Pagination from '../../shared/Pagination'
 
 // ── Churn risk badge ──────────────────────────────────────────────────────────
 const RISK_STYLE = {
@@ -51,6 +60,47 @@ function OnboardBadge({ done }) {
   )
 }
 
+// ── Attention badges for a customer row ───────────────────────────────────────
+function AttentionBadges({ attention }) {
+  if (!attention) return null
+  const badges = []
+  if ((attention.unread_messages ?? 0) > 0) {
+    badges.push({
+      key: 'msg',
+      label: `💬 ${attention.unread_messages}`,
+      bg: '#E53E3E', color: 'white',
+      title: `${attention.unread_messages} unread message${attention.unread_messages > 1 ? 's' : ''}`,
+    })
+  }
+  if ((attention.open_tickets ?? 0) > 0) {
+    badges.push({
+      key: 'ticket',
+      label: `🎫 ${attention.open_tickets}`,
+      bg: '#ED8936', color: 'white',
+      title: `${attention.open_tickets} open ticket${attention.open_tickets > 1 ? 's' : ''}`,
+    })
+  }
+  if (!badges.length) return null
+  return (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>
+      {badges.map(b => (
+        <span
+          key={b.key}
+          title={b.title}
+          style={{
+            background: b.bg, color: b.color,
+            borderRadius: 20, padding: '1px 6px',
+            fontSize: 10, fontWeight: 700,
+            lineHeight: '16px',
+          }}
+        >
+          {b.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function CustomerList({ onSelectCustomer }) {
   const [filterRisk, setFilterRisk] = useState('')
@@ -60,14 +110,17 @@ export default function CustomerList({ onSelectCustomer }) {
   if (filterOnboard !== '') builtFilters.onboarding_complete = filterOnboard === 'true'
 
   const { customers, total, page, pageSize, hasMore, loading, error, goToPage, applyFilters } =
-    useCustomers(builtFilters, 50)
+    useCustomers(builtFilters, 20)
 
-  const [unreadCounts, setUnreadCounts] = useState({})
+  // M01-7a: attention summary replaces old unreadCounts
+  // Shape: { customer_id: { has_attention, unread_messages, open_tickets, churn_risk, reasons } }
+  const [attentionMap, setAttentionMap] = useState({})
 
-  // Fetch unread counts on mount — refetches whenever customers list changes
   useEffect(() => {
-    getUnreadCounts()
-      .then(res => setUnreadCounts(res.data?.data?.customers ?? {}))
+    getCustomerAttentionSummary()
+      .then(res => {
+        if (res.success) setAttentionMap(res.data ?? {})
+      })
       .catch(() => {})
   }, [customers.length])
 
@@ -155,6 +208,9 @@ export default function CustomerList({ onSelectCustomer }) {
   const highCount  = customers.filter(c => c.churn_risk === 'high').length
   const doneCount  = customers.filter(c => c.onboarding_complete).length
 
+  // Count customers needing attention for the header indicator
+  const needsAttentionCount = Object.values(attentionMap).filter(a => a.has_attention).length
+
   return (
     <div style={S.wrap}>
       {/* Header */}
@@ -168,6 +224,17 @@ export default function CustomerList({ onSelectCustomer }) {
             </div>
           </div>
         </div>
+        {/* Attention summary indicator */}
+        {needsAttentionCount > 0 && (
+          <span style={{
+            background: '#FEF3C7', color: '#92400E',
+            border: '1px solid #FCD34D',
+            borderRadius: 20, padding: '5px 14px',
+            fontSize: 12, fontWeight: 700, fontFamily: ds.fontSyne,
+          }}>
+            ⚠ {needsAttentionCount} customer{needsAttentionCount > 1 ? 's' : ''} need attention
+          </span>
+        )}
       </div>
 
       {/* Stat row */}
@@ -241,70 +308,55 @@ export default function CustomerList({ onSelectCustomer }) {
                   No customers found. Leads convert to customers automatically.
                 </td>
               </tr>
-            ) : customers.map(c => (
-              <tr
-                key={c.id}
-                style={S.rowHover}
-                onClick={() => onSelectCustomer?.(c.id)}
-                onMouseEnter={e => e.currentTarget.style.background = '#F5FAFB'}
-                onMouseLeave={e => e.currentTarget.style.background = ''}
-              >
-                <td style={S.td}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            ) : customers.map(c => {
+              const attention = attentionMap[c.id] ?? null
+              const hasAttention = attention?.has_attention ?? false
+              return (
+                <tr
+                  key={c.id}
+                  style={{
+                    ...S.rowHover,
+                    borderLeft: hasAttention ? `3px solid #ED8936` : '3px solid transparent',
+                  }}
+                  onClick={() => onSelectCustomer?.(c.id)}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F5FAFB'}
+                  onMouseLeave={e => e.currentTarget.style.background = ''}
+                >
+                  <td style={S.td}>
                     <div style={{ fontWeight: 600 }}>{c.full_name}</div>
-                    {(unreadCounts[c.id] ?? 0) > 0 && (
-                      <span style={{
-                        background: '#E53E3E', color: 'white',
-                        borderRadius: 20, padding: '1px 6px',
-                        fontSize: 10, fontWeight: 700, flexShrink: 0,
-                        lineHeight: '16px',
-                      }} title={`${unreadCounts[c.id]} unread message${unreadCounts[c.id] > 1 ? 's' : ''}`}>
-                        💬 {unreadCounts[c.id]}
-                      </span>
+                    {c.email && (
+                      <div style={{ fontSize: 11, color: ds.gray, marginTop: 2 }}>{c.email}</div>
                     )}
-                  </div>
-                  {c.email && (
-                    <div style={{ fontSize: 11, color: ds.gray, marginTop: 2 }}>{c.email}</div>
-                  )}
-                </td>
-                <td style={S.td}>
-                  <div>{c.business_name || '—'}</div>
-                  {c.business_type && (
-                    <div style={{ fontSize: 11, color: ds.gray, marginTop: 2 }}>{c.business_type}</div>
-                  )}
-                </td>
-                <td style={S.td}>
-                  <span style={{ color: '#25D366', fontWeight: 600 }}>💬</span>{' '}
-                  {c.whatsapp}
-                </td>
-                <td style={S.td}>
-                  <RiskBadge risk={c.churn_risk} />
-                </td>
-                <td style={S.td}>
-                  <OnboardBadge done={c.onboarding_complete} />
-                </td>
-                <td style={S.td}>
-                  {c.assigned_user?.full_name ?? (c.assigned_to ? '—' : 'Unassigned')}
-                </td>
-              </tr>
-            ))}
+                    {/* Attention badges below name */}
+                    <AttentionBadges attention={attention} />
+                  </td>
+                  <td style={S.td}>
+                    <div>{c.business_name || '—'}</div>
+                    {c.business_type && (
+                      <div style={{ fontSize: 11, color: ds.gray, marginTop: 2 }}>{c.business_type}</div>
+                    )}
+                  </td>
+                  <td style={S.td}>
+                    <span style={{ color: '#25D366', fontWeight: 600 }}>💬</span>{' '}
+                    {c.whatsapp}
+                  </td>
+                  <td style={S.td}>
+                    <RiskBadge risk={c.churn_risk} />
+                  </td>
+                  <td style={S.td}>
+                    <OnboardBadge done={c.onboarding_complete} />
+                  </td>
+                  <td style={S.td}>
+                    {c.assigned_user?.full_name ?? (c.assigned_to ? '—' : 'Unassigned')}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div style={S.pagination}>
-            <span style={{ fontSize: 12, color: ds.gray, marginRight: 8 }}>
-              Page {page} of {totalPages} · {total} customers
-            </span>
-            {page > 1 && (
-              <button style={S.pageBtn(false)} onClick={() => goToPage(page - 1)}>← Prev</button>
-            )}
-            {hasMore && (
-              <button style={S.pageBtn(true)} onClick={() => goToPage(page + 1)}>Next →</button>
-            )}
-          </div>
-        )}
+        <Pagination page={page} total={total} pageSize={pageSize} onGoToPage={goToPage} />
       </div>
     </div>
   )

@@ -1,9 +1,14 @@
 /**
  * modules/tasks/TaskBoard.jsx
- * Task Management module container — Phase 7B (fixed Phase 7C, TEMP-6 resolved Phase 9).
+ * Task Management module container — Phase 7B (fixed Phase 7C, TEMP-6 resolved Phase 9,
+ * pagination wired M01-9b).
  *
  * Tabs: 👤 My Tasks (Personal) · 👥 Team View (managers only)
  * Pattern 26: both tab panels stay mounted, hidden with display:none.
+ *
+ * M01-9b: page, goToPage, total now passed to TaskList so the Active tab
+ *   can render pagination controls. Previously these existed in useTasks
+ *   but were never forwarded — the list was silently capped at 20 tasks.
  *
  * TEMP-6 resolved (Phase 9):
  *   Team tab now gated on isManager — derived from authStore.isManager()
@@ -11,7 +16,7 @@
  *   Non-manager users see only the Personal tab with no tab bar visible.
  *
  * Props:
- *   user — current user object from Zustand auth store (includes roles after TEMP-1 fix)
+ *   user — current user object from Zustand auth store
  */
 
 import { useState } from 'react'
@@ -29,7 +34,6 @@ function TabBar({ active, onChange, showTeam }) {
     ...(showTeam ? [{ id: 'team', label: 'Team View', icon: '👥' }] : []),
   ]
 
-  // Only one tab — no bar needed
   if (tabs.length === 1) return null
 
   return (
@@ -114,24 +118,19 @@ function ModuleHeader({ onNewTask }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function TaskBoard({ user }) {
-  // TEMP-6 fix: gate Team tab on roles.template (Phase 9)
-  // isManager() reads roles.template from the full user profile loaded by auth/me.
-  // Matches backend _is_manager(): owner | ops_manager | manage_tasks permission.
   const isManager = useAuthStore.getState().isManager()
 
   const [activeTab,  setActiveTab]  = useState('personal')
   const [showCreate, setShowCreate] = useState(false)
 
-  // Single hook instance — teamView flag switches what the backend returns.
-  // Two instances caused both to mount simultaneously and double-fetch.
   const {
-    tasks, loading, error,
+    tasks, total, loading, error,
     filters, applyFilters,
+    page, goToPage,
     refresh, setTeamView,
   } = useTasks(20)
 
   const handleTabChange = (tabId) => {
-    // Guard: non-managers cannot access team view even if they somehow trigger it
     if (tabId === 'team' && !isManager) return
     setActiveTab(tabId)
     setTeamView(tabId === 'team')
@@ -152,11 +151,14 @@ export default function TaskBoard({ user }) {
         <div style={{ display: activeTab === 'personal' ? 'block' : 'none' }}>
           <TaskList
             tasks={tasks}
+            total={total}
             loading={loading}
             error={error}
             teamView={false}
             filters={filters}
             applyFilters={applyFilters}
+            page={page}
+            goToPage={goToPage}
             onRefresh={refresh}
             onActionDone={refresh}
           />
@@ -167,11 +169,14 @@ export default function TaskBoard({ user }) {
           <div style={{ display: activeTab === 'team' ? 'block' : 'none' }}>
             <TaskList
               tasks={tasks}
+              total={total}
               loading={loading}
               error={error}
               teamView={true}
               filters={filters}
               applyFilters={applyFilters}
+              page={page}
+              goToPage={goToPage}
               onRefresh={refresh}
               onActionDone={refresh}
             />

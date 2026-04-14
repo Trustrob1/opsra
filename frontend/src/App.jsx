@@ -8,9 +8,11 @@
  *   └─ AppShell        (shown when authenticated)
  *       ├─ Topbar      (fixed 60px)
  *       ├─ Sidebar     (fixed 248px)
- *       └─ Main
- *           ├─ view === 'leads'        → LeadsPipeline
- *           └─ view === 'lead-profile' → LeadProfile
+ *       ├─ Main
+ *       │   ├─ view === 'leads'        → LeadsPipeline
+ *       │   └─ view === 'lead-profile' → LeadProfile
+ *       ├─ AriaButton  (fixed FAB — always visible)  ← M01-10b
+ *       └─ AriaPanel   (fixed slide-in panel)         ← M01-10b
  *
  * Routing: Zustand view-state (no react-router — not in package.json).
  *
@@ -34,6 +36,10 @@ import TaskBoard     from './modules/tasks/TaskBoard'
 import AdminModule   from './modules/admin/AdminModule'
 import NotificationsDrawer from './modules/notifications/NotificationsDrawer'
 import CommissionsModule   from './modules/commissions/CommissionsModule'
+import DemoQueue from './modules/leads/DemoQueue'
+import AriaButton from './modules/assistant/AriaButton'   // ← M01-10b
+import AriaPanel  from './modules/assistant/AriaPanel'    // ← M01-10b
+import { getBriefing } from './services/assistant.service' // ← M01-10b
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -77,6 +83,8 @@ export default function App() {
     style.textContent = `
       @keyframes spin { to { transform: rotate(360deg); } }
       @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+      @keyframes pulse-badge { 0%,100% { transform: scale(1); } 50% { transform: scale(1.2); } }
     `
     document.head.appendChild(style)
   }, [])
@@ -365,6 +373,7 @@ function AppShell() {
       EVENTS.forEach(ev => window.removeEventListener(ev, resetTimer))
     }
   }, [clearAuth])
+
   // Phase 9B: filter nav items based on role template
   const _userTemplate = user?.roles?.template ?? ''
   const visibleNav = NAV.filter(item => {
@@ -373,17 +382,35 @@ function AppShell() {
     // affiliate_partner cannot see Renewals
     if (item.id === 'renewal' && _userTemplate === 'affiliate_partner') return false
     // commissions only visible to affiliates, managers, and owners
-    // (hide for support_agent, finance, read_only, customer_success)
     if (item.id === 'commissions') {
       return ['owner', 'ops_manager', 'sales_agent', 'affiliate_partner'].includes(_userTemplate)
         || useAuthStore.getState().hasPermission('is_admin')
     }
     return true
   })
-  const [view, setView]           = useState('leads')          // 'leads' | 'lead-profile'
+
+  const [view, setView]           = useState('leads')
   const [selectedLeadId, setSelectedLeadId] = useState(null)
   const [showNotif, setShowNotif]     = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+
+  // ── Aria state (M01-10b) ─────────────────────────────────────────────────
+  const [ariaOpen,    setAriaOpen]    = useState(false)
+  const [ariaBriefing, setAriaBriefing] = useState(null)   // null | string
+  const [ariaBadge,   setAriaBadge]   = useState(false)
+
+  // Check briefing on mount — auto-open panel if show === true
+  useEffect(() => {
+    const token = useAuthStore.getState().token
+    if (!token) return
+    getBriefing().then(result => {
+      if (result?.show && result?.content) {
+        setAriaBriefing(result.content)
+        setAriaBadge(true)
+        setAriaOpen(true)   // auto-open on first login of the day
+      }
+    }).catch(() => {})
+  }, [])
 
   // Fetch unread count on mount and whenever drawer closes
   useEffect(() => {
@@ -406,8 +433,14 @@ function AppShell() {
     setView('leads')
   }
 
+  const openDemoQueue = () => {
+    setActiveNav('leads')
+    setView('demo-queue')
+    setSelectedLeadId(null)
+  }
+
   const handleNavClick = (navId) => {
-    if (!visibleNav.find(n => n.id === navId)?.active) return // not built yet
+    if (!visibleNav.find(n => n.id === navId)?.active) return
     setActiveNav(navId)
     setView(navId)
     setSelectedLeadId(null)
@@ -415,7 +448,6 @@ function AppShell() {
 
   const handleLogout = async () => {
     try {
-      // Attempt server-side logout — ignore errors (token expires anyway)
       const token = useAuthStore.getState().token
       await axios.post(`${BASE}/api/v1/auth/logout`, {}, {
         headers: { Authorization: `Bearer ${token}` },
@@ -589,7 +621,15 @@ function AppShell() {
       <main style={{ marginLeft: 248, marginTop: 60, minHeight: 'calc(100vh - 60px)' }}>
         {view === 'leads' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
-            <LeadsPipeline onOpenLead={openLeadProfile} />
+            <LeadsPipeline onOpenLead={openLeadProfile} onOpenDemoQueue={openDemoQueue} />
+          </div>
+        )}
+        {view === 'demo-queue' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <DemoQueue
+              onBack={() => { setView('leads'); setActiveNav('leads') }}
+              onOpenLead={(leadId) => { openLeadProfile(leadId) }}
+            />
           </div>
         )}
         {view === 'lead-profile' && selectedLeadId && (
@@ -633,11 +673,11 @@ function AppShell() {
           </div>
         )}
         {/* Placeholder for modules not yet built */}
-        {!['leads', 'lead-profile', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'commissions'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'commissions'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>
- 
+
       {/* Notifications drawer */}
       {showNotif && (
         <NotificationsDrawer
@@ -645,6 +685,22 @@ function AppShell() {
           onUnreadChange={setUnreadCount}
         />
       )}
+
+      {/* ── Aria AI Assistant (M01-10b) ───────────────────────────── */}
+      {/* AriaButton: always visible FAB in bottom-right */}
+      <AriaButton
+        onClick={() => setAriaOpen(prev => !prev)}
+        hasBadge={ariaBadge}
+        panelOpen={ariaOpen}
+      />
+
+      {/* AriaPanel: Pattern 26 — always mounted, display:none when closed */}
+      <AriaPanel
+        open={ariaOpen}
+        onClose={() => setAriaOpen(false)}
+        briefing={ariaBriefing}
+        onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }}
+      />
     </div>
   )
 }

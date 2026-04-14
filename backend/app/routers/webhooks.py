@@ -30,6 +30,7 @@ from app.database import get_supabase
 from app.models.common import ErrorCode
 from app.models.leads import LeadSource, LeadCreate
 from app.services import lead_service
+from app.services import triage_service
 from app.services.subscription_service import (
     process_paystack_webhook,
     process_flutterwave_webhook,
@@ -339,6 +340,34 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
     except Exception as exc:
         logger.warning("Customer phone lookup failed: %s", exc)
 
+    # Search customer_contacts — B2B employees linked to a customer account (WH-0)
+    try:
+        cc_result = (
+            db.table("customer_contacts")
+            .select("org_id, customer_id, phone_number")
+            .eq("status", "active")
+            .execute()
+        )
+        for row in (cc_result.data or []):
+            cc_ph = (row.get("phone_number") or "").replace(" ", "").replace("-", "")
+            if cc_ph in variants:
+                cust_r = (
+                    db.table("customers")
+                    .select("assigned_to")
+                    .eq("id", row["customer_id"])
+                    .maybe_single()
+                    .execute()
+                )
+                cust_d = cust_r.data
+                if isinstance(cust_d, list):
+                    cust_d = cust_d[0] if cust_d else None
+                return (
+                    row["org_id"], row["customer_id"], None,
+                    (cust_d or {}).get("assigned_to"),
+                )
+    except Exception as exc:
+        logger.warning("Customer contacts phone lookup failed: %s", exc)
+
     # Fall back to leads
     try:
         lead_result = (
@@ -358,12 +387,41 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
     return None, None, None, None
 
 
+def _lookup_org_by_phone_number_id(db, phone_number_id: str) -> Optional[str]:
+    """
+    Look up org_id by matching phone_number_id against organisations.whatsapp_phone_id.
+    Used when an inbound WhatsApp message arrives from an unknown number — we still
+    need to know which org owns the receiving WhatsApp number to create the lead.
+    Returns org_id string or None if not found.
+    S14: failures swallowed — returns None.
+    """
+    if not phone_number_id:
+        return None
+    try:
+        result = (
+            db.table("organisations")
+            .select("id, whatsapp_phone_id")
+            .execute()
+        )
+        for row in (result.data or []):
+            if (row.get("whatsapp_phone_id") or "").strip() == phone_number_id.strip():
+                return row["id"]
+    except Exception as exc:
+        logger.warning("Org lookup by phone_number_id failed: %s", exc)
+    return None
+
+
 def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_id: str) -> None:
     """
     Process one inbound WhatsApp text message.
-    - Looks up customer/lead by sender phone number
-    - Saves row to whatsapp_messages
-    - Inserts in-app notification for assigned rep (S14 — failures swallowed)
+
+    Flow:
+      1. Look up customer/lead by sender phone number
+      2a. If found → save message, notify assigned rep
+      2b. If NOT found → look up org by phone_number_id, auto-create new lead (M01-1),
+          save message against the new lead, notify via new-lead notification
+
+    S14 — all failures after message save are swallowed.
     """
     from datetime import datetime, timezone, timedelta
 
@@ -382,14 +440,123 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         content = "[Audio]"
     elif msg_type == "document":
         content = "[Document]"
+    elif msg_type == "interactive":
+        interactive_type = (message.get("interactive") or {}).get("type")
+        if interactive_type == "list_reply":
+            content = (message.get("interactive", {})
+                       .get("list_reply", {}).get("id"))
+        elif interactive_type == "button_reply":
+            content = (message.get("interactive", {})
+                       .get("button_reply", {}).get("id"))
+        else:
+            content = f"[interactive:{interactive_type}]"
     else:
         content = f"[{msg_type}]"
+
+    # WH-0: capture full interactive dict for triage session handler
+    interactive_payload = message.get("interactive") if msg_type == "interactive" else None
 
     org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
 
     if not org_id:
-        logger.info("Inbound WhatsApp from unknown number %s — no matching record", sender_phone)
-        return
+        # Derive org from the receiving WhatsApp phone_number_id.
+        org_id = _lookup_org_by_phone_number_id(db, phone_number_id)
+        if not org_id:
+            logger.info(
+                "Inbound WhatsApp from unknown number %s — no matching org for "
+                "phone_number_id=%s, cannot create lead",
+                sender_phone, phone_number_id,
+            )
+            return
+
+        # WH-0: Check for an active triage session before taking any pipeline action.
+        active_session = triage_service.get_active_session(db, org_id, sender_phone)
+        if active_session:
+            triage_service.handle_session_message(
+                db=db,
+                org_id=org_id,
+                phone_number=sender_phone,
+                session=active_session,
+                msg_type=msg_type,
+                content=content,
+                interactive_payload=interactive_payload,
+                contact_name=contact_name,
+                now_ts=_now_iso(),
+            )
+            return
+
+        # No active session — check org behavior setting.
+        org_behavior_result = (
+            db.table("organisations")
+            .select("unknown_contact_behavior, whatsapp_triage_config, whatsapp_phone_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_behavior = org_behavior_result.data
+        if isinstance(org_behavior, list):
+            org_behavior = org_behavior[0] if org_behavior else None
+        behavior = (org_behavior or {}).get("unknown_contact_behavior", "triage_first")
+
+        if behavior == "qualify_immediately":
+            # Preserved legacy path — auto-create lead + fire qualification bot.
+            # Duplicate-race handler lives in this branch only.
+            provisional_name = (contact_name or "").strip() or sender_phone
+            try:
+                new_lead_payload = LeadCreate(
+                    full_name      = provisional_name,
+                    phone          = sender_phone,
+                    whatsapp       = sender_phone,
+                    source         = LeadSource.whatsapp_inbound.value,
+                    problem_stated = content if msg_type == "text" else None,
+                )
+                new_lead = lead_service.create_lead(
+                    db      = db,
+                    org_id  = org_id,
+                    user_id = "system",
+                    payload = new_lead_payload,
+                )
+                lead_id     = new_lead["id"]
+                assigned_to = new_lead.get("assigned_to")
+                logger.info(
+                    "Auto-created lead %s for inbound WhatsApp from %s (org=%s)",
+                    lead_id, sender_phone, org_id,
+                )
+            except Exception as exc:
+                detail = getattr(exc, "detail", {}) or {}
+                code   = detail.get("code", "") if isinstance(detail, dict) else str(detail)
+                if code == ErrorCode.DUPLICATE_DETECTED:
+                    logger.info(
+                        "Duplicate on auto-create for %s — re-looking up", sender_phone
+                    )
+                    org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(
+                        db, sender_phone
+                    )
+                    if not lead_id and not customer_id:
+                        logger.warning(
+                            "Re-lookup after duplicate also found nothing for %s",
+                            sender_phone,
+                        )
+                        return
+                else:
+                    logger.error("Failed to auto-create lead for %s: %s", sender_phone, exc)
+                    return
+
+        else:
+            # triage_first (default) — send interactive menu and create session.
+            # Do NOT create a lead or fire the qualification bot.
+            from app.services.whatsapp_service import send_triage_menu
+            try:
+                send_triage_menu(
+                    db=db, org_id=org_id,
+                    phone_number=sender_phone, section="unknown",
+                )
+                triage_service.create_session(
+                    db=db, org_id=org_id, phone_number=sender_phone,
+                )
+            except Exception as exc:
+                logger.warning("Triage menu send failed for %s: %s", sender_phone, exc)
+            return  # No lead/customer yet — nothing further to save
 
     now_ts = _now_iso()
     window_expires = (
@@ -419,15 +586,144 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         logger.error("Failed to save inbound WhatsApp message: %s", exc)
         return
 
-    # Notify assigned rep in-app (S14 — failure must never affect message save)
+    # M01-10a: Nurture track handling — GAP-4 unsubscribe check fires first,
+    # then re-engagement. Only one branch executes per message.
+    # S14 — all failures are swallowed; flow continues to qualification check.
+    reengaged_from_nurture = False
+    if lead_id and not customer_id:
+        try:
+            nurture_check = (
+                db.table("leads")
+                .select("nurture_track")
+                .eq("id", lead_id)
+                .maybe_single()
+                .execute()
+            )
+            nurture_data = nurture_check.data
+            if isinstance(nurture_data, list):
+                nurture_data = nurture_data[0] if nurture_data else None
+            if (nurture_data or {}).get("nurture_track"):
+                # GAP-4: Unsubscribe takes highest priority — check before re-engagement.
+                # If lead opts out, mark permanently and stop all further processing.
+                if msg_type == "text" and content:
+                    from app.services.nurture_service import (
+                        is_unsubscribe_signal,
+                        mark_lead_unsubscribed,
+                    )
+                    if is_unsubscribe_signal(content):
+                        mark_lead_unsubscribed(
+                            db=db,
+                            org_id=org_id,
+                            lead_id=lead_id,
+                            now_ts=now_ts,
+                        )
+                        logger.info(
+                            "Lead %s opted out of nurture via unsubscribe signal — "
+                            "no re-engagement or rep notification",
+                            lead_id,
+                        )
+                        return  # Do NOT re-engage, do NOT notify rep
+
+                # Normal reply on nurture track — re-engage lead to active pipeline
+                from app.services.nurture_service import handle_re_engagement
+                handle_re_engagement(
+                    db=db,
+                    org_id=org_id,
+                    lead_id=lead_id,
+                    assigned_to=assigned_to,
+                    now_ts=now_ts,
+                )
+                reengaged_from_nurture = True
+        except Exception as exc:  # S14
+            logger.warning(
+                "Re-engagement check failed for lead %s — continuing: %s",
+                lead_id, exc,
+            )
+
+    # M01-10a (gap fix): Self-identified not-ready detection.
+    # GAP-2: Skipped if lead has an active qualification session — the bot handles it.
+    # Only runs for active (non-nurture) leads on text messages.
+    # Skips if the lead just re-engaged from nurture (handled above).
+    # S14 — failures are swallowed; flow continues to qualification/rep notification.
+    if lead_id and not customer_id and not reengaged_from_nurture and msg_type == "text":
+        try:
+            # GAP-2: Check for active qualification session before running not-ready
+            # detection. If the bot is mid-session, skip graduation — the bot manages
+            # the conversation. Fail-safe: treat as active session on any DB error.
+            _has_active_session = False
+            try:
+                _sess = (
+                    db.table("lead_qualification_sessions")
+                    .select("id")
+                    .eq("lead_id", lead_id)
+                    .eq("ai_active", True)
+                    .execute()
+                )
+                _has_active_session = bool(_sess.data)
+            except Exception:
+                _has_active_session = True  # fail-safe: skip detection if unsure
+
+            if not _has_active_session:
+                from app.services.nurture_service import is_not_ready_signal, graduate_lead_self_identified
+                if content and is_not_ready_signal(content):
+                    # Verify lead is not already on nurture track before graduating
+                    lead_status = (
+                        db.table("leads")
+                        .select("nurture_track, stage")
+                        .eq("id", lead_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    lead_status_data = lead_status.data or {}
+                    if isinstance(lead_status_data, list):
+                        lead_status_data = lead_status_data[0] if lead_status_data else {}
+                    if not (lead_status_data or {}).get("nurture_track"):
+                        graduate_lead_self_identified(
+                            db=db,
+                            org_id=org_id,
+                            lead_id=lead_id,
+                            assigned_to=assigned_to,
+                            now_ts=now_ts,
+                        )
+                        logger.info(
+                            "Lead %s self-identified as not ready — graduated to nurture",
+                            lead_id,
+                        )
+        except Exception as exc:  # S14
+            logger.warning(
+                "Not-ready detection failed for lead %s — continuing: %s",
+                lead_id, exc,
+            )
+
+    # M01-3: Check if this lead has an active qualification session.
+    # If yes and ai_active=true, route to the AI qualification bot instead of
+    # notifying the rep directly. S14 — all failures fall back to rep notification.
+    if lead_id and not customer_id:
+        try:
+            _handle_qualification_turn(
+                db=db,
+                org_id=org_id,
+                lead_id=lead_id,
+                assigned_to=assigned_to,
+                content=content or f"[{msg_type}]",
+                now_ts=now_ts,
+            )
+            return  # qualification handler manages its own notifications
+        except Exception as exc:
+            logger.warning(
+                "Qualification turn failed for lead %s — falling back to rep notification: %s",
+                lead_id, exc,
+            )
+            # Fall through to standard rep notification below
+
+    # Standard rep notification (for customers, or leads without active sessions,
+    # or when the qualification handler fails)
     if not assigned_to:
         return
     try:
         resource_id   = customer_id or lead_id
         resource_type = "customer" if customer_id else "lead"
-        # Fetch actual full_name from matched record — more reliable than
-        # the WhatsApp contact profile name which may differ or be absent.
-        display_name = contact_name or sender_phone
+        display_name  = contact_name or sender_phone
         try:
             name_table  = "customers" if customer_id else "leads"
             name_id     = customer_id or lead_id
@@ -444,14 +740,22 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             if name_data and name_data.get("full_name"):
                 display_name = name_data["full_name"]
         except Exception:
-            pass  # fall back to contact_name / sender_phone
+            pass
+
+        is_new_lead = (lead_id is not None and customer_id is None)
+        notif_title = (
+            f"New lead via WhatsApp: {display_name}"
+            if is_new_lead
+            else f"New WhatsApp reply from {display_name}"
+        )
+        notif_type = "whatsapp_new_lead" if is_new_lead else "whatsapp_reply"
 
         db.table("notifications").insert({
             "org_id":         org_id,
             "user_id":        assigned_to,
-            "title":          f"New WhatsApp reply from {display_name}",
+            "title":          notif_title,
             "body":           content or f"[{msg_type}]",
-            "type":           "whatsapp_reply",
+            "type":           notif_type,
             "resource_type":  resource_type,
             "resource_id":    resource_id,
             "is_read":        False,
@@ -459,6 +763,284 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         }).execute()
     except Exception as exc:
         logger.warning("Failed to insert reply notification for user %s: %s", assigned_to, exc)
+
+
+def _handle_qualification_turn(
+    db,
+    org_id: str,
+    lead_id: str,
+    assigned_to: Optional[str],
+    content: str,
+    now_ts: str,
+) -> None:
+    """
+    M01-3: Handle one turn of the WhatsApp qualification conversation for a lead.
+
+    Checks if an active qualification session exists for this lead.
+    If yes and ai_active=true:
+      - Fetches conversation history
+      - Calls run_qualification_turn() in ai_service
+      - Sends AI reply via whatsapp_service.send_whatsapp_message()
+      - Updates session (stage, collected fields, turn_count)
+      - On handoff: sets ai_active=false, notifies rep with summary
+
+    If no active session or ai_active=false: raises exception so caller
+    falls back to standard rep notification.
+
+    S14: raises on any unrecoverable error so caller can fall back gracefully.
+    """
+    from app.services.ai_service import run_qualification_turn
+    from app.services.whatsapp_service import send_whatsapp_message, get_lead_messages
+    from app.models.whatsapp import SendMessageRequest
+    import uuid
+
+    # 1 — Check for active session
+    session_result = (
+        db.table("lead_qualification_sessions")
+        .select("*")
+        .eq("lead_id", lead_id)
+        .eq("ai_active", True)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    session_rows = session_result.data if isinstance(session_result.data, list) else []
+    if not session_rows:
+        # No active session — raise so caller falls back to rep notification
+        raise ValueError(f"No active qualification session for lead {lead_id}")
+
+    session = session_rows[0]
+
+    # 2 — Fetch org config for qualification settings
+    org_result = (
+        db.table("organisations")
+        .select("id, name, industry, whatsapp_phone_id, org_whatsapp_number, "
+                "qualification_bot_name, qualification_opening_message, "
+                "qualification_script, qualification_fields, "
+                "qualification_handoff_triggers, qualification_fallback_hours, "
+                "qualification_demo_offer_enabled")
+        .eq("id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    org_data = org_result.data
+    if isinstance(org_data, list):
+        org_data = org_data[0] if org_data else None
+    if not org_data:
+        raise ValueError(f"Org {org_id} not found")
+
+    # 3 — Fetch recent conversation history (last 10 messages)
+    history_result = (
+        db.table("whatsapp_messages")
+        .select("direction, content, created_at")
+        .eq("org_id", org_id)
+        .eq("lead_id", lead_id)
+        .order("created_at", desc=False)
+        .limit(20)
+        .execute()
+    )
+    history = history_result.data if isinstance(history_result.data, list) else []
+
+    # 4 — Transition from awaiting_first_message to welcome on first message
+    current_stage = session.get("stage", "awaiting_first_message")
+    if current_stage == "awaiting_first_message":
+        # Use custom opening message if set, otherwise AI will generate naturally
+        opening = (org_data.get("qualification_opening_message") or "").strip()
+        if opening:
+            # Send the configured opening message directly
+            _send_qualification_reply(db, org_id, lead_id, org_data, opening, now_ts)
+            # Update session to welcome stage
+            db.table("lead_qualification_sessions").update({
+                "stage": "welcome",
+                "turn_count": 1,
+                "last_message_at": now_ts,
+            }).eq("id", session["id"]).execute()
+            return
+
+        # No configured opening — let AI handle it naturally with stage=welcome
+        session = {**session, "stage": "welcome"}
+
+    # 5 — Run AI qualification turn
+    turn_result = run_qualification_turn(
+        org_config        = org_data,
+        session           = session,
+        conversation_history = history,
+        new_message       = content,
+    )
+
+    reply           = turn_result.get("reply", "")
+    extracted       = turn_result.get("extracted_fields") or {}
+    next_stage      = turn_result.get("next_stage") or session.get("stage")
+    trigger_handoff = turn_result.get("trigger_handoff", False)
+    handoff_reason  = turn_result.get("handoff_reason")
+
+    # 6 — Send AI reply via WhatsApp
+    if reply:
+        _send_qualification_reply(db, org_id, lead_id, org_data, reply, now_ts)
+
+    # 7 — Update lead record with newly extracted fields (S14 — failure swallowed)
+    if extracted:
+        try:
+            from app.models.leads import LeadUpdate
+            updatable = {k: v for k, v in extracted.items()
+                         if k in ("problem_stated", "business_type", "location",
+                                  "business_name", "branches")}
+            if updatable:
+                db.table("leads").update(updatable).eq("id", lead_id).execute()
+        except Exception as exc:
+            logger.warning("Failed to update lead fields from qualification: %s", exc)
+
+    # 8 — Update session
+    collected_now = {**(session.get("collected") or {}), **extracted}
+    session_updates: dict = {
+        "collected":       collected_now,
+        "stage":           next_stage,
+        "turn_count":      session.get("turn_count", 0) + 1,
+        "last_message_at": now_ts,
+    }
+
+    if trigger_handoff:
+        # Generate handoff summary for the rep
+        summary_parts = [f"Lead: {lead_id}"]
+        for k, v in collected_now.items():
+            if v:
+                summary_parts.append(f"{k.replace('_', ' ').title()}: {v}")
+        if handoff_reason:
+            summary_parts.append(f"Reason: {handoff_reason}")
+
+        session_updates["ai_active"]       = False
+        session_updates["stage"]           = "handed_off"
+        session_updates["handed_off_at"]   = now_ts
+        session_updates["handoff_summary"] = " | ".join(summary_parts)
+
+        # Notify rep with qualification summary
+        if assigned_to:
+            try:
+                db.table("notifications").insert({
+                    "org_id":        org_id,
+                    "user_id":       assigned_to,
+                    "title":         f"Lead ready for follow-up 🎯",
+                    "body":          " | ".join(summary_parts),
+                    "type":          "qualification_complete",
+                    "resource_type": "lead",
+                    "resource_id":   lead_id,
+                    "is_read":       False,
+                    "created_at":    now_ts,
+                }).execute()
+            except Exception as exc:
+                logger.warning("Failed to send handoff notification: %s", exc)
+
+    db.table("lead_qualification_sessions").update(session_updates).eq("id", session["id"]).execute()
+
+    # 9 — Trigger AI scoring at handoff (S14 — never disrupts the handoff flow)
+    # The lead now has business_type, branches, problem_stated etc. from the
+    # qualification conversation — enough data for a meaningful score.
+    # Uses the org's scoring rubric (scoring_hot_criteria etc.) automatically.
+    if trigger_handoff:
+        try:
+            from app.services import lead_service
+            lead_service.score_lead(
+                db=db,
+                org_id=org_id,
+                lead_id=lead_id,
+                user_id=assigned_to or org_id,  # system actor if no rep assigned
+            )
+            logger.info("AI scoring triggered at qualification handoff for lead %s", lead_id)
+        except Exception as exc:
+            logger.warning("Scoring failed at qualification handoff for lead %s: %s", lead_id, exc)
+
+    # 10 — Create demo request from bot if qualification_demo_offer_enabled = true
+    # Checks collected fields for demo_medium and demo_preferred_time set during
+    # the demo_offer stage of the qualification conversation.
+    if trigger_handoff and org_data.get("qualification_demo_offer_enabled"):
+        try:
+            from app.services.demo_service import create_demo_from_bot
+            demo_medium        = collected_now.get("demo_medium")
+            demo_preferred_time = collected_now.get("demo_preferred_time")
+            # Only create if the lead expressed intent for a demo
+            # (either medium or preferred time was captured)
+            if demo_medium or demo_preferred_time:
+                create_demo_from_bot(
+                    db=db,
+                    org_id=org_id,
+                    lead_id=lead_id,
+                    lead_preferred_time=demo_preferred_time,
+                    medium=demo_medium,
+                )
+                logger.info(
+                    "Demo request created from bot at handoff for lead %s "
+                    "(medium=%s preferred=%s)",
+                    lead_id, demo_medium, demo_preferred_time,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Demo creation from bot failed for lead %s: %s", lead_id, exc
+            )
+
+
+def _send_qualification_reply(
+    db, org_id: str, lead_id: str, org_data: dict, reply: str, now_ts: str
+) -> None:
+    """
+    Save the AI's reply to whatsapp_messages and send via Meta Cloud API.
+    S14 — swallows failures silently.
+    """
+    from app.services.whatsapp_service import _call_meta_send, _now_iso
+    from datetime import datetime, timezone, timedelta
+
+    phone_id = (org_data.get("whatsapp_phone_id") or "").strip()
+
+    # Save the outbound message to whatsapp_messages first
+    window_expires = (
+        datetime.now(timezone.utc) + timedelta(hours=24)
+    ).isoformat()
+    try:
+        db.table("whatsapp_messages").insert({
+            "org_id":          org_id,
+            "lead_id":         lead_id,
+            "direction":       "outbound",
+            "message_type":    "text",
+            "content":         reply,
+            "status":          "sent",
+            "window_open":     True,
+            "window_expires_at": window_expires,
+            "sent_by":         None,  # system / AI
+            "created_at":      now_ts,
+        }).execute()
+    except Exception as exc:
+        logger.warning("Failed to save qualification reply to DB: %s", exc)
+
+    # Send via Meta API if phone_id is configured
+    if not phone_id:
+        logger.warning("No whatsapp_phone_id configured for org %s — reply saved but not sent", org_id)
+        return
+
+    # We need the lead's phone number to send to
+    try:
+        lead_result = (
+            db.table("leads")
+            .select("phone, whatsapp")
+            .eq("id", lead_id)
+            .maybe_single()
+            .execute()
+        )
+        lead_data = lead_result.data
+        if isinstance(lead_data, list):
+            lead_data = lead_data[0] if lead_data else None
+        to_number = (lead_data or {}).get("whatsapp") or (lead_data or {}).get("phone")
+        if not to_number:
+            logger.warning("No phone/whatsapp on lead %s — cannot send reply", lead_id)
+            return
+
+        meta_payload = {
+            "messaging_product": "whatsapp",
+            "to":   to_number,
+            "type": "text",
+            "text": {"body": reply},
+        }
+        _call_meta_send(phone_id, meta_payload)
+    except Exception as exc:
+        logger.warning("Failed to send qualification reply via Meta API: %s", exc)
 
 
 def _handle_status_update(db, status_update: dict) -> None:

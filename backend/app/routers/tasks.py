@@ -1,17 +1,22 @@
 """
 app/routers/tasks.py
-Task Management routes — Phase 7A.
+Task Management routes — Phase 7A (updated M01-9b).
 
 Routes (prefix /api/v1 set in main.py):
-  GET    /api/v1/tasks              — list tasks (personal or team view)
-  POST   /api/v1/tasks              — create task manually
-  GET    /api/v1/tasks/{id}         — get single task
-  PATCH  /api/v1/tasks/{id}         — update task
-  POST   /api/v1/tasks/{id}/complete — mark complete
-  POST   /api/v1/tasks/{id}/snooze  — snooze task
+  GET    /api/v1/tasks                    — list tasks (personal or team view)
+  POST   /api/v1/tasks                    — create task manually
+  GET    /api/v1/tasks/{id}               — get single task
+  PATCH  /api/v1/tasks/{id}               — update task
+  DELETE /api/v1/tasks/{id}               — soft-delete (archive) task  NEW M01-9b
+  POST   /api/v1/tasks/{id}/complete      — mark complete
+  POST   /api/v1/tasks/{id}/snooze        — snooze task
+  POST   /api/v1/tasks/{id}/restore       — restore archived task        NEW M01-9b
 
 Pattern 28: get_current_org on every route.
 Pattern 37: RBAC via service layer — never org.get("role").
+Pattern 53: no static-vs-parameterised conflict here — all sub-paths
+  (/complete, /snooze, /restore) appear as {id}/action, FastAPI matches
+  them correctly because the action segment disambiguates.
 """
 from __future__ import annotations
 
@@ -36,7 +41,8 @@ async def list_tasks(
     source_record_id: Optional[str] = Query(None,   description="UUID — returns all tasks for this specific record"),
     priority:         Optional[str] = Query(None,   description="critical|high|medium|low"),
     status:           Optional[str] = Query(None,   description="open|in_progress|completed|snoozed|escalated"),
-    completed:        bool          = Query(False,   description="Include completed tasks"),
+    completed:        bool          = Query(False,  description="Include completed tasks"),
+    archived:         bool          = Query(False,  description="Show archived (soft-deleted) tasks only"),
     created_from:     Optional[str] = Query(None,   description="ISO datetime — filter by created_at >= value"),
     created_to:       Optional[str] = Query(None,   description="ISO datetime — filter by created_at <= value"),
     due_from:         Optional[str] = Query(None,   description="ISO datetime — filter by due_at >= value"),
@@ -47,7 +53,8 @@ async def list_tasks(
     db=Depends(get_supabase),
 ):
     """List tasks — personal view by default; team view for managers;
-    record-scoped when source_record_id is supplied."""
+    record-scoped when source_record_id is supplied;
+    archived view when archived=True."""
     result = task_service.list_tasks(
         org,
         db,
@@ -58,6 +65,7 @@ async def list_tasks(
         priority=priority,
         status=status,
         include_completed=completed,
+        archived=archived,
         created_from=created_from,
         created_to=created_to,
         due_from=due_from,
@@ -118,6 +126,27 @@ async def update_task(
     return ok(data=task, message="Task updated")
 
 
+@router.delete("/tasks/{task_id}", status_code=200)
+async def delete_task(
+    task_id: str,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    Soft-delete (archive) a task.
+    Sets deleted_at = now(). Task disappears from active list and appears
+    in the Archived tab (GET /tasks?archived=true).
+    RBAC: own task (created or assigned) or manager.
+    """
+    try:
+        task = task_service.soft_delete_task(task_id, org, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    return ok(data=task, message="Task archived")
+
+
 @router.post("/tasks/{task_id}/complete")
 async def complete_task(
     task_id: str,
@@ -146,3 +175,23 @@ async def snooze_task(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return ok(data=task, message="Task snoozed")
+
+
+@router.post("/tasks/{task_id}/restore")
+async def restore_task(
+    task_id: str,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    Restore an archived task by clearing deleted_at.
+    Task returns to its previous status (open/completed/snoozed).
+    RBAC: own task (created or assigned) or manager.
+    """
+    try:
+        task = task_service.restore_task(task_id, org, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    return ok(data=task, message="Task restored")

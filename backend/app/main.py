@@ -3,7 +3,8 @@ app/main.py
 FastAPI application entry point.
 Registers all routers — Phase 1 (auth, admin, webhooks) + Phase 2A (leads)
   + Phase 3A (customers, whatsapp) + Phase 4A (tickets)
-  + Phase 5A (subscriptions) + Phase 6A (ops intel) + Phase 7A (tasks).
+  + Phase 5A (subscriptions) + Phase 6A (ops intel) + Phase 7A (tasks)
+  + M01-10b (assistant / Aria).
 """
 from __future__ import annotations
 import os
@@ -46,6 +47,7 @@ from app.routers import ops as ops_router                      # ← Phase 6A
 from app.routers import tasks as tasks_router                  # ← Phase 7A
 from app.routers import notifications as notifications_router
 from app.routers import commissions as commissions_router
+from app.routers import assistant as assistant_router          # ← M01-10b
 
 app.include_router(
     auth_router.router,
@@ -114,6 +116,12 @@ app.include_router(
     commissions_router.router,
     prefix="/api/v1",
     tags=["commissions"],
+)
+# M01-10b — Aria AI Assistant
+app.include_router(
+    assistant_router.router,
+    prefix="/api/v1",
+    tags=["assistant"],
 )
 # ---------------------------------------------------------------------------
 # Health check — Technical Spec Section 5.8

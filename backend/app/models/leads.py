@@ -66,6 +66,11 @@ class LeadBranches(str, Enum):
     four_ten = "4-10"
     ten_plus = "10+"
 
+class LeadContactType(str, Enum):
+    sales_lead        = "sales_lead"        # enters qualification pipeline
+    business_inquiry  = "business_inquiry"  # routed to a role, no qualification
+    support_contact   = "support_contact"   # unknown identifier, team follow-up
+    other             = "other"             # free-form, rep notified
 
 # ---------------------------------------------------------------------------
 # Request models
@@ -94,6 +99,7 @@ class LeadCreate(BaseModel):
     utm_campaign: Optional[str] = None
     utm_ad: Optional[str] = None
     assigned_to: Optional[str] = None
+    contact_type: Optional[str] = LeadContactType.sales_lead.value
 
     @field_validator("source", mode="before")
     @classmethod
@@ -123,6 +129,7 @@ class LeadUpdate(BaseModel):
     utm_campaign: Optional[str] = None
     utm_ad: Optional[str] = None
     assigned_to: Optional[str] = None
+    contact_type: Optional[str] = None
     reengagement_date: Optional[date] = None
 
 
@@ -169,6 +176,7 @@ class LeadResponse(BaseModel):
     lost_reason: Optional[str] = None
     reengagement_date: Optional[date] = None
     assigned_to: Optional[str] = None
+    contact_type: str = "sales_lead"
     previous_lead_id: Optional[str] = None
     converted_at: Optional[datetime] = None
     lost_at: Optional[datetime] = None

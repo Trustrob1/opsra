@@ -1,0 +1,655 @@
+"""
+triage_service.py
+-----------------
+WH-0: Intent-First Triage for Unknown WhatsApp Contacts.
+
+Handles:
+  - WhatsApp triage session lifecycle (create / query / update)
+  - Session message dispatch (triage_sent / awaiting_identifier / active)
+  - Triage menu selection routing (qualify / identify_customer /
+    route_to_role / free_form)
+  - Identifier-text handling (customer lookup → contact or fallback lead)
+  - Customer contacts CRUD (list / add / approve / remove)
+
+All public functions comply with S14 — no function may raise.
+Every function body is wrapped in a top-level try/except that logs the
+error and returns a safe default.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Session helpers
+# ---------------------------------------------------------------------------
+
+def get_active_session(db, org_id: str, phone_number: str) -> Optional[dict]:
+    """
+    Return the first non-expired, non-'expired'-state session for this
+    org + phone combination, or None if none exists.
+    S14: returns None on any failure.
+    """
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        result = (
+            db.table("whatsapp_sessions")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("phone_number", phone_number)
+            .neq("session_state", "expired")
+            .gt("expires_at", now_iso)
+            .execute()
+        )
+        rows = result.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.warning("get_active_session failed org=%s phone=%s: %s",
+                       org_id, phone_number, exc)
+        return None
+
+
+def create_session(
+    db,
+    org_id: str,
+    phone_number: str,
+    expires_minutes: int = 30,
+) -> Optional[dict]:
+    """
+    Insert a new whatsapp_sessions row with session_state='triage_sent'.
+    Returns the inserted row dict, or None on failure. S14.
+    """
+    try:
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+        ).isoformat()
+        result = (
+            db.table("whatsapp_sessions")
+            .insert({
+                "org_id": org_id,
+                "phone_number": phone_number,
+                "session_state": "triage_sent",
+                "expires_at": expires_at,
+            })
+            .execute()
+        )
+        rows = result.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.warning("create_session failed org=%s phone=%s: %s",
+                       org_id, phone_number, exc)
+        return None
+
+
+def update_session(
+    db,
+    session_id: str,
+    state: str,
+    selected_action: Optional[str] = None,
+    session_data: Optional[dict] = None,
+) -> None:
+    """
+    Update session_state (and optionally selected_action / session_data)
+    for the given session row. S14.
+    """
+    try:
+        payload: dict = {"session_state": state}
+        if selected_action is not None:
+            payload["selected_action"] = selected_action
+        if session_data is not None:
+            payload["session_data"] = session_data
+        db.table("whatsapp_sessions").update(payload).eq("id", session_id).execute()
+    except Exception as exc:
+        logger.warning("update_session failed session_id=%s: %s", session_id, exc)
+
+
+# ---------------------------------------------------------------------------
+# Session message dispatcher
+# ---------------------------------------------------------------------------
+
+def handle_session_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    session: dict,
+    msg_type: str,
+    content: Optional[str],
+    interactive_payload: Optional[dict],
+    contact_name: Optional[str],
+    now_ts,
+) -> None:
+    """
+    Route an inbound message to the correct handler based on session state.
+    S14.
+    """
+    try:
+        state = session.get("session_state", "active")
+
+        if state == "triage_sent":
+            if msg_type == "interactive" and interactive_payload:
+                item_id = (
+                    (interactive_payload.get("list_reply") or
+                     interactive_payload.get("button_reply") or {}).get("id")
+                )
+                dispatch_triage_selection(
+                    db=db,
+                    org_id=org_id,
+                    phone_number=phone_number,
+                    item_id=item_id,
+                    session=session,
+                    contact_name=contact_name,
+                    now_ts=now_ts,
+                )
+            else:
+                # Free text while menu is pending — re-send menu, no new session
+                from app.services.whatsapp_service import send_triage_menu
+                send_triage_menu(db=db, org_id=org_id,
+                                 phone_number=phone_number, section="unknown")
+
+        elif state == "awaiting_identifier":
+            if msg_type == "text" and content:
+                handle_awaiting_identifier(
+                    db=db,
+                    org_id=org_id,
+                    phone_number=phone_number,
+                    identifier_text=content,
+                    session=session,
+                    contact_name=contact_name,
+                    now_ts=now_ts,
+                )
+            # Non-text or empty while awaiting — silently ignore
+
+        else:
+            # 'active' or anything else — session already resolved
+            logger.debug(
+                "handle_session_message: session %s already in state %s — no-op",
+                session.get("id"), state,
+            )
+
+    except Exception as exc:
+        logger.warning("handle_session_message failed org=%s phone=%s: %s",
+                       org_id, phone_number, exc)
+
+
+# ---------------------------------------------------------------------------
+# Triage selection dispatcher
+# ---------------------------------------------------------------------------
+
+def dispatch_triage_selection(
+    db,
+    org_id: str,
+    phone_number: str,
+    item_id: Optional[str],
+    session: dict,
+    contact_name: Optional[str],
+    now_ts,
+) -> None:
+    """
+    Execute the pipeline action matching the user's triage menu selection.
+    Falls back to 'free_form' if item_id is missing or not found in config.
+    S14.
+    """
+    try:
+        session_id = session["id"]
+
+        # Fetch org triage config
+        org_result = (
+            db.table("organisations")
+            .select("whatsapp_triage_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else None
+
+        triage_config = (org_data or {}).get("whatsapp_triage_config") or {}
+        unknown_items = (triage_config.get("unknown") or {}).get("items") or []
+
+        # Find the selected item
+        matched_item = None
+        if item_id:
+            for itm in unknown_items:
+                if itm.get("id") == item_id:
+                    matched_item = itm
+                    break
+
+        action = (matched_item or {}).get("action", "free_form")
+
+        if action == "qualify":
+            _action_qualify(db, org_id, phone_number, session_id,
+                            contact_name, now_ts)
+
+        elif action == "identify_customer":
+            _action_identify_customer(db, org_id, phone_number, session_id)
+
+        elif action == "route_to_role":
+            _action_route_to_role(db, org_id, phone_number, session_id,
+                                  matched_item or {}, contact_name, now_ts)
+
+        else:
+            # 'free_form' — also the fallback for unknown item_id
+            _action_free_form(db, org_id, phone_number, session_id,
+                              matched_item or {}, contact_name, now_ts)
+
+    except Exception as exc:
+        logger.warning("dispatch_triage_selection failed org=%s phone=%s item=%s: %s",
+                       org_id, phone_number, item_id, exc)
+
+
+# ---------------------------------------------------------------------------
+# Individual action handlers (called only from dispatch_triage_selection)
+# ---------------------------------------------------------------------------
+
+def _action_qualify(
+    db, org_id: str, phone_number: str, session_id: str,
+    contact_name: Optional[str], now_ts,
+) -> None:
+    """Create a sales_lead and trigger the qualification bot."""
+    from app.models.leads import LeadCreate, LeadSource
+    from app.services import lead_service
+
+    lead_payload = LeadCreate(
+        full_name=contact_name or phone_number,
+        phone=phone_number,
+        whatsapp=phone_number,
+        source=LeadSource.whatsapp_inbound.value,
+        contact_type="sales_lead",
+    )
+    lead = lead_service.create_lead(db, org_id, lead_payload, actor_id=None)
+    update_session(db, session_id, "active", selected_action="qualify")
+    # Trigger qualification session — same path as M01-3
+    lead_service.initiate_qualification_session(db, org_id, lead["id"])
+
+
+def _action_identify_customer(
+    db, org_id: str, phone_number: str, session_id: str,
+) -> None:
+    """Ask the contact to provide an identifier so we can find their record."""
+    from app.services.whatsapp_service import _call_meta_send
+
+    org_r = (
+        db.table("organisations")
+        .select("whatsapp_phone_id")
+        .eq("id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    org_d = org_r.data
+    if isinstance(org_d, list):
+        org_d = org_d[0] if org_d else None
+    phone_id = (org_d or {}).get("whatsapp_phone_id")
+    if phone_id:
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "text",
+            "text": {
+                "body": (
+                    "Please share your account email address or company name "
+                    "so we can find your record."
+                )
+            },
+        })
+    update_session(db, session_id, "awaiting_identifier",
+                   selected_action="identify_customer")
+
+
+def _action_route_to_role(
+    db, org_id: str, phone_number: str, session_id: str,
+    item: dict, contact_name: Optional[str], now_ts,
+) -> None:
+    """Create a business_inquiry lead and notify users with the target role."""
+    from app.models.leads import LeadCreate, LeadSource
+    from app.services import lead_service
+    from app.services.notification_service import _insert_notification
+
+    contact_type = item.get("contact_type", "business_inquiry")
+    role = item.get("role", "owner")
+
+    lead_payload = LeadCreate(
+        full_name=contact_name or phone_number,
+        phone=phone_number,
+        whatsapp=phone_number,
+        source=LeadSource.whatsapp_inbound.value,
+        contact_type=contact_type,
+    )
+    lead = lead_service.create_lead(db, org_id, lead_payload, actor_id=None)
+
+    # Notify all users in org with the target role
+    users_result = (
+        db.table("users")
+        .select("id, roles(template)")
+        .eq("org_id", org_id)
+        .execute()
+    )
+    for user in (users_result.data or []):
+        user_role = (user.get("roles") or {}).get("template", "")
+        if user_role.lower() == role.lower():
+            _insert_notification(
+                db, org_id, user["id"],
+                notif_type="new_lead",
+                title="New inbound contact",
+                body=f"A new {contact_type} contacted via WhatsApp.",
+                resource_type="lead",
+                resource_id=lead["id"],
+            )
+
+    update_session(db, session_id, "active", selected_action="route_to_role")
+
+
+def _action_free_form(
+    db, org_id: str, phone_number: str, session_id: str,
+    item: dict, contact_name: Optional[str], now_ts,
+) -> None:
+    """Create an 'other' lead and notify the first available rep or owner."""
+    from app.models.leads import LeadCreate, LeadSource
+    from app.services import lead_service
+    from app.services.notification_service import _insert_notification
+
+    contact_type = item.get("contact_type", "other")
+
+    lead_payload = LeadCreate(
+        full_name=contact_name or phone_number,
+        phone=phone_number,
+        whatsapp=phone_number,
+        source=LeadSource.whatsapp_inbound.value,
+        contact_type=contact_type,
+    )
+    lead = lead_service.create_lead(db, org_id, lead_payload, actor_id=None)
+
+    # Notify assigned rep or first owner
+    assigned_to = lead.get("assigned_to")
+    if not assigned_to:
+        users_result = (
+            db.table("users")
+            .select("id, roles(template)")
+            .eq("org_id", org_id)
+            .execute()
+        )
+        for user in (users_result.data or []):
+            if (user.get("roles") or {}).get("template", "").lower() == "owner":
+                assigned_to = user["id"]
+                break
+
+    if assigned_to:
+        _insert_notification(
+            db, org_id, assigned_to,
+            notif_type="new_lead",
+            title="New inbound contact",
+            body=f"A new contact messaged via WhatsApp.",
+            resource_type="lead",
+            resource_id=lead["id"],
+        )
+
+    update_session(db, session_id, "active", selected_action="free_form")
+
+
+# ---------------------------------------------------------------------------
+# Identifier-text handler
+# ---------------------------------------------------------------------------
+
+def handle_awaiting_identifier(
+    db,
+    org_id: str,
+    phone_number: str,
+    identifier_text: str,
+    session: dict,
+    contact_name: Optional[str],
+    now_ts,
+) -> None:
+    """
+    Attempt to match identifier_text against customer records (Pattern 33:
+    Python-side filtering, no ILIKE).  On match: create pending
+    customer_contact + notify managers.  On miss: create support_contact lead.
+    S14.
+    """
+    try:
+        session_id = session["id"]
+
+        # Fetch all org customers for Python-side search (Pattern 33)
+        cust_result = (
+            db.table("customers")
+            .select("id, full_name, email, assigned_to")
+            .eq("org_id", org_id)
+            .execute()
+        )
+        customers = cust_result.data or []
+
+        needle = identifier_text.strip().lower()
+        matched_customer = None
+        for cust in customers:
+            name_match = (cust.get("full_name") or "").lower() == needle
+            email_match = (cust.get("email") or "").lower() == needle
+            if name_match or email_match:
+                matched_customer = cust
+                break
+
+        from app.services.whatsapp_service import _call_meta_send
+        org_ph_r = (
+            db.table("organisations")
+            .select("whatsapp_phone_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_ph_d = org_ph_r.data
+        if isinstance(org_ph_d, list):
+            org_ph_d = org_ph_d[0] if org_ph_d else None
+        phone_id = (org_ph_d or {}).get("whatsapp_phone_id")
+
+        if matched_customer:
+            # Insert pending customer_contact
+            db.table("customer_contacts").insert({
+                "org_id": org_id,
+                "customer_id": matched_customer["id"],
+                "phone_number": phone_number,
+                "name": contact_name,
+                "status": "pending",
+            }).execute()
+
+            # Confirm to the sender
+            if phone_id:
+                _call_meta_send(phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to": phone_number,
+                    "type": "text",
+                    "text": {
+                        "body": (
+                            "Thanks — we found your account. A team member will "
+                            "confirm your details shortly."
+                        )
+                    },
+                })
+
+            # Notify all owners and ops_managers
+            _notify_managers(
+                db, org_id,
+                title="New contact pending approval",
+                body=(
+                    f"A new contact is pending approval for customer "
+                    f"{matched_customer.get('full_name', '')}."
+                ),
+                resource_type="customer",
+                resource_id=matched_customer["id"],
+            )
+
+        else:
+            # No match — create support_contact lead
+            from app.models.leads import LeadCreate, LeadSource
+            from app.services import lead_service
+
+            lead_payload = LeadCreate(
+                full_name=contact_name or phone_number,
+                phone=phone_number,
+                whatsapp=phone_number,
+                source=LeadSource.whatsapp_inbound.value,
+                contact_type="support_contact",
+            )
+            lead = lead_service.create_lead(db, org_id, lead_payload, actor_id=None)
+
+            if phone_id:
+                _call_meta_send(phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to": phone_number,
+                    "type": "text",
+                    "text": {
+                        "body": (
+                            "We couldn't find that account. A team member will "
+                            "follow up with you shortly."
+                        )
+                    },
+                })
+
+            _notify_managers(
+                db, org_id,
+                title="Unknown identifier — follow-up needed",
+                body=f"A contact couldn't be matched to any customer record.",
+                resource_type="lead",
+                resource_id=lead["id"],
+            )
+
+        update_session(db, session_id, "active",
+                       selected_action="identify_customer")
+
+    except Exception as exc:
+        logger.warning(
+            "handle_awaiting_identifier failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Customer contacts CRUD (called from customers.py router)
+# ---------------------------------------------------------------------------
+
+def list_customer_contacts(db, org_id: str, customer_id: str) -> list:
+    """Return all customer_contacts rows for this org + customer. S14."""
+    try:
+        result = (
+            db.table("customer_contacts")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("customer_id", customer_id)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        logger.warning("list_customer_contacts failed: %s", exc)
+        return []
+
+
+def add_customer_contact(
+    db,
+    org_id: str,
+    customer_id: str,
+    payload: dict,
+    registered_by: Optional[str] = None,
+) -> Optional[dict]:
+    """
+    Insert a new customer_contact with status='pending'.
+    payload fields: phone_number (required), name, contact_role.
+    S14.
+    """
+    try:
+        row = {
+            "org_id": org_id,
+            "customer_id": customer_id,
+            "phone_number": payload["phone_number"],
+            "name": payload.get("name"),
+            "contact_role": payload.get("contact_role"),
+            "status": "pending",
+        }
+        if registered_by:
+            row["registered_by"] = registered_by
+        result = db.table("customer_contacts").insert(row).execute()
+        rows = result.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.warning("add_customer_contact failed: %s", exc)
+        return None
+
+
+def approve_customer_contact(
+    db,
+    org_id: str,
+    contact_id: str,
+    user_id: str,
+) -> Optional[dict]:
+    """
+    Set status='active' on the given contact (must belong to org). S14.
+    Returns updated row or None.
+    """
+    try:
+        result = (
+            db.table("customer_contacts")
+            .update({"status": "active"})
+            .eq("id", contact_id)
+            .eq("org_id", org_id)
+            .execute()
+        )
+        rows = result.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.warning("approve_customer_contact failed id=%s: %s",
+                       contact_id, exc)
+        return None
+
+
+def remove_customer_contact(
+    db,
+    org_id: str,
+    contact_id: str,
+    user_id: str,
+) -> bool:
+    """
+    Delete the given contact (must belong to org). Returns True on success.
+    S14.
+    """
+    try:
+        db.table("customer_contacts").delete().eq("id", contact_id).eq(
+            "org_id", org_id
+        ).execute()
+        return True
+    except Exception as exc:
+        logger.warning("remove_customer_contact failed id=%s: %s",
+                       contact_id, exc)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _notify_managers(
+    db, org_id: str, title: str, body: str,
+    resource_type: str, resource_id: str,
+) -> None:
+    """Notify all owners and ops_managers in the org. S14."""
+    try:
+        from app.services.notification_service import _insert_notification
+
+        users_result = (
+            db.table("users")
+            .select("id, roles(template)")
+            .eq("org_id", org_id)
+            .execute()
+        )
+        for user in (users_result.data or []):
+            role = (user.get("roles") or {}).get("template", "").lower()
+            if role in ("owner", "ops_manager"):
+                _insert_notification(
+                    db, org_id, user["id"],
+                    notif_type="triage_alert",
+                    title=title,
+                    body=body,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                )
+    except Exception as exc:
+        logger.warning("_notify_managers failed org=%s: %s", org_id, exc)

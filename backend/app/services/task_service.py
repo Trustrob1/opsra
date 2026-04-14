@@ -1,6 +1,6 @@
 """
 app/services/task_service.py
-Task Management business logic — Phase 7A.
+Task Management business logic — Phase 7A (updated M01-9b).
 
 Public API:
   list_tasks(org, db, **filters) -> dict   paginated task list
@@ -9,18 +9,21 @@ Public API:
   update_task(task_id, org, db, data) -> dict
   complete_task(task_id, org, db, notes) -> dict
   snooze_task(task_id, org, db, snoozed_until) -> dict
+  soft_delete_task(task_id, org, db) -> dict   NEW M01-9b
+  restore_task(task_id, org, db) -> dict        NEW M01-9b
 
 Access rules (Tech Spec §4.2 / DRD §4.2):
   - Personal view (default): assigned_to = current user
   - Team view: only owner / ops_manager / is_admin
   - Reassigning a task to another user: only owner / ops_manager / is_admin
+  - Delete/restore: own task (created_by or assigned_to) OR manager
   - All other operations: any authenticated user on their own tasks
     or any manager on any org task
 
 Security:
   S1  org_id always from JWT — never from request body
   S12 write_audit_log on every mutating operation
-  S13 soft deletes only — tasks are completed/snoozed, never hard deleted
+  S13 soft deletes only — deleted_at timestamp, never hard deleted
   Pattern 37: role checked via org["roles"]["template"] / permissions
   Pattern 33: all filtering Python-side after .eq(org_id) fetch
 """
@@ -108,7 +111,6 @@ def _sort_key(task: dict) -> tuple:
     is_overdue = bool(due and due < now_iso and status not in ("completed", "snoozed"))
     priority_score = _PRIORITY_ORDER.get((task.get("priority") or "medium").lower(), 2)
 
-    # Overdue = group 0, active = group 1, no due date = group 2
     if is_overdue:
         group = 0
     elif due:
@@ -117,6 +119,18 @@ def _sort_key(task: dict) -> tuple:
         group = 2
 
     return (group, priority_score, due)
+
+
+# ── Ownership check helper ────────────────────────────────────────────────────
+
+
+def _can_mutate(task: dict, user_id: str, is_manager: bool) -> bool:
+    """Returns True if user owns (created or assigned) or is a manager."""
+    return (
+        task.get("assigned_to") == user_id
+        or task.get("created_by") == user_id
+        or is_manager
+    )
 
 
 # ── Public service functions ──────────────────────────────────────────────────
@@ -133,6 +147,7 @@ def list_tasks(
     priority: Optional[str] = None,
     status: Optional[str] = None,
     include_completed: bool = False,
+    archived: bool = False,
     created_from: Optional[str] = None,
     created_to: Optional[str] = None,
     due_from: Optional[str] = None,
@@ -146,33 +161,40 @@ def list_tasks(
     Personal view (default): returns only tasks assigned to the current user.
     Team view: returns all org tasks — only available to managers.
     Record-scoped view: when source_record_id is provided, returns all tasks
-      linked to that specific record regardless of assigned_to — used by
-      ticket thread, lead profile, and customer profile task widgets.
+      linked to that specific record regardless of assigned_to.
+    Archived view: when archived=True, returns soft-deleted tasks only.
+      include_completed is ignored in archived mode (all statuses shown).
 
     All filtering is Python-side (Pattern 33).
-    Overdue tasks sorted first, then by priority, then due_at (Pattern 37 safe).
+    deleted_at included in select so filter logic works correctly.
     """
     org_id: str = org["org_id"]
     user_id: str = org["id"]
     is_manager = _is_manager(org)
 
-    # Fetch all non-deleted org tasks
+    # Fetch all org tasks — deleted_at included so filter logic works (M01-9b fix)
     result = (
         db.table("tasks")
         .select(
             "id, org_id, title, description, task_type, source_module, "
             "source_record_id, assigned_to, created_by, status, priority, "
             "due_at, completed_at, snoozed_until, completion_notes, "
-            "ai_confirmed_by, created_at, updated_at",
+            "ai_confirmed_by, deleted_at, created_at, updated_at",
             "assigned_user:users!assigned_to(id, full_name)"
         )
         .eq("org_id", org_id)
         .execute()
     )
-    rows: list = [r for r in (result.data or []) if not r.get("deleted_at")]
 
-    # Record-scoped view: source_record_id bypasses personal/team scoping.
-    # Used by profile widgets and ticket thread to show all tasks for one record.
+    all_rows: list = result.data or []
+
+    # Split on deleted_at first — archived view shows deleted rows, active view hides them
+    if archived:
+        rows = [r for r in all_rows if r.get("deleted_at")]
+    else:
+        rows = [r for r in all_rows if not r.get("deleted_at")]
+
+    # Scoping: record-scoped bypasses personal/team logic
     if source_record_id:
         rows = [r for r in rows if r.get("source_record_id") == source_record_id]
     elif team_view and is_manager:
@@ -180,7 +202,11 @@ def list_tasks(
     else:
         rows = [r for r in rows if r.get("assigned_to") == user_id]
 
-    # Optional filters (Python-side — Pattern 33)
+    # Completion filter only applies in active view
+    if not archived and not include_completed:
+        rows = [r for r in rows if (r.get("status") or "open").lower() != "completed"]
+
+    # Optional scalar filters (Pattern 33)
     if assigned_to_filter:
         rows = [r for r in rows if r.get("assigned_to") == assigned_to_filter]
     if source_module:
@@ -189,10 +215,8 @@ def list_tasks(
         rows = [r for r in rows if (r.get("priority") or "").lower() == priority.lower()]
     if status:
         rows = [r for r in rows if (r.get("status") or "").lower() == status.lower()]
-    if not include_completed:
-        rows = [r for r in rows if (r.get("status") or "open").lower() != "completed"]
-    
-    # Date filters (Pattern 33 — Python-side)
+
+    # Date filters (Pattern 33)
     if created_from:
         rows = [r for r in rows if r.get("created_at") and r["created_at"] >= created_from]
     if created_to:
@@ -219,7 +243,7 @@ def list_tasks(
 
 
 def get_task(task_id: str, org_id: str, db) -> dict:
-    """Fetch a single task — raises ValueError if not found."""
+    """Fetch a single task — raises ValueError if not found or soft-deleted."""
     result = (
         db.table("tasks")
         .select("*")
@@ -229,6 +253,24 @@ def get_task(task_id: str, org_id: str, db) -> dict:
     )
     task = _normalise(result.data)
     if not task or task.get("deleted_at"):
+        raise ValueError(f"Task {task_id} not found.")
+    return task
+
+
+def _get_any_task(task_id: str, org_id: str, db) -> dict:
+    """
+    Fetch a task regardless of deleted_at — used by restore.
+    Raises ValueError if the row does not exist at all.
+    """
+    result = (
+        db.table("tasks")
+        .select("*")
+        .eq("id", task_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    task = _normalise(result.data)
+    if not task:
         raise ValueError(f"Task {task_id} not found.")
     return task
 
@@ -265,7 +307,6 @@ def create_task(org: dict, db, data) -> dict:
         "updated_at":       _now_iso(),
     }
 
-    # Remove None values so DB defaults apply
     row = {k: v for k, v in row.items() if v is not None}
 
     result = db.table("tasks").insert(row).execute()
@@ -287,10 +328,8 @@ def update_task(task_id: str, org: dict, db, data) -> dict:
     user_id: str = org["id"]
     is_manager = _is_manager(org)
 
-    # Fetch and verify ownership
     existing = get_task(task_id, org_id, db)
 
-    # Build update payload from supplied fields only
     updates: dict = {"updated_at": _now_iso()}
 
     if data.title is not None:
@@ -327,7 +366,6 @@ def complete_task(task_id: str, org: dict, db, notes: Optional[str] = None) -> d
     org_id: str = org["org_id"]
     user_id: str = org["id"]
 
-    # Verify task exists in this org
     get_task(task_id, org_id, db)
 
     updates: dict = {
@@ -356,7 +394,6 @@ def snooze_task(task_id: str, org: dict, db, snoozed_until: str) -> dict:
     org_id: str = org["org_id"]
     user_id: str = org["id"]
 
-    # Verify task exists in this org
     get_task(task_id, org_id, db)
 
     updates: dict = {
@@ -371,4 +408,75 @@ def snooze_task(task_id: str, org: dict, db, snoozed_until: str) -> dict:
         raise RuntimeError("Task snooze failed.")
 
     _audit(db, org_id, user_id, "task.snoozed", task_id)
+    return task
+
+
+def soft_delete_task(task_id: str, org: dict, db) -> dict:
+    """
+    Soft-delete a task by setting deleted_at = now().
+    The task is hidden from all active list queries and visible only
+    in the Archived tab (archived=True list query).
+
+    RBAC: user must be the task creator, the assigned user, or a manager.
+    S1: org_id from JWT only.
+    S12: audit logged.
+    S13: soft delete only — record preserved for audit trail.
+    """
+    org_id: str = org["org_id"]
+    user_id: str = org["id"]
+    is_manager = _is_manager(org)
+
+    existing = get_task(task_id, org_id, db)
+
+    if not _can_mutate(existing, user_id, is_manager):
+        raise PermissionError("You can only archive tasks you created or are assigned to.")
+
+    updates = {
+        "deleted_at": _now_iso(),
+        "updated_at": _now_iso(),
+    }
+
+    result = db.table("tasks").update(updates).eq("id", task_id).eq("org_id", org_id).execute()
+    task = _normalise(result.data)
+    if not task:
+        raise RuntimeError("Task archive failed.")
+
+    _audit(db, org_id, user_id, "task.archived", task_id)
+    return task
+
+
+def restore_task(task_id: str, org: dict, db) -> dict:
+    """
+    Restore a soft-deleted task by clearing deleted_at.
+    Task returns to its previous status (completed or active).
+
+    RBAC: user must be the task creator, the assigned user, or a manager.
+    S1: org_id from JWT only.
+    S12: audit logged.
+    """
+    org_id: str = org["org_id"]
+    user_id: str = org["id"]
+    is_manager = _is_manager(org)
+
+    # Use _get_any_task so we can fetch the deleted row
+    existing = _get_any_task(task_id, org_id, db)
+
+    if not existing.get("deleted_at"):
+        raise ValueError(f"Task {task_id} is not archived.")
+
+    if not _can_mutate(existing, user_id, is_manager):
+        raise PermissionError("You can only restore tasks you created or are assigned to.")
+
+    # Clear deleted_at — supabase-py sends None as SQL NULL
+    updates = {
+        "deleted_at": None,
+        "updated_at": _now_iso(),
+    }
+
+    result = db.table("tasks").update(updates).eq("id", task_id).eq("org_id", org_id).execute()
+    task = _normalise(result.data)
+    if not task:
+        raise RuntimeError("Task restore failed.")
+
+    _audit(db, org_id, user_id, "task.restored", task_id)
     return task

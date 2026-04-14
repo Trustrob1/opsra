@@ -5,33 +5,44 @@
  * Client-facing admin for Owner/Admin users.
  * On mount: calls listUsers() to verify access.
  *   → 403 response: renders "Access Restricted" screen (TEMP-1 workaround)
- *   → success: renders tab nav with 4 sections
+ *   → success: renders tab nav with sections
  *
- * Tabs: Users | Roles | Routing Rules | Integrations
+ * Tabs: Users | Roles | Routing Rules | Integrations | Commissions |
+ *       Lead Scoring | Qualification Bot | SLA Targets | Nurture Engine |
+ *       WhatsApp Menu (WH-0)
  * Plus 2 nav links (no data): Knowledge Base → Support, WA Templates → WhatsApp
  *
  * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
  * table state, filters, and open modals when switching between tabs.
+ * Pattern 51: full rewrite only — never sed.
  */
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
-import UserManagement  from './UserManagement'
-import RoleBuilder     from './RoleBuilder'
-import RoutingRules    from './RoutingRules'
-import IntegrationStatus from './IntegrationStatus'
-import CommissionSettings  from './CommissionSettings'
-import ScoringRubric       from './ScoringRubric'
+import UserManagement     from './UserManagement'
+import RoleBuilder        from './RoleBuilder'
+import RoutingRules       from './RoutingRules'
+import IntegrationStatus  from './IntegrationStatus'
+import CommissionSettings from './CommissionSettings'
+import ScoringRubric      from './ScoringRubric'
+import QualificationBot   from './QualificationBot'
+import LeadSLASettings    from './LeadSLASettings'
+import NurtureSettings    from './NurtureSettings'
+import CustomerMenuConfig from './CustomerMenuConfig'
 
 const TABS = [
-  { id: 'users',        label: '👥 Users' },
-  { id: 'roles',        label: '🎭 Roles' },
-  { id: 'routing',      label: '🔀 Routing Rules' },
-  { id: 'integrations', label: '🔌 Integrations' },
-  { id: 'commission',   label: '💼 Commissions' },
-  { id: 'scoring',      label: '🎯 Lead Scoring' },
-  { id: 'kb',           label: '📚 Knowledge Base', link: true },
-  { id: 'templates',    label: '💬 WA Templates',   link: true },
+  { id: 'users',          label: '👥 Users' },
+  { id: 'roles',          label: '🎭 Roles' },
+  { id: 'routing',        label: '🔀 Routing Rules' },
+  { id: 'integrations',   label: '🔌 Integrations' },
+  { id: 'commission',     label: '💼 Commissions' },
+  { id: 'scoring',        label: '🎯 Lead Scoring' },
+  { id: 'qualification',  label: '🤖 Qualification Bot' },
+  { id: 'sla',            label: '⏱️ SLA Targets' },
+  { id: 'nurture',        label: '🌱 Nurture Engine' },
+  { id: 'whatsapp-menu',  label: '📋 WhatsApp Menu' },
+  { id: 'kb',             label: '📚 Knowledge Base', link: true },
+  { id: 'templates',      label: '💬 WA Templates',   link: true },
 ]
 
 export default function AdminModule({ user }) {
@@ -82,9 +93,9 @@ export default function AdminModule({ user }) {
     <div>
       {/* Module header */}
       <div style={{
-        background:    '#0a1a24',
-        padding:       '28px 32px 0',
-        borderBottom:  '1px solid #1a2f3f',
+        background:   '#0a1a24',
+        padding:      '28px 32px 0',
+        borderBottom: '1px solid #1a2f3f',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{
@@ -114,7 +125,7 @@ export default function AdminModule({ user }) {
         </div>
 
         {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 0 }}>
+        <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
           {TABS.map(t => {
             const isActive = tab === t.id
             return (
@@ -123,18 +134,18 @@ export default function AdminModule({ user }) {
                 onClick={() => setTab(t.id)}
                 title={t.link ? 'View-only — manage in the respective module' : undefined}
                 style={{
-                  background:    'none',
-                  border:        'none',
-                  borderBottom:  isActive ? `2px solid ${ds.teal}` : '2px solid transparent',
-                  padding:       '10px 18px',
-                  cursor:        'pointer',
-                  fontFamily:    ds.fontDm,
-                  fontSize:      13.5,
-                  fontWeight:    isActive ? 600 : 400,
-                  color:         isActive ? ds.teal : '#5a8a9f',
-                  transition:    'all 0.15s',
-                  opacity:       t.link ? 0.7 : 1,
-                  whiteSpace:    'nowrap',
+                  background:   'none',
+                  border:       'none',
+                  borderBottom: isActive ? `2px solid ${ds.teal}` : '2px solid transparent',
+                  padding:      '10px 18px',
+                  cursor:       'pointer',
+                  fontFamily:   ds.fontDm,
+                  fontSize:     13.5,
+                  fontWeight:   isActive ? 600 : 400,
+                  color:        isActive ? ds.teal : '#5a8a9f',
+                  transition:   'all 0.15s',
+                  opacity:      t.link ? 0.7 : 1,
+                  whiteSpace:   'nowrap',
                 }}
               >
                 {t.label}{t.link ? ' ↗' : ''}
@@ -165,6 +176,18 @@ export default function AdminModule({ user }) {
         </div>
         <div style={{ display: tab === 'scoring' ? 'block' : 'none' }}>
           <ScoringRubric />
+        </div>
+        <div style={{ display: tab === 'qualification' ? 'block' : 'none' }}>
+          <QualificationBot />
+        </div>
+        <div style={{ display: tab === 'sla' ? 'block' : 'none' }}>
+          <LeadSLASettings />
+        </div>
+        <div style={{ display: tab === 'nurture' ? 'block' : 'none' }}>
+          <NurtureSettings />
+        </div>
+        <div style={{ display: tab === 'whatsapp-menu' ? 'block' : 'none' }}>
+          <CustomerMenuConfig />
         </div>
 
         {/* Nav links — no state to preserve, conditional render is fine */}

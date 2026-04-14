@@ -64,6 +64,7 @@ def celery_app_module():
 
 # ---------------------------------------------------------------------------
 # Required jobs from Technical Spec Section 7
+# Updated to include M01-4/M01-5/M01-6/M01-7 additions
 # ---------------------------------------------------------------------------
 
 REQUIRED_JOBS = [
@@ -79,6 +80,21 @@ REQUIRED_JOBS = [
     "anomaly_detector",
     "payment_failure_monitor",
     "re_engagement_queue",
+    # M01-4
+    "review_window_sender",
+    # M01-5
+    "qualification_fallback",
+    # M01-6
+    "lead_sla_check",
+    # M01-7
+    "demo_reminder_check",
+    # M01-10a
+    "lead_graduation_check",
+    "lead_nurture_send",
+    # M01-10b
+    "daily_briefing",
+    "notification_digest_midday",
+    "notification_digest_eod",
 ]
 
 
@@ -146,6 +162,15 @@ class TestTaskNameMapping:
 
     def test_re_engagement_maps_to_churn_worker(self, celery_app_module):
         assert "churn_worker" in self._task(celery_app_module, "re_engagement_queue")
+
+    def test_daily_briefing_maps_to_briefing_worker(self, celery_app_module):
+        assert "daily_briefing_worker" in self._task(celery_app_module, "daily_briefing")
+
+    def test_notification_digest_midday_maps_to_briefing_worker(self, celery_app_module):
+        assert "daily_briefing_worker" in self._task(celery_app_module, "notification_digest_midday")
+
+    def test_notification_digest_eod_maps_to_briefing_worker(self, celery_app_module):
+        assert "daily_briefing_worker" in self._task(celery_app_module, "notification_digest_eod")
 
 
 # ---------------------------------------------------------------------------

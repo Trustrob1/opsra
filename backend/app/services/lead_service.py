@@ -54,6 +54,48 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def stamp_first_contacted(db: Any, org_id: str, lead_id: str) -> None:
+    """
+    M01-6 — Stamp first_contacted_at and response_time_minutes on the lead
+    the first time a rep makes contact (message, call, or stage move to contacted).
+    Idempotent: does nothing if first_contacted_at is already set.
+    Called by:
+      - move_stage()         when new_stage == "contacted"
+      - whatsapp_service.py  when an outbound message to a lead is dispatched
+    """
+    result = (
+        db.table("leads")
+        .select("id, first_contacted_at, created_at")
+        .eq("id", lead_id)
+        .eq("org_id", org_id)
+        .is_("deleted_at", "null")
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if not data or data.get("first_contacted_at"):
+        return  # already stamped or lead not found
+
+    now = datetime.now(timezone.utc)
+    created_str = data.get("created_at", "")
+    response_minutes: Optional[int] = None
+    if created_str:
+        try:
+            created_at = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+            delta = now - created_at
+            response_minutes = max(0, int(delta.total_seconds() // 60))
+        except Exception:
+            pass
+
+    db.table("leads").update({
+        "first_contacted_at":    now.isoformat(),
+        "response_time_minutes": response_minutes,
+        "updated_at":            now.isoformat(),
+    }).eq("id", lead_id).eq("org_id", org_id).execute()
+
+
 def _lead_or_404(db: Any, org_id: str, lead_id: str) -> dict:
     """Fetch a non-deleted lead by id scoped to org, or raise 404."""
     result = (
@@ -602,6 +644,10 @@ def move_stage(
         "last_activity_at": _now_iso(),
     }
 
+    # M01-6 — stamp first contact time when rep moves lead to "contacted"
+    if new_stage == "contacted":
+        stamp_first_contacted(db, org_id, lead_id)
+
     result = (
         db.table("leads")
         .update(updates)
@@ -813,8 +859,123 @@ def reactivate_lead(
 
 
 # ---------------------------------------------------------------------------
-# convert_lead — creates customer + subscription stub
+# reactivate_from_nurture — GAP-1
+# Pull a nurture-track lead back into the active pipeline after offline contact.
 # ---------------------------------------------------------------------------
+
+def reactivate_from_nurture(
+    db: Any,
+    org_id: str,
+    lead_id: str,
+    user_id: str,
+    reason: Optional[str] = None,
+) -> dict:
+    """
+    Pull a nurture-track lead back into the active pipeline.
+
+    Called when a rep makes contact outside the system (phone call, in-person)
+    and wants to move the lead back to active pipeline management.
+
+    Requires: lead.nurture_track == True — raises 400 otherwise.
+
+    Transitions:
+      stage                     → new
+      nurture_track             → False
+      nurture_sequence_position → 0
+      last_nurture_sent_at      → None
+
+    Logs timeline with the acting rep's user_id (human actor — not system).
+    Notifies all managers.
+
+    Returns the updated lead dict.
+    """
+    lead = _lead_or_404(db, org_id, lead_id)
+
+    if not lead.get("nurture_track"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": ErrorCode.INVALID_TRANSITION,
+                "message": "Lead is not currently on the nurture track",
+            },
+        )
+
+    now = _now_iso()
+    updates = {
+        "stage":                     "new",
+        "nurture_track":             False,
+        "nurture_sequence_position": 0,
+        "last_nurture_sent_at":      None,
+        "updated_at":                now,
+    }
+
+    result = (
+        db.table("leads")
+        .update(updates)
+        .eq("id", lead_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    updated = result.data[0] if result.data else {**lead, **updates}
+
+    description = "Lead manually reactivated from nurture track by rep"
+    if reason:
+        description += f" — reason: {reason[:500]}"
+
+    write_timeline_event(
+        db, org_id, lead_id,
+        event_type="nurture_reactivated",
+        actor_id=user_id,
+        description=description,
+        metadata={"reason": reason},
+    )
+    write_audit_log(
+        db, org_id, user_id,
+        action="lead.reactivated_from_nurture",
+        resource_type="lead",
+        resource_id=lead_id,
+        old_value={"nurture_track": True, "stage": lead.get("stage")},
+        new_value={"nurture_track": False, "stage": "new"},
+    )
+
+    # Notify all managers — they need visibility of pipeline changes
+    try:
+        users_result = (
+            db.table("users")
+            .select("id, roles(template)")
+            .eq("org_id", org_id)
+            .execute()
+        )
+        lead_name = lead.get("full_name") or "Lead"
+        for u in (users_result.data or []):
+            roles = u.get("roles") or {}
+            if isinstance(roles, list):
+                roles = roles[0] if roles else {}
+            template = (roles.get("template") or "").lower()
+            if template in ("owner", "admin", "ops_manager"):
+                try:
+                    db.table("notifications").insert({
+                        "org_id":        org_id,
+                        "user_id":       u["id"],
+                        "title":         f"Nurture lead reactivated: {lead_name}",
+                        "body":          description,
+                        "type":          "nurture_reactivated",
+                        "resource_type": "lead",
+                        "resource_id":   lead_id,
+                        "is_read":       False,
+                        "created_at":    now,
+                    }).execute()
+                except Exception as _exc:
+                    logger.warning(
+                        "reactivate_from_nurture: notification failed for %s: %s",
+                        u.get("id"), _exc,
+                    )
+    except Exception as exc:
+        logger.warning(
+            "reactivate_from_nurture: manager notification failed (non-fatal): %s", exc
+        )
+
+    return updated
 
 def convert_lead(
     db: Any,
@@ -1120,7 +1281,70 @@ def get_lead_tasks(db: Any, org_id: str, lead_id: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# get_nurture_queue — GAP-6
+# ---------------------------------------------------------------------------
+
+def get_nurture_queue(
+    db: Any,
+    org_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    include_opted_out: bool = False,
+) -> dict:
+    """
+    Return a paginated list of leads currently on the nurture track.
+
+    Default behaviour: excludes leads where nurture_opted_out=True.
+    Set include_opted_out=True to include them (manager opt-in toggle).
+
+    Fields returned:
+      id, full_name, score, nurture_graduation_reason,
+      nurture_sequence_position, last_nurture_sent_at,
+      updated_at, nurture_opted_out, assigned_to + rep name join.
+
+    Sorted: last_nurture_sent_at ASC NULLS FIRST — leads that have
+    never received a message appear first, then oldest-sent first.
+    This surfaces leads that need attention most urgently.
+
+    Returns dict compatible with paginated() envelope.
+    """
+    query = (
+        db.table("leads")
+        .select(
+            "id, full_name, score, nurture_graduation_reason, "
+            "nurture_sequence_position, last_nurture_sent_at, "
+            "updated_at, nurture_opted_out, assigned_to, "
+            "assigned_user:users!assigned_to(id, full_name)",
+            count="exact",
+        )
+        .eq("org_id", org_id)
+        .eq("nurture_track", True)
+        .is_("deleted_at", "null")
+    )
+
+    if not include_opted_out:
+        query = query.eq("nurture_opted_out", False)
+
+    offset = (page - 1) * page_size
+    query = (
+        query
+        .order("last_nurture_sent_at", desc=False, nullsfirst=True)
+        .range(offset, offset + page_size - 1)
+    )
+
+    result = query.execute()
+    return {
+        "items":     result.data or [],
+        "total":     result.count or 0,
+        "page":      page,
+        "page_size": page_size,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Import job helpers (in-memory store — use Redis in production)
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 _import_jobs: dict[str, dict] = {}
 

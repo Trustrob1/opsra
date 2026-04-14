@@ -10,8 +10,13 @@ Phase 9B additions:
   - update_customer: affiliate_partner is read-only — blocked with 403
   - Pattern 37: role derived via rbac module
 
+M01-7a additions:
+  - GET /attention-summary — multi-signal attention state per customer
+    MUST be declared before /{customer_id} to avoid route shadowing.
+
 Routes (full paths after combining):
   GET   /api/v1/customers
+  GET   /api/v1/customers/attention-summary
   GET   /api/v1/customers/{customer_id}
   PATCH /api/v1/customers/{customer_id}
   GET   /api/v1/customers/{customer_id}/messages
@@ -24,12 +29,14 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok, paginated
 from app.models.customers import CustomerUpdate
-from app.services import whatsapp_service
+from app.services import whatsapp_service, demo_service
+from app.services import triage_service
 from app.utils.rbac import is_scoped_role, require_not_affiliate
 
 logger = logging.getLogger(__name__)
@@ -70,6 +77,94 @@ def list_customers(
         page=page,
         page_size=page_size,
     )
+
+
+# ---------------------------------------------------------------------------
+# M01-7a — GET /api/v1/customers/attention-summary
+# Multi-signal attention state per customer — drives badges on CustomerList rows.
+# Scoped roles see only their assigned customers.
+# MUST be declared before /{customer_id} to avoid route shadowing.
+# ---------------------------------------------------------------------------
+
+@router.get("/attention-summary")
+def get_attention_summary(
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    Returns { customer_id: { has_attention, unread_messages, open_tickets,
+                              churn_risk, reasons } } for all customers in org.
+    Scoped roles limited to their assigned customers.
+    S14: individual signal query failures are swallowed — never 500s.
+    """
+    # For scoped roles, restrict to their own customer IDs only
+    customer_ids = None
+    if is_scoped_role(org):
+        rows = (
+            db.table("customers")
+            .select("id")
+            .eq("org_id", org["org_id"])
+            .eq("assigned_to", org["id"])
+            .is_("deleted_at", "null")
+            .execute().data or []
+        )
+        customer_ids = [r["id"] for r in rows]
+
+    summary = demo_service.get_customer_attention_summary(
+        db=db,
+        org_id=org["org_id"],
+        customer_ids=customer_ids,
+    )
+    return ok(data=summary)
+
+
+# ---------------------------------------------------------------------------
+# WH-0 — Customer contacts (static-prefix routes — Pattern 53)
+# MUST be declared before /{customer_id} to avoid FastAPI route shadowing.
+# ---------------------------------------------------------------------------
+
+@router.patch("/contacts/{contact_id}/approve")
+def approve_contact(
+    contact_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """Approve a pending customer_contact (managers only). WH-0."""
+    require_not_affiliate(org, "approving contacts")
+    role = (org.get("roles") or {}).get("template", "")
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Managers only"})
+    result = triage_service.approve_customer_contact(
+        db=db,
+        org_id=org["org_id"],
+        contact_id=contact_id,
+        user_id=org["id"],
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Contact not found"})
+    return ok(data=result, message="Contact approved")
+
+
+@router.delete("/contacts/{contact_id}", status_code=200)
+def remove_contact(
+    contact_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """Remove a customer_contact (managers only). WH-0."""
+    require_not_affiliate(org, "removing contacts")
+    role = (org.get("roles") or {}).get("template", "")
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Managers only"})
+    success = triage_service.remove_customer_contact(
+        db=db,
+        org_id=org["org_id"],
+        contact_id=contact_id,
+        user_id=org["id"],
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Contact not found"})
+    return ok(message="Contact removed")
 
 
 # ---------------------------------------------------------------------------
@@ -117,9 +212,6 @@ def get_customer(
     # Fetches the most recent non-cancelled subscription and its most recent payment.
     # S14: failure returns subscription=None — never blocks the customer profile load.
     try:
-        # Fetch most recent non-cancelled subscription for this customer.
-        # Use regular .execute() with .limit(1) — avoids .maybe_single() returning
-        # None (not an object) when 0 rows match (Pattern 45).
         sub_result = (
             db.table("subscriptions")
             .select("id, plan_name, plan_tier, billing_cycle, status, amount, current_period_end")
@@ -134,9 +226,6 @@ def get_customer(
         sub = sub_rows[0] if sub_rows else None
 
         if sub:
-            # Fetch most recent confirmed payment linked to this subscription.
-            # Filter by subscription_id — the renewal module's payment insert
-            # does not write customer_id to the payments table.
             pay_result = (
                 db.table("payments")
                 .select("amount, payment_date, payment_channel")
@@ -249,3 +338,48 @@ def get_customer_nps(
         customer_id=customer_id,
     )
     return ok(data=responses)
+
+
+# ---------------------------------------------------------------------------
+# WH-0 — Customer contacts sub-resource (after /{customer_id}/nps)
+# ---------------------------------------------------------------------------
+
+@router.get("/{customer_id}/contacts")
+def list_contacts(
+    customer_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """List all customer_contacts for this customer. WH-0."""
+    contacts = triage_service.list_customer_contacts(
+        db=db,
+        org_id=org["org_id"],
+        customer_id=customer_id,
+    )
+    return ok(data=contacts)
+
+
+class ContactCreate(BaseModel):
+    phone_number: str = Field(..., max_length=30)
+    name: Optional[str] = Field(None, max_length=200)
+    contact_role: Optional[str] = Field(None, max_length=100)
+
+
+@router.post("/{customer_id}/contacts", status_code=201)
+def add_contact(
+    customer_id: str,
+    payload: ContactCreate,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """Add a new pending customer_contact. WH-0."""
+    result = triage_service.add_customer_contact(
+        db=db,
+        org_id=org["org_id"],
+        customer_id=customer_id,
+        payload=payload.model_dump(),
+        registered_by=org["id"],
+    )
+    if not result:
+        raise HTTPException(status_code=500, detail={"code": "SERVER_ERROR", "message": "Failed to add contact"})
+    return ok(data=result, message="Contact added")

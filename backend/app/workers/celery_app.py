@@ -6,12 +6,32 @@ Celery application initialisation for Opsra background jobs.
 Broker:  Upstash Redis via REDIS_URL (must use rediss:// TLS — Section 2.2)
 Backend: Same Upstash Redis connection.
 
-All 12 scheduled jobs are defined here per Technical Spec Section 7.
+All scheduled jobs are defined here per Technical Spec Section 7.
 Times are UTC — WAT (UTC+1) times from the spec are converted below:
     WAT 06:00 → UTC 05:00
     WAT 07:00 → UTC 06:00
     WAT 08:00 → UTC 07:00
     WAT 09:00 → UTC 08:00
+    WAT 12:00 → UTC 11:00
+    WAT 17:00 → UTC 16:00
+
+M01-4/M01-5 additions:
+    qualification_worker added to include list.
+    Two new beat entries:
+      - review_window_sender  (every minute — auto-sends scheduled outbox rows)
+      - qualification_fallback (every hour — re-engages stuck sessions)
+
+M01-7 additions:
+    demo_reminder_worker added to include list.
+    New beat entry:
+      - demo_reminder_check  (every 15 minutes — 24h/1h reminders + no-show detection)
+
+M01-10b additions:
+    daily_briefing_worker added to include list.
+    Three new beat entries:
+      - daily_briefing        (06:00 WAT / 05:00 UTC — pre-generate morning briefings)
+      - notification_digest_midday  (12:00 WAT / 11:00 UTC — bundle unread notifications)
+      - notification_digest_eod     (17:00 WAT / 16:00 UTC — bundle unread notifications)
 """
 
 import os
@@ -58,6 +78,12 @@ celery_app = Celery(
         "app.workers.digest_worker",
         "app.workers.sla_worker",
         "app.workers.drip_worker",
+        "app.workers.qualification_worker",   # ← M01-4 + M01-5
+        "app.workers.lead_sla_worker",           # ← M01-6
+        "app.workers.demo_reminder_worker",      # ← M01-7
+        "app.workers.lead_graduation_worker",    # ← M01-10a
+        "app.workers.lead_nurture_worker",       # ← M01-10a
+        "app.workers.daily_briefing_worker",     # ← M01-10b
     ],
 )
 
@@ -94,7 +120,7 @@ celery_app.conf.update(
 )
 
 # ---------------------------------------------------------------------------
-# Beat schedule — all 12 jobs from Technical Spec Section 7
+# Beat schedule — all jobs from Technical Spec Section 7 + M01-4/5/6/7/10b
 #
 # Crontab args:  minute, hour, day_of_week, day_of_month, month_of_year
 # UTC hours used throughout (WAT - 1 hour).
@@ -105,8 +131,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # daily_churn_scoring — Daily 06:00 WAT (05:00 UTC)                   #
     # Worker: churn_worker.py                                              #
-    # Calculates churn risk for every active customer, updates             #
-    # churn_scores table and customers.churn_risk. Triggers alerts.        #
     # ------------------------------------------------------------------ #
     "daily_churn_scoring": {
         "task": "app.workers.churn_worker.run_daily_churn_scoring",
@@ -116,7 +140,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # renewal_reminders — Daily 08:00 WAT (07:00 UTC)                     #
     # Worker: renewal_worker.py                                            #
-    # Sends WhatsApp renewal reminders at 60/30/14/7 day thresholds.      #
     # ------------------------------------------------------------------ #
     "renewal_reminders": {
         "task": "app.workers.renewal_worker.run_renewal_reminders",
@@ -126,8 +149,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # monday_digest — Every Monday 07:00 WAT (06:00 UTC)                  #
     # Worker: digest_worker.py                                             #
-    # Generates personalised weekly digest via Claude Haiku, sends        #
-    # WhatsApp message to each staff member.                               #
     # ------------------------------------------------------------------ #
     "monday_digest": {
         "task": "app.workers.digest_worker.run_monday_digest",
@@ -137,8 +158,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # nps_scheduler — Daily 09:00 WAT (08:00 UTC)                         #
     # Worker: nps_worker.py                                                #
-    # Checks quarterly NPS eligibility (90 days since last send).         #
-    # Skips if event-triggered NPS sent within 14 days.                   #
     # ------------------------------------------------------------------ #
     "nps_scheduler": {
         "task": "app.workers.nps_worker.run_nps_scheduler",
@@ -148,8 +167,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # trial_expiry_checker — Daily 06:00 WAT (05:00 UTC)                  #
     # Worker: renewal_worker.py                                            #
-    # Sends Day 3/7 conversion prompts. Initiates grace on expiry.        #
-    # Suspends after 3-day grace period.                                   #
     # ------------------------------------------------------------------ #
     "trial_expiry_checker": {
         "task": "app.workers.renewal_worker.run_trial_expiry_checker",
@@ -159,8 +176,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # sla_monitor — Every 15 minutes                                       #
     # Worker: sla_worker.py                                                #
-    # Checks open tickets for SLA compliance. Sends pre-breach alerts.    #
-    # Marks sla_breached=true. Triggers escalation tasks.                  #
     # ------------------------------------------------------------------ #
     "sla_monitor": {
         "task": "app.workers.sla_worker.run_sla_monitor",
@@ -170,7 +185,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # drip_scheduler — Daily 08:00 WAT (07:00 UTC)                        #
     # Worker: drip_worker.py                                               #
-    # Sends due drip messages unless paused. Updates drip_sends status.   #
     # ------------------------------------------------------------------ #
     "drip_scheduler": {
         "task": "app.workers.drip_worker.run_drip_scheduler",
@@ -180,8 +194,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # win_back_scheduler — Daily 09:00 WAT (08:00 UTC)                    #
     # Worker: renewal_worker.py                                            #
-    # Checks churned customers at 14/30/60 day marks.                     #
-    # Queues win-back messages for approval.                               #
     # ------------------------------------------------------------------ #
     "win_back_scheduler": {
         "task": "app.workers.renewal_worker.run_win_back_scheduler",
@@ -191,8 +203,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # lead_aging_checker — Daily 08:00 WAT (07:00 UTC)                    #
     # Worker: churn_worker.py                                              #
-    # Flags leads with no activity for 3+ days. Creates re-engagement     #
-    # task for the assigned rep.                                           #
     # ------------------------------------------------------------------ #
     "lead_aging_checker": {
         "task": "app.workers.churn_worker.run_lead_aging_checker",
@@ -202,8 +212,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # anomaly_detector — Daily 06:00 WAT (05:00 UTC)                      #
     # Worker: churn_worker.py                                              #
-    # Compares current vs previous week metrics. Flags anomalies.         #
-    # Creates alerts in notifications table.                               #
     # ------------------------------------------------------------------ #
     "anomaly_detector": {
         "task": "app.workers.churn_worker.run_anomaly_detector",
@@ -213,8 +221,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # payment_failure_monitor — Every hour                                 #
     # Worker: renewal_worker.py                                            #
-    # Checks pending payments older than 24 hours.                        #
-    # Sends customer WhatsApp notification. Begins grace period.          #
     # ------------------------------------------------------------------ #
     "payment_failure_monitor": {
         "task": "app.workers.renewal_worker.run_payment_failure_monitor",
@@ -224,11 +230,93 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     # re_engagement_queue — Daily 08:00 WAT (07:00 UTC)                   #
     # Worker: churn_worker.py                                              #
-    # Checks leads where reengagement_date = today. Moves stage to new.  #
-    # Creates task for assigned rep.                                       #
     # ------------------------------------------------------------------ #
     "re_engagement_queue": {
         "task": "app.workers.churn_worker.run_re_engagement_queue",
         "schedule": crontab(hour=7, minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # review_window_sender — Every minute  (M01-4)                        #
+    # Worker: qualification_worker.py                                      #
+    # ------------------------------------------------------------------ #
+    "review_window_sender": {
+        "task": "app.workers.qualification_worker.run_review_window_sender",
+        "schedule": crontab(minute="*"),  # every minute
+    },
+
+    # ------------------------------------------------------------------ #
+    # qualification_fallback — Every hour  (M01-5)                        #
+    # Worker: qualification_worker.py                                      #
+    # ------------------------------------------------------------------ #
+    "qualification_fallback": {
+        "task": "app.workers.qualification_worker.run_qualification_fallback",
+        "schedule": crontab(minute=0),  # every hour at :00
+    },
+
+    # ------------------------------------------------------------------ #
+    # lead_sla_check — Every 15 minutes  (M01-6)                          #
+    # Worker: lead_sla_worker.py                                           #
+    # ------------------------------------------------------------------ #
+    "lead_sla_check": {
+        "task": "lead_sla_worker.run_lead_sla_check",
+        "schedule": crontab(minute="*/15"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # demo_reminder_check — Every 15 minutes  (M01-7)                     #
+    # Worker: demo_reminder_worker.py                                      #
+    # ------------------------------------------------------------------ #
+    "demo_reminder_check": {
+        "task": "app.workers.demo_reminder_worker.run_demo_reminder_check",
+        "schedule": crontab(minute="*/15"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # lead_graduation_check — Daily 06:00 WAT (05:00 UTC)  (M01-10a)     #
+    # Worker: lead_graduation_worker.py                                    #
+    # ------------------------------------------------------------------ #
+    "lead_graduation_check": {
+        "task": "app.workers.lead_graduation_worker.run_lead_graduation_check",
+        "schedule": crontab(hour=5, minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # lead_nurture_send — Daily 08:00 WAT (07:00 UTC)  (M01-10a)         #
+    # Worker: lead_nurture_worker.py                                       #
+    # ------------------------------------------------------------------ #
+    "lead_nurture_send": {
+        "task": "app.workers.lead_nurture_worker.run_lead_nurture_send",
+        "schedule": crontab(hour=7, minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # daily_briefing — Daily 06:00 WAT (05:00 UTC)  (M01-10b)            #
+    # Worker: daily_briefing_worker.py                                     #
+    # Pre-generates Aria morning briefings for all active users.           #
+    # ------------------------------------------------------------------ #
+    "daily_briefing": {
+        "task": "app.workers.daily_briefing_worker.run_daily_briefing_worker",
+        "schedule": crontab(hour=5, minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # notification_digest_midday — Daily 12:00 WAT (11:00 UTC)  (M01-10b)#
+    # Worker: daily_briefing_worker.py                                     #
+    # Bundles unread notifications into a natural-language Aria summary.  #
+    # ------------------------------------------------------------------ #
+    "notification_digest_midday": {
+        "task": "app.workers.daily_briefing_worker.run_notification_digest",
+        "schedule": crontab(hour=11, minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # notification_digest_eod — Daily 17:00 WAT (16:00 UTC)  (M01-10b)  #
+    # Worker: daily_briefing_worker.py                                     #
+    # End-of-day notification bundle.                                      #
+    # ------------------------------------------------------------------ #
+    "notification_digest_eod": {
+        "task": "app.workers.daily_briefing_worker.run_notification_digest",
+        "schedule": crontab(hour=16, minute=0),
     },
 }
