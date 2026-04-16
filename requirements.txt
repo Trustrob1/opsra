@@ -54,3 +54,6 @@ httpx==0.27.0                  # AsyncClient for route integration tests
 factory-boy==3.3.0             # Test data factories — org, user, lead, ticket
 respx==0.20.2                  # Mock httpx calls — Anthropic API + Meta API
 pytest-cov==4.1.0              # Coverage reporting — target 80%+ per Build Status
+
+gunicorn
+uvicorn[standard]
