@@ -48,7 +48,7 @@ def _chain(data=None, count=None):
     )
     chain.execute.return_value = result
     for m in ("select", "eq", "is_", "order", "range", "limit",
-              "maybe_single", "update", "insert", "neq", "in_"):
+              "maybe_single", "update", "insert", "neq", "gt", "gte", "in_"):
         getattr(chain, m).return_value = chain
     return chain
 
@@ -168,7 +168,10 @@ def _db_with_customer(phone="2348001234567", customer_id="cust-001",
             return wa_insert
         if name == "notifications": return notif_insert
         if name == "audit_logs":    return audit_chain
-        return _chain()
+        # WH-2: organisations query must return empty data (not a bare MagicMock)
+        # so the customer triage menu branch evaluates to falsy and falls through.
+        if name == "organisations": return _chain([])
+        return _chain([])
 
     db.table.side_effect = _tbl
     return db
@@ -194,7 +197,7 @@ def _db_with_lead(phone="2348001234567", lead_id="lead-001",
         if name == "whatsapp_messages": return wa_insert
         if name == "notifications":     return notif_insert
         if name == "audit_logs":        return audit_chain
-        return _chain()
+        return _chain([])
 
     db.table.side_effect = _tbl
     return db

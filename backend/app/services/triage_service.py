@@ -2,12 +2,14 @@
 triage_service.py
 -----------------
 WH-0: Intent-First Triage for Unknown WhatsApp Contacts.
+WH-2: Known-Customer Triage Menu — customer section of whatsapp_triage_config.
 
 Handles:
   - WhatsApp triage session lifecycle (create / query / update)
   - Session message dispatch (triage_sent / awaiting_identifier / active)
-  - Triage menu selection routing (qualify / identify_customer /
+  - Unknown-contact triage routing (qualify / identify_customer /
     route_to_role / free_form)
+  - Known-customer triage routing (create_ticket / route_to_role / free_form)
   - Identifier-text handling (customer lookup → contact or fallback lead)
   - Customer contacts CRUD (list / add / approve / remove)
 
@@ -85,6 +87,41 @@ def create_session(
         return None
 
 
+def create_customer_session(
+    db,
+    org_id: str,
+    phone_number: str,
+    customer_id: str,
+    expires_minutes: int = 30,
+) -> Optional[dict]:
+    """
+    WH-2: Insert a new whatsapp_sessions row for a known customer.
+    Stores customer_id in session_data so the dispatcher can resolve it.
+    Returns the inserted row dict, or None on failure. S14.
+    """
+    try:
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+        ).isoformat()
+        result = (
+            db.table("whatsapp_sessions")
+            .insert({
+                "org_id": org_id,
+                "phone_number": phone_number,
+                "session_state": "triage_sent",
+                "session_data": {"customer_id": customer_id},
+                "expires_at": expires_at,
+            })
+            .execute()
+        )
+        rows = result.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.warning("create_customer_session failed org=%s phone=%s: %s",
+                       org_id, phone_number, exc)
+        return None
+
+
 def update_session(
     db,
     session_id: str,
@@ -121,9 +158,12 @@ def handle_session_message(
     interactive_payload: Optional[dict],
     contact_name: Optional[str],
     now_ts,
+    section: str = "unknown",
 ) -> None:
     """
     Route an inbound message to the correct handler based on session state.
+    section: "unknown" (WH-0) or "customer" (WH-2) — controls which menu is
+    re-sent on free text and which dispatcher is called.
     S14.
     """
     try:
@@ -135,20 +175,32 @@ def handle_session_message(
                     (interactive_payload.get("list_reply") or
                      interactive_payload.get("button_reply") or {}).get("id")
                 )
-                dispatch_triage_selection(
-                    db=db,
-                    org_id=org_id,
-                    phone_number=phone_number,
-                    item_id=item_id,
-                    session=session,
-                    contact_name=contact_name,
-                    now_ts=now_ts,
-                )
+                if section == "customer":
+                    dispatch_customer_triage_selection(
+                        db=db,
+                        org_id=org_id,
+                        phone_number=phone_number,
+                        item_id=item_id,
+                        session=session,
+                        contact_name=contact_name,
+                        now_ts=now_ts,
+                    )
+                else:
+                    dispatch_triage_selection(
+                        db=db,
+                        org_id=org_id,
+                        phone_number=phone_number,
+                        item_id=item_id,
+                        session=session,
+                        contact_name=contact_name,
+                        now_ts=now_ts,
+                    )
             else:
-                # Free text while menu is pending — re-send menu, no new session
+                # Free text while menu is pending — re-send the correct menu,
+                # no new session created.
                 from app.services.whatsapp_service import send_triage_menu
                 send_triage_menu(db=db, org_id=org_id,
-                                 phone_number=phone_number, section="unknown")
+                                 phone_number=phone_number, section=section)
 
         elif state == "awaiting_identifier":
             if msg_type == "text" and content:
@@ -391,6 +443,261 @@ def _action_free_form(
 
 
 # ---------------------------------------------------------------------------
+# WH-2: Customer triage dispatcher + action handlers
+# ---------------------------------------------------------------------------
+
+def dispatch_customer_triage_selection(
+    db,
+    org_id: str,
+    phone_number: str,
+    item_id: Optional[str],
+    session: dict,
+    contact_name: Optional[str],
+    now_ts,
+) -> None:
+    """
+    WH-2: Execute the pipeline action matching a known customer's triage
+    menu selection.  Reads from triage_config["customer"].
+    Valid actions: 'create_ticket' | 'route_to_role' | 'free_form'.
+    Falls back to 'free_form' if item_id is missing or not found in config.
+    S14.
+    """
+    try:
+        session_id = session["id"]
+
+        # Resolve customer_id from whatsapp_sessions.session_data
+        session_data = session.get("session_data") or {}
+        customer_id = session_data.get("customer_id")
+
+        # Fetch org triage config
+        org_result = (
+            db.table("organisations")
+            .select("whatsapp_triage_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else None
+
+        triage_config = (org_data or {}).get("whatsapp_triage_config") or {}
+        customer_items = (triage_config.get("customer") or {}).get("items") or []
+
+        # Find the selected item
+        matched_item = None
+        if item_id:
+            for itm in customer_items:
+                if itm.get("id") == item_id:
+                    matched_item = itm
+                    break
+
+        action = (matched_item or {}).get("action", "free_form")
+
+        if action == "create_ticket":
+            _customer_action_create_ticket(
+                db, org_id, phone_number, session_id,
+                matched_item or {}, customer_id, contact_name, now_ts,
+            )
+
+        elif action == "route_to_role":
+            _customer_action_route_to_role(
+                db, org_id, phone_number, session_id,
+                matched_item or {}, customer_id, contact_name, now_ts,
+            )
+
+        else:
+            # 'free_form' — also the fallback for unknown item_id
+            _customer_action_free_form(
+                db, org_id, phone_number, session_id,
+                matched_item or {}, customer_id, contact_name, now_ts,
+            )
+
+    except Exception as exc:
+        logger.warning(
+            "dispatch_customer_triage_selection failed org=%s phone=%s item=%s: %s",
+            org_id, phone_number, item_id, exc,
+        )
+
+
+def _customer_action_create_ticket(
+    db,
+    org_id: str,
+    phone_number: str,
+    session_id: str,
+    item: dict,
+    customer_id: Optional[str],
+    contact_name: Optional[str],
+    now_ts,
+) -> None:
+    """
+    WH-2: Auto-create a support ticket for the customer and notify assigned rep.
+    Falls back to notifying managers if no customer_id or assigned_to.
+    All notifications go through _notify_managers/_notify_single_user —
+    never imports _insert_notification directly (avoids empty-module import).
+    """
+    label = item.get("label", "Support request")
+    assigned_to = None
+
+    if customer_id:
+        cust_r = (
+            db.table("customers")
+            .select("assigned_to, full_name")
+            .eq("id", customer_id)
+            .maybe_single()
+            .execute()
+        )
+        cust_d = cust_r.data
+        if isinstance(cust_d, list):
+            cust_d = cust_d[0] if cust_d else None
+        assigned_to = (cust_d or {}).get("assigned_to")
+        display_name = (cust_d or {}).get("full_name") or contact_name or phone_number
+    else:
+        display_name = contact_name or phone_number
+
+    # Create the ticket
+    ticket_result = (
+        db.table("support_tickets")
+        .insert({
+            "org_id": org_id,
+            "customer_id": customer_id,
+            "title": f"{label} — {display_name}",
+            "status": "open",
+            "source": "whatsapp",
+            "priority": "medium",
+            "created_at": now_ts,
+        })
+        .execute()
+    )
+    ticket_rows = ticket_result.data or []
+    ticket_id = ticket_rows[0]["id"] if ticket_rows else None
+
+    if ticket_id:
+        notify_title = "New support ticket via WhatsApp"
+        notify_body  = f"{display_name} raised a ticket: {label}"
+        if assigned_to:
+            _notify_single_user(
+                db, org_id, assigned_to,
+                notif_type="new_ticket",
+                title=notify_title,
+                body=notify_body,
+                resource_type="ticket",
+                resource_id=ticket_id,
+            )
+        else:
+            _notify_managers(
+                db, org_id,
+                title=notify_title,
+                body=notify_body,
+                resource_type="ticket",
+                resource_id=ticket_id,
+            )
+
+    update_session(db, session_id, "active", selected_action="create_ticket")
+
+
+def _customer_action_route_to_role(
+    db,
+    org_id: str,
+    phone_number: str,
+    session_id: str,
+    item: dict,
+    customer_id: Optional[str],
+    contact_name: Optional[str],
+    now_ts,
+) -> None:
+    """
+    WH-2: Notify all users in the org with the target role.
+    Falls back to _notify_managers when no users match the role.
+    Uses _notify_single_user per matched user — no direct _insert_notification.
+    """
+    role = item.get("role", "owner")
+    display_name = contact_name or phone_number
+
+    users_result = (
+        db.table("users")
+        .select("id, roles(template)")
+        .eq("org_id", org_id)
+        .execute()
+    )
+    notified = False
+    for user in (users_result.data or []):
+        user_role = (user.get("roles") or {}).get("template", "")
+        if user_role.lower() == role.lower():
+            _notify_single_user(
+                db, org_id, user["id"],
+                notif_type="customer_triage",
+                title="Customer contact via WhatsApp",
+                body=f"{display_name} selected: {item.get('label', 'contact')}",
+                resource_type="customer",
+                resource_id=customer_id or "",
+            )
+            notified = True
+
+    if not notified:
+        _notify_managers(
+            db, org_id,
+            title="Customer contact via WhatsApp",
+            body=f"{display_name} selected: {item.get('label', 'contact')}",
+            resource_type="customer",
+            resource_id=customer_id or "",
+        )
+
+    update_session(db, session_id, "active", selected_action="route_to_role")
+
+
+def _customer_action_free_form(
+    db,
+    org_id: str,
+    phone_number: str,
+    session_id: str,
+    item: dict,
+    customer_id: Optional[str],
+    contact_name: Optional[str],
+    now_ts,
+) -> None:
+    """
+    WH-2: Notify assigned rep (or managers as fallback) for a general enquiry.
+    Uses _notify_single_user for rep path — no direct _insert_notification.
+    """
+    display_name = contact_name or phone_number
+    assigned_to = None
+
+    if customer_id:
+        cust_r = (
+            db.table("customers")
+            .select("assigned_to")
+            .eq("id", customer_id)
+            .maybe_single()
+            .execute()
+        )
+        cust_d = cust_r.data
+        if isinstance(cust_d, list):
+            cust_d = cust_d[0] if cust_d else None
+        assigned_to = (cust_d or {}).get("assigned_to")
+
+    if assigned_to:
+        _notify_single_user(
+            db, org_id, assigned_to,
+            notif_type="customer_triage",
+            title="Customer WhatsApp enquiry",
+            body=f"{display_name} sent a general enquiry via WhatsApp.",
+            resource_type="customer",
+            resource_id=customer_id or "",
+        )
+    else:
+        _notify_managers(
+            db, org_id,
+            title="Customer WhatsApp enquiry",
+            body=f"{display_name} sent a general enquiry via WhatsApp.",
+            resource_type="customer",
+            resource_id=customer_id or "",
+        )
+
+    update_session(db, session_id, "active", selected_action="free_form")
+
+
+# ---------------------------------------------------------------------------
 # Identifier-text handler
 # ---------------------------------------------------------------------------
 
@@ -625,6 +932,31 @@ def remove_customer_contact(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _notify_single_user(
+    db, org_id: str, user_id: str,
+    notif_type: str, title: str, body: str,
+    resource_type: str, resource_id: str,
+) -> None:
+    """
+    WH-2 helper: notify a single known user_id without importing _insert_notification
+    directly. Inserts into the notifications table the same way _notify_managers does.
+    S14.
+    """
+    try:
+        db.table("notifications").insert({
+            "org_id":        org_id,
+            "user_id":       user_id,
+            "type":          notif_type,
+            "title":         title,
+            "body":          body,
+            "resource_type": resource_type,
+            "resource_id":   resource_id,
+            "is_read":       False,
+        }).execute()
+    except Exception as exc:
+        logger.warning("_notify_single_user failed user=%s: %s", user_id, exc)
+
 
 def _notify_managers(
     db, org_id: str, title: str, body: str,

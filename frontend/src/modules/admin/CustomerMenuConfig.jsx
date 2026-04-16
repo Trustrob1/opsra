@@ -1,13 +1,14 @@
 /**
  * frontend/src/modules/admin/CustomerMenuConfig.jsx
- * WH-0 — WhatsApp Triage Menu Configuration
+ * WH-0 + WH-2 — WhatsApp Triage Menu Configuration
  *
  * Allows owners/ops_managers to configure:
  *   1. unknown_contact_behavior toggle (triage_first | qualify_immediately)
- *   2. Triage menu items for unknown contacts
- *   3. Live WhatsApp preview panel
+ *   2. Triage menu items for unknown contacts  (WH-0)
+ *   3. Triage menu items for known customers   (WH-2)
+ *   4. Live WhatsApp preview panel for each section
  *
- * Pattern 26: not applicable (no tabs within this component).
+ * Pattern 26: section tabs use activeTab state — no router.
  * Pattern 51: full rewrite if editing later.
  * Colors: ds.teal for all accents.
  */
@@ -15,11 +16,19 @@ import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import { getTriageConfig, updateTriageConfig } from '../../services/admin.service'
 
-const ACTION_OPTIONS = [
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const UNKNOWN_ACTION_OPTIONS = [
   { value: 'qualify',            label: 'Sales interest (qualify)' },
   { value: 'identify_customer',  label: 'Existing customer' },
   { value: 'route_to_role',      label: 'Route to a team role' },
   { value: 'free_form',          label: 'General enquiry (free form)' },
+]
+
+const CUSTOMER_ACTION_OPTIONS = [
+  { value: 'create_ticket', label: 'Create support ticket' },
+  { value: 'route_to_role', label: 'Route to a team role' },
+  { value: 'free_form',     label: 'General enquiry (free form)' },
 ]
 
 const ROLE_OPTIONS = [
@@ -28,73 +37,58 @@ const ROLE_OPTIONS = [
   { value: 'finance',     label: 'Finance' },
 ]
 
-const CONTACT_TYPE_MAP = {
+const UNKNOWN_CONTACT_TYPE_MAP = {
   qualify:           'sales_lead',
   identify_customer: 'support_contact',
   route_to_role:     'business_inquiry',
   free_form:         'other',
 }
 
-const DEFAULT_ITEMS = [
+const CUSTOMER_CONTACT_TYPE_MAP = {
+  create_ticket: 'support_contact',
+  route_to_role: 'business_inquiry',
+  free_form:     'other',
+}
+
+const DEFAULT_UNKNOWN_ITEMS = [
   { id: 'interested',        label: "I'm interested in your product", description: 'Learn about what we offer',  action: 'qualify',           contact_type: 'sales_lead'       },
   { id: 'existing_customer', label: "I'm an existing customer",       description: 'Get help with your account', action: 'identify_customer', contact_type: 'support_contact'  },
   { id: 'business',          label: 'Business inquiry',               description: 'Partner or vendor query',    action: 'route_to_role',     contact_type: 'business_inquiry', role: 'owner' },
   { id: 'other',             label: 'Something else',                 description: '',                           action: 'free_form',          contact_type: 'other'            },
 ]
 
+const DEFAULT_CUSTOMER_ITEMS = [
+  { id: 'support',  label: 'I need help with something',    description: 'Raise a support request', action: 'create_ticket', contact_type: 'support_contact' },
+  { id: 'billing',  label: 'Billing or account question',   description: '',                        action: 'route_to_role', contact_type: 'business_inquiry', role: 'finance' },
+  { id: 'other',    label: 'Something else',                description: '',                        action: 'free_form',     contact_type: 'other' },
+]
+
 const DEFAULT_CONFIG = {
   unknown: {
     greeting:      'Hi! How can we help you today?',
     section_title: 'Choose an option',
-    items:         DEFAULT_ITEMS,
+    items:         DEFAULT_UNKNOWN_ITEMS,
+  },
+  customer: {
+    greeting:      'Hi! How can we help you today?',
+    section_title: 'Choose an option',
+    items:         DEFAULT_CUSTOMER_ITEMS,
   },
 }
 
-export default function CustomerMenuConfig() {
-  const [behavior, setBehavior]     = useState('triage_first')
-  const [config, setConfig]         = useState(DEFAULT_CONFIG)
-  const [loading, setLoading]       = useState(true)
-  const [saving, setSaving]         = useState(false)
-  const [saveMsg, setSaveMsg]       = useState(null)
-  const [saveErr, setSaveErr]       = useState(null)
-  const [previewOpen, setPreviewOpen] = useState(false)
+// ── Shared sub-components ─────────────────────────────────────────────────────
 
-  useEffect(() => {
-    getTriageConfig()
-      .then(data => {
-        if (data) {
-          setBehavior(data.unknown_contact_behavior || 'triage_first')
-          setConfig(data.whatsapp_triage_config || DEFAULT_CONFIG)
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
-
-  const items = (config?.unknown?.items) || []
-  const greeting = config?.unknown?.greeting || ''
-  const sectionTitle = config?.unknown?.section_title || 'Choose an option'
-
-  function setItems(newItems) {
-    setConfig(c => ({ ...c, unknown: { ...c.unknown, items: newItems } }))
-  }
-  function setGreeting(v) {
-    setConfig(c => ({ ...c, unknown: { ...c.unknown, greeting: v } }))
-  }
-  function setSectionTitle(v) {
-    setConfig(c => ({ ...c, unknown: { ...c.unknown, section_title: v } }))
-  }
-
+function ItemEditor({ items, setItems, actionOptions, contactTypeMap, sectionKey }) {
   function addItem() {
     if (items.length >= 10) return
-    const newItem = {
-      id:           `item_${Date.now()}`,
+    const firstAction = actionOptions[0].value
+    setItems([...items, {
+      id:           `${sectionKey}_${Date.now()}`,
       label:        '',
       description:  '',
-      action:       'free_form',
-      contact_type: 'other',
-    }
-    setItems([...items, newItem])
+      action:       firstAction,
+      contact_type: contactTypeMap[firstAction] || 'other',
+    }])
   }
 
   function removeItem(idx) {
@@ -114,12 +108,239 @@ export default function CustomerMenuConfig() {
       if (i !== idx) return item
       const updated = { ...item, [field]: value }
       if (field === 'action') {
-        updated.contact_type = CONTACT_TYPE_MAP[value] || 'other'
+        updated.contact_type = contactTypeMap[value] || 'other'
         if (value !== 'route_to_role') delete updated.role
       }
       return updated
     })
     setItems(next)
+  }
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={S.cardTitle}>Menu Items</div>
+        <button
+          onClick={addItem}
+          disabled={items.length >= 10}
+          style={{
+            ...S.addBtn,
+            opacity: items.length >= 10 ? 0.4 : 1,
+            cursor:  items.length >= 10 ? 'not-allowed' : 'pointer',
+          }}
+        >
+          + Add item
+        </button>
+      </div>
+
+      {items.length === 0 && (
+        <div style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', padding: '20px 0' }}>
+          No menu items. Add at least one.
+        </div>
+      )}
+
+      {items.map((item, idx) => (
+        <div key={item.id || idx} style={S.itemRow}>
+          {/* Reorder */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+            <button onClick={() => moveItem(idx, -1)} style={S.arrowBtn} disabled={idx === 0} title="Move up">▲</button>
+            <button onClick={() => moveItem(idx, 1)}  style={S.arrowBtn} disabled={idx === items.length - 1} title="Move down">▼</button>
+          </div>
+
+          {/* Fields */}
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              <label style={S.label}>
+                Label <span style={{ color: '#9CA3AF' }}>{item.label.length}/24</span>
+              </label>
+              <input
+                style={S.input}
+                value={item.label}
+                maxLength={24}
+                onChange={e => updateItem(idx, 'label', e.target.value)}
+                placeholder="Button label"
+              />
+            </div>
+            <div>
+              <label style={S.label}>
+                Description <span style={{ color: '#9CA3AF' }}>{(item.description || '').length}/72</span>
+              </label>
+              <input
+                style={S.input}
+                value={item.description || ''}
+                maxLength={72}
+                onChange={e => updateItem(idx, 'description', e.target.value)}
+                placeholder="Optional sub-text"
+              />
+            </div>
+            <div>
+              <label style={S.label}>Action</label>
+              <select
+                style={S.input}
+                value={item.action}
+                onChange={e => updateItem(idx, 'action', e.target.value)}
+              >
+                {actionOptions.map(a => (
+                  <option key={a.value} value={a.value}>{a.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              {item.action === 'route_to_role' ? (
+                <>
+                  <label style={S.label}>Route to role</label>
+                  <select
+                    style={S.input}
+                    value={item.role || 'owner'}
+                    onChange={e => updateItem(idx, 'role', e.target.value)}
+                  >
+                    {ROLE_OPTIONS.map(r => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label style={S.label}>Contact type (auto)</label>
+                  <div style={{ ...S.input, background: '#F5FAFB', color: '#7A9BAD', cursor: 'default' }}>
+                    {item.contact_type || contactTypeMap[item.action] || 'other'}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Remove */}
+          <button
+            onClick={() => removeItem(idx)}
+            style={{ ...S.arrowBtn, color: '#E53E3E', alignSelf: 'center', flexShrink: 0 }}
+            title="Remove item"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+
+      <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 8 }}>
+        {items.length}/10 items
+      </div>
+    </>
+  )
+}
+
+function WhatsAppPreview({ greeting, sectionTitle, items }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ width: 280, flexShrink: 0 }}>
+      <div style={S.card}>
+        <div style={S.cardTitle}>Preview</div>
+        <div style={S.phoneFrame}>
+          <div style={{ background: '#075E54', color: 'white', padding: '8px 12px', borderRadius: '10px 10px 0 0', fontSize: 12, fontWeight: 600 }}>
+            📱 WhatsApp
+          </div>
+          <div style={{ background: '#ECE5DD', padding: 10, borderRadius: '0 0 10px 10px', minHeight: 140 }}>
+            <div style={S.waBubble}>
+              <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+                {greeting || 'Hi! How can we help you today?'}
+              </div>
+              <button
+                onClick={() => setOpen(p => !p)}
+                style={{
+                  marginTop: 8, width: '100%', padding: '6px 0',
+                  border: `1px solid ${ds.teal}`, borderRadius: 6,
+                  background: 'white', color: ds.teal,
+                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                {open ? '▲ Hide options' : '☰ See options'}
+              </button>
+            </div>
+            {open && (
+              <div style={{ background: 'white', borderRadius: 8, marginTop: 8, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
+                <div style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#5a8a9f', textTransform: 'uppercase', borderBottom: '1px solid #F0F0F0' }}>
+                  {sectionTitle || 'Choose an option'}
+                </div>
+                {items.slice(0, 10).map((item, i) => (
+                  <div key={i} style={{ padding: '8px 10px', borderBottom: i < items.length - 1 ? '1px solid #F0F0F0' : 'none' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0a1a24' }}>{item.label || '(empty)'}</div>
+                    {item.description && (
+                      <div style={{ fontSize: 10.5, color: '#7A9BAD', marginTop: 1 }}>{item.description}</div>
+                    )}
+                  </div>
+                ))}
+                {items.length === 0 && (
+                  <div style={{ padding: '10px', fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>No items added</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        <p style={{ fontSize: 11, color: '#9CA3AF', margin: '8px 0 0', lineHeight: 1.5 }}>
+          Static preview only. Actual appearance may vary by device.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function CustomerMenuConfig() {
+  const [behavior, setBehavior] = useState('triage_first')
+  const [config, setConfig]     = useState(DEFAULT_CONFIG)
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [saveMsg, setSaveMsg]   = useState(null)
+  const [saveErr, setSaveErr]   = useState(null)
+  const [activeTab, setActiveTab] = useState('unknown')
+
+  useEffect(() => {
+    getTriageConfig()
+      .then(data => {
+        if (data) {
+          setBehavior(data.unknown_contact_behavior || 'triage_first')
+          // Merge loaded config with defaults so customer section is always present
+          const loaded = data.whatsapp_triage_config || {}
+          setConfig({
+            unknown: loaded.unknown || DEFAULT_CONFIG.unknown,
+            customer: (loaded.customer && (loaded.customer.items || []).length > 0)
+              ? loaded.customer
+              : DEFAULT_CONFIG.customer,
+          })
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  // ── Unknown section helpers ────────────────────────────────────────────────
+  const unknownItems    = config?.unknown?.items || []
+  const unknownGreeting = config?.unknown?.greeting || ''
+  const unknownSectionTitle = config?.unknown?.section_title || 'Choose an option'
+
+  function setUnknownItems(newItems) {
+    setConfig(c => ({ ...c, unknown: { ...c.unknown, items: newItems } }))
+  }
+  function setUnknownGreeting(v) {
+    setConfig(c => ({ ...c, unknown: { ...c.unknown, greeting: v } }))
+  }
+  function setUnknownSectionTitle(v) {
+    setConfig(c => ({ ...c, unknown: { ...c.unknown, section_title: v } }))
+  }
+
+  // ── Customer section helpers ───────────────────────────────────────────────
+  const customerItems        = config?.customer?.items || []
+  const customerGreeting     = config?.customer?.greeting || ''
+  const customerSectionTitle = config?.customer?.section_title || 'Choose an option'
+
+  function setCustomerItems(newItems) {
+    setConfig(c => ({ ...c, customer: { ...c.customer, items: newItems } }))
+  }
+  function setCustomerGreeting(v) {
+    setConfig(c => ({ ...c, customer: { ...c.customer, greeting: v } }))
+  }
+  function setCustomerSectionTitle(v) {
+    setConfig(c => ({ ...c, customer: { ...c.customer, section_title: v } }))
   }
 
   async function handleSave() {
@@ -150,11 +371,11 @@ export default function CustomerMenuConfig() {
           WhatsApp Triage Menu
         </h2>
         <p style={{ fontSize: 13, color: '#5a8a9f', margin: 0 }}>
-          Configure how Opsra handles inbound WhatsApp messages from unknown contacts.
+          Configure how Opsra handles inbound WhatsApp messages from unknown contacts and existing customers.
         </p>
       </div>
 
-      {/* ── Behavior toggle ─────────────────────────────────────────────── */}
+      {/* ── Behavior toggle ───────────────────────────────────────────────── */}
       <div style={S.card}>
         <div style={S.cardTitle}>Unknown Contact Behavior</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -197,8 +418,104 @@ export default function CustomerMenuConfig() {
         </div>
       </div>
 
-      {/* ── Menu text ───────────────────────────────────────────────────── */}
-      {behavior === 'triage_first' && (
+      {/* ── Section tabs ──────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid #E2EFF4' }}>
+        {[
+          { key: 'unknown',  label: 'Unknown Contacts' },
+          { key: 'customer', label: 'Existing Customers' },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '10px 20px', border: 'none', background: 'none',
+              fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
+              color: activeTab === tab.key ? ds.teal : '#7A9BAD',
+              borderBottom: `2px solid ${activeTab === tab.key ? ds.teal : 'transparent'}`,
+              marginBottom: -2,
+              fontFamily: ds.fontSyne,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Unknown contacts section ──────────────────────────────────────── */}
+      <div style={{ display: activeTab === 'unknown' ? 'block' : 'none' }}>
+        {behavior === 'triage_first' && (
+          <>
+            {/* Menu text */}
+            <div style={S.card}>
+              <div style={S.cardTitle}>Menu Text</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={S.label}>Greeting message</label>
+                  <input
+                    style={S.input}
+                    value={unknownGreeting}
+                    maxLength={200}
+                    onChange={e => setUnknownGreeting(e.target.value)}
+                    placeholder="Hi! How can we help you today?"
+                  />
+                </div>
+                <div>
+                  <label style={S.label}>Section title (shown in menu)</label>
+                  <input
+                    style={S.input}
+                    value={unknownSectionTitle}
+                    maxLength={24}
+                    onChange={e => setUnknownSectionTitle(e.target.value)}
+                    placeholder="Choose an option"
+                  />
+                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>
+                    {unknownSectionTitle.length}/24 characters
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Items + preview */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 20, alignItems: 'start' }}>
+              <div style={S.card}>
+                <ItemEditor
+                  items={unknownItems}
+                  setItems={setUnknownItems}
+                  actionOptions={UNKNOWN_ACTION_OPTIONS}
+                  contactTypeMap={UNKNOWN_CONTACT_TYPE_MAP}
+                  sectionKey="unknown"
+                />
+              </div>
+              <WhatsAppPreview
+                greeting={unknownGreeting}
+                sectionTitle={unknownSectionTitle}
+                items={unknownItems}
+              />
+            </div>
+          </>
+        )}
+
+        {behavior !== 'triage_first' && (
+          <div style={{ ...S.card, background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+            <p style={{ fontSize: 13, color: '#92400E', margin: 0 }}>
+              The unknown contacts menu is only used in <strong>Triage first</strong> mode.
+              Switch the behavior above to configure it.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Existing customers section ────────────────────────────────────── */}
+      <div style={{ display: activeTab === 'customer' ? 'block' : 'none' }}>
+        <div style={{ ...S.card, background: '#F0FAFA', border: `1px solid ${ds.teal}30`, marginBottom: 20 }}>
+          <p style={{ fontSize: 13, color: '#1a7a8a', margin: 0, lineHeight: 1.6 }}>
+            When a known customer messages in and this menu is configured, they will receive this
+            interactive menu instead of going straight to the AI intent classifier.
+            Leave items empty to skip the menu and use automatic intent detection.
+          </p>
+        </div>
+
+        {/* Menu text */}
         <div style={S.card}>
           <div style={S.cardTitle}>Menu Text</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -206,9 +523,9 @@ export default function CustomerMenuConfig() {
               <label style={S.label}>Greeting message</label>
               <input
                 style={S.input}
-                value={greeting}
+                value={customerGreeting}
                 maxLength={200}
-                onChange={e => setGreeting(e.target.value)}
+                onChange={e => setCustomerGreeting(e.target.value)}
                 placeholder="Hi! How can we help you today?"
               />
             </div>
@@ -216,191 +533,38 @@ export default function CustomerMenuConfig() {
               <label style={S.label}>Section title (shown in menu)</label>
               <input
                 style={S.input}
-                value={sectionTitle}
+                value={customerSectionTitle}
                 maxLength={24}
-                onChange={e => setSectionTitle(e.target.value)}
+                onChange={e => setCustomerSectionTitle(e.target.value)}
                 placeholder="Choose an option"
               />
               <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>
-                {sectionTitle.length}/24 characters
+                {customerSectionTitle.length}/24 characters
               </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* ── Menu items + preview ─────────────────────────────────────────── */}
-      {behavior === 'triage_first' && (
+        {/* Items + preview */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 20, alignItems: 'start' }}>
-
-          {/* Items editor */}
           <div style={S.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={S.cardTitle}>Menu Items</div>
-              <button
-                onClick={addItem}
-                disabled={items.length >= 10}
-                style={{
-                  ...S.addBtn,
-                  opacity: items.length >= 10 ? 0.4 : 1,
-                  cursor:  items.length >= 10 ? 'not-allowed' : 'pointer',
-                }}
-              >
-                + Add item
-              </button>
-            </div>
-
-            {items.length === 0 && (
-              <div style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', padding: '20px 0' }}>
-                No menu items. Add at least one.
-              </div>
-            )}
-
-            {items.map((item, idx) => (
-              <div key={item.id || idx} style={S.itemRow}>
-                {/* Reorder */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
-                  <button onClick={() => moveItem(idx, -1)} style={S.arrowBtn} disabled={idx === 0} title="Move up">▲</button>
-                  <button onClick={() => moveItem(idx, 1)}  style={S.arrowBtn} disabled={idx === items.length - 1} title="Move down">▼</button>
-                </div>
-
-                {/* Fields */}
-                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <div>
-                    <label style={S.label}>
-                      Label <span style={{ color: '#9CA3AF' }}>{item.label.length}/24</span>
-                    </label>
-                    <input
-                      style={S.input}
-                      value={item.label}
-                      maxLength={24}
-                      onChange={e => updateItem(idx, 'label', e.target.value)}
-                      placeholder="Button label"
-                    />
-                  </div>
-                  <div>
-                    <label style={S.label}>
-                      Description <span style={{ color: '#9CA3AF' }}>{(item.description || '').length}/72</span>
-                    </label>
-                    <input
-                      style={S.input}
-                      value={item.description || ''}
-                      maxLength={72}
-                      onChange={e => updateItem(idx, 'description', e.target.value)}
-                      placeholder="Optional sub-text"
-                    />
-                  </div>
-                  <div>
-                    <label style={S.label}>Action</label>
-                    <select
-                      style={S.input}
-                      value={item.action}
-                      onChange={e => updateItem(idx, 'action', e.target.value)}
-                    >
-                      {ACTION_OPTIONS.map(a => (
-                        <option key={a.value} value={a.value}>{a.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    {item.action === 'route_to_role' ? (
-                      <>
-                        <label style={S.label}>Route to role</label>
-                        <select
-                          style={S.input}
-                          value={item.role || 'owner'}
-                          onChange={e => updateItem(idx, 'role', e.target.value)}
-                        >
-                          {ROLE_OPTIONS.map(r => (
-                            <option key={r.value} value={r.value}>{r.label}</option>
-                          ))}
-                        </select>
-                      </>
-                    ) : (
-                      <>
-                        <label style={S.label}>Contact type (auto)</label>
-                        <div style={{ ...S.input, background: '#F5FAFB', color: '#7A9BAD', cursor: 'default' }}>
-                          {item.contact_type || CONTACT_TYPE_MAP[item.action] || 'other'}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Remove */}
-                <button
-                  onClick={() => removeItem(idx)}
-                  style={{ ...S.arrowBtn, color: '#E53E3E', alignSelf: 'center', flexShrink: 0 }}
-                  title="Remove item"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-
-            <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 8 }}>
-              {items.length}/10 items
-            </div>
+            <ItemEditor
+              items={customerItems}
+              setItems={setCustomerItems}
+              actionOptions={CUSTOMER_ACTION_OPTIONS}
+              contactTypeMap={CUSTOMER_CONTACT_TYPE_MAP}
+              sectionKey="customer"
+            />
           </div>
-
-          {/* WhatsApp preview */}
-          <div style={{ width: 280, flexShrink: 0 }}>
-            <div style={S.card}>
-              <div style={S.cardTitle}>Preview</div>
-              <div style={S.phoneFrame}>
-                {/* Chat header */}
-                <div style={{ background: '#075E54', color: 'white', padding: '8px 12px', borderRadius: '10px 10px 0 0', fontSize: 12, fontWeight: 600 }}>
-                  📱 WhatsApp
-                </div>
-                <div style={{ background: '#ECE5DD', padding: 10, borderRadius: '0 0 10px 10px', minHeight: 140 }}>
-                  {/* Incoming bubble */}
-                  <div style={S.waBubble}>
-                    <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-                      {greeting || 'Hi! How can we help you today?'}
-                    </div>
-                    <button
-                      onClick={() => setPreviewOpen(p => !p)}
-                      style={{
-                        marginTop: 8, width: '100%', padding: '6px 0',
-                        border: `1px solid ${ds.teal}`, borderRadius: 6,
-                        background: 'white', color: ds.teal,
-                        fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                      }}
-                    >
-                      {previewOpen ? '▲ Hide options' : '☰ See options'}
-                    </button>
-                  </div>
-
-                  {/* Options list */}
-                  {previewOpen && (
-                    <div style={{ background: 'white', borderRadius: 8, marginTop: 8, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
-                      <div style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#5a8a9f', textTransform: 'uppercase', borderBottom: '1px solid #F0F0F0' }}>
-                        {sectionTitle || 'Choose an option'}
-                      </div>
-                      {items.slice(0, 10).map((item, i) => (
-                        <div key={i} style={{ padding: '8px 10px', borderBottom: i < items.length - 1 ? '1px solid #F0F0F0' : 'none' }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#0a1a24' }}>{item.label || '(empty)'}</div>
-                          {item.description && (
-                            <div style={{ fontSize: 10.5, color: '#7A9BAD', marginTop: 1 }}>{item.description}</div>
-                          )}
-                        </div>
-                      ))}
-                      {items.length === 0 && (
-                        <div style={{ padding: '10px', fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>No items added</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <p style={{ fontSize: 11, color: '#9CA3AF', margin: '8px 0 0', lineHeight: 1.5 }}>
-                Static preview only. Actual appearance may vary by device.
-              </p>
-            </div>
-          </div>
+          <WhatsAppPreview
+            greeting={customerGreeting}
+            sectionTitle={customerSectionTitle}
+            items={customerItems}
+          />
         </div>
-      )}
+      </div>
 
-      {/* ── Save ────────────────────────────────────────────────────────── */}
+      {/* ── Save ──────────────────────────────────────────────────────────── */}
       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
           onClick={handleSave}

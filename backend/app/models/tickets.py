@@ -193,6 +193,8 @@ class KBArticleCreate(BaseModel):
     content:      str                      = Field(..., max_length=10000)
     tags:         Optional[List[str]]      = None
     is_published: bool                     = True
+    action_type: Literal["informational", "action_required"] = "informational"
+    action_label: Optional[str] = None
 
     @field_validator("category")
     @classmethod
@@ -217,6 +219,8 @@ class KBArticleUpdate(BaseModel):
     content:      Optional[str]       = Field(None, max_length=10000)
     tags:         Optional[List[str]] = None
     is_published: Optional[bool]      = None
+    action_type: Optional[Literal["informational", "action_required"]] = None
+    action_label: Optional[str] = None
 
     @field_validator("category")
     @classmethod

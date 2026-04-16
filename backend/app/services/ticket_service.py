@@ -1123,6 +1123,8 @@ def create_kb_article(
         "created_by": user_id,
         "created_at": now,
         "updated_at": now,
+        "action_type": data.action_type,
+        "action_label": data.action_label,
     }
     result = db.table("knowledge_base_articles").insert(row).execute()
     article = _normalise(result.data)
@@ -1160,6 +1162,10 @@ def update_kb_article(
         updates["content"] = data.content
     if data.tags is not None:
         updates["tags"] = data.tags
+    if data.action_type is not None:
+        updates["action_type"] = data.action_type
+    if data.action_label is not None:
+        updates["action_label"] = data.action_label
     if data.is_published is not None:
         updates["is_published"] = data.is_published
 

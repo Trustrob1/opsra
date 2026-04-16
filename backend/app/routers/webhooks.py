@@ -31,6 +31,7 @@ from app.models.common import ErrorCode
 from app.models.leads import LeadSource, LeadCreate
 from app.services import lead_service
 from app.services import triage_service
+from app.services import customer_inbound_service
 from app.services.subscription_service import (
     process_paystack_webhook,
     process_flutterwave_webhook,
@@ -715,6 +716,109 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 lead_id, exc,
             )
             # Fall through to standard rep notification below
+
+    # WH-1: Customer intent classifier — KB-first routing for known customers.
+    # Returns True if fully handled (no rep notification needed).
+    # Returns False for 'general' intent or non-text — rep notification fires below.
+    # S14 — all failures swallowed inside handle_customer_inbound; returns False.
+    if customer_id and not lead_id:
+        # WH-2: Check for an active customer triage session first.
+        # If one exists, route to the customer triage dispatcher instead of
+        # the intent classifier.
+        active_customer_session = triage_service.get_active_session(
+            db, org_id, sender_phone
+        )
+        if active_customer_session:
+            triage_service.handle_session_message(
+                db=db,
+                org_id=org_id,
+                phone_number=sender_phone,
+                session=active_customer_session,
+                msg_type=msg_type,
+                content=content,
+                interactive_payload=interactive_payload,
+                contact_name=contact_name,
+                now_ts=now_ts,
+                section="customer",
+            )
+            return
+
+        # WH-2: No active session — check if org has a customer triage menu
+        # configured. If yes, send the menu and create a session.
+        # Falls through to handle_customer_inbound if not configured.
+        try:
+            org_triage_r = (
+                db.table("organisations")
+                .select("whatsapp_triage_config")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            org_triage_d = org_triage_r.data
+            if isinstance(org_triage_d, list):
+                org_triage_d = org_triage_d[0] if org_triage_d else None
+            triage_cfg = (org_triage_d or {}).get("whatsapp_triage_config") or {}
+            customer_menu = triage_cfg.get("customer") or {}
+            if customer_menu.get("items"):
+                from app.services import whatsapp_service as _wa_svc
+                _wa_svc.send_triage_menu(
+                    db=db, org_id=org_id,
+                    phone_number=sender_phone, section="customer",
+                )
+                triage_service.create_customer_session(
+                    db=db, org_id=org_id,
+                    phone_number=sender_phone, customer_id=customer_id,
+                )
+                return
+        except Exception as exc:
+            logger.warning(
+                "Customer triage menu check failed for %s — falling through to "
+                "intent classifier: %s", sender_phone, exc
+            )
+
+        handled = customer_inbound_service.handle_customer_inbound(
+            db=db,
+            org_id=org_id,
+            customer_id=customer_id,
+            content=content,
+            msg_type=msg_type,
+            assigned_to=assigned_to,
+            now_ts=now_ts,
+        )
+        if handled:
+            return  # KB or context handler took care of it — skip rep notification
+
+    # WH-1: Mid-pipeline lead stage signal detection (GAP-C7).
+    # Only for leads in contacted | demo_done | proposal_sent stages.
+    # S14 — all failures swallowed inside handle_lead_stage_signal.
+    if lead_id and not customer_id and msg_type == "text" and content:
+        try:
+            stage_check = (
+                db.table("leads")
+                .select("stage")
+                .eq("id", lead_id)
+                .maybe_single()
+                .execute()
+            )
+            stage_data = stage_check.data
+            if isinstance(stage_data, list):
+                stage_data = stage_data[0] if stage_data else None
+            lead_stage = (stage_data or {}).get("stage", "")
+            if lead_stage in ("contacted", "demo_done", "proposal_sent"):
+                customer_inbound_service.handle_lead_stage_signal(
+                    db=db,
+                    org_id=org_id,
+                    lead_id=lead_id,
+                    stage=lead_stage,
+                    content=content,
+                    assigned_to=assigned_to,
+                    now_ts=now_ts,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Lead stage signal check failed for lead %s — continuing: %s",
+                lead_id, exc,
+            )
 
     # Standard rep notification (for customers, or leads without active sessions,
     # or when the qualification handler fails)
