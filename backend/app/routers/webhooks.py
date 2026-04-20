@@ -1230,6 +1230,22 @@ async def receive_whatsapp_message(
 
     return {"status": "ok"}
 
+@router.get("/meta/whatsapp")
+async def verify_whatsapp_webhook(
+    hub_mode: Optional[str] = Query(None, alias="hub.mode"),
+    hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
+    hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
+):
+    """Meta webhook verification challenge for WhatsApp endpoint."""
+    if hub_mode == "subscribe" and hub_verify_token == settings.META_VERIFY_TOKEN:
+        logger.info("WhatsApp webhook verified successfully")
+        if hub_challenge and hub_challenge.isdigit():
+            return int(hub_challenge)
+        return hub_challenge
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Webhook verification failed — token mismatch",
+    )
 
 # ---------------------------------------------------------------------------
 # POST /webhooks/payment/paystack  — Technical Spec §6.3
