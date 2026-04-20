@@ -1217,9 +1217,11 @@ async def receive_whatsapp_message(
             # Process inbound messages
             for message in value.get("messages", []):
                 try:
+                    print(f"Processing inbound message from {message.get('from')}", flush=True)
                     _handle_inbound_message(db, message, contact_name, phone_number_id)
-                except Exception as exc:  # pylint: disable=broad-except
-                    logger.error("Inbound message processing error: %s", exc)
+                    print("Inbound message processed successfully", flush=True)
+                except Exception as exc:
+                    print(f"Inbound message processing error: {exc}", flush=True)
 
             # Process delivery/read status updates
             for status_upd in value.get("statuses", []):
