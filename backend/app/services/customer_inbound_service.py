@@ -1266,3 +1266,271 @@ def handle_lead_stage_signal(
         logger.warning(
             "handle_lead_stage_signal failed for lead %s: %s", lead_id, exc
         )
+
+
+def _send_whatsapp_reply_to_lead(
+    db, org_id: str, lead_id: str, answer: str, now_ts: str
+) -> None:
+    """
+    Send a KB-drafted answer to a lead via WhatsApp and record it.
+    Mirror of _send_whatsapp_reply but reads from leads table.
+    S14 — never raises.
+    """
+    try:
+        from app.services.whatsapp_service import _call_meta_send, _normalise_data
+        from datetime import datetime, timezone, timedelta
+ 
+        org_result = (
+            db.table("organisations")
+            .select("whatsapp_phone_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = _normalise_data(org_result.data)
+        phone_id = (org_data or {}).get("whatsapp_phone_id")
+        if not phone_id:
+            logger.warning(
+                "_send_whatsapp_reply_to_lead: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+ 
+        lead_result = (
+            db.table("leads")
+            .select("whatsapp, phone")
+            .eq("id", lead_id)
+            .maybe_single()
+            .execute()
+        )
+        lead_data = _normalise_data(lead_result.data)
+        to_number = (lead_data or {}).get("whatsapp") or (lead_data or {}).get("phone")
+        if not to_number:
+            logger.warning(
+                "_send_whatsapp_reply_to_lead: no phone/whatsapp for lead %s", lead_id
+            )
+            return
+ 
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to": to_number,
+            "type": "text",
+            "text": {"body": answer},
+        })
+ 
+        window_expires = (
+            datetime.now(timezone.utc) + timedelta(hours=24)
+        ).isoformat()
+        db.table("whatsapp_messages").insert({
+            "org_id": org_id,
+            "lead_id": lead_id,
+            "direction": "outbound",
+            "message_type": "text",
+            "content": answer,
+            "status": "sent",
+            "window_open": True,
+            "window_expires_at": window_expires,
+            "sent_by": None,
+            "created_at": now_ts,
+        }).execute()
+ 
+    except Exception as exc:
+        logger.warning(
+            "_send_whatsapp_reply_to_lead failed for lead %s: %s", lead_id, exc
+        )
+ 
+ 
+def handle_lead_post_handoff_inbound(
+    db,
+    org_id: str,
+    lead_id: str,
+    lead_name: str,
+    content: Optional[str],
+    msg_type: str,
+    assigned_to: Optional[str],
+    now_ts: str,
+) -> bool:
+    """
+    WH-1b: Handle inbound messages from leads whose qualification has been
+    handed off but who have not yet been contacted by a rep.
+ 
+    This covers the common scenario where a lead sends a pre-contact question
+    after receiving the handoff message ("Our team will reach out shortly").
+ 
+    Flow (mirrors handle_customer_inbound, simplified for leads):
+      1. Non-text messages → return False (rep notification fires in caller).
+      2. KB lookup (Sonnet) — does the KB have an answer?
+         Found + informational  → auto-send answer, return True.
+         Found + action_required → auto-send answer, create task for rep,
+                                   notify chain, return True.
+      3. No KB answer → send "forwarding to our team" message to lead,
+         create task for assigned rep (or manager fallback),
+         notify rep with lead's question, return True.
+ 
+    Returns True if fully handled (caller should NOT send another notification).
+    Returns False only on non-text messages (caller sends standard rep notification).
+    S14 — never raises.
+    """
+    try:
+        # Non-text messages — skip KB, let caller send standard notification
+        if msg_type != "text" or not content:
+            return False
+ 
+        safe_name = _sanitise_for_prompt(lead_name, max_length=100)
+ 
+        # ── KB lookup ──────────────────────────────────────────────────────
+        kb_result = lookup_kb_answer(db, org_id, content)
+ 
+        if kb_result and kb_result.get("found"):
+            answer = kb_result["answer"]
+            article_id = kb_result["article_id"]
+            action_type = kb_result.get("action_type", "informational")
+ 
+            # Send KB answer to lead
+            _send_whatsapp_reply_to_lead(
+                db=db, org_id=org_id, lead_id=lead_id,
+                answer=answer, now_ts=now_ts,
+            )
+ 
+            # Increment usage_count
+            article_title = "KB article"
+            try:
+                art_r = (
+                    db.table("knowledge_base_articles")
+                    .select("usage_count, title")
+                    .eq("id", article_id)
+                    .maybe_single()
+                    .execute()
+                )
+                art_d = art_r.data
+                if isinstance(art_d, list):
+                    art_d = art_d[0] if art_d else None
+                current = (art_d or {}).get("usage_count") or 0
+                article_title = (art_d or {}).get("title") or "KB article"
+                db.table("knowledge_base_articles").update(
+                    {"usage_count": current + 1}
+                ).eq("id", article_id).execute()
+            except Exception as exc:
+                logger.warning(
+                    "handle_lead_post_handoff_inbound: usage_count update failed: %s", exc
+                )
+ 
+            if action_type == "action_required":
+                # Create task for rep to follow up
+                _create_lead_action_task(
+                    db=db, org_id=org_id, lead_id=lead_id,
+                    lead_name=safe_name, article_title=article_title,
+                    action_label=kb_result.get("action_label") or "",
+                    message_content=content,
+                    assigned_to=assigned_to, now_ts=now_ts,
+                )
+            return True  # KB answered — no further notification needed
+ 
+        # ── No KB answer — forward to rep ─────────────────────────────────
+        # 1. Send acknowledgement to lead
+        forwarding_msg = (
+            "Thanks for your message! I've passed your question on to our team "
+            "and someone will get back to you shortly. 🙏"
+        )
+        _send_whatsapp_reply_to_lead(
+            db=db, org_id=org_id, lead_id=lead_id,
+            answer=forwarding_msg, now_ts=now_ts,
+        )
+ 
+        # 2. Create task for assigned rep (or manager fallback)
+        _create_lead_action_task(
+            db=db, org_id=org_id, lead_id=lead_id,
+            lead_name=safe_name, article_title="Pre-contact question",
+            action_label="Answer lead's pre-contact question",
+            message_content=content,
+            assigned_to=assigned_to, now_ts=now_ts,
+        )
+ 
+        # 3. Notify rep with the question content
+        if assigned_to:
+            _insert_notification(
+                db=db, org_id=org_id, user_id=assigned_to,
+                notif_type="lead_pre_contact_question",
+                title=f"Pre-contact question from {safe_name}",
+                body=content[:200],
+                resource_type="lead", resource_id=lead_id,
+                now_ts=now_ts,
+            )
+ 
+        return True  # Fully handled
+ 
+    except Exception as exc:
+        logger.warning(
+            "handle_lead_post_handoff_inbound failed for lead %s — swallowed (S14): %s",
+            lead_id, exc,
+        )
+        return False
+ 
+ 
+def _create_lead_action_task(
+    db,
+    org_id: str,
+    lead_id: str,
+    lead_name: str,
+    article_title: str,
+    action_label: str,
+    message_content: str,
+    assigned_to: Optional[str],
+    now_ts: str,
+) -> None:
+    """
+    Create a task for a rep to follow up on a post-handoff lead question.
+    Mirror of create_action_task but scoped to a lead record.
+    S14 — never raises.
+    """
+    try:
+        from datetime import datetime, timezone, timedelta
+ 
+        due_at = (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat()
+        safe_content = _sanitise_for_prompt(message_content, max_length=1000)
+        safe_label = _sanitise_for_prompt(action_label, max_length=200) or article_title
+        safe_name = _sanitise_for_prompt(lead_name, max_length=100)
+ 
+        task_title = f'Lead question: "{safe_label}" — {safe_name}'
+        task_description = (
+            f"Lead message:\n{safe_content}\n\n"
+            f"Action needed: {safe_label}\n\n"
+            f"This lead has been handed off from qualification and sent a pre-contact "
+            f"question. Review and respond via WhatsApp or phone call."
+        )
+ 
+        task_row: dict = {
+            "org_id": org_id,
+            "title": task_title[:255],
+            "description": task_description,
+            "task_type": "system_event",
+            "source_module": "leads",
+            "source_record_id": lead_id,
+            "priority": "high",
+            "status": "pending",
+            "due_at": due_at,
+            "created_at": now_ts,
+            "updated_at": now_ts,
+        }
+        if assigned_to:
+            task_row["assigned_to"] = assigned_to
+        else:
+            owner_id = _find_manager(db, org_id)
+            if owner_id:
+                task_row["assigned_to"] = owner_id
+ 
+        db.table("tasks").insert(task_row).execute()
+ 
+        # Notify managers too
+        _notify_managers(
+            db=db, org_id=org_id,
+            title=task_title[:255],
+            body=f"Lead '{safe_name}' has a pre-contact question — task created.",
+            resource_type="lead", resource_id=lead_id,
+            now_ts=now_ts,
+            exclude_user_id=task_row.get("assigned_to"),
+        )
+ 
+    except Exception as exc:
+        logger.warning(
+            "_create_lead_action_task failed for lead %s: %s", lead_id, exc
+        )

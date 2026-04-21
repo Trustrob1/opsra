@@ -24,7 +24,9 @@ from typing import Optional
 import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-
+from app.services.customer_inbound_service import (
+    handle_lead_post_handoff_inbound,
+)
 from app.config import settings
 from app.database import get_supabase
 from app.models.common import ErrorCode
@@ -721,9 +723,54 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             return  # qualification handler manages its own notifications
         except Exception as exc:
             logger.warning(
-                "Qualification turn failed for lead %s — falling back to rep notification: %s",
+                "Qualification turn failed for lead %s — checking post-handoff path: %s",
                 lead_id, exc,
             )
+            if msg_type == "text" and content:
+                try:
+                    _is_handed_off = False
+                    sess_check = (
+                        db.table("lead_qualification_sessions")
+                        .select("stage")
+                        .eq("lead_id", lead_id)
+                        .eq("stage", "handed_off")
+                        .limit(1)
+                        .execute()
+                    )
+                    _is_handed_off = bool((sess_check.data or []))
+                except Exception:
+                    pass
+
+                if _is_handed_off:
+                    _lead_name = "Lead"
+                    try:
+                        _ln = (
+                            db.table("leads")
+                            .select("full_name")
+                            .eq("id", lead_id)
+                            .maybe_single()
+                            .execute()
+                        )
+                        _ld = _ln.data
+                        if isinstance(_ld, list):
+                            _ld = _ld[0] if _ld else None
+                        _lead_name = (_ld or {}).get("full_name") or "Lead"
+                    except Exception:
+                        pass
+
+                    handled = handle_lead_post_handoff_inbound(
+                        db=db,
+                        org_id=org_id,
+                        lead_id=lead_id,
+                        lead_name=_lead_name,
+                        content=content,
+                        msg_type=msg_type,
+                        assigned_to=assigned_to,
+                        now_ts=now_ts,
+                    )
+                    if handled:
+                        return
+            # Fall through to standard rep notification
             # Fall through to standard rep notification below
 
     # WH-1: Customer intent classifier — KB-first routing for known customers.
