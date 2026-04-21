@@ -4,36 +4,79 @@
  * WhatsApp message history + compose panel for a lead.
  * Shown on the Messages tab of LeadProfile.
  *
+ * WH-1b additions:
+ *   - Fetches GET /api/v1/leads/{id}/qualification-summary and renders a
+ *     pinned summary card above the message thread when present.
+ *   - Renders interactive option labels cleanly (strips opt* prefixes from
+ *     raw option IDs that were saved before the title fix landed).
+ *
  * Features:
  *   - Fetches GET /api/v1/leads/{id}/messages (paginated, newest first)
  *   - Renders each message as a chat bubble with direction (inbound/outbound)
- *   - Shows delivery/read status indicators per outbound message:
- *       ✓  sent
- *       ✓✓ delivered  (grey)
- *       ✓✓ read       (teal/blue)
+ *   - Shows delivery/read status indicators per outbound message
  *   - MessageComposer at the bottom for sending new messages
  *   - Load More pagination
  *
  * Props:
  *   leadId      — UUID
  *   leadName    — string (for composer header display)
+ *
+ * Pattern 51: full rewrite required for any future edit — never sed.
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
 import MessageComposer from '../whatsapp/MessageComposer'
 import { getLeadMessages } from '../../services/leads.service'
+import axios from 'axios'
+import useAuthStore from '../../store/authStore'
 
 const PAGE_SIZE = 20
 
+function _h() {
+  const token = useAuthStore.getState().token
+  return { Authorization: `Bearer ${token}` }
+}
+
+async function getQualificationSummary(leadId) {
+  try {
+    const r = await axios.get(
+      `/api/v1/leads/${leadId}/qualification-summary`,
+      { headers: _h() }
+    )
+    return r.data.data ?? null
+  } catch {
+    return null
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Clean up raw option IDs that were stored before the title fix landed.
+ * e.g. "opt1776783589451" → null (show as placeholder)
+ * Real labels like "Pricing information", "Yes", "Lagos" pass through unchanged.
+ */
+function cleanContent(content) {
+  if (!content) return '—'
+  // Strip raw generated option IDs (opt + 10+ digits) — these are internal IDs
+  // not meant to be displayed. Show a neutral placeholder instead.
+  if (/^opt\d{8,}$/.test(content.trim())) return '📎 Option selected'
+  return content
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function LeadMessages({ leadId, leadName }) {
-  const [messages, setMessages]   = useState([])
-  const [total, setTotal]         = useState(0)
-  const [page, setPage]           = useState(1)
-  const [loading, setLoading]     = useState(true)
+  const [messages, setMessages]       = useState([])
+  const [total, setTotal]             = useState(0)
+  const [page, setPage]               = useState(1)
+  const [loading, setLoading]         = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError]         = useState(null)
-  const [tick, setTick]           = useState(0)
+  const [error, setError]             = useState(null)
+  const [tick, setTick]               = useState(0)
+  const [summary, setSummary]         = useState(null)
+  const [summaryOpen, setSummaryOpen] = useState(true)
 
   const refresh = useCallback(() => setTick(t => t + 1), [])
 
@@ -41,18 +84,22 @@ export default function LeadMessages({ leadId, leadName }) {
     if (!leadId) return
     setLoading(true)
     setError(null)
-    getLeadMessages(leadId, 1, PAGE_SIZE)
-      .then(res => {
-        if (res.success) {
-          setMessages(res.data.items ?? [])
-          setTotal(res.data.total ?? 0)
-          setPage(1)
-        } else {
-          setError(res.error ?? 'Failed to load messages')
-        }
-      })
-      .catch(() => setError('Failed to load messages'))
-      .finally(() => setLoading(false))
+
+    Promise.all([
+      getLeadMessages(leadId, 1, PAGE_SIZE),
+      getQualificationSummary(leadId),
+    ]).then(([res, summaryData]) => {
+      if (res.success) {
+        setMessages(res.data.items ?? [])
+        setTotal(res.data.total ?? 0)
+        setPage(1)
+      } else {
+        setError(res.error ?? 'Failed to load messages')
+      }
+      setSummary(summaryData)
+    })
+    .catch(() => setError('Failed to load messages'))
+    .finally(() => setLoading(false))
   }, [leadId, tick])
 
   const loadMore = () => {
@@ -77,11 +124,93 @@ export default function LeadMessages({ leadId, leadName }) {
       <div style={{ marginBottom: 20 }}>
         <MessageComposer
           leadId={leadId}
-          windowOpen={true}   /* leads: no 24hr window enforcement at this stage */
+          windowOpen={true}
           templates={[]}
           onSent={refresh}
         />
       </div>
+
+      {/* Qualification summary card */}
+      {summary?.handoff_summary && (
+        <div style={{
+          background: 'linear-gradient(135deg, #f0fafa 0%, #e8f7f5 100%)',
+          border: `1.5px solid ${ds.teal}22`,
+          borderLeft: `4px solid ${ds.teal}`,
+          borderRadius: 10,
+          padding: '12px 14px',
+          marginBottom: 16,
+        }}>
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              cursor: 'pointer', marginBottom: summaryOpen ? 8 : 0,
+            }}
+            onClick={() => setSummaryOpen(o => !o)}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ fontSize: 14 }}>🎯</span>
+              <span style={{
+                fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 12.5,
+                color: ds.teal, textTransform: 'uppercase', letterSpacing: '0.5px',
+              }}>
+                Qualification Summary
+              </span>
+            </div>
+            <span style={{ fontSize: 11, color: ds.teal, fontWeight: 600 }}>
+              {summaryOpen ? '▲ Hide' : '▼ Show'}
+            </span>
+          </div>
+
+          {summaryOpen && (
+            <>
+              <p style={{
+                fontSize: 13, color: '#2d5a60', lineHeight: 1.6,
+                margin: '0 0 10px', whiteSpace: 'pre-wrap',
+              }}>
+                {summary.handoff_summary}
+              </p>
+
+              {/* Answers grid if present */}
+              {summary.answers && Object.keys(summary.answers).length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                  gap: 6,
+                  marginTop: 4,
+                }}>
+                  {Object.entries(summary.answers).map(([key, val]) => (
+                    <div key={key} style={{
+                      background: 'white',
+                      borderRadius: 7,
+                      padding: '6px 10px',
+                      border: `1px solid ${ds.teal}22`,
+                    }}>
+                      <div style={{
+                        fontSize: 10, color: ds.teal, fontWeight: 700,
+                        textTransform: 'uppercase', letterSpacing: '0.4px',
+                        marginBottom: 2,
+                      }}>
+                        {key.replace(/_/g, ' ')}
+                      </div>
+                      <div style={{ fontSize: 12.5, color: ds.dark, fontWeight: 500 }}>
+                        {String(val)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {summary.handed_off_at && (
+                <p style={{ fontSize: 11, color: ds.gray, margin: '8px 0 0' }}>
+                  Handed off {new Date(summary.handed_off_at).toLocaleString('en-GB', {
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                  })}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Message history */}
       <div style={{ marginBottom: 8 }}>
@@ -136,11 +265,13 @@ function MessageBubble({ msg }) {
     ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
     : ''
 
+  const displayContent = cleanContent(msg.content)
+
   return (
     <div style={{
-      display:       'flex',
+      display:        'flex',
       justifyContent: isOutbound ? 'flex-end' : 'flex-start',
-      marginBottom:  10,
+      marginBottom:   10,
     }}>
       <div style={{
         maxWidth:     '72%',
@@ -161,9 +292,23 @@ function MessageBubble({ msg }) {
           </p>
         )}
 
+        {/* Interactive badge for button/list replies */}
+        {msg.message_type === 'interactive' && !isOutbound && (
+          <p style={{
+            fontSize: 10, color: '#1a7f64', background: '#e8f7f0',
+            borderRadius: 4, padding: '2px 6px', margin: '0 0 4px',
+            display: 'inline-block', fontWeight: 600,
+          }}>
+            ☑ Selected
+          </p>
+        )}
+
         {/* Content */}
-        <p style={{ fontSize: 13, color: ds.dark, margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-          {msg.content || '—'}
+        <p style={{
+          fontSize: 13, color: ds.dark, margin: 0,
+          lineHeight: 1.5, whiteSpace: 'pre-wrap',
+        }}>
+          {displayContent}
         </p>
 
         {/* Footer: time + status */}

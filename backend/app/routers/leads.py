@@ -581,6 +581,42 @@ async def get_nurture_queue(
         page_size=result["page_size"],
     )
 
+# ---------------------------------------------------------------------------
+# GET /api/v1/leads/{id}/qualification-summary — WH-1b
+# Returns the most recent handed-off qualification session for a lead.
+# MUST be declared before /{lead_id} to avoid route shadowing.
+# ---------------------------------------------------------------------------
+
+@router.get("/{lead_id}/qualification-summary")
+async def get_qualification_summary(
+    lead_id: str,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    WH-1b: Return the most recent handed-off qualification session for this lead.
+    Returns handoff_summary, answers, and handed_off_at.
+    Returns null if no session exists or none has been handed off yet.
+    """
+    org_id = org["org_id"]
+
+    result = (
+        db.table("lead_qualification_sessions")
+        .select("handoff_summary, answers, handed_off_at, stage")
+        .eq("org_id", org_id)
+        .eq("lead_id", lead_id)
+        .eq("stage", "handed_off")
+        .order("handed_off_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+
+    rows = result.data if isinstance(result.data, list) else []
+    session = rows[0] if rows else None
+
+    return ok(session)
+
+
 
 # ---------------------------------------------------------------------------
 # GET /api/v1/leads/{id} — get single lead

@@ -446,11 +446,13 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     elif msg_type == "interactive":
         interactive_type = (message.get("interactive") or {}).get("type")
         if interactive_type == "list_reply":
-            content = (message.get("interactive", {})
-                       .get("list_reply", {}).get("id"))
+            list_reply = (message.get("interactive") or {}).get("list_reply") or {}
+            # Store human-readable title; fall back to id if title absent
+            content = list_reply.get("title") or list_reply.get("id")
         elif interactive_type == "button_reply":
-            content = (message.get("interactive", {})
-                       .get("button_reply", {}).get("id"))
+            button_reply = (message.get("interactive") or {}).get("button_reply") or {}
+            # Store human-readable title; fall back to id if title absent
+            content = button_reply.get("title") or button_reply.get("id")
         else:
             content = f"[interactive:{interactive_type}]"
     else:
