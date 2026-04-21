@@ -35,6 +35,8 @@ from app.models.whatsapp import (
     TemplateUpdate,
 )
 from app.services.lead_service import write_audit_log
+import logging
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -1470,3 +1472,167 @@ def cancel_outbox_message(
         new_value={"status": "cancelled"},
     )
     return updated
+
+# ---------------------------------------------------------------------------
+# WH-1b: Structured Qualification Flow — message senders
+# ADD THESE FUNCTIONS to the bottom of app/services/whatsapp_service.py
+# ---------------------------------------------------------------------------
+
+def send_qualification_question(
+    db,
+    org_id: str,
+    phone_number: str,
+    question: dict,
+    question_index: int,
+    total: int,
+    opening_message: str = None,
+) -> None:
+    """
+    WH-1b: Send one qualification question to the lead via WhatsApp.
+
+    Dispatches the correct message type based on question["type"]:
+      "multiple_choice" | "yes_no"  → Interactive button message (up to 3 buttons)
+      "list_select"                 → Interactive List Message (up to 10 rows)
+      "free_text"                   → Plain text message
+
+    opening_message is prepended only on the first question (question_index == 0).
+    S14 — full try/except; logs warning on failure, never raises.
+    """
+    try:
+        # Resolve org phone_id
+        org_r = (
+            db.table("organisations")
+            .select("whatsapp_phone_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_qualification_question: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        q_type = question.get("type", "free_text")
+        q_text = question.get("text", "")
+        options = question.get("options") or []
+
+        # Prepend opening_message only on first question
+        body_text = q_text
+        if question_index == 0 and opening_message:
+            body_text = f"{opening_message}\n\n{q_text}"
+
+        if q_type in ("multiple_choice", "yes_no"):
+            # WhatsApp Quick Reply buttons — up to 3
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": opt["id"],
+                        "title": opt["label"][:20],
+                    },
+                }
+                for opt in options[:3]
+            ]
+            meta_payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": body_text},
+                    "action": {"buttons": buttons},
+                },
+            }
+
+        elif q_type == "list_select":
+            # Interactive List Message — up to 10 rows
+            rows = [
+                {
+                    "id": opt["id"],
+                    "title": opt["label"][:24],
+                }
+                for opt in options[:10]
+            ]
+            meta_payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "list",
+                    "body": {"text": body_text},
+                    "action": {
+                        "button": "Choose an option",
+                        "sections": [
+                            {
+                                "title": "Choose an option",
+                                "rows": rows,
+                            }
+                        ],
+                    },
+                },
+            }
+
+        else:
+            # free_text — plain text message
+            meta_payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {"body": body_text},
+            }
+
+        _call_meta_send(phone_id, meta_payload)
+
+    except Exception as exc:
+        logger.warning(
+            "send_qualification_question failed org=%s phone=%s q_index=%s: %s",
+            org_id, phone_number, question_index, exc,
+        )
+
+
+def send_qualification_handoff_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    handoff_message: str,
+) -> None:
+    """
+    WH-1b: Send the configured handoff message to the lead as plain text.
+    Called once when all qualification questions have been answered.
+    S14 — full try/except; logs warning on failure, never raises.
+    """
+    try:
+        org_r = (
+            db.table("organisations")
+            .select("whatsapp_phone_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_qualification_handoff_message: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "text",
+            "text": {"body": handoff_message},
+        })
+
+    except Exception as exc:
+        logger.warning(
+            "send_qualification_handoff_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )

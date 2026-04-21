@@ -3,6 +3,7 @@ triage_service.py
 -----------------
 WH-0: Intent-First Triage for Unknown WhatsApp Contacts.
 WH-2: Known-Customer Triage Menu — customer section of whatsapp_triage_config.
+WH-1b: _action_qualify updated — structured flow, immediate Q1, onboarding gate.
 
 Handles:
   - WhatsApp triage session lifecycle (create / query / update)
@@ -302,11 +303,36 @@ def _action_qualify(
     db, org_id: str, phone_number: str, session_id: str,
     contact_name: Optional[str], now_ts,
 ) -> None:
-    """Create a sales_lead and trigger the qualification bot."""
+    """
+    WH-1b: Create a sales_lead and start the structured qualification flow.
+
+    1. Fetch org qualification_flow. If null → send "getting set up" fallback,
+       notify org owner, create lead without qualification session.
+    2. Create lead.
+    3. Update triage session to 'active'.
+    4. Insert lead_qualification_sessions with current_question_index=0, answers={}.
+    5. Send opening_message + Q1 immediately via send_qualification_question().
+    """
     from app.models.leads import LeadCreate, LeadSource
     from app.services import lead_service
-    from datetime import datetime, timezone
+    from app.services.whatsapp_service import send_qualification_question
 
+    # 1 — Fetch qualification_flow
+    org_r = (
+        db.table("organisations")
+        .select("qualification_flow, whatsapp_phone_id, name")
+        .eq("id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    org_d = org_r.data
+    if isinstance(org_d, list):
+        org_d = org_d[0] if org_d else None
+
+    qualification_flow = (org_d or {}).get("qualification_flow")
+    phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+
+    # 2 — Create the lead regardless (always create on qualify action)
     lead_payload = LeadCreate(
         full_name=contact_name or phone_number,
         phone=phone_number,
@@ -315,23 +341,83 @@ def _action_qualify(
         contact_type="sales_lead",
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
+    lead_id = lead["id"] if lead else None
+
     update_session(db, session_id, "active", selected_action="qualify")
 
-    # Initiate qualification session directly
+    # Onboarding gate — qualification_flow must be configured
+    if not qualification_flow:
+        logger.warning(
+            "_action_qualify: qualification_flow not configured for org %s — "
+            "sending fallback message and notifying owner",
+            org_id,
+        )
+        # Send fallback message to the lead
+        if phone_id:
+            try:
+                from app.services.whatsapp_service import _call_meta_send
+                _call_meta_send(phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to": phone_number,
+                    "type": "text",
+                    "text": {
+                        "body": (
+                            "We're getting set up — our team will reach out to you shortly."
+                        )
+                    },
+                })
+            except Exception as exc:
+                logger.warning("_action_qualify: failed to send fallback message: %s", exc)
+
+        # Notify org owner
+        _notify_managers(
+            db, org_id,
+            title="WhatsApp qualification flow not configured",
+            body="WhatsApp qualification flow not configured. Please set it up in Admin.",
+            resource_type="lead",
+            resource_id=lead_id or "",
+        )
+        return  # Lead created, no qualification session
+
+    # 3 — Validate flow structure
+    questions = qualification_flow.get("questions") or []
+    if not questions:
+        logger.warning(
+            "_action_qualify: qualification_flow has no questions for org %s", org_id
+        )
+        return
+
+    # 4 — Insert lead_qualification_sessions
+    now = datetime.now(timezone.utc).isoformat()
     try:
-        now = datetime.now(timezone.utc).isoformat()
         db.table("lead_qualification_sessions").insert({
-            "org_id":           org_id,
-            "lead_id":          lead["id"],
-            "ai_active":        True,
-            "stage":            "awaiting_first_message",
-            "turn_count":       0,
-            "collected":        {},
-            "created_at":       now,
-            "last_message_at":  now,
+            "org_id":                  org_id,
+            "lead_id":                 lead_id,
+            "ai_active":               True,
+            "stage":                   "qualifying",
+            "current_question_index":  0,
+            "answers":                 {},
+            "created_at":              now,
+            "last_message_at":         now,
         }).execute()
     except Exception as exc:
-        logger.warning("Failed to create qualification session for lead %s: %s", lead.get("id"), exc)
+        logger.warning(
+            "_action_qualify: failed to create qualification session for lead %s: %s",
+            lead_id, exc,
+        )
+        return
+
+    # 5 — Send Q1 immediately (with opening_message prepended)
+    opening_message = qualification_flow.get("opening_message") or None
+    send_qualification_question(
+        db=db,
+        org_id=org_id,
+        phone_number=phone_number,
+        question=questions[0],
+        question_index=0,
+        total=len(questions),
+        opening_message=opening_message,
+    )
 
 
 def _action_identify_customer(

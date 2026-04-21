@@ -2,15 +2,8 @@
  * frontend/src/modules/admin/AdminModule.jsx
  * Admin Dashboard — Phase 8B
  *
- * Client-facing admin for Owner/Admin users.
- * On mount: calls listUsers() to verify access.
- *   → 403 response: renders "Access Restricted" screen (TEMP-1 workaround)
- *   → success: renders tab nav with sections
- *
- * Tabs: Users | Roles | Routing Rules | Integrations | Commissions |
- *       Lead Scoring | Qualification Bot | SLA Targets | Nurture Engine |
- *       WhatsApp Menu (WH-0)
- * Plus 2 nav links (no data): Knowledge Base → Support, WA Templates → WhatsApp
+ * WH-1b update: "Qualification Bot" tab swapped for "Qualification Flow" tab.
+ * QualificationBot.jsx remains in file structure but is no longer rendered.
  *
  * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
  * table state, filters, and open modals when switching between tabs.
@@ -19,16 +12,16 @@
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
-import UserManagement     from './UserManagement'
-import RoleBuilder        from './RoleBuilder'
-import RoutingRules       from './RoutingRules'
-import IntegrationStatus  from './IntegrationStatus'
-import CommissionSettings from './CommissionSettings'
-import ScoringRubric      from './ScoringRubric'
-import QualificationBot   from './QualificationBot'
-import LeadSLASettings    from './LeadSLASettings'
-import NurtureSettings    from './NurtureSettings'
-import CustomerMenuConfig from './CustomerMenuConfig'
+import UserManagement      from './UserManagement'
+import RoleBuilder         from './RoleBuilder'
+import RoutingRules        from './RoutingRules'
+import IntegrationStatus   from './IntegrationStatus'
+import CommissionSettings  from './CommissionSettings'
+import ScoringRubric       from './ScoringRubric'
+import QualificationFlow   from './QualificationFlow'
+import LeadSLASettings     from './LeadSLASettings'
+import NurtureSettings     from './NurtureSettings'
+import CustomerMenuConfig  from './CustomerMenuConfig'
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
@@ -37,7 +30,7 @@ const TABS = [
   { id: 'integrations',   label: '🔌 Integrations' },
   { id: 'commission',     label: '💼 Commissions' },
   { id: 'scoring',        label: '🎯 Lead Scoring' },
-  { id: 'qualification',  label: '🤖 Qualification Bot' },
+  { id: 'qualification',  label: '📋 Qualification Flow' },
   { id: 'sla',            label: '⏱️ SLA Targets' },
   { id: 'nurture',        label: '🌱 Nurture Engine' },
   { id: 'whatsapp-menu',  label: '📋 WhatsApp Menu' },
@@ -50,9 +43,6 @@ export default function AdminModule({ user }) {
   const [accessDenied, setAccessDenied] = useState(false)
   const [checking, setChecking]     = useState(true)
 
-  // Verify admin access on mount — TEMP-1 workaround.
-  // Roles are not in the auth store, so we probe the backend.
-  // A 403 from the admin API means this user is not an owner/admin.
   useEffect(() => {
     adminSvc.listUsers()
       .then(() => setChecking(false))
@@ -62,7 +52,6 @@ export default function AdminModule({ user }) {
       })
   }, [])
 
-  // ── Loading state ────────────────────────────────────────────────────────
   if (checking) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
@@ -72,7 +61,6 @@ export default function AdminModule({ user }) {
     )
   }
 
-  // ── Access denied ────────────────────────────────────────────────────────
   if (accessDenied) {
     return (
       <div style={{ padding: 64, textAlign: 'center' }}>
@@ -88,7 +76,6 @@ export default function AdminModule({ user }) {
     )
   }
 
-  // ── Admin panel ──────────────────────────────────────────────────────────
   return (
     <div>
       {/* Module header */}
@@ -155,7 +142,7 @@ export default function AdminModule({ user }) {
         </div>
       </div>
 
-      {/* Tab content ─────────────────────────────────────────────────────── */}
+      {/* Tab content */}
       <div style={{ padding: 28 }}>
 
         {/* Pattern 26: mount-and-hide — preserves table state + open modals */}
@@ -178,7 +165,7 @@ export default function AdminModule({ user }) {
           <ScoringRubric />
         </div>
         <div style={{ display: tab === 'qualification' ? 'block' : 'none' }}>
-          <QualificationBot />
+          <QualificationFlow />
         </div>
         <div style={{ display: tab === 'sla' ? 'block' : 'none' }}>
           <LeadSLASettings />
@@ -190,7 +177,7 @@ export default function AdminModule({ user }) {
           <CustomerMenuConfig />
         </div>
 
-        {/* Nav links — no state to preserve, conditional render is fine */}
+        {/* Nav links — conditional render (no state to preserve) */}
         {tab === 'kb' && (
           <LinkMessage
             icon="📚"

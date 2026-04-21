@@ -36,6 +36,8 @@ from app.services.subscription_service import (
     process_paystack_webhook,
     process_flutterwave_webhook,
 )
+from app.services.whatsapp_service import send_qualification_question, send_qualification_handoff_message
+from app.services.ai_service import generate_qualification_summary
 
 load_dotenv()  # Pattern 29 — required for os.getenv() in service files
 
@@ -708,12 +710,10 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     # notifying the rep directly. S14 — all failures fall back to rep notification.
     if lead_id and not customer_id:
         try:
-            _handle_qualification_turn(
-                db=db,
-                org_id=org_id,
-                lead_id=lead_id,
-                assigned_to=assigned_to,
-                content=content or f"[{msg_type}]",
+            _handle_structured_qualification_turn(
+                db=db, org_id=org_id, lead_id=lead_id,
+                assigned_to=assigned_to, content=content or f"[{msg_type}]",
+                interactive_payload=interactive_payload,
                 now_ts=now_ts,
             )
             return  # qualification handler manages its own notifications
@@ -876,36 +876,44 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         logger.warning("Failed to insert reply notification for user %s: %s", assigned_to, exc)
 
 
-def _handle_qualification_turn(
+def _handle_structured_qualification_turn(
     db,
     org_id: str,
     lead_id: str,
-    assigned_to: Optional[str],
+    assigned_to,
     content: str,
+    interactive_payload,
     now_ts: str,
 ) -> None:
     """
-    M01-3: Handle one turn of the WhatsApp qualification conversation for a lead.
-
-    Checks if an active qualification session exists for this lead.
-    If yes and ai_active=true:
-      - Fetches conversation history
-      - Calls run_qualification_turn() in ai_service
-      - Sends AI reply via whatsapp_service.send_whatsapp_message()
-      - Updates session (stage, collected fields, turn_count)
-      - On handoff: sets ai_active=false, notifies rep with summary
-
-    If no active session or ai_active=false: raises exception so caller
-    falls back to standard rep notification.
-
-    S14: raises on any unrecoverable error so caller can fall back gracefully.
+    WH-1b: Handle one turn of the structured WhatsApp qualification flow.
+ 
+    Replaces the old AI-per-turn _handle_qualification_turn().
+ 
+    Flow:
+      1. Fetch active qualification session (ai_active=True). Raises if none.
+      2. Fetch org qualification_flow. Raises if null.
+      3. Read current_question_index. Get current question from flow["questions"].
+      4. Record answer:
+         - button_reply / list_reply: extract selected option id; resolve label.
+         - free_text: content as-is.
+         - Store as answers[question["answer_key"]] = answer_value.
+      5. If map_to_lead_field is set: update leads table column with answer_value.
+      6. Advance: next_index = current_question_index + 1.
+      7. If more questions remain: send next question, update session index.
+      8. If all questions answered:
+         a. Generate Haiku summary.
+         b. Send handoff_message to lead.
+         c. Update session: ai_active=False, stage='handed_off', handoff_summary=summary.
+         d. Notify rep with summary.
+         e. Trigger lead scoring.
+ 
+    S14: entire function wrapped in try/except — raises ValueError on unrecoverable
+    error so caller (_handle_inbound_message) falls back to rep notification.
     """
-    from app.services.ai_service import run_qualification_turn
-    from app.services.whatsapp_service import send_whatsapp_message, get_lead_messages
-    from app.models.whatsapp import SendMessageRequest
-    import uuid
 
-    # 1 — Check for active session
+ 
+    # 1 — Fetch active qualification session
     session_result = (
         db.table("lead_qualification_sessions")
         .select("*")
@@ -917,19 +925,15 @@ def _handle_qualification_turn(
     )
     session_rows = session_result.data if isinstance(session_result.data, list) else []
     if not session_rows:
-        # No active session — raise so caller falls back to rep notification
         raise ValueError(f"No active qualification session for lead {lead_id}")
-
+ 
     session = session_rows[0]
-
-    # 2 — Fetch org config for qualification settings
+    session_id = session["id"]
+ 
+    # 2 — Fetch org qualification_flow
     org_result = (
         db.table("organisations")
-        .select("id, name, industry, whatsapp_phone_id, org_whatsapp_number, "
-                "qualification_bot_name, qualification_opening_message, "
-                "qualification_script, qualification_fields, "
-                "qualification_handoff_triggers, qualification_fallback_hours, "
-                "qualification_demo_offer_enabled")
+        .select("id, name, qualification_flow, whatsapp_phone_id")
         .eq("id", org_id)
         .maybe_single()
         .execute()
@@ -939,155 +943,205 @@ def _handle_qualification_turn(
         org_data = org_data[0] if org_data else None
     if not org_data:
         raise ValueError(f"Org {org_id} not found")
-
-    # 3 — Fetch recent conversation history (last 10 messages)
-    history_result = (
-        db.table("whatsapp_messages")
-        .select("direction, content, created_at")
-        .eq("org_id", org_id)
-        .eq("lead_id", lead_id)
-        .order("created_at", desc=False)
-        .limit(20)
-        .execute()
-    )
-    history = history_result.data if isinstance(history_result.data, list) else []
-
-    # 4 — Transition from awaiting_first_message to welcome on first message
-    current_stage = session.get("stage", "awaiting_first_message")
-    if current_stage == "awaiting_first_message":
-        # Use custom opening message if set, otherwise AI will generate naturally
-        opening = (org_data.get("qualification_opening_message") or "").strip()
-        if opening:
-            # Send the configured opening message directly
-            _send_qualification_reply(db, org_id, lead_id, org_data, opening, now_ts)
-            # Update session to welcome stage
-            db.table("lead_qualification_sessions").update({
-                "stage": "welcome",
-                "turn_count": 1,
-                "last_message_at": now_ts,
-            }).eq("id", session["id"]).execute()
-            return
-
-        # No configured opening — let AI handle it naturally with stage=welcome
-        session = {**session, "stage": "welcome"}
-
-    # 5 — Run AI qualification turn
-    turn_result = run_qualification_turn(
-        org_config        = org_data,
-        session           = session,
-        conversation_history = history,
-        new_message       = content,
-    )
-
-    reply           = turn_result.get("reply", "")
-    extracted       = turn_result.get("extracted_fields") or {}
-    next_stage      = turn_result.get("next_stage") or session.get("stage")
-    trigger_handoff = turn_result.get("trigger_handoff", False)
-    handoff_reason  = turn_result.get("handoff_reason")
-
-    # 6 — Send AI reply via WhatsApp
-    if reply:
-        _send_qualification_reply(db, org_id, lead_id, org_data, reply, now_ts)
-
-    # 7 — Update lead record with newly extracted fields (S14 — failure swallowed)
-    if extracted:
-        try:
-            from app.models.leads import LeadUpdate
-            updatable = {k: v for k, v in extracted.items()
-                         if k in ("problem_stated", "business_type", "location",
-                                  "business_name", "branches")}
-            if updatable:
-                db.table("leads").update(updatable).eq("id", lead_id).execute()
-        except Exception as exc:
-            logger.warning("Failed to update lead fields from qualification: %s", exc)
-
-    # 8 — Update session
-    collected_now = {**(session.get("collected") or {}), **extracted}
-    session_updates: dict = {
-        "collected":       collected_now,
-        "stage":           next_stage,
-        "turn_count":      session.get("turn_count", 0) + 1,
-        "last_message_at": now_ts,
+ 
+    qualification_flow = (org_data or {}).get("qualification_flow")
+    if not qualification_flow:
+        raise ValueError(f"qualification_flow not configured for org {org_id}")
+ 
+    questions = qualification_flow.get("questions") or []
+    if not questions:
+        raise ValueError(f"qualification_flow has no questions for org {org_id}")
+ 
+    # 3 — Read current question
+    current_index = session.get("current_question_index") or 0
+    if current_index >= len(questions):
+        # Already completed — should not happen, but raise so caller falls back
+        raise ValueError(
+            f"qualification session {session_id} already past last question"
+        )
+ 
+    current_question = questions[current_index]
+    answer_key = current_question.get("answer_key", f"q{current_index}")
+    q_type = current_question.get("type", "free_text")
+ 
+    # 4 — Record answer
+    existing_answers = dict(session.get("answers") or {})
+ 
+    if interactive_payload and q_type in ("multiple_choice", "yes_no", "list_select"):
+        # Extract option id from interactive payload
+        button_reply = interactive_payload.get("button_reply") or {}
+        list_reply = interactive_payload.get("list_reply") or {}
+        selected_id = button_reply.get("id") or list_reply.get("id") or content
+ 
+        # Resolve human-readable label from flow config
+        options = current_question.get("options") or []
+        selected_label = selected_id  # fallback to id if label not found
+        for opt in options:
+            if opt.get("id") == selected_id:
+                selected_label = opt.get("label", selected_id)
+                break
+        answer_value = selected_label
+    else:
+        # free_text or fallback
+        answer_value = content
+ 
+    existing_answers[answer_key] = answer_value
+ 
+    # 5 — map_to_lead_field: write answer to leads table column
+    map_to = current_question.get("map_to_lead_field")
+    _VALID_LEAD_FIELDS = {
+        "business_name", "business_type", "location", "problem_stated", "branches"
     }
-
-    if trigger_handoff:
-        # Generate handoff summary for the rep
-        summary_parts = [f"Lead: {lead_id}"]
-        for k, v in collected_now.items():
-            if v:
-                summary_parts.append(f"{k.replace('_', ' ').title()}: {v}")
-        if handoff_reason:
-            summary_parts.append(f"Reason: {handoff_reason}")
-
-        session_updates["ai_active"]       = False
-        session_updates["stage"]           = "handed_off"
-        session_updates["handed_off_at"]   = now_ts
-        session_updates["handoff_summary"] = " | ".join(summary_parts)
-
-        # Notify rep with qualification summary
-        if assigned_to:
-            try:
-                db.table("notifications").insert({
-                    "org_id":        org_id,
-                    "user_id":       assigned_to,
-                    "title":         f"Lead ready for follow-up 🎯",
-                    "body":          " | ".join(summary_parts),
-                    "type":          "qualification_complete",
-                    "resource_type": "lead",
-                    "resource_id":   lead_id,
-                    "is_read":       False,
-                    "created_at":    now_ts,
-                }).execute()
-            except Exception as exc:
-                logger.warning("Failed to send handoff notification: %s", exc)
-
-    db.table("lead_qualification_sessions").update(session_updates).eq("id", session["id"]).execute()
-
-    # 9 — Trigger AI scoring at handoff (S14 — never disrupts the handoff flow)
-    # The lead now has business_type, branches, problem_stated etc. from the
-    # qualification conversation — enough data for a meaningful score.
-    # Uses the org's scoring rubric (scoring_hot_criteria etc.) automatically.
-    if trigger_handoff:
+    if map_to and map_to in _VALID_LEAD_FIELDS:
         try:
-            from app.services import lead_service
-            lead_service.score_lead(
-                db=db,
-                org_id=org_id,
-                lead_id=lead_id,
-                user_id=assigned_to or org_id,  # system actor if no rep assigned
-            )
-            logger.info("AI scoring triggered at qualification handoff for lead %s", lead_id)
-        except Exception as exc:
-            logger.warning("Scoring failed at qualification handoff for lead %s: %s", lead_id, exc)
-
-    # 10 — Create demo request from bot if qualification_demo_offer_enabled = true
-    # Checks collected fields for demo_medium and demo_preferred_time set during
-    # the demo_offer stage of the qualification conversation.
-    if trigger_handoff and org_data.get("qualification_demo_offer_enabled"):
-        try:
-            from app.services.demo_service import create_demo_from_bot
-            demo_medium        = collected_now.get("demo_medium")
-            demo_preferred_time = collected_now.get("demo_preferred_time")
-            # Only create if the lead expressed intent for a demo
-            # (either medium or preferred time was captured)
-            if demo_medium or demo_preferred_time:
-                create_demo_from_bot(
-                    db=db,
-                    org_id=org_id,
-                    lead_id=lead_id,
-                    lead_preferred_time=demo_preferred_time,
-                    medium=demo_medium,
-                )
-                logger.info(
-                    "Demo request created from bot at handoff for lead %s "
-                    "(medium=%s preferred=%s)",
-                    lead_id, demo_medium, demo_preferred_time,
-                )
+            db.table("leads").update(
+                {map_to: answer_value}
+            ).eq("id", lead_id).execute()
         except Exception as exc:
             logger.warning(
-                "Demo creation from bot failed for lead %s: %s", lead_id, exc
+                "_handle_structured_qualification_turn: failed to map field %s "
+                "for lead %s: %s", map_to, lead_id, exc
             )
+ 
+    # 6 — Advance index
+    next_index = current_index + 1
+ 
+    # 7 — More questions remain
+    if next_index < len(questions):
+        # Update session: advance index + merge answers
+        db.table("lead_qualification_sessions").update({
+            "current_question_index": next_index,
+            "answers": existing_answers,
+            "last_message_at": now_ts,
+        }).eq("id", session_id).execute()
+ 
+        # Send next question (no opening_message after Q1)
+        send_qualification_question(
+            db=db,
+            org_id=org_id,
+            phone_number=_get_lead_phone(db, lead_id),
+            question=questions[next_index],
+            question_index=next_index,
+            total=len(questions),
+            opening_message=None,
+        )
+        return  # Caller returns True — rep notification suppressed
+ 
+    # 8 — All questions answered — handoff
+    org_name = (org_data or {}).get("name", "")
+    handoff_message = qualification_flow.get(
+        "handoff_message",
+        "Thanks so much! A member of our team will reach out to you shortly. 🙏",
+    )
+ 
+    # 8a — Generate Haiku summary
+    lead_data = _get_lead_basic(db, lead_id)
+    summary = generate_qualification_summary(
+        answers=existing_answers,
+        lead=lead_data,
+        org_name=org_name,
+    )
+ 
+    # 8b — Send handoff message to lead
+    lead_phone = _get_lead_phone(db, lead_id)
+    send_qualification_handoff_message(
+        db=db,
+        org_id=org_id,
+        phone_number=lead_phone,
+        handoff_message=handoff_message,
+    )
+ 
+    # 8c — Close session
+    db.table("lead_qualification_sessions").update({
+        "ai_active": False,
+        "stage": "handed_off",
+        "answers": existing_answers,
+        "handed_off_at": now_ts,
+        "handoff_summary": summary,
+        "last_message_at": now_ts,
+    }).eq("id", session_id).execute()
+ 
+    # 8d — Notify rep with summary
+    if assigned_to:
+        try:
+            db.table("notifications").insert({
+                "org_id":        org_id,
+                "user_id":       assigned_to,
+                "title":         "Lead ready for follow-up 🎯",
+                "body":          summary,
+                "type":          "qualification_complete",
+                "resource_type": "lead",
+                "resource_id":   lead_id,
+                "is_read":       False,
+                "created_at":    now_ts,
+            }).execute()
+        except Exception as exc:
+            logger.warning(
+                "_handle_structured_qualification_turn: handoff notification "
+                "failed for user %s: %s", assigned_to, exc
+            )
+ 
+    # 8e — Trigger lead scoring (S14 — never disrupts handoff flow)
+    try:
+        from app.services import lead_service
+        lead_service.score_lead(
+            db=db,
+            org_id=org_id,
+            lead_id=lead_id,
+            user_id=assigned_to or org_id,
+        )
+        logger.info(
+            "AI scoring triggered at structured qualification handoff for lead %s",
+            lead_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "_handle_structured_qualification_turn: scoring failed for lead %s: %s",
+            lead_id, exc,
+        )
 
+def _get_lead_phone(db, lead_id: str) -> str:
+    """
+    Helper: fetch whatsapp or phone from leads table for a given lead_id.
+    Returns empty string on any failure (S14).
+    """
+    try:
+        r = (
+            db.table("leads")
+            .select("phone, whatsapp")
+            .eq("id", lead_id)
+            .maybe_single()
+            .execute()
+        )
+        d = r.data
+        if isinstance(d, list):
+            d = d[0] if d else None
+        return (d or {}).get("whatsapp") or (d or {}).get("phone") or ""
+    except Exception as exc:
+        logger.warning("_get_lead_phone failed for lead %s: %s", lead_id, exc)
+        return ""
+ 
+ 
+def _get_lead_basic(db, lead_id: str) -> dict:
+    """
+    Helper: fetch full_name + phone from leads table.
+    Returns empty dict on any failure (S14).
+    """
+    try:
+        r = (
+            db.table("leads")
+            .select("full_name, phone, whatsapp")
+            .eq("id", lead_id)
+            .maybe_single()
+            .execute()
+        )
+        d = r.data
+        if isinstance(d, list):
+            d = d[0] if d else None
+        return d or {}
+    except Exception as exc:
+        logger.warning("_get_lead_basic failed for lead %s: %s", lead_id, exc)
+        return {}
 
 def _send_qualification_reply(
     db, org_id: str, lead_id: str, org_data: dict, reply: str, now_ts: str

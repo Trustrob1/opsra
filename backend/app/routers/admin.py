@@ -11,8 +11,8 @@
 # POST      /api/v1/admin/integrations/{name}/reconnect
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Optional, List
+from pydantic import BaseModel, field_validator, model_validator, EmailStr, Field
 from app.database import get_supabase
 from app.dependencies import get_current_org, require_permission
 import httpx
@@ -20,12 +20,237 @@ import os
 from app.services import admin_service
 from datetime import datetime
 from app.models.common import ok
+import re as _re
+
+_VALID_QUESTION_TYPES = {"multiple_choice", "list_select", "free_text", "yes_no"}
+_VALID_LEAD_FIELDS = {
+    "business_name", "business_type", "location", "problem_stated", "branches"
+}
+_ANSWER_KEY_RE = _re.compile(r'^[a-zA-Z0-9_]+$')
+
 
 
 router = APIRouter()
 
 
 # ── Pydantic models ───────────────────────────────────────────
+
+class QualificationFlowOption(BaseModel):
+    id: str
+    label: str  # validated per-question below (max 20 or 24 chars)
+ 
+ 
+class QualificationFlowQuestion(BaseModel):
+    id: str
+    text: str  # max 300 chars
+    type: str  # one of _VALID_QUESTION_TYPES
+    answer_key: str  # max 50 chars, alphanumeric + underscore only
+    map_to_lead_field: Optional[str] = None
+    options: Optional[List[QualificationFlowOption]] = None
+ 
+    @field_validator("text")
+    @classmethod
+    def _validate_text(cls, v: str) -> str:
+        if len(v) > 300:
+            raise ValueError("Question text must be 300 characters or fewer")
+        return v
+ 
+    @field_validator("type")
+    @classmethod
+    def _validate_type(cls, v: str) -> str:
+        if v not in _VALID_QUESTION_TYPES:
+            raise ValueError(
+                f"Question type must be one of: {', '.join(sorted(_VALID_QUESTION_TYPES))}"
+            )
+        return v
+ 
+    @field_validator("answer_key")
+    @classmethod
+    def _validate_answer_key(cls, v: str) -> str:
+        if len(v) > 50:
+            raise ValueError("answer_key must be 50 characters or fewer")
+        if not _ANSWER_KEY_RE.match(v):
+            raise ValueError(
+                "answer_key must contain only alphanumeric characters and underscores"
+            )
+        return v
+ 
+    @field_validator("map_to_lead_field")
+    @classmethod
+    def _validate_map_to_lead_field(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_LEAD_FIELDS:
+            raise ValueError(
+                f"map_to_lead_field must be null or one of: {', '.join(sorted(_VALID_LEAD_FIELDS))}"
+            )
+        return v
+ 
+    @model_validator(mode="after")
+    def _validate_options(self) -> "QualificationFlowQuestion":
+        q_type = self.type
+        options = self.options or []
+ 
+        if q_type == "free_text":
+            if options:
+                raise ValueError("free_text questions must not have options")
+        else:
+            if not options:
+                raise ValueError(
+                    f"{q_type} questions must have at least one option"
+                )
+            # Enforce max option counts and label lengths
+            if q_type in ("multiple_choice", "yes_no"):
+                if len(options) > 3:
+                    raise ValueError(
+                        f"{q_type} questions support a maximum of 3 options"
+                    )
+                for opt in options:
+                    if len(opt.label) > 20:
+                        raise ValueError(
+                            "Button option labels must be 20 characters or fewer"
+                        )
+            elif q_type == "list_select":
+                if len(options) > 10:
+                    raise ValueError(
+                        "list_select questions support a maximum of 10 options"
+                    )
+                for opt in options:
+                    if len(opt.label) > 24:
+                        raise ValueError(
+                            "List option labels must be 24 characters or fewer"
+                        )
+        return self
+ 
+ 
+class QualificationFlowUpdate(BaseModel):
+    opening_message: Optional[str] = None  # max 500 chars
+    handoff_message: Optional[str] = None  # max 500 chars
+    questions: Optional[List[QualificationFlowQuestion]] = None  # max 5
+ 
+    @field_validator("opening_message")
+    @classmethod
+    def _validate_opening(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 500:
+            raise ValueError("opening_message must be 500 characters or fewer")
+        return v
+ 
+    @field_validator("handoff_message")
+    @classmethod
+    def _validate_handoff(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 500:
+            raise ValueError("handoff_message must be 500 characters or fewer")
+        return v
+ 
+    @field_validator("questions")
+    @classmethod
+    def _validate_questions(cls, v: Optional[list]) -> Optional[list]:
+        if v is not None and len(v) > 5:
+            raise ValueError("A qualification flow may have a maximum of 5 questions")
+        return v
+ 
+ 
+# ── Route handlers — add BEFORE any parameterised routes in admin.py ──────
+ 
+# NOTE: `router`, `get_current_org`, `get_supabase`, `require_permission`,
+# `success_response`, and `error_response` are already defined in admin.py.
+# Do not redeclare them — these route functions slot in alongside existing routes.
+ 
+@router.get("/qualification-flow")
+async def get_qualification_flow(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    WH-1b: Return the org's qualification_flow JSONB config.
+    Returns null if not yet configured.
+    Owner / ops_manager only.
+    Pattern 28 — get_current_org. Pattern 62 — db via Depends.
+    """
+    require_permission(org)
+ 
+    org_id = org["org_id"]
+ 
+    result = (
+        db.table("organisations")
+        .select("qualification_flow")
+        .eq("id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else None
+ 
+    flow = (data or {}).get("qualification_flow")
+    return ok({"qualification_flow": flow})
+ 
+ 
+@router.patch("/qualification-flow")
+async def update_qualification_flow(
+    payload: QualificationFlowUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    WH-1b: Save the org's qualification_flow JSONB config.
+    Validates question types, answer_key format, map_to_lead_field values,
+    and max 5 questions before saving.
+    Owner / ops_manager only.
+    Pattern 28 — get_current_org. Pattern 62 — db via Depends. S1 — org_id from JWT.
+    S3 — Pydantic validation on every field.
+    """
+    require_permission(org)
+ 
+    org_id = org["org_id"]
+ 
+    # Build the flow dict from validated payload
+    # Only include keys that were explicitly provided
+    flow_update: dict = {}
+ 
+    if payload.opening_message is not None:
+        flow_update["opening_message"] = payload.opening_message
+    if payload.handoff_message is not None:
+        flow_update["handoff_message"] = payload.handoff_message
+    if payload.questions is not None:
+        # Serialise validated question models to plain dicts
+        flow_update["questions"] = [
+            {
+                "id": q.id,
+                "text": q.text,
+                "type": q.type,
+                "answer_key": q.answer_key,
+                "map_to_lead_field": q.map_to_lead_field,
+                "options": [
+                    {"id": opt.id, "label": opt.label}
+                    for opt in (q.options or [])
+                ] if q.options else None,
+            }
+            for q in payload.questions
+        ]
+ 
+    if not flow_update:
+        raise HTTPException(status_code=400, detail="No fields provided to update")
+ 
+    # Merge with existing flow (partial update)
+    existing_result = (
+        db.table("organisations")
+        .select("qualification_flow")
+        .eq("id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    existing_data = existing_result.data
+    if isinstance(existing_data, list):
+        existing_data = existing_data[0] if existing_data else None
+    existing_flow = (existing_data or {}).get("qualification_flow") or {}
+ 
+    merged_flow = {**existing_flow, **flow_update}
+ 
+    db.table("organisations").update(
+        {"qualification_flow": merged_flow}
+    ).eq("id", org_id).execute()
+ 
+    return ok({"qualification_flow": merged_flow})
+
 
 class CreateUserRequest(BaseModel):
     email: EmailStr

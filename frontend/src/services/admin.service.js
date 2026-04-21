@@ -231,3 +231,16 @@ export async function updateTriageConfig(payload) {
   )
   return r.data.data
 }
+
+// ---------------------------------------------------------------------------
+// WH-1b: Add these two functions to frontend/src/services/admin.service.js
+// Pattern 50 — axios + _h() only, never fetch.
+// ---------------------------------------------------------------------------
+
+export const getQualificationFlow = () =>
+  axios.get('/api/v1/admin/qualification-flow', { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateQualificationFlow = (payload) =>
+  axios.patch('/api/v1/admin/qualification-flow', payload, { headers: _h() })
+    .then(r => r.data.data)
