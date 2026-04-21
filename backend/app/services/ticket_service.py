@@ -1386,6 +1386,49 @@ def create_interaction_log(
         resource_id=log["id"] if log else None,
         new_value={"interaction_type": data.interaction_type},
     )
+    # Auto-advance lead to 'contacted' stage when an interaction is logged
+    # and the lead is still in 'new' stage — DRD Section 4.1 state machine.
+    # S14 — failure never disrupts the interaction log save.
+    if data.lead_id:
+        try:
+            lead_r = (
+                db.table("leads")
+                .select("stage")
+                .eq("id", str(data.lead_id))
+                .eq("org_id", org_id)
+                .is_("deleted_at", "null")
+                .maybe_single()
+                .execute()
+            )
+            lead_d = lead_r.data
+            if isinstance(lead_d, list):
+                lead_d = lead_d[0] if lead_d else None
+            if (lead_d or {}).get("stage") == "new":
+                db.table("leads").update({
+                    "stage": "contacted",
+                    "updated_at": now,
+                }).eq("id", str(data.lead_id)).eq("org_id", org_id).execute()
+
+                # Write timeline event for the stage change
+                db.table("lead_timeline").insert({
+                    "org_id": org_id,
+                    "lead_id": str(data.lead_id),
+                    "event_type": "stage_changed",
+                    "actor_id": user_id,
+                    "new_value": {"stage": "contacted"},
+                    "old_value": {"stage": "new"},
+                    "created_at": now,
+                }).execute()
+
+                # Stamp first_contacted_at (M01-6)
+                from app.services.lead_service import stamp_first_contacted
+                stamp_first_contacted(db, org_id, str(data.lead_id))
+        except Exception as exc:
+            logger.warning(
+                "create_interaction_log: auto-stage advance failed for lead %s: %s",
+                data.lead_id, exc,
+            )
+
     return log
 
 
