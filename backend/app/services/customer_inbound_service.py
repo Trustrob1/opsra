@@ -1476,29 +1476,41 @@ def handle_lead_post_handoff_inbound(
                 )
             return True  # KB answered — no further notification needed
 
-        # ── No KB answer — classify intent on de-greeted content ──────────
-        intent = classify_customer_intent(content_for_analysis)
+        # ── No KB answer — all non-greeting messages from leads are
+        # treated as questions worth forwarding to the rep. The intent
+        # classifier (built for customers) incorrectly labels sales
+        # enquiries like "where is your store?" as 'general'. For leads,
+        # any message that reaches this point has substance and deserves
+        # a rep response.
+        forwarding_msg = (
+            "Thanks for your message! Unfortunately I'm not able to provide "
+            "a full response to that right now, but a member of our support "
+            "team has been informed and will get back to you shortly. 🙏"
+        )
+        _send_whatsapp_reply_to_lead(
+            db=db, org_id=org_id, lead_id=lead_id,
+            answer=forwarding_msg, now_ts=now_ts,
+        )
 
-        if intent == "general":
-            # Casual message with no answerable question
-            casual_reply = (
-                "Thanks for reaching out! 😊 Feel free to ask us any questions "
-                "while you wait — our team will also be in touch with you shortly."
+        _create_lead_action_task(
+            db=db, org_id=org_id, lead_id=lead_id,
+            lead_name=safe_name, article_title="Pre-contact question",
+            action_label="Answer lead's pre-contact question",
+            message_content=content,
+            assigned_to=assigned_to, now_ts=now_ts,
+        )
+
+        if assigned_to:
+            _insert_notification(
+                db=db, org_id=org_id, user_id=assigned_to,
+                notif_type="lead_pre_contact_question",
+                title=f"Pre-contact question from {safe_name}",
+                body=content[:200],
+                resource_type="lead", resource_id=lead_id,
+                now_ts=now_ts,
             )
-            _send_whatsapp_reply_to_lead(
-                db=db, org_id=org_id, lead_id=lead_id,
-                answer=casual_reply, now_ts=now_ts,
-            )
-            if assigned_to:
-                _insert_notification(
-                    db=db, org_id=org_id, user_id=assigned_to,
-                    notif_type="lead_pre_contact_message",
-                    title=f"{safe_name} messaged before first contact",
-                    body=content[:200],
-                    resource_type="lead", resource_id=lead_id,
-                    now_ts=now_ts,
-                )
-            return True
+
+        return True  # Fully handled
 
         # Specific question with no KB answer — inform lead and create rep task
         forwarding_msg = (
