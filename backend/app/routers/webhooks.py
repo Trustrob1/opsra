@@ -1088,7 +1088,7 @@ def _handle_structured_qualification_turn(
             db=db,
             org_id=org_id,
             lead_id=lead_id,
-            user_id=assigned_to or org_id,
+            user_id=assigned_to,
         )
         logger.info(
             "AI scoring triggered at structured qualification handoff for lead %s",
