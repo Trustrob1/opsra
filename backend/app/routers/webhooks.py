@@ -456,23 +456,24 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     # WH-0: capture full interactive dict for triage session handler
     interactive_payload = message.get("interactive") if msg_type == "interactive" else None
+    print(f"[WH] msg_type={msg_type} content={content!r} from={sender_phone}", flush=True)
 
     org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
+    print(f"[WH] lookup result: org_id={org_id} customer_id={customer_id} lead_id={lead_id}", flush=True)
 
     if not org_id:
         # Derive org from the receiving WhatsApp phone_number_id.
         org_id = _lookup_org_by_phone_number_id(db, phone_number_id)
-        if not org_id:
-            logger.info(
-                "Inbound WhatsApp from unknown number %s — no matching org for "
-                "phone_number_id=%s, cannot create lead",
-                sender_phone, phone_number_id,
-            )
+        print(f"[WH] unknown number — org_id from phone_number_id={org_id}", flush=True)
+        if not org_id: 
+            print(f"[WH] no org found — dropping message", flush=True)
             return
 
         # WH-0: Check for an active triage session before taking any pipeline action.
         active_session = triage_service.get_active_session(db, org_id, sender_phone)
+        print(f"[WH] active_session={active_session}", flush=True)
         if active_session:
+            print(f"[WH] routing to session handler", flush=True)
             triage_service.handle_session_message(
                 db=db,
                 org_id=org_id,
@@ -498,8 +499,11 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         if isinstance(org_behavior, list):
             org_behavior = org_behavior[0] if org_behavior else None
         behavior = (org_behavior or {}).get("unknown_contact_behavior", "triage_first")
+        triage_config = (org_behavior or {}).get("whatsapp_triage_config")
+        print(f"[WH] behavior={behavior} triage_config={triage_config}", flush=True)
 
         if behavior == "qualify_immediately":
+            print(f"[WH] qualify_immediately path", flush=True)
             # Preserved legacy path — auto-create lead + fire qualification bot.
             # Duplicate-race handler lives in this branch only.
             provisional_name = (contact_name or "").strip() or sender_phone
@@ -546,17 +550,20 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         else:
             # triage_first (default) — send interactive menu and create session.
             # Do NOT create a lead or fire the qualification bot.
+            print(f"[WH] triage_first path — sending menu", flush=True)
             from app.services.whatsapp_service import send_triage_menu
             try:
                 send_triage_menu(
                     db=db, org_id=org_id,
                     phone_number=sender_phone, section="unknown",
                 )
+                print(f"[WH] triage menu sent successfully", flush=True)
                 triage_service.create_session(
                     db=db, org_id=org_id, phone_number=sender_phone,
                 )
+                print(f"[WH] session created", flush=True)
             except Exception as exc:
-                logger.warning("Triage menu send failed for %s: %s", sender_phone, exc)
+                print(f"[WH] triage menu FAILED: {exc}", flush=True)
             return  # No lead/customer yet — nothing further to save
 
     now_ts = _now_iso()

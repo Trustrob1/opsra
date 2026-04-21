@@ -48,6 +48,11 @@ from app.routers import tasks as tasks_router                  # ← Phase 7A
 from app.routers import notifications as notifications_router
 from app.routers import commissions as commissions_router
 from app.routers import assistant as assistant_router          # ← M01-10b
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+)
 
 app.include_router(
     auth_router.router,
