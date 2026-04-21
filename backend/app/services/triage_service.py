@@ -313,7 +313,7 @@ def _action_qualify(
         source=LeadSource.whatsapp_inbound.value,
         contact_type="sales_lead",
     )
-    lead = lead_service.create_lead(db, org_id, "system", lead_payload)
+    lead = lead_service.create_lead(db, org_id, None, lead_payload)
     update_session(db, session_id, "active", selected_action="qualify")
     # Trigger qualification session — same path as M01-3
     lead_service.initiate_qualification_session(db, org_id, lead["id"])
@@ -371,7 +371,7 @@ def _action_route_to_role(
         source=LeadSource.whatsapp_inbound.value,
         contact_type=contact_type,
     )
-    lead = lead_service.create_lead(db, org_id, "system", lead_payload)
+    lead = lead_service.create_lead(db, org_id, None, lead_payload)
 
     # Notify all users in org with the target role
     users_result = (
@@ -413,7 +413,7 @@ def _action_free_form(
         source=LeadSource.whatsapp_inbound.value,
         contact_type=contact_type,
     )
-    lead = lead_service.create_lead(db, org_id, "system", lead_payload)
+    lead = lead_service.create_lead(db, org_id, None, lead_payload)
 
     # Notify assigned rep or first owner
     assigned_to = lead.get("assigned_to")
@@ -798,7 +798,7 @@ def handle_awaiting_identifier(
                 source=LeadSource.whatsapp_inbound.value,
                 contact_type="support_contact",
             )
-            lead = lead_service.create_lead(db, org_id, "system", lead_payload)
+            lead = lead_service.create_lead(db, org_id, None, lead_payload)
 
             if phone_id:
                 _call_meta_send(phone_id, {
