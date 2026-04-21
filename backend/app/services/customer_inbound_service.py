@@ -1398,11 +1398,18 @@ def handle_lead_post_handoff_inbound(
                 break
 
         # ── Pure greeting — nothing after the greeting ────────────────────
+        _FILLER_WORDS = {
+            "mate", "sir", "madam", "ma", "boss", "dear", "bro", "sis",
+            "oga", "oga sir", "there", "all", "everyone",
+        }
+
         is_pure_greeting = (
             not content_for_analysis
             or content_for_analysis.lower() in _GREETING_PREFIXES
             or content_for_analysis.strip(" ,!.'") == ""
+            or content_for_analysis.lower().strip(" ,!.'") in _FILLER_WORDS
         )
+        
         if is_pure_greeting:
             greeting_reply = (
                 "Good to hear from you! 😊 Feel free to ask us anything — "
