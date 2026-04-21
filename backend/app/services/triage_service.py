@@ -305,6 +305,7 @@ def _action_qualify(
     """Create a sales_lead and trigger the qualification bot."""
     from app.models.leads import LeadCreate, LeadSource
     from app.services import lead_service
+    from datetime import datetime, timezone
 
     lead_payload = LeadCreate(
         full_name=contact_name or phone_number,
@@ -315,8 +316,22 @@ def _action_qualify(
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
     update_session(db, session_id, "active", selected_action="qualify")
-    # Trigger qualification session — same path as M01-3
-    lead_service.initiate_qualification_session(db, org_id, lead["id"])
+
+    # Initiate qualification session directly
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        db.table("lead_qualification_sessions").insert({
+            "org_id":           org_id,
+            "lead_id":          lead["id"],
+            "ai_active":        True,
+            "stage":            "awaiting_first_message",
+            "turn_count":       0,
+            "collected":        {},
+            "created_at":       now,
+            "last_message_at":  now,
+        }).execute()
+    except Exception as exc:
+        logger.warning("Failed to create qualification session for lead %s: %s", lead.get("id"), exc)
 
 
 def _action_identify_customer(
