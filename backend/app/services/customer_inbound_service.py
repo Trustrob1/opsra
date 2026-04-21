@@ -1352,20 +1352,23 @@ def handle_lead_post_handoff_inbound(
     """
     WH-1b: Handle inbound messages from leads whose qualification has been
     handed off but who have not yet been contacted by a rep.
- 
+
     This covers the common scenario where a lead sends a pre-contact question
     after receiving the handoff message ("Our team will reach out shortly").
- 
-    Flow (mirrors handle_customer_inbound, simplified for leads):
+
+    Flow:
       1. Non-text messages → return False (rep notification fires in caller).
-      2. KB lookup (Sonnet) — does the KB have an answer?
+      2. Strip greeting prefix — "Good afternoon, do you have a Lagos branch?"
+         becomes "do you have a Lagos branch?" before any lookup.
+      3. Pure greeting with no follow-up → warm acknowledgement, quiet rep
+         notification, no task.
+      4. KB lookup (Sonnet) on de-greeted content:
          Found + informational  → auto-send answer, return True.
-         Found + action_required → auto-send answer, create task for rep,
-                                   notify chain, return True.
-      3. No KB answer → send "forwarding to our team" message to lead,
-         create task for assigned rep (or manager fallback),
-         notify rep with lead's question, return True.
- 
+         Found + action_required → auto-send answer, create task, return True.
+      5. No KB answer → classify intent (Haiku) on de-greeted content:
+         general  → warm acknowledgement, quiet rep notification, no task.
+         specific → send forwarding message, create rep task, notify rep.
+
     Returns True if fully handled (caller should NOT send another notification).
     Returns False only on non-text messages (caller sends standard rep notification).
     S14 — never raises.
@@ -1374,23 +1377,64 @@ def handle_lead_post_handoff_inbound(
         # Non-text messages — skip KB, let caller send standard notification
         if msg_type != "text" or not content:
             return False
- 
+
         safe_name = _sanitise_for_prompt(lead_name, max_length=100)
- 
-        # ── KB lookup ──────────────────────────────────────────────────────
-        kb_result = lookup_kb_answer(db, org_id, content)
- 
+
+        # ── Strip greeting prefix ──────────────────────────────────────────
+        # Handles "Good afternoon, do you have a Lagos branch?" and also the
+        # case where the user sends the greeting and question in one message.
+        _GREETING_PREFIXES = (
+            "good morning", "good afternoon", "good evening", "good day",
+            "good night", "hello", "hi", "hey", "greetings", "howdy",
+        )
+        content_for_analysis = content.strip()
+        content_lower = content_for_analysis.lower()
+        for prefix in _GREETING_PREFIXES:
+            if content_lower.startswith(prefix):
+                stripped = content_for_analysis[len(prefix):].lstrip(" ,!.'\n")
+                if stripped:
+                    content_for_analysis = stripped
+                break
+
+        # ── Pure greeting — nothing after the greeting ────────────────────
+        is_pure_greeting = (
+            not content_for_analysis
+            or content_for_analysis.lower() in _GREETING_PREFIXES
+            or content_for_analysis.strip(" ,!.'") == ""
+        )
+        if is_pure_greeting:
+            greeting_reply = (
+                f"Good to hear from you, {safe_name.split()[0]}! 😊 "
+                f"Our team will be reaching out to you shortly."
+            )
+            _send_whatsapp_reply_to_lead(
+                db=db, org_id=org_id, lead_id=lead_id,
+                answer=greeting_reply, now_ts=now_ts,
+            )
+            if assigned_to:
+                _insert_notification(
+                    db=db, org_id=org_id, user_id=assigned_to,
+                    notif_type="lead_pre_contact_message",
+                    title=f"{safe_name} messaged before first contact",
+                    body=content[:200],
+                    resource_type="lead", resource_id=lead_id,
+                    now_ts=now_ts,
+                )
+            return True
+
+        # ── KB lookup on de-greeted content ───────────────────────────────
+        kb_result = lookup_kb_answer(db, org_id, content_for_analysis)
+
         if kb_result and kb_result.get("found"):
             answer = kb_result["answer"]
             article_id = kb_result["article_id"]
             action_type = kb_result.get("action_type", "informational")
- 
-            # Send KB answer to lead
+
             _send_whatsapp_reply_to_lead(
                 db=db, org_id=org_id, lead_id=lead_id,
                 answer=answer, now_ts=now_ts,
             )
- 
+
             # Increment usage_count
             article_title = "KB article"
             try:
@@ -1413,9 +1457,8 @@ def handle_lead_post_handoff_inbound(
                 logger.warning(
                     "handle_lead_post_handoff_inbound: usage_count update failed: %s", exc
                 )
- 
+
             if action_type == "action_required":
-                # Create task for rep to follow up
                 _create_lead_action_task(
                     db=db, org_id=org_id, lead_id=lead_id,
                     lead_name=safe_name, article_title=article_title,
@@ -1424,9 +1467,32 @@ def handle_lead_post_handoff_inbound(
                     assigned_to=assigned_to, now_ts=now_ts,
                 )
             return True  # KB answered — no further notification needed
- 
-        # ── No KB answer — forward to rep ─────────────────────────────────
-        # 1. Send acknowledgement to lead
+
+        # ── No KB answer — classify intent on de-greeted content ──────────
+        intent = classify_customer_intent(content_for_analysis)
+
+        if intent == "general":
+            # Casual message with no answerable question
+            casual_reply = (
+                f"Thanks for reaching out! 😊 Our team will be "
+                f"getting in touch with you shortly."
+            )
+            _send_whatsapp_reply_to_lead(
+                db=db, org_id=org_id, lead_id=lead_id,
+                answer=casual_reply, now_ts=now_ts,
+            )
+            if assigned_to:
+                _insert_notification(
+                    db=db, org_id=org_id, user_id=assigned_to,
+                    notif_type="lead_pre_contact_message",
+                    title=f"{safe_name} messaged before first contact",
+                    body=content[:200],
+                    resource_type="lead", resource_id=lead_id,
+                    now_ts=now_ts,
+                )
+            return True
+
+        # Specific question with no KB answer — forward to rep
         forwarding_msg = (
             "Thanks for your message! I've passed your question on to our team "
             "and someone will get back to you shortly. 🙏"
@@ -1435,8 +1501,7 @@ def handle_lead_post_handoff_inbound(
             db=db, org_id=org_id, lead_id=lead_id,
             answer=forwarding_msg, now_ts=now_ts,
         )
- 
-        # 2. Create task for assigned rep (or manager fallback)
+
         _create_lead_action_task(
             db=db, org_id=org_id, lead_id=lead_id,
             lead_name=safe_name, article_title="Pre-contact question",
@@ -1444,8 +1509,7 @@ def handle_lead_post_handoff_inbound(
             message_content=content,
             assigned_to=assigned_to, now_ts=now_ts,
         )
- 
-        # 3. Notify rep with the question content
+
         if assigned_to:
             _insert_notification(
                 db=db, org_id=org_id, user_id=assigned_to,
@@ -1455,9 +1519,9 @@ def handle_lead_post_handoff_inbound(
                 resource_type="lead", resource_id=lead_id,
                 now_ts=now_ts,
             )
- 
+
         return True  # Fully handled
- 
+
     except Exception as exc:
         logger.warning(
             "handle_lead_post_handoff_inbound failed for lead %s — swallowed (S14): %s",
