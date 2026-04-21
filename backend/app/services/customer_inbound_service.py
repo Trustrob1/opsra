@@ -1360,14 +1360,15 @@ def handle_lead_post_handoff_inbound(
       1. Non-text messages → return False (rep notification fires in caller).
       2. Strip greeting prefix — "Good afternoon, do you have a Lagos branch?"
          becomes "do you have a Lagos branch?" before any lookup.
-      3. Pure greeting with no follow-up → warm acknowledgement, quiet rep
-         notification, no task.
+      3. Pure greeting with no follow-up → warm acknowledgement inviting
+         questions, quiet rep notification, no task.
       4. KB lookup (Sonnet) on de-greeted content:
          Found + informational  → auto-send answer, return True.
          Found + action_required → auto-send answer, create task, return True.
       5. No KB answer → classify intent (Haiku) on de-greeted content:
          general  → warm acknowledgement, quiet rep notification, no task.
-         specific → send forwarding message, create rep task, notify rep.
+         specific → inform lead a support staff has been notified,
+                    create rep task, notify rep.
 
     Returns True if fully handled (caller should NOT send another notification).
     Returns False only on non-text messages (caller sends standard rep notification).
@@ -1404,8 +1405,8 @@ def handle_lead_post_handoff_inbound(
         )
         if is_pure_greeting:
             greeting_reply = (
-                f"Good to hear from you, {safe_name.split()[0]}! 😊 "
-                f"Our team will be reaching out to you shortly."
+                "Good to hear from you! 😊 Feel free to ask us anything — "
+                "we're happy to help while you wait to hear from our team."
             )
             _send_whatsapp_reply_to_lead(
                 db=db, org_id=org_id, lead_id=lead_id,
@@ -1474,8 +1475,8 @@ def handle_lead_post_handoff_inbound(
         if intent == "general":
             # Casual message with no answerable question
             casual_reply = (
-                f"Thanks for reaching out! 😊 Our team will be "
-                f"getting in touch with you shortly."
+                "Thanks for reaching out! 😊 Feel free to ask us any questions "
+                "while you wait — our team will also be in touch with you shortly."
             )
             _send_whatsapp_reply_to_lead(
                 db=db, org_id=org_id, lead_id=lead_id,
@@ -1492,10 +1493,11 @@ def handle_lead_post_handoff_inbound(
                 )
             return True
 
-        # Specific question with no KB answer — forward to rep
+        # Specific question with no KB answer — inform lead and create rep task
         forwarding_msg = (
-            "Thanks for your message! I've passed your question on to our team "
-            "and someone will get back to you shortly. 🙏"
+            "Thanks for your message! Unfortunately I'm not able to provide "
+            "a full response to that right now, but a member of our support "
+            "team has been informed and will get back to you shortly. 🙏"
         )
         _send_whatsapp_reply_to_lead(
             db=db, org_id=org_id, lead_id=lead_id,
@@ -1528,7 +1530,6 @@ def handle_lead_post_handoff_inbound(
             lead_id, exc,
         )
         return False
- 
  
 def _create_lead_action_task(
     db,
