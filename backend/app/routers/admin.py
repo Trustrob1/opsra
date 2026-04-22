@@ -148,12 +148,118 @@ class QualificationFlowUpdate(BaseModel):
         return v
  
  
+# ── CONFIG-6 Pydantic models ──────────────────────────────────────────────
+
+_CONFIGURABLE_STAGE_KEYS = {"new", "contacted", "meeting_done", "proposal_sent", "converted"}
+
+_DEFAULT_PIPELINE_STAGES = [
+    {"key": "new",           "label": "New Lead",      "enabled": True},
+    {"key": "contacted",     "label": "Contacted",     "enabled": True},
+    {"key": "meeting_done",  "label": "Demo Done",     "enabled": True},
+    {"key": "proposal_sent", "label": "Proposal Sent", "enabled": True},
+    {"key": "converted",     "label": "Converted",     "enabled": True},
+]
+
+
+class PipelineStageItem(BaseModel):
+    key: str
+    label: str = Field(..., min_length=1, max_length=50)
+    enabled: bool = True
+
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v: str) -> str:
+        if v not in _CONFIGURABLE_STAGE_KEYS:
+            raise ValueError(
+                f"Stage key '{v}' is not configurable. "
+                f"Valid keys: {', '.join(sorted(_CONFIGURABLE_STAGE_KEYS))}"
+            )
+        return v
+
+    @field_validator("label")
+    @classmethod
+    def _validate_label(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Stage label is required")
+        if len(v) > 50:
+            raise ValueError("Stage label must be 50 characters or fewer")
+        return v.strip()
+
+
+class PipelineStageUpdate(BaseModel):
+    stages: List[PipelineStageItem]
+
+    @field_validator("stages")
+    @classmethod
+    def _validate_stages(cls, v: List[PipelineStageItem]) -> List[PipelineStageItem]:
+        # new and converted must be present and enabled
+        keys = {s.key for s in v}
+        for required in ("new", "converted"):
+            if required not in keys:
+                raise ValueError(f"Stage '{required}' is required and cannot be removed")
+        enabled_count = sum(1 for s in v if s.enabled)
+        if enabled_count < 2:
+            raise ValueError("At least 2 stages must be enabled (new and converted minimum)")
+        return v
+
+
 # ── Route handlers — add BEFORE any parameterised routes in admin.py ──────
  
 # NOTE: `router`, `get_current_org`, `get_supabase`, `require_permission`,
 # `success_response`, and `error_response` are already defined in admin.py.
 # Do not redeclare them — these route functions slot in alongside existing routes.
- 
+
+
+@router.get("/pipeline-stages")
+def get_pipeline_stages(
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """CONFIG-6: Return org pipeline_stages config. Falls back to defaults if null."""
+    result = (
+        db.table("organisations")
+        .select("pipeline_stages")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    stages = (data or {}).get("pipeline_stages") or _DEFAULT_PIPELINE_STAGES
+    return ok(data={"stages": stages})
+
+
+@router.patch("/pipeline-stages")
+def update_pipeline_stages(
+    payload: PipelineStageUpdate,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """CONFIG-6: Save org pipeline_stages config."""
+    stages_data = [s.model_dump() for s in payload.stages]
+    updates = {
+        "pipeline_stages": stages_data,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    result = (
+        db.table("organisations")
+        .update(updates)
+        .eq("id", org["org_id"])
+        .execute()
+    )
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="pipeline_stages.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"stages": stages_data},
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else updates
+    return ok(data={"stages": stages_data}, message="Pipeline stages saved")
+
+
 @router.get("/qualification-flow")
 async def get_qualification_flow(
     org=Depends(get_current_org),

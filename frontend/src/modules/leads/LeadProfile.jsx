@@ -26,6 +26,7 @@ import {
 import useAuthStore from '../../store/authStore'
 import UserSelect   from '../../shared/UserSelect'
 import { ds, SCORE_STYLE, STAGE_STYLE, STAGES, SOURCE_LABELS, LOST_REASON_LABELS, BRANCHES_OPTIONS } from '../../utils/ds'
+import { getPipelineStages } from '../../services/admin.service'
 import LeadScoreButton from './LeadScoreButton'
 import LeadTimeline    from './LeadTimeline'
 import LeadTasks       from './LeadTasks'
@@ -35,8 +36,8 @@ import DemoScheduler   from './DemoScheduler'
 import LogInteractionPanel from '../../shared/LogInteractionPanel'
 import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
 
-// Stages reachable via move-stage (not convert or mark-lost)
-const MOVABLE_STAGES = ['new', 'contacted', 'demo_done', 'proposal_sent']
+// Fallback movable stages (used before org config loads)
+const _DEFAULT_MOVABLE = ['new', 'contacted', 'meeting_done', 'proposal_sent']
 
 export default function LeadProfile({ leadId, onBack }) {
   const [lead, setLead]           = useState(null)
@@ -49,6 +50,31 @@ export default function LeadProfile({ leadId, onBack }) {
   const [assignedTo,   setAssignedTo]     = useState('')
   const [assignSaving, setAssignSaving]   = useState(false)
   const [overrideLoading, setOverrideLoading] = useState(false)
+
+  // CONFIG-6: org pipeline stages for labels + move-stage dropdown
+  const [pipelineStages,  setPipelineStages]  = useState(STAGES)
+  const [movableStageKeys, setMovableStageKeys] = useState(_DEFAULT_MOVABLE)
+  useEffect(() => {
+    getPipelineStages()
+      .then(data => {
+        const cfg = data?.stages
+        if (Array.isArray(cfg) && cfg.length > 0) {
+          const DOT = {
+            new: '#7A9BAD', contacted: '#3b82f6', meeting_done: '#8b5cf6',
+            proposal_sent: '#f59e0b', converted: '#10b981',
+            lost: '#ef4444', not_ready: '#6b7280',
+          }
+          const mapped = cfg.map(s => ({ key: s.key, label: s.label, dot: DOT[s.key] || '#7A9BAD' }))
+          setPipelineStages(mapped)
+          // Movable = enabled stages that are not terminal/system-only
+          const nonTerminal = new Set(['converted', 'lost', 'not_ready'])
+          setMovableStageKeys(
+            cfg.filter(s => s.enabled !== false && !nonTerminal.has(s.key)).map(s => s.key)
+          )
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // Attention signals — replaces old unreadCount state
   const [attention, setAttention] = useState({
@@ -171,7 +197,7 @@ export default function LeadProfile({ leadId, onBack }) {
 
   const scoreStyle = SCORE_STYLE[lead.score] ?? SCORE_STYLE.unscored
   const stageStyle = STAGE_STYLE[lead.stage] ?? {}
-  const stageLabel = STAGES.find(s => s.key === lead.stage)?.label ?? lead.stage
+  const stageLabel = pipelineStages.find(s => s.key === lead.stage)?.label ?? lead.stage?.replace(/_/g, ' ')
   const isTerminal   = ['converted', 'lost', 'not_ready'].includes(lead.stage)
   const isLostStage  = lead.stage === 'lost'
   const isNurture    = lead.nurture_track === true
@@ -266,7 +292,7 @@ export default function LeadProfile({ leadId, onBack }) {
                     fontFamily: ds.fontDm, background: 'white', cursor: 'pointer',
                   }}
                 >
-                  {STAGES.filter(s => MOVABLE_STAGES.includes(s.key)).map(s => (
+                  {pipelineStages.filter(s => movableStageKeys.includes(s.key)).map(s => (
                     <option key={s.key} value={s.key}>{s.label}</option>
                   ))}
                 </select>
@@ -425,7 +451,7 @@ export default function LeadProfile({ leadId, onBack }) {
         {/* Tab panels — mount-and-hide not used here; conditional render is fine
             since each panel manages its own data fetching on mount */}
         <div style={{ padding: '24px' }}>
-          {tab === 'profile'  && <ProfileTab lead={lead} />}
+          {tab === 'profile'  && <ProfileTab lead={lead} pipelineStages={pipelineStages} />}
           {tab === 'messages' && <LeadMessages leadId={leadId} leadName={lead.full_name} />}
           {tab === 'timeline' && <LeadTimeline leadId={leadId} />}
           {tab === 'tasks'    && <LeadTasks    leadId={leadId} />}
@@ -514,7 +540,7 @@ export default function LeadProfile({ leadId, onBack }) {
 
 // ─── Profile fields tab ───────────────────────────────────────────────────────
 
-function ProfileTab({ lead }) {
+function ProfileTab({ lead, pipelineStages }) {
   const groups = [
     {
       title: 'Contact Details',
@@ -549,7 +575,7 @@ function ProfileTab({ lead }) {
     {
       title: 'Pipeline Status',
       fields: [
-        { label: 'Stage',              value: STAGES.find(s => s.key === lead.stage)?.label ?? lead.stage },
+        { label: 'Stage',              value: pipelineStages.find(s => s.key === lead.stage)?.label ?? lead.stage?.replace(/_/g, ' ') },
         { label: 'Lost Reason',        value: LOST_REASON_LABELS[lead.lost_reason] ?? lead.lost_reason },
         { label: 'Re-engagement Date', value: lead.reengagement_date },
         { label: 'Converted At',       value: lead.converted_at ? fmtDate(lead.converted_at) : null },

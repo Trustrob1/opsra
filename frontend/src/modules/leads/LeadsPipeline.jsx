@@ -28,6 +28,7 @@ import {
   moveStage, convertLead, getLeadAttentionSummary, listLeads,
 } from '../../services/leads.service'
 import { ds, STAGES, SCORE_STYLE, SOURCE_SHORT } from '../../utils/ds'
+import { getPipelineStages } from '../../services/admin.service'
 import useAuthStore       from '../../store/authStore'
 import LeadCreateModal    from './LeadCreateModal'
 import LeadImportModal    from './LeadImportModal'
@@ -51,13 +52,22 @@ const SOURCE_LABELS = {
 
 // ── Stage badge ───────────────────────────────────────────────────────────────
 
-function StageBadge({ stageKey }) {
-  const stage = STAGES.find(s => s.key === stageKey)
-  if (!stage) return <span style={{ fontSize: 11, color: ds.gray }}>—</span>
+const STAGE_DOT_FALLBACK = {
+  new: '#7A9BAD', contacted: '#3b82f6', meeting_done: '#8b5cf6',
+  proposal_sent: '#f59e0b', converted: '#10b981',
+  lost: '#ef4444', not_ready: '#6b7280',
+}
+
+function StageBadge({ stageKey, stages }) {
+  const lookup = stages || STAGES
+  const stage = lookup.find(s => s.key === stageKey)
+  const label = stage?.label || stageKey?.replace(/_/g, ' ')
+  const dot   = stage?.dot   || STAGE_DOT_FALLBACK[stageKey] || '#7A9BAD'
+  if (!label) return <span style={{ fontSize: 11, color: ds.gray }}>—</span>
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: stage.dot, flexShrink: 0 }} />
-      <span style={{ fontSize: 11, fontWeight: 600, color: ds.dark }}>{stage.label}</span>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+      <span style={{ fontSize: 11, fontWeight: 600, color: ds.dark }}>{label}</span>
     </span>
   )
 }
@@ -157,7 +167,7 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={filterSelect}>
           <option value="">All Stages</option>
-          {STAGES.map(s => (
+          {pipelineStages.map(s => (
             <option key={s.key} value={s.key}>{s.label}</option>
           ))}
         </select>
@@ -216,7 +226,7 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
                 onMouseEnter={e => { e.currentTarget.style.background = '#f5fbfc' }}
                 onMouseLeave={e => { e.currentTarget.style.background = '' }}
               >
-                <td style={tdStyle}><StageBadge stageKey={lead.stage} /></td>
+                <td style={tdStyle}><StageBadge stageKey={lead.stage} stages={pipelineStages} /></td>
                 <td style={tdStyle}>
                   <div style={{ fontWeight: 600 }}>{lead.full_name}</div>
                   {lead.business_name && (
@@ -262,6 +272,33 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
 export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   const { leads, loading, error, refresh, total } = useLeads({}, 200)
 
+  // CONFIG-6: org-configured pipeline stages (fetched on mount, fallback to STAGES)
+  const [pipelineStages, setPipelineStages] = useState(STAGES)
+  useEffect(() => {
+    getPipelineStages()
+      .then(data => {
+        const cfg = data?.stages
+        if (Array.isArray(cfg) && cfg.length > 0) {
+          // Map config to shape expected by Kanban (key, label, dot)
+          const DOT = {
+            new: '#7A9BAD', contacted: '#3b82f6', meeting_done: '#8b5cf6',
+            proposal_sent: '#f59e0b', converted: '#10b981',
+            lost: '#ef4444', not_ready: '#6b7280',
+          }
+          const enabled = cfg
+            .filter(s => s.enabled !== false)
+            .map(s => ({ key: s.key, label: s.label, dot: DOT[s.key] || '#7A9BAD' }))
+          // Always append lost + not_ready for Kanban
+          enabled.push(
+            { key: 'lost',      label: 'Lost',      dot: '#ef4444' },
+            { key: 'not_ready', label: 'Not Ready', dot: '#6b7280' },
+          )
+          setPipelineStages(enabled)
+        }
+      })
+      .catch(() => {}) // fallback: keep STAGES default
+  }, [])
+
   // M01-7a: attention summary
   const [attentionMap, setAttentionMap] = useState({})
   useEffect(() => {
@@ -269,6 +306,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       .then(res => { if (res.success) setAttentionMap(res.data ?? {}) })
       .catch(() => {})
   }, [leads])
+
 
   // Phase 9B: role checks
   const roleTemplate = useAuthStore.getState().getRoleTemplate()
@@ -316,10 +354,10 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
 
   const byStage = useMemo(() => {
     const map = {}
-    STAGES.forEach(s => { map[s.key] = [] })
+    pipelineStages.forEach(s => { map[s.key] = [] })
     filtered.forEach(lead => { if (map[lead.stage]) map[lead.stage].push(lead) })
     return map
-  }, [filtered])
+  }, [filtered, pipelineStages])
 
   // Pending demo count for Demo Queue badge
   const pendingDemosTotal = useMemo(() =>
@@ -550,7 +588,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
 
       {/* ── Kanban — Pattern 26: hidden (not unmounted) in list mode ── */}
       <div style={{ display: viewMode === 'kanban' ? 'flex' : 'none', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
-        {STAGES.map(stage => {
+        {pipelineStages.map(stage => {
           const cards        = byStage[stage.key] ?? []
           const isDropTarget = !isAffiliate && dragTarget === stage.key && draggedId
           return (

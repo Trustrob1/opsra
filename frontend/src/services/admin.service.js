@@ -244,3 +244,19 @@ export const getQualificationFlow = () =>
 export const updateQualificationFlow = (payload) =>
   axios.patch('/api/v1/admin/qualification-flow', payload, { headers: _h() })
     .then(r => r.data.data)
+// ── Pipeline Stage Config — CONFIG-6 ─────────────────────────────────────────
+
+export async function getPipelineStages() {
+  const r = await axios.get(`${BASE}/api/v1/admin/pipeline-stages`, { headers: _h() })
+  return r.data.data
+}
+
+export async function updatePipelineStages(payload) {
+  // payload: { stages: [{ key, label, enabled }] }
+  const r = await axios.patch(
+    `${BASE}/api/v1/admin/pipeline-stages`,
+    payload,
+    { headers: _h() },
+  )
+  return r.data.data
+}

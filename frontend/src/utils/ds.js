@@ -48,7 +48,7 @@ export const SCORE_STYLE = {
 export const STAGES = [
   { key: 'new',           label: 'New',           dot: '#6B7C8E' },
   { key: 'contacted',     label: 'Contacted',     dot: '#028090' },
-  { key: 'demo_done',     label: 'Demo Done',     dot: '#7B2FBE' },
+  { key: 'meeting_done',  label: 'Demo Done',     dot: '#7B2FBE' },
   { key: 'proposal_sent', label: 'Proposal Sent', dot: '#F4A261' },
   { key: 'converted',     label: 'Converted',     dot: '#27AE60' },
   { key: 'lost',          label: 'Lost',          dot: '#E05252' },
@@ -59,7 +59,7 @@ export const STAGES = [
 export const STAGE_STYLE = {
   new:           { bg: '#EAF0F2', color: '#6B7C8E' },
   contacted:     { bg: '#E0F4F6', color: '#015F6B' },
-  demo_done:     { bg: '#EDE0FF', color: '#5B1E9C' },
+  meeting_done:  { bg: '#EDE0FF', color: '#5B1E9C' },
   proposal_sent: { bg: '#FFF3E0', color: '#C05A00' },
   converted:     { bg: '#E8F8EE', color: '#1A7A40' },
   lost:          { bg: '#FFE8E8', color: '#C0392B' },

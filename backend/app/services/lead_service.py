@@ -32,19 +32,113 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # State machine — Technical Spec Section 4.1 (all 11 transitions)
+# CONFIG-6: VALID_TRANSITIONS is now computed dynamically from org pipeline_stages
+# config so disabled stages are skipped in the transition chain.
 # ---------------------------------------------------------------------------
-VALID_TRANSITIONS: dict[str, set[str]] = {
-    "new": {"contacted", "lost"},
-    "contacted": {"demo_done", "lost", "not_ready"},
-    "demo_done": {"proposal_sent", "lost"},
+
+# Default ordered pipeline keys (new + converted always enabled; lost/not_ready system-only)
+_DEFAULT_PIPELINE_ORDER = ["new", "contacted", "meeting_done", "proposal_sent", "converted"]
+_SYSTEM_ONLY_STAGES = {"lost", "not_ready"}
+
+# Fallback hardcoded transitions (used when pipeline_stages is null)
+_DEFAULT_TRANSITIONS: dict[str, set[str]] = {
+    "new":           {"contacted", "lost"},
+    "contacted":     {"meeting_done", "lost", "not_ready"},
+    "meeting_done":  {"proposal_sent", "lost"},
     "proposal_sent": {"converted", "lost"},
-    "lost": {"new"},
-    "not_ready": {"new"},
-    "converted": set(),   # terminal — cannot move backward
+    "lost":          {"new"},
+    "not_ready":     {"new"},
+    "converted":     set(),
 }
 
+
+def _get_valid_transitions(db: Any, org_id: str) -> dict[str, set[str]]:
+    """
+    CONFIG-6: Build valid stage transitions dynamically from org pipeline_stages config.
+    Disabled stages are skipped — e.g. if meeting_done is disabled,
+    contacted transitions directly to proposal_sent.
+    Falls back to _DEFAULT_TRANSITIONS if pipeline_stages is null.
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("pipeline_stages")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        config = (data or {}).get("pipeline_stages") if data else None
+    except Exception:
+        config = None
+
+    if not config:
+        return _DEFAULT_TRANSITIONS
+
+    # Build ordered list of enabled stage keys from config
+    enabled_keys = [s["key"] for s in config if s.get("enabled", True)]
+
+    # Ensure new + converted always present (they are locked-enabled)
+    if "new" not in enabled_keys:
+        enabled_keys.insert(0, "new")
+    if "converted" not in enabled_keys:
+        enabled_keys.append("converted")
+
+    transitions: dict[str, set[str]] = {}
+    for i, key in enumerate(enabled_keys):
+        next_keys: set[str] = set()
+        if i + 1 < len(enabled_keys):
+            next_keys.add(enabled_keys[i + 1])
+        # All non-terminal stages can go to lost/not_ready
+        if key not in ("converted", "lost", "not_ready"):
+            next_keys.add("lost")
+            if key not in ("proposal_sent",):
+                next_keys.add("not_ready")
+        transitions[key] = next_keys
+
+    # System-only terminal/re-entry stages
+    transitions.setdefault("lost",      {"new"})
+    transitions.setdefault("not_ready", {"new"})
+    transitions.setdefault("converted", set())
+
+    return transitions
+
+
 # Stages from which mark_lost is valid
-CAN_MARK_LOST: set[str] = {"new", "contacted", "demo_done", "proposal_sent"}
+CAN_MARK_LOST: set[str] = {"new", "contacted", "meeting_done", "proposal_sent"}
+
+
+# ---------------------------------------------------------------------------
+# CONFIG-6 label helper
+# ---------------------------------------------------------------------------
+
+def get_lead_stage_label(db: Any, org_id: str, stage_key: str) -> str:
+    """
+    Return the org-configured display label for a system stage key.
+    Falls back to a formatted version of the key if config is unavailable
+    or the key is not found (e.g. lost, not_ready).
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("pipeline_stages")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        config = (data or {}).get("pipeline_stages") if data else None
+        if config:
+            for stage in config:
+                if stage.get("key") == stage_key:
+                    return stage.get("label") or stage_key.replace("_", " ").title()
+    except Exception:
+        pass
+    return stage_key.replace("_", " ").title()
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -625,7 +719,7 @@ def move_stage(
     lead = _lead_or_404(db, org_id, lead_id)
     current_stage = lead["stage"]
 
-    allowed = VALID_TRANSITIONS.get(current_stage, set())
+    allowed = _get_valid_transitions(db, org_id).get(current_stage, set())
     if new_stage not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -689,7 +783,7 @@ def mark_lost(
 ) -> dict:
     """
     Mark a lead as lost. Validates the transition, requires lost_reason.
-    Valid from: new, contacted, demo_done, proposal_sent.
+    Valid from: new, contacted, meeting_done, proposal_sent.
     """
     if not lost_reason:
         raise HTTPException(

@@ -43,7 +43,8 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from app.services.lead_service import (
-    VALID_TRANSITIONS,
+    _DEFAULT_TRANSITIONS,
+    _get_valid_transitions,
     CAN_MARK_LOST,
     check_duplicate,
     move_stage,
@@ -102,6 +103,9 @@ def _db_factory(lead: dict | None = None):
     tasks_chain    = _chain_mock(data=[])
     customers_chain = _chain_mock(data=[{"id": "cust-001", "org_id": (lead or {}).get("org_id", "org-1")}])
     subs_chain     = _chain_mock(data=[{"id": "sub-001"}])
+    # CONFIG-6: _get_valid_transitions queries organisations.pipeline_stages.
+    # Return null so tests use _DEFAULT_TRANSITIONS fallback (unchanged behaviour).
+    orgs_chain     = _chain_mock(data={"pipeline_stages": None})
 
     _chains = {
         "leads":         leads_chain,
@@ -110,6 +114,7 @@ def _db_factory(lead: dict | None = None):
         "tasks":         tasks_chain,
         "customers":     customers_chain,
         "subscriptions": subs_chain,
+        "organisations": orgs_chain,
     }
 
     def _table(name):
@@ -155,8 +160,8 @@ class TestStateMachineValidTransitions:
     def test_02_new_to_lost(self):
         self._assert_ok("new", "lost")
 
-    def test_03_contacted_to_demo_done(self):
-        self._assert_ok("contacted", "demo_done")
+    def test_03_contacted_to_meeting_done(self):
+        self._assert_ok("contacted", "meeting_done")
 
     def test_04_contacted_to_lost(self):
         self._assert_ok("contacted", "lost")
@@ -164,11 +169,11 @@ class TestStateMachineValidTransitions:
     def test_05_contacted_to_not_ready(self):
         self._assert_ok("contacted", "not_ready")
 
-    def test_06_demo_done_to_proposal_sent(self):
-        self._assert_ok("demo_done", "proposal_sent")
+    def test_06_meeting_done_to_proposal_sent(self):
+        self._assert_ok("meeting_done", "proposal_sent")
 
-    def test_07_demo_done_to_lost(self):
-        self._assert_ok("demo_done", "lost")
+    def test_07_meeting_done_to_lost(self):
+        self._assert_ok("meeting_done", "lost")
 
     def test_08_proposal_sent_to_converted(self):
         self._assert_ok("proposal_sent", "converted")
@@ -205,15 +210,15 @@ class TestStateMachineInvalidTransitions:
     def test_converted_terminal_to_new(self):       self._assert_invalid("converted", "new")
     def test_converted_terminal_to_lost(self):      self._assert_invalid("converted", "lost")
     def test_converted_terminal_to_contacted(self): self._assert_invalid("converted", "contacted")
-    def test_converted_terminal_to_demo_done(self): self._assert_invalid("converted", "demo_done")
+    def test_converted_terminal_to_meeting_done(self): self._assert_invalid("converted", "meeting_done")
 
     # Backward jumps
     def test_contacted_cannot_go_to_new(self):           self._assert_invalid("contacted", "new")
-    def test_demo_done_cannot_go_to_contacted(self):     self._assert_invalid("demo_done", "contacted")
-    def test_proposal_sent_cannot_go_to_demo_done(self): self._assert_invalid("proposal_sent", "demo_done")
+    def test_meeting_done_cannot_go_to_contacted(self):     self._assert_invalid("meeting_done", "contacted")
+    def test_proposal_sent_cannot_go_to_meeting_done(self): self._assert_invalid("proposal_sent", "meeting_done")
 
     # Forward skips
-    def test_new_cannot_skip_to_demo_done(self):       self._assert_invalid("new", "demo_done")
+    def test_new_cannot_skip_to_meeting_done(self):       self._assert_invalid("new", "meeting_done")
     def test_new_cannot_skip_to_proposal_sent(self):   self._assert_invalid("new", "proposal_sent")
     def test_new_cannot_skip_to_converted(self):       self._assert_invalid("new", "converted")
     def test_contacted_cannot_skip_to_converted(self): self._assert_invalid("contacted", "converted")
@@ -252,8 +257,8 @@ class TestMarkLost:
         db, _ = _db_factory(_lead(stage="contacted"))
         mark_lost(db, "org-1", "lead-001", "competitor", "user-1")
 
-    def test_mark_lost_from_demo_done_succeeds(self):
-        db, _ = _db_factory(_lead(stage="demo_done"))
+    def test_mark_lost_from_meeting_done_succeeds(self):
+        db, _ = _db_factory(_lead(stage="meeting_done"))
         mark_lost(db, "org-1", "lead-001", "wrong_size", "user-1")
 
     def test_mark_lost_from_proposal_sent_succeeds(self):
@@ -379,7 +384,7 @@ class TestReactivateLead:
         assert result.get("score") == "unscored"
 
     def test_reactivate_fails_on_non_lost_stage(self):
-        for bad_stage in ("new", "contacted", "demo_done", "proposal_sent", "converted", "not_ready"):
+        for bad_stage in ("new", "contacted", "meeting_done", "proposal_sent", "converted", "not_ready"):
             lead = _lead(stage=bad_stage)
             db, _ = _db_factory(lead)
             with pytest.raises(HTTPException) as exc:
@@ -460,8 +465,8 @@ class TestConvertLead:
     def test_convert_rejected_from_contacted(self):
         self._assert_invalid_stage("contacted")
 
-    def test_convert_rejected_from_demo_done(self):
-        self._assert_invalid_stage("demo_done")
+    def test_convert_rejected_from_meeting_done(self):
+        self._assert_invalid_stage("meeting_done")
 
     def test_convert_rejected_from_lost(self):
         self._assert_invalid_stage("lost")
@@ -755,22 +760,57 @@ class TestWriteHelpers:
 
 
 # ===========================================================================
-# 10. VALID_TRANSITIONS constant integrity checks
+# 10. State machine constants integrity checks
+# CONFIG-6: VALID_TRANSITIONS replaced with _DEFAULT_TRANSITIONS (fallback)
+#           and _get_valid_transitions(db, org_id) (dynamic, reads org config).
 # ===========================================================================
 
 class TestStateMachineConstants:
     """Guard against accidental mutation of the state machine definition."""
 
-    def test_all_seven_stages_present_as_keys(self):
-        stages = {"new", "contacted", "demo_done", "proposal_sent", "converted", "lost", "not_ready"}
-        assert stages == set(VALID_TRANSITIONS.keys())
+    def test_all_seven_stages_present_as_keys_in_defaults(self):
+        stages = {"new", "contacted", "meeting_done", "proposal_sent", "converted", "lost", "not_ready"}
+        assert stages == set(_DEFAULT_TRANSITIONS.keys())
 
-    def test_converted_has_no_transitions(self):
-        assert len(VALID_TRANSITIONS["converted"]) == 0
+    def test_converted_has_no_transitions_in_defaults(self):
+        assert len(_DEFAULT_TRANSITIONS["converted"]) == 0
 
     def test_can_mark_lost_set_is_correct(self):
-        assert CAN_MARK_LOST == {"new", "contacted", "demo_done", "proposal_sent"}
+        assert CAN_MARK_LOST == {"new", "contacted", "meeting_done", "proposal_sent"}
 
-    def test_total_valid_transitions_is_eleven(self):
-        total = sum(len(v) for v in VALID_TRANSITIONS.values())
+    def test_total_valid_transitions_is_eleven_in_defaults(self):
+        total = sum(len(v) for v in _DEFAULT_TRANSITIONS.values())
         assert total == 11, f"Expected 11 valid transitions, got {total}"
+
+    def test_get_valid_transitions_returns_defaults_when_null(self):
+        """_get_valid_transitions falls back to _DEFAULT_TRANSITIONS when pipeline_stages is null."""
+        db = MagicMock()
+        result = MagicMock()
+        result.data = {"pipeline_stages": None}
+        (db.table.return_value
+           .select.return_value
+           .eq.return_value
+           .maybe_single.return_value
+           .execute.return_value) = result
+        t = _get_valid_transitions(db, "org-1")
+        assert t == _DEFAULT_TRANSITIONS
+
+    def test_get_valid_transitions_skips_disabled_stage(self):
+        """Disabled meeting_done is skipped — contacted goes directly to proposal_sent."""
+        db = MagicMock()
+        result = MagicMock()
+        result.data = {"pipeline_stages": [
+            {"key": "new",           "label": "New",      "enabled": True},
+            {"key": "contacted",     "label": "Contacted","enabled": True},
+            {"key": "meeting_done",  "label": "Demo Done","enabled": False},
+            {"key": "proposal_sent", "label": "Proposal", "enabled": True},
+            {"key": "converted",     "label": "Converted","enabled": True},
+        ]}
+        (db.table.return_value
+           .select.return_value
+           .eq.return_value
+           .maybe_single.return_value
+           .execute.return_value) = result
+        t = _get_valid_transitions(db, "org-1")
+        assert "meeting_done" not in t["contacted"]
+        assert "proposal_sent" in t["contacted"]

@@ -79,7 +79,7 @@ _CONFIRMED   = "confirmed"
 _ATTENDED    = "attended"
 _NO_SHOW     = "no_show"
 _RESCHEDULED = "rescheduled"
-_DEMO_DONE_STAGE = "demo_done"
+_DEMO_DONE_STAGE = "meeting_done"
 
 # ── SELECT column list — includes all M01-9 columns ──────────────────────────
 _DEMO_SELECT = (

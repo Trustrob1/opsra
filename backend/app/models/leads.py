@@ -44,7 +44,7 @@ class LeadScore(str, Enum):
 class LeadStage(str, Enum):
     new = "new"
     contacted = "contacted"
-    demo_done = "demo_done"
+    meeting_done = "meeting_done"
     proposal_sent = "proposal_sent"
     converted = "converted"
     lost = "lost"

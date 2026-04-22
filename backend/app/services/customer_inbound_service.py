@@ -232,7 +232,7 @@ Respond with EXACTLY one word: ticket, billing, renewal, or general."""
 def classify_lead_stage_signal(content: str, stage: str) -> str:
     """
     Detect buying/stalling/objection signals for mid-pipeline leads.
-    Only called for leads in: contacted | demo_done | proposal_sent
+    Only called for leads in: contacted | meeting_done | proposal_sent
     Returns: 'buying' | 'stalling' | 'objection' | 'neutral'
     S14 — returns 'neutral' on any failure.
     """
@@ -933,7 +933,7 @@ def _handle_drip_reply(
 # handle_customer_inbound — master dispatcher  (S14)
 # ---------------------------------------------------------------------------
 
-_MID_PIPELINE_STAGES = frozenset({"contacted", "demo_done", "proposal_sent"})
+_MID_PIPELINE_STAGES = frozenset({"contacted", "meeting_done", "proposal_sent"})
 
 
 def handle_customer_inbound(
@@ -1213,7 +1213,7 @@ def handle_lead_stage_signal(
 ) -> None:
     """
     WH-1 GAP-C7: Detect buying/stalling/objection signals for mid-pipeline leads.
-    Only called for leads in: contacted | demo_done | proposal_sent.
+    Only called for leads in: contacted | meeting_done | proposal_sent.
     S14 — never raises.
     """
     if stage not in _MID_PIPELINE_STAGES:

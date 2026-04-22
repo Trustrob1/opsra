@@ -845,7 +845,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             return  # KB or context handler took care of it — skip rep notification
 
     # WH-1: Mid-pipeline lead stage signal detection (GAP-C7).
-    # Only for leads in contacted | demo_done | proposal_sent stages.
+    # Only for leads in contacted | meeting_done | proposal_sent stages.
     # S14 — all failures swallowed inside handle_lead_stage_signal.
     if lead_id and not customer_id and msg_type == "text" and content:
         try:
@@ -860,7 +860,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             if isinstance(stage_data, list):
                 stage_data = stage_data[0] if stage_data else None
             lead_stage = (stage_data or {}).get("stage", "")
-            if lead_stage in ("contacted", "demo_done", "proposal_sent"):
+            if lead_stage in ("contacted", "meeting_done", "proposal_sent"):
                 customer_inbound_service.handle_lead_stage_signal(
                     db=db,
                     org_id=org_id,
