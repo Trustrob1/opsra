@@ -260,3 +260,13 @@ export async function updatePipelineStages(payload) {
   )
   return r.data.data
 }
+
+// ── Ticket/KB Category Config — CONFIG-1 ─────────────────────────────────────
+
+export const getTicketCategories = () =>
+  axios.get('/api/v1/admin/ticket-categories', { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateTicketCategories = (payload) =>
+  axios.patch('/api/v1/admin/ticket-categories', payload, { headers: _h() })
+    .then(r => r.data.data)

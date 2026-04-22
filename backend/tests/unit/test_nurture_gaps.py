@@ -276,7 +276,7 @@ class TestNotReadyGuardDuringQualification:
                 "app.routers.webhooks._lookup_record_by_phone",
                 return_value=(ORG_ID, None, LEAD_ID, USER_ID),
             ):
-                with patch("app.routers.webhooks._handle_qualification_turn"):
+                with patch("app.routers.webhooks._handle_structured_qualification_turn"):
                     webhooks._handle_inbound_message(
                         db=db,
                         message=self._make_message("not ready, call me later"),
@@ -309,7 +309,7 @@ class TestNotReadyGuardDuringQualification:
                 return_value=True,
             ) as mock_signal:
                 with patch("app.services.nurture_service.graduate_lead_self_identified"):
-                    with patch("app.routers.webhooks._handle_qualification_turn"):
+                    with patch("app.routers.webhooks._handle_structured_qualification_turn"):
                         webhooks._handle_inbound_message(
                             db=db,
                             message=self._make_message("not ready"),
@@ -551,7 +551,7 @@ class TestWebhookUnsubscribePath:
                         "app.services.nurture_service.handle_re_engagement"
                     ) as mock_reengage:
                         with patch(
-                            "app.routers.webhooks._handle_qualification_turn"
+                            "app.routers.webhooks._handle_structured_qualification_turn"
                         ) as mock_qual:
                             webhooks._handle_inbound_message(
                                 db=db,
@@ -589,7 +589,7 @@ class TestWebhookUnsubscribePath:
                 with patch(
                     "app.services.nurture_service.handle_re_engagement"
                 ) as mock_reengage:
-                    with patch("app.routers.webhooks._handle_qualification_turn"):
+                    with patch("app.routers.webhooks._handle_structured_qualification_turn"):
                         webhooks._handle_inbound_message(
                             db=db,
                             message={

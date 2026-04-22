@@ -23,6 +23,7 @@ import {
   updateTicket, suggestKBArticle, createKBArticle,
 } from '../../services/support.service'
 import { listTasks, completeTask } from '../../services/tasks.service'
+import { getTicketCategories } from '../../services/admin.service'
 
 // ---------------------------------------------------------------------------
 // Badge helpers (duplicated locally — no shared component layer yet)
@@ -154,6 +155,14 @@ export default function TicketDetail({ ticketId, onBack, onUpdated, onKBArticleP
   const [actionError, setActionError]   = useState(null)
   const [acting, setActing]             = useState(false)
   const [showResolve, setShowResolve]   = useState(false)
+
+  // CONFIG-1: org-configured categories for label display
+  const [categories, setCategories] = useState([])
+  useEffect(() => {
+    getTicketCategories()
+      .then(data => { if (data?.categories) setCategories(data.categories) })
+      .catch(() => {})
+  }, [])
 
   // KB gap suggestion state
   const [kbSuggestion, setKbSuggestion]   = useState(null)   // null | suggestion dict
@@ -318,7 +327,7 @@ export default function TicketDetail({ ticketId, onBack, onUpdated, onKBArticleP
             </div>
             <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: '18px', color: ds.dark, marginBottom: '8px' }}>{ticket.title || ticket.reference}</div>
             <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '12px', color: ds.gray }}>
-              {ticket.category && <span>Category: <strong style={{ color: ds.dark, textTransform: 'capitalize' }}>{ticket.category.replace(/_/g, ' ')}</strong></span>}
+              {ticket.category && <span>Category: <strong style={{ color: ds.dark, textTransform: 'capitalize' }}>{categories.find(c => c.key === ticket.category)?.label ?? ticket.category.replace(/_/g, ' ')}</strong></span>}
               {ticket.ai_handling_mode && <span>AI Mode: <strong style={{ color: ds.dark }}>{ticket.ai_handling_mode.replace(/_/g, ' ')}</strong></span>}
               {ticket.assigned_user?.full_name && <span>Assigned: <strong style={{ color: ds.dark }}>{ticket.assigned_user.full_name}</strong></span>}
               <span>Opened: <strong style={{ color: ds.dark }}>{new Date(ticket.created_at).toLocaleDateString('en-GB')}</strong></span>

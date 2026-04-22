@@ -23,6 +23,7 @@ import LeadSLASettings     from './LeadSLASettings'
 import NurtureSettings     from './NurtureSettings'
 import CustomerMenuConfig  from './CustomerMenuConfig'
 import PipelineConfig      from './PipelineConfig'
+import TicketCategoriesConfig from './TicketCategoriesConfig'
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
@@ -36,6 +37,7 @@ const TABS = [
   { id: 'nurture',        label: '🌱 Nurture Engine' },
   { id: 'whatsapp-menu',  label: '📋 WhatsApp Menu' },
   { id: 'pipeline',       label: '🗂️ Pipeline' },
+  { id: 'categories',     label: '🏷️ Categories' },
   { id: 'kb',             label: '📚 Knowledge Base', link: true },
   { id: 'templates',      label: '💬 WA Templates',   link: true },
 ]
@@ -180,6 +182,9 @@ export default function AdminModule({ user }) {
         </div>
         <div style={{ display: tab === 'pipeline' ? 'block' : 'none' }}>
           <PipelineConfig />
+        </div>
+        <div style={{ display: tab === 'categories' ? 'block' : 'none' }}>
+          <TicketCategoriesConfig />
         </div>
 
         {/* Nav links — conditional render (no state to preserve) */}

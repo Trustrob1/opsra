@@ -15,16 +15,21 @@ import { ds } from '../../utils/ds'
 import {
   listKBArticles, createKBArticle, updateKBArticle, unpublishKBArticle,
 } from '../../services/support.service'
+import { getTicketCategories } from '../../services/admin.service'
 
-const CATEGORIES = [
-  'product_overview', 'pricing', 'faq',
-  'troubleshooting', 'hardware', 'contact',
+const DEFAULT_CATEGORIES = [
+  { key: 'product_overview', label: 'Product Overview', enabled: true },
+  { key: 'pricing',          label: 'Pricing',          enabled: true },
+  { key: 'faq',              label: 'FAQ',               enabled: true },
+  { key: 'troubleshooting',  label: 'Troubleshooting',  enabled: true },
+  { key: 'hardware',         label: 'Hardware',         enabled: true },
+  { key: 'contact',          label: 'Contact',          enabled: true },
 ]
 
 // ---------------------------------------------------------------------------
 // Article form modal — create and edit share this
 // ---------------------------------------------------------------------------
-function ArticleForm({ initial, onSave, onClose, saving, error }) {
+function ArticleForm({ initial, onSave, onClose, saving, error, categories }) {
   const isEdit = !!initial
   const [form, setForm] = useState(
     isEdit
@@ -107,7 +112,7 @@ function ArticleForm({ initial, onSave, onClose, saving, error }) {
             <div>
               <label style={lb}>Category</label>
               <select style={inp} value={form.category} onChange={e => set('category', e.target.value)}>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                {(categories || DEFAULT_CATEGORIES).filter(c => c.enabled !== false).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '2px' }}>
@@ -242,6 +247,17 @@ export default function KBManager({ user, externalTick = 0 }) {
   const [tick, setTick]           = useState(0)
   const refresh = useCallback(() => setTick(t => t + 1), [])
 
+  // CONFIG-1: org-configured categories
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
+  useEffect(() => {
+    getTicketCategories()
+      .then(data => {
+        const cats = data?.categories
+        if (Array.isArray(cats) && cats.length > 0) setCategories(cats)
+      })
+      .catch(() => {})
+  }, [])
+
   const isAdmin = ['owner', 'ops_manager'].includes(user?.roles?.template)
 
   useEffect(() => {
@@ -298,7 +314,7 @@ export default function KBManager({ user, externalTick = 0 }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px', flexWrap: 'wrap' }}>
         <select style={sel} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
           <option value="">All Categories</option>
-          {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+          {categories.filter(c => c.enabled !== false).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
         <span style={{ fontSize: '12px', color: ds.gray }}>{total} article{total !== 1 ? 's' : ''}</span>
         <div style={{ flex: 1 }} />
@@ -407,6 +423,7 @@ export default function KBManager({ user, externalTick = 0 }) {
           onClose={() => { setEditing(null); setFormError(null) }}
           saving={saving}
           error={formError}
+          categories={categories}
         />
       )}
     </div>

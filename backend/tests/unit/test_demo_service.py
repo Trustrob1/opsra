@@ -423,7 +423,7 @@ class TestLogOutcome:
                 user_id=REP_ID, outcome="attended", outcome_notes=None,
             )
         mock_move.assert_called_once()
-        assert mock_move.call_args[1]["new_stage"] == "demo_done"
+        assert mock_move.call_args[1]["new_stage"] == "meeting_done"
 
     def test_attended_notifies_rep_and_admin(self):
         from app.services.demo_service import log_outcome

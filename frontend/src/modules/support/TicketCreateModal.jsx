@@ -9,18 +9,31 @@
  *   customerId   — optional UUID: links ticket to a customer record
  *   leadId       — optional UUID: links ticket to a lead record
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import { createTicket } from '../../services/support.service'
+import { getTicketCategories } from '../../services/admin.service'
 
-const CATEGORIES = ['technical_bug', 'billing', 'feature_question', 'onboarding_help', 'account_access', 'hardware']
+const DEFAULT_CATEGORIES = ['technical_bug', 'billing', 'feature_question', 'onboarding_help', 'account_access', 'hardware']
 const URGENCIES  = ['critical', 'high', 'medium', 'low']
 const AI_MODES   = ['draft_review', 'auto', 'human_only']
 
 export default function TicketCreateModal({ onClose, onCreated, customerId, leadId }) {
-  const [form, setForm]       = useState({ content: '', ai_handling_mode: 'draft_review' })
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState(null)
+  const [form, setForm]           = useState({ content: '', ai_handling_mode: 'draft_review' })
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState(null)
+  const [categories, setCategories] = useState(
+    DEFAULT_CATEGORIES.map(k => ({ key: k, label: k.replace(/_/g, ' '), enabled: true }))
+  )
+
+  useEffect(() => {
+    getTicketCategories()
+      .then(data => {
+        const cats = data?.categories
+        if (Array.isArray(cats) && cats.length > 0) setCategories(cats)
+      })
+      .catch(() => {}) // fallback to defaults
+  }, [])
 
   function set(key, val) {
     setForm(f => ({ ...f, [key]: val || undefined }))
@@ -82,7 +95,7 @@ export default function TicketCreateModal({ onClose, onCreated, customerId, lead
             <label style={lbl}>Category (optional)</label>
             <select value={form.category || ''} onChange={e => set('category', e.target.value)} style={inp}>
               <option value="">AI will classify</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+              {categories.filter(c => c.enabled !== false).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
           </div>
           <div>

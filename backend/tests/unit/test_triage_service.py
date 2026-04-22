@@ -476,7 +476,7 @@ class TestHandleAwaitingIdentifier:
             )
 
             mock_create.assert_called_once()
-            lead_payload = mock_create.call_args[0][2]  # positional arg 3
+            lead_payload = mock_create.call_args[0][3]  # positional arg 4 — (db, org_id, user_id, payload)
             assert lead_payload.contact_type == "support_contact"
             mock_notify.assert_called_once()
             mock_update.assert_called_once()

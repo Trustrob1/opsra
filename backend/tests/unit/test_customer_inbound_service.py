@@ -186,7 +186,7 @@ class TestClassifyCustomerIntent:
 # ===========================================================================
 
 class TestClassifyLeadStageSignal:
-    @pytest.mark.parametrize("stage", ["contacted", "demo_done", "proposal_sent"])
+    @pytest.mark.parametrize("stage", ["contacted", "meeting_done", "proposal_sent"])
     @pytest.mark.parametrize("signal", ["buying", "stalling", "objection", "neutral"])
     def test_all_branches_all_stages(self, stage, signal):
         with patch(
@@ -207,7 +207,7 @@ class TestClassifyLeadStageSignal:
             "app.services.customer_inbound_service._call_haiku",
             return_value="random",
         ):
-            assert classify_lead_stage_signal("msg", "demo_done") == "neutral"
+            assert classify_lead_stage_signal("msg", "meeting_done") == "neutral"
 
 
 # ===========================================================================
@@ -645,7 +645,7 @@ class TestHandleCustomerInbound:
 class TestHandleLeadStageSignal:
     @pytest.mark.parametrize("signal,stage", [
         ("buying",    "contacted"),
-        ("stalling",  "demo_done"),
+        ("stalling",  "meeting_done"),
         ("objection", "proposal_sent"),
     ])
     def test_signal_notifies_rep(self, signal, stage):

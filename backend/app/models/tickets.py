@@ -7,7 +7,7 @@ Tables: tickets, ticket_messages, ticket_attachments,
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -85,21 +85,12 @@ class TicketCreate(BaseModel):
 
     customer_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
-    category: Optional[str] = None
+    category: Optional[str] = None  # CONFIG-1: validated against org config, not hardcoded enum
     urgency: Optional[str] = None
     title: Optional[str] = None
     content: str                    # problem description — always required
     ai_handling_mode: str = "draft_review"
     assigned_to: Optional[UUID] = None
-
-    @field_validator("category")
-    @classmethod
-    def validate_category(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in TICKET_CATEGORIES:
-            raise ValueError(
-                f"category must be one of {sorted(TICKET_CATEGORIES)}"
-            )
-        return v
 
     @field_validator("urgency")
     @classmethod
@@ -128,18 +119,9 @@ class TicketUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    category: Optional[str] = None
+    category: Optional[str] = None  # CONFIG-1: validated against org config, not hardcoded enum
     urgency: Optional[str] = None
     assigned_to: Optional[UUID] = None
-
-    @field_validator("category")
-    @classmethod
-    def validate_category(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in TICKET_CATEGORIES:
-            raise ValueError(
-                f"category must be one of {sorted(TICKET_CATEGORIES)}"
-            )
-        return v
 
     @field_validator("urgency")
     @classmethod
@@ -188,22 +170,13 @@ class KBArticleCreate(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
 
-    category:     str
+    category:     str  # CONFIG-1: validated against org config, not hardcoded enum
     title:        str                      = Field(..., max_length=255)
     content:      str                      = Field(..., max_length=10000)
     tags:         Optional[List[str]]      = None
     is_published: bool                     = True
     action_type: Literal["informational", "action_required"] = "informational"
     action_label: Optional[str] = None
-
-    @field_validator("category")
-    @classmethod
-    def validate_category(cls, v: str) -> str:
-        if v not in KB_CATEGORIES:
-            raise ValueError(
-                f"category must be one of {sorted(KB_CATEGORIES)}"
-            )
-        return v
 
 
 class KBArticleUpdate(BaseModel):
@@ -214,22 +187,13 @@ class KBArticleUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    category:     Optional[str]       = None
+    category:     Optional[str]       = None  # CONFIG-1: org config is source of truth
     title:        Optional[str]       = Field(None, max_length=255)
     content:      Optional[str]       = Field(None, max_length=10000)
     tags:         Optional[List[str]] = None
     is_published: Optional[bool]      = None
     action_type: Optional[Literal["informational", "action_required"]] = None
     action_label: Optional[str] = None
-
-    @field_validator("category")
-    @classmethod
-    def validate_category(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in KB_CATEGORIES:
-            raise ValueError(
-                f"category must be one of {sorted(KB_CATEGORIES)}"
-            )
-        return v
 
 
 # ---------------------------------------------------------------------------

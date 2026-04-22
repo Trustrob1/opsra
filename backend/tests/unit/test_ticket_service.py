@@ -1228,7 +1228,10 @@ class TestSuggestKBArticleFromTicket:
         assert "title" in result
         assert "content" in result
 
-    def test_invalid_category_from_ai_falls_back_to_faq(self):
+    def test_invalid_category_from_ai_passed_through(self):
+        # CONFIG-1: suggest_kb_article no longer validates AI category against
+        # a hardcoded KB_CATEGORIES enum. AI-returned category is passed through
+        # as-is so orgs can use their own custom category keys.
         import json as _json
 
         fake_response = MagicMock()
@@ -1251,8 +1254,8 @@ class TestSuggestKBArticleFromTicket:
         with patch.object(ticket_service, "_get_anthropic_client", return_value=fake_client):
             result = ticket_service.suggest_kb_article_from_ticket(db, TICKET_ID, ORG_ID)
 
-        # Invalid category replaced by ticket's own category
-        assert result["category"] in ("billing", "faq")
+        # AI-returned category accepted as-is (org config determines validity)
+        assert result["category"] == "INVALID_CATEGORY"
 
 class TestAddMessageWhatsApp:
     """Phase 9D: WhatsApp delivery from ticket thread."""

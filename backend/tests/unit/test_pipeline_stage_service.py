@@ -153,60 +153,58 @@ class TestMoveStageWithDisabledMeetingDone:
     def test_move_stage_skips_disabled_meeting_done(self):
         """contacted → proposal_sent is valid when meeting_done is disabled."""
         from app.services.lead_service import move_stage
+        from unittest.mock import patch as _patch
+        import app.services.lead_service as _ls
 
-        db = MagicMock()
         lead = self._lead("contacted")
 
-        # Call 1: _get_valid_transitions → organisations
-        # Call 2: _lead_or_404 → leads
-        # Call 3: leads.update
-        # Call 4: write_timeline_event → lead_timeline
-        # Call 5: write_audit_log → audit_logs
+        # Separate db mocks for _get_valid_transitions (organisations) and
+        # the update/insert calls — use patch.object to bypass _lead_or_404
+        # chain collision (Pattern 59).
+        db = MagicMock()
+
         org_result = MagicMock()
         org_result.data = {"pipeline_stages": CONFIG_NO_MEETING}
-
-        lead_result = MagicMock()
-        lead_result.data = lead
+        (db.table.return_value
+           .select.return_value
+           .eq.return_value
+           .maybe_single.return_value
+           .execute.return_value) = org_result
 
         update_result = MagicMock()
         update_result.data = [{**lead, "stage": "proposal_sent"}]
+        (db.table.return_value
+           .update.return_value
+           .eq.return_value
+           .eq.return_value
+           .execute.return_value) = update_result
 
-        timeline_result = MagicMock()
-        timeline_result.data = [{}]
+        db.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
 
-        audit_result = MagicMock()
-        audit_result.data = [{}]
-
-        db.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.side_effect = [
-            org_result,   # _get_valid_transitions
-            lead_result,  # _lead_or_404
-        ]
-        db.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = update_result
-        db.table.return_value.insert.return_value.execute.return_value = timeline_result
-
-        result = move_stage(db, ORG_ID, LEAD_ID, "proposal_sent", USER_ID)
+        with _patch.object(_ls, "_lead_or_404", return_value=lead):
+            result = move_stage(db, ORG_ID, LEAD_ID, "proposal_sent", USER_ID)
         assert result["stage"] == "proposal_sent"
 
     def test_move_stage_into_disabled_stage_rejected(self):
         """contacted → meeting_done is invalid when meeting_done is disabled."""
         from app.services.lead_service import move_stage
+        from unittest.mock import patch as _patch
+        import app.services.lead_service as _ls
 
-        db = MagicMock()
         lead = self._lead("contacted")
 
+        db = MagicMock()
         org_result = MagicMock()
         org_result.data = {"pipeline_stages": CONFIG_NO_MEETING}
+        (db.table.return_value
+           .select.return_value
+           .eq.return_value
+           .maybe_single.return_value
+           .execute.return_value) = org_result
 
-        lead_result = MagicMock()
-        lead_result.data = lead
-
-        db.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.side_effect = [
-            org_result,
-            lead_result,
-        ]
-
-        with pytest.raises(HTTPException) as exc_info:
-            move_stage(db, ORG_ID, LEAD_ID, "meeting_done", USER_ID)
+        with _patch.object(_ls, "_lead_or_404", return_value=lead):
+            with pytest.raises(HTTPException) as exc_info:
+                move_stage(db, ORG_ID, LEAD_ID, "meeting_done", USER_ID)
         assert exc_info.value.status_code == 400
 
 

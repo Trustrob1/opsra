@@ -212,10 +212,11 @@ class PipelineStageUpdate(BaseModel):
 
 @router.get("/pipeline-stages")
 def get_pipeline_stages(
-    org=Depends(require_permission("manage_users")),
+    org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
     """CONFIG-6: Return org pipeline_stages config. Falls back to defaults if null."""
+    require_permission(org)
     result = (
         db.table("organisations")
         .select("pipeline_stages")
@@ -233,10 +234,11 @@ def get_pipeline_stages(
 @router.patch("/pipeline-stages")
 def update_pipeline_stages(
     payload: PipelineStageUpdate,
-    org=Depends(require_permission("manage_users")),
+    org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
     """CONFIG-6: Save org pipeline_stages config."""
+    require_permission(org)
     stages_data = [s.model_dump() for s in payload.stages]
     updates = {
         "pipeline_stages": stages_data,
@@ -258,6 +260,108 @@ def update_pipeline_stages(
     if isinstance(data, list):
         data = data[0] if data else updates
     return ok(data={"stages": stages_data}, message="Pipeline stages saved")
+
+
+# ── CONFIG-1 Pydantic models ──────────────────────────────────────────────
+
+_DEFAULT_TICKET_CATEGORIES = [
+    {"key": "technical_bug",     "label": "Technical Bug",     "enabled": True},
+    {"key": "billing",           "label": "Billing",           "enabled": True},
+    {"key": "feature_question",  "label": "Feature Question",  "enabled": True},
+    {"key": "onboarding_help",   "label": "Onboarding Help",   "enabled": True},
+    {"key": "account_access",    "label": "Account Access",    "enabled": True},
+    {"key": "hardware",          "label": "Hardware",          "enabled": True},
+]
+
+
+class TicketCategoryItem(BaseModel):
+    key: str = Field(..., min_length=1, max_length=80)
+    label: str = Field(..., min_length=1, max_length=80)
+    enabled: bool = True
+
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v: str) -> str:
+        import re as _re2
+        if not _re2.match(r'^[a-z0-9_]+$', v):
+            raise ValueError("key must be lowercase alphanumeric and underscores only")
+        return v
+
+    @field_validator("label")
+    @classmethod
+    def _validate_label(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("label is required")
+        return v.strip()
+
+
+class TicketCategoriesUpdate(BaseModel):
+    categories: List[TicketCategoryItem]
+
+    @field_validator("categories")
+    @classmethod
+    def _validate_categories(cls, v: List[TicketCategoryItem]) -> List[TicketCategoryItem]:
+        if not v:
+            raise ValueError("At least one category is required")
+        enabled = [c for c in v if c.enabled]
+        if not enabled:
+            raise ValueError("At least one category must be enabled")
+        keys = [c.key for c in v]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Category keys must be unique")
+        return v
+
+
+@router.get("/ticket-categories")
+def get_ticket_categories(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """CONFIG-1: Return org ticket/KB category config. Falls back to defaults if null."""
+    require_permission(org)
+    result = (
+        db.table("organisations")
+        .select("ticket_categories")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    categories = (data or {}).get("ticket_categories") or _DEFAULT_TICKET_CATEGORIES
+    return ok(data={"categories": categories})
+
+
+@router.patch("/ticket-categories")
+def update_ticket_categories(
+    payload: TicketCategoriesUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """CONFIG-1: Save org ticket/KB category config."""
+    require_permission(org)
+    cats_data = [c.model_dump() for c in payload.categories]
+    updates = {
+        "ticket_categories": cats_data,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    result = (
+        db.table("organisations")
+        .update(updates)
+        .eq("id", org["org_id"])
+        .execute()
+    )
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="ticket_categories.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"categories": cats_data},
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else updates
+    return ok(data={"categories": cats_data}, message="Ticket categories saved")
 
 
 @router.get("/qualification-flow")

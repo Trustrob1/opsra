@@ -3,11 +3,12 @@
  * Paginated, filterable ticket table with stat cards.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import useTickets from '../../hooks/useTickets'
 import TicketCreateModal from './TicketCreateModal'
 import Pagination from '../../shared/Pagination'
+import { getTicketCategories } from '../../services/admin.service'
 
 // ---------------------------------------------------------------------------
 // Badge helpers
@@ -54,16 +55,33 @@ function StatCard({ label, value, accent }) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Filter options
-// ---------------------------------------------------------------------------
+// Filter options — urgency and status are system-defined, categories are org-configured
 const STATUSES   = ['', 'open', 'in_progress', 'awaiting_customer', 'resolved', 'closed']
-const CATEGORIES = ['', 'technical_bug', 'billing', 'feature_question', 'onboarding_help', 'account_access', 'hardware']
 const URGENCIES  = ['', 'critical', 'high', 'medium', 'low']
+
+const DEFAULT_CATEGORIES = [
+  { key: 'technical_bug',    label: 'Technical Bug'    },
+  { key: 'billing',          label: 'Billing'          },
+  { key: 'feature_question', label: 'Feature Question' },
+  { key: 'onboarding_help',  label: 'Onboarding Help'  },
+  { key: 'account_access',   label: 'Account Access'   },
+  { key: 'hardware',         label: 'Hardware'         },
+]
 
 export default function TicketList({ onSelectTicket }) {
   const [showCreate, setShowCreate]       = useState(false)
   const [localFilters, setLocalFilters]   = useState({ status: '', category: '', urgency: '', sla_breached: '' })
+  const [categories, setCategories]       = useState(DEFAULT_CATEGORIES)
+
+  useEffect(() => {
+    getTicketCategories()
+      .then(data => {
+        const cats = data?.categories
+        if (Array.isArray(cats) && cats.length > 0)
+          setCategories(cats.filter(c => c.enabled !== false))
+      })
+      .catch(() => {})
+  }, [])
 
   const {
     tickets, total, page, pageSize, hasMore,
@@ -117,7 +135,7 @@ export default function TicketList({ onSelectTicket }) {
 
         <select style={sel} value={localFilters.category} onChange={e => handleFilterChange('category', e.target.value)}>
           <option value="">All Categories</option>
-          {CATEGORIES.filter(Boolean).map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+          {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
 
         <select style={sel} value={localFilters.urgency} onChange={e => handleFilterChange('urgency', e.target.value)}>
@@ -173,7 +191,7 @@ export default function TicketList({ onSelectTicket }) {
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title || '—'}</div>
                   </td>
                   <td style={{ padding: '11px 14px', color: ds.gray, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
-                    {t.category ? t.category.replace(/_/g, ' ') : '—'}
+                    {t.category ? (categories.find(c => c.key === t.category)?.label ?? t.category.replace(/_/g, ' ')) : '—'}
                   </td>
                   <td style={{ padding: '11px 14px' }}><UrgencyBadge urgency={t.urgency} /></td>
                   <td style={{ padding: '11px 14px' }}><StatusBadge status={t.status} /></td>
