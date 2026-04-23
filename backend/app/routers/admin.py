@@ -1719,3 +1719,249 @@ def update_triage_config(
     if isinstance(data, list):
         data = data[0] if data else updates
     return ok(data=data, message="Triage configuration saved")
+
+# ── CONFIG-2 — Drip Business Types ───────────────────────────────────────────
+
+_DEFAULT_DRIP_BUSINESS_TYPES: list = []
+# null / empty list = all business types are eligible (unrestricted)
+
+
+class DripBusinessTypeItem(BaseModel):
+    key: str = Field(..., min_length=1, max_length=80)
+    label: str = Field(..., min_length=1, max_length=80)
+    enabled: bool = True
+
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v: str) -> str:
+        import re as _re3
+        if not _re3.match(r'^[a-z0-9_]+$', v):
+            raise ValueError("key must be lowercase alphanumeric and underscores only")
+        return v
+
+    @field_validator("label")
+    @classmethod
+    def _validate_label(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("label is required")
+        if len(v) > 80:
+            raise ValueError("label must be 80 characters or fewer")
+        return v.strip()
+
+
+class DripBusinessTypesUpdate(BaseModel):
+    business_types: List[DripBusinessTypeItem]
+
+    @field_validator("business_types")
+    @classmethod
+    def _validate_types(
+        cls, v: List[DripBusinessTypeItem]
+    ) -> List[DripBusinessTypeItem]:
+        keys = [t.key for t in v]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Business type keys must be unique")
+        return v
+
+
+@router.get("/drip-business-types")
+def get_drip_business_types(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """CONFIG-2: Return org drip business types config. Falls back to empty list if null."""
+    require_permission(org)
+    result = (
+        db.table("organisations")
+        .select("drip_business_types")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    types = (data or {}).get("drip_business_types") or _DEFAULT_DRIP_BUSINESS_TYPES
+    return ok(data={"business_types": types})
+
+
+@router.patch("/drip-business-types")
+def update_drip_business_types(
+    payload: DripBusinessTypesUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """CONFIG-2: Save org drip business types config."""
+    require_permission(org)
+    types_data = [t.model_dump() for t in payload.business_types]
+    updates = {
+        "drip_business_types": types_data,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    result = (
+        db.table("organisations")
+        .update(updates)
+        .eq("id", org["org_id"])
+        .execute()
+    )
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="drip_business_types.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"business_types": types_data},
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else updates
+    return ok(data={"business_types": types_data}, message="Drip business types saved")
+
+# ── CONFIG-3 — SLA Business Hours ────────────────────────────────────────────
+
+_DAYS_OF_WEEK = [
+    "monday", "tuesday", "wednesday", "thursday",
+    "friday", "saturday", "sunday",
+]
+
+_DEFAULT_SLA_BUSINESS_HOURS = {
+    "timezone": "Africa/Lagos",
+    "days": {
+        "monday":    {"enabled": True,  "open": "08:00", "close": "18:00"},
+        "tuesday":   {"enabled": True,  "open": "08:00", "close": "18:00"},
+        "wednesday": {"enabled": True,  "open": "08:00", "close": "18:00"},
+        "thursday":  {"enabled": True,  "open": "08:00", "close": "18:00"},
+        "friday":    {"enabled": True,  "open": "08:00", "close": "18:00"},
+        "saturday":  {"enabled": False, "open": None,    "close": None},
+        "sunday":    {"enabled": False, "open": None,    "close": None},
+    },
+}
+
+
+class SLADayConfig(BaseModel):
+    enabled: bool = False
+    open:    Optional[str] = None   # "HH:MM" 24-hour
+    close:   Optional[str] = None   # "HH:MM" 24-hour
+
+    @model_validator(mode="after")
+    def _validate_hours(self) -> "SLADayConfig":
+        import re as _re4
+        _time_re = _re4.compile(r'^\d{2}:\d{2}$')
+        if self.enabled:
+            if not self.open or not _time_re.match(self.open):
+                raise ValueError("open time must be HH:MM when day is enabled")
+            if not self.close or not _time_re.match(self.close):
+                raise ValueError("close time must be HH:MM when day is enabled")
+            # open must be before close
+            if self.open >= self.close:
+                raise ValueError("open time must be before close time")
+        return self
+
+
+class SLABusinessHoursUpdate(BaseModel):
+    timezone: Optional[str] = None
+    days:     Optional[dict] = None  # key = day name, value = SLADayConfig-compatible dict
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_tz(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        # Basic sanity check — full pytz validation would add a dependency
+        if len(v) > 60 or "/" not in v:
+            raise ValueError(
+                "timezone must be a valid IANA timezone string e.g. 'Africa/Lagos'"
+            )
+        return v
+
+    @field_validator("days")
+    @classmethod
+    def _validate_days(cls, v: Optional[dict]) -> Optional[dict]:
+        if v is None:
+            return v
+        _days = {
+            "monday", "tuesday", "wednesday", "thursday",
+            "friday", "saturday", "sunday",
+        }
+        for day_name, day_cfg in v.items():
+            if day_name not in _days:
+                raise ValueError(
+                    f"'{day_name}' is not a valid day. "
+                    f"Must be one of: {', '.join(sorted(_days))}"
+                )
+            # Validate each day's config via the SLADayConfig model
+            SLADayConfig(**day_cfg)
+        return v
+
+
+@router.get("/sla-business-hours")
+def get_sla_business_hours(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """CONFIG-3: Return org SLA business hours config. Falls back to defaults if null."""
+    require_permission(org)
+    result = (
+        db.table("organisations")
+        .select("sla_business_hours")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    hours = (data or {}).get("sla_business_hours") or _DEFAULT_SLA_BUSINESS_HOURS
+    return ok(data={"sla_business_hours": hours})
+
+
+@router.patch("/sla-business-hours")
+def update_sla_business_hours(
+    payload: SLABusinessHoursUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """CONFIG-3: Save org SLA business hours config."""
+    require_permission(org)
+
+    # Load current config so we do a proper merge
+    current_result = (
+        db.table("organisations")
+        .select("sla_business_hours")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    current_data = current_result.data
+    if isinstance(current_data, list):
+        current_data = current_data[0] if current_data else {}
+    current_hours = (current_data or {}).get("sla_business_hours") or _DEFAULT_SLA_BUSINESS_HOURS
+
+    # Merge: only replace fields that were explicitly sent
+    merged = dict(current_hours)
+    if payload.timezone is not None:
+        merged["timezone"] = payload.timezone
+    if payload.days is not None:
+        # Merge day-by-day so a partial days dict doesn't wipe unconfigured days
+        merged_days = dict(merged.get("days") or {})
+        for day_name, day_cfg in payload.days.items():
+            merged_days[day_name] = day_cfg if isinstance(day_cfg, dict) else day_cfg.model_dump()
+        merged["days"] = merged_days
+
+    updates = {
+        "sla_business_hours": merged,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    result = (
+        db.table("organisations")
+        .update(updates)
+        .eq("id", org["org_id"])
+        .execute()
+    )
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="sla_business_hours.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"sla_business_hours": merged},
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else updates
+    return ok(data={"sla_business_hours": merged}, message="SLA business hours saved")

@@ -12,7 +12,8 @@
  *       │   ├─ view === 'leads'        → LeadsPipeline
  *       │   └─ view === 'lead-profile' → LeadProfile
  *       ├─ AriaButton  (fixed FAB — always visible)  ← M01-10b
- *       └─ AriaPanel   (fixed slide-in panel)         ← M01-10b
+ *       ├─ AriaPanel   (fixed slide-in panel)         ← M01-10b
+ *       └─ OnboardingChecklist (fixed right panel)   ← ORG-ONBOARDING-B
  *
  * Routing: Zustand view-state (no react-router — not in package.json).
  *
@@ -39,7 +40,9 @@ import CommissionsModule   from './modules/commissions/CommissionsModule'
 import DemoQueue from './modules/leads/DemoQueue'
 import AriaButton from './modules/assistant/AriaButton'   // ← M01-10b
 import AriaPanel  from './modules/assistant/AriaPanel'    // ← M01-10b
+import OnboardingChecklist from './modules/onboarding/OnboardingChecklist'  // ← ORG-ONBOARDING-B
 import { getBriefing } from './services/assistant.service' // ← M01-10b
+import CreateOrg from "./modules/superadmin/CreateOrg.jsx";
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -108,11 +111,9 @@ function LoginScreen({ onAuth }) {
   })
 
   // MFA state — Phase 9E
-  // pendingAuth holds the aal1 token + factor_id returned by the login endpoint
-  // while the user completes the TOTP challenge.
   const [mfaStep, setMfaStep]       = useState(false)
   const [mfaCode, setMfaCode]       = useState('')
-  const [pendingAuth, setPendingAuth] = useState(null)  // { access_token, factor_id, user }
+  const [pendingAuth, setPendingAuth] = useState(null)
 
   const handleLogin = async () => {
     if (!email || !password) { setError('Email and password are required.'); return }
@@ -124,13 +125,11 @@ function LoginScreen({ onAuth }) {
         const { access_token, user, mfa_required, factor_id } = res.data.data
 
         if (mfa_required && factor_id) {
-          // aal1 session — park it and show TOTP entry screen
           setPendingAuth({ access_token, factor_id, user })
           setMfaStep(true)
           return
         }
 
-        // No MFA — proceed directly
         await _finishLogin(access_token, user)
       } else {
         setError(res.data.error ?? 'Login failed')
@@ -151,7 +150,6 @@ function LoginScreen({ onAuth }) {
     try {
       const { access_token, factor_id, user } = pendingAuth
 
-      // Step 1: create challenge
       const challengeRes = await axios.post(
         `${BASE}/api/v1/auth/mfa/challenge`,
         { factor_id },
@@ -159,7 +157,6 @@ function LoginScreen({ onAuth }) {
       )
       const { challenge_id } = challengeRes.data.data
 
-      // Step 2: verify TOTP code — response contains aal2 tokens
       const verifyRes = await axios.post(
         `${BASE}/api/v1/auth/mfa/verify`,
         { factor_id, challenge_id, code: mfaCode },
@@ -167,7 +164,6 @@ function LoginScreen({ onAuth }) {
       )
       const aal2Token = verifyRes.data.data.access_token
 
-      // Step 3: fetch full profile with aal2 token
       await _finishLogin(aal2Token, user)
     } catch (err) {
       const status = err?.response?.status
@@ -178,7 +174,6 @@ function LoginScreen({ onAuth }) {
     }
   }
 
-  // Shared finalisation: fetch /auth/me with the final token then call onAuth
   const _finishLogin = async (access_token, user) => {
     try {
       const meRes = await axios.get(`${BASE}/api/v1/auth/me`, {
@@ -222,7 +217,6 @@ function LoginScreen({ onAuth }) {
           Sign in to access your operations dashboard.
         </p>
 
-        {/* MFA step — shown after password login when mfa_required */}
         {mfaStep ? (
           <>
             <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 8px' }}>
@@ -272,7 +266,6 @@ function LoginScreen({ onAuth }) {
           </>
         ) : (
           <>
-            {/* Email */}
             <label style={loginLabel}>Email address</label>
             <input
               type="email"
@@ -284,7 +277,6 @@ function LoginScreen({ onAuth }) {
               style={loginInput}
             />
 
-            {/* Password */}
             <label style={loginLabel}>Password</label>
             <input
               type="password"
@@ -296,7 +288,6 @@ function LoginScreen({ onAuth }) {
               style={{ ...loginInput, marginBottom: 24 }}
             />
 
-            {/* Inactivity message */}
             {idleMsg && (
               <div style={{
                 background: '#0e2a38', border: '1px solid #1e4a60',
@@ -307,14 +298,12 @@ function LoginScreen({ onAuth }) {
               </div>
             )}
 
-            {/* Error */}
             {error && (
               <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16, lineHeight: 1.5 }}>
                 ⚠ {error}
               </p>
             )}
 
-            {/* Submit */}
             <button
               onClick={handleLogin}
               disabled={loading}
@@ -352,21 +341,21 @@ function AppShell() {
   const org = user
   const [activeNav, setActiveNav] = useState('leads')
 
-  // ── Session idle timeout (Phase 9D) — auto-logout after 30 min inactivity ──
+  // ── Session idle timeout (Phase 9D) ─────────────────────────────────────
   useEffect(() => {
     let timer = null
 
     const resetTimer = () => {
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
-        _idleLogout = true   // signal LoginScreen to show inactivity message
+        _idleLogout = true
         clearAuth()
       }, IDLE_MS)
     }
 
     const EVENTS = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll']
     EVENTS.forEach(ev => window.addEventListener(ev, resetTimer, { passive: true }))
-    resetTimer()  // start timer immediately on mount
+    resetTimer()
 
     return () => {
       if (timer) clearTimeout(timer)
@@ -377,11 +366,8 @@ function AppShell() {
   // Phase 9B: filter nav items based on role template
   const _userTemplate = user?.roles?.template ?? ''
   const visibleNav = NAV.filter(item => {
-    // sales_agent + affiliate_partner cannot see Ops dashboard
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
-    // affiliate_partner cannot see Renewals
     if (item.id === 'renewal' && _userTemplate === 'affiliate_partner') return false
-    // commissions only visible to affiliates, managers, and owners
     if (item.id === 'commissions') {
       return ['owner', 'ops_manager', 'sales_agent', 'affiliate_partner'].includes(_userTemplate)
         || useAuthStore.getState().hasPermission('is_admin')
@@ -396,10 +382,9 @@ function AppShell() {
 
   // ── Aria state (M01-10b) ─────────────────────────────────────────────────
   const [ariaOpen,    setAriaOpen]    = useState(false)
-  const [ariaBriefing, setAriaBriefing] = useState(null)   // null | string
+  const [ariaBriefing, setAriaBriefing] = useState(null)
   const [ariaBadge,   setAriaBadge]   = useState(false)
 
-  // Check briefing on mount — auto-open panel if show === true
   useEffect(() => {
     const token = useAuthStore.getState().token
     if (!token) return
@@ -407,12 +392,11 @@ function AppShell() {
       if (result?.show && result?.content) {
         setAriaBriefing(result.content)
         setAriaBadge(true)
-        setAriaOpen(true)   // auto-open on first login of the day
+        setAriaOpen(true)
       }
     }).catch(() => {})
   }, [])
 
-  // Fetch unread count on mount and whenever drawer closes
   useEffect(() => {
     const token = useAuthStore.getState().token
     if (!token) return
@@ -469,7 +453,6 @@ function AppShell() {
         borderBottom: '1px solid #1a2f3f',
         display: 'flex', alignItems: 'center', padding: '0 24px', gap: 16,
       }}>
-        {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>
           <div style={{ width: 32, height: 32, background: ds.teal, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: 'white' }}>
             O
@@ -480,14 +463,11 @@ function AppShell() {
           </span>
         </div>
 
-        {/* Right side */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
-          {/* Live dot */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{ width: 8, height: 8, background: ds.green, borderRadius: '50%', animation: 'pulse 2s infinite' }} />
             <span style={{ fontSize: 12, color: '#7A9BAD' }}>Live</span>
           </div>
-          {/* Bell icon */}
           <button
             onClick={() => setShowNotif(true)}
             style={{
@@ -511,14 +491,33 @@ function AppShell() {
               </span>
             )}
           </button>
-          {/* User chip */}
+          {org?.org_id === "00000000-0000-0000-0000-000000000001" && (
+            <button
+              onClick={() => {
+                setView('superadmin_create_org')
+                setActiveNav(null)
+              }}
+              style={{
+                background: 'none',
+                border: '1px solid #2a4a5a',
+                borderRadius: 7,
+                padding: '5px 10px',
+                fontSize: 12,
+                color: '#7A9BAD',
+                cursor: 'pointer',
+                fontFamily: ds.fontDm,
+                transition: 'all 0.15s'
+              }}
+            >
+              + Org
+            </button>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 30, height: 30, background: ds.tealDark, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: 'white' }}>
               {userInitial}
             </div>
             <span style={{ fontSize: 13, color: '#B0CDD8', fontWeight: 500 }}>{userName}</span>
           </div>
-          {/* Logout */}
           <button
             onClick={handleLogout}
             style={{ background: 'none', border: '1px solid #2a4a5a', borderRadius: 7, padding: '6px 12px', fontSize: 12, color: '#7A9BAD', cursor: 'pointer', fontFamily: ds.fontDm, transition: 'all 0.15s' }}
@@ -561,7 +560,6 @@ function AppShell() {
                 opacity:    item.active ? 1 : 0.5,
               }}
             >
-              {/* Icon box */}
               <div style={{
                 width:          30,
                 height:         30,
@@ -575,9 +573,7 @@ function AppShell() {
               }}>
                 {item.icon}
               </div>
-              {/* Label */}
               <span style={{ flex: 1, lineHeight: 1.3 }}>{item.label}</span>
-              {/* Module number */}
               <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.6)' : '#3a5a6a' }}>
                 {item.module}
               </span>
@@ -672,8 +668,12 @@ function AppShell() {
             <CommissionsModule user={user} />
           </div>
         )}
-        {/* Placeholder for modules not yet built */}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'commissions'].includes(view) && (
+        {view === 'superadmin_create_org' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <CreateOrg />
+          </div>
+        )}
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'commissions','superadmin_create_org'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>
@@ -687,7 +687,6 @@ function AppShell() {
       )}
 
       {/* ── Aria AI Assistant (M01-10b) ───────────────────────────── */}
-      {/* AriaButton: always visible FAB in bottom-right */}
       <AriaButton
         onClick={() => setAriaOpen(prev => !prev)}
         hasBadge={ariaBadge}
@@ -700,6 +699,13 @@ function AppShell() {
         onClose={() => setAriaOpen(false)}
         briefing={ariaBriefing}
         onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }}
+      />
+
+      {/* ── Onboarding Checklist (ORG-ONBOARDING-B) ──────────────── */}
+      {/* Self-manages visibility based on org.is_live + role template */}
+      <OnboardingChecklist
+        setView={(v) => { setView(v); setActiveNav(v); setSelectedLeadId(null) }}
+        setActiveNav={setActiveNav}
       />
     </div>
   )

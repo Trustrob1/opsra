@@ -3,7 +3,8 @@
  * Admin Dashboard — Phase 8B
  *
  * WH-1b update: "Qualification Bot" tab swapped for "Qualification Flow" tab.
- * QualificationBot.jsx remains in file structure but is no longer rendered.
+ * CONFIG-2: "🏢 Business Types" tab added.
+ * CONFIG-3: "🕐 Business Hours" tab added.
  *
  * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
  * table state, filters, and open modals when switching between tabs.
@@ -12,18 +13,20 @@
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
-import UserManagement      from './UserManagement'
-import RoleBuilder         from './RoleBuilder'
-import RoutingRules        from './RoutingRules'
-import IntegrationStatus   from './IntegrationStatus'
-import CommissionSettings  from './CommissionSettings'
-import ScoringRubric       from './ScoringRubric'
-import QualificationFlow   from './QualificationFlow'
-import LeadSLASettings     from './LeadSLASettings'
-import NurtureSettings     from './NurtureSettings'
-import CustomerMenuConfig  from './CustomerMenuConfig'
-import PipelineConfig      from './PipelineConfig'
-import TicketCategoriesConfig from './TicketCategoriesConfig'
+import UserManagement          from './UserManagement'
+import RoleBuilder             from './RoleBuilder'
+import RoutingRules            from './RoutingRules'
+import IntegrationStatus       from './IntegrationStatus'
+import CommissionSettings      from './CommissionSettings'
+import ScoringRubric           from './ScoringRubric'
+import QualificationFlow       from './QualificationFlow'
+import LeadSLASettings         from './LeadSLASettings'
+import NurtureSettings         from './NurtureSettings'
+import CustomerMenuConfig      from './CustomerMenuConfig'
+import PipelineConfig          from './PipelineConfig'
+import TicketCategoriesConfig  from './TicketCategoriesConfig'
+import DripBusinessTypesConfig from './DripBusinessTypesConfig'
+import SLABusinessHoursConfig  from './SLABusinessHoursConfig'
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
@@ -34,10 +37,12 @@ const TABS = [
   { id: 'scoring',        label: '🎯 Lead Scoring' },
   { id: 'qualification',  label: '📋 Qualification Flow' },
   { id: 'sla',            label: '⏱️ SLA Targets' },
+  { id: 'sla-hours',      label: '🕐 Business Hours' },
   { id: 'nurture',        label: '🌱 Nurture Engine' },
   { id: 'whatsapp-menu',  label: '📋 WhatsApp Menu' },
   { id: 'pipeline',       label: '🗂️ Pipeline' },
   { id: 'categories',     label: '🏷️ Categories' },
+  { id: 'biz-types',      label: '🏢 Business Types' },
   { id: 'kb',             label: '📚 Knowledge Base', link: true },
   { id: 'templates',      label: '💬 WA Templates',   link: true },
 ]
@@ -174,6 +179,9 @@ export default function AdminModule({ user }) {
         <div style={{ display: tab === 'sla' ? 'block' : 'none' }}>
           <LeadSLASettings />
         </div>
+        <div style={{ display: tab === 'sla-hours' ? 'block' : 'none' }}>
+          <SLABusinessHoursConfig />
+        </div>
         <div style={{ display: tab === 'nurture' ? 'block' : 'none' }}>
           <NurtureSettings />
         </div>
@@ -185,6 +193,9 @@ export default function AdminModule({ user }) {
         </div>
         <div style={{ display: tab === 'categories' ? 'block' : 'none' }}>
           <TicketCategoriesConfig />
+        </div>
+        <div style={{ display: tab === 'biz-types' ? 'block' : 'none' }}>
+          <DripBusinessTypesConfig />
         </div>
 
         {/* Nav links — conditional render (no state to preserve) */}

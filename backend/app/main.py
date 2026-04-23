@@ -4,19 +4,22 @@ FastAPI application entry point.
 Registers all routers — Phase 1 (auth, admin, webhooks) + Phase 2A (leads)
   + Phase 3A (customers, whatsapp) + Phase 4A (tickets)
   + Phase 5A (subscriptions) + Phase 6A (ops intel) + Phase 7A (tasks)
-  + M01-10b (assistant / Aria).
+  + M01-10b (assistant / Aria)
+  + ORG-ONBOARDING-A (superadmin, onboarding).
 """
 from __future__ import annotations
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
+
 app = FastAPI(
     title="Opsra API",
     version="1.0.0",
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url=None,
 )
+
 # CORS — Section 11.6: only the deployed frontend URL, never *
 _origins = [settings.FRONTEND_URL]
 if settings.ALLOWED_ORIGINS:
@@ -24,14 +27,16 @@ if settings.ALLOWED_ORIGINS:
         origin = origin.strip()
         if origin and origin not in _origins:
             _origins.append(origin)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Superadmin-Secret"],
     max_age=600,
 )
+
 # ---------------------------------------------------------------------------
 # Router registration
 # ---------------------------------------------------------------------------
@@ -48,6 +53,9 @@ from app.routers import tasks as tasks_router                  # ← Phase 7A
 from app.routers import notifications as notifications_router
 from app.routers import commissions as commissions_router
 from app.routers import assistant as assistant_router          # ← M01-10b
+from app.routers import superadmin as superadmin_router        # ← ORG-ONBOARDING-A
+from app.routers import onboarding as onboarding_router        # ← ORG-ONBOARDING-A
+
 import logging
 logging.basicConfig(
     level=logging.INFO,
@@ -128,6 +136,19 @@ app.include_router(
     prefix="/api/v1",
     tags=["assistant"],
 )
+# ORG-ONBOARDING-A — Super-Admin provisioning
+app.include_router(
+    superadmin_router.router,
+    prefix="/api/v1",
+    tags=["superadmin"],
+)
+# ORG-ONBOARDING-A — Onboarding checklist + go-live
+app.include_router(
+    onboarding_router.router,
+    prefix="/api/v1",
+    tags=["onboarding"],
+)
+
 # ---------------------------------------------------------------------------
 # Health check — Technical Spec Section 5.8
 # ---------------------------------------------------------------------------

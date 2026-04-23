@@ -10,9 +10,14 @@ Celery task:
     Update drip_sends.status to sent / paused / skipped / failed.
 
 Pause rules (evaluated in order):
-  1. Customer status != 'active'       → status = 'skipped'
+  1. Customer status != 'active'             → status = 'skipped'
   2. Customer has an open/in-progress ticket → status = 'paused'
-  3. drip_message row not found        → status = 'failed'
+  3. drip_message row not found              → status = 'failed'
+  4. drip_message.business_types is non-empty
+     AND customer.business_type does not match → status = 'skipped'
+     (CONFIG-2: match is case-insensitive; also resolves labels to keys
+      using the org's drip_business_types config so legacy free-text
+      entries like "Pharmacy" still match the key "pharmacy")
 
 On success:
   • INSERT into whatsapp_messages (status = 'queued')
@@ -55,6 +60,77 @@ def _normalise(data) -> Optional[dict]:
     return data
 
 
+def _build_key_set(org_biz_types: list[dict]) -> dict[str, str]:
+    """
+    CONFIG-2: Build a lookup from every known label and key → canonical key.
+
+    Given org_biz_types = [{"key": "pharmacy", "label": "Pharmacy"}, ...]
+    returns:
+      {
+        "pharmacy":         "pharmacy",   # key  → key
+        "Pharmacy":         "pharmacy",   # label → key (original case)
+        "pharmacy":         "pharmacy",   # already lower
+        ...
+      }
+    This lets us resolve legacy free-text values like "Pharmacy" or "PHARMACY"
+    to the canonical slug "pharmacy" for comparison.
+    """
+    mapping: dict[str, str] = {}
+    for entry in org_biz_types or []:
+        key   = (entry.get("key")   or "").strip()
+        label = (entry.get("label") or "").strip()
+        if key:
+            mapping[key.lower()]   = key
+            mapping[key]           = key
+        if label:
+            mapping[label.lower()] = key
+            mapping[label]         = key
+    return mapping
+
+
+def _business_type_matches(
+    customer_biz_type: Optional[str],
+    message_biz_types: list[str],
+    label_to_key: dict[str, str],
+) -> bool:
+    """
+    CONFIG-2: Return True if the customer's business_type matches any entry
+    in message_biz_types, or if message_biz_types is empty (= send to all).
+
+    Matching strategy (in order):
+      1. Empty message_biz_types → always matches.
+      2. No customer business_type → does not match a restricted message.
+      3. Resolve customer value through label_to_key map (handles legacy labels).
+      4. Case-insensitive direct comparison as final fallback.
+    """
+    if not message_biz_types:
+        return True  # empty = send to all types
+
+    if not customer_biz_type:
+        return False  # message is restricted but customer has no type set
+
+    customer_lower = customer_biz_type.strip().lower()
+
+    # Resolve customer value to canonical key if possible
+    resolved_customer = label_to_key.get(customer_biz_type.strip()) \
+        or label_to_key.get(customer_lower) \
+        or customer_lower
+
+    for msg_type in message_biz_types:
+        msg_lower   = (msg_type or "").strip().lower()
+        resolved_msg = label_to_key.get(msg_type.strip()) \
+            or label_to_key.get(msg_lower) \
+            or msg_lower
+
+        if resolved_customer == resolved_msg:
+            return True
+        # Fallback: raw case-insensitive match (handles configs with no org types)
+        if customer_lower == msg_lower:
+            return True
+
+    return False
+
+
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
 def run_drip_scheduler(self):
     """
@@ -68,10 +144,15 @@ def run_drip_scheduler(self):
 
     try:
         today = _today_iso()
-        orgs = (db.table("organisations").select("id").execute().data or [])
+        orgs = (db.table("organisations").select("id, drip_business_types").execute().data or [])
 
         for org_row in orgs:
             org_id: str = org_row["id"]
+
+            # CONFIG-2: build label→key map once per org
+            org_biz_types = org_row.get("drip_business_types") or []
+            label_to_key  = _build_key_set(org_biz_types)
+
             try:
                 all_pending = (
                     db.table("drip_sends")
@@ -98,7 +179,7 @@ def run_drip_scheduler(self):
                         # ── Pause rule 1: customer not active → skip ────────
                         customer = _normalise(
                             db.table("customers")
-                            .select("id, status, whatsapp, phone, full_name")
+                            .select("id, status, whatsapp, phone, full_name, business_type")
                             .eq("id", customer_id)
                             .execute()
                             .data
@@ -134,7 +215,7 @@ def run_drip_scheduler(self):
 
                         message = _normalise(
                             db.table("drip_messages")
-                            .select("id, body, message_type")
+                            .select("id, body, message_type, business_types")
                             .eq("id", message_id)
                             .execute()
                             .data
@@ -146,9 +227,22 @@ def run_drip_scheduler(self):
                             )
                             continue
 
+                        # ── Pause rule 3 (CONFIG-2): business_type mismatch → skip
+                        msg_biz_types = message.get("business_types") or []
+                        customer_biz  = customer.get("business_type")
+                        if not _business_type_matches(
+                            customer_biz, msg_biz_types, label_to_key
+                        ):
+                            _set_status(db, send_id, "skipped")
+                            logger.info(
+                                "drip_worker: send %s skipped — customer type '%s' "
+                                "not in message types %s",
+                                send_id, customer_biz, msg_biz_types,
+                            )
+                            skipped += 1
+                            continue
+
                         # ── Queue outbound WhatsApp message ─────────────────
-                        # NOTE: verify column names against whatsapp_messages
-                        #       schema during smoke test.
                         db.table("whatsapp_messages").insert(
                             {
                                 "org_id": org_id,

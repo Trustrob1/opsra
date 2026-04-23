@@ -270,3 +270,24 @@ export const getTicketCategories = () =>
 export const updateTicketCategories = (payload) =>
   axios.patch('/api/v1/admin/ticket-categories', payload, { headers: _h() })
     .then(r => r.data.data)
+
+
+// ── Drip Business Types — CONFIG-2 ───────────────────────────────────────────
+
+export const getDripBusinessTypes = () =>
+  axios.get('/api/v1/admin/drip-business-types', { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateDripBusinessTypes = (payload) =>
+  axios.patch('/api/v1/admin/drip-business-types', payload, { headers: _h() })
+    .then(r => r.data.data)
+
+// ── SLA Business Hours — CONFIG-3 ────────────────────────────────────────────
+
+export const getSlaBusinessHours = () =>
+  axios.get('/api/v1/admin/sla-business-hours', { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateSlaBusinessHours = (payload) =>
+  axios.patch('/api/v1/admin/sla-business-hours', payload, { headers: _h() })
+    .then(r => r.data.data)

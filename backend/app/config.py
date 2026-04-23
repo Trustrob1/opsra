@@ -1,5 +1,5 @@
 # app/config.py
-# Loads all 16 environment variables defined in Technical Spec Section 2.2
+# Loads all environment variables defined in Technical Spec Section 2.2
 # Uses Pydantic Settings for validation — app will not start if required vars are missing
 
 from pydantic_settings import BaseSettings
@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     FRONTEND_URL: str = "http://localhost:5173"
     ALLOWED_ORIGINS: str = "http://localhost:5173"
+
+    # Super-admin provisioning
+    SUPERADMIN_SECRET: str = ""
 
     @field_validator("ENVIRONMENT")
     @classmethod

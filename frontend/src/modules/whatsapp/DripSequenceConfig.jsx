@@ -9,13 +9,20 @@
  *
  * Non-owner users see a read-only view.
  *
+ * CONFIG-2 update: business_types field now uses org-configured types as a
+ * multi-select instead of a free-text input. Falls back gracefully when no
+ * types are configured (shows free-text fallback).
+ *
  * Props:
  *   isOwner — bool  (from org.roles.template === 'owner')
+ *
+ * Pattern 51: full rewrite required for any edit — never sed.
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
 import { getDripSequence, updateDripSequence, listTemplates } from '../../services/whatsapp.service'
+import { getDripBusinessTypes } from '../../services/admin.service'
 
 const BLANK_MSG = () => ({
   _key: Math.random().toString(36).slice(2),
@@ -30,6 +37,7 @@ const BLANK_MSG = () => ({
 export default function DripSequenceConfig({ isOwner = false }) {
   const [sequence, setSequence]         = useState([])
   const [templates, setTemplates]       = useState([])
+  const [orgBizTypes, setOrgBizTypes]   = useState([])   // CONFIG-2: org-configured types
   const [loading, setLoading]           = useState(true)
   const [editing, setEditing]           = useState(false)
   const [draft, setDraft]               = useState([])
@@ -39,10 +47,15 @@ export default function DripSequenceConfig({ isOwner = false }) {
 
   const load = useCallback(() => {
     setLoading(true)
-    Promise.all([getDripSequence(), listTemplates()])
-      .then(([sRes, tRes]) => {
+    Promise.all([
+      getDripSequence(),
+      listTemplates(),
+      getDripBusinessTypes().catch(() => ({ business_types: [] })),
+    ])
+      .then(([sRes, tRes, bizRes]) => {
         setSequence(sRes.data?.data ?? [])
         setTemplates(tRes.data?.data ?? [])
+        setOrgBizTypes((bizRes.business_types ?? []).filter(t => t.enabled))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -53,7 +66,6 @@ export default function DripSequenceConfig({ isOwner = false }) {
   const approvedTemplates = templates.filter(t => t.meta_status === 'approved')
 
   function startEdit() {
-    // pre-fill draft from current sequence, add _key for React reconciliation
     setDraft(sequence.map(m => ({
       ...m,
       _key: m.id || Math.random().toString(36).slice(2),
@@ -65,10 +77,7 @@ export default function DripSequenceConfig({ isOwner = false }) {
   }
 
   function addMessage() {
-    setDraft(d => [
-      ...d,
-      { ...BLANK_MSG(), sequence_order: d.length + 1 },
-    ])
+    setDraft(d => [...d, { ...BLANK_MSG(), sequence_order: d.length + 1 }])
   }
 
   function removeMessage(key) {
@@ -79,9 +88,20 @@ export default function DripSequenceConfig({ isOwner = false }) {
     setDraft(d => d.map(m => m._key === key ? { ...m, [field]: value } : m))
   }
 
+  // CONFIG-2: toggle a business_type key in/out of a message's array
+  function toggleBizType(msgKey, typeKey) {
+    setDraft(d => d.map(m => {
+      if (m._key !== msgKey) return m
+      const current = m.business_types || []
+      const next = current.includes(typeKey)
+        ? current.filter(k => k !== typeKey)
+        : [...current, typeKey]
+      return { ...m, business_types: next }
+    }))
+  }
+
   async function handleSave() {
     setSaveErr(null)
-    // Validate all rows
     for (let i = 0; i < draft.length; i++) {
       const m = draft[i]
       if (!m.name.trim())      { setSaveErr(`Row ${i + 1}: Name is required.`); return }
@@ -139,7 +159,7 @@ export default function DripSequenceConfig({ isOwner = false }) {
       gridTemplateColumns: '36px 2fr 2fr 80px 1fr 36px',
       gap: 10, padding: '14px 16px',
       borderBottom: `1px solid ${ds.border}`,
-      alignItems: 'center',
+      alignItems: 'start',
     },
     seqHeader: {
       background: '#E0F4F6', padding: '10px 16px',
@@ -170,13 +190,26 @@ export default function DripSequenceConfig({ isOwner = false }) {
       background: '#FFE8E8', color: '#C0392B', border: 'none',
       borderRadius: 7, cursor: 'pointer', fontWeight: 700, fontSize: 14,
       width: 28, height: 28, display: 'flex', alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'center', flexShrink: 0, marginTop: 4,
     },
     orderNum: {
       width: 28, height: 28, background: '#E0F4F6', color: ds.teal,
       borderRadius: '50%', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', fontWeight: 700, fontSize: 13,
+      justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0,
     },
+    bizTypeWrap: { display: 'flex', flexWrap: 'wrap', gap: 5, paddingTop: 2 },
+    bizChip: (active) => ({
+      padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+      cursor: 'pointer', border: 'none',
+      background: active ? ds.teal : '#EAF0F2',
+      color: active ? '#fff' : ds.gray,
+    }),
+    bizAllChip: (allSelected) => ({
+      padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+      cursor: 'pointer', border: 'none',
+      background: allSelected ? '#E0F4F6' : '#EAF0F2',
+      color: allSelected ? ds.teal : ds.gray,
+    }),
     addRowBtn: {
       margin: '12px 16px', padding: '8px 16px', background: '#E0F4F6',
       color: ds.teal, border: `1px dashed ${ds.teal}`, borderRadius: 9,
@@ -218,7 +251,47 @@ export default function DripSequenceConfig({ isOwner = false }) {
     empty: { padding: 32, textAlign: 'center', color: ds.gray, fontSize: 13 },
   }
 
-  const rows = editing ? draft : sequence
+  // Renders the business types cell in edit mode.
+  // If org has configured types: show pill toggles.
+  // Otherwise: fall back to free-text.
+  function BizTypesCell({ m }) {
+    if (orgBizTypes.length > 0) {
+      const selected = m.business_types || []
+      const allSelected = selected.length === 0
+      return (
+        <div style={S.bizTypeWrap}>
+          <button
+            style={S.bizAllChip(allSelected)}
+            onClick={() => updateMessage(m._key, 'business_types', [])}
+          >
+            All
+          </button>
+          {orgBizTypes.map(t => (
+            <button
+              key={t.key}
+              style={S.bizChip(selected.includes(t.key))}
+              onClick={() => toggleBizType(m._key, t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )
+    }
+    // Fallback: free-text (no org types configured yet)
+    return (
+      <input
+        style={S.input}
+        value={(m.business_types || []).join(', ')}
+        placeholder="e.g. Pharmacy, Supermarket (blank = all)"
+        onChange={e => updateMessage(m._key, 'business_types',
+          e.target.value
+            ? e.target.value.split(',').map(v => v.trim()).filter(Boolean)
+            : []
+        )}
+      />
+    )
+  }
 
   return (
     <div style={S.wrap}>
@@ -232,7 +305,9 @@ export default function DripSequenceConfig({ isOwner = false }) {
       </div>
 
       <div style={S.hint}>
-        💡 The drip sequence sends automatic WhatsApp messages to new customers after conversion. Messages are sent in order by delay (days after conversion). Replacing the sequence deactivates all previous messages.
+        💡 The drip sequence sends automatic WhatsApp messages to new customers after conversion.
+        Messages are sent in order by delay (days after conversion). Replacing the sequence
+        deactivates all previous messages.
       </div>
 
       {!isOwner && (
@@ -255,16 +330,24 @@ export default function DripSequenceConfig({ isOwner = false }) {
             <div style={S.hdrCell}>Name</div>
             <div style={S.hdrCell}>Template</div>
             <div style={S.hdrCell}>Delay (days)</div>
-            <div style={S.hdrCell}>Business Types</div>
+            <div style={S.hdrCell}>
+              Business Types
+              {orgBizTypes.length > 0 && (
+                <span style={{ fontWeight: 400, color: '#4a9aaa', marginLeft: 4 }}>
+                  (configured)
+                </span>
+              )}
+            </div>
             {editing && <div />}
           </div>
 
-          {/* Rows */}
-          {rows.length === 0 && !editing && (
+          {/* Empty state */}
+          {(editing ? draft : sequence).length === 0 && !editing && (
             <div style={S.empty}>No drip messages configured.</div>
           )}
 
-          {editing ? draft.map((m, i) => (
+          {/* Edit rows */}
+          {editing && draft.map((m, i) => (
             <div key={m._key} style={S.seqRow}>
               <div style={S.orderNum}>{i + 1}</div>
               <input
@@ -290,23 +373,25 @@ export default function DripSequenceConfig({ isOwner = false }) {
                 value={m.delay_days}
                 onChange={e => updateMessage(m._key, 'delay_days', e.target.value)}
               />
-              <input
-                style={S.input}
-                value={(m.business_types || []).join(', ')}
-                placeholder="e.g. Pharmacy, Supermarket (blank = all)"
-                onChange={e => updateMessage(m._key, 'business_types',
-                  e.target.value ? e.target.value.split(',').map(v => v.trim()).filter(Boolean) : [])}
-              />
+              <BizTypesCell m={m} />
               <button style={S.removeBtn} onClick={() => removeMessage(m._key)}>×</button>
             </div>
-          )) : sequence.map((m, i) => (
+          ))}
+
+          {/* View rows */}
+          {!editing && sequence.map((m, i) => (
             <div key={m.id || i} style={S.viewRow}>
               <div style={S.dot} />
               <div style={{ flex: 1 }}>
                 <div style={S.viewVal}>{m.name}</div>
                 <div style={{ ...S.viewLabel, marginTop: 2 }}>
                   Day {m.delay_days} · Template: <code style={{ fontSize: 11 }}>{m.template_id}</code>
-                  {m.business_types?.length > 0 && ` · ${m.business_types.join(', ')}`}
+                  {m.business_types?.length > 0 && ` · ${
+                    orgBizTypes.length > 0
+                      ? m.business_types.map(k => orgBizTypes.find(t => t.key === k)?.label ?? k).join(', ')
+                      : m.business_types.join(', ')
+                  }`}
+                  {(!m.business_types || m.business_types.length === 0) && ' · All types'}
                 </div>
               </div>
               <span style={{ fontSize: 12, color: ds.teal, fontWeight: 600 }}>
@@ -328,7 +413,10 @@ export default function DripSequenceConfig({ isOwner = false }) {
                 <button style={S.saveBtn} onClick={handleSave} disabled={saving}>
                   {saving ? 'Saving…' : 'Save & Replace Sequence'}
                 </button>
-                <button style={S.cancelBtn} onClick={() => { setEditing(false); setSaveErr(null) }}>
+                <button
+                  style={S.cancelBtn}
+                  onClick={() => { setEditing(false); setSaveErr(null) }}
+                >
                   Cancel
                 </button>
               </div>
