@@ -558,12 +558,20 @@ def create_lead(
     org_id: str,
     user_id: str,
     payload: LeadCreate,
+    utm_source: Optional[str] = None,
+    campaign_id: Optional[str] = None,
+    source_team: Optional[str] = None,
+    entry_path: Optional[str] = None,
+    utm_ad: Optional[str] = None,
 ) -> dict:
     """
     Create a lead.
     - Auto-assigns to creating user (unless assigned_to is explicitly set)
     - Checks for duplicate phone/email in org → 409
     - Writes timeline event + audit log
+    - GPM-1A: accepts optional UTM/team attribution params.
+      first_touch_team set once at creation — never overwritten.
+    - GPM-1D: utm_ad captures specific ad creative identifier.
     """
     data = payload.model_dump(exclude_none=True)
 
@@ -585,10 +593,23 @@ def create_lead(
     # Auto-assign
     if not data.get("assigned_to"):
         data["assigned_to"] = user_id
-
+ 
     data["org_id"] = org_id
     data["stage"] = "new"
     data["score"] = "unscored"
+ 
+    # GPM-1A — UTM/team attribution. first_touch_team is write-once at creation.
+    if utm_source:
+        data["utm_source"] = utm_source
+    if campaign_id:
+        data["campaign_id"] = campaign_id
+    if source_team:
+        data["source_team"] = source_team
+        data["first_touch_team"] = source_team  # immutable attribution
+    if entry_path:
+        data["entry_path"] = entry_path
+    if utm_ad:
+        data["utm_ad"] = utm_ad
 
     # Duplicate detection — Section 9.3
     if check_duplicate(db, org_id, data.get("phone"), data.get("email")):

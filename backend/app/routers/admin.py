@@ -1965,3 +1965,209 @@ def update_sla_business_hours(
     if isinstance(data, list):
         data = data[0] if data else updates
     return ok(data={"sla_business_hours": merged}, message="SLA business hours saved")
+
+# ── SM-1: Sales Mode Engine ───────────────────────────────────────────────────
+# Append these routes + models to the bottom of app/routers/admin.py
+
+from typing import Literal
+
+_CONTACT_MENU_ACTION_TYPES = {
+    "qualify",
+    "kb_enquiry",
+    "support_ticket",
+    "route_to_role",
+    "free_form",
+}
+
+_CONTACT_MENU_ROLE_OPTIONS = {"owner", "ops_manager", "sales_agent", "support_agent", "finance"}
+
+
+class SalesModeUpdate(BaseModel):
+    mode: Literal["consultative", "transactional", "hybrid"]
+
+
+class ContactMenuItem(BaseModel):
+    id: str = Field(..., min_length=1, max_length=50)
+    label: str = Field(..., min_length=1, max_length=24)
+    description: Optional[str] = Field(default=None, max_length=72)
+    action: str
+    role: Optional[str] = None  # only required when action == "route_to_role"
+
+    @field_validator("label")
+    @classmethod
+    def _validate_label(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("label is required")
+        if len(v) > 24:
+            raise ValueError("label must be 24 characters or fewer")
+        return v
+
+    @field_validator("action")
+    @classmethod
+    def _validate_action(cls, v: str) -> str:
+        if v not in _CONTACT_MENU_ACTION_TYPES:
+            raise ValueError(
+                f"action must be one of: {', '.join(sorted(_CONTACT_MENU_ACTION_TYPES))}"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _validate_role(self) -> "ContactMenuItem":
+        if self.action == "route_to_role":
+            if not self.role or self.role not in _CONTACT_MENU_ROLE_OPTIONS:
+                raise ValueError(
+                    f"role is required when action is 'route_to_role'. "
+                    f"Must be one of: {', '.join(sorted(_CONTACT_MENU_ROLE_OPTIONS))}"
+                )
+        return self
+
+
+class ContactMenuSection(BaseModel):
+    greeting: Optional[str] = Field(default=None, max_length=200)
+    section_title: Optional[str] = Field(default=None, max_length=24)
+    items: List[ContactMenuItem]
+
+    @field_validator("items")
+    @classmethod
+    def _validate_items(cls, v: list) -> list:
+        if len(v) > 10:
+            raise ValueError("A contact menu may have a maximum of 10 items")
+        return v
+
+
+class ContactMenusUpdate(BaseModel):
+    returning_contact_menu: Optional[ContactMenuSection] = None
+    known_customer_menu: Optional[ContactMenuSection] = None
+
+
+# ── Sales mode routes ─────────────────────────────────────────────────────────
+
+@router.get("/sales-mode")
+def get_sales_mode(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """SM-1: Return org sales_mode. Defaults to 'consultative' if null."""
+    require_permission(org)
+    result = (
+        db.table("organisations")
+        .select("sales_mode")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    mode = (data or {}).get("sales_mode") or "consultative"
+    return ok(data={"mode": mode})
+
+
+@router.patch("/sales-mode")
+def update_sales_mode(
+    payload: SalesModeUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """SM-1: Update org sales_mode. Owner + ops_manager only."""
+    require_permission(org)
+    # RBAC: owner and ops_manager only
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and ops managers can update the sales mode.",
+        )
+    db.table("organisations").update({
+        "sales_mode": payload.mode,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="sales_mode.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"mode": payload.mode},
+    )
+    return ok(data={"mode": payload.mode}, message="Sales mode saved")
+
+
+# ── Contact menus routes ──────────────────────────────────────────────────────
+
+@router.get("/contact-menus")
+def get_contact_menus(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """SM-1: Return returning_contact_menu + known_customer_menu from triage config."""
+    require_permission(org)
+    result = (
+        db.table("organisations")
+        .select("whatsapp_triage_config")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    triage_config = (data or {}).get("whatsapp_triage_config") or {}
+    return ok(data={
+        "returning_contact_menu": triage_config.get("returning_contact_menu") or {"items": []},
+        "known_customer_menu":    triage_config.get("known_customer_menu")    or {"items": []},
+    })
+
+
+@router.patch("/contact-menus")
+def update_contact_menus(
+    payload: ContactMenusUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """SM-1: Update returning_contact_menu and/or known_customer_menu. Owner + ops_manager only."""
+    require_permission(org)
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and ops managers can update contact menus.",
+        )
+
+    # Load current triage config so we do a safe merge
+    current_result = (
+        db.table("organisations")
+        .select("whatsapp_triage_config")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    current_data = current_result.data
+    if isinstance(current_data, list):
+        current_data = current_data[0] if current_data else {}
+    current_triage = dict((current_data or {}).get("whatsapp_triage_config") or {})
+
+    if payload.returning_contact_menu is not None:
+        current_triage["returning_contact_menu"] = payload.returning_contact_menu.model_dump()
+
+    if payload.known_customer_menu is not None:
+        current_triage["known_customer_menu"] = payload.known_customer_menu.model_dump()
+
+    db.table("organisations").update({
+        "whatsapp_triage_config": current_triage,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="contact_menus.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={
+            "returning_contact_menu": current_triage.get("returning_contact_menu"),
+            "known_customer_menu":    current_triage.get("known_customer_menu"),
+        },
+    )
+    return ok(data={
+        "returning_contact_menu": current_triage.get("returning_contact_menu"),
+        "known_customer_menu":    current_triage.get("known_customer_menu"),
+    }, message="Contact menus saved")

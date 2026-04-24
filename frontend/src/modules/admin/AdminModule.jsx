@@ -5,6 +5,8 @@
  * WH-1b update: "Qualification Bot" tab swapped for "Qualification Flow" tab.
  * CONFIG-2: "🏢 Business Types" tab added.
  * CONFIG-3: "🕐 Business Hours" tab added.
+ * SM-1: "🛒 Sales System" tab added — SalesModeConfig + ContactMenuConfig.
+ * SHOP-1B: "🛍️ Shopify" tab added — ShopifyIntegration.
  *
  * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
  * table state, filters, and open modals when switching between tabs.
@@ -27,6 +29,10 @@ import PipelineConfig          from './PipelineConfig'
 import TicketCategoriesConfig  from './TicketCategoriesConfig'
 import DripBusinessTypesConfig from './DripBusinessTypesConfig'
 import SLABusinessHoursConfig  from './SLABusinessHoursConfig'
+import SalesModeConfig         from './SalesModeConfig'
+import ContactMenuConfig       from './ContactMenuConfig'
+import ShopifyIntegration      from './ShopifyIntegration'
+import GrowthConfig            from './GrowthConfig'
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
@@ -43,14 +49,23 @@ const TABS = [
   { id: 'pipeline',       label: '🗂️ Pipeline' },
   { id: 'categories',     label: '🏷️ Categories' },
   { id: 'biz-types',      label: '🏢 Business Types' },
+  { id: 'sales-system',   label: '🛒 Sales System' },
+  { id: 'shopify',        label: '🛍️ Shopify' },
+  { id: 'growth-config',  label: '📈 Growth Config' },
   { id: 'kb',             label: '📚 Knowledge Base', link: true },
   { id: 'templates',      label: '💬 WA Templates',   link: true },
 ]
 
+const SALES_SUB_TABS = [
+  { id: 'sales-mode',    label: 'Sales Mode' },
+  { id: 'contact-menus', label: 'Contact Menus' },
+]
+
 export default function AdminModule({ user }) {
-  const [tab, setTab]               = useState('users')
+  const [tab, setTab]                 = useState('users')
+  const [salesSubTab, setSalesSubTab] = useState('sales-mode')
   const [accessDenied, setAccessDenied] = useState(false)
-  const [checking, setChecking]     = useState(true)
+  const [checking, setChecking]       = useState(true)
 
   useEffect(() => {
     adminSvc.listUsers()
@@ -87,26 +102,13 @@ export default function AdminModule({ user }) {
 
   return (
     <div>
-      {/* Module header */}
-      <div style={{
-        background:   '#0a1a24',
-        padding:      '28px 32px 0',
-        borderBottom: '1px solid #1a2f3f',
-      }}>
+      <div style={{ background: '#0a1a24', padding: '28px 32px 0', borderBottom: '1px solid #1a2f3f' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{
-            background:     ds.teal,
-            color:          'white',
-            borderRadius:   8,
-            width:          36,
-            height:         36,
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            fontFamily:     ds.fontSyne,
-            fontWeight:     800,
-            fontSize:       12,
-            flexShrink:     0,
+            background: ds.teal, color: 'white', borderRadius: 8,
+            width: 36, height: 36, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontFamily: ds.fontSyne,
+            fontWeight: 800, fontSize: 12, flexShrink: 0,
           }}>
             08
           </div>
@@ -120,7 +122,6 @@ export default function AdminModule({ user }) {
           </div>
         </div>
 
-        {/* Tab bar */}
         <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
           {TABS.map(t => {
             const isActive = tab === t.id
@@ -130,18 +131,14 @@ export default function AdminModule({ user }) {
                 onClick={() => setTab(t.id)}
                 title={t.link ? 'View-only — manage in the respective module' : undefined}
                 style={{
-                  background:   'none',
-                  border:       'none',
+                  background: 'none', border: 'none',
                   borderBottom: isActive ? `2px solid ${ds.teal}` : '2px solid transparent',
-                  padding:      '10px 18px',
-                  cursor:       'pointer',
-                  fontFamily:   ds.fontDm,
-                  fontSize:     13.5,
-                  fontWeight:   isActive ? 600 : 400,
-                  color:        isActive ? ds.teal : '#5a8a9f',
-                  transition:   'all 0.15s',
-                  opacity:      t.link ? 0.7 : 1,
-                  whiteSpace:   'nowrap',
+                  padding: '10px 18px', cursor: 'pointer',
+                  fontFamily: ds.fontDm, fontSize: 13.5,
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? ds.teal : '#5a8a9f',
+                  transition: 'all 0.15s', opacity: t.link ? 0.7 : 1,
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {t.label}{t.link ? ' ↗' : ''}
@@ -151,66 +148,67 @@ export default function AdminModule({ user }) {
         </div>
       </div>
 
-      {/* Tab content */}
       <div style={{ padding: 28 }}>
+        <div style={{ display: tab === 'users'         ? 'block' : 'none' }}><UserManagement /></div>
+        <div style={{ display: tab === 'roles'         ? 'block' : 'none' }}><RoleBuilder /></div>
+        <div style={{ display: tab === 'routing'       ? 'block' : 'none' }}><RoutingRules /></div>
+        <div style={{ display: tab === 'integrations'  ? 'block' : 'none' }}><IntegrationStatus /></div>
+        <div style={{ display: tab === 'commission'    ? 'block' : 'none' }}><CommissionSettings /></div>
+        <div style={{ display: tab === 'scoring'       ? 'block' : 'none' }}><ScoringRubric /></div>
+        <div style={{ display: tab === 'qualification' ? 'block' : 'none' }}><QualificationFlow /></div>
+        <div style={{ display: tab === 'sla'           ? 'block' : 'none' }}><LeadSLASettings /></div>
+        <div style={{ display: tab === 'sla-hours'     ? 'block' : 'none' }}><SLABusinessHoursConfig /></div>
+        <div style={{ display: tab === 'nurture'       ? 'block' : 'none' }}><NurtureSettings /></div>
+        <div style={{ display: tab === 'whatsapp-menu' ? 'block' : 'none' }}><CustomerMenuConfig /></div>
+        <div style={{ display: tab === 'pipeline'      ? 'block' : 'none' }}><PipelineConfig /></div>
+        <div style={{ display: tab === 'categories'    ? 'block' : 'none' }}><TicketCategoriesConfig /></div>
+        <div style={{ display: tab === 'biz-types'     ? 'block' : 'none' }}><DripBusinessTypesConfig /></div>
 
-        {/* Pattern 26: mount-and-hide — preserves table state + open modals */}
-        <div style={{ display: tab === 'users' ? 'block' : 'none' }}>
-          <UserManagement />
-        </div>
-        <div style={{ display: tab === 'roles' ? 'block' : 'none' }}>
-          <RoleBuilder />
-        </div>
-        <div style={{ display: tab === 'routing' ? 'block' : 'none' }}>
-          <RoutingRules />
-        </div>
-        <div style={{ display: tab === 'integrations' ? 'block' : 'none' }}>
-          <IntegrationStatus />
-        </div>
-        <div style={{ display: tab === 'commission' ? 'block' : 'none' }}>
-          <CommissionSettings />
-        </div>
-        <div style={{ display: tab === 'scoring' ? 'block' : 'none' }}>
-          <ScoringRubric />
-        </div>
-        <div style={{ display: tab === 'qualification' ? 'block' : 'none' }}>
-          <QualificationFlow />
-        </div>
-        <div style={{ display: tab === 'sla' ? 'block' : 'none' }}>
-          <LeadSLASettings />
-        </div>
-        <div style={{ display: tab === 'sla-hours' ? 'block' : 'none' }}>
-          <SLABusinessHoursConfig />
-        </div>
-        <div style={{ display: tab === 'nurture' ? 'block' : 'none' }}>
-          <NurtureSettings />
-        </div>
-        <div style={{ display: tab === 'whatsapp-menu' ? 'block' : 'none' }}>
-          <CustomerMenuConfig />
-        </div>
-        <div style={{ display: tab === 'pipeline' ? 'block' : 'none' }}>
-          <PipelineConfig />
-        </div>
-        <div style={{ display: tab === 'categories' ? 'block' : 'none' }}>
-          <TicketCategoriesConfig />
-        </div>
-        <div style={{ display: tab === 'biz-types' ? 'block' : 'none' }}>
-          <DripBusinessTypesConfig />
+        {/* SM-1: Sales System — sub-tabbed */}
+        <div style={{ display: tab === 'sales-system' ? 'block' : 'none' }}>
+          <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
+            {SALES_SUB_TABS.map(st => (
+              <button
+                key={st.id}
+                onClick={() => setSalesSubTab(st.id)}
+                style={{
+                  background: 'none', border: 'none',
+                  borderBottom: `2px solid ${salesSubTab === st.id ? ds.teal : 'transparent'}`,
+                  padding: '9px 18px', cursor: 'pointer',
+                  fontFamily: ds.fontDm, fontSize: 13.5,
+                  fontWeight: salesSubTab === st.id ? 600 : 400,
+                  color: salesSubTab === st.id ? ds.teal : '#5a8a9f',
+                  marginBottom: -2, whiteSpace: 'nowrap',
+                }}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: salesSubTab === 'sales-mode'    ? 'block' : 'none' }}><SalesModeConfig /></div>
+          <div style={{ display: salesSubTab === 'contact-menus' ? 'block' : 'none' }}><ContactMenuConfig /></div>
         </div>
 
-        {/* Nav links — conditional render (no state to preserve) */}
+        {/* SHOP-1B: Shopify */}
+        <div style={{ display: tab === 'shopify' ? 'block' : 'none' }}>
+          <ShopifyIntegration />
+        </div>
+
+        {/* GPM-1D: Growth Config */}
+        <div style={{ display: tab === 'growth-config' ? 'block' : 'none' }}>
+          <GrowthConfig />
+        </div>
+
         {tab === 'kb' && (
           <LinkMessage
-            icon="📚"
-            title="Knowledge Base"
+            icon="📚" title="Knowledge Base"
             body="KB articles are managed in the Support Tickets module."
             hint="Navigate to Support → KB Manager tab to create and publish articles."
           />
         )}
         {tab === 'templates' && (
           <LinkMessage
-            icon="💬"
-            title="WhatsApp Templates"
+            icon="💬" title="WhatsApp Templates"
             body="Message templates are managed in the WhatsApp Engine module."
             hint="Navigate to WhatsApp → Templates tab to create and manage templates."
           />
@@ -224,9 +222,7 @@ function LinkMessage({ icon, title, body, hint }) {
   return (
     <div style={{ textAlign: 'center', padding: '48px 32px' }}>
       <div style={{ fontSize: 40, marginBottom: 14 }}>{icon}</div>
-      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 10px' }}>
-        {title}
-      </h3>
+      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 10px' }}>{title}</h3>
       <p style={{ fontSize: 14, color: '#4a7a8a', margin: '0 0 6px' }}>{body}</p>
       <p style={{ fontSize: 13, color: '#7A9BAD' }}>{hint}</p>
     </div>

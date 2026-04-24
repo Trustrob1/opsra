@@ -55,6 +55,9 @@ from app.routers import commissions as commissions_router
 from app.routers import assistant as assistant_router          # ← M01-10b
 from app.routers import superadmin as superadmin_router        # ← ORG-ONBOARDING-A
 from app.routers import onboarding as onboarding_router        # ← ORG-ONBOARDING-A
+from app.routers import shopify as shopify_router
+from app.routers import growth_analytics as growth_analytics_router   # ← GPM-1A
+from app.routers import growth_config as growth_config_router         # ← GPM-1A
 
 import logging
 logging.basicConfig(
@@ -147,6 +150,27 @@ app.include_router(
     onboarding_router.router,
     prefix="/api/v1",
     tags=["onboarding"],
+)
+
+# SHOP-1A — Shopify Integration
+app.include_router(
+    shopify_router.router,
+    prefix="/api/v1/admin",
+    tags=["shopify"],
+)
+ 
+# GPM-1A — Growth Analytics
+app.include_router(
+    growth_analytics_router.router,
+    prefix="/api/v1",
+    tags=["growth_analytics"],
+)
+ 
+# GPM-1A — Growth Config (teams, spend, direct sales)
+app.include_router(
+    growth_config_router.router,
+    prefix="/api/v1",
+    tags=["growth_config"],
 )
 
 # ---------------------------------------------------------------------------

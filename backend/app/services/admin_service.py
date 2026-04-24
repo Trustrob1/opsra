@@ -354,3 +354,5 @@ def delete_routing_rule(
         resource_id=rule_id,
         old_value=existing,
     )
+
+    

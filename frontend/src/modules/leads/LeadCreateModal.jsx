@@ -13,8 +13,9 @@
  *
  * Branches (LeadBranches): 1 | 2-3 | 4-10 | 10+
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createLead } from '../../services/leads.service'
+import { getGrowthTeams } from '../../services/growth.service'
 import { ds, SOURCE_LABELS, BRANCHES_OPTIONS } from '../../utils/ds'
 import UserSelect from '../../shared/UserSelect'
 
@@ -33,12 +34,21 @@ const INITIAL = {
   problem_stated: '',
   referrer:       '',
   assigned_to:    '',
+  source_team:    '',
 }
 
 export default function LeadCreateModal({ onClose, onCreated }) {
   const [form, setForm]         = useState(INITIAL)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]       = useState(null)
+  const [teams, setTeams]       = useState([])  // GPM-1D: active growth_teams
+
+  // GPM-1D: silently fetch active growth_teams on mount — never blocking
+  useEffect(() => {
+    getGrowthTeams()
+      .then(data => setTeams((data || []).filter(t => t.is_active)))
+      .catch(() => {}) // fail silently — field simply won't render
+  }, [])
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
@@ -223,6 +233,21 @@ export default function LeadCreateModal({ onClose, onCreated }) {
             Shows active Sales Agents and Affiliate Partners only.
           </p>
         </Field>
+
+        {/* GPM-1D: Source Team — only rendered when active teams exist */}
+        {teams.length > 0 && (
+          <Field label="Source Team (optional)">
+            <select value={form.source_team} onChange={set('source_team')} style={inputStyle}>
+              <option value="">— None / Unattributed —</option>
+              {teams.map(t => (
+                <option key={t.id} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+            <p style={{ fontSize: 11, color: ds.gray, margin: '4px 0 0' }}>
+              Used for Growth Dashboard attribution. Sets first-touch team at creation.
+            </p>
+          </Field>
+        )}
 
         {/* Error */}
         {error && (

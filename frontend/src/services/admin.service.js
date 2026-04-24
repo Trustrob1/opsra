@@ -291,3 +291,40 @@ export const getSlaBusinessHours = () =>
 export const updateSlaBusinessHours = (payload) =>
   axios.patch('/api/v1/admin/sla-business-hours', payload, { headers: _h() })
     .then(r => r.data.data)
+
+// Pattern 50: axios + _h() only, relative paths, no hardcoded base URL.
+ 
+export const getSalesMode = () =>
+  axios.get(`${BASE}/api/v1/admin/sales-mode`, { headers: _h() })
+    .then(r => r.data)
+ 
+export const updateSalesMode = (mode) =>
+  axios.patch(`${BASE}/api/v1/admin/sales-mode`, { mode }, { headers: _h() })
+    .then(r => r.data)
+ 
+export const getContactMenus = () =>
+  axios.get(`${BASE}/api/v1/admin/contact-menus`, { headers: _h() })
+    .then(r => r.data)
+ 
+export const updateContactMenus = (payload) =>
+  axios.patch(`${BASE}/api/v1/admin/contact-menus`, payload, { headers: _h() })
+    .then(r => r.data)
+
+// ── SHOP-1B: Shopify Integration — append to frontend/src/services/admin.service.js ──
+
+export const getShopifyStatus = () =>
+  axios.get(`${BASE}/api/v1/admin/shopify/status`, { headers: _h() })
+    .then(r => r.data)
+
+export const connectShopify = (payload) =>
+  // payload: { shop_domain, access_token, webhook_secret? }
+  axios.post(`${BASE}/api/v1/admin/shopify/connect`, payload, { headers: _h() })
+    .then(r => r.data)
+
+export const disconnectShopify = () =>
+  axios.delete(`${BASE}/api/v1/admin/shopify/disconnect`, { headers: _h() })
+    .then(r => r.data)
+
+export const triggerShopifySync = () =>
+  axios.post(`${BASE}/api/v1/admin/shopify/sync`, {}, { headers: _h() })
+    .then(r => r.data)

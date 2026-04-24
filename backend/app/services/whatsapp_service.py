@@ -1636,3 +1636,157 @@ def send_qualification_handoff_message(
             "send_qualification_handoff_message failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
+
+def send_abandoned_cart_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    checkout_url: Optional[str],
+    cart_items: list,
+) -> None:
+    """
+    SHOP-1A: Send a WhatsApp abandoned cart recovery message.
+    Includes checkout URL and item count.
+    S14 — full try/except; logs warning on failure, never raises.
+    """
+    try:
+        org_r = (
+            db.table("organisations")
+            .select("whatsapp_phone_id, name")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_abandoned_cart_message: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        item_count = len(cart_items)
+        items_text = f"{item_count} item{'s' if item_count != 1 else ''}"
+
+        body = (
+            f"Hi! You left {items_text} in your cart. "
+            f"Complete your purchase here:\n{checkout_url}"
+            if checkout_url
+            else f"Hi! You left {items_text} in your cart. Reply to continue shopping."
+        )
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "text",
+            "text": {"body": body},
+        })
+
+    except Exception as exc:
+        logger.warning(
+            "send_abandoned_cart_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_order_confirmation_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    order_name: str,
+    total: str,
+) -> None:
+    """
+    SHOP-1A: Send a WhatsApp order confirmation message.
+    S14 — full try/except; logs warning on failure, never raises.
+    """
+    try:
+        org_r = (
+            db.table("organisations")
+            .select("whatsapp_phone_id, name")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_order_confirmation_message: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        body = (
+            f"✅ Order confirmed! Your order {order_name} has been placed successfully. "
+            f"Total: {total}. We'll notify you when it ships."
+        )
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "text",
+            "text": {"body": body},
+        })
+
+    except Exception as exc:
+        logger.warning(
+            "send_order_confirmation_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_fulfillment_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    tracking_url: Optional[str],
+    tracking_company: Optional[str],
+) -> None:
+    """
+    SHOP-1A: Send a WhatsApp dispatch / fulfilment notification.
+    Includes tracking link if present.
+    S14 — full try/except; logs warning on failure, never raises.
+    """
+    try:
+        org_r = (
+            db.table("organisations")
+            .select("whatsapp_phone_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_fulfillment_message: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        if tracking_url:
+            company_text = f" via {tracking_company}" if tracking_company else ""
+            body = (
+                f"📦 Your order has been dispatched{company_text}! "
+                f"Track it here: {tracking_url}"
+            )
+        else:
+            body = "📦 Great news — your order has been dispatched and is on its way!"
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "text",
+            "text": {"body": body},
+        })
+
+    except Exception as exc:
+        logger.warning(
+            "send_fulfillment_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )

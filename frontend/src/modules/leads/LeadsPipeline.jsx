@@ -12,20 +12,17 @@
  * M01-9b additions:
  *   - View toggle: ⊞ Kanban | ☰ List (pill switcher in header)
  *   - List view: paginated table (pageSize=20, server-side filters)
- *     Score / Source / Stage filter dropdowns
- *     Search filters client-side on current page (no search param in API spec)
- *   - Pattern 26: Kanban and List panels both stay mounted after first
- *     activation, toggled with display:none. List is lazy-mounted on first
- *     activation to avoid a fetch on initial Kanban load.
- *   - Kanban view: unchanged — useLeads({}, 200), client-side useMemo filtering
+ *   - Pattern 26: Kanban and List panels both stay mounted after first activation
  *
- * 7 columns: new → contacted → demo_done → proposal_sent
- *   → converted (terminal) | lost | not_ready
+ * GPM-1B additions:
+ *   - Deal value pill on Kanban card (green, shown when set)
+ *   - Deal Value column in list view table
+ *   - Deal Value modal on drag-to-converted (replaces window.confirm)
  */
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useLeads }       from '../../hooks/useLeads'
 import {
-  moveStage, convertLead, getLeadAttentionSummary, listLeads,
+  moveStage, convertLead, getLeadAttentionSummary, listLeads, updateLead,
 } from '../../services/leads.service'
 import { ds, STAGES, SCORE_STYLE, SOURCE_SHORT } from '../../utils/ds'
 import { getPipelineStages } from '../../services/admin.service'
@@ -87,14 +84,111 @@ function ScoreBadge({ score }) {
   )
 }
 
+// ── Deal Value Modal (GPM-1B) ─────────────────────────────────────────────────
+
+function DealValueModal({ leadName, onConfirm, onSkip, loading }) {
+  const [value, setValue] = useState('')
+
+  function handleConfirm() {
+    const num = parseFloat(value.replace(/,/g, ''))
+    onConfirm(isNaN(num) || num <= 0 ? null : num)
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000,
+    }}>
+      <div style={{
+        background: 'white', borderRadius: ds.radius.xl,
+        padding: '28px 28px 24px', width: 420, maxWidth: '90vw',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 8, textAlign: 'center' }}>🎉</div>
+        <h3 style={{
+          fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17,
+          color: ds.dark, margin: '0 0 6px', textAlign: 'center',
+        }}>
+          Deal Closed!
+        </h3>
+        <p style={{
+          fontSize: 13.5, color: ds.gray, margin: '0 0 20px',
+          lineHeight: 1.5, textAlign: 'center',
+        }}>
+          Converting <strong>{leadName}</strong> to a customer.
+          What was the deal value?
+        </p>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{
+            fontSize: 11, fontWeight: 600, color: ds.gray,
+            textTransform: 'uppercase', letterSpacing: '0.5px',
+            display: 'block', marginBottom: 6,
+          }}>
+            Deal Value (optional)
+          </label>
+          <div style={{ position: 'relative' }}>
+            <span style={{
+              position: 'absolute', left: 12, top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: 13.5, color: ds.gray,
+              fontFamily: ds.fontDm, pointerEvents: 'none',
+            }}>₦</span>
+            <input
+              type="text"
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleConfirm()}
+              placeholder="0.00"
+              autoFocus
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md,
+                padding: '10px 12px 10px 28px', fontSize: 15,
+                fontFamily: ds.fontDm, color: ds.dark,
+              }}
+            />
+          </div>
+          <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '6px 0 0', fontFamily: ds.fontDm }}>
+            Leave blank to skip — you can update this later from the lead profile.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onSkip}
+            disabled={loading}
+            style={{
+              padding: '9px 18px', borderRadius: ds.radius.md,
+              border: `1.5px solid ${ds.border}`, background: 'white',
+              color: ds.gray, fontSize: 13, fontWeight: 600,
+              fontFamily: ds.fontSyne, cursor: 'pointer',
+            }}
+          >
+            Skip
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            style={{
+              padding: '9px 20px', borderRadius: ds.radius.md,
+              border: 'none', background: ds.teal,
+              color: 'white', fontSize: 13, fontWeight: 600,
+              fontFamily: ds.fontSyne,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? '…' : '✓ Convert'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── List view ─────────────────────────────────────────────────────────────────
 
-/**
- * LeadListView — paginated table, lazy-mounted by parent.
- * Server-side: score, source, stage filters.
- * Client-side: text search on current page (no search param in API spec).
- */
-function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
+function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pipelineStages }) {
   const [filterStage, setFilterStage] = useState('')
   const [page,        setPage]        = useState(1)
   const [rawLeads,    setRawLeads]    = useState([])
@@ -102,10 +196,8 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
 
-  // Reset page when server-side filters change
   useEffect(() => { setPage(1) }, [filterScore, filterSource, filterStage])
 
-  // Server fetch
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -139,7 +231,6 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
     return () => { cancelled = true }
   }, [filterScore, filterSource, filterStage, page])
 
-  // Client-side text search on current page
   const leads = useMemo(() => {
     if (!filterSearch) return rawLeads
     const q = filterSearch.toLowerCase()
@@ -163,7 +254,6 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
 
   return (
     <div>
-      {/* Stage filter row — list-view only */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={filterSelect}>
           <option value="">All Stages</option>
@@ -184,14 +274,12 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
         </span>
       </div>
 
-      {/* Error */}
       {error && (
         <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 14 }}>
           ⚠ {error}
         </div>
       )}
 
-      {/* Table */}
       <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: 12, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -199,6 +287,7 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
               <th style={thStyle}>Stage</th>
               <th style={thStyle}>Name</th>
               <th style={thStyle}>Score</th>
+              <th style={thStyle}>Deal Value</th>
               <th style={thStyle}>Source</th>
               <th style={thStyle}>Phone</th>
               <th style={thStyle}>Assigned To</th>
@@ -208,13 +297,13 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: ds.gray, padding: 40 }}>
+                <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: ds.gray, padding: 40 }}>
                   <span style={{ color: ds.teal }}>Loading leads…</span>
                 </td>
               </tr>
             ) : leads.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: ds.gray, padding: 40 }}>
+                <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: ds.gray, padding: 40 }}>
                   No leads match the current filters.
                 </td>
               </tr>
@@ -234,6 +323,16 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
                   )}
                 </td>
                 <td style={tdStyle}><ScoreBadge score={lead.score} /></td>
+                {/* GPM-1B: Deal Value column */}
+                <td style={{
+                  ...tdStyle, fontSize: 12,
+                  color: lead.deal_value != null ? '#16a34a' : ds.gray,
+                  fontWeight: lead.deal_value != null ? 600 : 400,
+                }}>
+                  {lead.deal_value != null
+                    ? `₦${Number(lead.deal_value).toLocaleString()}`
+                    : '—'}
+                </td>
                 <td style={{ ...tdStyle, fontSize: 12, color: ds.gray }}>
                   {SOURCE_LABELS[lead.source] ?? lead.source ?? '—'}
                 </td>
@@ -251,7 +350,6 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
           </tbody>
         </table>
 
-        {/* Pagination inside the table card */}
         {!loading && (
           <div style={{ padding: '0 14px' }}>
             <Pagination
@@ -272,14 +370,12 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead }) {
 export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   const { leads, loading, error, refresh, total } = useLeads({}, 200)
 
-  // CONFIG-6: org-configured pipeline stages (fetched on mount, fallback to STAGES)
   const [pipelineStages, setPipelineStages] = useState(STAGES)
   useEffect(() => {
     getPipelineStages()
       .then(data => {
         const cfg = data?.stages
         if (Array.isArray(cfg) && cfg.length > 0) {
-          // Map config to shape expected by Kanban (key, label, dot)
           const DOT = {
             new: '#7A9BAD', contacted: '#3b82f6', meeting_done: '#8b5cf6',
             proposal_sent: '#f59e0b', converted: '#10b981',
@@ -288,7 +384,6 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
           const enabled = cfg
             .filter(s => s.enabled !== false)
             .map(s => ({ key: s.key, label: s.label, dot: DOT[s.key] || '#7A9BAD' }))
-          // Always append lost + not_ready for Kanban
           enabled.push(
             { key: 'lost',      label: 'Lost',      dot: '#ef4444' },
             { key: 'not_ready', label: 'Not Ready', dot: '#6b7280' },
@@ -296,10 +391,9 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
           setPipelineStages(enabled)
         }
       })
-      .catch(() => {}) // fallback: keep STAGES default
+      .catch(() => {})
   }, [])
 
-  // M01-7a: attention summary
   const [attentionMap, setAttentionMap] = useState({})
   useEffect(() => {
     getLeadAttentionSummary()
@@ -307,29 +401,27 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       .catch(() => {})
   }, [leads])
 
-
-  // Phase 9B: role checks
   const roleTemplate = useAuthStore.getState().getRoleTemplate()
   const isAffiliate  = roleTemplate === 'affiliate_partner'
   const isManager    = ['owner', 'admin', 'ops_manager'].includes(roleTemplate)
 
   // Drag state
-  const [draggedId, setDraggedId]   = useState(null)
+  const [draggedId,  setDraggedId]  = useState(null)
   const [dragTarget, setDragTarget] = useState(null)
-  const [movingId,  setMovingId]    = useState(null)
-  const [moveError, setMoveError]   = useState(null)
+  const [movingId,   setMovingId]   = useState(null)
+  const [moveError,  setMoveError]  = useState(null)
 
   // Modal state
   const [showCreate,   setShowCreate]   = useState(false)
   const [showImport,   setShowImport]   = useState(false)
   const [markLostCtx,  setMarkLostCtx]  = useState(null)
+  // GPM-1B: deal value modal context
+  const [dealValueCtx, setDealValueCtx] = useState(null)
 
-  // Shared filters (Kanban = client-side, List = server-side)
   const [filterScore,  setFilterScore]  = useState('')
   const [filterSource, setFilterSource] = useState('')
   const [filterSearch, setFilterSearch] = useState('')
 
-  // M01-9b: view toggle + lazy list mount
   const [viewMode,       setViewMode]       = useState('kanban')
   const [listMounted,    setListMounted]    = useState(false)
   const [nurtureMounted, setNurtureMounted] = useState(false)
@@ -340,7 +432,6 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
     if (mode === 'nurture') setNurtureMounted(true)
   }, [])
 
-  // Kanban client-side filter (unchanged)
   const filtered = useMemo(() => {
     const q = filterSearch.toLowerCase()
     return leads.filter((l) => {
@@ -359,12 +450,11 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
     return map
   }, [filtered, pipelineStages])
 
-  // Pending demo count for Demo Queue badge
   const pendingDemosTotal = useMemo(() =>
     Object.values(attentionMap).reduce((sum, a) => sum + (a.pending_demos || 0), 0),
   [attentionMap])
 
-  // ── Drag handlers (unchanged) ──────────────────────────────────────────────
+  // ── Drag handlers ──────────────────────────────────────────────────────────
 
   const onDragStart = useCallback((e, leadId) => {
     if (isAffiliate) return
@@ -393,16 +483,9 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
     const lead = leads.find(l => l.id === id)
     if (!lead || lead.stage === targetStage) return
 
+    // GPM-1B: open deal value modal instead of window.confirm
     if (targetStage === 'converted') {
-      if (!window.confirm(`Convert ${lead.full_name} to a customer?`)) return
-      setMovingId(id)
-      try {
-        const res = await convertLead(id)
-        if (!res.success) setMoveError(res.error ?? 'Conversion failed')
-        else refresh()
-      } catch (err) {
-        setMoveError(err?.response?.data?.error ?? 'Conversion failed')
-      } finally { setMovingId(null) }
+      setDealValueCtx({ id, leadName: lead.full_name })
       return
     }
 
@@ -422,6 +505,33 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   }, [draggedId, movingId, leads, refresh, isAffiliate])
 
   const onDragEnd = useCallback(() => { setDraggedId(null); setDragTarget(null) }, [])
+
+  // GPM-1B: deal value modal handlers
+  const handleDealValueConfirm = useCallback(async (dealValue) => {
+    if (!dealValueCtx) return
+    const { id } = dealValueCtx
+    setDealValueCtx(null)
+    setMovingId(id)
+    try {
+      const res = await convertLead(id)
+      if (!res.success) {
+        setMoveError(res.error ?? 'Conversion failed')
+      } else {
+        if (dealValue != null) {
+          await updateLead(id, { deal_value: dealValue }).catch(() => {})
+        }
+        refresh()
+      }
+    } catch (err) {
+      setMoveError(err?.response?.data?.error ?? 'Conversion failed')
+    } finally {
+      setMovingId(null)
+    }
+  }, [dealValueCtx, refresh])
+
+  const handleDealValueSkip = useCallback(() => {
+    handleDealValueConfirm(null)
+  }, [handleDealValueConfirm])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -445,14 +555,9 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-
-          {/* View toggle — M01-9b */}
           <div style={{
-            display: 'flex',
-            border: `1.5px solid ${ds.teal}`,
-            borderRadius: ds.radius.md,
-            overflow: 'hidden',
-            flexShrink: 0,
+            display: 'flex', border: `1.5px solid ${ds.teal}`,
+            borderRadius: ds.radius.md, overflow: 'hidden', flexShrink: 0,
           }}>
             <button
               onClick={() => handleViewToggle('kanban')}
@@ -463,9 +568,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
                 color:      viewMode === 'kanban' ? 'white' : ds.teal,
                 transition: 'all 0.15s',
               }}
-            >
-              ⊞ Kanban
-            </button>
+            >⊞ Kanban</button>
             <button
               onClick={() => handleViewToggle('list')}
               style={{
@@ -473,15 +576,11 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
                 fontSize: 12.5, fontWeight: 600, fontFamily: ds.fontSyne,
                 background: viewMode === 'list' ? ds.teal : 'white',
                 color:      viewMode === 'list' ? 'white' : ds.teal,
-                borderLeft: `1.5px solid ${ds.teal}`,
-                transition: 'all 0.15s',
+                borderLeft: `1.5px solid ${ds.teal}`, transition: 'all 0.15s',
               }}
-            >
-              ☰ List
-            </button>
+            >☰ List</button>
           </div>
 
-          {/* Demo Queue — admin/manager only (unchanged) */}
           {isManager && onOpenDemoQueue && (
             <button
               onClick={onOpenDemoQueue}
@@ -502,7 +601,6 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             </button>
           )}
 
-          {/* Nurture Queue — managers only, GAP-6 */}
           {isManager && (
             <button
               onClick={() => handleViewToggle(viewMode === 'nurture' ? 'kanban' : 'nurture')}
@@ -516,64 +614,58 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             </button>
           )}
 
-          {/* Action buttons — hidden for affiliate_partner (unchanged) */}
           {!isAffiliate && (
             <>
-              <button onClick={() => setShowImport(true)} style={secondaryBtn}>
-                ⬆ Import CSV
-              </button>
-              <button onClick={() => setShowCreate(true)} style={primaryBtn}>
-                + New Lead
-              </button>
+              <button onClick={() => setShowImport(true)} style={secondaryBtn}>⬆ Import CSV</button>
+              <button onClick={() => setShowCreate(true)} style={primaryBtn}>+ New Lead</button>
             </>
           )}
         </div>
       </div>
 
-      {/* ── Shared filter bar — hidden in nurture queue view ────── */}
+      {/* ── Shared filter bar ────────────────────────────────────── */}
       {viewMode !== 'nurture' && (
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input
-          type="text"
-          placeholder="Search name, business, email…"
-          value={filterSearch}
-          onChange={e => setFilterSearch(e.target.value)}
-          style={{
-            border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md,
-            padding: '8px 14px', fontSize: 13, color: ds.dark,
-            fontFamily: ds.fontDm, background: 'white', outline: 'none',
-            width: 240,
-          }}
-        />
-        <select value={filterScore} onChange={e => setFilterScore(e.target.value)} style={filterSelect}>
-          <option value="">All Scores</option>
-          <option value="hot">🔥 Hot</option>
-          <option value="warm">☀️ Warm</option>
-          <option value="cold">❄️ Cold</option>
-          <option value="unscored">— Unscored</option>
-        </select>
-        <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={filterSelect}>
-          <option value="">All Sources</option>
-          <option value="facebook_ad">Facebook Ad</option>
-          <option value="instagram_ad">Instagram Ad</option>
-          <option value="landing_page">Landing Page</option>
-          <option value="whatsapp_inbound">WhatsApp Inbound</option>
-          <option value="manual_phone">Manual (Phone)</option>
-          <option value="manual_referral">Manual (Referral)</option>
-          <option value="import">Import</option>
-        </select>
-        {(filterSearch || filterScore || filterSource) && (
-          <button
-            onClick={() => { setFilterSearch(''); setFilterScore(''); setFilterSource('') }}
-            style={{ fontSize: 12, color: ds.gray, background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
-          >
-            ✕ Clear filters
-          </button>
-        )}
-      </div>
-      )}{/* end nurture filter hide */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Search name, business, email…"
+            value={filterSearch}
+            onChange={e => setFilterSearch(e.target.value)}
+            style={{
+              border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md,
+              padding: '8px 14px', fontSize: 13, color: ds.dark,
+              fontFamily: ds.fontDm, background: 'white', outline: 'none', width: 240,
+            }}
+          />
+          <select value={filterScore} onChange={e => setFilterScore(e.target.value)} style={filterSelect}>
+            <option value="">All Scores</option>
+            <option value="hot">🔥 Hot</option>
+            <option value="warm">☀️ Warm</option>
+            <option value="cold">❄️ Cold</option>
+            <option value="unscored">— Unscored</option>
+          </select>
+          <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={filterSelect}>
+            <option value="">All Sources</option>
+            <option value="facebook_ad">Facebook Ad</option>
+            <option value="instagram_ad">Instagram Ad</option>
+            <option value="landing_page">Landing Page</option>
+            <option value="whatsapp_inbound">WhatsApp Inbound</option>
+            <option value="manual_phone">Manual (Phone)</option>
+            <option value="manual_referral">Manual (Referral)</option>
+            <option value="import">Import</option>
+          </select>
+          {(filterSearch || filterScore || filterSource) && (
+            <button
+              onClick={() => { setFilterSearch(''); setFilterScore(''); setFilterSource('') }}
+              style={{ fontSize: 12, color: ds.gray, background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+            >
+              ✕ Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
-      {/* ── Error feedback (unchanged) ────────────────────────────── */}
+      {/* ── Errors ───────────────────────────────────────────────── */}
       {error && (
         <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 16 }}>
           ⚠ {error}
@@ -586,7 +678,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
         </div>
       )}
 
-      {/* ── Kanban — Pattern 26: hidden (not unmounted) in list mode ── */}
+      {/* ── Kanban ───────────────────────────────────────────────── */}
       <div style={{ display: viewMode === 'kanban' ? 'flex' : 'none', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
         {pipelineStages.map(stage => {
           const cards        = byStage[stage.key] ?? []
@@ -598,14 +690,14 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
               onDragLeave={onDragLeave}
               onDrop={e => onDrop(e, stage.key)}
               style={{
-                minWidth:    220,
-                maxWidth:    220,
-                flexShrink:  0,
-                background:  isDropTarget ? ds.mint : ds.light,
-                border:      `2px dashed ${isDropTarget ? ds.teal : 'transparent'}`,
+                minWidth:     220,
+                maxWidth:     220,
+                flexShrink:   0,
+                background:   isDropTarget ? ds.mint : ds.light,
+                border:       `2px dashed ${isDropTarget ? ds.teal : 'transparent'}`,
                 borderRadius: ds.radius.lg,
-                padding:     14,
-                transition:  'all 0.15s',
+                padding:      14,
+                transition:   'all 0.15s',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
@@ -642,7 +734,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
         })}
       </div>
 
-      {/* ── List view — lazy-mounted, Pattern 26 hidden when not active ── */}
+      {/* ── List view ─────────────────────────────────────────────── */}
       {listMounted && (
         <div style={{ display: viewMode === 'list' ? 'block' : 'none' }}>
           <LeadListView
@@ -650,18 +742,19 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             filterSource={filterSource}
             filterSearch={filterSearch}
             onOpenLead={onOpenLead}
+            pipelineStages={pipelineStages}
           />
         </div>
       )}
 
-      {/* ── Nurture Queue — lazy-mounted, Pattern 26, managers only ── */}
+      {/* ── Nurture Queue ─────────────────────────────────────────── */}
       {nurtureMounted && (
         <div style={{ display: viewMode === 'nurture' ? 'block' : 'none' }}>
           <NurtureQueue onOpenLead={onOpenLead} />
         </div>
       )}
 
-      {/* ── Modals (unchanged) ───────────────────────────────────── */}
+      {/* ── Modals ───────────────────────────────────────────────── */}
       {showCreate && (
         <LeadCreateModal
           onClose={() => setShowCreate(false)}
@@ -672,6 +765,15 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
         <LeadImportModal
           onClose={() => setShowImport(false)}
           onImported={() => { setShowImport(false); refresh() }}
+        />
+      )}
+      {/* GPM-1B: deal value modal for drag-to-converted */}
+      {dealValueCtx && (
+        <DealValueModal
+          leadName={dealValueCtx.leadName}
+          onConfirm={handleDealValueConfirm}
+          onSkip={handleDealValueSkip}
+          loading={movingId === dealValueCtx?.id}
         />
       )}
       {markLostCtx && (
@@ -687,7 +789,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   )
 }
 
-// ── Kanban card (unchanged) ───────────────────────────────────────────────────
+// ── Kanban card ───────────────────────────────────────────────────────────────
 
 function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, attention }) {
   const scoreStyle = SCORE_STYLE[lead.score] ?? SCORE_STYLE.unscored
@@ -695,28 +797,13 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
   const badges = []
   if (attention) {
     if ((attention.unread_messages ?? 0) > 0) {
-      badges.push({
-        key: 'msg',
-        label: `💬 ${attention.unread_messages}`,
-        bg: '#E53E3E', color: 'white',
-        title: `${attention.unread_messages} unread message${attention.unread_messages > 1 ? 's' : ''}`,
-      })
+      badges.push({ key: 'msg', label: `💬 ${attention.unread_messages}`, bg: '#E53E3E', color: 'white', title: `${attention.unread_messages} unread message${attention.unread_messages > 1 ? 's' : ''}` })
     }
     if ((attention.pending_demos ?? 0) > 0) {
-      badges.push({
-        key: 'demo',
-        label: '📅',
-        bg: '#D97706', color: 'white',
-        title: 'Demo awaiting confirmation',
-      })
+      badges.push({ key: 'demo', label: '📅', bg: '#D97706', color: 'white', title: 'Demo awaiting confirmation' })
     }
     if ((attention.open_tickets ?? 0) > 0) {
-      badges.push({
-        key: 'ticket',
-        label: `🎫 ${attention.open_tickets}`,
-        bg: '#ED8936', color: 'white',
-        title: `${attention.open_tickets} open ticket${attention.open_tickets > 1 ? 's' : ''}`,
-      })
+      badges.push({ key: 'ticket', label: `🎫 ${attention.open_tickets}`, bg: '#ED8936', color: 'white', title: `${attention.open_tickets} open ticket${attention.open_tickets > 1 ? 's' : ''}` })
     }
   }
 
@@ -751,16 +838,11 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
         {badges.length > 0 && (
           <div style={{ display: 'flex', gap: 3, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {badges.map(b => (
-              <span
-                key={b.key}
-                title={b.title}
-                style={{
-                  background: b.bg, color: b.color,
-                  borderRadius: 20, padding: '1px 6px',
-                  fontSize: 10, fontWeight: 700, flexShrink: 0,
-                  lineHeight: '16px', cursor: 'default',
-                }}
-              >
+              <span key={b.key} title={b.title} style={{
+                background: b.bg, color: b.color, borderRadius: 20,
+                padding: '1px 6px', fontSize: 10, fontWeight: 700,
+                flexShrink: 0, lineHeight: '16px', cursor: 'default',
+              }}>
                 {b.label}
               </span>
             ))}
@@ -773,6 +855,7 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
           {lead.business_name}
         </p>
       )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>
           {scoreStyle.label}
@@ -780,6 +863,14 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
         {lead.source && (
           <span style={{ background: ds.mint, color: ds.tealDark, padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>
             {SOURCE_SHORT[lead.source] ?? lead.source}
+          </span>
+        )}
+        {/* GPM-1B: deal value pill */}
+        {lead.deal_value != null && (
+          <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>
+            💰 {Number(lead.deal_value) >= 1000
+              ? `₦${(Number(lead.deal_value) / 1000).toFixed(0)}K`
+              : `₦${Number(lead.deal_value).toLocaleString()}`}
           </span>
         )}
       </div>

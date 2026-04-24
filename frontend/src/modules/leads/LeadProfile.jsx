@@ -7,14 +7,13 @@
  * Tab 3 — Timeline:         LeadTimeline component
  * Tab 4 — Tasks:            LeadTasks component
  * Tab 5 — Demos:            DemoScheduler component  (M01-7)
- * Tab 6 — Interaction Log:  LogInteractionPanel      (renamed from "Log Interaction")
- * Tab 7 — Tickets:          LinkedTicketsPanel        (renamed from "Create Ticket")
+ * Tab 6 — Interaction Log:  LogInteractionPanel
+ * Tab 7 — Tickets:          LinkedTicketsPanel
  *
- * Profile badges update:
- *   - Replaces getUnreadCounts() with getLeadAttentionSummary() — one call,
- *     four signals: unread_messages, pending_demos, open_tickets, pending_tasks
- *   - Each relevant tab shows an inline badge pill when its signal > 0
- *   - Badge hidden when that tab is currently active (already viewing it)
+ * GPM-1B: Deal Value modal on convert.
+ *   When rep clicks "✓ Convert", a modal asks for deal value before confirming.
+ *   Rep can skip (converts without deal_value) or enter amount.
+ *   After conversion, deal_value is saved via PATCH /leads/{id}.
  *
  * SECURITY: org_id never sent in any payload — derived from JWT server-side.
  */
@@ -39,6 +38,109 @@ import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
 // Fallback movable stages (used before org config loads)
 const _DEFAULT_MOVABLE = ['new', 'contacted', 'meeting_done', 'proposal_sent']
 
+// ─── Deal Value Modal ─────────────────────────────────────────────────────────
+
+function DealValueModal({ leadName, onConfirm, onSkip, loading }) {
+  const [value, setValue] = useState('')
+
+  function handleConfirm() {
+    const num = parseFloat(value.replace(/,/g, ''))
+    onConfirm(isNaN(num) || num <= 0 ? null : num)
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000,
+    }}>
+      <div style={{
+        background: 'white', borderRadius: ds.radius.xl,
+        padding: '28px 28px 24px', width: 420, maxWidth: '90vw',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 8, textAlign: 'center' }}>🎉</div>
+        <h3 style={{
+          fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17,
+          color: ds.dark, margin: '0 0 6px', textAlign: 'center',
+        }}>
+          Deal Closed!
+        </h3>
+        <p style={{
+          fontSize: 13.5, color: ds.gray, margin: '0 0 20px',
+          lineHeight: 1.5, textAlign: 'center',
+        }}>
+          Converting <strong>{leadName}</strong> to a customer.
+          What was the deal value?
+        </p>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{
+            fontSize: 11, fontWeight: 600, color: ds.gray,
+            textTransform: 'uppercase', letterSpacing: '0.5px',
+            display: 'block', marginBottom: 6,
+          }}>
+            Deal Value (optional)
+          </label>
+          <div style={{ position: 'relative' }}>
+            <span style={{
+              position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+              fontSize: 13.5, color: ds.gray, fontFamily: ds.fontDm, pointerEvents: 'none',
+            }}>₦</span>
+            <input
+              type="text"
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleConfirm()}
+              placeholder="0.00"
+              autoFocus
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md,
+                padding: '10px 12px 10px 28px', fontSize: 15,
+                fontFamily: ds.fontDm, color: ds.dark,
+              }}
+            />
+          </div>
+          <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '6px 0 0', fontFamily: ds.fontDm }}>
+            Leave blank to skip — you can update this later from the lead profile.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onSkip}
+            disabled={loading}
+            style={{
+              padding: '9px 18px', borderRadius: ds.radius.md,
+              border: `1.5px solid ${ds.border}`, background: 'white',
+              color: ds.gray, fontSize: 13, fontWeight: 600,
+              fontFamily: ds.fontSyne, cursor: 'pointer',
+            }}
+          >
+            Skip
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            style={{
+              padding: '9px 20px', borderRadius: ds.radius.md,
+              border: 'none', background: ds.teal,
+              color: 'white', fontSize: 13, fontWeight: 600,
+              fontFamily: ds.fontSyne, cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? '…' : '✓ Convert'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function LeadProfile({ leadId, onBack }) {
   const [lead, setLead]           = useState(null)
   const [loading, setLoading]     = useState(true)
@@ -51,8 +153,12 @@ export default function LeadProfile({ leadId, onBack }) {
   const [assignSaving, setAssignSaving]   = useState(false)
   const [overrideLoading, setOverrideLoading] = useState(false)
 
-  // CONFIG-6: org pipeline stages for labels + move-stage dropdown
-  const [pipelineStages,  setPipelineStages]  = useState(STAGES)
+  // GPM-1B: deal value modal state
+  const [showDealValueModal, setShowDealValueModal] = useState(false)
+  const [dealValueLoading,   setDealValueLoading]   = useState(false)
+
+  // CONFIG-6: org pipeline stages
+  const [pipelineStages,   setPipelineStages]   = useState(STAGES)
   const [movableStageKeys, setMovableStageKeys] = useState(_DEFAULT_MOVABLE)
   useEffect(() => {
     getPipelineStages()
@@ -66,7 +172,6 @@ export default function LeadProfile({ leadId, onBack }) {
           }
           const mapped = cfg.map(s => ({ key: s.key, label: s.label, dot: DOT[s.key] || '#7A9BAD' }))
           setPipelineStages(mapped)
-          // Movable = enabled stages that are not terminal/system-only
           const nonTerminal = new Set(['converted', 'lost', 'not_ready'])
           setMovableStageKeys(
             cfg.filter(s => s.enabled !== false && !nonTerminal.has(s.key)).map(s => s.key)
@@ -76,7 +181,7 @@ export default function LeadProfile({ leadId, onBack }) {
       .catch(() => {})
   }, [])
 
-  // Attention signals — replaces old unreadCount state
+  // Attention signals
   const [attention, setAttention] = useState({
     unread_messages: 0,
     pending_demos:   0,
@@ -108,7 +213,6 @@ export default function LeadProfile({ leadId, onBack }) {
 
   useEffect(() => { fetchLead() }, [fetchLead])
 
-  // Fetch attention summary — one call replaces old getUnreadCounts()
   useEffect(() => {
     if (!leadId) return
     getLeadAttentionSummary()
@@ -144,9 +248,43 @@ export default function LeadProfile({ leadId, onBack }) {
     runAction('move', () => moveStage(leadId, newStage))
   }
 
-  const handleConvert = () => {
-    if (!window.confirm(`Convert ${lead.full_name} to a customer? This cannot be undone.`)) return
-    runAction('convert', () => convertLead(leadId))
+  // GPM-1B: Convert button now opens deal value modal instead of window.confirm
+  const handleConvertClick = () => {
+    setShowDealValueModal(true)
+  }
+
+  const handleDealValueConfirm = async (dealValue) => {
+    setDealValueLoading(true)
+    setActionError(null)
+    try {
+      // Step 1: convert the lead
+      const res = await convertLead(leadId)
+      if (!res?.success) {
+        setActionError(res?.error ?? 'Conversion failed')
+        setShowDealValueModal(false)
+        setDealValueLoading(false)
+        return
+      }
+      setLead(res.data?.lead ?? res.data)
+
+      // Step 2: save deal_value if provided
+      if (dealValue != null) {
+        await updateLead(leadId, { deal_value: dealValue })
+        setLead(prev => ({ ...prev, deal_value: dealValue }))
+      }
+
+      setShowDealValueModal(false)
+    } catch (err) {
+      setActionError(err?.response?.data?.error ?? 'Conversion failed')
+      setShowDealValueModal(false)
+    } finally {
+      setDealValueLoading(false)
+    }
+  }
+
+  const handleDealValueSkip = async () => {
+    // Convert without deal value
+    await handleDealValueConfirm(null)
   }
 
   const handleReactivate = () => {
@@ -198,14 +336,12 @@ export default function LeadProfile({ leadId, onBack }) {
   const scoreStyle = SCORE_STYLE[lead.score] ?? SCORE_STYLE.unscored
   const stageStyle = STAGE_STYLE[lead.stage] ?? {}
   const stageLabel = pipelineStages.find(s => s.key === lead.stage)?.label ?? lead.stage?.replace(/_/g, ' ')
-  const isTerminal   = ['converted', 'lost', 'not_ready'].includes(lead.stage)
-  const isLostStage  = lead.stage === 'lost'
-  const isNurture    = lead.nurture_track === true
+  const isTerminal  = ['converted', 'lost', 'not_ready'].includes(lead.stage)
+  const isLostStage = lead.stage === 'lost'
+  const isNurture   = lead.nurture_track === true
   const isAffiliate = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
   const isManager   = useAuthStore.getState().isManager()
 
-  // Tab definitions — badge: count shown when > 0 and tab not active
-  // color: 'red' | 'amber'
   const TABS = [
     { key: 'profile',         label: '👤 Profile'         },
     { key: 'messages',        label: '💬 Messages',        badge: attention.unread_messages, color: 'red'   },
@@ -226,7 +362,7 @@ export default function LeadProfile({ leadId, onBack }) {
       {/* Back */}
       <BackButton onBack={onBack} />
 
-      {/* ── Profile header ─────────────────────────────────────────── */}
+      {/* ── Profile header ──────────────────────────────────────────── */}
       <div style={{
         background:   'white',
         border:       `1px solid ${ds.border}`,
@@ -275,10 +411,16 @@ export default function LeadProfile({ leadId, onBack }) {
                   {SOURCE_LABELS[lead.source] ?? lead.source}
                 </span>
               )}
+              {/* GPM-1B: show deal value badge if set */}
+              {lead.deal_value != null && (
+                <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, fontFamily: ds.fontSyne }}>
+                  💰 ₦{Number(lead.deal_value).toLocaleString()}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Action buttons — hidden for affiliate_partner */}
+          {/* Action buttons */}
           {!isAffiliate && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
               {!isTerminal && (
@@ -311,8 +453,7 @@ export default function LeadProfile({ leadId, onBack }) {
                       disabled={overrideLoading || lead.score === s}
                       onClick={() => handleOverrideScore(s)}
                       style={{
-                        padding: '6px 10px',
-                        borderRadius: ds.radius.sm,
+                        padding: '6px 10px', borderRadius: ds.radius.sm,
                         border: `1.5px solid ${SCORE_STYLE[s]?.color ?? ds.border}`,
                         background: lead.score === s ? SCORE_STYLE[s]?.bg : 'white',
                         color: SCORE_STYLE[s]?.color ?? ds.dark,
@@ -327,8 +468,9 @@ export default function LeadProfile({ leadId, onBack }) {
                 </div>
               )}
 
+              {/* GPM-1B: Convert button now triggers deal value modal */}
               {!isTerminal && lead.stage === 'proposal_sent' && (
-                <ActionBtn onClick={handleConvert} loading={actionLoading === 'convert'} color={ds.teal}>
+                <ActionBtn onClick={handleConvertClick} loading={actionLoading === 'convert'} color={ds.teal}>
                   ✓ Convert
                 </ActionBtn>
               )}
@@ -339,14 +481,12 @@ export default function LeadProfile({ leadId, onBack }) {
                 </ActionBtn>
               )}
 
-              {/* Lost lead — creates a new lead record */}
               {isLostStage && (
                 <ActionBtn onClick={handleReactivate} loading={actionLoading === 'reactivate'} color={ds.teal}>
                   ↺ Reactivate
                 </ActionBtn>
               )}
 
-              {/* Nurture-track lead — pulls back into active pipeline in-place */}
               {isNurture && (
                 <ActionBtn onClick={() => setShowNurtureReactivate(true)} loading={false} color="#7C3AED">
                   ↺ Reactivate from Nurture
@@ -360,7 +500,7 @@ export default function LeadProfile({ leadId, onBack }) {
           <p style={{ color: ds.red, fontSize: 13, marginTop: 10 }}>⚠ {actionError}</p>
         )}
 
-        {/* Assign rep — manager only */}
+        {/* Assign rep */}
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${ds.border}` }}>
           <p style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
             Assigned Rep
@@ -404,7 +544,6 @@ export default function LeadProfile({ leadId, onBack }) {
 
       {/* ── Tabs ──────────────────────────────────────────────────── */}
       <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: ds.radius.xl, boxShadow: ds.cardShadow, overflow: 'hidden' }}>
-        {/* Tab bar */}
         <div style={{ display: 'flex', gap: 4, padding: '10px 16px', borderBottom: `1px solid ${ds.border}`, background: ds.light, overflowX: 'auto' }}>
           {TABS.map(({ key, label, badge, color }) => (
             <button
@@ -434,12 +573,9 @@ export default function LeadProfile({ leadId, onBack }) {
               {badge > 0 && tab !== key && (
                 <span style={{
                   ...BADGE_STYLE[color],
-                  borderRadius: 20,
-                  padding: '1px 5px',
-                  fontSize: 9,
-                  fontWeight: 700,
-                  lineHeight: '14px',
-                  fontFamily: ds.fontSyne,
+                  borderRadius: 20, padding: '1px 5px',
+                  fontSize: 9, fontWeight: 700,
+                  lineHeight: '14px', fontFamily: ds.fontSyne,
                 }}>
                   {badge}
                 </span>
@@ -448,27 +584,17 @@ export default function LeadProfile({ leadId, onBack }) {
           ))}
         </div>
 
-        {/* Tab panels — mount-and-hide not used here; conditional render is fine
-            since each panel manages its own data fetching on mount */}
         <div style={{ padding: '24px' }}>
           {tab === 'profile'  && <ProfileTab lead={lead} pipelineStages={pipelineStages} />}
           {tab === 'messages' && <LeadMessages leadId={leadId} leadName={lead.full_name} />}
           {tab === 'timeline' && <LeadTimeline leadId={leadId} />}
           {tab === 'tasks'    && <LeadTasks    leadId={leadId} />}
-          {tab === 'demos'    && (
-            <DemoScheduler leadId={leadId} leadName={lead.full_name} />
-          )}
+          {tab === 'demos'    && <DemoScheduler leadId={leadId} leadName={lead.full_name} />}
           {tab === 'log-interaction' && (
-            <LogInteractionPanel
-              linkedTo={{ type: 'lead', id: leadId }}
-              contextName={lead.full_name}
-            />
+            <LogInteractionPanel linkedTo={{ type: 'lead', id: leadId }} contextName={lead.full_name} />
           )}
           {tab === 'create-ticket' && (
-            <LinkedTicketsPanel
-              linkedTo={{ type: 'lead', id: leadId }}
-              contextName={lead.full_name}
-            />
+            <LinkedTicketsPanel linkedTo={{ type: 'lead', id: leadId }} contextName={lead.full_name} />
           )}
         </div>
       </div>
@@ -506,18 +632,10 @@ export default function LeadProfile({ leadId, onBack }) {
               }}
             />
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <ActionBtn
-                onClick={() => { setShowNurtureReactivate(false); setNurtureReason('') }}
-                loading={false}
-                color={ds.gray}
-              >
+              <ActionBtn onClick={() => { setShowNurtureReactivate(false); setNurtureReason('') }} loading={false} color={ds.gray}>
                 Cancel
               </ActionBtn>
-              <ActionBtn
-                onClick={handleReactivateFromNurture}
-                loading={nurtureReactivating}
-                color="#7C3AED"
-              >
+              <ActionBtn onClick={handleReactivateFromNurture} loading={nurtureReactivating} color="#7C3AED">
                 ↺ Reactivate
               </ActionBtn>
             </div>
@@ -532,6 +650,16 @@ export default function LeadProfile({ leadId, onBack }) {
           leadName={lead.full_name}
           onClose={() => setShowMarkLost(false)}
           onMarked={(updated) => { setLead(updated); setShowMarkLost(false) }}
+        />
+      )}
+
+      {/* GPM-1B: Deal value modal */}
+      {showDealValueModal && (
+        <DealValueModal
+          leadName={lead.full_name}
+          onConfirm={handleDealValueConfirm}
+          onSkip={handleDealValueSkip}
+          loading={dealValueLoading}
         />
       )}
     </div>
@@ -565,17 +693,19 @@ function ProfileTab({ lead, pipelineStages }) {
       fields: [
         { label: 'Source',         value: SOURCE_LABELS[lead.source] ?? lead.source },
         { label: 'Referrer',       value: lead.referrer },
-        { label: 'Campaign ID',    value: lead.campaign_id },
-        { label: 'Ad ID',          value: lead.ad_id },
         { label: 'UTM Source',     value: lead.utm_source },
         { label: 'UTM Campaign',   value: lead.utm_campaign },
         { label: 'UTM Ad',         value: lead.utm_ad },
+        { label: 'Ad ID',          value: lead.ad_id },
+        { label: 'Entry Path',     value: lead.entry_path },
+        { label: 'Source Team',    value: lead.source_team },
       ],
     },
     {
       title: 'Pipeline Status',
       fields: [
         { label: 'Stage',              value: pipelineStages.find(s => s.key === lead.stage)?.label ?? lead.stage?.replace(/_/g, ' ') },
+        { label: 'Deal Value',         value: lead.deal_value != null ? `₦${Number(lead.deal_value).toLocaleString()}` : null },
         { label: 'Lost Reason',        value: LOST_REASON_LABELS[lead.lost_reason] ?? lead.lost_reason },
         { label: 'Re-engagement Date', value: lead.reengagement_date },
         { label: 'Converted At',       value: lead.converted_at ? fmtDate(lead.converted_at) : null },

@@ -40,6 +40,8 @@ from app.services.subscription_service import (
 )
 from app.services.whatsapp_service import send_qualification_question, send_qualification_handoff_message
 from app.services.ai_service import generate_qualification_summary
+from app.services import shopify_service
+
 
 load_dotenv()  # Pattern 29 — required for os.getenv() in service files
 
@@ -154,6 +156,8 @@ def _map_meta_fields_to_lead(fields: dict, meta_payload: dict) -> dict:
         "source": source,
         "campaign_id": meta_payload.get("campaign_id"),
         "ad_id": meta_payload.get("ad_id"),
+        # GPM-1A: utm_source for attribution — popped out before LeadCreate instantiation
+        "utm_source": "instagram" if source == "instagram_ad" else "facebook",
     }
 
 
@@ -278,6 +282,9 @@ async def receive_meta_lead_ad(
                 mapped = _map_meta_fields_to_lead(fields, meta_payload)
 
                 # Step 5 — create lead
+                # GPM-1A: strip UTM fields from payload dict (they go as explicit kwargs)
+                utm_source_val  = mapped.pop("utm_source", None)
+                campaign_id_val = mapped.pop("campaign_id", None)
                 payload_obj = LeadCreate(
                     **{k: v for k, v in mapped.items() if v is not None}
                 )
@@ -286,6 +293,10 @@ async def receive_meta_lead_ad(
                     org_id=org_id,
                     user_id="system",
                     payload=payload_obj,
+                    utm_source=utm_source_val or "facebook",
+                    campaign_id=campaign_id_val,
+                    entry_path="meta_lead_ad",
+                    utm_ad=meta_payload.get("ad_id"),
                 )
                 processed += 1
 
@@ -496,7 +507,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         # No active session — check org behavior setting.
         org_behavior_result = (
             db.table("organisations")
-            .select("unknown_contact_behavior, whatsapp_triage_config, whatsapp_phone_id")
+            .select("unknown_contact_behavior, whatsapp_triage_config, whatsapp_phone_id, sales_mode")
             .eq("id", org_id)
             .maybe_single()
             .execute()
@@ -506,7 +517,18 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             org_behavior = org_behavior[0] if org_behavior else None
         behavior = (org_behavior or {}).get("unknown_contact_behavior", "triage_first")
         triage_config = (org_behavior or {}).get("whatsapp_triage_config")
-        print(f"[WH] behavior={behavior} triage_config={triage_config}", flush=True)
+        sales_mode = (org_behavior or {}).get("sales_mode", "consultative")
+        # SM-1: sales_mode is read and available for SHOP-1A to branch on.
+        # Transactional and hybrid routing require Shopify to be connected (SHOP-1A).
+        # Until SHOP-1A adds the shopify_connected column and wires the commerce path,
+        # all modes fall through to the existing triage_first / qualify_immediately logic.
+        print(f"[WH] behavior={behavior} triage_config={triage_config} sales_mode={sales_mode}", flush=True)
+
+        
+        # SM-1: Non-consultative sales modes are handled here.
+        # Consultative mode falls straight through to the triage_first / qualify_immediately logic below.
+        # SHOP-1A hook point: when shopify_connected is True, transactional/hybrid
+        # routing will fire here before the consultative fallthrough below.
 
         if behavior == "qualify_immediately":
             print(f"[WH] qualify_immediately path", flush=True)
@@ -514,6 +536,20 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             # Duplicate-race handler lives in this branch only.
             provisional_name = (contact_name or "").strip() or sender_phone
             try:
+                # GPM-1A: extract Click-to-WhatsApp referral object for attribution
+                _referral = message.get("referral") or {}
+                _wa_utm_source = None
+                _wa_campaign_id = None
+                _wa_utm_ad = None
+                if _referral:
+                    _wa_utm_source = "facebook"  # Click-to-WA always originates from Meta
+                    _wa_campaign_id = (
+                        _referral.get("ctwa_clid")
+                        or _referral.get("ref")
+                    )
+                    # GPM-1D: referral headline is the ad creative identifier
+                    _wa_utm_ad = _referral.get("headline") or None
+
                 new_lead_payload = LeadCreate(
                     full_name      = provisional_name,
                     phone          = sender_phone,
@@ -522,10 +558,14 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     problem_stated = content if msg_type == "text" else None,
                 )
                 new_lead = lead_service.create_lead(
-                    db      = db,
-                    org_id  = org_id,
-                    user_id = "system",
-                    payload = new_lead_payload,
+                    db          = db,
+                    org_id      = org_id,
+                    user_id     = "system",
+                    payload     = new_lead_payload,
+                    utm_source  = _wa_utm_source,
+                    campaign_id = _wa_campaign_id,
+                    entry_path  = "whatsapp",
+                    utm_ad      = _wa_utm_ad,
                 )
                 lead_id     = new_lead["id"]
                 assigned_to = new_lead.get("assigned_to")
@@ -1431,5 +1471,107 @@ async def receive_flutterwave_webhook(
     except Exception as exc:  # pylint: disable=broad-except
         # S14 — never return 5xx to Flutterwave; log and acknowledge
         logger.error("Flutterwave webhook processing error: %s", exc)
+
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# POST /webhooks/shopify  — Shopify webhook handler (SHOP-1A)
+# ---------------------------------------------------------------------------
+
+@router.post("/shopify", status_code=status.HTTP_200_OK)
+async def receive_shopify_webhook(
+    request: Request,
+    db=Depends(get_supabase),
+):
+    """
+    Shopify webhook handler.
+    Route: POST /webhooks/shopify
+
+    Security: X-Shopify-Hmac-Sha256 verified per org's shopify_webhook_secret.
+    Topic routing via X-Shopify-Topic header.
+
+    Supported topics:
+      checkouts/update  → handle_abandoned_cart
+      orders/create     → handle_order_created
+      fulfillments/create → handle_fulfillment_created
+      products/update   → sync_product
+      products/create   → sync_product
+      products/delete   → handle_product_deleted
+
+    S14: processing errors are logged and swallowed — always return 200.
+    """
+    raw_body = await request.body()
+    topic = request.headers.get("X-Shopify-Topic") or ""
+    shop_domain = request.headers.get("X-Shopify-Shop-Domain") or ""
+    hmac_header = request.headers.get("X-Shopify-Hmac-Sha256") or ""
+
+    logger.info("[SHOPIFY] topic=%s shop=%s", topic, shop_domain)
+
+    # Resolve org by shop domain
+    if not shop_domain:
+        logger.warning("[SHOPIFY] missing X-Shopify-Shop-Domain header — dropping")
+        return {"status": "ok"}
+
+    org_r = (
+        db.table("organisations")
+        .select("id, shopify_webhook_secret, shopify_connected")
+        .eq("shopify_shop_domain", shop_domain)
+        .maybe_single()
+        .execute()
+    )
+    org_d = org_r.data
+    if isinstance(org_d, list):
+        org_d = org_d[0] if org_d else None
+    if not org_d:
+        logger.warning("[SHOPIFY] no org found for shop_domain=%s — dropping", shop_domain)
+        return {"status": "ok"}
+
+    org_id = org_d["id"]
+    webhook_secret = (org_d.get("shopify_webhook_secret") or "").strip()
+
+    # Verify HMAC — reject if secret is configured and signature is wrong
+    if webhook_secret:
+        if not shopify_service.verify_webhook(raw_body, hmac_header, webhook_secret):
+            logger.warning("[SHOPIFY] invalid HMAC for org=%s topic=%s", org_id, topic)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Shopify webhook signature",
+            )
+
+    # Parse body
+    try:
+        payload = json.loads(raw_body)
+    except Exception as exc:
+        logger.warning("[SHOPIFY] invalid JSON for org=%s: %s", org_id, exc)
+        return {"status": "ok"}
+
+    # Dispatch by topic — S14 per handler
+    try:
+        if topic in ("products/create", "products/update"):
+            shopify_service.sync_product(db=db, org_id=org_id, shopify_product=payload)
+
+        elif topic == "products/delete":
+            shopify_service.handle_product_deleted(
+                db=db, org_id=org_id, shopify_product_id=payload.get("id")
+            )
+
+        elif topic == "checkouts/update":
+            shopify_service.handle_abandoned_cart(db=db, org_id=org_id, checkout=payload)
+
+        elif topic == "orders/create":
+            shopify_service.handle_order_created(db=db, org_id=org_id, order=payload)
+
+        elif topic == "fulfillments/create":
+            shopify_service.handle_fulfillment_created(
+                db=db, org_id=org_id, fulfillment=payload
+            )
+
+        else:
+            logger.info("[SHOPIFY] unhandled topic=%s org=%s — ignoring", topic, org_id)
+
+    except Exception as exc:
+        # S14 — never return 5xx to Shopify
+        logger.error("[SHOPIFY] handler error org=%s topic=%s: %s", org_id, topic, exc)
 
     return {"status": "ok"}

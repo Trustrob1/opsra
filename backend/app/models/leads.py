@@ -122,6 +122,7 @@ class LeadUpdate(BaseModel):
     location: Optional[str] = None
     branches: Optional[LeadBranches] = None
     problem_stated: Optional[str] = None
+    deal_value: Optional[float] = None
     referrer: Optional[str] = None
     campaign_id: Optional[str] = None
     ad_id: Optional[str] = None

@@ -155,27 +155,76 @@ def handle_session_message(
     phone_number: str,
     session: dict,
     msg_type: str,
-    content: Optional[str],
-    interactive_payload: Optional[dict],
-    contact_name: Optional[str],
+    content,
+    interactive_payload,
+    contact_name,
     now_ts,
     section: str = "unknown",
-) -> None:
+):
     """
     Route an inbound message to the correct handler based on session state.
-    section: "unknown" (WH-0) or "customer" (WH-2) — controls which menu is
-    re-sent on free text and which dispatcher is called.
+    section: "unknown" (WH-0) | "customer" (WH-2) | "hybrid" | "returning_lead" | "known_customer"
     S14.
     """
     try:
         state = session.get("session_state", "active")
-
+ 
         if state == "triage_sent":
             if msg_type == "interactive" and interactive_payload:
                 item_id = (
                     (interactive_payload.get("list_reply") or
                      interactive_payload.get("button_reply") or {}).get("id")
                 )
+ 
+                # SM-1: hybrid gate responses
+                if item_id == "buy_now":
+                    session_id = session["id"]
+                    _action_transactional_entry(
+                        db, org_id, phone_number, session_id, contact_name
+                    )
+                    return
+ 
+                if item_id == "talk_sales":
+                    session_id = session["id"]
+                    # Mid-browse switch: if there was a commerce_session, close it
+                    try:
+                        db.table("commerce_sessions").update({"status": "abandoned"}).eq(
+                            "org_id", org_id
+                        ).eq("phone_number", phone_number).eq("status", "open").execute()
+                    except Exception:
+                        pass  # commerce_sessions may not exist yet (pre-SHOP-1A)
+                    _action_qualify(db, org_id, phone_number, session_id, contact_name, now_ts)
+                    return
+ 
+                # SM-1: returning_contact_menu selection
+                if section == "returning_lead":
+                    dispatch_contact_menu_selection(
+                        db=db,
+                        org_id=org_id,
+                        phone_number=phone_number,
+                        item_id=item_id,
+                        session=session,
+                        menu_key="returning_contact_menu",
+                        contact_name=contact_name,
+                        now_ts=now_ts,
+                    )
+                    return
+ 
+                # SM-1: known_customer_menu selection
+                if section == "known_customer":
+                    dispatch_contact_menu_selection(
+                        db=db,
+                        org_id=org_id,
+                        phone_number=phone_number,
+                        item_id=item_id,
+                        session=session,
+                        menu_key="known_customer_menu",
+                        contact_name=contact_name,
+                        now_ts=now_ts,
+                    )
+                    return
+ 
+                # Existing WH-2 customer triage
                 if section == "customer":
                     dispatch_customer_triage_selection(
                         db=db,
@@ -187,6 +236,7 @@ def handle_session_message(
                         now_ts=now_ts,
                     )
                 else:
+                    # WH-0 unknown contact triage
                     dispatch_triage_selection(
                         db=db,
                         org_id=org_id,
@@ -197,12 +247,11 @@ def handle_session_message(
                         now_ts=now_ts,
                     )
             else:
-                # Free text while menu is pending — re-send the correct menu,
-                # no new session created.
+                # Free text while menu is pending — re-send the correct menu
                 from app.services.whatsapp_service import send_triage_menu
                 send_triage_menu(db=db, org_id=org_id,
                                  phone_number=phone_number, section=section)
-
+ 
         elif state == "awaiting_identifier":
             if msg_type == "text" and content:
                 handle_awaiting_identifier(
@@ -214,18 +263,160 @@ def handle_session_message(
                     contact_name=contact_name,
                     now_ts=now_ts,
                 )
-            # Non-text or empty while awaiting — silently ignore
-
+ 
         else:
-            # 'active' or anything else — session already resolved
             logger.debug(
                 "handle_session_message: session %s already in state %s — no-op",
                 session.get("id"), state,
             )
-
+ 
     except Exception as exc:
         logger.warning("handle_session_message failed org=%s phone=%s: %s",
                        org_id, phone_number, exc)
+ 
+ 
+# ── NEW: dispatch_contact_menu_selection ─────────────────────────────────────
+ 
+def dispatch_contact_menu_selection(
+    db,
+    org_id: str,
+    phone_number: str,
+    item_id,
+    session: dict,
+    menu_key: str,
+    contact_name,
+    now_ts,
+) -> None:
+    """
+    SM-1: Dispatch an item selection from returning_contact_menu or known_customer_menu.
+    menu_key: "returning_contact_menu" | "known_customer_menu"
+    Action types: qualify | kb_enquiry | support_ticket | route_to_role | free_form
+    S14.
+    """
+    try:
+        session_id = session["id"]
+ 
+        # Fetch org triage config + customer_id from session_data
+        org_result = (
+            db.table("organisations")
+            .select("whatsapp_triage_config, qualification_flow, whatsapp_phone_id, name")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else None
+ 
+        triage_config = (org_data or {}).get("whatsapp_triage_config") or {}
+        menu_config = triage_config.get(menu_key) or {}
+        items = menu_config.get("items") or []
+ 
+        matched_item = None
+        if item_id:
+            for itm in items:
+                if itm.get("id") == item_id:
+                    matched_item = itm
+                    break
+ 
+        action = (matched_item or {}).get("action", "free_form")
+        session_data = session.get("session_data") or {}
+        customer_id = session_data.get("customer_id")
+ 
+        if action == "qualify":
+            # Route to assigned rep — for returning leads picking up pipeline
+            _action_qualify(db, org_id, phone_number, session_id, contact_name, now_ts)
+ 
+        elif action == "kb_enquiry":
+            # KB-first rule: lookup_kb_answer(), human fallback if no match
+            _contact_menu_action_kb_enquiry(
+                db, org_id, phone_number, session_id,
+                matched_item or {}, customer_id, contact_name, now_ts, org_data,
+            )
+ 
+        elif action == "support_ticket":
+            # Reuse existing _customer_action_create_ticket
+            _customer_action_create_ticket(
+                db, org_id, phone_number, session_id,
+                matched_item or {}, customer_id, contact_name, now_ts,
+            )
+ 
+        elif action == "route_to_role":
+            _customer_action_route_to_role(
+                db, org_id, phone_number, session_id,
+                matched_item or {}, customer_id, contact_name, now_ts,
+            )
+ 
+        else:
+            # free_form fallback
+            _customer_action_free_form(
+                db, org_id, phone_number, session_id,
+                matched_item or {}, customer_id, contact_name, now_ts,
+            )
+ 
+    except Exception as exc:
+        logger.warning(
+            "dispatch_contact_menu_selection failed org=%s phone=%s menu=%s: %s",
+            org_id, phone_number, menu_key, exc,
+        )
+ 
+ 
+def _contact_menu_action_kb_enquiry(
+    db,
+    org_id: str,
+    phone_number: str,
+    session_id: str,
+    item: dict,
+    customer_id,
+    contact_name,
+    now_ts,
+    org_data: Optional[dict] = None,
+) -> None:
+    """
+    SM-1: KB-first enquiry handler.
+    lookup_kb_answer() first.
+      found=True  → auto-send answer via WhatsApp. No human routing.
+      found=False → _customer_action_free_form() to route to human.
+    S14.
+    """
+    try:
+        from app.services.whatsapp_service import _call_meta_send
+ 
+        phone_id = ((org_data or {}).get("whatsapp_phone_id") or "").strip()
+ 
+        # Attempt KB lookup — reuse existing lookup_kb_answer if available
+        kb_answer = None
+        try:
+            from app.services.customer_inbound_service import lookup_kb_answer
+            kb_result = lookup_kb_answer(db=db, org_id=org_id, query=item.get("label", ""))
+            if kb_result and kb_result.get("found"):
+                kb_answer = kb_result.get("answer")
+        except Exception as exc:
+            logger.warning(
+                "_contact_menu_action_kb_enquiry: lookup_kb_answer failed: %s", exc
+            )
+ 
+        if kb_answer and phone_id:
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {"body": kb_answer},
+            })
+            update_session(db, session_id, "active", selected_action="kb_enquiry_resolved")
+        else:
+            # No KB match — route to human
+            _customer_action_free_form(
+                db, org_id, phone_number, session_id,
+                item, customer_id, contact_name, now_ts,
+            )
+ 
+    except Exception as exc:
+        logger.warning(
+            "_contact_menu_action_kb_enquiry failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+ 
 
 
 # ---------------------------------------------------------------------------
@@ -1086,3 +1277,175 @@ def _notify_managers(
                 )
     except Exception as exc:
         logger.warning("_notify_managers failed org=%s: %s", org_id, exc)
+
+# ── NEW FUNCTIONS — append after _notify_managers() ──────────────────────────
+ 
+def _action_transactional_entry(
+    db,
+    org_id: str,
+    phone_number: str,
+    session_id: str,
+    contact_name: Optional[str],
+) -> None:
+    """
+    SM-1: SHOP-1 stub — create a commerce_session and mark session active.
+    Full commerce logic implemented in SHOP-1A.
+    S14.
+    """
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        # SHOP-1 stub: insert a bare commerce_session row so the table reference
+        # is established. SHOP-1A will populate product/cart fields.
+        try:
+            db.table("commerce_sessions").insert({
+                "org_id":       org_id,
+                "phone_number": phone_number,
+                "status":       "open",
+                "created_at":   now,
+            }).execute()
+        except Exception as exc:
+            # commerce_sessions table may not exist until SHOP-1A migration runs.
+            # Log and continue — session still gets marked active.
+            logger.warning(
+                "_action_transactional_entry: commerce_sessions insert failed "
+                "(expected before SHOP-1A migration) org=%s: %s",
+                org_id, exc,
+            )
+        update_session(db, session_id, "active", selected_action="transactional_entry")
+    except Exception as exc:
+        logger.warning(
+            "_action_transactional_entry failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+ 
+ 
+def send_hybrid_entry_choice(
+    db,
+    org_id: str,
+    phone_number: str,
+) -> None:
+    """
+    SM-1: Send the hybrid gate (Buy Now / Speak to Sales) to the contact.
+    S14.
+    """
+    try:
+        from app.services.sales_mode_service import build_hybrid_entry_message
+        from app.services.whatsapp_service import _call_meta_send
+ 
+        org_r = (
+            db.table("organisations")
+            .select("whatsapp_phone_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+ 
+        if phone_id:
+            payload = build_hybrid_entry_message(phone_number)
+            if payload:
+                _call_meta_send(phone_id, payload)
+    except Exception as exc:
+        logger.warning(
+            "send_hybrid_entry_choice failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+ 
+ 
+def send_returning_contact_menu(
+    db,
+    org_id: str,
+    phone_number: str,
+    org: Optional[dict] = None,
+) -> None:
+    """
+    SM-1: Send the returning_contact_menu interactive list to the contact.
+    Falls back to _action_qualify() if the menu is not configured.
+    S14.
+    """
+    try:
+        from app.services.sales_mode_service import build_returning_contact_menu
+        from app.services.whatsapp_service import _call_meta_send
+ 
+        # Fetch org if not supplied
+        if org is None:
+            org_r = (
+                db.table("organisations")
+                .select("whatsapp_phone_id, whatsapp_triage_config")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            org_d = org_r.data
+            if isinstance(org_d, list):
+                org_d = org_d[0] if org_d else None
+            org = org_d or {}
+ 
+        phone_id = (org.get("whatsapp_phone_id") or "").strip()
+        payload = build_returning_contact_menu(org, phone_number)
+ 
+        if payload and phone_id:
+            _call_meta_send(phone_id, payload)
+        else:
+            logger.info(
+                "send_returning_contact_menu: no menu configured for org %s — "
+                "falling back to qualification",
+                org_id,
+            )
+    except Exception as exc:
+        logger.warning(
+            "send_returning_contact_menu failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+ 
+ 
+def send_known_customer_menu(
+    db,
+    org_id: str,
+    phone_number: str,
+    session_id: Optional[str] = None,
+    org: Optional[dict] = None,
+) -> None:
+    """
+    SM-1: Send the known_customer_menu interactive list to the contact.
+    Falls back to existing customer triage if menu is not configured.
+    S14.
+    """
+    try:
+        from app.services.sales_mode_service import build_known_customer_menu
+        from app.services.whatsapp_service import _call_meta_send
+ 
+        if org is None:
+            org_r = (
+                db.table("organisations")
+                .select("whatsapp_phone_id, whatsapp_triage_config")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            org_d = org_r.data
+            if isinstance(org_d, list):
+                org_d = org_d[0] if org_d else None
+            org = org_d or {}
+ 
+        phone_id = (org.get("whatsapp_phone_id") or "").strip()
+        payload = build_known_customer_menu(org, phone_number)
+ 
+        if payload and phone_id:
+            _call_meta_send(phone_id, payload)
+        else:
+            logger.info(
+                "send_known_customer_menu: no menu configured for org %s — "
+                "falling back to existing customer triage",
+                org_id,
+            )
+    except Exception as exc:
+        logger.warning(
+            "send_known_customer_menu failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+ 
