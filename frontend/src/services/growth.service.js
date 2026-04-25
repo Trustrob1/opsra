@@ -1,9 +1,9 @@
 /**
  * frontend/src/services/growth.service.js
- * Growth & Performance Dashboard API service — GPM-1B.
+ * Growth & Performance Dashboard API service — GPM-1B + GPM-1E (watermark).
  *
- * Pattern 50: axios + _h() only, relative paths — never fetch, never absolute URL.
- * Pattern 11: JWT in Zustand memory only — _h() pulls token from authStore.
+ * Pattern 50: axios + _h() only, relative paths.
+ * Pattern 11: JWT in Zustand memory only.
  */
 
 import axios from 'axios'
@@ -27,58 +27,42 @@ function _params(p = {}) {
 // ---------------------------------------------------------------------------
 
 export async function getGrowthOverview(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/overview', {
-    ..._h(), params: _params(params),
-  })
+  const r = await axios.get('/api/v1/analytics/growth/overview', { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getTeamPerformance(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/teams', {
-    ..._h(), params: _params(params),
-  })
+  const r = await axios.get('/api/v1/analytics/growth/teams', { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getFunnelMetrics(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/funnel', {
-    ..._h(), params: _params(params),
-  })
+  const r = await axios.get('/api/v1/analytics/growth/funnel', { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getSalesRepMetrics(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/sales-reps', {
-    ..._h(), params: _params(params),
-  })
+  const r = await axios.get('/api/v1/analytics/growth/sales-reps', { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getChannelMetrics(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/channels', {
-    ..._h(), params: _params(params),
-  })
+  const r = await axios.get('/api/v1/analytics/growth/channels', { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getLeadVelocity(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/velocity', {
-    ..._h(), params: _params(params),
-  })
+  const r = await axios.get('/api/v1/analytics/growth/velocity', { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getPipelineAtRisk(stuckDays = 7) {
-  const r = await axios.get('/api/v1/analytics/growth/pipeline-at-risk', {
-    ..._h(), params: { stuck_days: stuckDays },
-  })
+  const r = await axios.get('/api/v1/analytics/growth/pipeline-at-risk', { ..._h(), params: { stuck_days: stuckDays } })
   return r.data.data
 }
 
 export async function getWinLoss(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/win-loss', {
-    ..._h(), params: _params(params),
-  })
+  const r = await axios.get('/api/v1/analytics/growth/win-loss', { ..._h(), params: _params(params) })
   return r.data.data
 }
 
@@ -154,5 +138,109 @@ export async function updateDirectSale(saleId, payload) {
 
 export async function deleteDirectSale(saleId) {
   const r = await axios.delete(`/api/v1/growth/direct-sales/${saleId}`, _h())
+  return r.data
+}
+
+// ---------------------------------------------------------------------------
+// Growth config — bulk import  (GPM-1E)
+// ---------------------------------------------------------------------------
+
+/**
+ * Upload Excel/CSV for bulk sales import.
+ * @param {FormData} formData        — must contain field "file"
+ * @param {boolean}  confirm         — false = preview, true = insert
+ * @param {number[]} selectedIndices — indices of valid_rows to insert (null = all)
+ * @param {boolean}  fromBeginning   — ignore watermark
+ */
+export async function importSalesExcel(formData, confirm = false, selectedIndices = null, fromBeginning = false) {
+  const params = new URLSearchParams({ confirm })
+  if (fromBeginning) params.append('from_beginning', 'true')
+  if (selectedIndices && selectedIndices.length > 0) {
+    params.append('selected_indices', selectedIndices.join(','))
+  }
+  const r = await axios.post(
+    `/api/v1/growth/direct-sales/import/excel?${params.toString()}`,
+    formData,
+    {
+      headers: {
+        ...(_h().headers),
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  )
+  return r.data.data
+}
+
+/**
+ * Pull a publicly shared Google Sheet and import sales.
+ * @param {string}   url              — full Google Sheets URL
+ * @param {boolean}  confirm          — false = preview, true = insert
+ * @param {number[]} selectedIndices  — indices of valid_rows to insert (null = all)
+ * @param {boolean}  fromBeginning    — ignore watermark
+ */
+export async function importSalesSheets(url, confirm = false, selectedIndices = null, fromBeginning = false) {
+  const r = await axios.post(
+    '/api/v1/growth/direct-sales/import/sheets',
+    {
+      url,
+      confirm,
+      from_beginning:   fromBeginning,
+      selected_indices: selectedIndices,
+    },
+    _h()
+  )
+  return r.data.data
+}
+
+/**
+ * Reset the import watermark for a source so the next import starts from scratch.
+ * @param {string}      sourceType — 'excel' | 'sheets'
+ * @param {string|null} sheetUrl   — required for sheets, null for excel
+ */
+export async function resetImportWatermark(sourceType, sheetUrl = null) {
+  const r = await axios.delete(
+    '/api/v1/growth/direct-sales/import/watermark',
+    { ..._h(), data: { source_type: sourceType, sheet_url: sheetUrl } }
+  )
+  return r.data
+}
+
+// ---------------------------------------------------------------------------
+// GPM-2: AI Insight endpoints
+// ---------------------------------------------------------------------------
+
+export async function getInsightSections(dateFrom, dateTo) {
+  const r = await axios.get('/api/v1/analytics/growth/insights/sections', {
+    ..._h(),
+    params: {
+      ...(dateFrom ? { date_from: dateFrom } : {}),
+      ...(dateTo   ? { date_to:   dateTo   } : {}),
+    },
+  })
+  return r.data.data
+}
+
+export async function getInsightPanel(dateFrom, dateTo) {
+  const r = await axios.post(
+    '/api/v1/analytics/growth/insights/panel',
+    {},
+    {
+      ..._h(),
+      params: {
+        ...(dateFrom ? { date_from: dateFrom } : {}),
+        ...(dateTo   ? { date_to:   dateTo   } : {}),
+      },
+    },
+  )
+  return r.data.data
+}
+
+export async function getInsightAnomalies() {
+  const r = await axios.get('/api/v1/analytics/growth/insights/anomalies', _h())
+  return r.data.data
+}
+
+export async function clearInsightCache() {
+  const r = await axios.delete('/api/v1/analytics/growth/insights/sections/cache', _h())
   return r.data
 }

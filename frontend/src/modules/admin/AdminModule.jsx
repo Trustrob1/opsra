@@ -7,6 +7,7 @@
  * CONFIG-3: "🕐 Business Hours" tab added.
  * SM-1: "🛒 Sales System" tab added — SalesModeConfig + ContactMenuConfig.
  * SHOP-1B: "🛍️ Shopify" tab added — ShopifyIntegration.
+ * GPM-1E: "💰 Sales Log" tab added — SalesLog.
  *
  * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
  * table state, filters, and open modals when switching between tabs.
@@ -33,6 +34,7 @@ import SalesModeConfig         from './SalesModeConfig'
 import ContactMenuConfig       from './ContactMenuConfig'
 import ShopifyIntegration      from './ShopifyIntegration'
 import GrowthConfig            from './GrowthConfig'
+import SalesLog                from './SalesLog'
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
@@ -52,6 +54,7 @@ const TABS = [
   { id: 'sales-system',   label: '🛒 Sales System' },
   { id: 'shopify',        label: '🛍️ Shopify' },
   { id: 'growth-config',  label: '📈 Growth Config' },
+  { id: 'sales-log',      label: '💰 Sales Log' },
   { id: 'kb',             label: '📚 Knowledge Base', link: true },
   { id: 'templates',      label: '💬 WA Templates',   link: true },
 ]
@@ -197,6 +200,11 @@ export default function AdminModule({ user }) {
         {/* GPM-1D: Growth Config */}
         <div style={{ display: tab === 'growth-config' ? 'block' : 'none' }}>
           <GrowthConfig />
+        </div>
+
+        {/* GPM-1E: Sales Log */}
+        <div style={{ display: tab === 'sales-log' ? 'block' : 'none' }}>
+          <SalesLog />
         </div>
 
         {tab === 'kb' && (

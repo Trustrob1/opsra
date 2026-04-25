@@ -84,6 +84,7 @@ celery_app = Celery(
         "app.workers.lead_graduation_worker",    # ← M01-10a
         "app.workers.lead_nurture_worker",       # ← M01-10a
         "app.workers.daily_briefing_worker",     # ← M01-10b
+        "app.workers.growth_insights_worker",    # ← GPM-2
     ],
 )
 
@@ -319,4 +320,23 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.daily_briefing_worker.run_notification_digest",
         "schedule": crontab(hour=16, minute=0),
     },
+
+    # ------------------------------------------------------------------ #
+    # growth_anomaly_check — Daily 09:00 WAT (08:00 UTC)  (GPM-2)        #
+    # Worker: growth_insights_worker.py                                   #
+    # ------------------------------------------------------------------ #
+    "growth_anomaly_check": {
+       "task": "app.workers.growth_insights_worker.run_growth_anomaly_check",
+       "schedule": crontab(hour=8, minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # weekly_growth_digest — Every Monday 08:00 WAT (07:00 UTC)  (GPM-2) #
+    # Worker: growth_insights_worker.py                                   #
+    # ------------------------------------------------------------------ #
+    "weekly_growth_digest": {
+       "task": "app.workers.growth_insights_worker.run_weekly_growth_digest",
+       "schedule": crontab(hour=7, minute=0, day_of_week=1),
+    },
+
 }

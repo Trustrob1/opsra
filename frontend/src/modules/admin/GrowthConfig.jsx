@@ -5,7 +5,6 @@
  * Three stacked cards (all visible on scroll — not tabs):
  *   1. Growth Teams   — POST/PATCH/DELETE /api/v1/growth/teams
  *   2. Campaign Spend — POST/DELETE        /api/v1/growth/spend
- *   3. Direct Sales   — POST/PATCH/DELETE  /api/v1/growth/direct-sales
  *
  * Pattern 26: panels always mounted, display:none when hidden.
  * Pattern 50: all API calls via growth.service.js (axios + _h()).
@@ -595,168 +594,6 @@ function CampaignSpend({ teams, onRefresh }) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Section 3: Direct Sales
-// ---------------------------------------------------------------------------
-
-function DirectSales({ teams }) {
-  const [sales, setSales]     = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
-  const [saving, setSaving]   = useState(false)
-  const [error, setError]     = useState('')
-  const [page, setPage]       = useState(1)
-  const [total, setTotal]     = useState(0)
-  const PAGE_SIZE = 20
-
-  const [form, setForm] = useState({
-    customerName: '',
-    amount: '',
-    saleDate: '',
-    channel: '',
-    utmSource: '',
-    sourceTeam: '',
-    notes: '',
-  })
-
-  const activeTeams = teams.filter(t => t.is_active)
-
-  const load = useCallback(async (p = 1) => {
-    setLoading(true)
-    try {
-      const data = await growthSvc.getDirectSales(p, PAGE_SIZE)
-      setSales(data?.items || data || [])
-      setTotal(data?.total || (data?.length ?? 0))
-    } catch (e) {
-      setError('Failed to load direct sales')
-    } finally { setLoading(false) }
-  }, [])
-
-  useEffect(() => { load(page) }, [load, page])
-
-  const handleAdd = async () => {
-    if (!form.customerName.trim() || !form.amount || !form.saleDate) {
-      setError('Customer name, amount, and sale date are required'); return
-    }
-    setSaving(true); setError('')
-    try {
-      await growthSvc.createDirectSale({
-        customer_name: form.customerName.trim(),
-        amount:        parseFloat(form.amount),
-        sale_date:     form.saleDate,
-        channel:       form.channel || null,
-        utm_source:    form.utmSource || null,
-        source_team:   form.sourceTeam || null,
-        notes:         form.notes || null,
-      })
-      setShowAdd(false)
-      setForm({ customerName: '', amount: '', saleDate: '', channel: '', utmSource: '', sourceTeam: '', notes: '' })
-      load(1); setPage(1)
-    } catch (e) {
-      setError(e?.response?.data?.detail?.message || 'Failed to log sale')
-    } finally { setSaving(false) }
-  }
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this direct sale?')) return
-    try {
-      await growthSvc.deleteDirectSale(id)
-      load(page)
-    } catch (e) {
-      setError('Failed to delete')
-    }
-  }
-
-  return (
-    <div style={CARD_STYLE}>
-      <div style={CARD_HEADER}>
-        <h3 style={CARD_TITLE}>Direct Sales</h3>
-        <button style={BTN_TEAL} onClick={() => { setShowAdd(true); setError('') }}>+ Log Sale</button>
-      </div>
-
-      {loading ? (
-        <div style={{ padding: 24, color: '#7A9BAD', fontSize: 13 }}>Loading…</div>
-      ) : sales.length === 0 ? (
-        <EmptyState message='No direct sales logged. Record sales not going through the lead pipeline here.' />
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={TH}>Date</th>
-              <th style={TH}>Customer</th>
-              <th style={TH}>Amount</th>
-              <th style={TH}>Channel</th>
-              <th style={TH}>Team</th>
-              <th style={TH}>Notes</th>
-              <th style={{ ...TH, textAlign: 'right' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sales.map(s => (
-              <tr key={s.id}>
-                <td style={TD}>{s.sale_date || '—'}</td>
-                <td style={TD}>{s.customer_name || s.customer_id || '—'}</td>
-                <td style={TD}><strong>{Number(s.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></td>
-                <td style={{ ...TD, color: '#5a8a9f' }}>{s.channel || s.utm_source || '—'}</td>
-                <td style={{ ...TD, color: '#5a8a9f' }}>{s.source_team || '—'}</td>
-                <td style={{ ...TD, color: '#7A9BAD', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.notes || '—'}</td>
-                <td style={{ ...TD, textAlign: 'right' }}>
-                  <button onClick={() => handleDelete(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e57373', fontSize: 15, padding: '2px 6px' }}>🗑</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {total > PAGE_SIZE && (
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', padding: '12px 24px', borderTop: '1px solid #E2EFF4' }}>
-          <button style={BTN_GHOST} disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
-          <span style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', alignSelf: 'center' }}>Page {page}</span>
-          <button style={BTN_GHOST} disabled={page * PAGE_SIZE >= total} onClick={() => setPage(p => p + 1)}>Next →</button>
-        </div>
-      )}
-
-      {error && <div style={{ padding: '8px 24px', color: '#e57373', fontSize: 13 }}>{error}</div>}
-
-      {showAdd && (
-        <Modal title='Log Direct Sale' onClose={() => { setShowAdd(false); setError('') }}>
-          <Field label='Customer Name'>
-            <input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} placeholder='Customer or company name' style={INPUT} autoFocus />
-          </Field>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label='Amount'>
-              <input type='number' min='0' step='0.01' value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder='0.00' style={INPUT} />
-            </Field>
-            <Field label='Sale Date'>
-              <input type='date' value={form.saleDate} onChange={e => setForm(f => ({ ...f, saleDate: e.target.value }))} style={INPUT} />
-            </Field>
-          </div>
-          <Field label='Channel (optional)'>
-            <input value={form.channel} onChange={e => setForm(f => ({ ...f, channel: e.target.value }))} placeholder='e.g. facebook, referral, walk-in' style={INPUT} />
-          </Field>
-          <Field label='UTM Source (optional)'>
-            <input value={form.utmSource} onChange={e => setForm(f => ({ ...f, utmSource: e.target.value }))} placeholder='e.g. facebook' style={INPUT} />
-          </Field>
-          <Field label='Source Team (optional)'>
-            <select value={form.sourceTeam} onChange={e => setForm(f => ({ ...f, sourceTeam: e.target.value }))} style={INPUT}>
-              <option value=''>None</option>
-              {activeTeams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-            </select>
-          </Field>
-          <Field label='Notes (optional)'>
-            <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder='Brief notes…' style={INPUT} />
-          </Field>
-          {error && <div style={{ marginBottom: 12, color: '#e57373', fontSize: 13 }}>{error}</div>}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button style={BTN_GHOST} onClick={() => { setShowAdd(false); setError('') }}>Cancel</button>
-            <button style={BTN_TEAL} onClick={handleAdd} disabled={saving}>{saving ? 'Saving…' : 'Log Sale'}</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Root component
@@ -785,13 +622,12 @@ export default function GrowthConfig() {
           Growth Config
         </h2>
         <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#5a8a9f', margin: 0 }}>
-          Configure teams, log campaign spend, and record direct sales to power the Growth Dashboard.
+          Configure teams and log campaign spend to power the Growth Dashboard.
         </p>
       </div>
 
       <GrowthTeams teams={teams} loading={loadingTeams} onRefresh={loadTeams} />
       <CampaignSpend teams={teams} onRefresh={loadTeams} />
-      <DirectSales teams={teams} />
     </div>
   )
 }

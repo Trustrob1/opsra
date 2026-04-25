@@ -58,6 +58,7 @@ from app.routers import onboarding as onboarding_router        # ← ORG-ONBOARD
 from app.routers import shopify as shopify_router
 from app.routers import growth_analytics as growth_analytics_router   # ← GPM-1A
 from app.routers import growth_config as growth_config_router         # ← GPM-1A
+from app.routers import growth_insights as growth_insights_router
 
 import logging
 logging.basicConfig(
@@ -171,6 +172,12 @@ app.include_router(
     growth_config_router.router,
     prefix="/api/v1",
     tags=["growth_config"],
+)
+
+# GPM-2 — Growth AI Insights
+app.include_router(
+    growth_insights_router.router,
+    tags=["growth_insights"],
 )
 
 # ---------------------------------------------------------------------------
