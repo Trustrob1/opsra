@@ -47,6 +47,39 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _first_name(full_name):
+    """
+    Return the first word of full_name, title-cased.
+    Falls back to 'there' so messages read naturally as 'Hi there'.
+    Examples:
+      "Adebayo Okonkwo" -> "Adebayo"
+      "adebayo"         -> "Adebayo"
+      None / ""         -> "there"
+    """
+    if not full_name or not full_name.strip():
+        return "there"
+    return full_name.strip().split()[0].title()
+
+
+def _build_template_components(variables, recipient_name=None):
+    """
+    Build the Meta Cloud API components array for a template send.
+
+    recipient_name is always prepended as {{1}} when provided, shifting any
+    caller-supplied variables to {{2}}, {{3}}, etc.
+
+    Returns a components list or None if there are no variables to inject.
+    """
+    params = []
+    if recipient_name is not None:
+        params.append({"type": "text", "text": _first_name(recipient_name)})
+    for v in (variables or []):
+        params.append({"type": "text", "text": str(v)})
+    if not params:
+        return None
+    return [{"type": "body", "parameters": params}]
+
+
 def _normalise_data(result_data):
     """
     Pattern 9 — normalise list vs dict from .maybe_single().
@@ -316,19 +349,21 @@ def send_whatsapp_message(
     phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
     phone_id = phone_id or ""
 
-    # ── Resolve recipient WhatsApp number ──────────────────────────────────
+    # ── Resolve recipient WhatsApp number and name ───────────────────────
     to_number: Optional[str] = None
+    recipient_full_name: Optional[str] = None
     customer_id_str: Optional[str] = None
     lead_id_str: Optional[str] = None
 
     if payload.customer_id:
         customer = _customer_or_404(db, org_id, str(payload.customer_id))
         to_number = customer.get("whatsapp") or customer.get("phone")
+        recipient_full_name = customer.get("full_name")
         customer_id_str = str(payload.customer_id)
     else:
         lead_result = (
             db.table("leads")
-            .select("whatsapp, phone")
+            .select("whatsapp, phone, full_name")
             .eq("id", str(payload.lead_id))
             .eq("org_id", org_id)
             .is_("deleted_at", "null")
@@ -339,6 +374,7 @@ def send_whatsapp_message(
         if not lead_data:
             raise HTTPException(status_code=404, detail=ErrorCode.NOT_FOUND)
         to_number = lead_data.get("whatsapp") or lead_data.get("phone")
+        recipient_full_name = lead_data.get("full_name")
         lead_id_str = str(payload.lead_id)
 
     if not to_number:
@@ -363,14 +399,21 @@ def send_whatsapp_message(
 
     # ── Build Meta API payload ─────────────────────────────────────────────
     if payload.template_name:
+        template_dict: dict = {
+            "name": payload.template_name,
+            "language": {"code": "en"},
+        }
+        components = _build_template_components(
+            payload.template_variables,
+            recipient_name=recipient_full_name,
+        )
+        if components:
+            template_dict["components"] = components
         meta_payload = {
             "messaging_product": "whatsapp",
             "to": to_number,
             "type": "template",
-            "template": {
-                "name": payload.template_name,
-                "language": {"code": "en"},
-            },
+            "template": template_dict,
         }
         content_db = None
         template_name_db = payload.template_name
@@ -857,6 +900,82 @@ def list_templates(db, org_id: str) -> list:
     return result.data if isinstance(result.data, list) else []
 
 
+def _submit_template_to_meta(
+    db,
+    org_id: str,
+    template_id: str,
+    template_name: str,
+    category: str,
+    body: str,
+    variables: list,
+) -> Optional[str]:
+    """
+    Submit a template to Meta Cloud API for approval.
+    Returns the Meta template ID string on success, None on failure.
+    S14 — never raises; logs warning on any failure.
+
+    Meta endpoint: POST /v17.0/{WABA_ID}/message_templates
+    Category mapping: Opsra uses lowercase; Meta requires UPPERCASE.
+    Variables in body use {{1}}, {{2}} syntax — passed as-is.
+    """
+    try:
+        _, access_token, waba_id = _get_org_wa_credentials(db, org_id)
+        if not access_token or not waba_id:
+            logger.warning(
+                "_submit_template_to_meta: missing access_token or waba_id "
+                "for org %s — template %s not submitted to Meta",
+                org_id, template_name,
+            )
+            return None
+
+        # Build components — body text with example values if variables present
+        body_component: dict = {"type": "BODY", "text": body}
+        if variables:
+            body_component["example"] = {
+                "body_text": [[f"example_{v}" for v in variables]]
+            }
+
+        meta_payload = {
+            "name": template_name,
+            "language": "en",
+            "category": category.upper(),
+            "components": [body_component],
+        }
+
+        url = f"https://graph.facebook.com/v17.0/{waba_id}/message_templates"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.post(url, json=meta_payload, headers=headers)
+
+        resp_data = resp.json()
+        if resp.status_code not in (200, 201):
+            logger.warning(
+                "_submit_template_to_meta: Meta rejected template '%s' "
+                "for org %s — status %s body %s",
+                template_name, org_id, resp.status_code, resp_data,
+            )
+            return None
+
+        meta_template_id = resp_data.get("id")
+        logger.info(
+            "_submit_template_to_meta: template '%s' submitted successfully "
+            "for org %s — meta_id=%s",
+            template_name, org_id, meta_template_id,
+        )
+        return str(meta_template_id) if meta_template_id else None
+
+    except Exception as exc:
+        logger.warning(
+            "_submit_template_to_meta: unexpected error for template '%s' "
+            "org %s: %s",
+            template_name, org_id, exc,
+        )
+        return None
+
+
 def create_template(
     db,
     org_id: str,
@@ -864,7 +983,7 @@ def create_template(
     payload: TemplateCreate,
 ) -> dict:
     """
-    Create a template and submit it to Meta for approval.
+    Create a template locally and submit it to Meta for approval.
     meta_status starts as 'pending'.
     Raises 422 if category is invalid.
     """
@@ -887,6 +1006,22 @@ def create_template(
     data = insert_result.data
     if isinstance(data, list):
         data = data[0] if data else row
+
+    # ── Submit to Meta for approval ────────────────────────────────────────
+    meta_template_id = _submit_template_to_meta(
+        db=db,
+        org_id=org_id,
+        template_id=data.get("id"),
+        template_name=payload.name,
+        category=payload.category,
+        body=payload.body,
+        variables=payload.variables or [],
+    )
+    if meta_template_id:
+        db.table("whatsapp_templates").update(
+            {"meta_template_id": meta_template_id}
+        ).eq("id", data["id"]).execute()
+        data["meta_template_id"] = meta_template_id
 
     write_audit_log(
         db=db,
@@ -950,6 +1085,23 @@ def update_template(
     if not updated:
         updated = {**tmpl, **updates}
 
+    # ── Resubmit to Meta ──────────────────────────────────────────────────
+    final = updated or {**tmpl, **updates}
+    meta_template_id = _submit_template_to_meta(
+        db=db,
+        org_id=org_id,
+        template_id=template_id,
+        template_name=final.get("name", tmpl.get("name", "")),
+        category=final.get("category", tmpl.get("category", "")),
+        body=final.get("body", tmpl.get("body", "")),
+        variables=final.get("variables") or tmpl.get("variables") or [],
+    )
+    if meta_template_id:
+        db.table("whatsapp_templates").update(
+            {"meta_template_id": meta_template_id}
+        ).eq("id", template_id).execute()
+        final["meta_template_id"] = meta_template_id
+
     write_audit_log(
         db=db,
         org_id=org_id,
@@ -960,7 +1112,7 @@ def update_template(
         old_value={"meta_status": "rejected"},
         new_value={"meta_status": "pending"},
     )
-    return updated
+    return final
 
 
 # ---------------------------------------------------------------------------

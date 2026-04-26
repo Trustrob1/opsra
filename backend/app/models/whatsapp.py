@@ -45,6 +45,10 @@ class SendMessageRequest(BaseModel):
     content: Optional[str] = None
     # template_name — approved WhatsApp template name (works even if window closed)
     template_name: Optional[str] = None
+    # template_variables — ordered values for {{1}}, {{2}}, ... in the template body.
+    # Example: ["Adebayo", "April 30"] resolves {{1}} -> "Adebayo", {{2}} -> "April 30".
+    # Ignored when template_name is None.
+    template_variables: Optional[List[str]] = None
 
 
 # ---------------------------------------------------------------------------

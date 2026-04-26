@@ -1239,10 +1239,12 @@ def _send_qualification_reply(
     Save the AI's reply to whatsapp_messages and send via Meta Cloud API.
     S14 — swallows failures silently.
     """
-    from app.services.whatsapp_service import _call_meta_send, _now_iso
+    from app.services.whatsapp_service import _call_meta_send, _now_iso, _get_org_wa_credentials
     from datetime import datetime, timezone, timedelta
 
-    phone_id = (org_data.get("whatsapp_phone_id") or "").strip()
+    # MULTI-ORG-WA-1: use per-org credentials from DB instead of org_data dict
+    phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+    phone_id = (phone_id or "").strip()
 
     # Save the outbound message to whatsapp_messages first
     window_expires = (
@@ -1292,7 +1294,7 @@ def _send_qualification_reply(
             "type": "text",
             "text": {"body": reply},
         }
-        _call_meta_send(phone_id, meta_payload)
+        _call_meta_send(phone_id, meta_payload, token=access_token)
     except Exception as exc:
         logger.warning("Failed to send qualification reply via Meta API: %s", exc)
 

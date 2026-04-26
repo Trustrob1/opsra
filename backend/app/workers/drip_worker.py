@@ -33,7 +33,7 @@ Pattern 33: Python-side date comparison — no server-side date filter.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -42,6 +42,12 @@ load_dotenv()  # Pattern 29
 
 from app.workers.celery_app import celery_app  # noqa: E402
 from app.database import get_supabase  # noqa: E402
+from app.services.whatsapp_service import (  # noqa: E402
+    _get_org_wa_credentials,
+    _call_meta_send,
+    _build_template_components,
+    _first_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -242,20 +248,111 @@ def run_drip_scheduler(self):
                             skipped += 1
                             continue
 
-                        # ── Queue outbound WhatsApp message ─────────────────
-                        db.table("whatsapp_messages").insert(
-                            {
+                        # ── Resolve org WhatsApp credentials ────────────
+                        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+                        if not phone_id or not access_token:
+                            logger.warning(
+                                "drip_worker: org %s has no WhatsApp credentials — "
+                                "skipping send %s", org_id, send_id,
+                            )
+                            _set_status(db, send_id, "failed")
+                            skipped += 1
+                            continue
+
+                        # ── Resolve template name from template_id ───────────
+                        template_id = message.get("template_id")
+                        if not template_id:
+                            logger.warning(
+                                "drip_worker: drip_message %s has no template_id", message_id
+                            )
+                            _set_status(db, send_id, "failed")
+                            continue
+
+                        tmpl = _normalise(
+                            db.table("whatsapp_templates")
+                            .select("name, meta_status")
+                            .eq("id", template_id)
+                            .eq("org_id", org_id)
+                            .execute()
+                            .data
+                        )
+                        if not tmpl or tmpl.get("meta_status") != "approved":
+                            logger.warning(
+                                "drip_worker: template %s not approved for org %s "
+                                "— skipping send %s", template_id, org_id, send_id,
+                            )
+                            _set_status(db, send_id, "skipped")
+                            skipped += 1
+                            continue
+
+                        template_name = tmpl["name"]
+
+                        # ── Build Meta payload with recipient name as {{1}} ──
+                        to_number = customer.get("whatsapp") or customer.get("phone")
+                        if not to_number:
+                            logger.warning(
+                                "drip_worker: customer %s has no WhatsApp number", customer_id
+                            )
+                            _set_status(db, send_id, "failed")
+                            continue
+
+                        components = _build_template_components(
+                            variables=None,
+                            recipient_name=customer.get("full_name"),
+                        )
+                        template_dict: dict = {
+                            "name": template_name,
+                            "language": {"code": "en"},
+                        }
+                        if components:
+                            template_dict["components"] = components
+
+                        meta_payload = {
+                            "messaging_product": "whatsapp",
+                            "to": to_number,
+                            "type": "template",
+                            "template": template_dict,
+                        }
+
+                        # ── Call Meta Cloud API ──────────────────────────────
+                        try:
+                            meta_resp = _call_meta_send(phone_id, meta_payload, token=access_token)
+                            meta_msgs = meta_resp.get("messages")
+                            meta_message_id = None
+                            if isinstance(meta_msgs, list) and meta_msgs:
+                                meta_message_id = meta_msgs[0].get("id")
+                        except Exception as meta_exc:
+                            logger.warning(
+                                "drip_worker: Meta API failed for send %s: %s", send_id, meta_exc
+                            )
+                            _set_status(db, send_id, "failed")
+                            continue
+
+                        # ── Record in whatsapp_messages ──────────────────────
+                        window_expires = (
+                            datetime.now(timezone.utc) + timedelta(hours=24)
+                        ).isoformat()
+                        try:
+                            db.table("whatsapp_messages").insert({
                                 "org_id": org_id,
                                 "customer_id": customer_id,
                                 "direction": "outbound",
-                                "message_type": message.get("message_type", "drip"),
-                                "body": message.get("body", ""),
-                                "status": "queued",
+                                "message_type": "template",
+                                "template_name": template_name,
+                                "status": "sent",
+                                "meta_message_id": meta_message_id,
+                                "window_open": True,
+                                "window_expires_at": window_expires,
+                                "sent_by": None,
                                 "created_at": _now_iso(),
-                            }
-                        ).execute()
+                            }).execute()
+                        except Exception as db_exc:
+                            logger.warning(
+                                "drip_worker: failed to record whatsapp_message for "
+                                "send %s: %s", send_id, db_exc,
+                            )
 
-                        # ── Mark send as sent ────────────────────────────────
+                        # ── Mark drip_send as sent ───────────────────────────
                         db.table("drip_sends").update(
                             {"status": "sent", "sent_at": _now_iso()}
                         ).eq("id", send_id).execute()
