@@ -1328,6 +1328,92 @@ def _handle_status_update(db, status_update: dict) -> None:
         logger.warning("Status update failed for meta_message_id=%s: %s", meta_msg_id, exc)
 
 
+def _handle_template_status_update(db, value: dict) -> None:
+    """
+    Handle a message_template_status_update event from Meta.
+
+    Meta sends this when a template is APPROVED, REJECTED, DISABLED, or
+    PAUSED. We update whatsapp_templates.meta_status and category in the DB.
+
+    Matching strategy: match on meta_template_id (integer from Meta) first,
+    fall back to name + org lookup if meta_template_id is not stored yet.
+
+    S14 — never raises.
+    """
+    try:
+        meta_id    = str(value.get("message_template_id", ""))
+        name       = value.get("message_template_name", "")
+        event      = (value.get("event") or "").upper()
+        new_cat    = (value.get("new_message_template_category") or "").lower()
+
+        # Map Meta event → our meta_status values
+        status_map = {
+            "APPROVED": "approved",
+            "REJECTED": "rejected",
+            "DISABLED": "rejected",
+            "PAUSED":   "rejected",
+            "FLAGGED":  "rejected",
+            "PENDING_DELETION": "rejected",
+        }
+        new_status = status_map.get(event)
+        if not new_status:
+            logger.info(
+                "_handle_template_status_update: unhandled event '%s' for "
+                "template '%s' — ignoring", event, name,
+            )
+            return
+
+        updates: dict = {"meta_status": new_status}
+        # If Meta recategorised the template, update our local category too
+        if new_cat and new_cat in ("marketing", "utility", "authentication"):
+            updates["category"] = new_cat
+
+        # Try matching by meta_template_id first (most reliable)
+        matched = False
+        if meta_id:
+            result = (
+                db.table("whatsapp_templates")
+                .update(updates)
+                .eq("meta_template_id", meta_id)
+                .execute()
+            )
+            rows = result.data if isinstance(result.data, list) else []
+            if rows:
+                matched = True
+                logger.info(
+                    "_handle_template_status_update: template '%s' (meta_id=%s) "
+                    "updated to status=%s category=%s",
+                    name, meta_id, new_status, new_cat or "unchanged",
+                )
+
+        # Fall back to matching by name across all orgs if no match by ID
+        if not matched and name:
+            result = (
+                db.table("whatsapp_templates")
+                .update(updates)
+                .eq("name", name)
+                .eq("meta_status", "pending")
+                .execute()
+            )
+            rows = result.data if isinstance(result.data, list) else []
+            if rows:
+                logger.info(
+                    "_handle_template_status_update: template '%s' matched by name — "
+                    "updated to status=%s category=%s",
+                    name, new_status, new_cat or "unchanged",
+                )
+            else:
+                logger.warning(
+                    "_handle_template_status_update: no template found for "
+                    "name='%s' meta_id='%s' — update skipped", name, meta_id,
+                )
+
+    except Exception as exc:
+        logger.warning(
+            "_handle_template_status_update failed: %s", exc
+        )
+
+
 @router.post("/meta/whatsapp", status_code=status.HTTP_200_OK)
 async def receive_whatsapp_message(
     request: Request,
@@ -1359,9 +1445,21 @@ async def receive_whatsapp_message(
 
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
-            if change.get("field") != "messages":
-                continue
+            field = change.get("field")
             value = change.get("value", {})
+
+            # ── Template approval / rejection events ──────────────────────
+            if field == "message_template_status_update":
+                try:
+                    _handle_template_status_update(db, value)
+                except Exception as exc:
+                    logger.warning("Template status update error: %s", exc)
+                continue
+
+            # ── Inbound messages and delivery status updates ──────────────
+            if field != "messages":
+                continue
+
             phone_number_id = (value.get("metadata") or {}).get("phone_number_id", "")
             contacts        = value.get("contacts", [])
             contact_name    = (contacts[0].get("profile") or {}).get("name", "") if contacts else ""
