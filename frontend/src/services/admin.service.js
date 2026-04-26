@@ -328,3 +328,19 @@ export const disconnectShopify = () =>
 export const triggerShopifySync = () =>
   axios.post(`${BASE}/api/v1/admin/shopify/sync`, {}, { headers: _h() })
     .then(r => r.data)
+
+// ── MULTI-ORG-WA-1: WhatsApp connection management ───────────────────────────
+// Pattern 50: axios + _h() only.
+
+export const getWhatsAppStatus = () =>
+  axios.get(`${BASE}/api/v1/admin/whatsapp/status`, { headers: _h() })
+    .then(r => r.data.data)
+
+export const connectWhatsApp = (payload) =>
+  // payload: { whatsapp_phone_id, whatsapp_access_token, whatsapp_waba_id? }
+  axios.post(`${BASE}/api/v1/admin/whatsapp/connect`, payload, { headers: _h() })
+    .then(r => r.data.data)
+
+export const disconnectWhatsApp = () =>
+  axios.delete(`${BASE}/api/v1/admin/whatsapp/disconnect`, { headers: _h() })
+    .then(r => r.data.data)

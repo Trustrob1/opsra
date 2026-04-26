@@ -553,19 +553,11 @@ def _send_whatsapp_reply(db, org_id: str, customer_id: str, answer: str, now_ts:
     S14 — never raises.
     """
     try:
-        from app.services.whatsapp_service import _call_meta_send, _normalise_data
+        from app.services.whatsapp_service import _call_meta_send, _normalise_data, _get_org_wa_credentials
         from datetime import datetime, timezone, timedelta
 
-        # Fetch org phone_id and customer WhatsApp number
-        org_result = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_data = _normalise_data(org_result.data)
-        phone_id = (org_data or {}).get("whatsapp_phone_id")
+        # Fetch org phone_id and token — MULTI-ORG-WA-1
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
         if not phone_id:
             logger.warning(
                 "_send_whatsapp_reply: no whatsapp_phone_id for org %s", org_id
@@ -593,7 +585,7 @@ def _send_whatsapp_reply(db, org_id: str, customer_id: str, answer: str, now_ts:
             "type": "text",
             "text": {"body": answer},
         }
-        _call_meta_send(phone_id, meta_payload)
+        _call_meta_send(phone_id, meta_payload, token=access_token)
 
         # Record in whatsapp_messages
         window_expires = (
@@ -1277,18 +1269,11 @@ def _send_whatsapp_reply_to_lead(
     S14 — never raises.
     """
     try:
-        from app.services.whatsapp_service import _call_meta_send, _normalise_data
+        from app.services.whatsapp_service import _call_meta_send, _normalise_data, _get_org_wa_credentials
         from datetime import datetime, timezone, timedelta
  
-        org_result = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_data = _normalise_data(org_result.data)
-        phone_id = (org_data or {}).get("whatsapp_phone_id")
+        # Fetch org phone_id and token — MULTI-ORG-WA-1
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
         if not phone_id:
             logger.warning(
                 "_send_whatsapp_reply_to_lead: no whatsapp_phone_id for org %s", org_id
@@ -1315,7 +1300,7 @@ def _send_whatsapp_reply_to_lead(
             "to": to_number,
             "type": "text",
             "text": {"body": answer},
-        })
+        }, token=access_token)
  
         window_expires = (
             datetime.now(timezone.utc) + timedelta(hours=24)

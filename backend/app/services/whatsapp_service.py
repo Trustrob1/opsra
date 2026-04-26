@@ -95,7 +95,39 @@ def _broadcast_or_404(db, org_id: str, broadcast_id: str) -> dict:
 # Meta Cloud API
 # ---------------------------------------------------------------------------
 
-def _call_meta_send(phone_id: str, meta_payload: dict) -> dict:
+def _get_org_wa_credentials(db, org_id: str) -> tuple:
+    """
+    MULTI-ORG-WA-1: Return (phone_id, access_token, waba_id) for the given org.
+
+    Reads whatsapp_phone_id, whatsapp_access_token, and whatsapp_waba_id from
+    the organisations table.  Falls back to settings values if DB columns are
+    null — preserves backwards compatibility for any org not yet migrated via
+    the admin UI.
+
+    S14: never raises.  Returns (None, None, None) on any exception.
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("whatsapp_phone_id, whatsapp_access_token, whatsapp_waba_id")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        row = data or {}
+        phone_id     = row.get("whatsapp_phone_id")     or getattr(settings, "META_WHATSAPP_PHONE_ID", None)
+        access_token = row.get("whatsapp_access_token") or getattr(settings, "META_WHATSAPP_TOKEN", None)
+        waba_id      = row.get("whatsapp_waba_id")      or getattr(settings, "META_WABA_ID", None)
+        return phone_id, access_token, waba_id
+    except Exception as exc:
+        logger.warning("_get_org_wa_credentials failed for org %s: %s", org_id, exc)
+        return None, None, None
+
+
+def _call_meta_send(phone_id: str, meta_payload: dict, token: str | None = None) -> dict:
     """
     Send a WhatsApp message via Meta Cloud API.
     Returns the Meta API response dict.
@@ -103,8 +135,9 @@ def _call_meta_send(phone_id: str, meta_payload: dict) -> dict:
     This function is kept thin so it can be patched in tests.
     """
     url = f"https://graph.facebook.com/v17.0/{phone_id}/messages"
+    resolved_token = token or getattr(settings, "META_WHATSAPP_TOKEN", None)
     headers = {
-        "Authorization": f"Bearer {settings.META_WHATSAPP_TOKEN}",
+        "Authorization": f"Bearer {resolved_token}",
         "Content-Type": "application/json",
     }
     try:
@@ -142,29 +175,27 @@ def send_triage_menu(
     S14: entire function body wrapped in try/except — never raises.
     """
     try:
-        org_result = (
-            db.table("organisations")
-            .select("whatsapp_phone_id, whatsapp_triage_config")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_data = org_result.data
-        if isinstance(org_data, list):
-            org_data = org_data[0] if org_data else None
-
-        phone_id = (org_data or {}).get("whatsapp_phone_id")
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
         if not phone_id:
-            import logging as _log
-            _log.getLogger(__name__).warning(
+            logger.warning(
                 "send_triage_menu: no whatsapp_phone_id for org %s — skipping", org_id
             )
             return
 
-        triage_config = (org_data or {}).get("whatsapp_triage_config")
+        # Fetch triage config separately (not in _get_org_wa_credentials to keep it lean)
+        triage_result = (
+            db.table("organisations")
+            .select("whatsapp_triage_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        triage_data = triage_result.data
+        if isinstance(triage_data, list):
+            triage_data = triage_data[0] if triage_data else None
+        triage_config = (triage_data or {}).get("whatsapp_triage_config")
         if not triage_config or section not in triage_config:
-            import logging as _log
-            _log.getLogger(__name__).warning(
+            logger.warning(
                 "send_triage_menu: no triage_config[%s] for org %s — skipping",
                 section, org_id,
             )
@@ -198,11 +229,10 @@ def send_triage_menu(
             },
         }
 
-        _call_meta_send(phone_id, meta_payload)
+        _call_meta_send(phone_id, meta_payload, token=access_token)
 
     except Exception as exc:
-        import logging as _log
-        _log.getLogger(__name__).warning(
+        logger.warning(
             "send_triage_menu failed org=%s phone=%s: %s", org_id, phone_number, exc
         )
 
@@ -282,19 +312,9 @@ def send_whatsapp_message(
             detail="content or template_name is required",
         )
 
-    # ── Resolve phone_id from org ──────────────────────────────────────────
-    try:
-        org_result = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_data = _normalise_data(org_result.data) if org_result else None
-    except Exception:
-        org_data = None
-    phone_id: str = (org_data or {}).get("whatsapp_phone_id") or ""
+    # ── Resolve phone_id and token from org ───────────────────────────────
+    phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+    phone_id = phone_id or ""
 
     # ── Resolve recipient WhatsApp number ──────────────────────────────────
     to_number: Optional[str] = None
@@ -365,7 +385,7 @@ def send_whatsapp_message(
         template_name_db = None
 
     # ── Call Meta Cloud API ────────────────────────────────────────────────
-    meta_response = _call_meta_send(phone_id, meta_payload)
+    meta_response = _call_meta_send(phone_id, meta_payload, token=access_token)
     meta_messages = meta_response.get("messages")
     meta_message_id: Optional[str] = None
     if isinstance(meta_messages, list) and meta_messages:
@@ -1113,19 +1133,9 @@ def _dispatch_outbox_row(
     template_name  = outbox_row.get("template_name")
     now_ts         = _now_iso()
 
-    # ── Resolve phone_id ──────────────────────────────────────────────────
-    try:
-        org_result = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_data = _normalise_data(org_result.data) if org_result else None
-    except Exception:
-        org_data = None
-    phone_id: str = (org_data or {}).get("whatsapp_phone_id") or ""
+    # ── Resolve phone_id and token ────────────────────────────────────────
+    phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+    phone_id = phone_id or ""
 
     # ── Resolve recipient number ──────────────────────────────────────────
     to_number: Optional[str] = None
@@ -1186,7 +1196,7 @@ def _dispatch_outbox_row(
     # ── Call Meta API ─────────────────────────────────────────────────────
     meta_message_id: Optional[str] = None
     try:
-        meta_resp = _call_meta_send(phone_id, meta_payload)
+        meta_resp = _call_meta_send(phone_id, meta_payload, token=access_token)
         msgs = meta_resp.get("messages")
         if isinstance(msgs, list) and msgs:
             meta_message_id = msgs[0].get("id")
@@ -1499,18 +1509,9 @@ def send_qualification_question(
     S14 — full try/except; logs warning on failure, never raises.
     """
     try:
-        # Resolve org phone_id
-        org_r = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_d = org_r.data
-        if isinstance(org_d, list):
-            org_d = org_d[0] if org_d else None
-        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        # Resolve org phone_id and token
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
         if not phone_id:
             logger.warning(
                 "send_qualification_question: no whatsapp_phone_id for org %s", org_id
@@ -1586,7 +1587,7 @@ def send_qualification_question(
                 "text": {"body": body_text},
             }
 
-        _call_meta_send(phone_id, meta_payload)
+        _call_meta_send(phone_id, meta_payload, token=access_token)
 
     except Exception as exc:
         logger.warning(
@@ -1607,17 +1608,8 @@ def send_qualification_handoff_message(
     S14 — full try/except; logs warning on failure, never raises.
     """
     try:
-        org_r = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_d = org_r.data
-        if isinstance(org_d, list):
-            org_d = org_d[0] if org_d else None
-        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
         if not phone_id:
             logger.warning(
                 "send_qualification_handoff_message: no whatsapp_phone_id for org %s", org_id
@@ -1629,7 +1621,7 @@ def send_qualification_handoff_message(
             "to": phone_number,
             "type": "text",
             "text": {"body": handoff_message},
-        })
+        }, token=access_token)
 
     except Exception as exc:
         logger.warning(
@@ -1650,17 +1642,8 @@ def send_abandoned_cart_message(
     S14 — full try/except; logs warning on failure, never raises.
     """
     try:
-        org_r = (
-            db.table("organisations")
-            .select("whatsapp_phone_id, name")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_d = org_r.data
-        if isinstance(org_d, list):
-            org_d = org_d[0] if org_d else None
-        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
         if not phone_id:
             logger.warning(
                 "send_abandoned_cart_message: no whatsapp_phone_id for org %s", org_id
@@ -1682,7 +1665,7 @@ def send_abandoned_cart_message(
             "to":   phone_number,
             "type": "text",
             "text": {"body": body},
-        })
+        }, token=access_token)
 
     except Exception as exc:
         logger.warning(
@@ -1703,17 +1686,8 @@ def send_order_confirmation_message(
     S14 — full try/except; logs warning on failure, never raises.
     """
     try:
-        org_r = (
-            db.table("organisations")
-            .select("whatsapp_phone_id, name")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_d = org_r.data
-        if isinstance(org_d, list):
-            org_d = org_d[0] if org_d else None
-        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
         if not phone_id:
             logger.warning(
                 "send_order_confirmation_message: no whatsapp_phone_id for org %s", org_id
@@ -1730,7 +1704,7 @@ def send_order_confirmation_message(
             "to":   phone_number,
             "type": "text",
             "text": {"body": body},
-        })
+        }, token=access_token)
 
     except Exception as exc:
         logger.warning(
@@ -1752,17 +1726,8 @@ def send_fulfillment_message(
     S14 — full try/except; logs warning on failure, never raises.
     """
     try:
-        org_r = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_d = org_r.data
-        if isinstance(org_d, list):
-            org_d = org_d[0] if org_d else None
-        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
         if not phone_id:
             logger.warning(
                 "send_fulfillment_message: no whatsapp_phone_id for org %s", org_id
@@ -1783,7 +1748,7 @@ def send_fulfillment_message(
             "to":   phone_number,
             "type": "text",
             "text": {"body": body},
-        })
+        }, token=access_token)
 
     except Exception as exc:
         logger.warning(

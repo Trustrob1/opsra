@@ -365,7 +365,7 @@ def get_overview_metrics(
     try:
         ren_result = (
             db.table("subscriptions")
-            .select("amount, renewal_date, status")
+            .select("amount, current_period_end, status")
             .eq("org_id", org_id)
             .execute()
         )
@@ -373,9 +373,9 @@ def get_overview_metrics(
         if isinstance(ren_rows, dict):
             ren_rows = [ren_rows]
         for r in ren_rows:
-            if r.get("status") not in ("active", "renewed"):
+            if r.get("status") not in ("active", "grace_period"):
                 continue
-            if _in_range(r.get("renewal_date"), date_from, date_to):
+            if _in_range(r.get("current_period_end"), date_from, date_to):
                 try:
                     renewals_revenue += float(r.get("amount") or 0)
                 except (TypeError, ValueError):

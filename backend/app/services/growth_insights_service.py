@@ -123,14 +123,30 @@ DIGEST_SYSTEM_PROMPT = (
 )
 
 
+# ── Return shape normaliser ───────────────────────────────────────────────────
+# get_team_performance, get_channel_metrics, get_lead_velocity, get_sales_rep_metrics,
+# get_pipeline_at_risk all return lists directly (not dicts).
+# This helper normalises either shape safely.
+
+def _as_list(data, dict_key: str) -> list:
+    """Return data as a list whether it is already a list or a dict containing dict_key."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return data.get(dict_key, [])
+    return []
+
+
 # ── PII-safe context builders ────────────────────────────────────────────────
 
-def build_section_context(section_key: str, data: dict) -> dict:
+def build_section_context(section_key: str, data) -> dict:
     """
     Strips PII from section data before sending to Claude.
     No names, phones, emails, or IDs in any prompt.
     """
     if section_key == "overview":
+        if not isinstance(data, dict):
+            return {}
         return {
             "total_revenue": data.get("total_revenue"),
             "lead_count": data.get("total_leads"),
@@ -141,7 +157,7 @@ def build_section_context(section_key: str, data: dict) -> dict:
         }
 
     if section_key == "team_performance":
-        rows = data if isinstance(data, list) else data.get("teams", [])
+        rows = _as_list(data, "teams")
         return {
             "teams": [
                 {
@@ -172,7 +188,7 @@ def build_section_context(section_key: str, data: dict) -> dict:
         }
 
     if section_key == "sales_reps":
-        reps = data if isinstance(data, list) else data.get("reps", [])
+        reps = _as_list(data, "reps")
         return {
             "rep_count": len(reps),
             "reps": [
@@ -188,7 +204,7 @@ def build_section_context(section_key: str, data: dict) -> dict:
         }
 
     if section_key == "channels":
-        channels = data if isinstance(data, list) else data.get("channels", [])
+        channels = _as_list(data, "channels")
         return {
             "channels": [
                 {
@@ -205,7 +221,7 @@ def build_section_context(section_key: str, data: dict) -> dict:
         }
 
     if section_key == "velocity":
-        weeks = data if isinstance(data, list) else data.get("weeks", [])
+        weeks = _as_list(data, "weeks")
         return {
             "weeks": [
                 {
@@ -218,14 +234,12 @@ def build_section_context(section_key: str, data: dict) -> dict:
         }
 
     if section_key == "pipeline_at_risk":
-        # get_pipeline_at_risk returns a list of lead rows directly
-        rows = data if isinstance(data, list) else data.get("leads", [])
+        rows = _as_list(data, "leads")
         total = len(rows)
-        # Summarise by stage — strip PII (no names/IDs)
         stage_counts: dict = {}
         for row in rows:
             stage = row.get("stage", "unknown")
-            days  = row.get("days_stuck", 0)
+            days = row.get("days_stuck", 0)
             if stage not in stage_counts:
                 stage_counts[stage] = {"stage": stage, "count": 0, "max_days": 0}
             stage_counts[stage]["count"] += 1
@@ -236,6 +250,8 @@ def build_section_context(section_key: str, data: dict) -> dict:
         }
 
     if section_key == "win_loss":
+        if not isinstance(data, dict):
+            return {}
         return {
             "won": data.get("won"),
             "lost": data.get("lost"),
@@ -251,27 +267,32 @@ def build_section_context(section_key: str, data: dict) -> dict:
 
 def build_panel_context(all_sections: dict) -> dict:
     """Builds a single aggregated context for the full panel narrative."""
+    tp = _as_list(all_sections.get("team_performance", []), "teams")
+    funnel = all_sections.get("funnel", {})
+    funnel_stages = funnel.get("stages", []) if isinstance(funnel, dict) else []
+    channels = _as_list(all_sections.get("channels", []), "channels")
+    velocity_weeks = _as_list(all_sections.get("velocity", []), "weeks")
+    pipeline = all_sections.get("pipeline_at_risk", [])
+    pipeline_count = (
+        len(pipeline) if isinstance(pipeline, list)
+        else pipeline.get("total_at_risk", 0) if isinstance(pipeline, dict)
+        else 0
+    )
+    win_loss = all_sections.get("win_loss", {})
+    if not isinstance(win_loss, dict):
+        win_loss = {}
+
     return {
         "overview": all_sections.get("overview", {}),
-        "team_count": len(all_sections.get("team_performance", {}).get("teams", [])),
-        "biggest_funnel_drop": _find_biggest_funnel_drop(
-            all_sections.get("funnel", {}).get("stages", [])
-        ),
-        "top_channel": _find_top_channel(
-            all_sections.get("channels", {}).get("channels", [])
-        ),
-        "velocity_trend": _velocity_trend(
-            all_sections.get("velocity", {}).get("weeks", [])
-        ),
-        "pipeline_at_risk_count": (
-            len(all_sections["pipeline_at_risk"])
-            if isinstance(all_sections.get("pipeline_at_risk"), list)
-            else all_sections.get("pipeline_at_risk", {}).get("total_at_risk", 0)
-        ),
-        "win_rate_pct": all_sections.get("win_loss", {}).get("win_rate_pct"),
+        "team_count": len(tp),
+        "biggest_funnel_drop": _find_biggest_funnel_drop(funnel_stages),
+        "top_channel": _find_top_channel(channels),
+        "velocity_trend": _velocity_trend(velocity_weeks),
+        "pipeline_at_risk_count": pipeline_count,
+        "win_rate_pct": win_loss.get("win_rate_pct"),
         "top_loss_reason": (
-            all_sections.get("win_loss", {}).get("top_loss_reasons", [{}])[0]
-            if all_sections.get("win_loss", {}).get("top_loss_reasons")
+            win_loss.get("top_loss_reasons", [{}])[0]
+            if win_loss.get("top_loss_reasons")
             else None
         ),
     }
@@ -280,39 +301,42 @@ def build_panel_context(all_sections: dict) -> dict:
 def build_digest_context(db, org_id: str) -> dict:
     """Fetches last 7 days of data for the weekly digest worker."""
     today = datetime.now(timezone.utc).date()
-    last_week = today - timedelta(days=7)
-    date_from = last_week.isoformat()
-    date_to = today.isoformat()
+    date_from = today - timedelta(days=7)   # date object — analytics service expects date
+    date_to = today
 
     overview = get_overview_metrics(db, org_id, date_from, date_to)
-    velocity = get_lead_velocity(db, org_id, date_from, date_to)
-    teams = get_team_performance(db, org_id, date_from, date_to)
-    channels = get_channel_metrics(db, org_id, date_from, date_to)
+    velocity_raw = get_lead_velocity(db, org_id, date_from, date_to)   # returns list
+    teams_raw = get_team_performance(db, org_id, date_from, date_to)   # returns list
+    channels_raw = get_channel_metrics(db, org_id, date_from, date_to) # returns list
+
+    velocity_weeks = _as_list(velocity_raw, "weeks")
+    teams_list = _as_list(teams_raw, "teams")
+    channels_list = _as_list(channels_raw, "channels")
 
     return {
-        "date_from": date_from,
-        "date_to": date_to,
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
         "overview": {
             "total_revenue": overview.get("total_revenue"),
-            "lead_count": overview.get("lead_count"),
-            "conversion_count": overview.get("conversion_count"),
-            "close_rate_pct": overview.get("close_rate_pct"),
+            "lead_count": overview.get("total_leads"),
+            "conversion_count": overview.get("total_conversions"),
+            "close_rate_pct": overview.get("overall_conversion_rate"),
             "cac": overview.get("cac"),
         },
-        "velocity_last_2_weeks": (velocity.get("weeks", [])[-2:] if velocity.get("weeks") else []),
-        "top_team": _find_top_team(teams.get("teams", [])),
-        "top_channel": _find_top_channel(channels.get("channels", [])),
+        "velocity_last_2_weeks": velocity_weeks[-2:] if velocity_weeks else [],
+        "top_team": _find_top_team(teams_list),
+        "top_channel": _find_top_channel(channels_list),
     }
 
 
 # ── Haiku API caller ─────────────────────────────────────────────────────────
 
 def _call_haiku(system_prompt: str, user_content: str) -> Optional[str]:
-    logger.info("Haiku context: %s", user_content[:200])  # ← add this line
     """
     Makes a synchronous call to Claude Haiku.
     Returns raw text response or None on failure.
     """
+    logger.info("Haiku context: %s", user_content[:200])
     try:
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         with httpx.Client(timeout=30) as client:
@@ -358,7 +382,7 @@ def _parse_json_response(raw: Optional[str]) -> Optional[dict]:
 
 # ── Core insight generators ───────────────────────────────────────────────────
 
-def generate_section_insight(section_key: str, section_data: dict) -> Optional[dict]:
+def generate_section_insight(section_key: str, section_data) -> Optional[dict]:
     """
     Generates a single insight card for one dashboard section.
     Returns None on failure (S14 — caller handles null gracefully).
@@ -472,15 +496,17 @@ def check_and_fire_anomalies(db, org_id: str) -> list[dict]:
     fired = []
     try:
         today = datetime.now(timezone.utc).date()
-        date_from = (today - timedelta(days=30)).isoformat()
-        date_to = today.isoformat()
+        date_from = today - timedelta(days=30)   # date object
+        date_to = today
 
         state = _get_anomaly_state(db, org_id)
-        velocity = get_lead_velocity(db, org_id, date_from, date_to)
+        velocity_raw = get_lead_velocity(db, org_id, date_from, date_to)  # returns list
         overview = get_overview_metrics(db, org_id, date_from, date_to)
 
+        # get_lead_velocity returns a list directly
+        weeks = _as_list(velocity_raw, "weeks")
+
         # Anomaly 1: Lead velocity drop > 30% week-over-week
-        weeks = velocity.get("weeks", [])
         if len(weeks) >= 2:
             latest = weeks[-1]
             wow = latest.get("wow_change_pct")
@@ -495,8 +521,8 @@ def check_and_fire_anomalies(db, org_id: str) -> list[dict]:
 
         # Anomaly 2: CAC spike > 2× previous period
         cac = overview.get("cac")
-        prev_date_from = (today - timedelta(days=60)).isoformat()
-        prev_date_to = (today - timedelta(days=30)).isoformat()
+        prev_date_from = today - timedelta(days=60)
+        prev_date_to = today - timedelta(days=30)
         prev_overview = get_overview_metrics(db, org_id, prev_date_from, prev_date_to)
         prev_cac = prev_overview.get("cac")
         if cac and prev_cac and prev_cac > 0:
@@ -505,13 +531,13 @@ def check_and_fire_anomalies(db, org_id: str) -> list[dict]:
                     fired.append({
                         "type": "cac_spike",
                         "title": "CAC Spike Detected",
-                        "detail": f"Customer acquisition cost doubled vs the prior 30 days.",
+                        "detail": "Customer acquisition cost doubled vs the prior 30 days.",
                         "severity": "high",
                     })
 
         # Anomaly 3: Close rate drop > 20%
-        close_rate = overview.get("close_rate_pct")
-        prev_close_rate = prev_overview.get("close_rate_pct")
+        close_rate = overview.get("overall_conversion_rate")
+        prev_close_rate = prev_overview.get("overall_conversion_rate")
         if close_rate is not None and prev_close_rate and prev_close_rate > 0:
             drop = ((prev_close_rate - close_rate) / prev_close_rate) * 100
             if drop >= ANOMALY_CLOSE_RATE_DROP_PCT:
@@ -586,7 +612,6 @@ def _update_anomaly_state(db, org_id: str, existing_state: dict, fired: list[dic
     for anomaly in fired:
         atype = anomaly["type"]
         new_state[f"last_{atype}_alert"] = now_iso
-        # Upsert into active alerts
         active = [a for a in active if a.get("type") != atype]
         active.append({**anomaly, "fired_at": now_iso})
     new_state["active_alerts"] = active
@@ -627,14 +652,14 @@ def _find_top_channel(channels: list) -> Optional[str]:
     if not channels:
         return None
     best = max(channels, key=lambda c: c.get("revenue") or 0, default=None)
-    return best.get("channel") if best else None
+    return best.get("utm_source") if best else None  # channels use utm_source key
 
 
 def _find_top_team(teams: list) -> Optional[str]:
     if not teams:
         return None
-    best = max(teams, key=lambda t: t.get("revenue") or 0, default=None)
-    return f"Team {teams.index(best)+1}" if best else None
+    best = max(teams, key=lambda t: t.get("revenue_generated") or 0, default=None)
+    return best.get("team_name") if best else None  # correct field name from analytics service
 
 
 def _velocity_trend(weeks: list) -> str:

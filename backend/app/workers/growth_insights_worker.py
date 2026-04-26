@@ -41,7 +41,6 @@ def run_growth_anomaly_check(self):
             db.table("organisations")
             .select("id")
             .eq("is_live", True)
-            .is_("deleted_at", None)
             .execute()
         )
         orgs = orgs_resp.data or []
@@ -101,12 +100,10 @@ def _notify_growth_anomalies(db, org_id: str, anomalies: list[dict]) -> None:
                     db.table("notifications").insert({
                         "org_id": org_id,
                         "user_id": uid,
-                        "notif_type": "growth_anomaly",
+                        "type": "growth_anomaly",
                         "title": anomaly.get("title", "Growth Alert"),
                         "body": anomaly.get("detail", ""),
-                        "severity": anomaly.get("severity", "medium"),
-                        "resource_type": "growth_anomaly",
-                        "resource_id": anomaly.get("type"),
+                        "channel": "inapp",
                         "is_read": False,
                     }).execute()
                 except Exception as exc:
@@ -138,9 +135,8 @@ def run_weekly_growth_digest(self):
     try:
         orgs_resp = (
             db.table("organisations")
-            .select("id, whatsapp_phone_number_id")
+            .select("id, whatsapp_phone_id")
             .eq("is_live", True)
-            .is_("deleted_at", None)
             .execute()
         )
         orgs = orgs_resp.data or []
@@ -198,7 +194,7 @@ def run_weekly_growth_digest(self):
                     _send_whatsapp_text(
                         db,
                         org_id=org_id,
-                        phone_number_id=org_row.get("whatsapp_phone_number_id"),
+                        phone_number_id=org_row.get("whatsapp_phone_id"),
                         to=user["whatsapp_number"],
                         text=message,
                     )

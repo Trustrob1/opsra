@@ -8,6 +8,7 @@
  * SM-1: "🛒 Sales System" tab added — SalesModeConfig + ContactMenuConfig.
  * SHOP-1B: "🛍️ Shopify" tab added — ShopifyIntegration.
  * GPM-1E: "💰 Sales Log" tab added — SalesLog.
+ * MULTI-ORG-WA-1: "📱 WhatsApp" tab added — WhatsAppIntegration.
  *
  * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
  * table state, filters, and open modals when switching between tabs.
@@ -35,12 +36,14 @@ import ContactMenuConfig       from './ContactMenuConfig'
 import ShopifyIntegration      from './ShopifyIntegration'
 import GrowthConfig            from './GrowthConfig'
 import SalesLog                from './SalesLog'
+import WhatsAppIntegration     from './WhatsAppIntegration'
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
   { id: 'roles',          label: '🎭 Roles' },
   { id: 'routing',        label: '🔀 Routing Rules' },
   { id: 'integrations',   label: '🔌 Integrations' },
+  { id: 'whatsapp',       label: '📱 WhatsApp' },
   { id: 'commission',     label: '💼 Commissions' },
   { id: 'scoring',        label: '🎯 Lead Scoring' },
   { id: 'qualification',  label: '📋 Qualification Flow' },
@@ -156,6 +159,7 @@ export default function AdminModule({ user }) {
         <div style={{ display: tab === 'roles'         ? 'block' : 'none' }}><RoleBuilder /></div>
         <div style={{ display: tab === 'routing'       ? 'block' : 'none' }}><RoutingRules /></div>
         <div style={{ display: tab === 'integrations'  ? 'block' : 'none' }}><IntegrationStatus /></div>
+        <div style={{ display: tab === 'whatsapp'      ? 'block' : 'none' }}><WhatsAppIntegration /></div>
         <div style={{ display: tab === 'commission'    ? 'block' : 'none' }}><CommissionSettings /></div>
         <div style={{ display: tab === 'scoring'       ? 'block' : 'none' }}><ScoringRubric /></div>
         <div style={{ display: tab === 'qualification' ? 'block' : 'none' }}><QualificationFlow /></div>

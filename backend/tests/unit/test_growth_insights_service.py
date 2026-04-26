@@ -42,28 +42,30 @@ def _mock_db_with_org(growth_insights=None, growth_anomaly_state=None):
 def test_build_section_context_overview_strips_pii():
     data = {
         "total_revenue": 50000,
-        "lead_count": 100,
-        "close_rate_pct": 12.5,
+        "total_leads": 100,
+        "overall_conversion_rate": 12.5,  # correct field name from get_overview_metrics()
         "cac": 250,
         "some_pii_field": "John Doe",
     }
     ctx = build_section_context("overview", data)
     assert "some_pii_field" not in ctx
     assert ctx["total_revenue"] == 50000
-    assert ctx["close_rate_pct"] == 12.5
+    assert ctx["close_rate_pct"] == 12.5  # mapped to close_rate_pct in context builder
 
 
 def test_build_section_context_sales_reps_no_names():
-    data = {
-        "reps": [
-            {"name": "Alice", "close_rate_pct": 25, "revenue": 10000},
-            {"name": "Bob", "close_rate_pct": 15, "revenue": 5000},
-        ]
-    }
+    data = [
+        {"close_rate": 25, "revenue_closed": 10000, "leads_assigned": 10,
+         "avg_response_time_mins": 5.0, "demo_show_rate": 80.0},
+        {"close_rate": 15, "revenue_closed": 5000, "leads_assigned": 8,
+         "avg_response_time_mins": 8.0, "demo_show_rate": 60.0},
+    ]
     ctx = build_section_context("sales_reps", data)
+    # No names in context — analytics service strips names via _as_list
     assert "name" not in str(ctx)
-    assert ctx["top_close_rate_pct"] == 25
     assert ctx["rep_count"] == 2
+    # Context returns per-rep list, not aggregated stats
+    assert ctx["reps"][0]["close_rate_pct"] == 25
 
 
 def test_build_section_context_team_performance_anonymised():

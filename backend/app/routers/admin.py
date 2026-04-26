@@ -2171,3 +2171,144 @@ def update_contact_menus(
         "returning_contact_menu": current_triage.get("returning_contact_menu"),
         "known_customer_menu":    current_triage.get("known_customer_menu"),
     }, message="Contact menus saved")
+
+
+# ── MULTI-ORG-WA-1: WhatsApp connection management ───────────────────────────
+
+class WhatsAppConnectPayload(BaseModel):
+    whatsapp_phone_id: str = Field(..., min_length=1, max_length=100)
+    whatsapp_access_token: str = Field(..., min_length=1, max_length=500)
+    whatsapp_waba_id: Optional[str] = Field(None, max_length=100)
+
+
+@router.get("/whatsapp/status")
+def get_whatsapp_status(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    MULTI-ORG-WA-1: Return WhatsApp connection status for this org.
+    Returns phone_id if connected. Never returns the access token.
+    """
+    require_permission(org)
+    result = (
+        db.table("organisations")
+        .select("whatsapp_phone_id, whatsapp_access_token, whatsapp_waba_id")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    row = data or {}
+    connected = bool(row.get("whatsapp_phone_id") and row.get("whatsapp_access_token"))
+    return ok(data={
+        "connected": connected,
+        "whatsapp_phone_id": row.get("whatsapp_phone_id"),
+        "whatsapp_waba_id": row.get("whatsapp_waba_id"),
+        # access_token intentionally omitted — never returned to client
+    })
+
+
+@router.post("/whatsapp/connect")
+async def connect_whatsapp(
+    payload: WhatsAppConnectPayload,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    MULTI-ORG-WA-1: Save WhatsApp phone ID, access token, and WABA ID for this org.
+    Verifies the phone_id + token against Meta Graph API before saving.
+    RBAC: owner + ops_manager only.
+    S3: token is stored but never returned in any response.
+    """
+    require_permission(org)
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and ops managers can connect WhatsApp.",
+        )
+
+    # Verify credentials against Meta before saving
+    try:
+        url = f"https://graph.facebook.com/v17.0/{payload.whatsapp_phone_id}"
+        headers = {"Authorization": f"Bearer {payload.whatsapp_access_token}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Could not verify these credentials with Meta. "
+                    "Please check your Phone Number ID and Access Token."
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Could not reach Meta to verify credentials. "
+                "Please check your internet connection and try again."
+            ),
+        )
+
+    db.table("organisations").update({
+        "whatsapp_phone_id":     payload.whatsapp_phone_id,
+        "whatsapp_access_token": payload.whatsapp_access_token,
+        "whatsapp_waba_id":      payload.whatsapp_waba_id,
+        "updated_at":            datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        action="whatsapp.connected",
+        resource_type="organisation",
+        resource_id=org["org_id"],
+        old_value=None,
+        new_value={"whatsapp_phone_id": payload.whatsapp_phone_id},
+    )
+    return ok(data={"connected": True}, message="WhatsApp connected successfully")
+
+
+@router.delete("/whatsapp/disconnect")
+def disconnect_whatsapp(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    MULTI-ORG-WA-1: Clear WhatsApp credentials for this org.
+    All automated messaging stops immediately until reconnected.
+    RBAC: owner + ops_manager only.
+    """
+    require_permission(org)
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and ops managers can disconnect WhatsApp.",
+        )
+
+    db.table("organisations").update({
+        "whatsapp_phone_id":     None,
+        "whatsapp_access_token": None,
+        "whatsapp_waba_id":      None,
+        "updated_at":            datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        action="whatsapp.disconnected",
+        resource_type="organisation",
+        resource_id=org["org_id"],
+        old_value=None,
+        new_value={"whatsapp_phone_id": None},
+    )
+    return ok(data={"connected": False}, message="WhatsApp disconnected")

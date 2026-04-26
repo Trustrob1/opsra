@@ -14,7 +14,7 @@ ORG_ID = "11111111-1111-1111-1111-111111111111"
 USER_ID_OWNER = "22222222-2222-2222-2222-222222222222"
 USER_ID_OPS = "33333333-3333-3333-3333-333333333333"
 
-_BASE_ORG = {"id": ORG_ID, "whatsapp_phone_number_id": "123456789"}
+_BASE_ORG = {"id": ORG_ID, "whatsapp_phone_id": "123456789"}
 _OWNER_USER = {"id": USER_ID_OWNER, "whatsapp_number": "+2348100000001", "roles": {"template": "owner"}}
 _OPS_USER = {"id": USER_ID_OPS, "whatsapp_number": "+2348100000002", "roles": {"template": "ops_manager"}}
 
@@ -67,6 +67,7 @@ def _chain(mock, data):
     resp.data = data
     mock.select.return_value.eq.return_value.eq.return_value.is_.return_value.execute.return_value = resp
     mock.select.return_value.eq.return_value.is_.return_value.execute.return_value = resp
+    mock.select.return_value.eq.return_value.eq.return_value.execute.return_value = resp
     mock.select.return_value.eq.return_value.execute.return_value = resp
     mock.select.return_value.execute.return_value = resp
 
@@ -76,7 +77,7 @@ def _chain(mock, data):
 @patch("app.workers.growth_insights_worker.get_supabase")
 @patch("app.workers.growth_insights_worker.check_and_fire_anomalies", return_value=[])
 def test_anomaly_worker_processes_all_orgs(mock_check, mock_db_fn):
-    db, _ = _make_db(orgs=[_BASE_ORG, {"id": "org-2", "whatsapp_phone_number_id": None}])
+    db, _ = _make_db(orgs=[_BASE_ORG, {"id": "org-2", "whatsapp_phone_id": None}])
     mock_db_fn.return_value = db
 
     from app.workers.growth_insights_worker import run_growth_anomaly_check
@@ -107,7 +108,7 @@ def test_anomaly_worker_fires_notifications_when_anomaly_detected(
 @patch("app.workers.growth_insights_worker.get_supabase")
 @patch("app.workers.growth_insights_worker.check_and_fire_anomalies", side_effect=Exception("DB error"))
 def test_anomaly_worker_s14_one_org_failure_does_not_stop_loop(mock_check, mock_db_fn):
-    two_orgs = [_BASE_ORG, {"id": "org-2", "whatsapp_phone_number_id": None}]
+    two_orgs = [_BASE_ORG, {"id": "org-2", "whatsapp_phone_id": None}]
     db, _ = _make_db(orgs=two_orgs)
     mock_db_fn.return_value = db
 
