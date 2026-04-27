@@ -177,12 +177,19 @@ def _call_meta_send(phone_id: str, meta_payload: dict, token: str | None = None)
         with httpx.Client(timeout=10.0) as client:
             response = client.post(url, json=meta_payload, headers=headers)
         if response.status_code not in (200, 201):
+            logger.warning(
+                "_call_meta_send: Meta returned %s for phone_id=%s — body: %s",
+                response.status_code, phone_id, response.text,
+            )
             raise HTTPException(
                 status_code=503,
-                detail=ErrorCode.INTEGRATION_ERROR,
+                detail=f"{ErrorCode.INTEGRATION_ERROR} — Meta {response.status_code}: {response.text}",
             )
         return response.json()
-    except httpx.RequestError:
+    except HTTPException:
+        raise
+    except httpx.RequestError as exc:
+        logger.warning("_call_meta_send: network error for phone_id=%s — %s", phone_id, exc)
         raise HTTPException(
             status_code=503,
             detail=ErrorCode.INTEGRATION_ERROR,
