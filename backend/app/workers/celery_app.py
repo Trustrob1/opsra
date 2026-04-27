@@ -85,6 +85,7 @@ celery_app = Celery(
         "app.workers.lead_nurture_worker",       # ← M01-10a
         "app.workers.daily_briefing_worker",     # ← M01-10b
         "app.workers.growth_insights_worker",    # ← GPM-2
+        "app.workers.broadcast_worker",           # ← BROADCAST
     ],
 )
 
@@ -260,7 +261,7 @@ celery_app.conf.beat_schedule = {
     # Worker: lead_sla_worker.py                                           #
     # ------------------------------------------------------------------ #
     "lead_sla_check": {
-        "task": "lead_sla_worker.run_lead_sla_check",
+        "task": "app.workers.lead_sla_worker.run_lead_sla_check",
         "schedule": crontab(minute="*/15"),
     },
 
@@ -337,6 +338,16 @@ celery_app.conf.beat_schedule = {
     "weekly_growth_digest": {
        "task": "app.workers.growth_insights_worker.run_weekly_growth_digest",
        "schedule": crontab(hour=7, minute=0, day_of_week=1),
+    },
+
+    # ------------------------------------------------------------------ #
+    # broadcast_dispatcher — Every 5 minutes  (BROADCAST)                 #
+    # Worker: broadcast_worker.py                                          #
+    # Dispatches scheduled and sending broadcasts to customers via Meta.   #
+    # ------------------------------------------------------------------ #
+    "broadcast_dispatcher": {
+        "task": "app.workers.broadcast_worker.run_broadcast_dispatcher",
+        "schedule": crontab(minute="*/5"),
     },
 
 }
