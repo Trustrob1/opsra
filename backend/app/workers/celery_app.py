@@ -125,11 +125,8 @@ celery_app.conf.update(
     task_max_retries=3,
     # Worker concurrency — sensible default for Render's free tier
     worker_concurrency=2,
-    # Beat scheduler persistence — store schedule in Redis so restarts
-    # do not re-fire all jobs immediately
-    beat_scheduler="redbeat.RedBeatScheduler",
-    redbeat_redis_url=BROKER_URL,
-    redbeat_key_prefix="opsra:beat:",
+    # Beat scheduler — use default file-based scheduler.
+    # Schedule is stored in celerybeat-schedule file in the working directory.
 )
 
 # ---------------------------------------------------------------------------
