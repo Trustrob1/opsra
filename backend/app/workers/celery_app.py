@@ -62,14 +62,25 @@ if ENVIRONMENT == "production" and REDIS_URL.startswith("redis://"):
         "Plaintext redis:// connections are not permitted."
     )
 
+# Upstash Redis uses rediss:// (TLS). Celery requires ssl_cert_reqs to be
+# explicitly set when using rediss://. Append it if not already present.
+def _add_ssl_cert_reqs(url: str) -> str:
+    if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
+        sep = "&" if "?" in url else "?"
+        return f"{url}{sep}ssl_cert_reqs=CERT_NONE"
+    return url
+
+BROKER_URL  = _add_ssl_cert_reqs(REDIS_URL)
+BACKEND_URL = _add_ssl_cert_reqs(REDIS_URL)
+
 # ---------------------------------------------------------------------------
 # Celery application — Technical Spec Section 7
 # ---------------------------------------------------------------------------
 
 celery_app = Celery(
     "opsra",
-    broker=REDIS_URL,
-    backend=REDIS_URL,
+    broker=BROKER_URL,
+    backend=BACKEND_URL,
     include=[
         # Worker modules — registered here so beat and workers can import them
         "app.workers.churn_worker",
@@ -117,7 +128,7 @@ celery_app.conf.update(
     # Beat scheduler persistence — store schedule in Redis so restarts
     # do not re-fire all jobs immediately
     beat_scheduler="redbeat.RedBeatScheduler",
-    redbeat_redis_url=REDIS_URL,
+    redbeat_redis_url=BROKER_URL,
     redbeat_key_prefix="opsra:beat:",
 )
 
