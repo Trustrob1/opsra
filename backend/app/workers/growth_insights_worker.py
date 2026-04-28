@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # ── Task 1: Daily Anomaly Check ──────────────────────────────────────────────
 
-@celery_app.task(name="run_growth_anomaly_check", bind=True, max_retries=0)
+@celery_app.task(name="app.workers.growth_insights_worker.run_growth_anomaly_check", bind=True, max_retries=0)
 def run_growth_anomaly_check(self):
     """
     Checks every active, live org for growth anomalies.
@@ -103,7 +103,6 @@ def _notify_growth_anomalies(db, org_id: str, anomalies: list[dict]) -> None:
                         "type": "growth_anomaly",
                         "title": anomaly.get("title", "Growth Alert"),
                         "body": anomaly.get("detail", ""),
-                        "channel": "inapp",
                         "is_read": False,
                     }).execute()
                 except Exception as exc:
@@ -116,7 +115,7 @@ def _notify_growth_anomalies(db, org_id: str, anomalies: list[dict]) -> None:
 
 # ── Task 2: Weekly Digest ────────────────────────────────────────────────────
 
-@celery_app.task(name="run_weekly_growth_digest", bind=True, max_retries=0)
+@celery_app.task(name="app.workers.growth_insights_worker.run_weekly_growth_digest", bind=True, max_retries=0)
 def run_weekly_growth_digest(self):
     """
     Sends WhatsApp weekly growth digest to owner + ops_manager.

@@ -123,6 +123,11 @@ export default function CustomerProfile({ customerId, onBack }) {
     pending_tasks:   0,
   })
 
+  // COMM-1: Active cart state
+  const [cartSession, setCartSession]       = useState(null)
+  const [cartLoading, setCartLoading]       = useState(false)
+  const [shopifyConnected, setShopifyConnected] = useState(false)
+
   const loadCustomer = useCallback(() => {
     setLoading(true)
     setError(null)
@@ -133,6 +138,24 @@ export default function CustomerProfile({ customerId, onBack }) {
   }, [customerId])
 
   useEffect(() => { loadCustomer() }, [loadCustomer])
+
+  // COMM-1: Fetch commerce session + shopify status after customer loads
+  useEffect(() => {
+    if (!customerId || !customer?.whatsapp) return
+    setCartLoading(true)
+    // Check shopify_connected from org (via admin settings endpoint — read-only)
+    Promise.all([
+      fetch(`/api/v1/admin/commerce/settings`, {
+        headers: { Authorization: `Bearer ${useAuthStore.getState().token}` },
+      }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/v1/commerce/sessions/active?phone=${encodeURIComponent(customer.whatsapp)}`, {
+        headers: { Authorization: `Bearer ${useAuthStore.getState().token}` },
+      }).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([settingsRes, sessionRes]) => {
+      setShopifyConnected(settingsRes?.data?.shopify_connected ?? false)
+      setCartSession(sessionRes?.data ?? null)
+    }).finally(() => setCartLoading(false))
+  }, [customerId, customer?.whatsapp])
 
   // Fetch attention summary on mount
   useEffect(() => {
@@ -560,6 +583,104 @@ export default function CustomerProfile({ customerId, onBack }) {
               templates={templates}
               onSent={() => setTab('messages')}
             />
+          </div>
+        </div>
+      )}
+
+      {/* ── COMM-1: Active Cart section (profile tab, shopify orgs only) ── */}
+      {tab === 'profile' && shopifyConnected && (
+        <div style={{ marginTop: 20, background: '#fff', border: `1px solid ${ds.border}`, borderRadius: 14, overflow: 'hidden' }}>
+          {/* Section header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '14px 18px', borderBottom: `1px solid ${ds.border}`,
+            background: '#FAFCFD',
+          }}>
+            <div style={{ fontFamily: ds.fontHead, fontWeight: 700, fontSize: 13.5, color: ds.dark }}>
+              🛒 Active Cart
+            </div>
+            {cartSession && (
+              <span style={{
+                background: cartSession.status === 'checkout_sent' ? '#E8F8EE' : '#EAF3FF',
+                color:      cartSession.status === 'checkout_sent' ? '#27AE60' : '#2471C8',
+                borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600,
+              }}>
+                {cartSession.status === 'checkout_sent' ? 'Checkout sent' : 'Browsing'}
+              </span>
+            )}
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: '14px 18px' }}>
+            {cartLoading ? (
+              <div style={{ textAlign: 'center', padding: '20px 0', color: ds.gray, fontSize: 13 }}>
+                Loading cart…
+              </div>
+            ) : !cartSession ? (
+              <div style={{ color: ds.gray, fontSize: 13, padding: '6px 0' }}>
+                No active cart.
+              </div>
+            ) : (
+              <>
+                {/* Cart items */}
+                {(cartSession.cart || []).length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                    {cartSession.cart.map((item, i) => (
+                      <div key={i} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        background: '#F5FAFB', borderRadius: 8, padding: '9px 12px',
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>{item.name}</div>
+                          <div style={{ fontSize: 11.5, color: ds.gray, marginTop: 2 }}>
+                            Qty: {item.quantity}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: ds.dark }}>
+                          ₦{(item.price * item.quantity).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: ds.gray, fontSize: 13, marginBottom: 14 }}>Cart is empty.</div>
+                )}
+
+                {/* Subtotal */}
+                {cartSession.subtotal > 0 && (
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    borderTop: `1px solid ${ds.border}`, paddingTop: 10,
+                  }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>Total</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: ds.dark }}>
+                      ₦{(cartSession.subtotal).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+
+                {/* Checkout URL */}
+                {cartSession.checkout_url && (
+                  <div style={{ marginTop: 12 }}>
+                    <a
+                      href={cartSession.checkout_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: 12.5, color: '#2471C8', wordBreak: 'break-all' }}
+                    >
+                      {cartSession.checkout_url}
+                    </a>
+                  </div>
+                )}
+
+                {/* Completed order link */}
+                {cartSession.shopify_order_id && (
+                  <div style={{ marginTop: 10, fontSize: 12.5, color: '#27AE60', fontWeight: 600 }}>
+                    ✓ Order #{cartSession.shopify_order_id} completed
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

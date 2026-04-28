@@ -226,6 +226,81 @@ def handle_abandoned_cart(db, org_id: str, checkout: dict) -> None:
             )
             return
 
+        # COMM-1: Check for an existing WhatsApp commerce_session first.
+        # If found, this is a Shopify-side abandonment of a WhatsApp-initiated
+        # cart. Send WA recovery and return — do NOT create a lead.
+        try:
+            wa_cs_r = (
+                db.table("commerce_sessions")
+                .select("id, checkout_url")
+                .eq("org_id", org_id)
+                .eq("phone_number", phone)
+                .in_("status", ["open", "checkout_sent"])
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            wa_cs_rows = wa_cs_r.data if isinstance(wa_cs_r.data, list) else []
+            wa_cs = wa_cs_rows[0] if wa_cs_rows else None
+        except Exception as _cs_exc:
+            logger.warning(
+                "handle_abandoned_cart: commerce_session lookup failed org=%s: %s",
+                org_id, _cs_exc,
+            )
+            wa_cs = None
+
+        if wa_cs:
+            # WhatsApp-originated cart — update session + send recovery, skip lead creation
+            recovery_url = (
+                checkout.get("abandoned_checkout_url")
+                or checkout.get("checkout_url")
+                or wa_cs.get("checkout_url")
+                or ""
+            )
+            try:
+                db.table("commerce_sessions").update({
+                    "status":       "checkout_sent",
+                    "checkout_url": recovery_url,
+                    "updated_at":   now,
+                }).eq("id", wa_cs["id"]).execute()
+            except Exception as _upd_exc:
+                logger.warning(
+                    "handle_abandoned_cart: session update failed cs=%s: %s",
+                    wa_cs["id"], _upd_exc,
+                )
+            # Set commerce_state on whatsapp_session so next message routes correctly
+            try:
+                db.table("whatsapp_sessions").update({
+                    "commerce_state": "commerce_checkout",
+                }).eq("org_id", org_id).eq("phone_number", phone).execute()
+            except Exception as _ws_exc:
+                logger.warning(
+                    "handle_abandoned_cart: whatsapp_session state update failed: %s",
+                    _ws_exc,
+                )
+            # Send WhatsApp recovery message
+            try:
+                from app.services.whatsapp_service import send_checkout_link
+                recovery_config = {
+                    "checkout_message":
+                        "Looks like you didn't complete your order. "
+                        "Your cart is still saved — tap the link to finish your purchase."
+                }
+                send_checkout_link(
+                    db=db,
+                    org_id=org_id,
+                    phone_number=phone,
+                    checkout_url=recovery_url,
+                    commerce_config=recovery_config,
+                )
+            except Exception as _send_exc:
+                logger.warning(
+                    "handle_abandoned_cart: recovery send failed org=%s phone=%s: %s",
+                    org_id, phone, _send_exc,
+                )
+            return  # ← Do NOT create a lead
+
+        # No WhatsApp commerce_session — existing lead-creation behaviour
         # Attempt to match phone to existing lead or customer
         lead_id, customer_id = _match_phone_to_record(db, org_id, phone)
 
@@ -335,6 +410,111 @@ def handle_order_created(db, org_id: str, order: dict) -> None:
                 "completed_at":  now,
                 "updated_at":    now,
             }).eq("org_id", org_id).eq("phone_number", phone).eq("status", "open").execute()
+
+        # COMM-1: Post-order commerce session completion
+        if phone:
+            try:
+                from app.services.commerce_service import (
+                    mark_cart_completed,
+                    convert_lead_on_purchase,
+                )
+                # Fetch the session we just closed to get lead_id / customer_id
+                closed_cs_r = (
+                    db.table("commerce_sessions")
+                    .select("id, lead_id, customer_id")
+                    .eq("org_id", org_id)
+                    .eq("phone_number", phone)
+                    .eq("shopify_order_id", shopify_order_id)
+                    .maybe_single()
+                    .execute()
+                )
+                closed_cs_d = closed_cs_r.data
+                if isinstance(closed_cs_d, list):
+                    closed_cs_d = closed_cs_d[0] if closed_cs_d else None
+
+                if not closed_cs_d:
+                    # Session wasn't matched by order_id yet — find by phone + status=completed
+                    fallback_r = (
+                        db.table("commerce_sessions")
+                        .select("id, lead_id, customer_id")
+                        .eq("org_id", org_id)
+                        .eq("phone_number", phone)
+                        .eq("status", "completed")
+                        .order("updated_at", desc=True)
+                        .limit(1)
+                        .execute()
+                    )
+                    fb_rows = fallback_r.data if isinstance(fallback_r.data, list) else []
+                    closed_cs_d = fb_rows[0] if fb_rows else None
+
+                if closed_cs_d:
+                    cs_id   = closed_cs_d["id"]
+                    lead_id = closed_cs_d.get("lead_id")
+                    cust_id = closed_cs_d.get("customer_id")
+
+                    # Ensure shopify_order_id is stamped (idempotent)
+                    mark_cart_completed(db, cs_id, shopify_order_id)
+
+                    # Convert linked lead if present
+                    if lead_id:
+                        convert_lead_on_purchase(db, org_id, lead_id)
+
+                    # Create customer record if not already linked
+                    if not cust_id:
+                        try:
+                            first_name = (order.get("billing_address") or {}).get(
+                                "first_name"
+                            ) or (order.get("customer") or {}).get("first_name") or ""
+                            last_name  = (order.get("billing_address") or {}).get(
+                                "last_name"
+                            ) or (order.get("customer") or {}).get("last_name") or ""
+                            full_name  = f"{first_name} {last_name}".strip() or phone
+                            email      = (
+                                order.get("email")
+                                or (order.get("customer") or {}).get("email")
+                            )
+                            new_cust_r = db.table("customers").insert({
+                                "org_id":           org_id,
+                                "full_name":        full_name,
+                                "email":            email,
+                                "whatsapp_number":  phone,
+                                "phone":            phone,
+                                "created_at":       now,
+                                "updated_at":       now,
+                            }).execute()
+                            new_cust_rows = (
+                                new_cust_r.data
+                                if isinstance(new_cust_r.data, list)
+                                else []
+                            )
+                            if new_cust_rows:
+                                db.table("commerce_sessions").update({
+                                    "customer_id": new_cust_rows[0]["id"],
+                                    "updated_at":  now,
+                                }).eq("id", cs_id).execute()
+                        except Exception as _cust_exc:
+                            logger.warning(
+                                "handle_order_created: customer creation failed "
+                                "org=%s phone=%s: %s",
+                                org_id, phone, _cust_exc,
+                            )
+
+                    # Clear commerce_state on whatsapp_session
+                    try:
+                        db.table("whatsapp_sessions").update({
+                            "commerce_state": None,
+                        }).eq("org_id", org_id).eq("phone_number", phone).execute()
+                    except Exception as _ws_exc:
+                        logger.warning(
+                            "handle_order_created: whatsapp_session clear failed: %s",
+                            _ws_exc,
+                        )
+
+            except Exception as _comm_exc:
+                logger.warning(
+                    "handle_order_created: COMM-1 block failed org=%s: %s",
+                    org_id, _comm_exc,
+                )
 
         # GPM-1D: Extract UTM attribution from Shopify landing_site URL
         landing_site = (order.get("landing_site") or "").strip()

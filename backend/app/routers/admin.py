@@ -1589,6 +1589,36 @@ class TriageConfigUpdate(BaseModel):
         description="triage_first (default) or qualify_immediately",
     )
 
+    _VALID_TRIAGE_ACTIONS = frozenset({
+        "qualify",
+        "identify_customer",
+        "route_to_role",
+        "free_form",
+        "commerce_entry",  # COMM-1
+    })
+
+    @field_validator("whatsapp_triage_config")
+    @classmethod
+    def validate_triage_action_values(cls, v):
+        """
+        Reject any triage config item whose 'action' is not in _VALID_TRIAGE_ACTIONS.
+        Walks all sections and their items arrays.
+        """
+        if v is None:
+            return v
+        valid = cls._VALID_TRIAGE_ACTIONS
+        for section_key, section in v.items():
+            if not isinstance(section, dict):
+                continue
+            for item in (section.get("items") or []):
+                action = item.get("action")
+                if action and action not in valid:
+                    raise ValueError(
+                        f"Invalid triage action '{action}' in section '{section_key}'. "
+                        f"Valid values: {sorted(valid)}"
+                    )
+        return v
+
 
 @router.get("/nurture-config")
 def get_nurture_config(
@@ -2312,3 +2342,128 @@ def disconnect_whatsapp(
         new_value={"whatsapp_phone_id": None},
     )
     return ok(data={"connected": False}, message="WhatsApp disconnected")
+
+# ============================================================
+# COMM-1 — COMMERCE SETTINGS
+# ============================================================
+
+class CommerceSettingsUpdate(BaseModel):
+    """COMM-1: Toggle commerce and configure checkout message."""
+    enabled: Optional[bool] = None
+    checkout_message: Optional[str] = Field(
+        None,
+        max_length=120,
+        description="Message prepended to the checkout link sent via WhatsApp",
+    )
+
+
+@router.get("/commerce/settings")
+def get_commerce_settings(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    COMM-1: Return org commerce_config + shopify_connected status.
+    RBAC: owner + ops_manager only (inline pattern).
+    S1 — org_id from JWT only.
+    """
+    require_permission(org)
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and ops managers can view commerce settings.",
+        )
+
+    result = (
+        db.table("organisations")
+        .select("commerce_config, shopify_connected")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    data = data or {}
+
+    commerce_config = data.get("commerce_config") or {}
+    return ok(data={
+        "enabled":           commerce_config.get("enabled", False),
+        "checkout_message":  commerce_config.get(
+            "checkout_message", "Here's your checkout link:"
+        ),
+        "shopify_connected": data.get("shopify_connected", False),
+    })
+
+
+@router.patch("/commerce/settings")
+def update_commerce_settings(
+    payload: CommerceSettingsUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    COMM-1: Toggle commerce and/or update checkout_message.
+    Guards: shopify_connected must be True to enable commerce.
+    RBAC: owner + ops_manager only (inline pattern).
+    S1 — org_id from JWT only.
+    """
+    require_permission(org)
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and ops managers can update commerce settings.",
+        )
+
+    # Fetch current state
+    current_r = (
+        db.table("organisations")
+        .select("commerce_config, shopify_connected")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    current_d = current_r.data
+    if isinstance(current_d, list):
+        current_d = current_d[0] if current_d else {}
+    current_d = current_d or {}
+
+    shopify_connected = current_d.get("shopify_connected", False)
+    existing_config = dict(current_d.get("commerce_config") or {})
+
+    # Guard: cannot enable commerce without Shopify connected
+    if payload.enabled is True and not shopify_connected:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Connect Shopify before enabling commerce.",
+        )
+
+    # Build merged config — only update fields the caller sent
+    new_config = dict(existing_config)
+    if payload.enabled is not None:
+        new_config["enabled"] = payload.enabled
+    if payload.checkout_message is not None:
+        new_config["checkout_message"] = payload.checkout_message.strip()
+
+    if new_config == existing_config:
+        return ok(data=new_config, message="No changes to save")
+
+    db.table("organisations").update({
+        "commerce_config": new_config,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        action="commerce_settings.updated",
+        resource_type="organisation",
+        resource_id=org["org_id"],
+        old_value=existing_config,
+        new_value=new_config,
+    )
+
+    return ok(data=new_config, message="Commerce settings saved")

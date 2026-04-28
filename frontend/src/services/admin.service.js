@@ -344,3 +344,13 @@ export const connectWhatsApp = (payload) =>
 export const disconnectWhatsApp = () =>
   axios.delete(`${BASE}/api/v1/admin/whatsapp/disconnect`, { headers: _h() })
     .then(r => r.data.data)
+// ── COMM-1: Commerce Settings ─────────────────────────────────────────────────
+
+export const getCommerceSettings = () =>
+  axios.get('/api/v1/admin/commerce/settings', { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateCommerceSettings = (payload) =>
+  // payload: { enabled?: boolean, checkout_message?: string }
+  axios.patch('/api/v1/admin/commerce/settings', payload, { headers: _h() })
+    .then(r => r.data.data)

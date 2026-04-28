@@ -1914,3 +1914,287 @@ def send_fulfillment_message(
             "send_fulfillment_message failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
+
+# ---------------------------------------------------------------------------
+# COMM-1 — Commerce WhatsApp Functions
+# ---------------------------------------------------------------------------
+
+def send_product_list(
+    db,
+    org_id: str,
+    phone_number: str,
+    products: list,
+) -> None:
+    """
+    COMM-1: Send WhatsApp interactive list message showing org products.
+    Each item: title = product.title (max 24 chars),
+               description = "{short_desc} — ₦{price:,.0f}" (max 72 chars).
+    Groups by product tags if available, otherwise flat "Our Products" section.
+    WhatsApp limits: title[:24], description[:72], rows[:10] per section.
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_product_list: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        if not products:
+            logger.warning(
+                "send_product_list: no products for org %s", org_id
+            )
+            return
+
+        def _make_row(product: dict) -> dict:
+            title = (product.get("title") or "Product")[:24]
+            price = float(product.get("price") or 0)
+            raw_desc = (product.get("description") or "").strip()
+            # Truncate description to leave room for price suffix
+            price_suffix = f" — ₦{price:,.0f}"
+            max_desc_len = 72 - len(price_suffix)
+            short_desc = raw_desc[:max_desc_len] if raw_desc else ""
+            description = (f"{short_desc}{price_suffix}" if short_desc else price_suffix)[:72]
+            return {
+                "id": str(product.get("id", "")),
+                "title": title,
+                "description": description,
+            }
+
+        # Build sections — group by first tag if available, else flat
+        tag_map: dict = {}
+        for product in products:
+            tags = product.get("tags") or []
+            tag = tags[0].strip() if tags else "Our Products"
+            tag_map.setdefault(tag, []).append(product)
+
+        sections = []
+        for section_title, section_products in tag_map.items():
+            rows = [_make_row(p) for p in section_products[:10]]
+            if rows:
+                sections.append({
+                    "title": section_title[:24],
+                    "rows": rows,
+                })
+            if len(sections) >= 10:  # WhatsApp section limit
+                break
+
+        if not sections:
+            return
+
+        meta_payload = {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "interactive",
+            "interactive": {
+                "type": "list",
+                "body": {"text": "Here are our available products. Tap one to add it to your cart:"},
+                "action": {
+                    "button": "View products",
+                    "sections": sections,
+                },
+            },
+        }
+
+        _call_meta_send(phone_id, meta_payload, token=access_token)
+
+    except Exception as exc:
+        logger.warning(
+            "send_product_list failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_variant_selection(
+    db,
+    org_id: str,
+    phone_number: str,
+    product: dict,
+) -> None:
+    """
+    COMM-1: Send variant picker for a product with multiple variants.
+    ≤ 3 variants → interactive button message.
+    4–10 variants → interactive list message.
+    Button/item label: "{variant title} — ₦{price:,.0f}".
+    Item ID format: "variant_{variant_id}".
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_variant_selection: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        variants = product.get("variants") or []
+        if not variants:
+            logger.warning(
+                "send_variant_selection: no variants for product %s", product.get("id")
+            )
+            return
+
+        product_title = (product.get("title") or "Product").strip()
+        body_text = f"Choose an option for *{product_title}*:"
+
+        def _variant_label(v: dict) -> str:
+            title = (v.get("title") or "Option").strip()
+            price = float(v.get("price") or product.get("price") or 0)
+            label = f"{title} — ₦{price:,.0f}"
+            return label
+
+        def _variant_id(v: dict) -> str:
+            vid = str(v.get("id") or v.get("variant_id") or "")
+            return f"variant_{vid}"
+
+        if len(variants) <= 3:
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": _variant_id(v),
+                        "title": _variant_label(v)[:20],
+                    },
+                }
+                for v in variants[:3]
+            ]
+            meta_payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": body_text},
+                    "action": {"buttons": buttons},
+                },
+            }
+        else:
+            rows = [
+                {
+                    "id": _variant_id(v),
+                    "title": _variant_label(v)[:24],
+                }
+                for v in variants[:10]
+            ]
+            meta_payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "list",
+                    "body": {"text": body_text},
+                    "action": {
+                        "button": "Choose option",
+                        "sections": [{"title": "Available options", "rows": rows}],
+                    },
+                },
+            }
+
+        _call_meta_send(phone_id, meta_payload, token=access_token)
+
+    except Exception as exc:
+        logger.warning(
+            "send_variant_selection failed org=%s phone=%s product=%s: %s",
+            org_id, phone_number, product.get("id"), exc,
+        )
+
+
+def send_cart_summary(
+    db,
+    org_id: str,
+    phone_number: str,
+    session: dict,
+) -> None:
+    """
+    COMM-1: Send cart contents as WhatsApp interactive button message.
+    Includes: item list + subtotal + two buttons: Add more | Checkout.
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_cart_summary: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        from app.services.commerce_service import get_cart_summary
+        summary_text = get_cart_summary(session)
+
+        meta_payload = {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": summary_text},
+                "action": {
+                    "buttons": [
+                        {
+                            "type": "reply",
+                            "reply": {"id": "add_more", "title": "Add more"},
+                        },
+                        {
+                            "type": "reply",
+                            "reply": {"id": "checkout", "title": "Checkout"},
+                        },
+                    ]
+                },
+            },
+        }
+
+        _call_meta_send(phone_id, meta_payload, token=access_token)
+
+    except Exception as exc:
+        logger.warning(
+            "send_cart_summary failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_checkout_link(
+    db,
+    org_id: str,
+    phone_number: str,
+    checkout_url: str,
+    commerce_config: dict = None,
+) -> None:
+    """
+    COMM-1: Send checkout URL as WhatsApp text message.
+    Uses org commerce_config["checkout_message"] if set,
+    fallback: "Here's your checkout link:".
+    Appends checkout URL + "Reply CANCEL to cancel your order."
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_checkout_link: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        intro = (
+            (commerce_config or {}).get("checkout_message")
+            or "Here's your checkout link:"
+        ).strip()
+
+        body = f"{intro}\n{checkout_url}\n\nReply CANCEL to cancel your order."
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "text",
+            "text": {"body": body},
+        }, token=access_token)
+
+    except Exception as exc:
+        logger.warning(
+            "send_checkout_link failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )

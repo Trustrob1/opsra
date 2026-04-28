@@ -56,4 +56,3 @@ factory-boy==3.3.0             # Test data factories — org, user, lead, ticket
 respx==0.20.2                  # Mock httpx calls — Anthropic API + Meta API
 pytest-cov==4.1.0              # Coverage reporting — target 80%+ per Build Status
 
-redbeat==2.2.0

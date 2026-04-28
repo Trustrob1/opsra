@@ -59,6 +59,7 @@ from app.routers import shopify as shopify_router
 from app.routers import growth_analytics as growth_analytics_router   # ← GPM-1A
 from app.routers import growth_config as growth_config_router         # ← GPM-1A
 from app.routers import growth_insights as growth_insights_router
+from app.routers import commerce as commerce_router              # ← COMM-1
 
 import logging
 logging.basicConfig(
@@ -178,6 +179,13 @@ app.include_router(
 app.include_router(
     growth_insights_router.router,
     tags=["growth_insights"],
+)
+
+# COMM-1 — Commerce session routes
+app.include_router(
+    commerce_router.router,
+    prefix="/api/v1/commerce",
+    tags=["commerce"],
 )
 
 # ---------------------------------------------------------------------------

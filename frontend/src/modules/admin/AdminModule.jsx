@@ -37,6 +37,7 @@ import ShopifyIntegration      from './ShopifyIntegration'
 import GrowthConfig            from './GrowthConfig'
 import SalesLog                from './SalesLog'
 import WhatsAppIntegration     from './WhatsAppIntegration'
+import CommerceSettings        from './CommerceSettings'    // COMM-1
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
@@ -56,6 +57,7 @@ const TABS = [
   { id: 'biz-types',      label: '🏢 Business Types' },
   { id: 'sales-system',   label: '🛒 Sales System' },
   { id: 'shopify',        label: '🛍️ Shopify' },
+  { id: 'commerce',       label: '🛒 Commerce' },       // COMM-1
   { id: 'growth-config',  label: '📈 Growth Config' },
   { id: 'sales-log',      label: '💰 Sales Log' },
   { id: 'kb',             label: '📚 Knowledge Base', link: true },
@@ -199,6 +201,11 @@ export default function AdminModule({ user }) {
         {/* SHOP-1B: Shopify */}
         <div style={{ display: tab === 'shopify' ? 'block' : 'none' }}>
           <ShopifyIntegration />
+        </div>
+
+        {/* COMM-1: Commerce Settings */}
+        <div style={{ display: tab === 'commerce' ? 'block' : 'none' }}>
+          <CommerceSettings />
         </div>
 
         {/* GPM-1D: Growth Config */}

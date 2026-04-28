@@ -97,6 +97,7 @@ celery_app = Celery(
         "app.workers.daily_briefing_worker",     # ← M01-10b
         "app.workers.growth_insights_worker",    # ← GPM-2
         "app.workers.broadcast_worker",           # ← BROADCAST
+        "app.workers.cart_abandonment_worker",    # ← COMM-1
     ],
 )
 
@@ -356,6 +357,14 @@ celery_app.conf.beat_schedule = {
     "broadcast_dispatcher": {
         "task": "app.workers.broadcast_worker.run_broadcast_dispatcher",
         "schedule": crontab(minute="*/5"),
+    },
+
+    # cart_abandonment_check — Every 2 hours (COMM-1)                   #
+    # Worker: cart_abandonment_worker.py                                 #
+    # Reminds contacts who received checkout link but never clicked it.  #
+    "cart-abandonment-check": {
+        "task": "app.workers.cart_abandonment_worker.run_cart_abandonment_check",
+        "schedule": crontab(minute=0, hour="*/2"),  # every 2h at :00
     },
 
 }

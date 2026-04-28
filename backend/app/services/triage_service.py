@@ -476,6 +476,10 @@ def dispatch_triage_selection(
             _action_route_to_role(db, org_id, phone_number, session_id,
                                   matched_item or {}, contact_name, now_ts)
 
+        elif action == "commerce_entry":
+            # COMM-1: Contact selected a "shop / browse products" triage item.
+            _action_commerce_entry(db, org_id, phone_number, session_id)
+
         else:
             # 'free_form' — also the fallback for unknown item_id
             _action_free_form(db, org_id, phone_number, session_id,
@@ -1288,31 +1292,98 @@ def _action_transactional_entry(
     contact_name: Optional[str],
 ) -> None:
     """
-    SM-1: SHOP-1 stub — create a commerce_session and mark session active.
-    Full commerce logic implemented in SHOP-1A.
-    S14.
+    COMM-1: Contact selected "Buy Now" or post-qualification offer fires for
+    transactional/hybrid orgs. Guards against consultative orgs.
+
+    Flow:
+      1. Fetch org — guard: shopify_connected must be True.
+      2. get_or_create_commerce_session().
+      3. Fetch active products.
+      4. send_product_list() — enter browsing state.
+      5. Set whatsapp_session.commerce_state = 'commerce_browsing'.
+      6. update_session(state='active', selected_action='transactional_entry').
+    S14 — never raises.
     """
     try:
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
-        # SHOP-1 stub: insert a bare commerce_session row so the table reference
-        # is established. SHOP-1A will populate product/cart fields.
-        try:
-            db.table("commerce_sessions").insert({
-                "org_id":       org_id,
-                "phone_number": phone_number,
-                "status":       "open",
-                "created_at":   now,
-            }).execute()
-        except Exception as exc:
-            # commerce_sessions table may not exist until SHOP-1A migration runs.
-            # Log and continue — session still gets marked active.
+        from app.services.commerce_service import (
+            get_or_create_commerce_session,
+        )
+        from app.services.whatsapp_service import send_product_list
+
+        # 1 — Guard: only run for orgs with Shopify connected
+        org_r = (
+            db.table("organisations")
+            .select("shopify_connected, sales_mode")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        org_d = org_d or {}
+
+        if not org_d.get("shopify_connected"):
             logger.warning(
-                "_action_transactional_entry: commerce_sessions insert failed "
-                "(expected before SHOP-1A migration) org=%s: %s",
-                org_id, exc,
+                "_action_transactional_entry: shopify not connected org=%s — skipping",
+                org_id,
             )
-        update_session(db, session_id, "active", selected_action="transactional_entry")
+            return
+
+        sales_mode = org_d.get("sales_mode", "consultative")
+        if sales_mode == "consultative":
+            logger.info(
+                "_action_transactional_entry: consultative org=%s — skipping",
+                org_id,
+            )
+            return
+
+        # 2 — Get or create commerce session
+        commerce_session = get_or_create_commerce_session(
+            db, org_id, phone_number
+        )
+        if not commerce_session:
+            logger.warning(
+                "_action_transactional_entry: failed to get commerce session "
+                "org=%s phone=%s",
+                org_id, phone_number,
+            )
+            return
+
+        # 3 — Fetch products
+        products_r = (
+            db.table("products")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .order("title")
+            .execute()
+        )
+        products = products_r.data if isinstance(products_r.data, list) else []
+
+        if not products:
+            logger.warning(
+                "_action_transactional_entry: no active products for org=%s",
+                org_id,
+            )
+            return
+
+        # 4 — Send product list
+        send_product_list(db, org_id, phone_number, products)
+
+        # 5 — Set commerce_state on whatsapp_session
+        if session_id:
+            db.table("whatsapp_sessions").update(
+                {"commerce_state": "commerce_browsing"}
+            ).eq("id", session_id).execute()
+
+        # 6 — Mark session active
+        if session_id:
+            update_session(
+                db, session_id, "active",
+                selected_action="transactional_entry",
+            )
+
     except Exception as exc:
         logger.warning(
             "_action_transactional_entry failed org=%s phone=%s: %s",
@@ -1449,3 +1520,92 @@ def send_known_customer_menu(
             org_id, phone_number, exc,
         )
  
+
+# ---------------------------------------------------------------------------
+# COMM-1 — Commerce Entry Action
+# ---------------------------------------------------------------------------
+
+def _action_commerce_entry(
+    db,
+    org_id: str,
+    phone_number: str,
+    session_id: str,
+) -> None:
+    """
+    COMM-1: Called from dispatch_triage_selection when action == 'commerce_entry'.
+    Contact chose a "Shop / Browse" triage item from the unknown contact menu.
+
+    Flow:
+      1. Guard: org must have shopify_connected=True.
+      2. get_or_create_commerce_session().
+      3. Fetch active products.
+      4. send_product_list() — begin browse state.
+      5. Set whatsapp_session.commerce_state = 'commerce_browsing'.
+      6. update_session(state='active', selected_action='commerce_entry').
+    S14 — never raises.
+    """
+    try:
+        from app.services.commerce_service import get_or_create_commerce_session
+        from app.services.whatsapp_service import send_product_list
+
+        # 1 — Guard: Shopify must be connected
+        org_r = (
+            db.table("organisations")
+            .select("shopify_connected")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        if not (org_d or {}).get("shopify_connected"):
+            logger.warning(
+                "_action_commerce_entry: shopify not connected org=%s — skipping",
+                org_id,
+            )
+            return
+
+        # 2 — Get or create commerce session
+        commerce_session = get_or_create_commerce_session(db, org_id, phone_number)
+        if not commerce_session:
+            logger.warning(
+                "_action_commerce_entry: failed to get commerce session "
+                "org=%s phone=%s",
+                org_id, phone_number,
+            )
+            return
+
+        # 3 — Fetch active products
+        products_r = (
+            db.table("products")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .order("title")
+            .execute()
+        )
+        products = products_r.data if isinstance(products_r.data, list) else []
+
+        if not products:
+            logger.warning(
+                "_action_commerce_entry: no active products for org=%s", org_id
+            )
+            return
+
+        # 4 — Send product list
+        send_product_list(db, org_id, phone_number, products)
+
+        # 5 — Set commerce_state on whatsapp_session
+        db.table("whatsapp_sessions").update(
+            {"commerce_state": "commerce_browsing"}
+        ).eq("id", session_id).execute()
+
+        # 6 — Mark session active
+        update_session(db, session_id, "active", selected_action="commerce_entry")
+
+    except Exception as exc:
+        logger.warning(
+            "_action_commerce_entry failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )

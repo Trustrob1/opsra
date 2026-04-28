@@ -65,7 +65,7 @@ def run_sla_monitor(self):
                     db.table("tickets")
                     .select(
                         "id, title, assigned_to, status, "
-                        "sla_resolve_due_at, sla_response_due_at, sla_breached"
+                        "sla_resolution_due_at, sla_response_due_at, sla_breached"
                     )
                     .eq("org_id", org_id)
                     .in_("status", list(_OPEN_STATUSES))
@@ -81,7 +81,7 @@ def run_sla_monitor(self):
                         continue  # Already processed
 
                     # Choose the most pressing due timestamp (Pattern 33)
-                    resolve_due = ticket.get("sla_resolve_due_at")
+                    resolve_due = ticket.get("sla_resolution_due_at")
                     response_due = ticket.get("sla_response_due_at")
                     due_at = resolve_due or response_due
                     if not due_at:
@@ -199,6 +199,7 @@ def run_sla_monitor(self):
             pre_breach_count,
             breached_count,
         )
+        return {"pre_breach_warnings": pre_breach_count, "breaches": breached_count, "failed": 0}
 
     except Exception as exc:
         logger.error("sla_worker: run_sla_monitor fatal — %s", exc)

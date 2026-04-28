@@ -50,6 +50,14 @@ logger = logging.getLogger(__name__)
 
 GRAPH_API_BASE = "https://graph.facebook.com/v18.0"
 
+# COMM-1: Valid commerce flow states on whatsapp_sessions.commerce_state
+COMMERCE_STATES = {
+    "commerce_browsing",
+    "commerce_variant_select",
+    "commerce_cart",
+    "commerce_checkout",
+}
+
 
 # ---------------------------------------------------------------------------
 # Signature verification — Section 6
@@ -490,6 +498,28 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         active_session = triage_service.get_active_session(db, org_id, sender_phone)
         print(f"[WH] active_session={active_session}", flush=True)
         if active_session:
+            # COMM-1: Cart state restoration — if session has no commerce_state but an
+            # open commerce_session exists, restore the state before routing.
+            if not active_session.get("commerce_state"):
+                _restore_commerce_state_if_open(db, org_id, sender_phone, active_session)
+            # COMM-1: Commerce routing — takes precedence over triage session handler.
+            if (active_session.get("commerce_state") or "") in COMMERCE_STATES:
+                print(
+                    f"[WH] routing to commerce handler state="
+                    f"{active_session.get('commerce_state')}",
+                    flush=True,
+                )
+                _handle_commerce_message(
+                    db=db,
+                    org_id=org_id,
+                    phone_number=sender_phone,
+                    message=message,
+                    session=active_session,
+                    msg_type=msg_type,
+                    content=content,
+                    interactive_payload=interactive_payload,
+                )
+                return
             print(f"[WH] routing to session handler", flush=True)
             triage_service.handle_session_message(
                 db=db,
@@ -812,6 +842,32 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                         return
             # Fall through to standard rep notification
             # Fall through to standard rep notification below
+
+    # COMM-1: Commerce routing for known contacts (post-qualification hybrid/transactional).
+    # Runs after qualification check — qualification always takes precedence.
+    # S14 — wrapped in try/except; any failure falls through to customer/rep notification.
+    try:
+        _known_wa_session = triage_service.get_active_session(db, org_id, sender_phone)
+        if _known_wa_session:
+            if not _known_wa_session.get("commerce_state"):
+                _restore_commerce_state_if_open(db, org_id, sender_phone, _known_wa_session)
+            if (_known_wa_session.get("commerce_state") or "") in COMMERCE_STATES:
+                _handle_commerce_message(
+                    db=db,
+                    org_id=org_id,
+                    phone_number=sender_phone,
+                    message=message,
+                    session=_known_wa_session,
+                    msg_type=msg_type,
+                    content=content,
+                    interactive_payload=interactive_payload,
+                )
+                return
+    except Exception as _comm_exc:
+        logger.warning(
+            "Commerce routing (known contact) failed org=%s phone=%s: %s",
+            org_id, sender_phone, _comm_exc,
+        )
 
     # WH-1: Customer intent classifier — KB-first routing for known customers.
     # Returns True if fully handled (no rep notification needed).
@@ -1186,6 +1242,23 @@ def _handle_structured_qualification_turn(
     except Exception as exc:
         logger.warning(
             "_handle_structured_qualification_turn: scoring failed for lead %s: %s",
+            lead_id, exc,
+        )
+
+    # COMM-1: Post-qualification commerce offer for transactional/hybrid orgs.
+    # Additive step after all WH-1b handoff steps complete — WH-1b flow unaffected.
+    # _action_transactional_entry() is a no-op for consultative orgs (internal guard).
+    # S14 — never raises; failure is logged and ignored.
+    try:
+        _post_qual_session = triage_service.get_active_session(db, org_id, lead_phone)
+        _post_qual_session_id = (_post_qual_session or {}).get("id") or ""
+        triage_service._action_transactional_entry(
+            db, org_id, lead_phone, _post_qual_session_id, None
+        )
+    except Exception as exc:
+        logger.warning(
+            "_handle_structured_qualification_turn: post-qual transactional "
+            "entry failed lead=%s: %s",
             lead_id, exc,
         )
 
@@ -1675,3 +1748,348 @@ async def receive_shopify_webhook(
         logger.error("[SHOPIFY] handler error org=%s topic=%s: %s", org_id, topic, exc)
 
     return {"status": "ok"}
+
+# ---------------------------------------------------------------------------
+# COMM-1 — Commerce Helper Functions
+# ---------------------------------------------------------------------------
+
+def _restore_commerce_state_if_open(
+    db,
+    org_id: str,
+    phone_number: str,
+    session: dict,
+) -> None:
+    """
+    COMM-1: If whatsapp_session has no commerce_state but an open commerce_session
+    exists, restore the commerce_state on the whatsapp_session row.
+    Mutates session dict in-place so caller sees restored state immediately.
+    S14 — never raises.
+    """
+    try:
+        open_cs = (
+            db.table("commerce_sessions")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("phone_number", phone_number)
+            .in_("status", ["open", "checkout_sent"])
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        cs_rows = open_cs.data if isinstance(open_cs.data, list) else []
+        if not cs_rows:
+            return
+
+        cs = cs_rows[0]
+        if cs.get("status") == "checkout_sent":
+            restored_state = "commerce_checkout"
+        elif cs.get("cart") and len(cs["cart"]) > 0:
+            restored_state = "commerce_cart"
+        else:
+            restored_state = "commerce_browsing"
+
+        triage_service.update_session(
+            db, session["id"], "active", selected_action="commerce_entry"
+        )
+        db.table("whatsapp_sessions").update(
+            {"commerce_state": restored_state}
+        ).eq("id", session["id"]).execute()
+
+        session["commerce_state"] = restored_state  # update in-memory
+
+    except Exception as exc:
+        logger.warning(
+            "_restore_commerce_state_if_open failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def _extract_interactive_id(message: dict) -> Optional[str]:
+    """Extract the ID from a button_reply or list_reply interactive message."""
+    interactive = message.get("interactive") or {}
+    reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+    return reply.get("id")
+
+
+def _extract_list_selection(message: dict) -> Optional[str]:
+    """Return list_reply ID if present, else None."""
+    interactive = message.get("interactive") or {}
+    reply = interactive.get("list_reply") or {}
+    return reply.get("id") or None
+
+
+def _is_cancel_intent(message: dict, content: Optional[str]) -> bool:
+    text = (content or "").lower().strip()
+    iid = (_extract_interactive_id(message) or "").lower()
+    return any(k in text for k in ("cancel", "stop", "clear", "nevermind")) or iid == "cancel"
+
+
+def _is_resend_intent(message: dict, content: Optional[str]) -> bool:
+    text = (content or "").lower().strip()
+    iid = (_extract_interactive_id(message) or "").lower()
+    return any(k in text for k in ("resend", "send again", "checkout")) or iid == "resend"
+
+
+def _is_checkout_intent(message: dict, content: Optional[str]) -> bool:
+    text = (content or "").lower().strip()
+    iid = (_extract_interactive_id(message) or "").lower()
+    return iid == "checkout" or any(k in text for k in ("checkout", "pay", "buy now"))
+
+
+def _is_add_more_intent(message: dict, content: Optional[str]) -> bool:
+    text = (content or "").lower().strip()
+    iid = (_extract_interactive_id(message) or "").lower()
+    return iid == "add_more" or any(k in text for k in ("add more", "more", "continue"))
+
+
+def _fetch_product(db, org_id: str, product_id: str) -> dict:
+    """Fetch a single product by id. Returns {} on failure (S14)."""
+    try:
+        r = (
+            db.table("products")
+            .select("*")
+            .eq("id", product_id)
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .maybe_single()
+            .execute()
+        )
+        d = r.data
+        if isinstance(d, list):
+            d = d[0] if d else None
+        return d or {}
+    except Exception as exc:
+        logger.warning("_fetch_product failed org=%s product=%s: %s", org_id, product_id, exc)
+        return {}
+
+
+def _fetch_products(db, org_id: str) -> list:
+    """Fetch all active products for org. Returns [] on failure (S14)."""
+    try:
+        r = (
+            db.table("products")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .order("title")
+            .execute()
+        )
+        return r.data if isinstance(r.data, list) else []
+    except Exception as exc:
+        logger.warning("_fetch_products failed org=%s: %s", org_id, exc)
+        return []
+
+
+def _find_variant(product: dict, variant_id: str) -> dict:
+    """Find a variant dict from product.variants by ID."""
+    for v in (product.get("variants") or []):
+        vid = str(v.get("id") or v.get("variant_id") or "")
+        if vid and vid == str(variant_id):
+            return v
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# COMM-1 — Core Commerce Message Handler
+# ---------------------------------------------------------------------------
+
+def _handle_commerce_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    message: dict,
+    session: dict,
+    msg_type: str,
+    content: Optional[str],
+    interactive_payload: Optional[dict],
+) -> None:
+    """
+    COMM-1: Route an inbound message from a contact currently in a commerce flow.
+    Dispatches based on session.commerce_state:
+      commerce_browsing        → product list selection → add to cart
+      commerce_variant_select  → variant selection → add to cart
+      commerce_cart            → checkout or add more
+      commerce_checkout        → cancel, resend, or reminder
+
+    Fetches commerce_session from DB at start. All branches S14.
+    """
+    from app.services.commerce_service import (
+        get_or_create_commerce_session,
+        add_to_cart,
+        mark_cart_abandoned,
+        generate_shopify_checkout,
+    )
+    from app.services.whatsapp_service import (
+        send_product_list,
+        send_variant_selection,
+        send_cart_summary,
+        send_checkout_link,
+    )
+
+    try:
+        state = session.get("commerce_state", "")
+
+        # Fetch the active commerce_session
+        cs_result = (
+            db.table("commerce_sessions")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("phone_number", phone_number)
+            .in_("status", ["open", "checkout_sent"])
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        cs_rows = cs_result.data if isinstance(cs_result.data, list) else []
+        commerce_session = cs_rows[0] if cs_rows else {}
+
+        # Fetch commerce_config for checkout message
+        org_cfg_r = (
+            db.table("organisations")
+            .select("commerce_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_cfg_d = org_cfg_r.data
+        if isinstance(org_cfg_d, list):
+            org_cfg_d = org_cfg_d[0] if org_cfg_d else None
+        commerce_config = (org_cfg_d or {}).get("commerce_config") or {}
+
+        if state == "commerce_browsing":
+            product_id = _extract_list_selection(message)
+            if not product_id:
+                # No product selected yet — show product list
+                products = _fetch_products(db, org_id)
+                send_product_list(db, org_id, phone_number, products)
+                return
+
+            product = _fetch_product(db, org_id, product_id)
+            if not product:
+                logger.warning(
+                    "_handle_commerce_message: product %s not found org=%s",
+                    product_id, org_id,
+                )
+                products = _fetch_products(db, org_id)
+                send_product_list(db, org_id, phone_number, products)
+                return
+
+            variants = product.get("variants") or []
+            if len(variants) <= 1:
+                # Single or no variant — add immediately
+                variant = variants[0] if variants else {}
+                variant_id = str(variant.get("id") or variant.get("variant_id") or "")
+                if not commerce_session:
+                    lead_id = session.get("session_data", {}).get("lead_id")
+                    commerce_session = get_or_create_commerce_session(
+                        db, org_id, phone_number, lead_id=lead_id
+                    )
+                commerce_session = add_to_cart(
+                    db, commerce_session, product, variant_id, quantity=1
+                )
+                db.table("whatsapp_sessions").update(
+                    {"commerce_state": "commerce_cart"}
+                ).eq("id", session["id"]).execute()
+                session["commerce_state"] = "commerce_cart"
+                send_cart_summary(db, org_id, phone_number, commerce_session)
+            else:
+                # Multiple variants — ask contact to choose
+                db.table("whatsapp_sessions").update({
+                    "commerce_state": "commerce_variant_select",
+                    "pending_product_id": product_id,
+                }).eq("id", session["id"]).execute()
+                send_variant_selection(db, org_id, phone_number, product)
+
+        elif state == "commerce_variant_select":
+            raw_id = _extract_interactive_id(message) or ""
+            # IDs are prefixed "variant_" per send_variant_selection spec
+            variant_id = raw_id.removeprefix("variant_") if raw_id.startswith("variant_") else raw_id
+            product_id = session.get("pending_product_id") or ""
+            product = _fetch_product(db, org_id, product_id) if product_id else {}
+
+            if not product or not variant_id:
+                logger.warning(
+                    "_handle_commerce_message: variant_select missing product or variant "
+                    "org=%s phone=%s product=%s variant=%s",
+                    org_id, phone_number, product_id, variant_id,
+                )
+                products = _fetch_products(db, org_id)
+                send_product_list(db, org_id, phone_number, products)
+                db.table("whatsapp_sessions").update(
+                    {"commerce_state": "commerce_browsing", "pending_product_id": None}
+                ).eq("id", session["id"]).execute()
+                return
+
+            if not commerce_session:
+                lead_id = session.get("session_data", {}).get("lead_id")
+                commerce_session = get_or_create_commerce_session(
+                    db, org_id, phone_number, lead_id=lead_id
+                )
+            commerce_session = add_to_cart(
+                db, commerce_session, product, variant_id, quantity=1
+            )
+            db.table("whatsapp_sessions").update({
+                "commerce_state": "commerce_cart",
+                "pending_product_id": None,
+            }).eq("id", session["id"]).execute()
+            send_cart_summary(db, org_id, phone_number, commerce_session)
+
+        elif state == "commerce_cart":
+            if _is_checkout_intent(message, content):
+                if not commerce_session:
+                    lead_id = session.get("session_data", {}).get("lead_id")
+                    commerce_session = get_or_create_commerce_session(
+                        db, org_id, phone_number, lead_id=lead_id
+                    )
+                checkout_url = generate_shopify_checkout(db, org_id, commerce_session)
+                db.table("whatsapp_sessions").update(
+                    {"commerce_state": "commerce_checkout"}
+                ).eq("id", session["id"]).execute()
+                send_checkout_link(
+                    db, org_id, phone_number, checkout_url, commerce_config
+                )
+            elif _is_add_more_intent(message, content):
+                products = _fetch_products(db, org_id)
+                db.table("whatsapp_sessions").update(
+                    {"commerce_state": "commerce_browsing"}
+                ).eq("id", session["id"]).execute()
+                send_product_list(db, org_id, phone_number, products)
+            else:
+                # Unrecognised message while in cart — resend summary as reminder
+                if commerce_session:
+                    send_cart_summary(db, org_id, phone_number, commerce_session)
+
+        elif state == "commerce_checkout":
+            if _is_cancel_intent(message, content):
+                if commerce_session:
+                    mark_cart_abandoned(db, commerce_session["id"])
+                db.table("whatsapp_sessions").update(
+                    {"commerce_state": None}
+                ).eq("id", session["id"]).execute()
+                from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+                try:
+                    phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+                    if phone_id:
+                        _call_meta_send(phone_id, {
+                            "messaging_product": "whatsapp",
+                            "to": phone_number,
+                            "type": "text",
+                            "text": {"body": "Your cart has been cleared. Feel free to browse again anytime."},
+                        }, token=access_token)
+                except Exception:
+                    pass
+            elif _is_resend_intent(message, content):
+                if commerce_session:
+                    checkout_url = generate_shopify_checkout(db, org_id, commerce_session)
+                    send_checkout_link(db, org_id, phone_number, checkout_url, commerce_config)
+            else:
+                # Any other message — resend existing link as reminder
+                existing_url = (commerce_session or {}).get("checkout_url") or ""
+                if existing_url:
+                    send_checkout_link(db, org_id, phone_number, existing_url, commerce_config)
+
+    except Exception as exc:
+        logger.warning(
+            "_handle_commerce_message failed org=%s phone=%s state=%s: %s",
+            org_id, phone_number, session.get("commerce_state"), exc,
+        )

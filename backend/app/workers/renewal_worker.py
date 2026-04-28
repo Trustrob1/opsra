@@ -209,7 +209,7 @@ def _expire_subscription(db: Any, org_id: str, subscription: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-@celery_app.task(name="renewal_worker.send_renewal_reminders")
+@celery_app.task(name="app.workers.renewal_worker.send_renewal_reminders")
 def send_renewal_reminders() -> dict:
     """
     Daily 8:00 AM — send WhatsApp renewal reminders.
@@ -269,7 +269,7 @@ def send_renewal_reminders() -> dict:
     return {"processed": processed, "reminded": reminded}
 
 
-@celery_app.task(name="renewal_worker.check_trial_expiry")
+@celery_app.task(name="app.workers.renewal_worker.check_trial_expiry")
 def check_trial_expiry() -> dict:
     """
     Daily 6:00 AM — check trial subscriptions for expiry.
@@ -332,7 +332,7 @@ def check_trial_expiry() -> dict:
     return {"processed": processed, "actioned": actioned}
 
 
-@celery_app.task(name="renewal_worker.schedule_win_back")
+@celery_app.task(name="app.workers.renewal_worker.schedule_win_back")
 def schedule_win_back() -> dict:
     """
     Daily 9:00 AM — schedule win-back messages for churned customers.
@@ -394,7 +394,7 @@ def schedule_win_back() -> dict:
     return {"processed": processed, "queued": queued}
 
 
-@celery_app.task(name="renewal_worker.monitor_payment_failures")
+@celery_app.task(name="app.workers.renewal_worker.monitor_payment_failures")
 def monitor_payment_failures() -> dict:
     """
     Hourly — check pending payments older than 24 hours.

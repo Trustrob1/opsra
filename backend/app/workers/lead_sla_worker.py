@@ -329,7 +329,7 @@ def _process_lead(
 
 # ── Main Celery task ──────────────────────────────────────────────────────────
 
-@celery_app.task(name="lead_sla_worker.run_lead_sla_check", bind=True, max_retries=3)
+@celery_app.task(name="app.workers.lead_sla_worker.run_lead_sla_check", bind=True, max_retries=3)
 def run_lead_sla_check(self):
     """
     Celery beat task — runs every 15 minutes.
