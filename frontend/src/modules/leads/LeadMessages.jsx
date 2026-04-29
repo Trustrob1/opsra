@@ -27,7 +27,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
 import MessageComposer from '../whatsapp/MessageComposer'
-import { getLeadMessages } from '../../services/leads.service'
+import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
 import axios from 'axios'
 import useAuthStore from '../../store/authStore'
 
@@ -87,12 +87,18 @@ export default function LeadMessages({ leadId, leadName }) {
 
     Promise.all([
       getLeadMessages(leadId, 1, PAGE_SIZE),
-      getQualificationSummary(leadId),
+      getQualificationSummary(leadId).catch(() => null),
     ]).then(([res, summaryData]) => {
       if (res.success) {
         setMessages(res.data.items ?? [])
         setTotal(res.data.total ?? 0)
         setPage(1)
+        // Mark all inbound messages as read — clears the badge on the Kanban card
+        markLeadMessagesRead(leadId).catch(() => {})
+        // Also notify the pipeline in case it's still mounted
+        window.dispatchEvent(
+          new CustomEvent('lead-messages-viewed', { detail: { leadId } })
+        )
       } else {
         setError(res.error ?? 'Failed to load messages')
       }

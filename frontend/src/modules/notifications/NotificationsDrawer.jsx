@@ -55,6 +55,7 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError]         = useState(null)
   const [markingAll, setMarkingAll] = useState(false)
+  const [clearing, setClearing]     = useState(false)
 
   const PAGE_SIZE = 20
 
@@ -102,6 +103,20 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
       onUnreadChange?.(0)
     } catch { /* silent */ } finally {
       setMarkingAll(false)
+    }
+  }
+
+  const handleClearAll = async () => {
+    if (!window.confirm('Clear all notifications? This cannot be undone.')) return
+    setClearing(true)
+    try {
+      await notifSvc.clearAllNotifications()
+      setItems([])
+      setUnread(0)
+      setHasMore(false)
+      onUnreadChange?.(0)
+    } catch { /* silent */ } finally {
+      setClearing(false)
     }
   }
 
@@ -168,6 +183,20 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
                 }}
               >
                 {markingAll ? 'Marking…' : 'Mark all read'}
+              </button>
+            )}
+            {items.length > 0 && (
+              <button
+                onClick={handleClearAll}
+                disabled={clearing}
+                style={{
+                  background: 'none', border: '1px solid #FCA5A5',
+                  borderRadius: 6, padding: '5px 10px',
+                  fontSize: 12, color: '#DC2626', cursor: 'pointer',
+                  fontFamily: ds.fontDm,
+                }}
+              >
+                {clearing ? 'Clearing…' : 'Clear all'}
               </button>
             )}
             <button

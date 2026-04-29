@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # Super-admin provisioning
     SUPERADMIN_SECRET: str = ""
 
+    # Observability — 9E-A
+    # Set this to your Sentry project DSN in Render env vars on both services.
+    # Empty string = Sentry disabled (safe for local dev).
+    SENTRY_DSN: str = ""
+
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, v: str) -> str:

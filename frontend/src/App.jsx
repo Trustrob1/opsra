@@ -79,6 +79,7 @@ export default function App() {
   }, [])
 
   // Inject global keyframe for spinner animation used across modules
+  // Also inject login-spinner keyframe
   useEffect(() => {
     if (document.getElementById('opsra-keyframes')) return
     const style = document.createElement('style')
@@ -253,7 +254,17 @@ function LoginScreen({ onAuth }) {
                 cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 0.2s',
               }}
             >
-              {loading ? 'Verifying…' : 'Verify code'}
+              {loading ? (
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <span style={{
+                    width: 16, height: 16, border: '2px solid rgba(255,255,255,0.35)',
+                    borderTopColor: 'white', borderRadius: '50%',
+                    display: 'inline-block',
+                    animation: 'spin 0.7s linear infinite',
+                  }} />
+                  Verifying…
+                </span>
+              ) : 'Verify code'}
             </button>
 
             <button
@@ -321,7 +332,17 @@ function LoginScreen({ onAuth }) {
                 transition:   'background 0.2s',
               }}
             >
-              {loading ? 'Signing in…' : 'Sign In'}
+              {loading ? (
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <span style={{
+                    width: 16, height: 16, border: '2px solid rgba(255,255,255,0.35)',
+                    borderTopColor: 'white', borderRadius: '50%',
+                    display: 'inline-block',
+                    animation: 'spin 0.7s linear infinite',
+                  }} />
+                  Signing in…
+                </span>
+              ) : 'Sign In'}
             </button>
 
             <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16, lineHeight: 1.5 }}>
@@ -430,7 +451,10 @@ function AppShell() {
     setSelectedLeadId(null)
   }
 
+  const [loggingOut, setLoggingOut] = useState(false)
+
   const handleLogout = async () => {
+    setLoggingOut(true)
     try {
       const token = useAuthStore.getState().token
       await axios.post(`${BASE}/api/v1/auth/logout`, {}, {
@@ -520,9 +544,20 @@ function AppShell() {
           </div>
           <button
             onClick={handleLogout}
-            style={{ background: 'none', border: '1px solid #2a4a5a', borderRadius: 7, padding: '6px 12px', fontSize: 12, color: '#7A9BAD', cursor: 'pointer', fontFamily: ds.fontDm, transition: 'all 0.15s' }}
+            disabled={loggingOut}
+            style={{ background: 'none', border: '1px solid #2a4a5a', borderRadius: 7, padding: '6px 12px', fontSize: 12, color: '#7A9BAD', cursor: loggingOut ? 'not-allowed' : 'pointer', fontFamily: ds.fontDm, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6, opacity: loggingOut ? 0.7 : 1 }}
           >
-            Sign out
+            {loggingOut ? (
+              <>
+                <span style={{
+                  width: 11, height: 11, border: '2px solid rgba(122,155,173,0.35)',
+                  borderTopColor: '#7A9BAD', borderRadius: '50%',
+                  display: 'inline-block',
+                  animation: 'spin 0.7s linear infinite',
+                }} />
+                Signing out…
+              </>
+            ) : 'Sign out'}
           </button>
         </div>
       </header>

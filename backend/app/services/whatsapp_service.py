@@ -195,6 +195,54 @@ def _call_meta_send(phone_id: str, meta_payload: dict, token: str | None = None)
             detail=ErrorCode.INTEGRATION_ERROR,
         )
 
+# ---------------------------------------------------------------------------
+# 9E-A: Meta token validity check
+# Callable from meta_token_worker and testable in isolation.
+# ---------------------------------------------------------------------------
+ 
+def check_meta_token_validity(db, org_id: str) -> bool:
+    """
+    Validate the org's WhatsApp access token against the Meta Graph API.
+ 
+    Calls GET https://graph.facebook.com/v17.0/me?access_token={token}
+ 
+    Returns:
+        True  — token is valid (HTTP 200) or no token configured (N/A)
+        False — token invalid (HTTP 401/403) or any network/exception
+ 
+    S14: never raises.
+    PII: only the last 4 chars of the token are logged — never the full value.
+    """
+    try:
+        _, access_token, _ = _get_org_wa_credentials(db, org_id)
+        if not access_token:
+            # No token configured — not applicable, not invalid.
+            return True
+ 
+        url = f"https://graph.facebook.com/v17.0/me?access_token={access_token}"
+ 
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(url)
+ 
+        if response.status_code == 200:
+            return True
+ 
+        # 401 / 403 → token revoked or expired
+        logger.warning(
+            "check_meta_token_validity: invalid token for org=%s — HTTP %s (token ...%s)",
+            org_id,
+            response.status_code,
+            access_token[-4:],
+        )
+        return False
+ 
+    except Exception as exc:
+        logger.warning(
+            "check_meta_token_validity: exception for org=%s — %s", org_id, exc
+        )
+        return False
+ 
+
 
 def send_triage_menu(
     db,

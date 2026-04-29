@@ -323,3 +323,13 @@ export async function getNurtureQueue(params = {}) {
   })
   return res.data
 }
+
+/**
+ * PATCH /api/v1/leads/{id}/messages/mark-read
+ * Marks all inbound messages for a lead as read — clears the unread badge.
+ * @param {string} leadId — lead UUID
+ */
+export async function markLeadMessagesRead(leadId) {
+  const res = await api.patch(`/api/v1/leads/${leadId}/messages/mark-read`, {})
+  return res.data
+}

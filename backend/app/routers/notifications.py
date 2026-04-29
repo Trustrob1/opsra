@@ -70,6 +70,23 @@ async def mark_all_read(
     return ok(data={"message": "All notifications marked as read"})
 
 
+# ── DELETE /api/v1/notifications/clear-all — STATIC (must be before /{id}) ───
+
+@router.delete("/clear-all")
+async def clear_all_notifications(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    Permanently deletes all notifications for the current user.
+    Scoped to user_id + org_id from JWT — cannot clear another user's notifications.
+    """
+    db.table("notifications").delete().eq(
+        "user_id", org["id"]
+    ).eq("org_id", org["org_id"]).execute()
+    return ok(data={"message": "All notifications cleared"})
+
+
 # ── PATCH /api/v1/notifications/{id}/read — PARAMETERISED (after static) ─────
 
 @router.patch("/{notification_id}/read")

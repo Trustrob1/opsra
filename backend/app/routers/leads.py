@@ -907,6 +907,29 @@ async def get_lead_messages(
 
 
 # ---------------------------------------------------------------------------
+# PATCH /api/v1/leads/{lead_id}/messages/mark-read
+# Marks all inbound WhatsApp messages for a lead as read.
+# Called when the Messages tab is opened — clears the unread badge.
+# ---------------------------------------------------------------------------
+
+@router.patch("/{lead_id}/messages/mark-read")
+async def mark_lead_messages_read(
+    lead_id: str,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    try:
+        db.table("whatsapp_messages").update(
+            {"status": "read"}
+        ).eq("org_id", _org_id(org)).eq("lead_id", lead_id).eq(
+            "direction", "inbound"
+        ).neq("status", "read").execute()
+    except Exception as exc:
+        logger.warning("mark_lead_messages_read: failed for lead %s — %s", lead_id, exc)
+    return ok(data={"marked": True})
+
+
+# ---------------------------------------------------------------------------
 # M01-7 — Demo Scheduling & Management (Revised)
 #
 # POST   /{lead_id}/demos                       — create demo request (pending_assignment)

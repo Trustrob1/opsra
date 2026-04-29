@@ -32,9 +32,19 @@ M01-10b additions:
       - daily_briefing        (06:00 WAT / 05:00 UTC — pre-generate morning briefings)
       - notification_digest_midday  (12:00 WAT / 11:00 UTC — bundle unread notifications)
       - notification_digest_eod     (17:00 WAT / 16:00 UTC — bundle unread notifications)
+
+9E-A additions:
+    Sentry SDK initialised with CeleryIntegration(monitor_beat_tasks=True).
+    All scheduled beat tasks are automatically monitored via Sentry Crons.
+    meta_token_worker added to include list.
+    New beat entry:
+      - meta_token_check (daily 07:00 WAT / 06:00 UTC — validate per-org Meta tokens)
 """
 
 import os
+
+import sentry_sdk
+from sentry_sdk.integrations.celery import CeleryIntegration
 
 from celery import Celery
 from celery.schedules import crontab
@@ -74,6 +84,23 @@ BROKER_URL  = _add_ssl_cert_reqs(REDIS_URL)
 BACKEND_URL = _add_ssl_cert_reqs(REDIS_URL)
 
 # ---------------------------------------------------------------------------
+# Sentry — 9E-A Observability.
+# monitor_beat_tasks=True automatically instruments every beat schedule entry
+# as a Sentry Cron monitor — no per-task decoration required.
+# SENTRY_DSN="" is safe (SDK becomes a no-op).
+# ---------------------------------------------------------------------------
+SENTRY_DSN: str = os.environ.get("SENTRY_DSN", "")
+
+sentry_sdk.init(
+    dsn=SENTRY_DSN,
+    environment=ENVIRONMENT,
+    integrations=[
+        CeleryIntegration(monitor_beat_tasks=True),
+    ],
+    traces_sample_rate=0.2,
+)
+
+# ---------------------------------------------------------------------------
 # Celery application — Technical Spec Section 7
 # ---------------------------------------------------------------------------
 
@@ -90,14 +117,15 @@ celery_app = Celery(
         "app.workers.sla_worker",
         "app.workers.drip_worker",
         "app.workers.qualification_worker",   # ← M01-4 + M01-5
-        "app.workers.lead_sla_worker",           # ← M01-6
-        "app.workers.demo_reminder_worker",      # ← M01-7
-        "app.workers.lead_graduation_worker",    # ← M01-10a
-        "app.workers.lead_nurture_worker",       # ← M01-10a
-        "app.workers.daily_briefing_worker",     # ← M01-10b
-        "app.workers.growth_insights_worker",    # ← GPM-2
-        "app.workers.broadcast_worker",           # ← BROADCAST
-        "app.workers.cart_abandonment_worker",    # ← COMM-1
+        "app.workers.lead_sla_worker",        # ← M01-6
+        "app.workers.demo_reminder_worker",   # ← M01-7
+        "app.workers.lead_graduation_worker", # ← M01-10a
+        "app.workers.lead_nurture_worker",    # ← M01-10a
+        "app.workers.daily_briefing_worker",  # ← M01-10b
+        "app.workers.growth_insights_worker", # ← GPM-2
+        "app.workers.broadcast_worker",       # ← BROADCAST
+        "app.workers.cart_abandonment_worker",# ← COMM-1
+        "app.workers.meta_token_worker",      # ← 9E-A
     ],
 )
 
@@ -135,6 +163,9 @@ celery_app.conf.update(
 #
 # Crontab args:  minute, hour, day_of_week, day_of_month, month_of_year
 # UTC hours used throughout (WAT - 1 hour).
+#
+# 9E-A: Sentry Cron monitors are applied automatically to every entry here
+# via CeleryIntegration(monitor_beat_tasks=True) — no extra decoration needed.
 # ---------------------------------------------------------------------------
 
 celery_app.conf.beat_schedule = {
@@ -359,12 +390,25 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute="*/5"),
     },
 
-    # cart_abandonment_check — Every 2 hours (COMM-1)                   #
-    # Worker: cart_abandonment_worker.py                                 #
-    # Reminds contacts who received checkout link but never clicked it.  #
+    # ------------------------------------------------------------------ #
+    # cart_abandonment_check — Every 2 hours  (COMM-1)                   #
+    # Worker: cart_abandonment_worker.py                                  #
+    # Reminds contacts who received checkout link but never clicked it.   #
+    # ------------------------------------------------------------------ #
     "cart-abandonment-check": {
         "task": "app.workers.cart_abandonment_worker.run_cart_abandonment_check",
         "schedule": crontab(minute=0, hour="*/2"),  # every 2h at :00
+    },
+
+    # ------------------------------------------------------------------ #
+    # meta_token_check — Daily 07:00 WAT (06:00 UTC)  (9E-A)             #
+    # Worker: meta_token_worker.py                                         #
+    # Validates WhatsApp access token for every active org.               #
+    # Invalid token → in-app notification to org owner.                   #
+    # ------------------------------------------------------------------ #
+    "meta_token_check": {
+        "task": "app.workers.meta_token_worker.run_meta_token_check",
+        "schedule": crontab(hour=6, minute=0),
     },
 
 }

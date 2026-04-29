@@ -29,6 +29,8 @@ CHECKLIST_ITEMS: list[tuple[str, str, str, bool]] = [
     ("whatsapp_connected",  "WhatsApp API connected",             "WhatsApp",            True),
     ("wa_template_approved","≥1 approved WhatsApp template",      "WhatsApp",            True),
     ("triage_menu",         "Triage menu configured",             "WhatsApp",            True),
+    ("sales_mode_configured",   "Sales mode configured",              "WhatsApp",            False),
+    ("contact_menus_configured", "Contact menus configured",           "WhatsApp",            False),
     # Support
     ("ticket_routing",      "Ticket routing rule exists",         "Support",             False),
     ("ticket_categories",   "Ticket categories confirmed",        "Support",             False),
@@ -64,12 +66,7 @@ def get_checklist_status(db: Any, org_id: str) -> dict:
     # 1. organisations row
     org_row = (
         db.table("organisations")
-        .select(
-            "is_live, whatsapp_phone_id, whatsapp_triage_config, "
-            "qualification_flow, pipeline_stages, scoring_rubric, "
-            "ticket_categories, sla_hot_hours, sla_business_hours, "
-            "drip_business_types, nurture_track_enabled"
-        )
+        .select("*")
         .eq("id", org_id)
         .single()
         .execute()
@@ -167,6 +164,8 @@ def get_checklist_status(db: Any, org_id: str) -> dict:
         "whatsapp_connected":   org.get("whatsapp_phone_id") is not None,
         "wa_template_approved": len(approved_templates) >= 1,
         "triage_menu":          org.get("whatsapp_triage_config") is not None,
+        "sales_mode_configured":    org.get("sales_mode") is not None,
+        "contact_menus_configured": org.get("returning_contact_menu") is not None,
         "ticket_routing":       ticket_routing_count >= 1,
         "ticket_categories":    org.get("ticket_categories") is not None,
         "kb_minimum":           len(published_kb) >= 5,

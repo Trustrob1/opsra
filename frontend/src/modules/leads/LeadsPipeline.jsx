@@ -395,11 +395,32 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   }, [])
 
   const [attentionMap, setAttentionMap] = useState({})
-  useEffect(() => {
+
+  const refreshAttentionMap = useCallback(() => {
     getLeadAttentionSummary()
       .then(res => { if (res.success) setAttentionMap(res.data ?? {}) })
       .catch(() => {})
-  }, [leads])
+  }, [])
+
+  // Fetch on mount — picks up reads that happened while profile was open
+  useEffect(() => { refreshAttentionMap() }, [])
+
+  // Re-fetch when leads change (stage moves, new leads, etc.)
+  useEffect(() => { refreshAttentionMap() }, [leads])
+
+  // Clear unread badge immediately when messages tab is opened for a lead
+  useEffect(() => {
+    const handler = (e) => {
+      const { leadId } = e.detail ?? {}
+      if (!leadId) return
+      setAttentionMap(prev => ({
+        ...prev,
+        [leadId]: { ...(prev[leadId] ?? {}), unread_messages: 0 },
+      }))
+    }
+    window.addEventListener('lead-messages-viewed', handler)
+    return () => window.removeEventListener('lead-messages-viewed', handler)
+  }, [])
 
   const roleTemplate = useAuthStore.getState().getRoleTemplate()
   const isAffiliate  = roleTemplate === 'affiliate_partner'

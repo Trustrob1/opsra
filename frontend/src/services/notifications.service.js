@@ -53,3 +53,14 @@ export async function markAllRead() {
   )
   return r.data.data
 }
+
+/**
+ * Delete all notifications for the current user.
+ */
+export async function clearAllNotifications() {
+  const r = await axios.delete(
+    `${BASE}/api/v1/notifications/clear-all`,
+    { headers: _h() },
+  )
+  return r.data.data
+}

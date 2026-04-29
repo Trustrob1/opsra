@@ -29,6 +29,8 @@ const NAV_TARGETS = {
   whatsapp_connected:  { view: 'admin', tab: 'integrations' },
   wa_template_approved:{ view: 'admin', tab: 'templates' },
   triage_menu:         { view: 'admin', tab: 'whatsapp-menu' },
+  sales_mode_configured:    { view: 'admin', tab: 'sales-mode' },
+  contact_menus_configured: { view: 'admin', tab: 'contact-menus' },
   ticket_routing:      { view: 'support', tab: null },
   ticket_categories:   { view: 'support', tab: null },
   kb_minimum:          { view: 'support', tab: null },
@@ -86,7 +88,7 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
   const [activating,      setActivating]      = useState(false)
   const [confirmModal,    setConfirmModal]     = useState(false)
   const [liveSuccess,     setLiveSuccess]      = useState(false)
-  const [orgIsLive,       setOrgIsLive]        = useState(false)
+  const [orgIsLive,       setOrgIsLive]        = useState(isLive)
   const pollingRef = useRef(null)
 
   const fetchChecklist = useCallback(async () => {
