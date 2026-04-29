@@ -126,6 +126,7 @@ celery_app = Celery(
         "app.workers.broadcast_worker",       # ← BROADCAST
         "app.workers.cart_abandonment_worker",# ← COMM-1
         "app.workers.meta_token_worker",      # ← 9E-A
+        "app.workers.webhook_worker",      # ← 9E-B
     ],
 )
 

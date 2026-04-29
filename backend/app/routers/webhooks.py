@@ -23,7 +23,8 @@ from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from app.utils.phone import normalize_phone
 from app.services.customer_inbound_service import (
     handle_lead_post_handoff_inbound,
 )
@@ -449,8 +450,26 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     """
     from datetime import datetime, timezone, timedelta
 
-    sender_phone = message.get("from", "")
+    sender_phone = normalize_phone(message.get("from", ""))   # 9E-B normalise
     msg_id       = message.get("id", "")
+    # 9E-B: Deduplication gate — skip if this exact message_id was already
+    # processed. The whatsapp_messages INSERT is the idempotency record.
+    # Fail-open: if the check itself fails, proceed rather than drop the message.
+    try:
+        _dedup = (
+            db.table("whatsapp_messages")
+            .select("id")
+            .eq("meta_message_id", msg_id)
+            .limit(1)
+            .execute()
+        )
+        if _dedup.data:
+            logger.info("Duplicate message_id=%s — skipping", msg_id)
+            return
+    except Exception as _dedup_exc:
+        logger.warning(
+            "Dedup check failed for msg_id=%s — proceeding: %s", msg_id, _dedup_exc
+        )
     msg_type     = message.get("type", "text")
     content: Optional[str] = None
 
@@ -1490,70 +1509,33 @@ def _handle_template_status_update(db, value: dict) -> None:
 @router.post("/meta/whatsapp", status_code=status.HTTP_200_OK)
 async def receive_whatsapp_message(
     request: Request,
-    db=Depends(get_supabase),
 ):
+    
     """
     WhatsApp inbound message and status update handler — Technical Spec §6.2.
-
-    Handles two event types:
-      1. Inbound messages — saves to whatsapp_messages, notifies assigned rep
-      2. Status updates (sent/delivered/read/failed) — updates message row
-
-    Security: X-Hub-Signature-256 verified before any processing.
-    S14: all processing errors after signature check are swallowed — always returns 200.
+ 
+    9E-B: Returns HTTP 200 immediately after signature verification.
+    All processing is dispatched to the Celery webhook_worker task.
+    Meta requires a 200 within 5 seconds — synchronous processing violated this.
     """
     raw_body  = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
-
+ 
     if not _verify_meta_signature(raw_body, signature):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid webhook signature",
         )
-
+ 
     payload: dict = json.loads(raw_body)
-
-    if payload.get("object") != "whatsapp_business_account":
-        return {"status": "ignored", "reason": "not a whatsapp_business_account event"}
-
-    for entry in payload.get("entry", []):
-        for change in entry.get("changes", []):
-            field = change.get("field")
-            value = change.get("value", {})
-
-            # ── Template approval / rejection events ──────────────────────
-            if field == "message_template_status_update":
-                try:
-                    _handle_template_status_update(db, value)
-                except Exception as exc:
-                    logger.warning("Template status update error: %s", exc)
-                continue
-
-            # ── Inbound messages and delivery status updates ──────────────
-            if field != "messages":
-                continue
-
-            phone_number_id = (value.get("metadata") or {}).get("phone_number_id", "")
-            contacts        = value.get("contacts", [])
-            contact_name    = (contacts[0].get("profile") or {}).get("name", "") if contacts else ""
-
-            # Process inbound messages
-            for message in value.get("messages", []):
-                try:
-                    print(f"Processing inbound message from {message.get('from')}", flush=True)
-                    _handle_inbound_message(db, message, contact_name, phone_number_id)
-                    print("Inbound message processed successfully", flush=True)
-                except Exception as exc:
-                    print(f"Inbound message processing error: {exc}", flush=True)
-
-            # Process delivery/read status updates
-            for status_upd in value.get("statuses", []):
-                try:
-                    _handle_status_update(db, status_upd)
-                except Exception as exc:  # pylint: disable=broad-except
-                    logger.error("Status update processing error: %s", exc)
-
-    return {"status": "ok"}
+ 
+    # Dispatch to Celery — do NOT process synchronously.
+    # webhook_worker handles org lookup, routing, dedup, and dead lettering.
+    from app.workers.webhook_worker import process_inbound_webhook
+    process_inbound_webhook.delay(payload)
+ 
+    # Return 200 immediately — Meta will retry if we don't respond fast enough.
+    return Response(status_code=200)
 
 @router.get("/meta/whatsapp")
 async def verify_whatsapp_webhook(
