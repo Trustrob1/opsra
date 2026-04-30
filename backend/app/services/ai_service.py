@@ -19,9 +19,17 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date
 from typing import Optional
 
 import anthropic
+import sentry_sdk
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.config import settings
 
@@ -75,6 +83,94 @@ def _get_client() -> anthropic.Anthropic:
 
 
 # ---------------------------------------------------------------------------
+# G2 — Per-org daily token usage tracking via Redis
+# ---------------------------------------------------------------------------
+_TOKEN_SOFT_LIMIT = 50_000
+_TOKEN_HARD_LIMIT = 100_000
+
+
+def _get_redis():
+    """Lazy Redis client — returns None if Redis unavailable (S14)."""
+    try:
+        import redis as _redis
+        from app.workers.celery_app import _add_ssl_cert_reqs
+        url = _add_ssl_cert_reqs(settings.REDIS_URL)
+        return _redis.from_url(url, decode_responses=True, socket_connect_timeout=2)
+    except Exception as exc:
+        logger.warning("G2: Redis unavailable for token tracking — %s", exc)
+        return None
+
+
+def check_and_increment_token_usage(org_id: str, tokens: int) -> bool:
+    """
+    Increment the per-org daily token counter in Redis.
+
+    Key: claude_tokens:{org_id}:{YYYY-MM-DD}   TTL: 48 hours
+    Returns True  — call is allowed (under hard limit).
+    Returns False — hard limit reached; caller should return fallback.
+
+    Soft limit (50k): log warning + Sentry alert.
+    Hard limit (100k): log error + Sentry alert + return False.
+    S14: any Redis failure returns True (allow call, never block on infra error).
+    """
+    if not org_id:
+        return True
+    try:
+        r = _get_redis()
+        if r is None:
+            return True
+
+        key = f"claude_tokens:{org_id}:{date.today().isoformat()}"
+
+        # Check current usage before incrementing
+        current = int(r.get(key) or 0)
+        if current >= _TOKEN_HARD_LIMIT:
+            logger.error(
+                "G2: Hard token limit reached for org %s — %.0f tokens used today",
+                org_id, current,
+            )
+            sentry_sdk.capture_message(
+                f"Claude hard token limit reached: org={org_id} tokens={current}",
+                level="error",
+            )
+            return False
+
+        # Increment and set TTL
+        pipe = r.pipeline()
+        pipe.incrby(key, tokens)
+        pipe.expire(key, 172_800)  # 48 hours
+        new_total = pipe.execute()[0]
+
+        # Soft limit check
+        if new_total >= _TOKEN_SOFT_LIMIT and current < _TOKEN_SOFT_LIMIT:
+            logger.warning(
+                "G2: Soft token limit reached for org %s — %.0f tokens used today",
+                org_id, new_total,
+            )
+            sentry_sdk.capture_message(
+                f"Claude soft token limit reached: org={org_id} tokens={new_total}",
+                level="warning",
+            )
+
+        return True
+
+    except Exception as exc:
+        logger.warning("G2: token usage check failed for org %s — %s", org_id, exc)
+        return True  # S14: never block on Redis failure
+
+
+# ---------------------------------------------------------------------------
+# G1 — Retry predicate: only retry on rate limits and 5xx server errors
+# ---------------------------------------------------------------------------
+def _is_retryable(exc: BaseException) -> bool:
+    if isinstance(exc, anthropic.RateLimitError):
+        return True
+    if isinstance(exc, anthropic.APIStatusError) and exc.status_code >= 500:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Section 11.3 — sanitise_for_prompt
 # ---------------------------------------------------------------------------
 def sanitise_for_prompt(text: str, max_length: int = 2000) -> str:
@@ -117,11 +213,21 @@ def call_claude(
     model: str = HAIKU,
     max_tokens: int = 1000,
     system: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> str:
     """
     Standard Claude API call with error handling.
     Returns empty string on any API error (graceful degradation — Section 12.7).
+
+    G1: Retries up to 3 times on RateLimitError or 5xx with exponential backoff.
+    G2: Increments per-org daily token counter after every successful call.
+        Pass org_id to enable tracking. If omitted, tracking is skipped.
     """
+    # G2: Check hard limit before touching the client
+    if org_id and not check_and_increment_token_usage(org_id, 0):
+        logger.warning("call_claude: hard token limit reached for org %s — returning fallback", org_id)
+        return ""
+
     client = _get_client()
     messages: list[dict] = [{"role": "user", "content": prompt}]
     kwargs: dict = {
@@ -132,9 +238,29 @@ def call_claude(
     if system:
         kwargs["system"] = system + "\n" + _SECURITY_RULES
 
+    @retry(
+        retry=retry_if_exception(_is_retryable),
+        wait=wait_exponential(multiplier=1, min=1, max=16),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    def _call_with_retry():
+        return client.messages.create(**kwargs)
+
     try:
-        response = client.messages.create(**kwargs)
-        return response.content[0].text
+        response = _call_with_retry()
+        text = response.content[0].text if response.content else ""
+
+        # G2: Track tokens used
+        if org_id and hasattr(response, "usage") and response.usage:
+            total_tokens = (
+                (response.usage.input_tokens or 0) +
+                (response.usage.output_tokens or 0)
+            )
+            check_and_increment_token_usage(org_id, total_tokens)
+
+        return text
+
     except anthropic.APIStatusError as exc:
         logger.error("Claude API error %s: %s", exc.status_code, exc.message)
         return ""

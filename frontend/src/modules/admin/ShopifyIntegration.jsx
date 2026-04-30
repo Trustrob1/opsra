@@ -35,7 +35,8 @@ const WEBHOOK_EVENTS = [
 export default function ShopifyIntegration() {
   const [status,      setStatus]      = useState(null)   // null = loading
   const [domain,      setDomain]      = useState('')
-  const [token,       setToken]       = useState('')
+  const [clientId,    setClientId]    = useState('')
+  const [clientSecret, setClientSecret] = useState('')
   const [secret,      setSecret]      = useState('')
   const [connecting,  setConnecting]  = useState(false)
   const [syncing,     setSyncing]     = useState(false)
@@ -61,17 +62,27 @@ export default function ShopifyIntegration() {
   async function handleConnect(e) {
     e.preventDefault()
     setErr('')
-    if (!domain.trim() || !token.trim()) {
-      setErr('Store domain and access token are required.')
+    if (!domain.trim() || !clientId.trim() || !clientSecret.trim()) {
+      setErr('Store domain, Client ID and Client Secret are all required.')
       return
     }
     setConnecting(true)
     try {
-      await connectShopify({ shop_domain: domain.trim(), access_token: token.trim(), webhook_secret: secret.trim() || undefined })
+      await connectShopify({
+        shop_domain:   domain.trim(),
+        client_id:     clientId.trim(),
+        client_secret: clientSecret.trim(),
+        webhook_secret: secret.trim() || undefined,
+      })
       flash('Shopify connected. Product sync started.')
       load()
     } catch (ex) {
-      setErr(ex?.response?.data?.detail || ex?.response?.data?.error?.message || 'Connection failed.')
+      const d = ex?.response?.data
+      const msg =
+        d?.error?.message ||
+        (typeof d?.detail === 'string' ? d.detail : d?.detail?.message) ||
+        'Connection failed.'
+      setErr(msg)
     } finally {
       setConnecting(false)
     }
@@ -295,6 +306,20 @@ export default function ShopifyIntegration() {
             </div>
           </div>
 
+          {/* Dev Dashboard instructions panel */}
+          <div style={{ ...S.card, background: '#FFFBEB', border: '1px solid #FDE68A', marginBottom: 20 }}>
+            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: '#92400E', marginBottom: 8 }}>
+              📋 How to get your credentials
+            </div>
+            <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#78350F', lineHeight: 1.9 }}>
+              <li>Go to <strong>dev.shopify.com</strong> and open your app (<em>opsra-integration</em>)</li>
+              <li>Click <strong>Settings</strong> in the left sidebar</li>
+              <li>Under <strong>Credentials</strong>, copy your <strong>Client ID</strong></li>
+              <li>Click the eye icon to reveal your <strong>Secret</strong> and copy it</li>
+              <li>Paste both below and click Connect</li>
+            </ol>
+          </div>
+
           {/* Connection form */}
           <div style={S.card}>
             <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', marginBottom: 18 }}>
@@ -302,36 +327,54 @@ export default function ShopifyIntegration() {
             </div>
 
             <form onSubmit={handleConnect}>
+              {/* Row 1: domain */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={S.label}>
+                  Store domain <span style={{ color: '#C0392B' }}>*</span>
+                </label>
+                <input
+                  style={{ ...S.input, maxWidth: 360 }}
+                  value={domain}
+                  onChange={e => setDomain(e.target.value)}
+                  placeholder="my-store.myshopify.com"
+                  autoComplete="off"
+                />
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+                  Without https://
+                </div>
+              </div>
+
+              {/* Row 2: Client ID + Client Secret */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                 <div>
                   <label style={S.label}>
-                    Store domain <span style={{ color: '#C0392B' }}>*</span>
+                    Client ID <span style={{ color: '#C0392B' }}>*</span>
                   </label>
                   <input
                     style={S.input}
-                    value={domain}
-                    onChange={e => setDomain(e.target.value)}
-                    placeholder="my-store.myshopify.com"
+                    value={clientId}
+                    onChange={e => setClientId(e.target.value)}
+                    placeholder="07de4763403b7fcfe2f..."
                     autoComplete="off"
                   />
                   <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
-                    Without https://
+                    dev.shopify.com → Settings → Credentials
                   </div>
                 </div>
                 <div>
                   <label style={S.label}>
-                    Admin API access token <span style={{ color: '#C0392B' }}>*</span>
+                    Client Secret <span style={{ color: '#C0392B' }}>*</span>
                   </label>
                   <input
                     style={S.input}
-                    value={token}
-                    onChange={e => setToken(e.target.value)}
-                    placeholder="shpat_xxxxxxxxxxxxxxxx"
+                    value={clientSecret}
+                    onChange={e => setClientSecret(e.target.value)}
+                    placeholder="••••••••••••••••"
                     type="password"
                     autoComplete="off"
                   />
                   <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
-                    Settings → Apps → Develop apps → Access token
+                    Click the eye icon in Dev Dashboard to reveal
                   </div>
                 </div>
               </div>

@@ -4,7 +4,7 @@
  * Pattern 51 (full rewrite on edit). Pattern 50 (admin.service.js calls only).
  */
 import { useState, useEffect, useCallback } from 'react'
-import { getCommerceSettings, updateCommerceSettings } from '../../services/admin.service'
+import { getCommerceSettings, updateCommerceSettings, getShopifyStatus } from '../../services/admin.service'
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -133,12 +133,12 @@ export default function CommerceSettings() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getCommerceSettings()
-      .then(data => {
+    Promise.all([getCommerceSettings(), getShopifyStatus()])
+      .then(([data, shopifyRes]) => {
         if (cancelled) return
         const en  = data?.enabled          ?? false
         const msg = data?.checkout_message ?? 'Here\'s your checkout link:'
-        const sc  = data?.shopify_connected ?? false
+        const sc  = shopifyRes?.data?.connected ?? shopifyRes?.connected ?? false
         setEnabled(en);         setSavedEnabled(en)
         setCheckoutMessage(msg); setSavedCheckoutMessage(msg)
         setShopifyConnected(sc)

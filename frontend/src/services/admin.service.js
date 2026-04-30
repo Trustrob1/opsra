@@ -317,7 +317,7 @@ export const getShopifyStatus = () =>
     .then(r => r.data)
 
 export const connectShopify = (payload) =>
-  // payload: { shop_domain, access_token, webhook_secret? }
+  // SHOP-2 payload: { shop_domain, client_id, client_secret, webhook_secret? }
   axios.post(`${BASE}/api/v1/admin/shopify/connect`, payload, { headers: _h() })
     .then(r => r.data)
 

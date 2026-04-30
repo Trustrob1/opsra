@@ -1500,9 +1500,144 @@ def _handle_template_status_update(db, value: dict) -> None:
                     "name='%s' meta_id='%s' — update skipped", name, meta_id,
                 )
 
+        # G4 — Cancel any active broadcasts using a rejected template
+        if new_status == "rejected":
+            _cancel_broadcasts_for_rejected_template(db, meta_id, name)
+
     except Exception as exc:
         logger.warning(
             "_handle_template_status_update failed: %s", exc
+        )
+
+
+def _cancel_broadcasts_for_rejected_template(
+    db, meta_template_id: str, template_name: str
+) -> None:
+    """
+    G4: When a WhatsApp template is rejected by Meta, cancel any scheduled
+    or in-progress broadcasts that use it, and notify the org owner.
+
+    S14: never raises — all failures are logged and swallowed.
+    """
+    try:
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Find the template record(s) to get org_id and template db id
+        template_rows = []
+        if meta_template_id:
+            res = (
+                db.table("whatsapp_templates")
+                .select("id, org_id, name")
+                .eq("meta_template_id", meta_template_id)
+                .execute()
+            )
+            template_rows = res.data if isinstance(res.data, list) else []
+
+        if not template_rows and template_name:
+            res = (
+                db.table("whatsapp_templates")
+                .select("id, org_id, name")
+                .eq("name", template_name)
+                .execute()
+            )
+            template_rows = res.data if isinstance(res.data, list) else []
+
+        if not template_rows:
+            logger.info(
+                "_cancel_broadcasts_for_rejected_template: no template rows found "
+                "for meta_id=%s name=%s — nothing to cancel", meta_template_id, template_name,
+            )
+            return
+
+        for tmpl in template_rows:
+            tmpl_id  = tmpl.get("id")
+            org_id   = tmpl.get("org_id")
+            tmpl_name = tmpl.get("name", template_name)
+
+            if not tmpl_id or not org_id:
+                continue
+
+            try:
+                # Find broadcasts using this template that are still active
+                bc_res = (
+                    db.table("broadcasts")
+                    .select("id, name")
+                    .eq("org_id", org_id)
+                    .eq("template_id", tmpl_id)
+                    .in_("status", ["scheduled", "sending"])
+                    .execute()
+                )
+                broadcasts = bc_res.data if isinstance(bc_res.data, list) else []
+
+                if not broadcasts:
+                    continue
+
+                # Cancel each broadcast
+                bc_ids = [b["id"] for b in broadcasts]
+                db.table("broadcasts").update({
+                    "status":     "cancelled",
+                    "updated_at": now,
+                }).eq("org_id", org_id).in_("id", bc_ids).execute()
+
+                logger.info(
+                    "G4: cancelled %d broadcast(s) for rejected template '%s' org=%s",
+                    len(bc_ids), tmpl_name, org_id,
+                )
+
+                # Notify org owner
+                _notify_owner_template_rejected(db, org_id, tmpl_name, len(bc_ids), now)
+
+            except Exception as inner_exc:
+                logger.warning(
+                    "_cancel_broadcasts_for_rejected_template: failed for template %s "
+                    "org=%s — %s", tmpl_id, org_id, inner_exc,
+                )
+
+    except Exception as exc:
+        logger.warning("_cancel_broadcasts_for_rejected_template failed: %s", exc)
+
+
+def _notify_owner_template_rejected(
+    db, org_id: str, template_name: str, cancelled_count: int, now: str
+) -> None:
+    """Insert an in-app notification for the org owner about the rejected template."""
+    try:
+        # Find owner user(s) for this org
+        users_res = (
+            db.table("users")
+            .select("id, roles(template)")
+            .eq("org_id", org_id)
+            .execute()
+        )
+        users = users_res.data if isinstance(users_res.data, list) else []
+
+        for user in users:
+            template = ((user.get("roles") or {}).get("template") or "").lower()
+            if template != "owner":
+                continue
+
+            plural = "broadcasts" if cancelled_count > 1 else "broadcast"
+            db.table("notifications").insert({
+                "org_id":        org_id,
+                "user_id":       user["id"],
+                "type":          "broadcast_cancelled",
+                "title":         "Broadcast Cancelled — Template Rejected",
+                "body":          (
+                    f"Meta rejected your WhatsApp template '{template_name}'. "
+                    f"{cancelled_count} {plural} using this template "
+                    f"{'have' if cancelled_count > 1 else 'has'} been cancelled. "
+                    "Please review your template and resubmit."
+                ),
+                "resource_type": "broadcast",
+                "is_read":       False,
+                "created_at":    now,
+            }).execute()
+
+    except Exception as exc:
+        logger.warning(
+            "_notify_owner_template_rejected failed org=%s: %s", org_id, exc
         )
 
 

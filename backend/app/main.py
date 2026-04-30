@@ -24,6 +24,8 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from app.config import settings
 
@@ -119,6 +121,38 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Superadmin-Secret"],
     max_age=600,
 )
+
+# ---------------------------------------------------------------------------
+# Security headers — 9E-H / H4
+# Applied to every response. CSP allows Supabase realtime (wss://), Sentry,
+# and Google Fonts used by the frontend. 'unsafe-inline' in style-src is
+# required because the React app uses inline style={{ }} props throughout.
+# ---------------------------------------------------------------------------
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data: https://*.supabase.co; "
+    "connect-src 'self' https://*.supabase.co https://*.sentry.io wss://*.supabase.co; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self';"
+)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"]   = _CSP
+        response.headers["X-Frame-Options"]            = "DENY"
+        response.headers["X-Content-Type-Options"]     = "nosniff"
+        response.headers["Referrer-Policy"]            = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"]         = "camera=(), microphone=(), geolocation=()"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # ---------------------------------------------------------------------------
 # Router registration

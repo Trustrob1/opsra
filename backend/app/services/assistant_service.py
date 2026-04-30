@@ -34,6 +34,13 @@ from dotenv import load_dotenv  # Pattern 29
 load_dotenv()
 
 import anthropic
+import sentry_sdk
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.services.assistant_context import get_role_context
 
@@ -46,6 +53,68 @@ MAX_TOKENS      = 1_024
 HISTORY_LIMIT   = 20
 PURGE_DAYS      = 30
 MAX_MSG_CHARS   = 5_000   # S4
+ARIA_DAILY_LIMIT = 50     # G3: max Aria calls per user per day
+
+
+# ─── G1 — Retry predicate ────────────────────────────────────────────────────
+
+def _is_retryable(exc: BaseException) -> bool:
+    if isinstance(exc, anthropic.RateLimitError):
+        return True
+    if isinstance(exc, anthropic.APIStatusError) and exc.status_code >= 500:
+        return True
+    return False
+
+
+# ─── G3 — Daily per-user Aria call limit ─────────────────────────────────────
+
+def _get_redis():
+    """Lazy Redis client — returns None if unavailable (S14)."""
+    try:
+        import redis as _redis
+        redis_url = os.getenv("REDIS_URL", "")
+        if not redis_url:
+            return None
+        # Append ssl_cert_reqs if using TLS
+        if redis_url.startswith("rediss://") and "ssl_cert_reqs" not in redis_url:
+            sep = "&" if "?" in redis_url else "?"
+            redis_url = f"{redis_url}{sep}ssl_cert_reqs=CERT_NONE"
+        return _redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2)
+    except Exception as exc:
+        logger.warning("Aria: Redis unavailable for call limit — %s", exc)
+        return None
+
+
+def check_aria_call_limit(user_id: str) -> bool:
+    """
+    Check and increment the daily Aria call counter for a user.
+
+    Key: aria_calls:{user_id}:{YYYY-MM-DD}   TTL: 48 hours
+    Returns True  — call is allowed (under limit).
+    Returns False — daily limit reached (50 calls/user/day).
+    S14: any Redis failure returns True (never block on infra error).
+    """
+    try:
+        r = _get_redis()
+        if r is None:
+            return True
+
+        key = f"aria_calls:{user_id}:{date.today().isoformat()}"
+        current = int(r.get(key) or 0)
+
+        if current >= ARIA_DAILY_LIMIT:
+            logger.warning("G3: Aria daily limit reached for user %s", user_id)
+            return False
+
+        pipe = r.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, 172_800)  # 48 hours
+        pipe.execute()
+        return True
+
+    except Exception as exc:
+        logger.warning("G3: Aria call limit check failed for user %s — %s", user_id, exc)
+        return True  # S14
 
 # ─── Security rules block (S8) ────────────────────────────────────────────────
 
@@ -139,16 +208,27 @@ def call_haiku_sync(system_prompt: str, messages: list[dict]) -> str:
     """
     Make a synchronous Haiku call. Used by the daily briefing worker.
     Returns the assistant text content.
+
+    G1: Retries up to 3 times on RateLimitError or 5xx with exponential backoff.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     client  = anthropic.Anthropic(api_key=api_key)
 
-    response = client.messages.create(
-        model=HAIKU_MODEL,
-        max_tokens=MAX_TOKENS,
-        system=system_prompt,
-        messages=messages,
+    @retry(
+        retry=retry_if_exception(_is_retryable),
+        wait=wait_exponential(multiplier=1, min=1, max=16),
+        stop=stop_after_attempt(3),
+        reraise=True,
     )
+    def _call_with_retry():
+        return client.messages.create(
+            model=HAIKU_MODEL,
+            max_tokens=MAX_TOKENS,
+            system=system_prompt,
+            messages=messages,
+        )
+
+    response = _call_with_retry()
     return response.content[0].text if response.content else ""
 
 
@@ -265,11 +345,18 @@ def build_chat_payload(
     """
     Assemble (system_prompt, messages_list) for a chat Haiku call.
     Includes the last HISTORY_LIMIT messages + new user message.
+
+    G3: Raises ValueError if the user has exceeded the daily call limit.
+        Caller (router) catches this and returns 429.
     """
+    # G3 — daily call limit check
+    if not check_aria_call_limit(user_id):
+        raise ValueError("aria_daily_limit_reached")
+
     context       = get_role_context(db, org_id, user_id, role_template)
     system_prompt = _build_system_prompt(role_template, context)
 
-    history  = get_history(db, org_id, user_id)
+    history  = get_history(db, org_id, user_id)   # already capped at HISTORY_LIMIT (20)
     messages = history + [{"role": "user", "content": _wrap_user_content(user_text)}]
 
     return system_prompt, messages

@@ -45,7 +45,10 @@ _OWNER_ROLES = {"owner", "ops_manager"}
 class ShopifyConnectRequest(BaseModel):
     shop_domain: str = Field(..., min_length=3, max_length=255,
         description="e.g. my-store.myshopify.com")
-    access_token: str = Field(..., min_length=10, max_length=500)
+    client_id: str = Field(..., min_length=10, max_length=255,
+        description="Client ID from dev.shopify.com → Settings")
+    client_secret: str = Field(..., min_length=10, max_length=500,
+        description="Client Secret from dev.shopify.com → Settings")
     webhook_secret: Optional[str] = Field(default=None, max_length=500)
 
 
@@ -143,10 +146,34 @@ def connect_shopify(
     shop_domain = payload.shop_domain.strip().lower()
     shop_domain = shop_domain.replace("https://", "").replace("http://", "").rstrip("/")
 
+    # SHOP-2: validate credentials immediately by fetching a token — fail fast
+    from app.services.shopify_service import _get_shopify_token, ShopifyAuthError
+    try:
+        access_token = _get_shopify_token(
+            shop_domain=shop_domain,
+            client_id=payload.client_id.strip(),
+            client_secret=payload.client_secret.strip(),
+        )
+    except ShopifyAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "data": None,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": str(exc),
+                    "field": None,
+                },
+            },
+        )
+
     now = datetime.now(timezone.utc).isoformat()
     db.table("organisations").update({
         "shopify_shop_domain":    shop_domain,
-        "shopify_access_token":   payload.access_token.strip(),
+        "shopify_client_id":      payload.client_id.strip(),
+        "shopify_client_secret":  payload.client_secret.strip(),
+        "shopify_access_token":   access_token,   # cached — refreshed on each sync
         "shopify_webhook_secret": (payload.webhook_secret or "").strip() or None,
         "shopify_connected":      True,
         "updated_at":             now,
@@ -163,7 +190,6 @@ def connect_shopify(
     background_tasks.add_task(
         _run_bulk_sync,
         org_id=org["org_id"],
-        access_token=payload.access_token.strip(),
         shop_domain=shop_domain,
     )
 
@@ -234,7 +260,7 @@ def trigger_shopify_sync(
     # Fetch credentials for the sync task
     creds_r = (
         db.table("organisations")
-        .select("shopify_access_token, shopify_shop_domain")
+        .select("shopify_client_id, shopify_client_secret, shopify_shop_domain")
         .eq("id", org["org_id"])
         .maybe_single()
         .execute()
@@ -244,10 +270,11 @@ def trigger_shopify_sync(
         creds_d = creds_d[0] if creds_d else None
     creds = creds_d or {}
 
-    access_token = creds.get("shopify_access_token") or ""
-    shop_domain = creds.get("shopify_shop_domain") or ""
+    client_id     = creds.get("shopify_client_id") or ""
+    client_secret = creds.get("shopify_client_secret") or ""
+    shop_domain   = creds.get("shopify_shop_domain") or ""
 
-    if not access_token or not shop_domain:
+    if not client_id or not client_secret or not shop_domain:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -264,7 +291,6 @@ def trigger_shopify_sync(
     background_tasks.add_task(
         _run_bulk_sync,
         org_id=org["org_id"],
-        access_token=access_token,
         shop_domain=shop_domain,
     )
 
@@ -278,20 +304,43 @@ def trigger_shopify_sync(
 # Background sync task
 # ---------------------------------------------------------------------------
 
-def _run_bulk_sync(org_id: str, access_token: str, shop_domain: str) -> None:
+def _run_bulk_sync(org_id: str, shop_domain: str) -> None:
     """
-    Background task: fetch a fresh db connection and run bulk_sync_products.
+    SHOP-2: Background task — reads client_id + client_secret from DB,
+    calls _get_shopify_token() for a fresh token, then runs bulk_sync_products.
     S14 — never raises.
     """
     try:
         from app.database import get_supabase as _get_db
         from app.services.shopify_service import bulk_sync_products
         db = _get_db()
+
+        # Read credentials from DB (not passed in — avoids stale token in closure)
+        creds_r = (
+            db.table("organisations")
+            .select("shopify_client_id, shopify_client_secret")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        creds_d = creds_r.data
+        if isinstance(creds_d, list):
+            creds_d = creds_d[0] if creds_d else None
+        creds = creds_d or {}
+
+        client_id     = creds.get("shopify_client_id") or ""
+        client_secret = creds.get("shopify_client_secret") or ""
+
+        if not client_id or not client_secret:
+            logger.warning("_run_bulk_sync: missing credentials org=%s — skipping", org_id)
+            return
+
         result = bulk_sync_products(
             db=db,
             org_id=org_id,
-            access_token=access_token,
             shop_domain=shop_domain,
+            client_id=client_id,
+            client_secret=client_secret,
         )
         logger.info(
             "_run_bulk_sync complete org=%s synced=%d failed=%d",

@@ -415,4 +415,14 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=6, minute=0),
     },
 
+    # ------------------------------------------------------------------ #
+    # purge_aria_messages — Daily 02:00 UTC  (9E-G)                       #
+    # Worker: daily_briefing_worker.py                                     #
+    # Deletes assistant_messages older than 30 days to cap table growth.  #
+    # ------------------------------------------------------------------ #
+    "purge_aria_messages": {
+        "task": "app.workers.daily_briefing_worker.run_purge_old_messages",
+        "schedule": crontab(hour=2, minute=0),
+    },
+
 }

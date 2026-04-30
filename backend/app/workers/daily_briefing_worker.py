@@ -224,3 +224,21 @@ def run_notification_digest(self) -> dict:
     }
     logger.info("notification_digest: %s", result)
     return result
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
+def run_purge_old_messages(self):
+    """
+    Daily 02:00 UTC — delete assistant_messages older than 30 days.
+    G3: Keeps the assistant_messages table from growing unbounded.
+    """
+    from app.database import get_supabase
+    from app.services.assistant_service import purge_old_messages
+    logger.info("run_purge_old_messages: starting")
+    try:
+        db = get_supabase()
+        deleted = purge_old_messages(db)
+        logger.info("run_purge_old_messages: deleted %d rows", deleted)
+        return {"deleted": deleted, "failed": 0}
+    except Exception as exc:
+        logger.error("run_purge_old_messages failed: %s", exc)
+        return {"deleted": 0, "failed": 1}

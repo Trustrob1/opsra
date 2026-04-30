@@ -4,7 +4,8 @@
  * Replaces the default Vite scaffold.
  *
  * Structure:
- *   ┌─ LoginScreen     (shown when token === null)
+ *   ┌─ ErrorBoundary   (9E-H: wraps entire app — catches render errors)
+ *   ├─ LoginScreen     (shown when token === null)
  *   └─ AppShell        (shown when authenticated)
  *       ├─ Topbar      (fixed 60px)
  *       ├─ Sidebar     (fixed 248px)
@@ -20,13 +21,15 @@
  * SECURITY (Technical Spec §11.1):
  *   - JWT stored in Zustand memory only.  Never localStorage / sessionStorage.
  *   - Auth state is lost on page refresh (by design — token in memory).
- *   - 401 responses from any API call clear auth via the axios interceptor
- *     in leads.service.js, which causes this component to re-render to LoginScreen.
+ *   - 401 responses trigger silent JWT refresh via the global interceptor in
+ *     frontend/src/services/api.js (9E-H).  If refresh fails, clearAuth() is
+ *     called and this component re-renders to LoginScreen.
  */
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import useAuthStore from './store/authStore'
 import { ds } from './utils/ds'
+import ErrorBoundary from './components/ErrorBoundary'   // ← 9E-H
 import LeadsPipeline from './modules/leads/LeadsPipeline'
 import LeadProfile   from './modules/leads/LeadProfile'
 import WhatsAppModule from './modules/whatsapp/WhatsAppModule'
@@ -94,7 +97,11 @@ export default function App() {
   }, [])
 
   if (!token) return <LoginScreen onAuth={setAuth} />
-  return <AppShell />
+  return (
+    <ErrorBoundary>
+      <AppShell />
+    </ErrorBoundary>
+  )
 }
 
 // ─── Login screen ─────────────────────────────────────────────────────────────
@@ -515,49 +522,32 @@ function AppShell() {
               </span>
             )}
           </button>
-          {org?.org_id === "00000000-0000-0000-0000-000000000001" && (
-            <button
-              onClick={() => {
-                setView('superadmin_create_org')
-                setActiveNav(null)
-              }}
-              style={{
-                background: 'none',
-                border: '1px solid #2a4a5a',
-                borderRadius: 7,
-                padding: '5px 10px',
-                fontSize: 12,
-                color: '#7A9BAD',
-                cursor: 'pointer',
-                fontFamily: ds.fontDm,
-                transition: 'all 0.15s'
-              }}
-            >
-              + Org
-            </button>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 30, height: 30, background: ds.tealDark, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: 'white' }}>
+
+          {/* User avatar + name */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: ds.teal, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              fontSize: 13, fontWeight: 700, color: 'white',
+              fontFamily: ds.fontSyne,
+            }}>
               {userInitial}
             </div>
-            <span style={{ fontSize: 13, color: '#B0CDD8', fontWeight: 500 }}>{userName}</span>
+            <span style={{ fontSize: 13, color: '#A0BDC8', fontWeight: 500 }}>{userName}</span>
           </div>
+
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            style={{ background: 'none', border: '1px solid #2a4a5a', borderRadius: 7, padding: '6px 12px', fontSize: 12, color: '#7A9BAD', cursor: loggingOut ? 'not-allowed' : 'pointer', fontFamily: ds.fontDm, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6, opacity: loggingOut ? 0.7 : 1 }}
+            style={{
+              background: 'none', border: '1px solid #2a4a5a',
+              borderRadius: 7, padding: '6px 14px',
+              fontSize: 12, color: '#7A9BAD', cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
           >
-            {loggingOut ? (
-              <>
-                <span style={{
-                  width: 11, height: 11, border: '2px solid rgba(122,155,173,0.35)',
-                  borderTopColor: '#7A9BAD', borderRadius: '50%',
-                  display: 'inline-block',
-                  animation: 'spin 0.7s linear infinite',
-                }} />
-                Signing out…
-              </>
-            ) : 'Sign out'}
+            {loggingOut ? 'Signing out…' : 'Sign out'}
           </button>
         </div>
       </header>

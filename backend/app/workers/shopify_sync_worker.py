@@ -37,7 +37,7 @@ def sync_all_orgs() -> dict:
     try:
         result = (
             db.table("organisations")
-            .select("id, shopify_shop_domain, shopify_access_token")
+            .select("id, shopify_shop_domain, shopify_client_id, shopify_client_secret")
             .eq("shopify_connected", True)
             .execute()
         )
@@ -46,11 +46,12 @@ def sync_all_orgs() -> dict:
             orgs = [orgs]
 
         for org in orgs:
-            org_id = org.get("id")
-            shop_domain = (org.get("shopify_shop_domain") or "").strip()
-            access_token = (org.get("shopify_access_token") or "").strip()
+            org_id        = org.get("id")
+            shop_domain   = (org.get("shopify_shop_domain") or "").strip()
+            client_id     = (org.get("shopify_client_id") or "").strip()
+            client_secret = (org.get("shopify_client_secret") or "").strip()
 
-            if not org_id or not shop_domain or not access_token:
+            if not org_id or not shop_domain or not client_id or not client_secret:
                 logger.warning(
                     "shopify_sync_worker: skipping org %s — incomplete credentials", org_id
                 )
@@ -60,8 +61,9 @@ def sync_all_orgs() -> dict:
                 counts = bulk_sync_products(
                     db=db,
                     org_id=org_id,
-                    access_token=access_token,
                     shop_domain=shop_domain,
+                    client_id=client_id,
+                    client_secret=client_secret,
                 )
                 total_synced += counts.get("synced", 0)
                 total_failed += counts.get("failed", 0)

@@ -28,6 +28,62 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+class ShopifyAuthError(Exception):
+    """Raised when client credentials exchange fails."""
+
+
+# ---------------------------------------------------------------------------
+# Token acquisition (SHOP-2)
+# ---------------------------------------------------------------------------
+
+def _get_shopify_token(shop_domain: str, client_id: str, client_secret: str) -> str:
+    """
+    SHOP-2: Exchange client_id + client_secret for a 24-hour access token
+    using Shopify's client credentials grant.
+
+    POST https://{shop_domain}/admin/oauth/access_token
+    Body: grant_type=client_credentials, client_id=..., client_secret=...
+
+    Returns the access_token string.
+    Raises ShopifyAuthError on any failure (caller catches, returns 400).
+    S14: logs all failures before raising.
+    """
+    try:
+        url = f"https://{shop_domain}/admin/oauth/access_token"
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.post(
+                url,
+                data={
+                    "grant_type":    "client_credentials",
+                    "client_id":     client_id,
+                    "client_secret": client_secret,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        if resp.status_code != 200:
+            logger.warning(
+                "_get_shopify_token: HTTP %d for shop=%s body=%s",
+                resp.status_code, shop_domain, resp.text[:200],
+            )
+            raise ShopifyAuthError(
+                f"Shopify returned HTTP {resp.status_code}. "
+                "Check your Client ID, Client Secret, and that the app is installed on the store."
+            )
+        token = resp.json().get("access_token") or ""
+        if not token:
+            raise ShopifyAuthError("Shopify response did not include an access_token.")
+        return token
+    except ShopifyAuthError:
+        raise
+    except Exception as exc:
+        logger.warning("_get_shopify_token failed shop=%s: %s", shop_domain, exc)
+        raise ShopifyAuthError(f"Could not reach Shopify to validate credentials: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
 # Webhook signature verification
 # ---------------------------------------------------------------------------
 
@@ -143,11 +199,13 @@ def handle_product_deleted(db, org_id: str, shopify_product_id: int) -> None:
 def bulk_sync_products(
     db,
     org_id: str,
-    access_token: str,
     shop_domain: str,
+    client_id: str,
+    client_secret: str,
 ) -> dict:
     """
-    Fetch all products from Shopify REST API and upsert into products table.
+    SHOP-2: Fetch all products from Shopify REST API and upsert into products table.
+    Obtains a fresh access token via _get_shopify_token() before syncing.
     Paginates using page_info cursor (250 per page).
     Returns { synced: int, failed: int }.
     S14: per-product failure never stops the loop.
@@ -155,7 +213,14 @@ def bulk_sync_products(
     synced = 0
     failed = 0
     try:
-        url = f"https://{shop_domain}/admin/api/2024-01/products.json?limit=250"
+        # SHOP-2: always get a fresh token — tokens expire every 24 hours
+        try:
+            access_token = _get_shopify_token(shop_domain, client_id, client_secret)
+        except ShopifyAuthError as exc:
+            logger.warning("bulk_sync_products: token fetch failed org=%s: %s", org_id, exc)
+            return {"synced": 0, "failed": 0, "error": str(exc)}
+
+        url = f"https://{shop_domain}/admin/api/2026-01/products.json?limit=250"
         headers = {
             "X-Shopify-Access-Token": access_token,
             "Content-Type": "application/json",

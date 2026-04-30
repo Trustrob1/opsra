@@ -57,3 +57,5 @@ respx==0.20.2                  # Mock httpx calls — Anthropic API + Meta API
 pytest-cov==4.1.0              # Coverage reporting — target 80%+ per Build Status
 
 sentry-sdk==2.58.0
+
+tenacity==8.2.3
