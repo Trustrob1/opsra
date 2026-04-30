@@ -91,12 +91,22 @@ def get_or_create_commerce_session(
     customer_id: Optional[str] = None,
 ) -> dict:
     """
-    Fetch active (status=open or checkout_sent) commerce session or create new.
-    If creating new and lead_id provided → set session.lead_id.
-    If creating new and customer_id provided → set session.customer_id.
+    C4 — Atomically fetch active (open or checkout_sent) commerce session or
+    create a new one.
+
+    The unique index idx_cs_open_session on (org_id, phone_number)
+    WHERE status IN ('open', 'checkout_sent') ensures only one active session
+    exists per org+phone. On a concurrent duplicate INSERT, the DB raises a
+    unique violation (23505) and we fall back to fetching the winner.
+
+    If creating new:
+      - lead_id provided → set session.lead_id.
+      - customer_id provided → set session.customer_id.
+
     S14 — never raises. Returns {} on unrecoverable error.
     """
     try:
+        # Fast path: existing active session
         existing = (
             db.table("commerce_sessions")
             .select("*")
@@ -123,9 +133,51 @@ def get_or_create_commerce_session(
         if customer_id:
             new_session["customer_id"] = customer_id
 
-        result = db.table("commerce_sessions").insert(new_session).execute()
-        created = result.data if isinstance(result.data, list) else []
-        return created[0] if created else new_session
+        try:
+            result = db.table("commerce_sessions").insert(new_session).execute()
+            created = result.data if isinstance(result.data, list) else []
+            if created:
+                return created[0]
+            # Supabase returned empty without raising — fetch the winner
+            fallback = (
+                db.table("commerce_sessions")
+                .select("*")
+                .eq("org_id", org_id)
+                .eq("phone_number", phone_number)
+                .in_("status", ["open", "checkout_sent"])
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            fb_rows = fallback.data if isinstance(fallback.data, list) else []
+            return fb_rows[0] if fb_rows else new_session
+
+        except Exception as insert_exc:
+            err_str = str(insert_exc).lower()
+            if (
+                "23505" in err_str
+                or "duplicate" in err_str
+                or "unique" in err_str
+            ):
+                # Concurrent INSERT — another handler won the race, fetch it
+                logger.debug(
+                    "get_or_create_commerce_session: duplicate INSERT org=%s "
+                    "phone=%s — returning winner",
+                    org_id, phone_number,
+                )
+                fallback = (
+                    db.table("commerce_sessions")
+                    .select("*")
+                    .eq("org_id", org_id)
+                    .eq("phone_number", phone_number)
+                    .in_("status", ["open", "checkout_sent"])
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                fb_rows = fallback.data if isinstance(fallback.data, list) else []
+                return fb_rows[0] if fb_rows else new_session
+            raise  # unexpected DB error — propagate to outer S14 handler
 
     except Exception as exc:
         logger.warning(

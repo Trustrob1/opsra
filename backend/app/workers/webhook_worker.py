@@ -1,21 +1,14 @@
 """
 app/workers/webhook_worker.py
 ------------------------------
-9E-B — WhatsApp Webhook Foundation.
+9E-D D1 gate added:
+  After org lookup, fetch full org row and check subscription_status.
+  If org is suspended → write to dead_letter_webhooks and skip processing.
+  "active" and "grace" orgs proceed normally.
 
-Celery task that processes inbound Meta webhook payloads asynchronously.
-The HTTP handler in webhooks.py returns 200 immediately and dispatches here.
+D2/D3 not applicable — inbound webhook processing, not outbound messaging.
 
-Responsibilities:
-  1. Org lookup by phone_number_id — dead letter if not found.
-  2. Message-ID deduplication — skip if already processed.
-  3. Route to existing handler functions (_handle_inbound_message,
-     _handle_status_update, _handle_template_status_update).
-  4. Dead letter + Sentry on any unhandled exception.
-
-S13: payload validated with Pydantic before processing.
-S14: per-entry/per-message exceptions never stop the task — always completes.
-PII: never logs full phone numbers — last 4 chars only.
+All other logic unchanged.
 """
 from __future__ import annotations
 
@@ -28,18 +21,14 @@ from pydantic import BaseModel, field_validator
 
 from app.workers.celery_app import celery_app
 from app.database import get_supabase
+from app.utils.org_gates import is_org_active  # 9E-D D1
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# S13 — Pydantic payload validation
-# ---------------------------------------------------------------------------
-
 class WebhookPayload(BaseModel):
-    """Minimal validation of the Meta webhook envelope."""
     object: str
-    entry: list = []
+    entry:  list = []
 
     @field_validator("object")
     @classmethod
@@ -49,21 +38,13 @@ class WebhookPayload(BaseModel):
         return v
 
 
-# ---------------------------------------------------------------------------
-# Dead letter helper
-# ---------------------------------------------------------------------------
-
 def _write_dead_letter(
     db,
-    phone_id: Optional[str],
-    reason: str,
-    payload: dict,
-    org_id: Optional[str] = None,
+    phone_id:  Optional[str],
+    reason:    str,
+    payload:   dict,
+    org_id:    Optional[str] = None,
 ) -> None:
-    """
-    Write an unprocessable webhook to dead_letter_webhooks.
-    S14: never raises.
-    """
     try:
         db.table("dead_letter_webhooks").insert({
             "org_id":      org_id,
@@ -76,28 +57,45 @@ def _write_dead_letter(
         logger.warning("_write_dead_letter failed reason=%s: %s", reason, exc)
 
 
-# ---------------------------------------------------------------------------
-# Celery task
-# ---------------------------------------------------------------------------
+def _fetch_org_row(db, org_id: str) -> Optional[dict]:
+    """
+    Fetch the full org row needed for D1 gate check.
+    Returns None on any error — caller treats as unknown org.
+    S14: never raises.
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("id, subscription_status")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        return data or None
+    except Exception as exc:
+        logger.warning(
+            "webhook_worker: _fetch_org_row failed org=%s: %s", org_id, exc
+        )
+        return None
+
 
 @celery_app.task(
     name="app.workers.webhook_worker.process_inbound_webhook",
-    max_retries=0,  # S14 — never retry; dead letter handles failures
+    max_retries=0,
 )
 def process_inbound_webhook(payload: dict) -> None:
     """
     Process one Meta WhatsApp webhook payload.
 
-    Called by the slim POST /webhooks/meta/whatsapp handler immediately
-    after signature verification. All actual processing happens here so
-    Meta gets its 200 OK within milliseconds.
+    D1 gate: after org lookup, fetch org row and check subscription_status.
+    Suspended orgs → dead letter. Active/grace orgs proceed normally.
 
     S13: validates payload envelope with WebhookPayload before processing.
     S14: any per-entry exception writes to dead_letter_webhooks + Sentry.
-         Never raises — task always completes.
     """
-    # Import handler functions from webhooks router.
-    # Module-level imports used (Pattern 57) — importable at task load time.
     from app.routers.webhooks import (
         _handle_inbound_message,
         _handle_status_update,
@@ -107,7 +105,6 @@ def process_inbound_webhook(payload: dict) -> None:
 
     db = get_supabase()
 
-    # S13 — validate payload shape
     try:
         validated = WebhookPayload(**payload)
     except Exception as exc:
@@ -135,12 +132,11 @@ def process_inbound_webhook(payload: dict) -> None:
             if field != "messages":
                 continue
 
-            # ── Inbound messages + status updates ──────────────────────────
             phone_number_id: str = (
                 (value.get("metadata") or {}).get("phone_number_id") or ""
             )
 
-            # Org lookup — dead letter if not found
+            # ── Org lookup ─────────────────────────────────────────────────
             org_id: Optional[str] = None
             try:
                 org_id = _lookup_org_by_phone_number_id(db, phone_number_id)
@@ -152,13 +148,29 @@ def process_inbound_webhook(payload: dict) -> None:
 
             if not org_id:
                 logger.warning(
-                    "process_inbound_webhook: org not found for phone_id=%s — dead lettering",
-                    phone_number_id,
+                    "process_inbound_webhook: org not found for phone_id=%s "
+                    "— dead lettering", phone_number_id,
                 )
                 _write_dead_letter(db, phone_number_id, "org_not_found", payload)
                 sentry_sdk.capture_message(
                     f"Webhook org not found for phone_id={phone_number_id}",
                     level="warning",
+                )
+                continue
+
+            # ── D1: Subscription gate ──────────────────────────────────────
+            # Fetch full org row to check subscription_status.
+            # Suspended orgs → dead letter (spec D1).
+            # Active/grace orgs proceed normally.
+            org_row = _fetch_org_row(db, org_id)
+            if org_row and not is_org_active(org_row):
+                logger.info(
+                    "process_inbound_webhook: org %s is suspended — "
+                    "dead lettering webhook for phone_id=%s",
+                    org_id, phone_number_id,
+                )
+                _write_dead_letter(
+                    db, phone_number_id, "org_suspended", payload, org_id=org_id
                 )
                 continue  # S14: don't stop — try remaining changes
 
@@ -168,7 +180,7 @@ def process_inbound_webhook(payload: dict) -> None:
                 if contacts else ""
             )
 
-            # Process inbound messages
+            # ── Process inbound messages ───────────────────────────────────
             for message in (value.get("messages") or []):
                 msg_id = message.get("id", "")
                 try:
@@ -176,10 +188,9 @@ def process_inbound_webhook(payload: dict) -> None:
                         db, message, contact_name, phone_number_id
                     )
                 except Exception as exc:
-                    # S14: log, dead letter, capture to Sentry, continue
                     logger.warning(
-                        "process_inbound_webhook: message error msg_id=%s org=%s: %s",
-                        msg_id, org_id, exc,
+                        "process_inbound_webhook: message error msg_id=%s "
+                        "org=%s: %s", msg_id, org_id, exc,
                     )
                     _write_dead_letter(
                         db, phone_number_id, "processing_error", payload,
@@ -187,12 +198,12 @@ def process_inbound_webhook(payload: dict) -> None:
                     )
                     sentry_sdk.capture_exception(exc)
 
-            # Process delivery/read status updates
+            # ── Process delivery/read status updates ───────────────────────
             for status_upd in (value.get("statuses") or []):
                 try:
                     _handle_status_update(db, status_upd)
                 except Exception as exc:
                     logger.warning(
-                        "process_inbound_webhook: status update error org=%s: %s",
-                        org_id, exc,
+                        "process_inbound_webhook: status update error "
+                        "org=%s: %s", org_id, exc,
                     )

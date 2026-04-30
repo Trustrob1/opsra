@@ -88,7 +88,7 @@ class TicketCreate(BaseModel):
     category: Optional[str] = None  # CONFIG-1: validated against org config, not hardcoded enum
     urgency: Optional[str] = None
     title: Optional[str] = None
-    content: str                    # problem description — always required
+    content: str = Field(..., max_length=10000)  # S5: ticket problem description
     ai_handling_mode: str = "draft_review"
     assigned_to: Optional[UUID] = None
 
@@ -117,11 +117,12 @@ class TicketUpdate(BaseModel):
     Technical Spec §5.4.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     category: Optional[str] = None  # CONFIG-1: validated against org config, not hardcoded enum
     urgency: Optional[str] = None
     assigned_to: Optional[UUID] = None
+    updated_at: Optional[str] = None  # C7: optimistic concurrency token
 
     @field_validator("urgency")
     @classmethod
@@ -139,7 +140,7 @@ class AddMessageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message_type: str
-    content: str
+    content: str = Field(..., max_length=5000)  # S4: ticket message body
 
     @field_validator("message_type")
     @classmethod
@@ -156,7 +157,7 @@ class ResolveRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    resolution_notes: str
+    resolution_notes: str = Field(..., max_length=5000)  # S4: free text field
 
 
 # ---------------------------------------------------------------------------
@@ -212,8 +213,8 @@ class InteractionLogCreate(BaseModel):
     ticket_id: Optional[UUID] = None
     interaction_type: str
     duration_minutes: Optional[int] = None
-    outcome: Optional[str] = None
-    raw_notes: Optional[str] = None
+    outcome: Optional[str]   = Field(None, max_length=100)   # S3: matches DB varchar(100)
+    raw_notes: Optional[str] = Field(None, max_length=5000)  # S4: free text field
     interaction_date: datetime
 
     @field_validator("interaction_type")

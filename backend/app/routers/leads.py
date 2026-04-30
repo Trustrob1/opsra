@@ -231,6 +231,44 @@ async def import_leads(
         )
 
     raw = await file.read()
+
+    # S10: Magic byte / size guard
+    MAX_IMPORT_BYTES = 25 * 1024 * 1024  # 25 MB
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "code": ErrorCode.VALIDATION_ERROR,
+                "message": "Import file must be 25 MB or smaller",
+            },
+        )
+    # CSV has no reliable magic bytes — verify it is valid UTF-8 text,
+    # not a disguised binary (executable, archive, image, etc.)
+    # Per app/utils/mime.py spec: text/csv falls back to extension check,
+    # but we additionally reject files whose first bytes are binary.
+    _first = raw[:4]
+    _binary_signatures = [
+        b"\x50\x4b\x03\x04",  # ZIP / XLSX
+        b"\xd0\xcf\x11\xe0",  # legacy XLS / DOC
+        b"\x89PNG",
+        b"\xff\xd8\xff",      # JPEG
+        b"MZ",                # Windows executable
+        b"\x7fELF",           # Linux executable
+    ]
+    # XLSX is legitimately accepted — allow its ZIP signature only if extension is .xlsx
+    _ext = (file.filename or "").lower()
+    for _sig in _binary_signatures:
+        if _first.startswith(_sig):
+            if _sig == b"\x50\x4b\x03\x04" and _ext.endswith(".xlsx"):
+                break  # XLSX is valid
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail={
+                    "code": ErrorCode.VALIDATION_ERROR,
+                    "message": "File content does not match an accepted import format",
+                },
+            )
+
     job_id = lead_service.create_import_job(org_id)
 
     try:
@@ -656,6 +694,18 @@ async def update_lead(
     db=Depends(get_supabase),
 ):
     require_not_affiliate(org, "editing leads")
+    # C7: Optimistic concurrency — reject stale updates
+    if payload.updated_at:
+        existing = lead_service._lead_or_404(db, _org_id(org), lead_id)
+        db_ts = existing.get("updated_at") or ""
+        if db_ts and db_ts > payload.updated_at:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "CONCURRENT_MODIFICATION",
+                    "message": "Record modified by another user. Reload to see changes.",
+                },
+            )
     lead = lead_service.update_lead(
         db=db,
         org_id=_org_id(org),

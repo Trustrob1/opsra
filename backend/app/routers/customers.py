@@ -269,7 +269,19 @@ def update_customer(
 ):
     # Phase 9B: affiliate_partner is read-only
     require_not_affiliate(org, "editing customers")
-
+    # C7: Optimistic concurrency — reject stale updates
+    if payload.updated_at:
+        from app.services import whatsapp_service as _ws
+        existing = _ws.get_customer(db=db, org_id=org["org_id"], customer_id=customer_id)
+        db_ts = existing.get("updated_at") or ""
+        if db_ts and db_ts > payload.updated_at:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "CONCURRENT_MODIFICATION",
+                    "message": "Record modified by another user. Reload to see changes.",
+                },
+            )
     updated = whatsapp_service.update_customer(
         db=db,
         org_id=org["org_id"],

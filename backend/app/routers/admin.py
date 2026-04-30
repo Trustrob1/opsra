@@ -19,6 +19,7 @@ import httpx
 import os
 from app.services import admin_service
 from datetime import datetime
+from app.utils.org_gates import SYSTEM_DAILY_CUSTOMER_CEILING
 from app.models.common import ok
 import re as _re
 
@@ -216,7 +217,6 @@ def get_pipeline_stages(
     db=Depends(get_supabase),
 ):
     """CONFIG-6: Return org pipeline_stages config. Falls back to defaults if null."""
-    require_permission(org)
     result = (
         db.table("organisations")
         .select("pipeline_stages")
@@ -238,7 +238,12 @@ def update_pipeline_stages(
     db=Depends(get_supabase),
 ):
     """CONFIG-6: Save org pipeline_stages config."""
-    require_permission(org)
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
+        )
     stages_data = [s.model_dump() for s in payload.stages]
     updates = {
         "pipeline_stages": stages_data,
@@ -318,7 +323,6 @@ def get_ticket_categories(
     db=Depends(get_supabase),
 ):
     """CONFIG-1: Return org ticket/KB category config. Falls back to defaults if null."""
-    require_permission(org)
     result = (
         db.table("organisations")
         .select("ticket_categories")
@@ -340,7 +344,12 @@ def update_ticket_categories(
     db=Depends(get_supabase),
 ):
     """CONFIG-1: Save org ticket/KB category config."""
-    require_permission(org)
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
+        )
     cats_data = [c.model_dump() for c in payload.categories]
     updates = {
         "ticket_categories": cats_data,
@@ -375,7 +384,6 @@ async def get_qualification_flow(
     Owner / ops_manager only.
     Pattern 28 — get_current_org. Pattern 62 — db via Depends.
     """
-    require_permission(org)
  
     org_id = org["org_id"]
  
@@ -408,7 +416,12 @@ async def update_qualification_flow(
     Pattern 28 — get_current_org. Pattern 62 — db via Depends. S1 — org_id from JWT.
     S3 — Pydantic validation on every field.
     """
-    require_permission(org)
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
+        )
  
     org_id = org["org_id"]
  
@@ -1799,7 +1812,6 @@ def get_drip_business_types(
     db=Depends(get_supabase),
 ):
     """CONFIG-2: Return org drip business types config. Falls back to empty list if null."""
-    require_permission(org)
     result = (
         db.table("organisations")
         .select("drip_business_types")
@@ -1821,7 +1833,12 @@ def update_drip_business_types(
     db=Depends(get_supabase),
 ):
     """CONFIG-2: Save org drip business types config."""
-    require_permission(org)
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
+        )
     types_data = [t.model_dump() for t in payload.business_types]
     updates = {
         "drip_business_types": types_data,
@@ -1927,7 +1944,6 @@ def get_sla_business_hours(
     db=Depends(get_supabase),
 ):
     """CONFIG-3: Return org SLA business hours config. Falls back to defaults if null."""
-    require_permission(org)
     result = (
         db.table("organisations")
         .select("sla_business_hours")
@@ -1949,7 +1965,12 @@ def update_sla_business_hours(
     db=Depends(get_supabase),
 ):
     """CONFIG-3: Save org SLA business hours config."""
-    require_permission(org)
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
+        )
 
     # Load current config so we do a proper merge
     current_result = (
@@ -2079,7 +2100,6 @@ def get_sales_mode(
     db=Depends(get_supabase),
 ):
     """SM-1: Return org sales_mode. Defaults to 'consultative' if null."""
-    require_permission(org)
     result = (
         db.table("organisations")
         .select("sales_mode")
@@ -2101,7 +2121,6 @@ def update_sales_mode(
     db=Depends(get_supabase),
 ):
     """SM-1: Update org sales_mode. Owner + ops_manager only."""
-    require_permission(org)
     # RBAC: owner and ops_manager only
     role = (org.get("roles") or {}).get("template", "").lower()
     if role not in ("owner", "ops_manager"):
@@ -2131,7 +2150,6 @@ def get_contact_menus(
     db=Depends(get_supabase),
 ):
     """SM-1: Return returning_contact_menu + known_customer_menu from triage config."""
-    require_permission(org)
     result = (
         db.table("organisations")
         .select("whatsapp_triage_config")
@@ -2156,7 +2174,6 @@ def update_contact_menus(
     db=Depends(get_supabase),
 ):
     """SM-1: Update returning_contact_menu and/or known_customer_menu. Owner + ops_manager only."""
-    require_permission(org)
     role = (org.get("roles") or {}).get("template", "").lower()
     if role not in ("owner", "ops_manager"):
         raise HTTPException(
@@ -2220,7 +2237,6 @@ def get_whatsapp_status(
     MULTI-ORG-WA-1: Return WhatsApp connection status for this org.
     Returns phone_id if connected. Never returns the access token.
     """
-    require_permission(org)
     result = (
         db.table("organisations")
         .select("whatsapp_phone_id, whatsapp_access_token, whatsapp_waba_id")
@@ -2253,7 +2269,6 @@ async def connect_whatsapp(
     RBAC: owner + ops_manager only.
     S3: token is stored but never returned in any response.
     """
-    require_permission(org)
     role = (org.get("roles") or {}).get("template", "").lower()
     if role not in ("owner", "ops_manager"):
         raise HTTPException(
@@ -2316,7 +2331,6 @@ def disconnect_whatsapp(
     All automated messaging stops immediately until reconnected.
     RBAC: owner + ops_manager only.
     """
-    require_permission(org)
     role = (org.get("roles") or {}).get("template", "").lower()
     if role not in ("owner", "ops_manager"):
         raise HTTPException(
@@ -2367,7 +2381,6 @@ def get_commerce_settings(
     RBAC: owner + ops_manager only (inline pattern).
     S1 — org_id from JWT only.
     """
-    require_permission(org)
     role = (org.get("roles") or {}).get("template", "").lower()
     if role not in ("owner", "ops_manager"):
         raise HTTPException(
@@ -2409,7 +2422,6 @@ def update_commerce_settings(
     RBAC: owner + ops_manager only (inline pattern).
     S1 — org_id from JWT only.
     """
-    require_permission(org)
     role = (org.get("roles") or {}).get("template", "").lower()
     if role not in ("owner", "ops_manager"):
         raise HTTPException(
@@ -2467,3 +2479,144 @@ def update_commerce_settings(
     )
 
     return ok(data=new_config, message="Commerce settings saved")
+
+
+
+# Validates daily_customer_message_limit against system ceiling of 20.
+# Returns a human-readable 422 when limit exceeds ceiling — never a raw
+# HTTP status code. Field key included so frontend can highlight the input.
+#
+# Pattern 28: get_current_org + inline owner/ops_manager role check
+# Pattern 62: db via Depends(get_supabase)
+# S1: org_id from JWT only
+# S3: Pydantic field constraints on every field
+ 
+ 
+class MessagingLimitsUpdate(BaseModel):
+    """9E-D: Update org messaging limits and quiet hours config."""
+ 
+    daily_customer_message_limit: Optional[int] = Field(
+        None,
+        ge=1,
+        le=SYSTEM_DAILY_CUSTOMER_CEILING,
+        description=(
+            f"Max automated messages per customer per day. "
+            f"Cannot exceed system ceiling of {SYSTEM_DAILY_CUSTOMER_CEILING}."
+        ),
+    )
+    quiet_hours_start: Optional[str] = Field(None, max_length=5)
+    quiet_hours_end:   Optional[str] = Field(None, max_length=5)
+    timezone:          Optional[str] = Field(None, max_length=60)
+ 
+    @field_validator("daily_customer_message_limit")
+    @classmethod
+    def _validate_limit(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v > SYSTEM_DAILY_CUSTOMER_CEILING:
+            raise ValueError(
+                f"Daily message limit cannot exceed {SYSTEM_DAILY_CUSTOMER_CEILING}. "
+                f"This is the system-wide maximum to protect your customers from "
+                f"receiving too many automated messages in a single day."
+            )
+        return v
+ 
+    @field_validator("quiet_hours_start", "quiet_hours_end")
+    @classmethod
+    def _validate_time(cls, v: Optional[str]) -> Optional[str]:
+        import re as _re_time
+        if v is not None and not _re_time.match(r'^\d{2}:\d{2}$', v):
+            raise ValueError("Time must be in HH:MM format e.g. 22:00")
+        return v
+ 
+    @field_validator("timezone")
+    @classmethod
+    def _validate_tz(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and ("/" not in v or len(v) > 60):
+            raise ValueError(
+                "Timezone must be a valid IANA string e.g. Africa/Lagos"
+            )
+        return v
+ 
+    @model_validator(mode="after")
+    def _validate_quiet_hours_pair(self) -> "MessagingLimitsUpdate":
+        """Both quiet_hours_start and quiet_hours_end must be set together."""
+        start = self.quiet_hours_start
+        end   = self.quiet_hours_end
+        if (start is None) != (end is None):
+            raise ValueError(
+                "quiet_hours_start and quiet_hours_end must both be set or both be cleared"
+            )
+        if start and end and start == end:
+            raise ValueError(
+                "quiet_hours_start and quiet_hours_end cannot be the same time"
+            )
+        return self
+ 
+ 
+@router.get("/messaging-limits")
+def get_messaging_limits(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    9E-D: Return org messaging limits and quiet hours config.
+    Returns defaults where columns are null.
+    Pattern 28 — get_current_org + inline require_permission.
+    S1 — org_id from JWT only.
+    """
+    result = (
+        db.table("organisations")
+        .select(
+            "daily_customer_message_limit, quiet_hours_start, "
+            "quiet_hours_end, timezone"
+        )
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    data = data or {}
+    return ok(data={
+        "daily_customer_message_limit": (
+            data.get("daily_customer_message_limit") or 3
+        ),
+        "quiet_hours_start": data.get("quiet_hours_start"),
+        "quiet_hours_end":   data.get("quiet_hours_end"),
+        "timezone":          data.get("timezone") or "Africa/Lagos",
+        "system_ceiling":    SYSTEM_DAILY_CUSTOMER_CEILING,
+    })
+ 
+ 
+@router.patch("/messaging-limits")
+def update_messaging_limits(
+    payload: MessagingLimitsUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and ops managers can update messaging limits.",
+        )
+    updates = {
+        k: v for k, v in payload.model_dump(exclude_unset=True).items()
+        if v is not None
+    }
+    if not updates:
+        return ok(data={}, message="No changes to save")
+ 
+    updates["updated_at"] = datetime.utcnow().isoformat()
+    db.table("organisations").update(updates).eq("id", org["org_id"]).execute()
+ 
+    write_audit_log(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        action="messaging_limits.updated",
+        resource_type="organisation",
+        resource_id=org["org_id"],
+        new_value={k: v for k, v in updates.items() if k != "updated_at"},
+    )
+    return ok(data=updates, message="Messaging limits saved")

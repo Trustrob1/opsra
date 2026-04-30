@@ -706,3 +706,240 @@ class TestDeleteRoutingRuleRoute:
         self._patcher.start()
 
         assert resp.status_code == 404
+
+# ---------------------------------------------------------------------------
+# APPEND TO BOTTOM OF tests/integration/test_admin_routes.py
+#
+# 9E-E RBAC tests — require_permission(org) dead code fix
+# Covers: PATCH config routes now correctly enforce owner/ops_manager only.
+# ---------------------------------------------------------------------------
+
+
+def make_mock_org_by_role(template: str) -> dict:
+    """Return a mock org with the given role template."""
+    return {
+        "id": "user-uuid-" + template,
+        "org_id": "org-uuid-001",
+        "email": f"{template}@acme.example",
+        "full_name": f"Test {template}",
+        "is_active": True,
+        "roles": {
+            "template": template,
+            "permissions": {},
+        },
+    }
+
+
+class TestRbacPipelineStages:
+    """PATCH /api/v1/admin/pipeline-stages — owner/ops_manager only.
+
+    PipelineStageUpdate requires:
+      stages: List[PipelineStageItem]
+      Each item: key (one of configurable keys), label (str), enabled (bool)
+      Must include 'new' and 'converted' keys, at least 2 enabled.
+    """
+
+    # Minimal valid payload — includes required 'new' and 'converted' keys
+    _VALID_PAYLOAD = {
+        "stages": [
+            {"key": "new",       "label": "New Lead",  "enabled": True},
+            {"key": "contacted", "label": "Contacted", "enabled": True},
+            {"key": "converted", "label": "Converted", "enabled": True},
+        ]
+    }
+
+    def _patch_pipeline(self, role_template: str):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+
+        mock_db = MagicMock()
+        mock_db.table.return_value.update.return_value \
+            .eq.return_value.execute.return_value = MagicMock(data=[{}])
+        mock_db.table.return_value.insert.return_value \
+            .execute.return_value = MagicMock(data=[])
+
+        app.dependency_overrides[get_supabase] = lambda: mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org_by_role(role_template)
+
+        with TestClient(app) as c:
+            resp = c.patch(
+                "/api/v1/admin/pipeline-stages",
+                json=self._VALID_PAYLOAD,
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        app.dependency_overrides.clear()
+        return resp
+
+    def test_owner_can_update_pipeline_stages(self):
+        resp = self._patch_pipeline("owner")
+        assert resp.status_code == 200
+
+    def test_ops_manager_can_update_pipeline_stages(self):
+        resp = self._patch_pipeline("ops_manager")
+        assert resp.status_code == 200
+
+    def test_sales_agent_cannot_update_pipeline_stages(self):
+        resp = self._patch_pipeline("sales_agent")
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "FORBIDDEN"
+
+    def test_support_agent_cannot_update_pipeline_stages(self):
+        resp = self._patch_pipeline("support_agent")
+        assert resp.status_code == 403
+
+    def test_affiliate_partner_cannot_update_pipeline_stages(self):
+        resp = self._patch_pipeline("affiliate_partner")
+        assert resp.status_code == 403
+
+
+class TestRbacTicketCategories:
+    """PATCH /api/v1/admin/ticket-categories — owner/ops_manager only.
+
+    TicketCategoriesUpdate requires:
+      categories: List[TicketCategoryItem]
+      Each item: key (lowercase alphanumeric+underscore), label (str), enabled (bool)
+      At least one item, at least one enabled.
+    """
+
+    _VALID_PAYLOAD = {
+        "categories": [
+            {"key": "billing",       "label": "Billing",      "enabled": True},
+            {"key": "technical_bug", "label": "Technical Bug", "enabled": True},
+        ]
+    }
+
+    def _patch_categories(self, role_template: str):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+
+        mock_db = MagicMock()
+        mock_db.table.return_value.update.return_value \
+            .eq.return_value.execute.return_value = MagicMock(data=[{}])
+        mock_db.table.return_value.insert.return_value \
+            .execute.return_value = MagicMock(data=[])
+
+        app.dependency_overrides[get_supabase] = lambda: mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org_by_role(role_template)
+
+        with TestClient(app) as c:
+            resp = c.patch(
+                "/api/v1/admin/ticket-categories",
+                json=self._VALID_PAYLOAD,
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        app.dependency_overrides.clear()
+        return resp
+
+    def test_owner_can_update_ticket_categories(self):
+        resp = self._patch_categories("owner")
+        assert resp.status_code == 200
+
+    def test_ops_manager_can_update_ticket_categories(self):
+        resp = self._patch_categories("ops_manager")
+        assert resp.status_code == 200
+
+    def test_sales_agent_cannot_update_ticket_categories(self):
+        resp = self._patch_categories("sales_agent")
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "FORBIDDEN"
+
+
+class TestRbacSlaBusinessHours:
+    """PATCH /api/v1/admin/sla-business-hours — owner/ops_manager only.
+
+    SLABusinessHoursUpdate fields: timezone (optional str), days (optional dict).
+    Both are optional so an empty body {} is a valid payload.
+    """
+
+    _VALID_PAYLOAD = {"timezone": "Africa/Lagos"}
+
+    def _patch_sla(self, role_template: str):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+
+        mock_db = MagicMock()
+        mock_db.table.return_value.update.return_value \
+            .eq.return_value.execute.return_value = MagicMock(data=[{}])
+        mock_db.table.return_value.insert.return_value \
+            .execute.return_value = MagicMock(data=[])
+
+        app.dependency_overrides[get_supabase] = lambda: mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org_by_role(role_template)
+
+        with TestClient(app) as c:
+            resp = c.patch(
+                "/api/v1/admin/sla-business-hours",
+                json=self._VALID_PAYLOAD,
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        app.dependency_overrides.clear()
+        return resp
+
+    def test_owner_can_update_sla_hours(self):
+        resp = self._patch_sla("owner")
+        assert resp.status_code == 200
+
+    def test_ops_manager_can_update_sla_hours(self):
+        resp = self._patch_sla("ops_manager")
+        assert resp.status_code == 200
+
+    def test_sales_agent_cannot_update_sla_hours(self):
+        resp = self._patch_sla("sales_agent")
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "FORBIDDEN"
+
+
+class TestRbacQualificationFlow:
+    """PATCH /api/v1/admin/qualification-flow — owner/ops_manager only.
+
+    QualificationFlowUpdate fields: opening_message, handoff_message,
+    questions — all optional. Empty body {} is valid.
+    """
+
+    _VALID_PAYLOAD = {"opening_message": "Hi! Welcome."}
+
+    def _patch_flow(self, role_template: str):
+        from app.main import app
+        from app.database import get_supabase
+        from app.dependencies import get_current_org
+
+        mock_db = MagicMock()
+        mock_db.table.return_value.select.return_value \
+            .eq.return_value.maybe_single.return_value \
+            .execute.return_value = MagicMock(data={
+                "qualification_flow": None,
+                "qualification_opening_message": None,
+                "qualification_handoff_message": None,
+            })
+        mock_db.table.return_value.update.return_value \
+            .eq.return_value.execute.return_value = MagicMock(data=[{}])
+        mock_db.table.return_value.insert.return_value \
+            .execute.return_value = MagicMock(data=[])
+
+        app.dependency_overrides[get_supabase] = lambda: mock_db
+        app.dependency_overrides[get_current_org] = lambda: make_mock_org_by_role(role_template)
+
+        with TestClient(app) as c:
+            resp = c.patch(
+                "/api/v1/admin/qualification-flow",
+                json=self._VALID_PAYLOAD,
+                headers={"Authorization": "Bearer mock-token"},
+            )
+        app.dependency_overrides.clear()
+        return resp
+
+    def test_owner_can_update_qualification_flow(self):
+        resp = self._patch_flow("owner")
+        assert resp.status_code == 200
+
+    def test_ops_manager_can_update_qualification_flow(self):
+        resp = self._patch_flow("ops_manager")
+        assert resp.status_code == 200
+
+    def test_sales_agent_cannot_update_qualification_flow(self):
+        resp = self._patch_flow("sales_agent")
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "FORBIDDEN"

@@ -1,31 +1,12 @@
 """
 app/workers/nps_worker.py
 --------------------------
-Celery task:
+9E-D gates added:
+  D1: is_org_active() — top of per-org loop.
+  D2: is_quiet_hours() — hold NPS message (send_after, quiet_hours_held=true).
+  D3: has_exceeded_daily_limit() — skip customer if daily cap reached.
 
-  run_nps_scheduler  — Daily 09:00 WAT (08:00 UTC)
-    Checks every active customer across every org.
-    Queues a WhatsApp NPS check-in if 90+ days since last scheduled NPS
-    and no event-triggered NPS within the past 14 days.
-
-    Eligibility (Python-side filter — Pattern 33):
-      last_nps_sent_at IS NULL  OR  last_nps_sent_at < (now - 90 days)
-      AND (nps_event_sent_at IS NULL OR nps_event_sent_at < (now - 14 days))
-      AND customer has a phone / whatsapp field
-
-    On success:
-      • INSERT into whatsapp_messages (status = 'queued')
-      • UPDATE customers.last_nps_sent_at = now
-
-NOTE: last_nps_sent_at and nps_event_sent_at columns are expected on the
-      customers table.  If the column is absent the query will still succeed
-      (PostgREST returns NULL for missing columns in SELECT *) and the
-      eligibility check treats NULL as always-eligible.
-      A schema migration is noted in Phase 6A smoke-test checklist.
-
-Pattern 29: load_dotenv() at module level.
-Pattern 1:  get_supabase() called inside task body.
-Pattern 33: Python-side filtering — no server-side ILIKE / date-filter queries.
+All other logic unchanged.
 """
 from __future__ import annotations
 
@@ -34,14 +15,21 @@ from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 
-load_dotenv()  # Pattern 29
+load_dotenv()
 
-from app.workers.celery_app import celery_app  # noqa: E402
-from app.database import get_supabase  # noqa: E402
+from app.workers.celery_app import celery_app
+from app.database import get_supabase
+from app.utils.org_gates import (
+    is_org_active,
+    is_quiet_hours,
+    get_quiet_hours_end_utc,
+    get_daily_customer_limit,
+    has_exceeded_daily_limit,
+)
 
 logger = logging.getLogger(__name__)
 
-_NPS_INTERVAL_DAYS = 90
+_NPS_INTERVAL_DAYS  = 90
 _EVENT_COOLDOWN_DAYS = 14
 
 _NPS_TEMPLATE = (
@@ -59,23 +47,44 @@ def _now_iso() -> str:
 def run_nps_scheduler(self):
     """
     Daily 09:00 WAT — Check quarterly NPS eligibility for all active customers.
-    Queues WhatsApp NPS message and updates last_nps_sent_at on eligibility.
+    D1/D2/D3 gates applied.
     """
     logger.info("nps_worker: run_nps_scheduler starting.")
-    db = get_supabase()  # Pattern 1
-    queued = 0
+    db  = get_supabase()
+    queued   = 0
+    skipped  = 0
+    now_utc  = datetime.now(timezone.utc)
 
     try:
-        now = datetime.now(timezone.utc)
-        nps_threshold = (now - timedelta(days=_NPS_INTERVAL_DAYS)).isoformat()
+        now             = now_utc
+        nps_threshold   = (now - timedelta(days=_NPS_INTERVAL_DAYS)).isoformat()
         event_threshold = (now - timedelta(days=_EVENT_COOLDOWN_DAYS)).isoformat()
 
-        orgs = (db.table("organisations").select("id").execute().data or [])
+        # Include gate fields in org select
+        orgs = (
+            db.table("organisations")
+            .select(
+                "id, subscription_status, quiet_hours_start, "
+                "quiet_hours_end, timezone, daily_customer_message_limit"
+            )
+            .execute()
+            .data or []
+        )
 
         for org_row in orgs:
             org_id: str = org_row["id"]
+
+            # ── D1: Subscription gate ─────────────────────────────────────
+            if not is_org_active(org_row):
+                logger.info(
+                    "nps_worker: org %s skipped — subscription_status=%s",
+                    org_id, org_row.get("subscription_status"),
+                )
+                continue
+
+            daily_limit = get_daily_customer_limit(org_row)
+
             try:
-                # Broad select — Python-side eligibility filter (Pattern 33)
                 customers = (
                     db.table("customers")
                     .select(
@@ -89,43 +98,60 @@ def run_nps_scheduler(self):
                 )
 
                 for customer in customers:
-                    cust_id: str = customer["id"]
-                    last_sent: str = customer.get("last_nps_sent_at") or ""
+                    cust_id:    str = customer["id"]
+                    last_sent:  str = customer.get("last_nps_sent_at") or ""
                     event_sent: str = customer.get("nps_event_sent_at") or ""
-                    phone: str = customer.get("whatsapp") or customer.get("phone") or ""
+                    phone:      str = (
+                        customer.get("whatsapp") or customer.get("phone") or ""
+                    )
 
                     if not phone:
-                        continue  # No contact channel
+                        continue
 
-                    # Eligibility: 90-day interval not yet met → skip
                     if last_sent and last_sent > nps_threshold:
                         continue
 
-                    # Event-triggered cooldown: recent NPS → skip
                     if event_sent and event_sent > event_threshold:
                         continue
 
-                    # Compose personalised message
+                    # ── D3: Daily customer message limit ──────────────────
+                    if has_exceeded_daily_limit(db, org_id, cust_id, daily_limit):
+                        logger.info(
+                            "nps_worker: customer %s skipped — daily limit %d reached",
+                            cust_id, daily_limit,
+                        )
+                        skipped += 1
+                        continue
+
                     first_name = (customer.get("full_name") or "there").split()[0]
-                    body = _NPS_TEMPLATE.format(name=first_name)
+                    body       = _NPS_TEMPLATE.format(name=first_name)
 
                     try:
-                        # Queue outbound NPS in whatsapp_messages
-                        # NOTE: column names (direction, body) match Phase 3A schema.
-                        # Verify during smoke test if column names differ.
-                        db.table("whatsapp_messages").insert(
-                            {
-                                "org_id": org_id,
-                                "customer_id": cust_id,
-                                "direction": "outbound",
+                        # ── D2: Quiet hours — hold message ────────────────
+                        if is_quiet_hours(org_row, now_utc):
+                            send_after = get_quiet_hours_end_utc(org_row, now_utc)
+                            db.table("whatsapp_messages").insert({
+                                "org_id":           org_id,
+                                "customer_id":      cust_id,
+                                "direction":        "outbound",
+                                "message_type":     "nps",
+                                "content":          body,
+                                "status":           "queued",
+                                "send_after":       send_after.isoformat(),
+                                "quiet_hours_held": True,
+                                "created_at":       _now_iso(),
+                            }).execute()
+                        else:
+                            db.table("whatsapp_messages").insert({
+                                "org_id":       org_id,
+                                "customer_id":  cust_id,
+                                "direction":    "outbound",
                                 "message_type": "nps",
-                                "body": body,
-                                "status": "queued",
-                                "created_at": _now_iso(),
-                            }
-                        ).execute()
+                                "content":      body,
+                                "status":       "queued",
+                                "created_at":   _now_iso(),
+                            }).execute()
 
-                        # Update last send timestamp
                         db.table("customers").update(
                             {"last_nps_sent_at": _now_iso()}
                         ).eq("id", cust_id).execute()
@@ -135,8 +161,7 @@ def run_nps_scheduler(self):
                     except Exception as exc:
                         logger.warning(
                             "nps_worker: failed to queue NPS for customer %s — %s",
-                            cust_id,
-                            exc,
+                            cust_id, exc,
                         )
 
             except Exception as exc:
@@ -144,7 +169,10 @@ def run_nps_scheduler(self):
                     "nps_worker: NPS scheduler failed for org %s — %s", org_id, exc
                 )
 
-        logger.info("nps_worker: run_nps_scheduler done. Queued %d NPS messages.", queued)
+        logger.info(
+            "nps_worker: run_nps_scheduler done. Queued %d, Skipped %d.",
+            queued, skipped,
+        )
 
     except Exception as exc:
         logger.error("nps_worker: run_nps_scheduler fatal — %s", exc)

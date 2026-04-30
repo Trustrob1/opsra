@@ -611,18 +611,68 @@ def create_lead(
     if utm_ad:
         data["utm_ad"] = utm_ad
 
-    # Duplicate detection — Section 9.3
-    if check_duplicate(db, org_id, data.get("phone"), data.get("email")):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": ErrorCode.DUPLICATE_DETECTED,
-                "message": "A lead with this phone or email already exists in your organisation",
-            },
-        )
-
-    result = db.table("leads").insert(data).execute()
-    lead = result.data[0] if result.data else data
+    # C3: Idempotent lead creation — the unique index idx_leads_active_phone
+    # on (org_id, phone_number) WHERE deleted_at IS NULL AND stage != 'lost'
+    # prevents duplicate active leads at DB level.
+    #
+    # On a unique constraint violation (race condition between two concurrent
+    # inbound triage webhooks), fetch and return the existing lead instead of
+    # raising. Never raise on duplicate — treat as idempotent (S14).
+    #
+    # Note: check_duplicate() is retained below for use by the HTTP router
+    # when it wants to surface a "duplicate detected" warning to the frontend.
+    # It is no longer called here.
+    try:
+        result = db.table("leads").insert(data).execute()
+        lead = result.data[0] if result.data else data
+    except Exception as insert_exc:
+        err_str = str(insert_exc).lower()
+        if (
+            "23505" in err_str
+            or "duplicate" in err_str
+            or "unique" in err_str
+        ):
+            # Unique constraint violation — return the existing active lead.
+            logger.info(
+                "create_lead: duplicate phone=%s org=%s — returning existing lead",
+                data.get("phone"), org_id,
+            )
+            try:
+                # Try phone first, then whatsapp — leads table has both columns
+                existing = None
+                if data.get("phone"):
+                    r = (
+                        db.table("leads")
+                        .select("*")
+                        .eq("org_id", org_id)
+                        .eq("phone", data.get("phone"))
+                        .is_("deleted_at", "null")
+                        .neq("stage", "lost")
+                        .limit(1)
+                        .execute()
+                    )
+                    if r.data:
+                        existing = r.data[0]
+                if not existing and data.get("whatsapp"):
+                    r = (
+                        db.table("leads")
+                        .select("*")
+                        .eq("org_id", org_id)
+                        .eq("whatsapp", data.get("whatsapp"))
+                        .is_("deleted_at", "null")
+                        .neq("stage", "lost")
+                        .limit(1)
+                        .execute()
+                    )
+                    if r.data:
+                        existing = r.data[0]
+                if existing:
+                    return existing
+            except Exception:
+                pass
+            return data  # last-resort fallback
+        raise  # unexpected DB error — re-raise so caller's S14 handler logs it
+    lead = lead  # already assigned above
     lead_id = lead.get("id", data.get("id", ""))
 
     write_timeline_event(

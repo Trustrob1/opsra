@@ -140,17 +140,18 @@ def run_sla_monitor(self):
                         try:
                             users = (
                                 db.table("users")
-                                .select("id, role")
+                                .select("id, roles(template)")
                                 .eq("org_id", org_id)
                                 .execute()
                                 .data or []
                             )
                             for user in users:
                                 uid = user.get("id")
-                                if (user.get("role") or "").lower() in (
+                                _template = ((user.get("roles") or {}).get("template") or "").lower()
+                                if _template in (
                                     "owner",
                                     "admin",
-                                    "supervisor",
+                                    "ops_manager",
                                 ) and uid != assigned_to:
                                     _safe_notify(
                                         db,

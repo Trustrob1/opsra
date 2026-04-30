@@ -62,3 +62,4 @@ class CustomerUpdate(BaseModel):
     whatsapp_opt_out_broadcasts: Optional[bool] = None
     onboarding_complete: Optional[bool] = None
     feature_adoption: Optional[dict] = None   # jsonb map of feature keys → bool
+    updated_at: Optional[str] = None  # C7: optimistic concurrency token

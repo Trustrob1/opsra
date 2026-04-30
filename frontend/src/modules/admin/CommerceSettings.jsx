@@ -165,8 +165,10 @@ export default function CommerceSettings() {
       setSavedCheckoutMessage(checkoutMessage)
       showToast('Commerce settings saved')
     } catch (err) {
+      const detail = err?.response?.data?.detail
       const msg =
-        err?.response?.data?.detail ?? 'Failed to save commerce settings'
+        (typeof detail === 'object' ? detail?.message : detail)
+        ?? 'Failed to save commerce settings'
       showToast(msg, 'error')
       // Revert toggle if backend rejected (e.g. Shopify not connected)
       setEnabled(savedEnabled)

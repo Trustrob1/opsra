@@ -67,6 +67,23 @@ signal.signal(signal.SIGTERM, _sigterm_handler)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Opsra API v49.0 starting up (env=%s)", settings.ENVIRONMENT)
+
+    # F6: Production startup guards — fail fast if critical env vars are missing.
+    # These assertions fire before the app accepts any traffic.
+    if settings.ENVIRONMENT == "production":
+        assert settings.SENTRY_DSN, (
+            "SENTRY_DSN must be set in production. "
+            "Add it to Render env vars before deploying."
+        )
+        assert not settings.FRONTEND_URL.startswith("http://localhost"), (
+            "FRONTEND_URL must not be localhost in production. "
+            "Set it to your deployed frontend URL in Render env vars."
+        )
+        assert "*" not in _origins, (
+            "CORS wildcard (*) is not permitted in production. "
+            "Set FRONTEND_URL and ALLOWED_ORIGINS to explicit URLs."
+        )
+
     yield
     # Give in-flight requests up to 10 s to complete before the process exits.
     # Uvicorn's --timeout-graceful-shutdown should also be set to 10 in Render.

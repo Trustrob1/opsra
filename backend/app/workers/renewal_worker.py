@@ -2,59 +2,38 @@
 app/workers/renewal_worker.py
 Celery tasks for Module 04 — Renewal & Upsell Engine.
 
-Schedules (Technical Spec §8.5):
-  renewal_reminders       — Daily 8:00 AM  — send WhatsApp renewal reminders
-  trial_expiry_checker    — Daily 6:00 AM  — handle trial subscription expiry
-  win_back_scheduler      — Daily 9:00 AM  — win-back messages for churned customers
-  payment_failure_monitor — Hourly         — notify on unconfirmed payments > 24h
+9E-D D1: is_org_active() gate applied at top of per-org loop in all four tasks.
+D2/D3 not applied — renewal reminders queue for human approval (no direct send).
 
-CONFIG-4 (Build Status v8): renewal_reminder_days read from org_settings per org.
-Default: [60, 30, 14, 7] — each org can configure their own cadence.
-Schema created in Phase 5A. Worker active Phase 5A+.
-Phase 7: Admin UI to configure these values per org.
+All other logic unchanged from pre-9E-D version.
 """
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from dotenv import load_dotenv
 
 from app.database import get_supabase
 from app.workers.celery_app import celery_app
+from app.utils.org_gates import is_org_active  # 9E-D D1
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Default reminder cadence — used when org_settings row is absent
-# Technical Spec §8.5 / DRD §6.4 / CONFIG-4
-# ---------------------------------------------------------------------------
 _DEFAULT_REMINDER_DAYS: list[int] = [60, 30, 14, 7]
-
-# Default grace period after renewal date before account affected (DRD §6.4)
 _DEFAULT_GRACE_PERIOD_DAYS: int = 7
-
-# Win-back check points (DRD §6.4)
 _WIN_BACK_DAYS: list[int] = [14, 30, 60]
-
-# Payment pending threshold before customer notification (DRD §6.4: 24h)
 _PAYMENT_PENDING_HOURS: int = 24
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _get_org_reminder_days(db: Any, org_id: str) -> list[int]:
-    """
-    Fetch renewal_reminder_days from org_settings for this org.
-    Falls back to _DEFAULT_REMINDER_DAYS if org_settings row absent.
-    CONFIG-4 — configured per org, used immediately by this worker.
-    """
     try:
         result = (
             db.table("org_settings")
@@ -78,11 +57,11 @@ def _get_org_reminder_days(db: Any, org_id: str) -> list[int]:
 
 
 def _get_active_orgs(db: Any) -> list[dict]:
-    """Return all organisations with active subscriptions to process."""
+    """Return all organisations. D1 gate applied per-org in each task."""
     try:
         result = (
             db.table("organisations")
-            .select("id")
+            .select("id, subscription_status")  # include subscription_status for D1
             .execute()
         )
         data = result.data or []
@@ -92,19 +71,42 @@ def _get_active_orgs(db: Any) -> list[dict]:
         return []
 
 
+def _claim_subscription(db: Any, sub_id: str, now_iso: str) -> bool:
+    try:
+        result = (
+            db.table("subscriptions")
+            .update({"processing_at": now_iso})
+            .eq("id", sub_id)
+            .is_("processing_at", "null")
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as exc:
+        logger.warning(
+            "renewal_worker: _claim_subscription failed sub=%s: %s", sub_id, exc
+        )
+        return False
+
+
+def _release_stale_claims(db: Any, stale_threshold: str) -> None:
+    try:
+        db.table("subscriptions").update(
+            {"processing_at": None}
+        ).lt("processing_at", stale_threshold).execute()
+    except Exception as exc:
+        logger.warning(
+            "renewal_worker: failed to release stale claims: %s", exc
+        )
+
+
 def _send_renewal_reminder(
     db: Any,
     org_id: str,
     subscription: dict,
     days_until_renewal: int,
 ) -> None:
-    """
-    Queue a renewal reminder WhatsApp message for human review.
-    DRD §6.4: All renewal messages go through approval queue, editable before sending.
-    Full WhatsApp delivery wired in Phase 5B (frontend) and Phase 6A (worker pipeline).
-    """
-    customer_id = subscription.get("customer_id")
-    sub_id = subscription.get("id")
+    customer_id  = subscription.get("customer_id")
+    sub_id       = subscription.get("id")
     renewal_date = subscription.get("current_period_end")
 
     logger.info(
@@ -113,19 +115,17 @@ def _send_renewal_reminder(
         sub_id, org_id, customer_id, days_until_renewal, renewal_date,
     )
 
-    # Phase 5A: log the intent and write an audit entry.
-    # Full WhatsApp message construction and approval queue wired in Phase 6A.
     try:
         db.table("audit_logs").insert({
-            "org_id": org_id,
-            "user_id": None,
-            "action": "subscription.renewal_reminder_queued",
+            "org_id":        org_id,
+            "user_id":       None,
+            "action":        "subscription.renewal_reminder_queued",
             "resource_type": "subscription",
-            "resource_id": sub_id,
+            "resource_id":   sub_id,
             "new_value": {
                 "days_until_renewal": days_until_renewal,
-                "renewal_date": renewal_date,
-                "customer_id": customer_id,
+                "renewal_date":       renewal_date,
+                "customer_id":        customer_id,
             },
         }).execute()
     except Exception as exc:
@@ -135,36 +135,29 @@ def _send_renewal_reminder(
 
 
 def _enter_grace_period(db: Any, org_id: str, subscription: dict) -> None:
-    """
-    Transition subscription to grace_period status.
-    DRD §6.4: grace period default 7 days after renewal date.
-    """
-    sub_id = subscription.get("id")
-    today = date.today()
+    sub_id    = subscription.get("id")
+    today     = date.today()
     grace_ends = today + timedelta(days=_DEFAULT_GRACE_PERIOD_DAYS)
 
     try:
         db.table("subscriptions").update({
-            "status": "grace_period",
+            "status":               "grace_period",
             "grace_period_ends_at": grace_ends.isoformat(),
-            "updated_at": f"{today.isoformat()}T00:00:00+00:00",
+            "updated_at":           f"{today.isoformat()}T00:00:00+00:00",
         }).eq("id", sub_id).eq("org_id", org_id).execute()
 
         db.table("audit_logs").insert({
-            "org_id": org_id,
-            "user_id": None,
-            "action": "subscription.grace_period_started",
+            "org_id":        org_id,
+            "user_id":       None,
+            "action":        "subscription.grace_period_started",
             "resource_type": "subscription",
-            "resource_id": sub_id,
-            "new_value": {
-                "grace_period_ends_at": grace_ends.isoformat(),
-            },
+            "resource_id":   sub_id,
+            "new_value":     {"grace_period_ends_at": grace_ends.isoformat()},
         }).execute()
 
         logger.info(
             "renewal_worker: subscription %s (org %s) entered grace period "
-            "— expires %s",
-            sub_id, org_id, grace_ends,
+            "— expires %s", sub_id, org_id, grace_ends,
         )
     except Exception as exc:
         logger.error(
@@ -174,25 +167,21 @@ def _enter_grace_period(db: Any, org_id: str, subscription: dict) -> None:
 
 
 def _expire_subscription(db: Any, org_id: str, subscription: dict) -> None:
-    """
-    Transition subscription to expired after grace period ends without payment.
-    Technical Spec §4.3: grace_period → expired.
-    """
     sub_id = subscription.get("id")
     try:
         db.table("subscriptions").update({
-            "status": "expired",
+            "status":     "expired",
             "updated_at": date.today().isoformat() + "T00:00:00+00:00",
         }).eq("id", sub_id).eq("org_id", org_id).execute()
 
         db.table("audit_logs").insert({
-            "org_id": org_id,
-            "user_id": None,
-            "action": "subscription.expired",
+            "org_id":        org_id,
+            "user_id":       None,
+            "action":        "subscription.expired",
             "resource_type": "subscription",
-            "resource_id": sub_id,
-            "old_value": {"status": "grace_period"},
-            "new_value": {"status": "expired"},
+            "resource_id":   sub_id,
+            "old_value":     {"status": "grace_period"},
+            "new_value":     {"status": "expired"},
         }).execute()
 
         logger.info(
@@ -204,27 +193,34 @@ def _expire_subscription(db: Any, org_id: str, subscription: dict) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Celery tasks
-# ---------------------------------------------------------------------------
-
-
 @celery_app.task(name="app.workers.renewal_worker.send_renewal_reminders")
 def send_renewal_reminders() -> dict:
-    """
-    Daily 8:00 AM — send WhatsApp renewal reminders.
-    Checks all active subscriptions for upcoming renewals.
-    Sends messages at the org-configured day thresholds (CONFIG-4).
-    DRD §6.4: Configurable reminder timeline — 60/30/14/7 days default.
-    """
     db = get_supabase()
-    today = date.today()
-    processed = 0
-    reminded = 0
+    today             = date.today()
+    now_iso           = _now_iso()
+    processed         = 0
+    reminded          = 0
+    skipped_claimed   = 0
+    skipped_inactive  = 0
+
+    stale_threshold = (
+        datetime.now(timezone.utc) - timedelta(hours=20)
+    ).isoformat()
+    _release_stale_claims(db, stale_threshold)
 
     orgs = _get_active_orgs(db)
     for org_row in orgs:
         org_id = org_row["id"]
+
+        # ── D1: Subscription gate ─────────────────────────────────────────
+        if not is_org_active(org_row):
+            logger.info(
+                "renewal_worker: org %s skipped — subscription_status=%s",
+                org_id, org_row.get("subscription_status"),
+            )
+            skipped_inactive += 1
+            continue
+
         reminder_days = _get_org_reminder_days(db, org_id)
 
         try:
@@ -244,7 +240,6 @@ def send_renewal_reminders() -> dict:
             continue
 
         for sub in subscriptions:
-            processed += 1
             period_end_str = sub.get("current_period_end")
             if not period_end_str:
                 continue
@@ -256,35 +251,57 @@ def send_renewal_reminders() -> dict:
             days_remaining = (period_end - today).days
 
             if days_remaining in reminder_days:
+                if not _claim_subscription(db, sub["id"], now_iso):
+                    skipped_claimed += 1
+                    continue
+                processed += 1
                 _send_renewal_reminder(db, org_id, sub, days_remaining)
                 reminded += 1
+
             elif days_remaining < 0:
-                # Renewal date has passed — enter grace period
+                if not _claim_subscription(db, sub["id"], now_iso):
+                    skipped_claimed += 1
+                    continue
+                processed += 1
                 _enter_grace_period(db, org_id, sub)
 
     logger.info(
-        "renewal_worker.send_renewal_reminders: processed=%d reminded=%d",
-        processed, reminded,
+        "renewal_worker.send_renewal_reminders: processed=%d reminded=%d "
+        "skipped_claimed=%d skipped_inactive=%d",
+        processed, reminded, skipped_claimed, skipped_inactive,
     )
-    return {"processed": processed, "reminded": reminded}
+    return {
+        "processed":        processed,
+        "reminded":         reminded,
+        "skipped_claimed":  skipped_claimed,
+        "skipped_inactive": skipped_inactive,
+    }
 
 
 @celery_app.task(name="app.workers.renewal_worker.check_trial_expiry")
 def check_trial_expiry() -> dict:
-    """
-    Daily 6:00 AM — check trial subscriptions for expiry.
-    Sends conversion prompts on Day 3 and 7 of trial.
-    Initiates grace period on expiry.
-    Technical Spec §8.5.
-    """
     db = get_supabase()
-    today = date.today()
-    processed = 0
-    actioned = 0
+    today            = date.today()
+    now_iso          = _now_iso()
+    processed        = 0
+    actioned         = 0
+    skipped_claimed  = 0
+    skipped_inactive = 0
+
+    stale_threshold = (
+        datetime.now(timezone.utc) - timedelta(hours=20)
+    ).isoformat()
+    _release_stale_claims(db, stale_threshold)
 
     orgs = _get_active_orgs(db)
     for org_row in orgs:
         org_id = org_row["id"]
+
+        # ── D1: Subscription gate ─────────────────────────────────────────
+        if not is_org_active(org_row):
+            skipped_inactive += 1
+            continue
+
         try:
             result = (
                 db.table("subscriptions")
@@ -302,7 +319,6 @@ def check_trial_expiry() -> dict:
             continue
 
         for sub in trials:
-            processed += 1
             trial_ends_str = sub.get("trial_ends_at") or sub.get("current_period_end")
             if not trial_ends_str:
                 continue
@@ -314,10 +330,18 @@ def check_trial_expiry() -> dict:
             days_remaining = (trial_ends - today).days
 
             if days_remaining < 0:
-                # Trial expired — enter grace period
+                if not _claim_subscription(db, sub["id"], now_iso):
+                    skipped_claimed += 1
+                    continue
+                processed += 1
                 _enter_grace_period(db, org_id, sub)
                 actioned += 1
+
             elif days_remaining in (3, 7):
+                if not _claim_subscription(db, sub["id"], now_iso):
+                    skipped_claimed += 1
+                    continue
+                processed += 1
                 logger.info(
                     "renewal_worker: trial conversion prompt — subscription %s "
                     "org %s — %d days remaining",
@@ -326,28 +350,35 @@ def check_trial_expiry() -> dict:
                 actioned += 1
 
     logger.info(
-        "renewal_worker.check_trial_expiry: processed=%d actioned=%d",
-        processed, actioned,
+        "renewal_worker.check_trial_expiry: processed=%d actioned=%d "
+        "skipped_claimed=%d skipped_inactive=%d",
+        processed, actioned, skipped_claimed, skipped_inactive,
     )
-    return {"processed": processed, "actioned": actioned}
+    return {
+        "processed":        processed,
+        "actioned":         actioned,
+        "skipped_claimed":  skipped_claimed,
+        "skipped_inactive": skipped_inactive,
+    }
 
 
 @celery_app.task(name="app.workers.renewal_worker.schedule_win_back")
 def schedule_win_back() -> dict:
-    """
-    Daily 9:00 AM — schedule win-back messages for churned customers.
-    Checks churned customers at 14/30/60 day marks.
-    Queues win-back WhatsApp messages for approval.
-    DRD §6.4.
-    """
     db = get_supabase()
-    today = date.today()
-    processed = 0
-    queued = 0
+    today            = date.today()
+    processed        = 0
+    queued           = 0
+    skipped_inactive = 0
 
     orgs = _get_active_orgs(db)
     for org_row in orgs:
         org_id = org_row["id"]
+
+        # ── D1: Subscription gate ─────────────────────────────────────────
+        if not is_org_active(org_row):
+            skipped_inactive += 1
+            continue
+
         try:
             result = (
                 db.table("subscriptions")
@@ -366,10 +397,8 @@ def schedule_win_back() -> dict:
 
         for sub in churned:
             processed += 1
-            # Use cancelled_at or grace_period_ends_at as churn date
             churn_date_str = (
-                sub.get("cancelled_at")
-                or sub.get("grace_period_ends_at")
+                sub.get("cancelled_at") or sub.get("grace_period_ends_at")
             )
             if not churn_date_str:
                 continue
@@ -388,26 +417,30 @@ def schedule_win_back() -> dict:
                 queued += 1
 
     logger.info(
-        "renewal_worker.schedule_win_back: processed=%d queued=%d",
-        processed, queued,
+        "renewal_worker.schedule_win_back: processed=%d queued=%d "
+        "skipped_inactive=%d",
+        processed, queued, skipped_inactive,
     )
-    return {"processed": processed, "queued": queued}
+    return {"processed": processed, "queued": queued,
+            "skipped_inactive": skipped_inactive}
 
 
 @celery_app.task(name="app.workers.renewal_worker.monitor_payment_failures")
 def monitor_payment_failures() -> dict:
-    """
-    Hourly — check pending payments older than 24 hours.
-    Sends customer notification. Begins grace period.
-    DRD §6.4: 24-hour silent period before notifying customer.
-    """
     db = get_supabase()
-    processed = 0
-    actioned = 0
+    processed        = 0
+    actioned         = 0
+    skipped_inactive = 0
 
     orgs = _get_active_orgs(db)
     for org_row in orgs:
         org_id = org_row["id"]
+
+        # ── D1: Subscription gate ─────────────────────────────────────────
+        if not is_org_active(org_row):
+            skipped_inactive += 1
+            continue
+
         try:
             result = (
                 db.table("payments")
@@ -429,13 +462,11 @@ def monitor_payment_failures() -> dict:
             created_str = payment.get("created_at", "")
             if not created_str:
                 continue
-
-            from datetime import datetime, timezone
             try:
-                created_at = datetime.fromisoformat(
+                created_at   = datetime.fromisoformat(
                     str(created_str).replace("Z", "+00:00")
                 )
-                now = datetime.now(timezone.utc)
+                now          = datetime.now(timezone.utc)
                 hours_pending = (now - created_at).total_seconds() / 3600
             except (ValueError, TypeError):
                 continue
@@ -449,7 +480,9 @@ def monitor_payment_failures() -> dict:
                 actioned += 1
 
     logger.info(
-        "renewal_worker.monitor_payment_failures: processed=%d actioned=%d",
-        processed, actioned,
+        "renewal_worker.monitor_payment_failures: processed=%d actioned=%d "
+        "skipped_inactive=%d",
+        processed, actioned, skipped_inactive,
     )
-    return {"processed": processed, "actioned": actioned}
+    return {"processed": processed, "actioned": actioned,
+            "skipped_inactive": skipped_inactive}

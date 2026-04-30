@@ -354,3 +354,17 @@ export const updateCommerceSettings = (payload) =>
   // payload: { enabled?: boolean, checkout_message?: string }
   axios.patch('/api/v1/admin/commerce/settings', payload, { headers: _h() })
     .then(r => r.data.data)
+
+// ── 9E-D: Messaging Limits ───────────────────────────────────────────────────
+// Append to frontend/src/services/admin.service.js
+// Pattern 50: axios + _h() only, relative paths (no ${BASE} prefix)
+
+export const getMessagingLimits = () =>
+  axios.get('/api/v1/admin/messaging-limits', { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateMessagingLimits = (payload) =>
+  // payload: { daily_customer_message_limit?, quiet_hours_start?,
+  //            quiet_hours_end?, timezone? }
+  axios.patch('/api/v1/admin/messaging-limits', payload, { headers: _h() })
+    .then(r => r.data.data)

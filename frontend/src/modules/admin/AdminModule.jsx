@@ -38,6 +38,7 @@ import GrowthConfig            from './GrowthConfig'
 import SalesLog                from './SalesLog'
 import WhatsAppIntegration     from './WhatsAppIntegration'
 import CommerceSettings        from './CommerceSettings'    // COMM-1
+import MessagingLimitsConfig from './MessagingLimitsConfig'
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
@@ -60,8 +61,9 @@ const TABS = [
   { id: 'commerce',       label: '🛒 Commerce' },       // COMM-1
   { id: 'growth-config',  label: '📈 Growth Config' },
   { id: 'sales-log',      label: '💰 Sales Log' },
-  { id: 'kb',             label: '📚 Knowledge Base', link: true },
-  { id: 'templates',      label: '💬 WA Templates',   link: true },
+  { id: 'messaging-limits', label: '💬 Messaging Limits' }
+  
+
 ]
 
 const SALES_SUB_TABS = [
@@ -172,7 +174,8 @@ export default function AdminModule({ user }) {
         <div style={{ display: tab === 'pipeline'      ? 'block' : 'none' }}><PipelineConfig /></div>
         <div style={{ display: tab === 'categories'    ? 'block' : 'none' }}><TicketCategoriesConfig /></div>
         <div style={{ display: tab === 'biz-types'     ? 'block' : 'none' }}><DripBusinessTypesConfig /></div>
-
+        <div style={{ display: tab === 'messaging-limits' ? 'block' : 'none' }}><MessagingLimitsConfig /></div>
+        
         {/* SM-1: Sales System — sub-tabbed */}
         <div style={{ display: tab === 'sales-system' ? 'block' : 'none' }}>
           <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>

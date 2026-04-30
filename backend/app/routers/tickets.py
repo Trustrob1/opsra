@@ -144,6 +144,18 @@ async def update_ticket(
 ):
     org_id: str = org["org_id"]
     user_id: str = org["id"]
+    # C7: Optimistic concurrency — reject stale updates
+    if data.updated_at:
+        existing = ticket_service.get_ticket(db=db, ticket_id=ticket_id, org_id=org_id)
+        db_ts = existing.get("updated_at") or ""
+        if db_ts and db_ts > data.updated_at:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "CONCURRENT_MODIFICATION",
+                    "message": "Record modified by another user. Reload to see changes.",
+                },
+            )
     ticket = ticket_service.update_ticket(
         db=db, ticket_id=ticket_id, org_id=org_id, user_id=user_id, data=data
     )

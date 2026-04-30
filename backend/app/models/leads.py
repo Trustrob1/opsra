@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import Any, Optional
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -80,26 +80,26 @@ class LeadCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     # Required
-    full_name: str
+    full_name: str                   = Field(..., max_length=255)
     source: LeadSource
 
     # Optional — all nullable in DB
-    phone: Optional[str] = None
-    whatsapp: Optional[str] = None
-    email: Optional[str] = None
-    business_name: Optional[str] = None
-    business_type: Optional[str] = None
-    location: Optional[str] = None
+    phone: Optional[str]             = Field(None, max_length=20)
+    whatsapp: Optional[str]          = Field(None, max_length=20)
+    email: Optional[str]             = Field(None, max_length=255)
+    business_name: Optional[str]     = Field(None, max_length=255)
+    business_type: Optional[str]     = Field(None, max_length=100)
+    location: Optional[str]          = Field(None, max_length=255)
     branches: Optional[LeadBranches] = None
-    problem_stated: Optional[str] = None
-    referrer: Optional[str] = None
-    campaign_id: Optional[str] = None
-    ad_id: Optional[str] = None
-    utm_source: Optional[str] = None
-    utm_campaign: Optional[str] = None
-    utm_ad: Optional[str] = None
-    assigned_to: Optional[str] = None
-    contact_type: Optional[str] = LeadContactType.sales_lead.value
+    problem_stated: Optional[str]    = Field(None, max_length=5000)  # S4
+    referrer: Optional[str]          = Field(None, max_length=255)
+    campaign_id: Optional[str]       = Field(None, max_length=255)
+    ad_id: Optional[str]             = Field(None, max_length=255)
+    utm_source: Optional[str]        = Field(None, max_length=255)
+    utm_campaign: Optional[str]      = Field(None, max_length=255)
+    utm_ad: Optional[str]            = Field(None, max_length=255)
+    assigned_to: Optional[str]       = Field(None, max_length=36)   # UUID string
+    contact_type: Optional[str]      = LeadContactType.sales_lead.value
 
     @field_validator("source", mode="before")
     @classmethod
@@ -113,25 +113,26 @@ class LeadCreate(BaseModel):
 class LeadUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    full_name: Optional[str] = None
-    phone: Optional[str] = None
-    whatsapp: Optional[str] = None
-    email: Optional[str] = None
-    business_name: Optional[str] = None
-    business_type: Optional[str] = None
-    location: Optional[str] = None
+    full_name: Optional[str]         = Field(None, max_length=255)
+    phone: Optional[str]             = Field(None, max_length=20)
+    whatsapp: Optional[str]          = Field(None, max_length=20)
+    email: Optional[str]             = Field(None, max_length=255)
+    business_name: Optional[str]     = Field(None, max_length=255)
+    business_type: Optional[str]     = Field(None, max_length=100)
+    location: Optional[str]          = Field(None, max_length=255)
     branches: Optional[LeadBranches] = None
-    problem_stated: Optional[str] = None
-    deal_value: Optional[float] = None
-    referrer: Optional[str] = None
-    campaign_id: Optional[str] = None
-    ad_id: Optional[str] = None
-    utm_source: Optional[str] = None
-    utm_campaign: Optional[str] = None
-    utm_ad: Optional[str] = None
-    assigned_to: Optional[str] = None
-    contact_type: Optional[str] = None
+    problem_stated: Optional[str]    = Field(None, max_length=5000)  # S4
+    deal_value: Optional[float]      = None
+    referrer: Optional[str]          = Field(None, max_length=255)
+    campaign_id: Optional[str]       = Field(None, max_length=255)
+    ad_id: Optional[str]             = Field(None, max_length=255)
+    utm_source: Optional[str]        = Field(None, max_length=255)
+    utm_campaign: Optional[str]      = Field(None, max_length=255)
+    utm_ad: Optional[str]            = Field(None, max_length=255)
+    assigned_to: Optional[str]       = Field(None, max_length=36)   # UUID string
+    contact_type: Optional[str]      = None
     reengagement_date: Optional[date] = None
+    updated_at: Optional[str]        = None  # C7: optimistic concurrency token
 
 
 class MoveStageRequest(BaseModel):

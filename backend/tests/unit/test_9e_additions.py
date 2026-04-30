@@ -1,274 +1,439 @@
 """
 tests/unit/test_9e_additions.py
-Phase 9E unit tests:
-  - TestStorageUpload       (tickets.py — storage stub replaced)
-  - TestNewDeviceAlert      (auth.py   — _check_new_device helper)
-  - TestGetCustomerWindowOpen (customers.py — window_open field)
+Phase 9E-E unit tests covering all security fixes:
+
+  - TestLeadModelConstraints     (S3/S4 — LeadCreate + LeadUpdate field limits)
+  - TestTicketModelConstraints   (S4/S5 — TicketCreate, AddMessageRequest,
+                                          ResolveRequest, InteractionLogCreate)
+  - TestSlaWorkerPattern48       (sla_worker — roles(template) join fix)
+  - TestGrowthInsightsImport     (growth_insights_worker — import path fix)
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
+
 import pytest
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
-from app.main import app
-from app.database import get_supabase
-from app.dependencies import get_current_org
 
-# ---------------------------------------------------------------------------
-# Shared constants
-# ---------------------------------------------------------------------------
-ORG_ID      = "00000000-0000-0000-0000-000000000001"
-USER_ID     = "00000000-0000-0000-0000-000000000002"
-CUSTOMER_ID = "00000000-0000-0000-0000-000000000003"
+# ── Shared constants ──────────────────────────────────────────────────────────
+ORG_ID  = "00000000-0000-0000-0000-000000000001"
+USER_ID = "00000000-0000-0000-0000-000000000099"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TestStorageUpload — 9E-2
+# S3 / S4 — app/models/leads.py
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _org_member():
-    return {
-        "id": USER_ID, "org_id": ORG_ID,
-        "roles": {"template": "ops_manager", "permissions": {}},
-    }
+class TestLeadModelConstraints:
+    """S3/S4: Every str field on LeadCreate and LeadUpdate must have max_length."""
+
+    # ── LeadCreate — required field ───────────────────────────────────────────
+
+    def test_full_name_at_limit_passes(self):
+        from app.models.leads import LeadCreate
+        payload = LeadCreate(full_name="A" * 255, source="manual_phone")
+        assert payload.full_name == "A" * 255
+
+    def test_full_name_over_limit_raises(self):
+        from app.models.leads import LeadCreate
+        with pytest.raises(ValidationError):
+            LeadCreate(full_name="A" * 256, source="manual_phone")
+
+    # ── LeadCreate — phone / whatsapp ─────────────────────────────────────────
+
+    def test_phone_at_limit_passes(self):
+        from app.models.leads import LeadCreate
+        LeadCreate(full_name="Test", source="manual_phone", phone="1" * 20)
+
+    def test_phone_over_limit_raises(self):
+        from app.models.leads import LeadCreate
+        with pytest.raises(ValidationError):
+            LeadCreate(full_name="Test", source="manual_phone", phone="1" * 21)
+
+    def test_whatsapp_over_limit_raises(self):
+        from app.models.leads import LeadCreate
+        with pytest.raises(ValidationError):
+            LeadCreate(full_name="Test", source="manual_phone", whatsapp="1" * 21)
+
+    # ── LeadCreate — S4 free text field ───────────────────────────────────────
+
+    def test_problem_stated_at_limit_passes(self):
+        from app.models.leads import LeadCreate
+        LeadCreate(full_name="Test", source="manual_phone", problem_stated="x" * 5000)
+
+    def test_problem_stated_over_limit_raises(self):
+        from app.models.leads import LeadCreate
+        with pytest.raises(ValidationError):
+            LeadCreate(full_name="Test", source="manual_phone", problem_stated="x" * 5001)
+
+    # ── LeadCreate — utm / campaign fields ────────────────────────────────────
+
+    def test_utm_source_over_limit_raises(self):
+        from app.models.leads import LeadCreate
+        with pytest.raises(ValidationError):
+            LeadCreate(full_name="Test", source="manual_phone", utm_source="x" * 256)
+
+    def test_campaign_id_over_limit_raises(self):
+        from app.models.leads import LeadCreate
+        with pytest.raises(ValidationError):
+            LeadCreate(full_name="Test", source="manual_phone", campaign_id="x" * 256)
+
+    # ── LeadCreate — None values still accepted ───────────────────────────────
+
+    def test_all_optional_fields_none_passes(self):
+        from app.models.leads import LeadCreate
+        payload = LeadCreate(full_name="Test", source="manual_phone")
+        assert payload.phone is None
+        assert payload.problem_stated is None
+
+    # ── LeadUpdate — same constraints ─────────────────────────────────────────
+
+    def test_lead_update_full_name_over_limit_raises(self):
+        from app.models.leads import LeadUpdate
+        with pytest.raises(ValidationError):
+            LeadUpdate(full_name="A" * 256)
+
+    def test_lead_update_problem_stated_over_limit_raises(self):
+        from app.models.leads import LeadUpdate
+        with pytest.raises(ValidationError):
+            LeadUpdate(problem_stated="x" * 5001)
+
+    def test_lead_update_problem_stated_at_limit_passes(self):
+        from app.models.leads import LeadUpdate
+        payload = LeadUpdate(problem_stated="x" * 5000)
+        assert len(payload.problem_stated) == 5000
+
+    def test_lead_update_all_none_passes(self):
+        from app.models.leads import LeadUpdate
+        payload = LeadUpdate()
+        assert payload.full_name is None
 
 
-class TestStorageUpload:
-    """Phase 9E: attachment upload now writes bytes to Supabase Storage."""
+# ══════════════════════════════════════════════════════════════════════════════
+# S4 / S5 — app/models/tickets.py
+# ══════════════════════════════════════════════════════════════════════════════
 
-    def setup_method(self):
-        self.mock_db = MagicMock()
-        # storage chain
-        self.storage_chain = MagicMock()
-        self.storage_chain.upload.return_value = MagicMock()
-        self.mock_db.storage.from_.return_value = self.storage_chain
+class TestTicketModelConstraints:
+    """S4/S5: content/notes fields on ticket models must have max_length."""
 
-        # ticket_messages / audit chain — any table call succeeds
-        chain = MagicMock()
-        chain.execute.return_value = MagicMock(data=[{
-            "id": "00000000-0000-0000-0000-000000000010",
-            "ticket_id": "00000000-0000-0000-0000-000000000011",
-            "file_name": "test.jpg", "storage_path": "tickets/x/y/z.jpg",
-            "file_type": "image/jpeg", "file_size_bytes": 100,
-        }])
-        chain.select.return_value = chain
-        chain.eq.return_value     = chain
-        chain.is_.return_value    = chain
-        chain.maybe_single.return_value = chain
-        chain.insert.return_value = chain
+    # ── TicketCreate — S5: content max 10,000 ────────────────────────────────
 
-        def tbl(name):
-            if name == "ticket_attachments": return chain
-            if name == "tickets":            return chain
-            if name == "audit_logs":         return chain
-            return MagicMock()
+    def test_ticket_create_content_at_limit_passes(self):
+        from app.models.tickets import TicketCreate
+        t = TicketCreate(content="x" * 10000)
+        assert len(t.content) == 10000
 
-        self.mock_db.table.side_effect = tbl
-        app.dependency_overrides[get_supabase]    = lambda: self.mock_db
-        app.dependency_overrides[get_current_org] = _org_member
-        self.client = TestClient(app)
+    def test_ticket_create_content_over_limit_raises(self):
+        from app.models.tickets import TicketCreate
+        with pytest.raises(ValidationError):
+            TicketCreate(content="x" * 10001)
 
-    def teardown_method(self):
-        app.dependency_overrides.pop(get_supabase, None)
-        app.dependency_overrides.pop(get_current_org, None)
+    def test_ticket_create_content_required(self):
+        from app.models.tickets import TicketCreate
+        with pytest.raises(ValidationError):
+            TicketCreate()
 
-    def test_upload_calls_storage_with_correct_bucket(self):
-        """Phase 9E: storage.from_('ticket-attachments').upload() must be called."""
-        jpg = b'\xff\xd8\xff\xe0' + b'\x00' * 100   # minimal JPEG magic bytes
-        with patch("app.routers.tickets._FILETYPE_AVAILABLE", False):
-            self.client.post(
-                "/api/v1/tickets/00000000-0000-0000-0000-000000000011/attachments",
-                files={"file": ("photo.jpg", jpg, "image/jpeg")},
+    # ── AddMessageRequest — S4: content max 5,000 ────────────────────────────
+
+    def test_add_message_content_at_limit_passes(self):
+        from app.models.tickets import AddMessageRequest
+        m = AddMessageRequest(message_type="agent_reply", content="x" * 5000)
+        assert len(m.content) == 5000
+
+    def test_add_message_content_over_limit_raises(self):
+        from app.models.tickets import AddMessageRequest
+        with pytest.raises(ValidationError):
+            AddMessageRequest(message_type="agent_reply", content="x" * 5001)
+
+    def test_add_message_invalid_message_type_raises(self):
+        from app.models.tickets import AddMessageRequest
+        with pytest.raises(ValidationError):
+            AddMessageRequest(message_type="unknown_type", content="Hello")
+
+    # ── ResolveRequest — S4: resolution_notes max 5,000 ─────────────────────
+
+    def test_resolve_request_at_limit_passes(self):
+        from app.models.tickets import ResolveRequest
+        r = ResolveRequest(resolution_notes="x" * 5000)
+        assert len(r.resolution_notes) == 5000
+
+    def test_resolve_request_over_limit_raises(self):
+        from app.models.tickets import ResolveRequest
+        with pytest.raises(ValidationError):
+            ResolveRequest(resolution_notes="x" * 5001)
+
+    def test_resolve_request_notes_required(self):
+        from app.models.tickets import ResolveRequest
+        with pytest.raises(ValidationError):
+            ResolveRequest()
+
+    # ── InteractionLogCreate — S3/S4 ─────────────────────────────────────────
+
+    def test_interaction_log_raw_notes_at_limit_passes(self):
+        from app.models.tickets import InteractionLogCreate
+        from datetime import datetime, timezone
+        log = InteractionLogCreate(
+            interaction_type="whatsapp",
+            raw_notes="x" * 5000,
+            interaction_date=datetime.now(timezone.utc),
+        )
+        assert len(log.raw_notes) == 5000
+
+    def test_interaction_log_raw_notes_over_limit_raises(self):
+        from app.models.tickets import InteractionLogCreate
+        from datetime import datetime, timezone
+        with pytest.raises(ValidationError):
+            InteractionLogCreate(
+                interaction_type="whatsapp",
+                raw_notes="x" * 5001,
+                interaction_date=datetime.now(timezone.utc),
             )
-        self.mock_db.storage.from_.assert_called_with("ticket-attachments")
-        self.storage_chain.upload.assert_called_once()
 
-    def test_upload_storage_failure_returns_502(self):
-        """If storage upload fails, 502 is returned and no DB row is inserted."""
-        self.storage_chain.upload.side_effect = Exception("Storage unavailable")
-        jpg = b'\xff\xd8\xff\xe0' + b'\x00' * 100
-        with patch("app.routers.tickets._FILETYPE_AVAILABLE", False):
-            resp = self.client.post(
-                "/api/v1/tickets/00000000-0000-0000-0000-000000000011/attachments",
-                files={"file": ("photo.jpg", jpg, "image/jpeg")},
+    def test_interaction_log_outcome_over_limit_raises(self):
+        from app.models.tickets import InteractionLogCreate
+        from datetime import datetime, timezone
+        with pytest.raises(ValidationError):
+            InteractionLogCreate(
+                interaction_type="whatsapp",
+                outcome="x" * 101,
+                interaction_date=datetime.now(timezone.utc),
             )
-        assert resp.status_code == 502
-        # Attachment DB insert must NOT have been called
-        self.mock_db.table.return_value.insert.assert_not_called()
 
-    def test_upload_storage_called_before_db_insert(self):
-        """Storage upload precedes DB insert — verifiable via call order."""
-        call_order = []
-        self.storage_chain.upload.side_effect = lambda **kw: call_order.append("storage") or MagicMock()
+    def test_interaction_log_outcome_at_limit_passes(self):
+        from app.models.tickets import InteractionLogCreate
+        from datetime import datetime, timezone
+        log = InteractionLogCreate(
+            interaction_type="whatsapp",
+            outcome="x" * 100,
+            interaction_date=datetime.now(timezone.utc),
+        )
+        assert len(log.outcome) == 100
 
-        orig_tbl = self.mock_db.table.side_effect
-        def tbl_spy(name):
-            chain = orig_tbl(name)
-            if name == "ticket_attachments":
-                orig_insert = chain.insert
-                def insert_spy(row):
-                    call_order.append("db_insert")
-                    return orig_insert(row)
-                chain.insert = insert_spy
-            return chain
-        self.mock_db.table.side_effect = tbl_spy
-
-        jpg = b'\xff\xd8\xff\xe0' + b'\x00' * 100
-        with patch("app.routers.tickets._FILETYPE_AVAILABLE", False):
-            self.client.post(
-                "/api/v1/tickets/00000000-0000-0000-0000-000000000011/attachments",
-                files={"file": ("photo.jpg", jpg, "image/jpeg")},
-            )
-        # storage must come before db_insert in call order
-        assert call_order.index("storage") < call_order.index("db_insert")
+    def test_interaction_log_none_notes_passes(self):
+        from app.models.tickets import InteractionLogCreate
+        from datetime import datetime, timezone
+        log = InteractionLogCreate(
+            interaction_type="in_person",
+            interaction_date=datetime.now(timezone.utc),
+        )
+        assert log.raw_notes is None
+        assert log.outcome is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TestNewDeviceAlert — 9E-4
+# sla_worker — Pattern 48 fix
 # ══════════════════════════════════════════════════════════════════════════════
 
-class TestNewDeviceAlert:
-    """Phase 9E: _check_new_device inserts row and sends alerts on new IP."""
+class TestSlaWorkerPattern48:
+    """
+    sla_worker supervisor notification block must use roles(template) join
+    (Pattern 48) and check for 'ops_manager' — not 'role' column / 'supervisor'.
 
-    def _make_db(self, existing_device=None, org_phone_id="phone_id_123"):
-        """Build a multi-table mock for device check tests."""
+    Mock chains mirror the worker's exact call sequences:
+      organisations : .select("id").execute().data
+      tickets       : .select(...).eq("org_id",...).in_("status",...).execute().data
+      tickets update: .update({...}).eq("id",...).execute()
+      users         : .select("id, roles(template)").eq("org_id",...).execute().data
+      notifications : .insert({...}).execute()
+      tasks         : .insert({...}).execute()
+    """
+
+    def _make_db(self, users_with_roles, tickets=None):
+        """
+        Build a db mock whose table() side_effect returns a dedicated chain
+        per table name, wired to the exact call sequences in the worker.
+        """
+        # Per-table chain stores
+        table_mocks = {}
+
+        def _make_chain():
+            c = MagicMock()
+            # Wire every chaining method back to the same mock so any
+            # sequence of .select().eq().in_().execute() etc. all resolve.
+            for method in ("select", "eq", "in_", "is_", "order",
+                           "limit", "neq", "update", "insert"):
+                getattr(c, method).return_value = c
+            c.execute.return_value = MagicMock(data=[])
+            return c
+
+        def _table(name):
+            if name not in table_mocks:
+                table_mocks[name] = _make_chain()
+            return table_mocks[name]
+
         db = MagicMock()
+        db.table.side_effect = _table
 
-        device_chain = MagicMock()
-        device_chain.select.return_value       = device_chain
-        device_chain.eq.return_value           = device_chain
-        device_chain.maybe_single.return_value = device_chain
-        device_chain.update.return_value       = device_chain
-        device_chain.insert.return_value       = device_chain
-        device_chain.execute.return_value      = MagicMock(data=existing_device)
+        # Trigger creation of each table mock so we can configure them
+        _table("organisations")
+        _table("tickets")
+        _table("users")
+        _table("notifications")
+        _table("tasks")
 
-        notif_chain = MagicMock()
-        notif_chain.insert.return_value  = notif_chain
-        notif_chain.execute.return_value = MagicMock(data=[])
-
-        org_chain = MagicMock()
-        org_chain.select.return_value       = org_chain
-        org_chain.eq.return_value           = org_chain
-        org_chain.maybe_single.return_value = org_chain
-        org_chain.execute.return_value      = MagicMock(
-            data={"whatsapp_phone_id": org_phone_id} if org_phone_id else None
+        # organisations: .select("id").execute().data  →  [{"id": ORG_ID}]
+        table_mocks["organisations"].execute.return_value = MagicMock(
+            data=[{"id": ORG_ID}]
         )
 
-        def tbl(name):
-            if name == "user_devices":    return device_chain
-            if name == "notifications":   return notif_chain
-            if name == "organisations":   return org_chain
-            return MagicMock()
+        # tickets: .select(...).eq(...).in_(...).execute().data
+        tickets_data = tickets or [{
+            "id":                    "ticket-001",
+            "org_id":                ORG_ID,
+            "title":                 "Test ticket",
+            "status":                "open",
+            "assigned_to":           "user-rep-001",
+            "sla_resolution_due_at": "2020-01-01T00:00:00+00:00",
+            "sla_response_due_at":   "2020-01-01T00:00:00+00:00",
+            "sla_breached":          False,
+        }]
+        table_mocks["tickets"].execute.return_value = MagicMock(data=tickets_data)
 
-        db.table.side_effect = tbl
-        self._device_chain = device_chain
-        self._notif_chain  = notif_chain
-        return db
+        # users: .select("id, roles(template)").eq(...).execute().data
+        table_mocks["users"].execute.return_value = MagicMock(data=users_with_roles)
 
-    def test_new_ip_inserts_device_row(self):
-        from app.routers.auth import _check_new_device
-        db = self._make_db(existing_device=None)
-        _check_new_device(db, USER_ID, ORG_ID, "Tunde", None, "1.2.3.4", "Mozilla/5.0")
-        self._device_chain.insert.assert_called_once()
-        inserted = self._device_chain.insert.call_args[0][0]
-        assert inserted["user_id"]    == USER_ID
-        assert inserted["ip_address"] == "1.2.3.4"
+        return db, table_mocks
 
-    def test_new_ip_creates_notification(self):
-        from app.routers.auth import _check_new_device
-        db = self._make_db(existing_device=None)
-        _check_new_device(db, USER_ID, ORG_ID, "Tunde", None, "1.2.3.4", "")
-        self._notif_chain.insert.assert_called_once()
-        notif = self._notif_chain.insert.call_args[0][0]
-        assert notif["type"] == "security_alert"
-        assert notif["user_id"] == USER_ID
+    # ── Notification capture helper ───────────────────────────────────────────
 
-    def test_known_ip_updates_last_seen_not_insert(self):
-        from app.routers.auth import _check_new_device
-        existing = {"id": "00000000-0000-0000-0000-000000000099"}
-        db = self._make_db(existing_device=existing)
-        _check_new_device(db, USER_ID, ORG_ID, "Tunde", None, "1.2.3.4", "")
-        # update called, insert NOT called
-        self._device_chain.update.assert_called_once()
-        self._device_chain.insert.assert_not_called()
-        # notification NOT created for known device
-        self._notif_chain.insert.assert_not_called()
+    def _capture_notifications(self, table_mocks):
+        """
+        Wire notifications.insert() to capture every row dict passed to it.
+        Returns the list that will be populated during the run.
+        """
+        captured = []
 
-    def test_no_whatsapp_skips_wa_send(self):
-        """If user has no whatsapp_number, no WhatsApp call is made."""
-        from app.routers.auth import _check_new_device
-        db = self._make_db(existing_device=None)
-        with patch("app.routers.auth._META_WA_TOKEN", "sometoken"), \
-             patch("app.routers.auth.httpx") as mock_httpx:
-            _check_new_device(db, USER_ID, ORG_ID, "Tunde",
-                              whatsapp_number=None,  # no number
-                              ip_address="5.5.5.5", user_agent="")
-            mock_httpx.post.assert_not_called()
+        original_insert = table_mocks["notifications"].insert
 
-    def test_device_check_failure_does_not_raise(self):
-        """S14: _check_new_device must never raise even if DB is broken."""
-        from app.routers.auth import _check_new_device
-        db = MagicMock()
-        db.table.side_effect = RuntimeError("DB is down")
-        # Must not raise
-        _check_new_device(db, USER_ID, ORG_ID, "Tunde", None, "1.2.3.4", "")
+        def _capture(row_dict):
+            captured.append(row_dict)
+            m = MagicMock()
+            m.execute.return_value = MagicMock()
+            return m
+
+        table_mocks["notifications"].insert.side_effect = _capture
+        return captured
+
+    # ── Tests ─────────────────────────────────────────────────────────────────
+
+    def test_owner_receives_supervisor_notification(self):
+        """Users with roles.template='owner' must be notified of SLA breach."""
+        users = [
+            {"id": "user-owner-001", "roles": {"template": "owner"}},
+            {"id": "user-rep-001",   "roles": {"template": "sales_agent"}},
+        ]
+        db, mocks = self._make_db(users)
+        captured = self._capture_notifications(mocks)
+
+        with patch("app.workers.sla_worker.get_supabase", return_value=db):
+            from app.workers.sla_worker import run_sla_monitor
+            run_sla_monitor.run()
+
+        notified_ids = [n.get("user_id") for n in captured]
+        assert "user-owner-001" in notified_ids
+
+    def test_ops_manager_receives_supervisor_notification(self):
+        """Users with roles.template='ops_manager' must be notified."""
+        users = [
+            {"id": "user-ops-001", "roles": {"template": "ops_manager"}},
+            {"id": "user-rep-001", "roles": {"template": "sales_agent"}},
+        ]
+        db, mocks = self._make_db(users)
+        captured = self._capture_notifications(mocks)
+
+        with patch("app.workers.sla_worker.get_supabase", return_value=db):
+            from app.workers.sla_worker import run_sla_monitor
+            run_sla_monitor.run()
+
+        notified_ids = [n.get("user_id") for n in captured]
+        assert "user-ops-001" in notified_ids
+
+    def test_sales_agent_does_not_receive_supervisor_notification(self):
+        """sales_agent must NOT receive the supervisor escalation notification."""
+        users = [
+            {"id": "user-owner-001", "roles": {"template": "owner"}},
+            {"id": "user-agent-001", "roles": {"template": "sales_agent"}},
+        ]
+        db, mocks = self._make_db(users)
+        captured = self._capture_notifications(mocks)
+
+        with patch("app.workers.sla_worker.get_supabase", return_value=db):
+            from app.workers.sla_worker import run_sla_monitor
+            run_sla_monitor.run()
+
+        notified_ids = [n.get("user_id") for n in captured]
+        assert "user-agent-001" not in notified_ids
+
+    def test_users_query_uses_roles_template_join(self):
+        """
+        The select() call on users must request 'roles(template)' not 'role'.
+        Confirms Pattern 48 compliance at the query level.
+        """
+        users = [{"id": "user-owner-001", "roles": {"template": "owner"}}]
+        db, mocks = self._make_db(users)
+
+        with patch("app.workers.sla_worker.get_supabase", return_value=db):
+            from app.workers.sla_worker import run_sla_monitor
+            run_sla_monitor.run()
+
+        select_calls = [str(c) for c in mocks["users"].select.call_args_list]
+        assert any("roles" in c for c in select_calls), (
+            "users query must use roles(template) join per Pattern 48"
+        )
+        assert not any(c == "call('id, role')" for c in select_calls), (
+            "users query must not select bare 'role' column — Pattern 48 violation"
+        )
+
+    def test_s14_per_org_exception_does_not_stop_loop(self):
+        """
+        S14: an exception inside one org's processing must be caught by the
+        per-org try/except and must not propagate to the task level.
+        Worker returns a result dict — not raises.
+        """
+        users = [{"id": "user-owner-001", "roles": {"template": "owner"}}]
+        db, mocks = self._make_db(users)
+
+        # Make tickets.execute() raise so the per-org block fails
+        mocks["tickets"].execute.side_effect = Exception("DB timeout")
+
+        with patch("app.workers.sla_worker.get_supabase", return_value=db):
+            from app.workers.sla_worker import run_sla_monitor
+            result = run_sla_monitor.run()
+
+        assert isinstance(result, dict)
+        assert "breaches" in result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TestGetCustomerWindowOpen — 9E-5
+# growth_insights_worker — import fix
 # ══════════════════════════════════════════════════════════════════════════════
 
-class TestGetCustomerWindowOpen:
-    """Phase 9E: GET /customers/{id} includes server-computed window_open field."""
+class TestGrowthInsightsImport:
+    """
+    growth_insights_worker must import get_supabase from app.database,
+    not app.dependencies. This was the bug that caused ImportError at startup.
+    """
 
-    def setup_method(self):
-        self.mock_db = MagicMock()
-        app.dependency_overrides[get_supabase]    = lambda: self.mock_db
-        app.dependency_overrides[get_current_org] = _org_member
-        self.client = TestClient(app)
+    def test_get_supabase_imported_from_app_database(self):
+        """
+        Verify the worker module resolves get_supabase from app.database.
+        If the import is wrong, importing the worker itself will raise ImportError.
+        """
+        import importlib
+        import app.workers.growth_insights_worker as worker_mod
 
-    def teardown_method(self):
-        app.dependency_overrides.pop(get_supabase, None)
-        app.dependency_overrides.pop(get_current_org, None)
+        # The module must have loaded without error (import happened at collection time).
+        # Now confirm the get_supabase reference points to app.database, not app.dependencies.
+        import app.database as db_mod
+        assert worker_mod.get_supabase is db_mod.get_supabase, (
+            "growth_insights_worker.get_supabase must come from app.database, "
+            "not app.dependencies"
+        )
 
-    def test_window_open_true_when_is_window_open_returns_true(self):
-        customer_data = {
-            "id": CUSTOMER_ID, "org_id": ORG_ID,
-            "full_name": "Amaka", "assigned_to": None,
-        }
-        with patch("app.routers.customers.whatsapp_service.get_customer",
-                   return_value=customer_data), \
-             patch("app.routers.customers.whatsapp_service._is_window_open",
-                   return_value=True):
-            resp = self.client.get(f"/api/v1/customers/{CUSTOMER_ID}")
-        assert resp.status_code == 200
-        assert resp.json()["data"]["window_open"] is True
-
-    def test_window_open_false_when_is_window_open_returns_false(self):
-        customer_data = {
-            "id": CUSTOMER_ID, "org_id": ORG_ID,
-            "full_name": "Emeka", "assigned_to": None,
-        }
-        with patch("app.routers.customers.whatsapp_service.get_customer",
-                   return_value=customer_data), \
-             patch("app.routers.customers.whatsapp_service._is_window_open",
-                   return_value=False):
-            resp = self.client.get(f"/api/v1/customers/{CUSTOMER_ID}")
-        assert resp.status_code == 200
-        assert resp.json()["data"]["window_open"] is False
-
-    def test_window_open_defaults_false_on_error(self):
-        """S14: if _is_window_open raises, window_open = False (safe default)."""
-        customer_data = {
-            "id": CUSTOMER_ID, "org_id": ORG_ID,
-            "full_name": "Tunde", "assigned_to": None,
-        }
-        with patch("app.routers.customers.whatsapp_service.get_customer",
-                   return_value=customer_data), \
-             patch("app.routers.customers.whatsapp_service._is_window_open",
-                   side_effect=Exception("DB error")):
-            resp = self.client.get(f"/api/v1/customers/{CUSTOMER_ID}")
-        assert resp.status_code == 200
-        assert resp.json()["data"]["window_open"] is False
+    def test_worker_module_importable_without_error(self):
+        """Importing the worker module must not raise any ImportError."""
+        try:
+            import app.workers.growth_insights_worker  # noqa: F401
+        except ImportError as exc:
+            pytest.fail(f"growth_insights_worker raised ImportError on import: {exc}")

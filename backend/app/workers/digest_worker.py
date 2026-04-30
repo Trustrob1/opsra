@@ -1,26 +1,10 @@
 """
 app/workers/digest_worker.py
 -----------------------------
-Celery task:
+9E-D D1: is_org_active() gate applied at top of per-org loop.
+D2/D3 not applicable — digest inserts in-app notifications, not WhatsApp sends.
 
-  run_monday_digest  — Every Monday 07:00 WAT (06:00 UTC)
-    Aggregate last 7 days of metrics per org.
-    Generate a personalised digest via Claude Haiku.
-    Insert one notification row per staff member (type = 'digest').
-
-Role tiers:
-  owner / admin    → Full metrics including MRR and revenue at risk
-  supervisor       → Support and churn focus
-  agent / default  → Leads, open tickets, renewals
-
-Failures:
-  • If Claude Haiku call fails → _fallback_digest() used (S14)
-  • If individual user digest fails → logged and skipped; others unaffected
-  • Every Claude call logged to claude_usage_log
-
-Pattern 29: load_dotenv() at module level.
-Pattern 1:  get_supabase() called inside task body.
-Pattern 33: Python-side aggregation only.
+All other logic unchanged.
 """
 from __future__ import annotations
 
@@ -31,10 +15,11 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-load_dotenv()  # Pattern 29
+load_dotenv()
 
-from app.workers.celery_app import celery_app  # noqa: E402
-from app.database import get_supabase  # noqa: E402
+from app.workers.celery_app import celery_app
+from app.database import get_supabase
+from app.utils.org_gates import is_org_active  # 9E-D D1
 
 logger = logging.getLogger(__name__)
 
@@ -53,46 +38,36 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# ── Anthropic helpers ─────────────────────────────────────────────────────────
-
-
 def _get_anthropic():
-    import anthropic  # noqa: PLC0415
-
+    import anthropic
     return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
 
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     _COSTS = {
         "claude-haiku-4-5-20251001": {"input": 0.25e-6, "output": 1.25e-6},
-        "claude-sonnet-4-20250514": {"input": 3e-6, "output": 15e-6},
+        "claude-sonnet-4-20250514":  {"input": 3e-6,    "output": 15e-6},
     }
     c = _COSTS.get(model, {"input": 0.0, "output": 0.0})
     return round(input_tokens * c["input"] + output_tokens * c["output"], 8)
 
 
-def _log_usage(db, org_id: str, user_id: str, model: str, input_t: int, output_t: int) -> None:
+def _log_usage(db, org_id, user_id, model, input_t, output_t):
     try:
-        db.table("claude_usage_log").insert(
-            {
-                "org_id": org_id,
-                "user_id": user_id,
-                "model": model,
-                "action_type": "monday_digest",
-                "input_tokens": input_t,
-                "output_tokens": output_t,
-                "estimated_cost_usd": _estimate_cost(model, input_t, output_t),
-            }
-        ).execute()
+        db.table("claude_usage_log").insert({
+            "org_id":             org_id,
+            "user_id":            user_id,
+            "model":              model,
+            "action_type":        "monday_digest",
+            "input_tokens":       input_t,
+            "output_tokens":      output_t,
+            "estimated_cost_usd": _estimate_cost(model, input_t, output_t),
+        }).execute()
     except Exception as exc:
         logger.warning("digest_worker: usage log insert failed — %s", exc)
 
 
-# ── Fallback digest (S14) ─────────────────────────────────────────────────────
-
-
 def _fallback_digest(metrics: dict) -> str:
-    """Plain-text digest used when Claude Haiku is unavailable (S14)."""
     return (
         "Good morning! Here is your weekly summary:\n"
         f"\u2022 New leads this week: {metrics.get('leads_this_week', 0)}\n"
@@ -103,13 +78,8 @@ def _fallback_digest(metrics: dict) -> str:
     )
 
 
-# ── AI digest generation ──────────────────────────────────────────────────────
-
-
 def _build_context(role: str, metrics: dict) -> str:
-    """Assemble role-scoped context block for the Haiku prompt."""
     role_lower = role.lower()
-
     if role_lower in ("owner", "admin"):
         mrr = metrics.get("mrr_ngn")
         rar = metrics.get("revenue_at_risk_ngn")
@@ -145,18 +115,7 @@ def _build_context(role: str, metrics: dict) -> str:
         )
 
 
-def _generate_digest(
-    db,
-    org_id: str,
-    user_id: str,
-    role: str,
-    metrics: dict,
-) -> str:
-    """
-    Generate a personalised Monday digest via Claude Haiku.
-    Falls back to _fallback_digest() on any AI failure (S14).
-    Logs usage to claude_usage_log.
-    """
+def _generate_digest(db, org_id, user_id, role, metrics) -> str:
     context = _build_context(role, metrics)
     system_prompt = (
         "You are a concise business intelligence assistant generating a Monday "
@@ -169,9 +128,8 @@ def _generate_digest(
         f"Generate a Monday morning digest for a {role} team member.\n\n"
         f"<context>\n{context}\n</context>"
     )
-
     try:
-        client = _get_anthropic()
+        client   = _get_anthropic()
         response = client.messages.create(
             model=_HAIKU_MODEL,
             max_tokens=300,
@@ -181,50 +139,54 @@ def _generate_digest(
         text = "".join(
             b.text for b in response.content if hasattr(b, "text")
         ).strip()
-
         _log_usage(
-            db=db,
-            org_id=org_id,
-            user_id=user_id,
-            model=_HAIKU_MODEL,
+            db=db, org_id=org_id, user_id=user_id, model=_HAIKU_MODEL,
             input_t=response.usage.input_tokens,
             output_t=response.usage.output_tokens,
         )
-
         return text if text else _fallback_digest(metrics)
-
     except Exception as exc:
         logger.warning("digest_worker: Haiku call failed — %s. Using fallback.", exc)
         return _fallback_digest(metrics)
-
-
-# ── Task ──────────────────────────────────────────────────────────────────────
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def run_monday_digest(self):
     """
     Every Monday 07:00 WAT — Aggregate last-7-day metrics per org.
-    Generate personalised digest via Claude Haiku for each staff member.
-    Persist digest as a notification (type='digest') in the notifications table.
+    D1 gate applied — suspended/read_only orgs skipped.
     """
     logger.info("digest_worker: run_monday_digest starting.")
-    db = get_supabase()  # Pattern 1
+    db   = get_supabase()
     sent = 0
 
     try:
-        now = datetime.now(timezone.utc)
+        now      = datetime.now(timezone.utc)
         week_ago = (now - timedelta(days=7)).isoformat()
-        in_30 = (now + timedelta(days=30)).isoformat()
+        in_30    = (now + timedelta(days=30)).isoformat()
 
-        orgs = (db.table("organisations").select("id").execute().data or [])
+        # Include subscription_status for D1 gate
+        orgs = (
+            db.table("organisations")
+            .select("id, subscription_status")
+            .execute()
+            .data or []
+        )
 
         for org_row in orgs:
             org_id: str = org_row["id"]
+
+            # ── D1: Subscription gate ─────────────────────────────────────
+            if not is_org_active(org_row):
+                logger.info(
+                    "digest_worker: org %s skipped — subscription_status=%s",
+                    org_id, org_row.get("subscription_status"),
+                )
+                continue
+
             try:
                 metrics: dict = {}
 
-                # Leads this week
                 all_leads = (
                     db.table("leads")
                     .select("id, created_at")
@@ -236,7 +198,6 @@ def run_monday_digest(self):
                     1 for l in all_leads if l.get("created_at", "") >= week_ago
                 )
 
-                # Customers + churn risk + NPS
                 customers = (
                     db.table("customers")
                     .select("id, last_nps_score, churn_risk")
@@ -245,8 +206,8 @@ def run_monday_digest(self):
                     .execute()
                     .data or []
                 )
-                metrics["active_customers"] = len(customers)
-                metrics["churn_risk_high"] = sum(
+                metrics["active_customers"]    = len(customers)
+                metrics["churn_risk_high"]     = sum(
                     1 for c in customers
                     if (c.get("churn_risk") or "").lower() == "high"
                 )
@@ -254,14 +215,11 @@ def run_monday_digest(self):
                     1 for c in customers
                     if (c.get("churn_risk") or "").lower() == "critical"
                 )
-                scores = [
-                    c["last_nps_score"] for c in customers if c.get("last_nps_score")
-                ]
+                scores = [c["last_nps_score"] for c in customers if c.get("last_nps_score")]
                 metrics["nps_average"] = (
                     round(sum(scores) / len(scores), 1) if scores else None
                 )
 
-                # MRR from active subscriptions
                 subs = (
                     db.table("subscriptions")
                     .select("amount, billing_cycle")
@@ -278,7 +236,6 @@ def run_monday_digest(self):
                 )
                 metrics["mrr_ngn"] = round(mrr, 2)
 
-                # Renewals due in 30 days
                 ren = (
                     db.table("subscriptions")
                     .select("id")
@@ -290,7 +247,6 @@ def run_monday_digest(self):
                 )
                 metrics["renewals_due_30_days"] = len(ren)
 
-                # Tickets
                 tkts = (
                     db.table("tickets")
                     .select("id, sla_breached")
@@ -299,15 +255,15 @@ def run_monday_digest(self):
                     .execute()
                     .data or []
                 )
-                metrics["open_tickets"] = len(tkts)
+                metrics["open_tickets"]        = len(tkts)
                 metrics["sla_breached_tickets"] = sum(
                     1 for t in tkts if t.get("sla_breached")
                 )
 
-                # Staff members
+                # Pattern 48: users has no role column — join roles(template)
                 users = (
                     db.table("users")
-                    .select("id, role")
+                    .select("id, roles(template)")
                     .eq("org_id", org_id)
                     .execute()
                     .data or []
@@ -315,30 +271,25 @@ def run_monday_digest(self):
 
                 for user in users:
                     user_id: str = user["id"]
-                    role: str = user.get("role") or "agent"
+                    role: str    = (user.get("roles") or {}).get("template") or "agent"
                     try:
-                        digest_text = _generate_digest(
-                            db, org_id, user_id, role, metrics
-                        )
-                        db.table("notifications").insert(
-                            {
-                                "org_id": org_id,
-                                "user_id": user_id,
-                                "title": "\U0001f4ca Monday Morning Digest",
-                                "body": digest_text,
-                                "type": "digest",
-                                "resource_type": None,
-                                "resource_id": None,
-                                "is_read": False,
-                                "created_at": _now_iso(),
-                            }
-                        ).execute()
+                        digest_text = _generate_digest(db, org_id, user_id, role, metrics)
+                        db.table("notifications").insert({
+                            "org_id":        org_id,
+                            "user_id":       user_id,
+                            "title":         "\U0001f4ca Monday Morning Digest",
+                            "body":          digest_text,
+                            "type":          "digest",
+                            "resource_type": None,
+                            "resource_id":   None,
+                            "is_read":       False,
+                            "created_at":    _now_iso(),
+                        }).execute()
                         sent += 1
                     except Exception as exc:
                         logger.warning(
                             "digest_worker: digest failed for user %s — %s",
-                            user_id,
-                            exc,
+                            user_id, exc,
                         )
 
             except Exception as exc:

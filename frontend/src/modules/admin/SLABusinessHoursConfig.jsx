@@ -61,7 +61,9 @@ export default function SLABusinessHoursConfig() {
           }
         }
       })
-      .catch(() => setError('Failed to load business hours settings.'))
+      .catch(err => setError(
+        err?.response?.data?.detail?.message || 'Failed to load business hours settings.'
+      ))
       .finally(() => setLoading(false))
   }, [])
 
@@ -114,7 +116,9 @@ export default function SLABusinessHoursConfig() {
         setSuccess(true)
         setTimeout(() => setSuccess(false), 3000)
       })
-      .catch(() => setError('Failed to save business hours settings.'))
+      .catch(err => setError(
+        err?.response?.data?.detail?.message || 'Failed to save business hours settings.'
+      ))
       .finally(() => setSaving(false))
   }
 

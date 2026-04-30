@@ -14,6 +14,14 @@ Handles:
   - Identifier-text handling (customer lookup → contact or fallback lead)
   - Customer contacts CRUD (list / add / approve / remove)
 
+9E-C changes:
+  C1 — get_or_create_session(): atomic INSERT with unique-constraint fallback.
+       Prevents duplicate sessions when two concurrent webhooks arrive for the
+       same phone number.
+  C2 — update_session(): now accepts expected_state parameter. All state
+       transitions use .eq("session_state", expected_state) so only the first
+       concurrent handler wins; others bail cleanly.
+
 All public functions comply with S14 — no function may raise.
 Every function body is wrapped in a top-level try/except that logs the
 error and returns a safe default.
@@ -56,6 +64,75 @@ def get_active_session(db, org_id: str, phone_number: str) -> Optional[dict]:
         return None
 
 
+def get_or_create_session(
+    db,
+    org_id: str,
+    phone_number: str,
+    expires_minutes: int = 30,
+    customer_id: Optional[str] = None,
+) -> Optional[dict]:
+    """
+    C1 — Atomically get an existing active session or create a new one.
+
+    Replaces the two-step get_active_session() + create_session() pattern.
+    The unique index idx_ws_active_session on (org_id, phone_number)
+    WHERE expires_at > now() means only one active session can exist per
+    org+phone at a time. On a concurrent duplicate INSERT, the DB raises
+    a unique violation (23505) and we fall back to fetching the winner.
+
+    Returns the session dict or None on unrecoverable error. S14.
+    """
+    try:
+        # Fast path: existing active session
+        existing = get_active_session(db, org_id, phone_number)
+        if existing:
+            return existing
+
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+        ).isoformat()
+
+        row: dict = {
+            "org_id": org_id,
+            "phone_number": phone_number,
+            "session_state": "triage_sent",
+            "expires_at": expires_at,
+        }
+        if customer_id:
+            row["session_data"] = {"customer_id": customer_id}
+
+        try:
+            result = db.table("whatsapp_sessions").insert(row).execute()
+            rows = result.data or []
+            if rows:
+                return rows[0]
+            # Supabase returned empty without raising — fetch the winner
+            return get_active_session(db, org_id, phone_number)
+
+        except Exception as insert_exc:
+            err_str = str(insert_exc).lower()
+            if (
+                "23505" in err_str
+                or "duplicate" in err_str
+                or "unique" in err_str
+            ):
+                # Another concurrent handler won the INSERT race — fetch it
+                logger.debug(
+                    "get_or_create_session: duplicate INSERT org=%s phone=%s "
+                    "— returning winner",
+                    org_id, phone_number,
+                )
+                return get_active_session(db, org_id, phone_number)
+            raise  # unexpected DB error — propagate to outer S14 handler
+
+    except Exception as exc:
+        logger.warning(
+            "get_or_create_session failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+        return None
+
+
 def create_session(
     db,
     org_id: str,
@@ -65,6 +142,9 @@ def create_session(
     """
     Insert a new whatsapp_sessions row with session_state='triage_sent'.
     Returns the inserted row dict, or None on failure. S14.
+
+    Prefer get_or_create_session() for new callers — it is race-safe (C1).
+    This function is retained for backwards compatibility with existing callers.
     """
     try:
         expires_at = (
@@ -99,6 +179,8 @@ def create_customer_session(
     WH-2: Insert a new whatsapp_sessions row for a known customer.
     Stores customer_id in session_data so the dispatcher can resolve it.
     Returns the inserted row dict, or None on failure. S14.
+
+    Prefer get_or_create_session(customer_id=...) for new callers (C1).
     """
     try:
         expires_at = (
@@ -129,10 +211,19 @@ def update_session(
     state: str,
     selected_action: Optional[str] = None,
     session_data: Optional[dict] = None,
-) -> None:
+    expected_state: Optional[str] = None,
+) -> bool:
     """
-    Update session_state (and optionally selected_action / session_data)
-    for the given session row. S14.
+    C2 — Atomically update session_state.
+
+    If expected_state is provided, the UPDATE includes
+      .eq("session_state", expected_state)
+    so it is a no-op if another concurrent handler already advanced the state.
+
+    Returns True if the update succeeded (or expected_state was not provided).
+    Returns False if expected_state was provided and the update matched 0 rows
+    (meaning another handler won the race — the caller should bail).
+    S14: returns False on any exception.
     """
     try:
         payload: dict = {"session_state": state}
@@ -140,9 +231,25 @@ def update_session(
             payload["selected_action"] = selected_action
         if session_data is not None:
             payload["session_data"] = session_data
-        db.table("whatsapp_sessions").update(payload).eq("id", session_id).execute()
+
+        query = db.table("whatsapp_sessions").update(payload).eq("id", session_id)
+        if expected_state is not None:
+            query = query.eq("session_state", expected_state)
+
+        result = query.execute()
+
+        if expected_state is not None and not (result.data or []):
+            logger.debug(
+                "update_session: session %s already advanced past '%s' "
+                "— concurrent handler won, bailing",
+                session_id, expected_state,
+            )
+            return False
+        return True
+
     except Exception as exc:
         logger.warning("update_session failed session_id=%s: %s", session_id, exc)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -168,14 +275,14 @@ def handle_session_message(
     """
     try:
         state = session.get("session_state", "active")
- 
+
         if state == "triage_sent":
             if msg_type == "interactive" and interactive_payload:
                 item_id = (
                     (interactive_payload.get("list_reply") or
                      interactive_payload.get("button_reply") or {}).get("id")
                 )
- 
+
                 # SM-1: hybrid gate responses
                 if item_id == "buy_now":
                     session_id = session["id"]
@@ -183,7 +290,7 @@ def handle_session_message(
                         db, org_id, phone_number, session_id, contact_name
                     )
                     return
- 
+
                 if item_id == "talk_sales":
                     session_id = session["id"]
                     # Mid-browse switch: if there was a commerce_session, close it
@@ -195,7 +302,7 @@ def handle_session_message(
                         pass  # commerce_sessions may not exist yet (pre-SHOP-1A)
                     _action_qualify(db, org_id, phone_number, session_id, contact_name, now_ts)
                     return
- 
+
                 # SM-1: returning_contact_menu selection
                 if section == "returning_lead":
                     dispatch_contact_menu_selection(
@@ -209,7 +316,7 @@ def handle_session_message(
                         now_ts=now_ts,
                     )
                     return
- 
+
                 # SM-1: known_customer_menu selection
                 if section == "known_customer":
                     dispatch_contact_menu_selection(
@@ -223,7 +330,7 @@ def handle_session_message(
                         now_ts=now_ts,
                     )
                     return
- 
+
                 # Existing WH-2 customer triage
                 if section == "customer":
                     dispatch_customer_triage_selection(
@@ -251,7 +358,7 @@ def handle_session_message(
                 from app.services.whatsapp_service import send_triage_menu
                 send_triage_menu(db=db, org_id=org_id,
                                  phone_number=phone_number, section=section)
- 
+
         elif state == "awaiting_identifier":
             if msg_type == "text" and content:
                 handle_awaiting_identifier(
@@ -263,20 +370,20 @@ def handle_session_message(
                     contact_name=contact_name,
                     now_ts=now_ts,
                 )
- 
+
         else:
             logger.debug(
                 "handle_session_message: session %s already in state %s — no-op",
                 session.get("id"), state,
             )
- 
+
     except Exception as exc:
         logger.warning("handle_session_message failed org=%s phone=%s: %s",
                        org_id, phone_number, exc)
- 
- 
-# ── NEW: dispatch_contact_menu_selection ─────────────────────────────────────
- 
+
+
+# ── dispatch_contact_menu_selection ──────────────────────────────────────────
+
 def dispatch_contact_menu_selection(
     db,
     org_id: str,
@@ -295,7 +402,7 @@ def dispatch_contact_menu_selection(
     """
     try:
         session_id = session["id"]
- 
+
         # Fetch org triage config + customer_id from session_data
         org_result = (
             db.table("organisations")
@@ -307,60 +414,57 @@ def dispatch_contact_menu_selection(
         org_data = org_result.data
         if isinstance(org_data, list):
             org_data = org_data[0] if org_data else None
- 
+
         triage_config = (org_data or {}).get("whatsapp_triage_config") or {}
         menu_config = triage_config.get(menu_key) or {}
         items = menu_config.get("items") or []
- 
+
         matched_item = None
         if item_id:
             for itm in items:
                 if itm.get("id") == item_id:
                     matched_item = itm
                     break
- 
+
         action = (matched_item or {}).get("action", "free_form")
         session_data = session.get("session_data") or {}
         customer_id = session_data.get("customer_id")
- 
+
         if action == "qualify":
-            # Route to assigned rep — for returning leads picking up pipeline
             _action_qualify(db, org_id, phone_number, session_id, contact_name, now_ts)
- 
+
         elif action == "kb_enquiry":
-            # KB-first rule: lookup_kb_answer(), human fallback if no match
             _contact_menu_action_kb_enquiry(
                 db, org_id, phone_number, session_id,
                 matched_item or {}, customer_id, contact_name, now_ts, org_data,
             )
- 
+
         elif action == "support_ticket":
-            # Reuse existing _customer_action_create_ticket
             _customer_action_create_ticket(
                 db, org_id, phone_number, session_id,
                 matched_item or {}, customer_id, contact_name, now_ts,
             )
- 
+
         elif action == "route_to_role":
             _customer_action_route_to_role(
                 db, org_id, phone_number, session_id,
                 matched_item or {}, customer_id, contact_name, now_ts,
             )
- 
+
         else:
             # free_form fallback
             _customer_action_free_form(
                 db, org_id, phone_number, session_id,
                 matched_item or {}, customer_id, contact_name, now_ts,
             )
- 
+
     except Exception as exc:
         logger.warning(
             "dispatch_contact_menu_selection failed org=%s phone=%s menu=%s: %s",
             org_id, phone_number, menu_key, exc,
         )
- 
- 
+
+
 def _contact_menu_action_kb_enquiry(
     db,
     org_id: str,
@@ -377,14 +481,14 @@ def _contact_menu_action_kb_enquiry(
     lookup_kb_answer() first.
       found=True  → auto-send answer via WhatsApp. No human routing.
       found=False → _customer_action_free_form() to route to human.
+    C2: uses expected_state="triage_sent" on update_session.
     S14.
     """
     try:
         from app.services.whatsapp_service import _call_meta_send
- 
+
         phone_id = ((org_data or {}).get("whatsapp_phone_id") or "").strip()
- 
-        # Attempt KB lookup — reuse existing lookup_kb_answer if available
+
         kb_answer = None
         try:
             from app.services.customer_inbound_service import lookup_kb_answer
@@ -395,7 +499,7 @@ def _contact_menu_action_kb_enquiry(
             logger.warning(
                 "_contact_menu_action_kb_enquiry: lookup_kb_answer failed: %s", exc
             )
- 
+
         if kb_answer and phone_id:
             _call_meta_send(phone_id, {
                 "messaging_product": "whatsapp",
@@ -403,20 +507,24 @@ def _contact_menu_action_kb_enquiry(
                 "type": "text",
                 "text": {"body": kb_answer},
             })
-            update_session(db, session_id, "active", selected_action="kb_enquiry_resolved")
+            # C2: atomic transition — only succeeds if still in triage_sent
+            update_session(
+                db, session_id, "active",
+                selected_action="kb_enquiry_resolved",
+                expected_state="triage_sent",
+            )
         else:
             # No KB match — route to human
             _customer_action_free_form(
                 db, org_id, phone_number, session_id,
                 item, customer_id, contact_name, now_ts,
             )
- 
+
     except Exception as exc:
         logger.warning(
             "_contact_menu_action_kb_enquiry failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
- 
 
 
 # ---------------------------------------------------------------------------
@@ -503,8 +611,9 @@ def _action_qualify(
 
     1. Fetch org qualification_flow. If null → send "getting set up" fallback,
        notify org owner, create lead without qualification session.
-    2. Create lead.
-    3. Update triage session to 'active'.
+    2. Create lead (idempotent — returns existing if duplicate phone, C3).
+    3. C2: Atomically transition session triage_sent → active.
+       If transition fails (concurrent handler won), bail without duplicate work.
     4. Insert lead_qualification_sessions with current_question_index=0, answers={}.
     5. Send opening_message + Q1 immediately via send_qualification_question().
     """
@@ -527,7 +636,7 @@ def _action_qualify(
     qualification_flow = (org_d or {}).get("qualification_flow")
     phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
 
-    # 2 — Create the lead regardless (always create on qualify action)
+    # 2 — Create the lead (idempotent — C3 returns existing on duplicate)
     lead_payload = LeadCreate(
         full_name=contact_name or phone_number,
         phone=phone_number,
@@ -538,7 +647,17 @@ def _action_qualify(
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
     lead_id = lead["id"] if lead else None
 
-    update_session(db, session_id, "active", selected_action="qualify")
+    # 3 — C2: Atomic state transition — bail if another handler already advanced
+    transitioned = update_session(
+        db, session_id, "active",
+        selected_action="qualify",
+        expected_state="triage_sent",
+    )
+    if not transitioned:
+        logger.debug(
+            "_action_qualify: session %s already advanced — bailing", session_id
+        )
+        return
 
     # Onboarding gate — qualification_flow must be configured
     if not qualification_flow:
@@ -547,7 +666,6 @@ def _action_qualify(
             "sending fallback message and notifying owner",
             org_id,
         )
-        # Send fallback message to the lead
         if phone_id:
             try:
                 from app.services.whatsapp_service import _call_meta_send
@@ -564,7 +682,6 @@ def _action_qualify(
             except Exception as exc:
                 logger.warning("_action_qualify: failed to send fallback message: %s", exc)
 
-        # Notify org owner
         _notify_managers(
             db, org_id,
             title="WhatsApp qualification flow not configured",
@@ -574,7 +691,7 @@ def _action_qualify(
         )
         return  # Lead created, no qualification session
 
-    # 3 — Validate flow structure
+    # 4 — Validate flow structure
     questions = qualification_flow.get("questions") or []
     if not questions:
         logger.warning(
@@ -582,7 +699,7 @@ def _action_qualify(
         )
         return
 
-    # 4 — Insert lead_qualification_sessions
+    # 5 — Insert lead_qualification_sessions
     now = datetime.now(timezone.utc).isoformat()
     try:
         db.table("lead_qualification_sessions").insert({
@@ -602,7 +719,7 @@ def _action_qualify(
         )
         return
 
-    # 5 — Send Q1 immediately (with opening_message prepended)
+    # 6 — Send Q1 immediately (with opening_message prepended)
     opening_message = qualification_flow.get("opening_message") or None
     send_qualification_question(
         db=db,
@@ -618,7 +735,10 @@ def _action_qualify(
 def _action_identify_customer(
     db, org_id: str, phone_number: str, session_id: str,
 ) -> None:
-    """Ask the contact to provide an identifier so we can find their record."""
+    """
+    Ask the contact to provide an identifier so we can find their record.
+    C2: atomic transition triage_sent → awaiting_identifier.
+    """
     from app.services.whatsapp_service import _call_meta_send
 
     org_r = (
@@ -644,15 +764,22 @@ def _action_identify_customer(
                 )
             },
         })
-    update_session(db, session_id, "awaiting_identifier",
-                   selected_action="identify_customer")
+    # C2: atomic — bail if already advanced
+    update_session(
+        db, session_id, "awaiting_identifier",
+        selected_action="identify_customer",
+        expected_state="triage_sent",
+    )
 
 
 def _action_route_to_role(
     db, org_id: str, phone_number: str, session_id: str,
     item: dict, contact_name: Optional[str], now_ts,
 ) -> None:
-    """Create a business_inquiry lead and notify users with the target role."""
+    """
+    Create a business_inquiry lead and notify users with the target role.
+    C2: atomic transition triage_sent → active.
+    """
     from app.models.leads import LeadCreate, LeadSource
     from app.services import lead_service
     from app.services.notification_service import _insert_notification
@@ -688,14 +815,22 @@ def _action_route_to_role(
                 resource_id=lead["id"],
             )
 
-    update_session(db, session_id, "active", selected_action="route_to_role")
+    # C2: atomic — bail if already advanced
+    update_session(
+        db, session_id, "active",
+        selected_action="route_to_role",
+        expected_state="triage_sent",
+    )
 
 
 def _action_free_form(
     db, org_id: str, phone_number: str, session_id: str,
     item: dict, contact_name: Optional[str], now_ts,
 ) -> None:
-    """Create an 'other' lead and notify the first available rep or owner."""
+    """
+    Create an 'other' lead and notify the first available rep or owner.
+    C2: atomic transition triage_sent → active.
+    """
     from app.models.leads import LeadCreate, LeadSource
     from app.services import lead_service
     from app.services.notification_service import _insert_notification
@@ -730,12 +865,17 @@ def _action_free_form(
             db, org_id, assigned_to,
             notif_type="new_lead",
             title="New inbound contact",
-            body=f"A new contact messaged via WhatsApp.",
+            body="A new contact messaged via WhatsApp.",
             resource_type="lead",
             resource_id=lead["id"],
         )
 
-    update_session(db, session_id, "active", selected_action="free_form")
+    # C2: atomic — bail if already advanced
+    update_session(
+        db, session_id, "active",
+        selected_action="free_form",
+        expected_state="triage_sent",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -828,9 +968,7 @@ def _customer_action_create_ticket(
 ) -> None:
     """
     WH-2: Auto-create a support ticket for the customer and notify assigned rep.
-    Falls back to notifying managers if no customer_id or assigned_to.
-    All notifications go through _notify_managers/_notify_single_user —
-    never imports _insert_notification directly (avoids empty-module import).
+    C2: atomic transition triage_sent → active.
     """
     label = item.get("label", "Support request")
     assigned_to = None
@@ -889,7 +1027,12 @@ def _customer_action_create_ticket(
                 resource_id=ticket_id,
             )
 
-    update_session(db, session_id, "active", selected_action="create_ticket")
+    # C2: atomic transition
+    update_session(
+        db, session_id, "active",
+        selected_action="create_ticket",
+        expected_state="triage_sent",
+    )
 
 
 def _customer_action_route_to_role(
@@ -904,8 +1047,7 @@ def _customer_action_route_to_role(
 ) -> None:
     """
     WH-2: Notify all users in the org with the target role.
-    Falls back to _notify_managers when no users match the role.
-    Uses _notify_single_user per matched user — no direct _insert_notification.
+    C2: atomic transition triage_sent → active.
     """
     role = item.get("role", "owner")
     display_name = contact_name or phone_number
@@ -939,7 +1081,12 @@ def _customer_action_route_to_role(
             resource_id=customer_id or "",
         )
 
-    update_session(db, session_id, "active", selected_action="route_to_role")
+    # C2: atomic transition
+    update_session(
+        db, session_id, "active",
+        selected_action="route_to_role",
+        expected_state="triage_sent",
+    )
 
 
 def _customer_action_free_form(
@@ -954,7 +1101,7 @@ def _customer_action_free_form(
 ) -> None:
     """
     WH-2: Notify assigned rep (or managers as fallback) for a general enquiry.
-    Uses _notify_single_user for rep path — no direct _insert_notification.
+    C2: atomic transition triage_sent → active.
     """
     display_name = contact_name or phone_number
     assigned_to = None
@@ -990,7 +1137,12 @@ def _customer_action_free_form(
             resource_id=customer_id or "",
         )
 
-    update_session(db, session_id, "active", selected_action="free_form")
+    # C2: atomic transition
+    update_session(
+        db, session_id, "active",
+        selected_action="free_form",
+        expected_state="triage_sent",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1010,6 +1162,7 @@ def handle_awaiting_identifier(
     Attempt to match identifier_text against customer records (Pattern 33:
     Python-side filtering, no ILIKE).  On match: create pending
     customer_contact + notify managers.  On miss: create support_contact lead.
+    C2: atomic transition awaiting_identifier → active.
     S14.
     """
     try:
@@ -1112,13 +1265,17 @@ def handle_awaiting_identifier(
             _notify_managers(
                 db, org_id,
                 title="Unknown identifier — follow-up needed",
-                body=f"A contact couldn't be matched to any customer record.",
+                body="A contact couldn't be matched to any customer record.",
                 resource_type="lead",
                 resource_id=lead["id"],
             )
 
-        update_session(db, session_id, "active",
-                       selected_action="identify_customer")
+        # C2: atomic transition awaiting_identifier → active
+        update_session(
+            db, session_id, "active",
+            selected_action="identify_customer",
+            expected_state="awaiting_identifier",
+        )
 
     except Exception as exc:
         logger.warning(
@@ -1235,8 +1392,7 @@ def _notify_single_user(
     resource_type: str, resource_id: str,
 ) -> None:
     """
-    WH-2 helper: notify a single known user_id without importing _insert_notification
-    directly. Inserts into the notifications table the same way _notify_managers does.
+    WH-2 helper: notify a single known user_id.
     S14.
     """
     try:
@@ -1282,8 +1438,9 @@ def _notify_managers(
     except Exception as exc:
         logger.warning("_notify_managers failed org=%s: %s", org_id, exc)
 
-# ── NEW FUNCTIONS — append after _notify_managers() ──────────────────────────
- 
+
+# ── SM-1 / COMM-1 functions ───────────────────────────────────────────────────
+
 def _action_transactional_entry(
     db,
     org_id: str,
@@ -1294,14 +1451,7 @@ def _action_transactional_entry(
     """
     COMM-1: Contact selected "Buy Now" or post-qualification offer fires for
     transactional/hybrid orgs. Guards against consultative orgs.
-
-    Flow:
-      1. Fetch org — guard: shopify_connected must be True.
-      2. get_or_create_commerce_session().
-      3. Fetch active products.
-      4. send_product_list() — enter browsing state.
-      5. Set whatsapp_session.commerce_state = 'commerce_browsing'.
-      6. update_session(state='active', selected_action='transactional_entry').
+    C2: atomic transition triage_sent → active.
     S14 — never raises.
     """
     try:
@@ -1338,7 +1488,7 @@ def _action_transactional_entry(
             )
             return
 
-        # 2 — Get or create commerce session
+        # 2 — Get or create commerce session (C4: race-safe)
         commerce_session = get_or_create_commerce_session(
             db, org_id, phone_number
         )
@@ -1371,17 +1521,18 @@ def _action_transactional_entry(
         # 4 — Send product list
         send_product_list(db, org_id, phone_number, products)
 
-        # 5 — Set commerce_state on whatsapp_session
+        # 5 — Set commerce_state on whatsapp_session (not session_state — no guard needed)
         if session_id:
             db.table("whatsapp_sessions").update(
                 {"commerce_state": "commerce_browsing"}
             ).eq("id", session_id).execute()
 
-        # 6 — Mark session active
+        # 6 — C2: Atomic state transition
         if session_id:
             update_session(
                 db, session_id, "active",
                 selected_action="transactional_entry",
+                expected_state="triage_sent",
             )
 
     except Exception as exc:
@@ -1389,8 +1540,8 @@ def _action_transactional_entry(
             "_action_transactional_entry failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
- 
- 
+
+
 def send_hybrid_entry_choice(
     db,
     org_id: str,
@@ -1403,7 +1554,7 @@ def send_hybrid_entry_choice(
     try:
         from app.services.sales_mode_service import build_hybrid_entry_message
         from app.services.whatsapp_service import _call_meta_send
- 
+
         org_r = (
             db.table("organisations")
             .select("whatsapp_phone_id")
@@ -1415,7 +1566,7 @@ def send_hybrid_entry_choice(
         if isinstance(org_d, list):
             org_d = org_d[0] if org_d else None
         phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
- 
+
         if phone_id:
             payload = build_hybrid_entry_message(phone_number)
             if payload:
@@ -1425,8 +1576,8 @@ def send_hybrid_entry_choice(
             "send_hybrid_entry_choice failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
- 
- 
+
+
 def send_returning_contact_menu(
     db,
     org_id: str,
@@ -1441,8 +1592,7 @@ def send_returning_contact_menu(
     try:
         from app.services.sales_mode_service import build_returning_contact_menu
         from app.services.whatsapp_service import _call_meta_send
- 
-        # Fetch org if not supplied
+
         if org is None:
             org_r = (
                 db.table("organisations")
@@ -1455,10 +1605,10 @@ def send_returning_contact_menu(
             if isinstance(org_d, list):
                 org_d = org_d[0] if org_d else None
             org = org_d or {}
- 
+
         phone_id = (org.get("whatsapp_phone_id") or "").strip()
         payload = build_returning_contact_menu(org, phone_number)
- 
+
         if payload and phone_id:
             _call_meta_send(phone_id, payload)
         else:
@@ -1472,8 +1622,8 @@ def send_returning_contact_menu(
             "send_returning_contact_menu failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
- 
- 
+
+
 def send_known_customer_menu(
     db,
     org_id: str,
@@ -1489,7 +1639,7 @@ def send_known_customer_menu(
     try:
         from app.services.sales_mode_service import build_known_customer_menu
         from app.services.whatsapp_service import _call_meta_send
- 
+
         if org is None:
             org_r = (
                 db.table("organisations")
@@ -1502,10 +1652,10 @@ def send_known_customer_menu(
             if isinstance(org_d, list):
                 org_d = org_d[0] if org_d else None
             org = org_d or {}
- 
+
         phone_id = (org.get("whatsapp_phone_id") or "").strip()
         payload = build_known_customer_menu(org, phone_number)
- 
+
         if payload and phone_id:
             _call_meta_send(phone_id, payload)
         else:
@@ -1519,7 +1669,7 @@ def send_known_customer_menu(
             "send_known_customer_menu failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
- 
+
 
 # ---------------------------------------------------------------------------
 # COMM-1 — Commerce Entry Action
@@ -1534,14 +1684,7 @@ def _action_commerce_entry(
     """
     COMM-1: Called from dispatch_triage_selection when action == 'commerce_entry'.
     Contact chose a "Shop / Browse" triage item from the unknown contact menu.
-
-    Flow:
-      1. Guard: org must have shopify_connected=True.
-      2. get_or_create_commerce_session().
-      3. Fetch active products.
-      4. send_product_list() — begin browse state.
-      5. Set whatsapp_session.commerce_state = 'commerce_browsing'.
-      6. update_session(state='active', selected_action='commerce_entry').
+    C2: atomic transition triage_sent → active.
     S14 — never raises.
     """
     try:
@@ -1566,7 +1709,7 @@ def _action_commerce_entry(
             )
             return
 
-        # 2 — Get or create commerce session
+        # 2 — Get or create commerce session (C4: race-safe)
         commerce_session = get_or_create_commerce_session(db, org_id, phone_number)
         if not commerce_session:
             logger.warning(
@@ -1596,13 +1739,17 @@ def _action_commerce_entry(
         # 4 — Send product list
         send_product_list(db, org_id, phone_number, products)
 
-        # 5 — Set commerce_state on whatsapp_session
+        # 5 — Set commerce_state on whatsapp_session (not session_state — no guard)
         db.table("whatsapp_sessions").update(
             {"commerce_state": "commerce_browsing"}
         ).eq("id", session_id).execute()
 
-        # 6 — Mark session active
-        update_session(db, session_id, "active", selected_action="commerce_entry")
+        # 6 — C2: Atomic state transition
+        update_session(
+            db, session_id, "active",
+            selected_action="commerce_entry",
+            expected_state="triage_sent",
+        )
 
     except Exception as exc:
         logger.warning(
