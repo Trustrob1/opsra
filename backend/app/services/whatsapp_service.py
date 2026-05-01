@@ -2022,6 +2022,7 @@ def send_product_list(
             }
 
         # Build sections — group by first tag if available, else flat
+        # WhatsApp hard limit: 10 rows total across ALL sections
         tag_map: dict = {}
         for product in products:
             tags = product.get("tags") or []
@@ -2029,13 +2030,18 @@ def send_product_list(
             tag_map.setdefault(tag, []).append(product)
 
         sections = []
+        total_rows = 0
         for section_title, section_products in tag_map.items():
-            rows = [_make_row(p) for p in section_products[:10]]
+            if total_rows >= 10:
+                break
+            remaining = 10 - total_rows
+            rows = [_make_row(p) for p in section_products[:remaining]]
             if rows:
                 sections.append({
                     "title": section_title[:24],
                     "rows": rows,
                 })
+                total_rows += len(rows)
             if len(sections) >= 10:  # WhatsApp section limit
                 break
 

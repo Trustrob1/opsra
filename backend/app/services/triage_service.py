@@ -1553,24 +1553,15 @@ def send_hybrid_entry_choice(
     """
     try:
         from app.services.sales_mode_service import build_hybrid_entry_message
-        from app.services.whatsapp_service import _call_meta_send
+        from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
 
-        org_r = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
-        )
-        org_d = org_r.data
-        if isinstance(org_d, list):
-            org_d = org_d[0] if org_d else None
-        phone_id = (org_d or {}).get("whatsapp_phone_id", "").strip()
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
 
         if phone_id:
             payload = build_hybrid_entry_message(phone_number)
             if payload:
-                _call_meta_send(phone_id, payload)
+                _call_meta_send(phone_id, payload, token=access_token)
     except Exception as exc:
         logger.warning(
             "send_hybrid_entry_choice failed org=%s phone=%s: %s",
