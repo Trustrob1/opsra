@@ -10,7 +10,7 @@
  */
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
-import { getSalesMode, updateSalesMode } from '../../services/admin.service'
+import { getSalesMode, updateSalesMode, getShopifyStatus } from '../../services/admin.service'
 
 const MODES = [
   {
@@ -45,22 +45,26 @@ const MODES = [
   },
 ]
 
-const SHOPIFY_WARNING = 'This mode requires Shopify integration (coming soon). You can save this setting now, but contacts will be routed via the consultative path until Shopify is connected.'
+const SHOPIFY_WARNING = 'Connect your Shopify store on the Shopify tab before enabling this mode. Contacts will be routed via the consultative path until Shopify is connected.'
 
 export default function SalesModeConfig() {
-  const [mode, setMode]       = useState('consultative')
-  const [pending, setPending] = useState('consultative')
-  const [saving, setSaving]   = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saveMsg, setSaveMsg] = useState('')
-  const [saveErr, setSaveErr] = useState('')
+  const [mode, setMode]               = useState('consultative')
+  const [pending, setPending]         = useState('consultative')
+  const [saving, setSaving]           = useState(false)
+  const [loading, setLoading]         = useState(true)
+  const [saveMsg, setSaveMsg]         = useState('')
+  const [saveErr, setSaveErr]         = useState('')
+  const [shopifyConnected, setShopifyConnected] = useState(false)
 
   useEffect(() => {
-    getSalesMode()
-      .then(res => {
-        const m = res?.data?.mode || 'consultative'
+    Promise.all([getSalesMode(), getShopifyStatus()])
+      .then(([modeRes, shopifyRes]) => {
+        const m = modeRes?.data?.mode || 'consultative'
         setMode(m)
         setPending(m)
+        setShopifyConnected(
+          shopifyRes?.data?.connected ?? shopifyRes?.connected ?? false
+        )
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -171,7 +175,7 @@ export default function SalesModeConfig() {
       </div>
 
       {/* Shopify warning — shown when a Shopify-dependent mode is selected */}
-      {pendingRequiresShopify && (
+      {pendingRequiresShopify && !shopifyConnected && (
         <div style={{
           background: '#FFF8E7', border: '1px solid #FDE68A',
           borderRadius: 10, padding: '14px 18px', marginBottom: 20,
@@ -221,7 +225,7 @@ export default function SalesModeConfig() {
       )}
 
       {/* Unsaved changes banner */}
-      {pending !== mode && !pendingRequiresShopify && (
+      {pending !== mode && (!pendingRequiresShopify || shopifyConnected) && (
         <div style={{
           background: '#FFFBEB', border: '1px solid #FDE68A',
           borderRadius: 8, padding: '10px 14px', marginBottom: 16,
