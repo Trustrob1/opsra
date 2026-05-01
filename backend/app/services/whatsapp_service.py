@@ -1981,6 +1981,16 @@ def send_product_list(
     WhatsApp limits: title[:24], description[:72], rows[:10] per section.
     S14 — never raises.
     """
+    import re as _re
+
+    def _strip_html(text: str) -> str:
+        """Strip HTML tags from Shopify body_html."""
+        if not text:
+            return ""
+        clean = _re.sub(r'<[^>]+>', ' ', text)
+        clean = _re.sub(r'\s+', ' ', clean).strip()
+        return clean
+
     try:
         phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
         phone_id = (phone_id or "").strip()
@@ -1999,9 +2009,9 @@ def send_product_list(
         def _make_row(product: dict) -> dict:
             title = (product.get("title") or "Product")[:24]
             price = float(product.get("price") or 0)
-            raw_desc = (product.get("description") or "").strip()
+            raw_desc = _strip_html(product.get("description") or "").strip()
             # Truncate description to leave room for price suffix
-            price_suffix = f" — ₦{price:,.0f}"
+            price_suffix = f" — \u20a6{price:,.0f}"
             max_desc_len = 72 - len(price_suffix)
             short_desc = raw_desc[:max_desc_len] if raw_desc else ""
             description = (f"{short_desc}{price_suffix}" if short_desc else price_suffix)[:72]
@@ -2030,6 +2040,7 @@ def send_product_list(
                 break
 
         if not sections:
+            logger.warning("send_product_list: no sections built for org %s", org_id)
             return
 
         meta_payload = {
@@ -2046,7 +2057,15 @@ def send_product_list(
             },
         }
 
-        _call_meta_send(phone_id, meta_payload, token=access_token)
+        logger.info(
+            "send_product_list: sending %d products to %s org=%s",
+            len(products), phone_number, org_id,
+        )
+        result = _call_meta_send(phone_id, meta_payload, token=access_token)
+        logger.info(
+            "send_product_list: Meta response for %s: %s",
+            phone_number, result,
+        )
 
     except Exception as exc:
         logger.warning(
