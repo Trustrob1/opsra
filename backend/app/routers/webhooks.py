@@ -500,22 +500,22 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     # WH-0: capture full interactive dict for triage session handler
     interactive_payload = message.get("interactive") if msg_type == "interactive" else None
-    print(f"[WH] msg_type={msg_type} content={content!r} from={sender_phone}", flush=True)
+    logger.info("[WH] msg_type=%s content=%r from=%s", msg_type, content, sender_phone)
 
     org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
-    print(f"[WH] lookup result: org_id={org_id} customer_id={customer_id} lead_id={lead_id}", flush=True)
+    logger.info("[WH] lookup result: org_id=%s customer_id=%s lead_id=%s", org_id, customer_id, lead_id)
 
     if not org_id:
         # Derive org from the receiving WhatsApp phone_number_id.
         org_id = _lookup_org_by_phone_number_id(db, phone_number_id)
-        print(f"[WH] unknown number — org_id from phone_number_id={org_id}", flush=True)
+        logger.info("[WH] unknown number — org_id from phone_number_id=%s", org_id)
         if not org_id: 
-            print(f"[WH] no org found — dropping message", flush=True)
+            logger.info("[WH] no org found — dropping message")
             return
 
         # WH-0: Check for an active triage session before taking any pipeline action.
         active_session = triage_service.get_active_session(db, org_id, sender_phone)
-        print(f"[WH] active_session={active_session}", flush=True)
+        logger.info("[WH] active_session=%s", active_session)
         if active_session:
             # COMM-1: Cart state restoration — if session has no commerce_state but an
             # open commerce_session exists, restore the state before routing.
@@ -523,10 +523,9 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 _restore_commerce_state_if_open(db, org_id, sender_phone, active_session)
             # COMM-1: Commerce routing — takes precedence over triage session handler.
             if (active_session.get("commerce_state") or "") in COMMERCE_STATES:
-                print(
-                    f"[WH] routing to commerce handler state="
-                    f"{active_session.get('commerce_state')}",
-                    flush=True,
+                logger.info(
+                    "[WH] routing to commerce handler state=%s",
+                    active_session.get('commerce_state'),
                 )
                 _handle_commerce_message(
                     db=db,
@@ -539,7 +538,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     interactive_payload=interactive_payload,
                 )
                 return
-            print(f"[WH] routing to session handler", flush=True)
+            logger.info("[WH] routing to session handler")
             triage_service.handle_session_message(
                 db=db,
                 org_id=org_id,
@@ -571,7 +570,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         # Transactional and hybrid routing require Shopify to be connected (SHOP-1A).
         # Until SHOP-1A adds the shopify_connected column and wires the commerce path,
         # all modes fall through to the existing triage_first / qualify_immediately logic.
-        print(f"[WH] behavior={behavior} triage_config={triage_config} sales_mode={sales_mode}", flush=True)
+        logger.info("[WH] behavior=%s sales_mode=%s", behavior, sales_mode)
 
         
         # SM-1: Route based on sales_mode before falling through to consultative logic.
@@ -590,7 +589,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             _shopify_ok = (_shopify_d or {}).get("shopify_connected", False)
 
             if _shopify_ok:
-                print(f"[WH] transactional mode — sending to commerce entry", flush=True)
+                logger.info("[WH] transactional mode — sending to commerce entry")
                 session = triage_service.get_or_create_session(db, org_id, sender_phone)
                 if session:
                     triage_service._action_transactional_entry(
@@ -600,14 +599,14 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             # Shopify not connected — fall through to triage below
 
         elif sales_mode == "hybrid":
-            print(f"[WH] hybrid mode — sending hybrid gate", flush=True)
+            logger.info("[WH] hybrid mode — sending hybrid gate")
             session = triage_service.get_or_create_session(db, org_id, sender_phone)
             if session:
                 triage_service.send_hybrid_entry_choice(db, org_id, sender_phone)
             return
 
         if behavior == "qualify_immediately":
-            print(f"[WH] qualify_immediately path", flush=True)
+            logger.info("[WH] qualify_immediately path")
             # Preserved legacy path — auto-create lead + fire qualification bot.
             # Duplicate-race handler lives in this branch only.
             provisional_name = (contact_name or "").strip() or sender_phone
@@ -672,20 +671,20 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         else:
             # triage_first (default) — send interactive menu and create session.
             # Do NOT create a lead or fire the qualification bot.
-            print(f"[WH] triage_first path — sending menu", flush=True)
+            logger.info("[WH] triage_first path — sending menu")
             from app.services.whatsapp_service import send_triage_menu
             try:
                 send_triage_menu(
                     db=db, org_id=org_id,
                     phone_number=sender_phone, section="unknown",
                 )
-                print(f"[WH] triage menu sent successfully", flush=True)
+                logger.info("[WH] triage menu sent successfully")
                 triage_service.create_session(
                     db=db, org_id=org_id, phone_number=sender_phone,
                 )
-                print(f"[WH] session created", flush=True)
+                logger.info("[WH] session created")
             except Exception as exc:
-                print(f"[WH] triage menu FAILED: {exc}", flush=True)
+                logger.warning("[WH] triage menu FAILED: %s", exc)
             return  # No lead/customer yet — nothing further to save
 
     now_ts = _now_iso()
