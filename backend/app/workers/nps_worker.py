@@ -26,6 +26,7 @@ from app.utils.org_gates import (
     get_daily_customer_limit,
     has_exceeded_daily_limit,
 )
+from app.services.monitoring_service import write_worker_log
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ def run_nps_scheduler(self):
     queued   = 0
     skipped  = 0
     now_utc  = datetime.now(timezone.utc)
+    _started_at = now_utc
 
     try:
         now             = now_utc
@@ -89,7 +91,7 @@ def run_nps_scheduler(self):
                     db.table("customers")
                     .select(
                         "id, full_name, whatsapp, phone, "
-                        "last_nps_sent_at, nps_event_sent_at"
+                        "last_nps_sent_at, nps_event_sent_at, whatsapp_opted_out"
                     )
                     .eq("org_id", org_id)
                     .eq("status", "active")
@@ -107,7 +109,16 @@ def run_nps_scheduler(self):
 
                     if not phone:
                         continue
-
+ 
+                    # I1: Never send NPS to contacts who have opted out.
+                    if customer.get("whatsapp_opted_out"):
+                        logger.info(
+                            "nps_worker: customer %s skipped — whatsapp_opted_out",
+                            cust_id,
+                        )
+                        skipped += 1
+                        continue
+ 
                     if last_sent and last_sent > nps_threshold:
                         continue
 
@@ -173,7 +184,23 @@ def run_nps_scheduler(self):
             "nps_worker: run_nps_scheduler done. Queued %d, Skipped %d.",
             queued, skipped,
         )
+        write_worker_log(
+            db,
+            worker_name="nps_worker",
+            status="passed",
+            items_processed=queued + skipped,
+            items_failed=0,
+            items_skipped=skipped,
+            started_at=_started_at,
+        )
 
     except Exception as exc:
         logger.error("nps_worker: run_nps_scheduler fatal — %s", exc)
+        write_worker_log(
+            db,
+            worker_name="nps_worker",
+            status="failed",
+            error_message=str(exc)[:500],
+            started_at=_started_at,
+        )
         raise self.retry(exc=exc, countdown=60)

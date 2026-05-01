@@ -28,8 +28,11 @@ def sync_all_orgs() -> dict:
     """
     from app.database import get_supabase
     from app.services.shopify_service import bulk_sync_products
+    from app.services.monitoring_service import write_worker_log
+    from datetime import datetime, timezone as _tz
 
     db = get_supabase()
+    _started_at = datetime.now(_tz.utc)
     orgs_processed = 0
     total_synced = 0
     total_failed = 0
@@ -87,6 +90,14 @@ def sync_all_orgs() -> dict:
         "total_failed":   total_failed,
     }
     logger.info("shopify_sync_worker complete: %s", summary)
+    write_worker_log(
+        db,
+        worker_name="shopify_sync_worker",
+        status="failed" if total_failed > 0 and orgs_processed == 0 else "passed",
+        items_processed=orgs_processed,
+        items_failed=total_failed,
+        started_at=_started_at,
+    )
     return summary
 
 

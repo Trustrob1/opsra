@@ -38,6 +38,11 @@ from app.services.lead_service import write_audit_log
 import logging
 logger = logging.getLogger(__name__)
 
+class IntegrationError(Exception):
+    """Raised when an org has no WhatsApp credentials configured in the DB.
+    I0: replaces the silent env-var fallback that could send via the wrong org.
+    """
+    pass
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -142,7 +147,10 @@ def _get_org_wa_credentials(db, org_id: str) -> tuple:
     try:
         result = (
             db.table("organisations")
-            .select("whatsapp_phone_id, whatsapp_access_token, whatsapp_waba_id")
+            .select(
+                "whatsapp_phone_id, whatsapp_access_token, "
+                "whatsapp_waba_id, whatsapp_connected"
+            )
             .eq("id", org_id)
             .maybe_single()
             .execute()
@@ -151,13 +159,29 @@ def _get_org_wa_credentials(db, org_id: str) -> tuple:
         if isinstance(data, list):
             data = data[0] if data else None
         row = data or {}
-        phone_id     = row.get("whatsapp_phone_id")     or getattr(settings, "META_WHATSAPP_PHONE_ID", None)
-        access_token = row.get("whatsapp_access_token") or getattr(settings, "META_WHATSAPP_TOKEN", None)
-        waba_id      = row.get("whatsapp_waba_id")      or getattr(settings, "META_WABA_ID", None)
+ 
+        # I0: Never fall back to the META_WHATSAPP_TOKEN env var.
+        # Each org must have its own token in the DB.
+        phone_id     = row.get("whatsapp_phone_id") or None
+        access_token = row.get("whatsapp_access_token") or None
+        waba_id      = row.get("whatsapp_waba_id") or None
+ 
+        if not access_token:
+            # Warn loudly if the org claims to be connected but has no token.
+            if row.get("whatsapp_connected"):
+                logger.warning(
+                    "_get_org_wa_credentials: org %s has whatsapp_connected=True "
+                    "but whatsapp_access_token is null — integration is broken. "
+                    "Admin must reconnect WhatsApp in Admin → Integrations.",
+                    org_id,
+                )
+            return None, None, None
+ 
         return phone_id, access_token, waba_id
     except Exception as exc:
         logger.warning("_get_org_wa_credentials failed for org %s: %s", org_id, exc)
         return None, None, None
+ 
 
 
 def _call_meta_send(phone_id: str, meta_payload: dict, token: str | None = None) -> dict:
@@ -168,9 +192,18 @@ def _call_meta_send(phone_id: str, meta_payload: dict, token: str | None = None)
     This function is kept thin so it can be patched in tests.
     """
     url = f"https://graph.facebook.com/v17.0/{phone_id}/messages"
-    resolved_token = token or getattr(settings, "META_WHATSAPP_TOKEN", None)
+    # I0: token must always come from _get_org_wa_credentials — never from env.
+    if not token:
+        logger.warning(
+            "_call_meta_send: called with no token for phone_id=%s — refusing send",
+            phone_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"{ErrorCode.INTEGRATION_ERROR} — no WhatsApp access token provided",
+        )
     headers = {
-        "Authorization": f"Bearer {resolved_token}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
     try:
@@ -412,13 +445,22 @@ def send_whatsapp_message(
 
     if payload.customer_id:
         customer = _customer_or_404(db, org_id, str(payload.customer_id))
+        # I1: Opt-out guard — never send to a contact who has unsubscribed.
+        if customer.get("whatsapp_opted_out"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This contact has opted out of WhatsApp messages. "
+                    "They can opt back in by sending START to your WhatsApp number."
+                ),
+            )
         to_number = customer.get("whatsapp") or customer.get("phone")
         recipient_full_name = customer.get("full_name")
         customer_id_str = str(payload.customer_id)
     else:
         lead_result = (
             db.table("leads")
-            .select("whatsapp, phone, full_name")
+            .select("whatsapp, phone, full_name, whatsapp_opted_out")
             .eq("id", str(payload.lead_id))
             .eq("org_id", org_id)
             .is_("deleted_at", "null")
@@ -428,6 +470,15 @@ def send_whatsapp_message(
         lead_data = _normalise_data(lead_result.data)
         if not lead_data:
             raise HTTPException(status_code=404, detail=ErrorCode.NOT_FOUND)
+        # I1: Opt-out guard for leads.
+        if lead_data.get("whatsapp_opted_out"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This lead has opted out of WhatsApp messages. "
+                    "They can opt back in by sending START to your WhatsApp number."
+                ),
+            )
         to_number = lead_data.get("whatsapp") or lead_data.get("phone")
         recipient_full_name = lead_data.get("full_name")
         lead_id_str = str(payload.lead_id)
@@ -1974,17 +2025,19 @@ def send_product_list(
     products: list,
 ) -> None:
     """
-    COMM-1: Send WhatsApp interactive list message showing org products.
-    Each item: title = product.title (max 24 chars),
-               description = "{short_desc} — ₦{price:,.0f}" (max 72 chars).
-    Groups by product tags if available, otherwise flat "Our Products" section.
-    WhatsApp limits: title[:24], description[:72], rows[:10] per section.
-    S14 — never raises.
+    SHOP-3 / COMM-1: Send WhatsApp product message.
+
+    If the org has meta_catalog_id set: sends a native WhatsApp product_list
+    message (shows product images, name, price via Meta Commerce Catalog).
+
+    Falls back to the COMM-1 interactive text list if meta_catalog_id is not
+    set -- backwards compatible, no behaviour change for unconfigured orgs.
+
+    S14 -- never raises.
     """
     import re as _re
 
     def _strip_html(text: str) -> str:
-        """Strip HTML tags from Shopify body_html."""
         if not text:
             return ""
         clean = _re.sub(r'<[^>]+>', ' ', text)
@@ -1995,90 +2048,143 @@ def send_product_list(
         phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
         phone_id = (phone_id or "").strip()
         if not phone_id:
-            logger.warning(
-                "send_product_list: no whatsapp_phone_id for org %s", org_id
-            )
+            logger.warning("send_product_list: no whatsapp_phone_id for org %s", org_id)
             return
 
         if not products:
-            logger.warning(
-                "send_product_list: no products for org %s", org_id
+            logger.warning("send_product_list: no products for org %s", org_id)
+            return
+
+        # SHOP-3: check if org has a Meta Catalog ID configured
+        catalog_id = None
+        try:
+            org_r = (
+                db.table("organisations")
+                .select("meta_catalog_id")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
             )
-            return
+            org_data = org_r.data
+            if isinstance(org_data, list):
+                org_data = org_data[0] if org_data else None
+            catalog_id = ((org_data or {}).get("meta_catalog_id") or "").strip() or None
+        except Exception as _cat_exc:
+            logger.warning(
+                "send_product_list: catalog_id lookup failed org=%s: %s", org_id, _cat_exc
+            )
 
-        def _make_row(product: dict) -> dict:
-            title = (product.get("title") or "Product")[:24]
-            price = float(product.get("price") or 0)
-            raw_desc = _strip_html(product.get("description") or "").strip()
-            # Truncate description to leave room for price suffix
-            price_suffix = f" — \u20a6{price:,.0f}"
-            max_desc_len = 72 - len(price_suffix)
-            short_desc = raw_desc[:max_desc_len] if raw_desc else ""
-            description = (f"{short_desc}{price_suffix}" if short_desc else price_suffix)[:72]
-            return {
-                "id": str(product.get("id", "")),
-                "title": title,
-                "description": description,
-            }
+        if catalog_id:
+            # -- SHOP-3 path: WhatsApp product_list (native Meta Commerce format) --
+            # product_retailer_id must match the shopify_id pushed to the catalog.
+            tag_map: dict = {}
+            for product in products:
+                tags = product.get("tags") or []
+                tag = tags[0].strip() if tags else "Our Products"
+                tag_map.setdefault(tag, []).append(product)
 
-        # Build sections — group by first tag if available, else flat
-        # WhatsApp hard limit: 10 rows total across ALL sections
-        tag_map: dict = {}
-        for product in products:
-            tags = product.get("tags") or []
-            tag = tags[0].strip() if tags else "Our Products"
-            tag_map.setdefault(tag, []).append(product)
+            sections = []
+            for section_title, section_products in tag_map.items():
+                product_items = []
+                for p in section_products[:30]:
+                    retailer_id = str(p.get("shopify_id") or p.get("id") or "")
+                    if retailer_id:
+                        product_items.append({"product_retailer_id": retailer_id})
+                if product_items:
+                    sections.append({
+                        "title": section_title[:24],
+                        "product_items": product_items,
+                    })
+                if len(sections) >= 10:
+                    break
 
-        sections = []
-        total_rows = 0
-        for section_title, section_products in tag_map.items():
-            if total_rows >= 10:
-                break
-            remaining = 10 - total_rows
-            rows = [_make_row(p) for p in section_products[:remaining]]
-            if rows:
-                sections.append({
-                    "title": section_title[:24],
-                    "rows": rows,
-                })
-                total_rows += len(rows)
-            if len(sections) >= 10:  # WhatsApp section limit
-                break
+            if not sections:
+                logger.warning(
+                    "send_product_list: no catalog sections built for org %s", org_id
+                )
+                return
 
-        if not sections:
-            logger.warning("send_product_list: no sections built for org %s", org_id)
-            return
-
-        meta_payload = {
-            "messaging_product": "whatsapp",
-            "to": phone_number,
-            "type": "interactive",
-            "interactive": {
-                "type": "list",
-                "body": {"text": "Here are our available products. Tap one to add it to your cart:"},
-                "action": {
-                    "button": "View products",
-                    "sections": sections,
+            meta_payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "product_list",
+                    "header": {"type": "text", "text": "Our Products"},
+                    "body": {"text": "Browse our products below and tap one to add it to your cart."},
+                    "action": {
+                        "catalog_id": catalog_id,
+                        "sections": sections,
+                    },
                 },
-            },
-        }
+            }
+            logger.info(
+                "send_product_list: catalog product_list %d products to %s org=%s",
+                len(products), phone_number, org_id,
+            )
 
-        logger.info(
-            "send_product_list: sending %d products to %s org=%s",
-            len(products), phone_number, org_id,
-        )
+        else:
+            # -- COMM-1 fallback: interactive text list (no images) --
+            def _make_row(product: dict) -> dict:
+                title = (product.get("title") or "Product")[:24]
+                price = float(product.get("price") or 0)
+                raw_desc = _strip_html(product.get("description") or "").strip()
+                price_suffix = f" \u2014 \u20a6{price:,.0f}"
+                max_desc_len = 72 - len(price_suffix)
+                short_desc = raw_desc[:max_desc_len] if raw_desc else ""
+                description = (f"{short_desc}{price_suffix}" if short_desc else price_suffix)[:72]
+                return {
+                    "id": str(product.get("id", "")),
+                    "title": title,
+                    "description": description,
+                }
+
+            tag_map2: dict = {}
+            for product in products:
+                tags = product.get("tags") or []
+                tag = tags[0].strip() if tags else "Our Products"
+                tag_map2.setdefault(tag, []).append(product)
+
+            sections2 = []
+            total_rows = 0
+            for section_title, section_products in tag_map2.items():
+                if total_rows >= 10:
+                    break
+                remaining = 10 - total_rows
+                rows = [_make_row(p) for p in section_products[:remaining]]
+                if rows:
+                    sections2.append({"title": section_title[:24], "rows": rows})
+                    total_rows += len(rows)
+                if len(sections2) >= 10:
+                    break
+
+            if not sections2:
+                logger.warning("send_product_list: no sections built for org %s", org_id)
+                return
+
+            meta_payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "list",
+                    "body": {"text": "Here are our available products. Tap one to add it to your cart:"},
+                    "action": {"button": "View products", "sections": sections2},
+                },
+            }
+            logger.info(
+                "send_product_list: text list %d products to %s org=%s",
+                len(products), phone_number, org_id,
+            )
+
         result = _call_meta_send(phone_id, meta_payload, token=access_token)
-        logger.info(
-            "send_product_list: Meta response for %s: %s",
-            phone_number, result,
-        )
+        logger.info("send_product_list: Meta response for %s: %s", phone_number, result)
 
     except Exception as exc:
         logger.warning(
             "send_product_list failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
-
 
 def send_variant_selection(
     db,

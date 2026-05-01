@@ -57,6 +57,7 @@ from app.utils.org_gates import (  # noqa: E402
     get_daily_customer_limit,
     has_exceeded_daily_limit,
 )
+from app.services.monitoring_service import write_worker_log  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,7 @@ def run_drip_scheduler(self):
     db = get_supabase()
     processed = 0
     skipped = 0
+    _started_at = datetime.now(timezone.utc)
 
     try:
         today = _today_iso()
@@ -185,12 +187,25 @@ def run_drip_scheduler(self):
                         # ── Pause rule 1: customer not active → skip ────────
                         customer = _normalise(
                             db.table("customers")
-                            .select("id, status, whatsapp, phone, full_name, business_type")
+                            .select(
+                                "id, status, whatsapp, phone, full_name, "
+                                "business_type, whatsapp_opted_out"
+                            )
                             .eq("id", customer_id)
                             .execute()
                             .data
                         )
                         if not customer or customer.get("status") != "active":
+                            _set_status(db, send_id, "skipped")
+                            skipped += 1
+                            continue
+ 
+                        # ── I1: Opt-out check ──────────────────────────────
+                        if customer.get("whatsapp_opted_out"):
+                            logger.info(
+                                "drip_worker: customer %s skipped — whatsapp_opted_out",
+                                customer_id,
+                            )
                             _set_status(db, send_id, "skipped")
                             skipped += 1
                             continue
@@ -393,9 +408,25 @@ def run_drip_scheduler(self):
             "drip_worker: run_drip_scheduler done. Sent: %d, Skipped/Paused: %d.",
             processed, skipped,
         )
+        write_worker_log(
+            db,
+            worker_name="drip_worker",
+            status="passed",
+            items_processed=processed + skipped,
+            items_failed=0,
+            items_skipped=skipped,
+            started_at=_started_at,
+        )
 
     except Exception as exc:
         logger.error("drip_worker: run_drip_scheduler fatal — %s", exc)
+        write_worker_log(
+            db,
+            worker_name="drip_worker",
+            status="failed",
+            error_message=str(exc)[:500],
+            started_at=_started_at,
+        )
         raise self.retry(exc=exc, countdown=30)
 
 

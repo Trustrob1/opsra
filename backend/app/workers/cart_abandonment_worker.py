@@ -23,6 +23,7 @@ from app.utils.org_gates import (
     get_daily_customer_limit,
     has_exceeded_daily_limit,
 )
+from app.services.monitoring_service import write_worker_log
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ def run_cart_abandonment_check() -> dict:
 
     db  = get_supabase()
     now = datetime.now(timezone.utc)
+    _started_at = now
 
     remind_cutoff         = (now - timedelta(hours=2)).isoformat()
     abandon_cutoff        = (now - timedelta(hours=24)).isoformat()
@@ -238,6 +240,14 @@ def run_cart_abandonment_check() -> dict:
             summary["failed"] += 1
 
     logger.info("cart_abandonment_worker: complete — %s", summary)
+    write_worker_log(
+        db,
+        worker_name="cart_abandonment_worker",
+        status="passed",
+        items_processed=summary["processed"],
+        items_failed=summary["failed"],
+        started_at=_started_at,
+    )
     return summary
 
 

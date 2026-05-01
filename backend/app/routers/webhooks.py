@@ -42,6 +42,8 @@ from app.services.subscription_service import (
 from app.services.whatsapp_service import send_qualification_question, send_qualification_handoff_message
 from app.services.ai_service import generate_qualification_summary
 from app.services import shopify_service
+from app.utils.opt_out import handle_opt_keywords
+from app.services.monitoring_service import log_system_error
 
 
 load_dotenv()  # Pattern 29 — required for os.getenv() in service files
@@ -50,6 +52,37 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 GRAPH_API_BASE = "https://graph.facebook.com/v18.0"
+
+
+# ---------------------------------------------------------------------------
+# SA-2A — webhook_request_log helper
+# S14: never raises. DB write failure must not affect response code.
+# ---------------------------------------------------------------------------
+def _log_webhook(
+    db,
+    *,
+    route: str,
+    org_id: Optional[str] = None,
+    topic: Optional[str] = None,
+    response_status: int,
+    processing_ms: Optional[int] = None,
+    error_message: Optional[str] = None,
+) -> None:
+    """Write one row to webhook_request_log. S14: never raises."""
+    try:
+        from datetime import datetime, timezone as _tz
+        db.table("webhook_request_log").insert({
+            "org_id": org_id or None,
+            "route": route[:200],
+            "method": "POST",
+            "topic": (topic or "")[:200] or None,
+            "response_status": response_status,
+            "processing_ms": processing_ms,
+            "error_message": (error_message or "")[:2000] or None,
+            "received_at": datetime.now(_tz.utc).isoformat(),
+        }).execute()
+    except Exception as exc:
+        logger.warning("_log_webhook: failed to write webhook_request_log — %s", exc)
 
 # COMM-1: Valid commerce flow states on whatsapp_sessions.commerce_state
 COMMERCE_STATES = {
@@ -213,11 +246,14 @@ async def receive_meta_lead_ad(
       6. Return 200 always (Meta requires 200)
     """
     raw_body = await request.body()
+    import time as _time
+    _t0 = _time.monotonic()
 
     # Step 1 — signature verification
     signature = request.headers.get("X-Hub-Signature-256")
     if not _verify_meta_signature(raw_body, signature):
         logger.warning("Meta lead-ads webhook: invalid signature — rejecting")
+        _log_webhook(db, route="/webhooks/meta/lead-ads", response_status=403, error_message="Invalid signature")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid webhook signature",
@@ -264,10 +300,15 @@ async def receive_meta_lead_ad(
         token_data = token_result.data
         if isinstance(token_data, list):
             token_data = token_data[0] if token_data else None
-        access_token = (
-            (token_data or {}).get("access_token")
-            or settings.META_WHATSAPP_TOKEN
-        )
+        # I0: Token must come from the integrations table — no env-var fallback.
+        access_token = (token_data or {}).get("access_token")
+        if not access_token:
+            logger.warning(
+                "receive_meta_lead_ad: no Meta access token in integrations "
+                "table for org %s — skipping leadgen fetch for this entry",
+                org_id,
+            )
+            continue
 
         for change in entry.get("changes", []):
             if change.get("field") != "leadgen":
@@ -320,6 +361,13 @@ async def receive_meta_lead_ad(
                 logger.error("Meta webhook processing error: %s", exc)
                 errors.append(str(exc))
 
+    _log_webhook(
+        db,
+        route="/webhooks/meta/lead-ads",
+        response_status=200,
+        topic="lead_ad",
+        processing_ms=int((_time.monotonic() - _t0) * 1000),
+    )
     return {"status": "ok", "processed": processed, "errors": errors}
 
 
@@ -436,6 +484,110 @@ def _lookup_org_by_phone_number_id(db, phone_number_id: str) -> Optional[str]:
     return None
 
 
+_OPT_OUT_KEYWORDS: frozenset = frozenset({
+    "stop", "unsubscribe", "optout", "opt out", "opt-out",
+    "cancel", "quit", "remove me",
+})
+_OPT_IN_KEYWORDS: frozenset = frozenset({
+    "start", "subscribe", "optin", "opt in",
+})
+ 
+_OPT_OUT_REPLY = (
+    "You've been unsubscribed from our WhatsApp messages. "
+    "Reply START at any time to opt back in. "
+    "No further messages will be sent to you."
+)
+_OPT_IN_REPLY = (
+    "Welcome back! You're now subscribed to receive messages from us again. "
+    "Reply STOP at any time to unsubscribe."
+)
+ 
+ 
+def _handle_opt_keywords(
+    db,
+    content: str,
+    sender_phone: str,
+    org_id: str,
+    customer_id: Optional[str],
+    lead_id: Optional[str],
+) -> bool:
+    """
+    I1: Check if the inbound message is an opt-out or opt-in keyword.
+ 
+    If matched:
+      - Set whatsapp_opted_out on the lead or customer record
+      - Send one final reply via Meta API
+      - Return True (message consumed — caller must return immediately)
+ 
+    Returns False if the message is not a recognised keyword.
+    S14 — never raises; on any failure logs a warning and returns False
+    so normal processing continues.
+    """
+    normalised = content.strip().lower()
+    is_opt_out = normalised in _OPT_OUT_KEYWORDS
+    is_opt_in  = normalised in _OPT_IN_KEYWORDS
+ 
+    if not is_opt_out and not is_opt_in:
+        return False
+ 
+    try:
+        opted_out_flag = is_opt_out  # True → opted out; False → opted back in
+        reply_msg      = _OPT_OUT_REPLY if is_opt_out else _OPT_IN_REPLY
+ 
+        # ── Update the correct record ─────────────────────────────────────
+        if customer_id:
+            db.table("customers").update(
+                {"whatsapp_opted_out": opted_out_flag}
+            ).eq("id", customer_id).eq("org_id", org_id).execute()
+            logger.info(
+                "_handle_opt_keywords: customer %s whatsapp_opted_out=%s",
+                customer_id, opted_out_flag,
+            )
+        elif lead_id:
+            db.table("leads").update(
+                {"whatsapp_opted_out": opted_out_flag}
+            ).eq("id", lead_id).eq("org_id", org_id).execute()
+            logger.info(
+                "_handle_opt_keywords: lead %s whatsapp_opted_out=%s",
+                lead_id, opted_out_flag,
+            )
+        else:
+            # Unknown contact — no record to update, still confirm the opt-out.
+            logger.info(
+                "_handle_opt_keywords: opt-%s from unknown contact %s (no record found)",
+                "out" if is_opt_out else "in", sender_phone,
+            )
+ 
+        # ── Send one reply via Meta API ───────────────────────────────────
+        try:
+            from app.services.whatsapp_service import (
+                _get_org_wa_credentials,
+                _call_meta_send,
+            )
+            phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+            if phone_id and access_token:
+                _call_meta_send(phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to":   sender_phone,
+                    "type": "text",
+                    "text": {"body": reply_msg},
+                }, token=access_token)
+        except Exception as send_exc:
+            logger.warning(
+                "_handle_opt_keywords: failed to send reply to %s: %s",
+                sender_phone, send_exc,
+            )
+ 
+        return True
+ 
+    except Exception as exc:
+        logger.warning(
+            "_handle_opt_keywords: error processing keyword from %s: %s",
+            sender_phone, exc,
+        )
+        return False
+ 
+ 
 def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_id: str) -> None:
     """
     Process one inbound WhatsApp text message.
@@ -504,7 +656,16 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
     logger.info("[WH] lookup result: org_id=%s customer_id=%s lead_id=%s", org_id, customer_id, lead_id)
-
+ 
+    # I1: Opt-out / opt-in keywords are handled before any other routing.
+    # If the message is consumed here, we return immediately without any
+    # pipeline action, triage, or scoring.
+    if org_id and msg_type == "text" and content:
+        if _handle_opt_keywords(
+            db, content, sender_phone, org_id, customer_id, lead_id
+        ):
+            return
+ 
     if not org_id:
         # Derive org from the receiving WhatsApp phone_number_id.
         org_id = _lookup_org_by_phone_number_id(db, phone_number_id)
@@ -1670,6 +1831,7 @@ def _notify_owner_template_rejected(
 @router.post("/meta/whatsapp", status_code=status.HTTP_200_OK)
 async def receive_whatsapp_message(
     request: Request,
+    db=Depends(get_supabase),
 ):
     
     """
@@ -1679,10 +1841,13 @@ async def receive_whatsapp_message(
     All processing is dispatched to the Celery webhook_worker task.
     Meta requires a 200 within 5 seconds — synchronous processing violated this.
     """
+    import time as _time
+    _t0 = _time.monotonic()
     raw_body  = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
  
     if not _verify_meta_signature(raw_body, signature):
+        _log_webhook(db, route="/webhooks/meta/whatsapp", response_status=403, error_message="Invalid signature")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid webhook signature",
@@ -1695,6 +1860,13 @@ async def receive_whatsapp_message(
     from app.workers.webhook_worker import process_inbound_webhook
     process_inbound_webhook.delay(payload)
  
+    _log_webhook(
+        db,
+        route="/webhooks/meta/whatsapp",
+        response_status=200,
+        topic="whatsapp_inbound",
+        processing_ms=int((_time.monotonic() - _t0) * 1000),
+    )
     # Return 200 immediately — Meta will retry if we don't respond fast enough.
     return Response(status_code=200)
 
@@ -1735,21 +1907,34 @@ async def receive_paystack_webhook(
     S14: processing errors are logged and swallowed; never return 5xx.
     """
     raw_body = await request.body()
+    import time as _time
+    _t0 = _time.monotonic()
     sig = request.headers.get("X-Paystack-Signature")
     if not _verify_paystack_signature(raw_body, sig):
         logger.warning("Paystack webhook: invalid signature — rejecting")
+        _log_webhook(db, route="/webhooks/payment/paystack", response_status=403, error_message="Invalid signature")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid Paystack signature",
         )
 
     payload: dict = json.loads(raw_body)
+    _err = None
     try:
         process_paystack_webhook(db=db, payload=payload)
     except Exception as exc:  # pylint: disable=broad-except
         # S14 — never return 5xx to Paystack; log and acknowledge
         logger.error("Paystack webhook processing error: %s", exc)
+        _err = str(exc)[:500]
 
+    _log_webhook(
+        db,
+        route="/webhooks/payment/paystack",
+        response_status=200,
+        topic=json.loads(raw_body).get("event") if not _err else None,
+        processing_ms=int((_time.monotonic() - _t0) * 1000),
+        error_message=_err,
+    )
     return {"status": "ok"}
 
 
@@ -1773,21 +1958,34 @@ async def receive_flutterwave_webhook(
     S14: processing errors are logged and swallowed; never return 5xx.
     """
     raw_body = await request.body()
+    import time as _time
+    _t0 = _time.monotonic()
     hash_header = request.headers.get("verif-hash")
     if not _verify_flutterwave_hash(hash_header):
         logger.warning("Flutterwave webhook: invalid hash — rejecting")
+        _log_webhook(db, route="/webhooks/payment/flutterwave", response_status=403, error_message="Invalid hash")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid Flutterwave hash",
         )
 
     payload: dict = json.loads(raw_body)
+    _err = None
     try:
         process_flutterwave_webhook(db=db, payload=payload)
     except Exception as exc:  # pylint: disable=broad-except
         # S14 — never return 5xx to Flutterwave; log and acknowledge
         logger.error("Flutterwave webhook processing error: %s", exc)
+        _err = str(exc)[:500]
 
+    _log_webhook(
+        db,
+        route="/webhooks/payment/flutterwave",
+        response_status=200,
+        topic=payload.get("event", {}).get("type") if not _err else None,
+        processing_ms=int((_time.monotonic() - _t0) * 1000),
+        error_message=_err,
+    )
     return {"status": "ok"}
 
 
@@ -1818,6 +2016,8 @@ async def receive_shopify_webhook(
     S14: processing errors are logged and swallowed — always return 200.
     """
     raw_body = await request.body()
+    import time as _time
+    _t0 = _time.monotonic()
     topic = request.headers.get("X-Shopify-Topic") or ""
     shop_domain = request.headers.get("X-Shopify-Shop-Domain") or ""
     hmac_header = request.headers.get("X-Shopify-Hmac-Sha256") or ""
@@ -1889,7 +2089,25 @@ async def receive_shopify_webhook(
     except Exception as exc:
         # S14 — never return 5xx to Shopify
         logger.error("[SHOPIFY] handler error org=%s topic=%s: %s", org_id, topic, exc)
+        _log_webhook(
+            db,
+            route="/webhooks/shopify",
+            org_id=org_id,
+            topic=topic,
+            response_status=200,
+            processing_ms=int((_time.monotonic() - _t0) * 1000),
+            error_message=str(exc)[:500],
+        )
+        return {"status": "ok"}
 
+    _log_webhook(
+        db,
+        route="/webhooks/shopify",
+        org_id=org_id,
+        topic=topic,
+        response_status=200,
+        processing_ms=int((_time.monotonic() - _t0) * 1000),
+    )
     return {"status": "ok"}
 
 # ---------------------------------------------------------------------------

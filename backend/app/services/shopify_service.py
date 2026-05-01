@@ -902,3 +902,177 @@ def _extract_order_phone(order: dict) -> Optional[str]:
         if phone:
             return phone
     return None
+
+# ---------------------------------------------------------------------------
+# SHOP-3: Meta Commerce Catalog sync
+# ---------------------------------------------------------------------------
+
+def sync_products_to_meta_catalog(db, org_id: str) -> dict:
+    """
+    SHOP-3: Push all active products for an org to the Meta Commerce Catalog
+    via the Meta Graph API.
+
+    Reads meta_catalog_id and whatsapp_access_token from the organisations table.
+    Skips silently if meta_catalog_id is not set (backwards compatible).
+
+    POST https://graph.facebook.com/v16.0/{catalog_id}/products
+    Fields sent per product:
+      retailer_id, name, description, price (in cents as integer string),
+      currency, image_link, availability, condition, link.
+
+    Returns { synced: int, failed: int, skipped: bool }.
+    S14: per-product failure never stops the loop -- never raises.
+    """
+    import re as _re
+    synced = 0
+    failed = 0
+
+    try:
+        # Fetch org credentials + catalog ID
+        try:
+            org_r = (
+                db.table("organisations")
+                .select("meta_catalog_id, whatsapp_access_token, shopify_shop_domain")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            org_data = org_r.data
+            if isinstance(org_data, list):
+                org_data = org_data[0] if org_data else None
+            org_data = org_data or {}
+        except Exception as exc:
+            logger.warning(
+                "sync_products_to_meta_catalog: org fetch failed org=%s: %s", org_id, exc
+            )
+            return {"synced": 0, "failed": 0, "skipped": True}
+
+        catalog_id = (org_data.get("meta_catalog_id") or "").strip()
+        if not catalog_id:
+            logger.info(
+                "sync_products_to_meta_catalog: no meta_catalog_id set for org=%s -- skipping",
+                org_id,
+            )
+            return {"synced": 0, "failed": 0, "skipped": True}
+
+        access_token = (org_data.get("whatsapp_access_token") or "").strip()
+        if not access_token:
+            logger.warning(
+                "sync_products_to_meta_catalog: no access_token for org=%s -- skipping",
+                org_id,
+            )
+            return {"synced": 0, "failed": 0, "skipped": True}
+
+        shop_domain = (org_data.get("shopify_shop_domain") or "").strip()
+
+        # Fetch all active products for this org
+        try:
+            products_r = (
+                db.table("products")
+                .select("id, shopify_id, title, description, price, image_url, handle, status")
+                .eq("org_id", org_id)
+                .eq("is_active", True)
+                .execute()
+            )
+            products = products_r.data if isinstance(products_r.data, list) else []
+        except Exception as exc:
+            logger.warning(
+                "sync_products_to_meta_catalog: products fetch failed org=%s: %s", org_id, exc
+            )
+            return {"synced": 0, "failed": 0, "skipped": True}
+
+        if not products:
+            logger.info(
+                "sync_products_to_meta_catalog: no active products for org=%s", org_id
+            )
+            return {"synced": 0, "failed": 0, "skipped": False}
+
+        url = f"https://graph.facebook.com/v16.0/{catalog_id}/products"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        for product in products:
+            try:
+                shopify_id = str(product.get("shopify_id") or product.get("id") or "")
+                if not shopify_id:
+                    logger.warning(
+                        "sync_products_to_meta_catalog: product missing id org=%s -- skipping row",
+                        org_id,
+                    )
+                    failed += 1
+                    continue
+
+                # Price: Meta expects integer cents as a string e.g. "29900" = N299.00
+                raw_price = product.get("price")
+                try:
+                    price_cents = str(int(float(raw_price) * 100)) if raw_price else "0"
+                except (TypeError, ValueError):
+                    price_cents = "0"
+
+                # Strip HTML from description
+                raw_desc = product.get("description") or ""
+                clean_desc = _re.sub(r'<[^>]+>', ' ', raw_desc)
+                clean_desc = _re.sub(r'\s+', ' ', clean_desc).strip()[:5000]
+
+                # Product URL -- use Shopify store handle if available
+                handle = product.get("handle") or shopify_id
+                product_link = (
+                    f"https://{shop_domain}/products/{handle}"
+                    if shop_domain
+                    else f"https://example.com/products/{handle}"
+                )
+
+                availability = (
+                    "in stock"
+                    if (product.get("status") or "active") == "active"
+                    else "out of stock"
+                )
+
+                meta_product = {
+                    "retailer_id":  shopify_id,
+                    "name":         (product.get("title") or "Product")[:200],
+                    "description":  clean_desc or (product.get("title") or "")[:200],
+                    "price":        price_cents,
+                    "currency":     "NGN",
+                    "image_link":   product.get("image_url") or "",
+                    "availability": availability,
+                    "condition":    "new",
+                    "link":         product_link,
+                }
+
+                with httpx.Client(timeout=20.0) as client:
+                    resp = client.post(url, json=meta_product, headers=headers)
+
+                if resp.status_code in (200, 201):
+                    synced += 1
+                    logger.info(
+                        "sync_products_to_meta_catalog: synced retailer_id=%s org=%s",
+                        shopify_id, org_id,
+                    )
+                else:
+                    failed += 1
+                    logger.warning(
+                        "sync_products_to_meta_catalog: Meta returned %d for "
+                        "retailer_id=%s org=%s body=%s",
+                        resp.status_code, shopify_id, org_id, resp.text[:200],
+                    )
+
+            except Exception as exc:
+                # S14: per-product failure never stops the loop
+                failed += 1
+                logger.warning(
+                    "sync_products_to_meta_catalog: product %s failed org=%s: %s",
+                    product.get("id"), org_id, exc,
+                )
+
+        logger.info(
+            "sync_products_to_meta_catalog: org=%s synced=%d failed=%d",
+            org_id, synced, failed,
+        )
+
+    except Exception as exc:
+        logger.warning("sync_products_to_meta_catalog failed org=%s: %s", org_id, exc)
+
+    return {"synced": synced, "failed": failed, "skipped": False}

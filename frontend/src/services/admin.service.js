@@ -368,3 +368,9 @@ export const updateMessagingLimits = (payload) =>
   //            quiet_hours_end?, timezone? }
   axios.patch('/api/v1/admin/messaging-limits', payload, { headers: _h() })
     .then(r => r.data.data)
+// ── SHOP-3: Meta Commerce Catalog ID ─────────────────────────────────────────
+
+export const updateMetaCatalogId = (payload) =>
+  // payload: { meta_catalog_id: string | null }
+  axios.patch(`${BASE}/api/v1/admin/shopify/connect`, payload, { headers: _h() })
+    .then(r => r.data)

@@ -45,7 +45,9 @@ import AriaButton from './modules/assistant/AriaButton'   // ← M01-10b
 import AriaPanel  from './modules/assistant/AriaPanel'    // ← M01-10b
 import OnboardingChecklist from './modules/onboarding/OnboardingChecklist'  // ← ORG-ONBOARDING-B
 import { getBriefing } from './services/assistant.service' // ← M01-10b
+import PrivacyPolicy from './pages/PrivacyPolicy'
 import CreateOrg from "./modules/superadmin/CreateOrg.jsx";
+import HealthDashboard from "./modules/superadmin/HealthDashboard.jsx";
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -96,6 +98,7 @@ export default function App() {
     document.head.appendChild(style)
   }, [])
 
+  if (window.location.pathname === '/privacy') return <PrivacyPolicy />
   if (!token) return <LoginScreen onAuth={setAuth} />
   return (
     <ErrorBoundary>
@@ -355,6 +358,15 @@ function LoginScreen({ onAuth }) {
             <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16, lineHeight: 1.5 }}>
               Forgot your password? Contact your administrator.
             </p>
+            <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16, lineHeight: 1.5 }}>
+              Forgot your password? Contact your administrator.
+            </p>
+
+            <p style={{ fontSize: 11, color: '#2a4a5a', textAlign: 'center', marginTop: 8 }}>
+              <a href="/privacy" style={{ color: '#3a6a7a', textDecoration: 'none' }}>
+                Privacy Policy
+              </a>
+            </p>
           </>
         )}
       </div>
@@ -499,6 +511,34 @@ function AppShell() {
             <div style={{ width: 8, height: 8, background: ds.green, borderRadius: '50%', animation: 'pulse 2s infinite' }} />
             <span style={{ fontSize: 12, color: '#7A9BAD' }}>Live</span>
           </div>
+          {/* +Org + Health buttons — owner/ops_manager only */}
+          {['owner', 'ops_manager'].includes(_userTemplate) && (
+            <>
+              <button
+                onClick={() => { setView('superadmin_health'); setActiveNav('') }}
+                style={{
+                  background: 'none', border: '1px solid #2a4a5a',
+                  borderRadius: 7, padding: '5px 12px',
+                  fontSize: 12, color: '#7A9BAD', cursor: 'pointer',
+                  transition: 'all 0.15s', fontFamily: ds.fontDm,
+                }}
+              >
+                ⚡ Health
+              </button>
+              <button
+                onClick={() => { setView('superadmin_create_org'); setActiveNav('') }}
+                style={{
+                  background: 'none', border: '1px solid #2a4a5a',
+                  borderRadius: 7, padding: '5px 12px',
+                  fontSize: 12, color: '#7A9BAD', cursor: 'pointer',
+                  transition: 'all 0.15s', fontFamily: ds.fontDm,
+                }}
+              >
+                + Org
+              </button>
+            </>
+          )}
+
           <button
             onClick={() => setShowNotif(true)}
             style={{
@@ -698,7 +738,12 @@ function AppShell() {
             <CreateOrg />
           </div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'commissions','superadmin_create_org'].includes(view) && (
+        {view === 'superadmin_health' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <HealthDashboard />
+          </div>
+        )}
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'commissions','superadmin_create_org','superadmin_health'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

@@ -1,15 +1,13 @@
 /**
  * frontend/src/modules/admin/ShopifyIntegration.jsx
- * SHOP-1B — Shopify Integration admin UI
+ * SHOP-3 — Shopify Integration admin UI + Meta Catalog ID field
  *
  * Two states:
- *   Disconnected: connection card (domain + access token inputs + Connect button)
- *   Connected:    status panel (domain, product count, last sync) +
- *                 manual sync button + disconnect button with confirmation +
- *                 webhook instructions (copy-paste URL + events list)
+ *   Disconnected: connection card (domain + client credentials + Connect button)
+ *   Connected:    status panel + Meta Catalog ID input + webhook instructions
  *
  * Pattern 50: service calls via admin.service.js only (axios + { headers: _h() }).
- * Pattern 51: full rewrite if editing later.
+ * Pattern 51: full rewrite — do not partially edit.
  */
 import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
@@ -18,6 +16,7 @@ import {
   connectShopify,
   disconnectShopify,
   triggerShopifySync,
+  updateMetaCatalogId,
 } from '../../services/admin.service'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -33,22 +32,33 @@ const WEBHOOK_EVENTS = [
 ]
 
 export default function ShopifyIntegration() {
-  const [status,      setStatus]      = useState(null)   // null = loading
-  const [domain,      setDomain]      = useState('')
-  const [clientId,    setClientId]    = useState('')
-  const [clientSecret, setClientSecret] = useState('')
-  const [secret,      setSecret]      = useState('')
-  const [connecting,  setConnecting]  = useState(false)
-  const [syncing,     setSyncing]     = useState(false)
-  const [confirming,  setConfirming]  = useState(false)  // disconnect confirm modal
+  const [status,        setStatus]        = useState(null)
+  const [domain,        setDomain]        = useState('')
+  const [clientId,      setClientId]      = useState('')
+  const [clientSecret,  setClientSecret]  = useState('')
+  const [secret,        setSecret]        = useState('')
+  const [connecting,    setConnecting]    = useState(false)
+  const [syncing,       setSyncing]       = useState(false)
+  const [confirming,    setConfirming]    = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
-  const [copied,      setCopied]      = useState(false)
-  const [err,         setErr]         = useState('')
-  const [msg,         setMsg]         = useState('')
+  const [copied,        setCopied]        = useState(false)
+  const [err,           setErr]           = useState('')
+  const [msg,           setMsg]           = useState('')
+
+  // SHOP-3: Meta Catalog ID state
+  const [catalogId,     setCatalogId]     = useState('')
+  const [savingCatalog, setSavingCatalog] = useState(false)
 
   const load = useCallback(() => {
     getShopifyStatus()
-      .then(res => setStatus(res?.data || res))
+      .then(res => {
+        const data = res?.data || res
+        setStatus(data)
+        // Pre-fill catalog ID if already saved
+        if (data?.meta_catalog_id) {
+          setCatalogId(data.meta_catalog_id)
+        }
+      })
       .catch(() => setStatus({ connected: false }))
   }, [])
 
@@ -69,20 +79,20 @@ export default function ShopifyIntegration() {
     setConnecting(true)
     try {
       await connectShopify({
-        shop_domain:   domain.trim(),
-        client_id:     clientId.trim(),
-        client_secret: clientSecret.trim(),
+        shop_domain:    domain.trim(),
+        client_id:      clientId.trim(),
+        client_secret:  clientSecret.trim(),
         webhook_secret: secret.trim() || undefined,
       })
       flash('Shopify connected. Product sync started.')
       load()
     } catch (ex) {
       const d = ex?.response?.data
-      const msg =
+      const errMsg =
         d?.error?.message ||
         (typeof d?.detail === 'string' ? d.detail : d?.detail?.message) ||
         'Connection failed.'
-      setErr(msg)
+      setErr(errMsg)
     } finally {
       setConnecting(false)
     }
@@ -94,7 +104,7 @@ export default function ShopifyIntegration() {
     try {
       await triggerShopifySync()
       flash('Product sync started.')
-      setTimeout(load, 4000) // reload status after sync kicks off
+      setTimeout(load, 4000)
     } catch (ex) {
       setErr(ex?.response?.data?.detail || 'Sync failed.')
     } finally {
@@ -114,6 +124,44 @@ export default function ShopifyIntegration() {
       setErr(ex?.response?.data?.detail || 'Disconnect failed.')
     } finally {
       setDisconnecting(false)
+    }
+  }
+
+  // SHOP-3: save Meta Catalog ID
+  async function handleSaveCatalogId() {
+    setErr('')
+    if (!catalogId.trim()) {
+      setErr('Please enter a Catalog ID.')
+      return
+    }
+    setSavingCatalog(true)
+    try {
+      await updateMetaCatalogId({ meta_catalog_id: catalogId.trim() })
+      flash('Meta Catalog ID saved. WhatsApp product messages will now show product images.')
+      load()
+    } catch (ex) {
+      const d = ex?.response?.data
+      const errMsg =
+        (typeof d?.detail === 'string' ? d.detail : d?.detail?.message) ||
+        'Failed to save Catalog ID.'
+      setErr(errMsg)
+    } finally {
+      setSavingCatalog(false)
+    }
+  }
+
+  async function handleClearCatalogId() {
+    setSavingCatalog(true)
+    setErr('')
+    try {
+      await updateMetaCatalogId({ meta_catalog_id: null })
+      setCatalogId('')
+      flash('Meta Catalog ID removed. Reverted to standard product list.')
+      load()
+    } catch (ex) {
+      setErr('Failed to clear Catalog ID.')
+    } finally {
+      setSavingCatalog(false)
     }
   }
 
@@ -148,15 +196,11 @@ export default function ShopifyIntegration() {
       </div>
 
       {/* Flash messages */}
-      {msg && (
-        <div style={S.flashSuccess}>{msg}</div>
-      )}
-      {err && (
-        <div style={S.flashErr}>⚠ {err}</div>
-      )}
+      {msg && <div style={S.flashSuccess}>{msg}</div>}
+      {err && <div style={S.flashErr}>⚠ {err}</div>}
 
       {connected ? (
-        /* ── Connected state ───────────────────────────────────────────── */
+        /* ── Connected state ─────────────────────────────────────────── */
         <>
           {/* Status panel */}
           <div style={S.card}>
@@ -167,32 +211,20 @@ export default function ShopifyIntegration() {
                   {status.shop_domain}
                 </div>
               </div>
-              <button
-                onClick={() => setConfirming(true)}
-                style={S.disconnectBtn}
-              >
+              <button onClick={() => setConfirming(true)} style={S.disconnectBtn}>
                 Disconnect
               </button>
             </div>
 
             {/* Stats row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
-              <StatCard
-                label="Products synced"
-                value={status.product_count ?? '—'}
-                icon="📦"
-              />
+              <StatCard label="Products synced" value={status.product_count ?? '—'} icon="📦" />
               <StatCard
                 label="Last sync"
                 value={status.last_sync_at ? _formatDate(status.last_sync_at) : 'Never'}
                 icon="🔄"
               />
-              <StatCard
-                label="Store"
-                value={status.shop_domain || '—'}
-                icon="🛍️"
-                small
-              />
+              <StatCard label="Store" value={status.shop_domain || '—'} icon="🛍️" small />
             </div>
 
             {/* Manual sync */}
@@ -200,17 +232,78 @@ export default function ShopifyIntegration() {
               <button
                 onClick={handleSync}
                 disabled={syncing}
-                style={{
-                  ...S.primaryBtn,
-                  opacity: syncing ? 0.6 : 1,
-                  cursor: syncing ? 'not-allowed' : 'pointer',
-                }}
+                style={{ ...S.primaryBtn, opacity: syncing ? 0.6 : 1, cursor: syncing ? 'not-allowed' : 'pointer' }}
               >
                 {syncing ? 'Syncing…' : '🔄 Sync Products Now'}
               </button>
               <span style={{ fontSize: 12, color: '#7A9BAD' }}>
                 Products sync automatically every night and on each Shopify event.
               </span>
+            </div>
+          </div>
+
+          {/* SHOP-3: Meta Commerce Catalog */}
+          <div style={S.card}>
+            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', marginBottom: 6 }}>
+              Meta Commerce Catalog
+            </div>
+            <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 16px', lineHeight: 1.6 }}>
+              Link your Meta Commerce Catalog to enable rich WhatsApp product messages — customers
+              will see product images, prices, and descriptions directly in chat instead of a plain text list.
+            </p>
+
+            {/* How to find Catalog ID instructions */}
+            <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontWeight: 600, fontSize: 12, color: '#0369A1', marginBottom: 6 }}>
+                📋 How to find your Catalog ID
+              </div>
+              <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#0C4A6E', lineHeight: 1.9 }}>
+                <li>Go to <strong>business.facebook.com</strong> → <strong>Commerce Manager</strong></li>
+                <li>Open your catalog and click <strong>Settings</strong></li>
+                <li>Copy the <strong>Catalog ID</strong> — it is a long numeric string</li>
+                <li>Make sure the catalog is linked to your WhatsApp Business Account under <strong>Connected Assets</strong></li>
+                <li>Confirm the catalog status shows <strong>Approved</strong> for WhatsApp commerce</li>
+              </ol>
+            </div>
+
+            {/* Catalog ID input */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={S.label}>
+                Catalog ID
+                {status.meta_catalog_id && (
+                  <span style={{ marginLeft: 8, background: '#DCFCE7', color: '#166534', borderRadius: 20, fontSize: 10, fontWeight: 700, padding: '2px 8px' }}>
+                    ● Active
+                  </span>
+                )}
+              </label>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  style={{ ...S.input, maxWidth: 320 }}
+                  value={catalogId}
+                  onChange={e => setCatalogId(e.target.value)}
+                  placeholder="e.g. 1234567890123456"
+                  autoComplete="off"
+                />
+                <button
+                  onClick={handleSaveCatalogId}
+                  disabled={savingCatalog}
+                  style={{ ...S.primaryBtn, opacity: savingCatalog ? 0.6 : 1, cursor: savingCatalog ? 'not-allowed' : 'pointer' }}
+                >
+                  {savingCatalog ? 'Saving…' : 'Save'}
+                </button>
+                {status.meta_catalog_id && (
+                  <button
+                    onClick={handleClearCatalogId}
+                    disabled={savingCatalog}
+                    style={{ ...S.disconnectBtn, fontSize: 12, padding: '7px 13px' }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 5 }}>
+                Once saved, product messages sent via WhatsApp will automatically use the rich catalog format.
+              </div>
             </div>
           </div>
 
@@ -224,51 +317,35 @@ export default function ShopifyIntegration() {
               add the URL below for each event listed.
             </p>
 
-            {/* Webhook URL copy */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={S.label}>Webhook URL</label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <div style={S.codeBox}>{WEBHOOK_URL}</div>
-                <button onClick={handleCopy} style={S.copyBtn}>
-                  {copied ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
+            {/* Webhook URL */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
+              <div style={S.codeBox}>{WEBHOOK_URL}</div>
+              <button onClick={handleCopy} style={S.copyBtn}>
+                {copied ? '✓ Copied' : 'Copy'}
+              </button>
             </div>
 
-            {/* Events list */}
-            <div>
-              <label style={S.label}>Subscribe to these events</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-                {WEBHOOK_EVENTS.map(ev => (
-                  <div key={ev} style={S.eventChip}>{ev}</div>
-                ))}
-              </div>
-            </div>
-
-            {/* Webhook secret note */}
-            <div style={{ marginTop: 16, padding: '10px 14px', background: '#F0FAFA', borderRadius: 8, fontSize: 12.5, color: '#1a7a8a', lineHeight: 1.6 }}>
-              💡 Set the same <strong>webhook secret</strong> in Shopify and in the connection form below to enable signature verification. If left blank, all incoming webhooks will be accepted without verification.
+            {/* Events */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {WEBHOOK_EVENTS.map(ev => (
+                <span key={ev} style={S.eventChip}>{ev}</span>
+              ))}
             </div>
           </div>
 
-          {/* Disconnect confirm modal */}
+          {/* Disconnect confirmation modal */}
           {confirming && (
             <div style={S.overlay}>
               <div style={S.modal}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
-                <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: '#0a1a24', margin: '0 0 10px' }}>
+                <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', marginBottom: 10 }}>
                   Disconnect Shopify?
-                </h3>
-                <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 20px', lineHeight: 1.6 }}>
-                  Your synced products and commerce history will be preserved, but
-                  abandoned cart recovery, order confirmations, and dispatch notifications
-                  will stop working immediately.
+                </div>
+                <p style={{ fontSize: 13, color: '#4a7a8a', marginBottom: 24, lineHeight: 1.6 }}>
+                  This will remove all Shopify credentials. Product sync and commerce features
+                  will stop working until you reconnect.
                 </p>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => setConfirming(false)}
-                    style={S.cancelBtn}
-                  >
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                  <button onClick={() => setConfirming(false)} style={S.cancelBtn}>
                     Cancel
                   </button>
                   <button
@@ -284,29 +361,9 @@ export default function ShopifyIntegration() {
           )}
         </>
       ) : (
-        /* ── Disconnected state ────────────────────────────────────────── */
+        /* ── Disconnected state ──────────────────────────────────────── */
         <>
-          {/* What you get panel */}
-          <div style={{ ...S.card, background: '#F0FAFA', border: `1px solid ${ds.teal}30`, marginBottom: 20 }}>
-            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: '#0a1a24', marginBottom: 12 }}>
-              What Shopify integration enables
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {[
-                { icon: '🛒', text: 'Abandoned cart recovery via WhatsApp' },
-                { icon: '✅', text: 'Automatic order confirmations' },
-                { icon: '📦', text: 'Dispatch & tracking notifications' },
-                { icon: '🔄', text: 'Live product catalogue sync' },
-              ].map(f => (
-                <div key={f.text} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: '#1a7a8a' }}>
-                  <span style={{ flexShrink: 0 }}>{f.icon}</span>
-                  <span>{f.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Dev Dashboard instructions panel */}
+          {/* Dev Dashboard instructions */}
           <div style={{ ...S.card, background: '#FFFBEB', border: '1px solid #FDE68A', marginBottom: 20 }}>
             <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: '#92400E', marginBottom: 8 }}>
               📋 How to get your credentials
@@ -327,7 +384,7 @@ export default function ShopifyIntegration() {
             </div>
 
             <form onSubmit={handleConnect}>
-              {/* Row 1: domain */}
+              {/* Domain */}
               <div style={{ marginBottom: 16 }}>
                 <label style={S.label}>
                   Store domain <span style={{ color: '#C0392B' }}>*</span>
@@ -339,12 +396,10 @@ export default function ShopifyIntegration() {
                   placeholder="my-store.myshopify.com"
                   autoComplete="off"
                 />
-                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
-                  Without https://
-                </div>
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>Without https://</div>
               </div>
 
-              {/* Row 2: Client ID + Client Secret */}
+              {/* Client ID + Secret */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                 <div>
                   <label style={S.label}>
@@ -379,8 +434,11 @@ export default function ShopifyIntegration() {
                 </div>
               </div>
 
+              {/* Webhook secret */}
               <div style={{ marginBottom: 20 }}>
-                <label style={S.label}>Webhook secret <span style={{ color: '#9CA3AF' }}>(optional)</span></label>
+                <label style={S.label}>
+                  Webhook secret <span style={{ color: '#9CA3AF' }}>(optional)</span>
+                </label>
                 <input
                   style={{ ...S.input, maxWidth: 360 }}
                   value={secret}
@@ -394,11 +452,7 @@ export default function ShopifyIntegration() {
               <button
                 type="submit"
                 disabled={connecting}
-                style={{
-                  ...S.primaryBtn,
-                  opacity: connecting ? 0.6 : 1,
-                  cursor: connecting ? 'not-allowed' : 'pointer',
-                }}
+                style={{ ...S.primaryBtn, opacity: connecting ? 0.6 : 1, cursor: connecting ? 'not-allowed' : 'pointer' }}
               >
                 {connecting ? 'Connecting…' : '🔗 Connect Shopify'}
               </button>

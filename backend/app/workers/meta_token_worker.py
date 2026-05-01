@@ -25,6 +25,7 @@ import sentry_sdk
 
 from app.workers.celery_app import celery_app
 from app.database import get_supabase
+from app.services.monitoring_service import write_worker_log
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +194,7 @@ def run_meta_token_check() -> dict:
     """
     db = get_supabase()
     summary = {"orgs_checked": 0, "invalid_tokens": 0, "notified": 0, "failed": 0}
+    _started_at = datetime.now(timezone.utc)
 
     try:
         # Fetch all active orgs with a token configured.
@@ -242,4 +244,13 @@ def run_meta_token_check() -> dict:
             sentry_sdk.capture_exception(exc)
 
     logger.info("run_meta_token_check complete: %s", summary)
+    _status = "failed" if summary["failed"] > 0 and summary["orgs_checked"] == 0 else "passed"
+    write_worker_log(
+        db,
+        worker_name="meta_token_worker",
+        status=_status,
+        items_processed=summary["orgs_checked"],
+        items_failed=summary["failed"],
+        started_at=_started_at,
+    )
     return summary

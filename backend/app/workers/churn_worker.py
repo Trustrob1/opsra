@@ -36,6 +36,7 @@ load_dotenv()  # Pattern 29
 
 from app.workers.celery_app import celery_app  # noqa: E402
 from app.database import get_supabase  # noqa: E402
+from app.services.monitoring_service import write_worker_log  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +294,7 @@ def run_daily_churn_scoring(self):
     logger.info("churn_worker: run_daily_churn_scoring starting.")
     db = get_supabase()  # Pattern 1
     scored = 0
+    _started_at = datetime.now(timezone.utc)
     try:
         orgs = (db.table("organisations").select("id").execute().data or [])
 
@@ -385,9 +387,23 @@ def run_daily_churn_scoring(self):
         logger.info(
             "churn_worker: run_daily_churn_scoring done. Scored %d customers.", scored
         )
+        write_worker_log(
+            db,
+            worker_name="churn_worker",
+            status="passed",
+            items_processed=scored,
+            started_at=_started_at,
+        )
 
     except Exception as exc:
         logger.error("churn_worker: run_daily_churn_scoring fatal — %s", exc)
+        write_worker_log(
+            db,
+            worker_name="churn_worker",
+            status="failed",
+            error_message=str(exc)[:500],
+            started_at=_started_at,
+        )
         raise self.retry(exc=exc, countdown=30)
 
 

@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from app.database import get_supabase
 from app.workers.celery_app import celery_app
 from app.utils.org_gates import is_org_active  # 9E-D D1
+from app.services.monitoring_service import write_worker_log
 
 load_dotenv()
 
@@ -202,6 +203,7 @@ def send_renewal_reminders() -> dict:
     reminded          = 0
     skipped_claimed   = 0
     skipped_inactive  = 0
+    _started_at       = datetime.now(timezone.utc)
 
     stale_threshold = (
         datetime.now(timezone.utc) - timedelta(hours=20)
@@ -269,6 +271,15 @@ def send_renewal_reminders() -> dict:
         "renewal_worker.send_renewal_reminders: processed=%d reminded=%d "
         "skipped_claimed=%d skipped_inactive=%d",
         processed, reminded, skipped_claimed, skipped_inactive,
+    )
+    write_worker_log(
+        db,
+        worker_name="renewal_worker",
+        status="passed",
+        items_processed=processed,
+        items_failed=0,
+        items_skipped=skipped_claimed + skipped_inactive,
+        started_at=_started_at,
     )
     return {
         "processed":        processed,

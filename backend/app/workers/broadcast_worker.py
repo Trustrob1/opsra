@@ -32,6 +32,7 @@ from app.utils.org_gates import (
     get_daily_customer_limit,
     has_exceeded_daily_limit,
 )
+from app.services.monitoring_service import write_worker_log
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ def run_broadcast_dispatcher(self):
     now_iso = now.isoformat()
     total_sent    = 0
     total_skipped = 0
+    _started_at   = now
 
     try:
         # ── C5: Atomic claim ──────────────────────────────────────────────
@@ -178,6 +180,7 @@ def run_broadcast_dispatcher(self):
                     continue
 
                 # ── Fetch active opted-in customers ───────────────────────
+                # I1: whatsapp_opted_out=False excludes contacts who sent STOP.
                 customers = (
                     db.table("customers")
                     .select(
@@ -188,6 +191,7 @@ def run_broadcast_dispatcher(self):
                     .eq("org_id", org_id)
                     .eq("whatsapp_opt_in", True)
                     .eq("whatsapp_opt_out_broadcasts", False)
+                    .eq("whatsapp_opted_out", False)
                     .is_("deleted_at", "null")
                     .execute()
                     .data or []
@@ -333,10 +337,27 @@ def run_broadcast_dispatcher(self):
             "broadcast_worker: done. Sent: %d, Skipped: %d.",
             total_sent, total_skipped,
         )
-        return {"sent": total_sent, "skipped": total_skipped}
+        result = {"sent": total_sent, "skipped": total_skipped}
+        write_worker_log(
+            db,
+            worker_name="broadcast_worker",
+            status="passed",
+            items_processed=total_sent + total_skipped,
+            items_failed=0,
+            items_skipped=total_skipped,
+            started_at=_started_at,
+        )
+        return result
 
     except Exception as exc:
         logger.error("broadcast_worker: fatal — %s", exc)
+        write_worker_log(
+            db,
+            worker_name="broadcast_worker",
+            status="failed",
+            error_message=str(exc)[:500],
+            started_at=_started_at,
+        )
         raise self.retry(exc=exc, countdown=60)
 
 
