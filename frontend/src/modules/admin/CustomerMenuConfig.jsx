@@ -20,6 +20,7 @@ import { getTriageConfig, updateTriageConfig } from '../../services/admin.servic
 
 const UNKNOWN_ACTION_OPTIONS = [
   { value: 'qualify',            label: 'Sales interest (qualify)' },
+  { value: 'commerce_entry',     label: '🛒 Make a purchase (commerce)' },
   { value: 'identify_customer',  label: 'Existing customer' },
   { value: 'route_to_role',      label: 'Route to a team role' },
   { value: 'free_form',          label: 'General enquiry (free form)' },
@@ -39,6 +40,7 @@ const ROLE_OPTIONS = [
 
 const UNKNOWN_CONTACT_TYPE_MAP = {
   qualify:           'sales_lead',
+  commerce_entry:    'sales_lead',
   identify_customer: 'support_contact',
   route_to_role:     'business_inquiry',
   free_form:         'other',

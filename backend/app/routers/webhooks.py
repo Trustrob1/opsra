@@ -574,10 +574,37 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         print(f"[WH] behavior={behavior} triage_config={triage_config} sales_mode={sales_mode}", flush=True)
 
         
-        # SM-1: Non-consultative sales modes are handled here.
-        # Consultative mode falls straight through to the triage_first / qualify_immediately logic below.
-        # SHOP-1A hook point: when shopify_connected is True, transactional/hybrid
-        # routing will fire here before the consultative fallthrough below.
+        # SM-1: Route based on sales_mode before falling through to consultative logic.
+        if sales_mode == "transactional":
+            # Check Shopify connected
+            _shopify_r = (
+                db.table("organisations")
+                .select("shopify_connected")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            _shopify_d = _shopify_r.data
+            if isinstance(_shopify_d, list):
+                _shopify_d = _shopify_d[0] if _shopify_d else None
+            _shopify_ok = (_shopify_d or {}).get("shopify_connected", False)
+
+            if _shopify_ok:
+                print(f"[WH] transactional mode — sending to commerce entry", flush=True)
+                session = triage_service.get_or_create_session(db, org_id, sender_phone)
+                if session:
+                    triage_service._action_transactional_entry(
+                        db, org_id, sender_phone, session["id"], contact_name
+                    )
+                return
+            # Shopify not connected — fall through to triage below
+
+        elif sales_mode == "hybrid":
+            print(f"[WH] hybrid mode — sending hybrid gate", flush=True)
+            session = triage_service.get_or_create_session(db, org_id, sender_phone)
+            if session:
+                triage_service.send_hybrid_entry_choice(db, org_id, sender_phone)
+            return
 
         if behavior == "qualify_immediately":
             print(f"[WH] qualify_immediately path", flush=True)

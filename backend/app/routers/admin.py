@@ -11,7 +11,7 @@
 # POST      /api/v1/admin/integrations/{name}/reconnect
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from typing import Optional, List
+from typing import Optional, List, ClassVar
 from pydantic import BaseModel, field_validator, model_validator, EmailStr, Field
 from app.database import get_supabase
 from app.dependencies import get_current_org, require_permission
@@ -1602,12 +1602,17 @@ class TriageConfigUpdate(BaseModel):
         description="triage_first (default) or qualify_immediately",
     )
 
-    _VALID_TRIAGE_ACTIONS = frozenset({
+    _VALID_TRIAGE_ACTIONS: ClassVar[frozenset] = frozenset({
+        # Unknown contact actions
         "qualify",
         "identify_customer",
         "route_to_role",
         "free_form",
         "commerce_entry",  # COMM-1
+        # Customer section actions
+        "create_ticket",
+        "kb_enquiry",
+        "support_ticket",
     })
 
     @field_validator("whatsapp_triage_config")
