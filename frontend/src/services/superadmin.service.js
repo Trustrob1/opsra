@@ -3,12 +3,10 @@
 // Auth is now backend-proxied: POST /superadmin/auth/login → JWT stored in memory only.
 // Pattern 50: axios + _h() only, never fetch.
 // Pattern 11: JWT in Zustand memory only, never localStorage/sessionStorage.
-
 import axios from "axios";
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
-  ? `${import.meta.env.VITE_API_URL}/api/v1`
-  : "/api/v1";
+
 // ---------------------------------------------------------------------------
 // In-memory JWT store — never touches localStorage or sessionStorage (Pattern 11)
 // ---------------------------------------------------------------------------
@@ -17,15 +15,12 @@ let _saToken = null;
 export function setSuperadminToken(token) {
   _saToken = token;
 }
-
 export function getSuperadminToken() {
   return _saToken;
 }
-
 export function clearSuperadminToken() {
   _saToken = null;
 }
-
 export function isSuperadminLoggedIn() {
   return !!_saToken;
 }
@@ -63,7 +58,7 @@ export async function createOrganisation(payload) {
 // ---------------------------------------------------------------------------
 
 export async function getHealthSummary(params = {}) {
-  const res = await axios.get(`${BASE}/superadmin/health/summary`, {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/health/summary`, {
     headers: _h(),
     params,
   });
@@ -71,14 +66,14 @@ export async function getHealthSummary(params = {}) {
 }
 
 export async function getHealthIntegrations() {
-  const res = await axios.get(`${BASE}/superadmin/health/integrations`, {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/health/integrations`, {
     headers: _h(),
   });
   return res.data;
 }
 
 export async function getHealthErrors(params = {}) {
-  const res = await axios.get(`${BASE}/superadmin/health/errors`, {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/health/errors`, {
     headers: _h(),
     params,
   });
@@ -86,7 +81,7 @@ export async function getHealthErrors(params = {}) {
 }
 
 export async function getHealthJobs(params = {}) {
-  const res = await axios.get(`${BASE}/superadmin/health/jobs`, {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/health/jobs`, {
     headers: _h(),
     params,
   });
@@ -94,7 +89,7 @@ export async function getHealthJobs(params = {}) {
 }
 
 export async function getHealthClaudeUsage(params = {}) {
-  const res = await axios.get(`${BASE}/superadmin/health/claude-usage`, {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/health/claude-usage`, {
     headers: _h(),
     params,
   });
@@ -102,7 +97,7 @@ export async function getHealthClaudeUsage(params = {}) {
 }
 
 export async function getHealthWebhooks(params = {}) {
-  const res = await axios.get(`${BASE}/superadmin/health/webhooks`, {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/health/webhooks`, {
     headers: _h(),
     params,
   });
@@ -110,7 +105,7 @@ export async function getHealthWebhooks(params = {}) {
 }
 
 export async function getHealthOrgs(params = {}) {
-  const res = await axios.get(`${BASE}/superadmin/health/orgs`, {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/health/orgs`, {
     headers: _h(),
     params,
   });
