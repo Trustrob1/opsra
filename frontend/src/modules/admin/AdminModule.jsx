@@ -39,6 +39,7 @@ import SalesLog                from './SalesLog'
 import WhatsAppIntegration     from './WhatsAppIntegration'
 import CommerceSettings        from './CommerceSettings'    // COMM-1
 import MessagingLimitsConfig from './MessagingLimitsConfig'
+import LeadAssignmentConfig  from './LeadAssignmentConfig'
 
 const TABS = [
   { id: 'users',          label: '👥 Users' },
@@ -51,6 +52,7 @@ const TABS = [
   { id: 'qualification',  label: '📋 Qualification Flow' },
   { id: 'sla',            label: '⏱️ SLA Targets' },
   { id: 'sla-hours',      label: '🕐 Business Hours' },
+  { id: 'lead-assignment', label: '🔀 Lead Assignment' },
   { id: 'nurture',        label: '🌱 Nurture Engine' },
   { id: 'whatsapp-menu',  label: '📋 WhatsApp Menu' },
   { id: 'pipeline',       label: '🗂️ Pipeline' },
@@ -169,6 +171,7 @@ export default function AdminModule({ user }) {
         <div style={{ display: tab === 'qualification' ? 'block' : 'none' }}><QualificationFlow /></div>
         <div style={{ display: tab === 'sla'           ? 'block' : 'none' }}><LeadSLASettings /></div>
         <div style={{ display: tab === 'sla-hours'     ? 'block' : 'none' }}><SLABusinessHoursConfig /></div>
+        <div style={{ display: tab === 'lead-assignment' ? 'block' : 'none' }}><LeadAssignmentConfig /></div>
         <div style={{ display: tab === 'nurture'       ? 'block' : 'none' }}><NurtureSettings /></div>
         <div style={{ display: tab === 'whatsapp-menu' ? 'block' : 'none' }}><CustomerMenuConfig /></div>
         <div style={{ display: tab === 'pipeline'      ? 'block' : 'none' }}><PipelineConfig /></div>

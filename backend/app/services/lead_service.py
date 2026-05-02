@@ -337,6 +337,12 @@ def _notify_new_lead(db: Any, org_id: str, lead: dict, lead_id: str) -> None:
                     "resource_type": "lead",
                     "resource_id":   lead_id,
                 }).execute()
+                # PWA-1: push (S14)
+                try:
+                    from app.routers.push_notifications import send_push_notification
+                    send_push_notification(db=db, user_id=u["id"], title=title, body=body)
+                except Exception:
+                    pass
             except Exception as _exc:
                 logger.warning("New lead in-app notification failed for %s: %s", u.get("id"), _exc)
 
@@ -692,6 +698,14 @@ def create_lead(
 
     # Feature 3: notify assigned rep + all owner/ops_manager users (S14 — never blocks)
     _notify_new_lead(db, org_id, lead, lead_id)
+
+    # ASSIGN-1: auto-assign lead to rep if org is in auto mode (S14 — never blocks)
+    try:
+        from app.services.lead_assignment_service import auto_assign_lead
+        source_val = data.get("source", "")
+        auto_assign_lead(db, org_id, lead_id, source_val, user_id)
+    except Exception as _assign_exc:
+        logger.warning("create_lead: auto_assign_lead failed — %s", _assign_exc)
 
     return lead
 
@@ -1130,6 +1144,16 @@ def reactivate_from_nurture(
                         "is_read":       False,
                         "created_at":    now,
                     }).execute()
+                    # PWA-1: push (S14)
+                    try:
+                        from app.routers.push_notifications import send_push_notification
+                        send_push_notification(
+                            db=db, user_id=u["id"],
+                            title=f"Nurture lead reactivated: {lead_name}",
+                            body=description,
+                        )
+                    except Exception:
+                        pass
                 except Exception as _exc:
                     logger.warning(
                         "reactivate_from_nurture: notification failed for %s: %s",

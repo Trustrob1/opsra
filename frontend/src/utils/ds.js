@@ -33,7 +33,10 @@ export const ds = {
   radius: { sm: 8, md: 9, lg: 12, xl: 14, xxl: 16 },
 
   // Z-index layers
-  z: { sidebar: 50, topbar: 100, modal: 500 },
+  z: { sidebar: 50, topbar: 100, modal: 500, mobileDrawer: 200 },
+
+  // PWA-1: responsive breakpoint (mobile-first)
+  breakpoint: '768px',
 }
 
 /** Score badge appearance — matches demo tag-hot / tag-warm / tag-cold classes */

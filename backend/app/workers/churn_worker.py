@@ -37,6 +37,7 @@ load_dotenv()  # Pattern 29
 from app.workers.celery_app import celery_app  # noqa: E402
 from app.database import get_supabase  # noqa: E402
 from app.services.monitoring_service import write_worker_log  # noqa: E402
+from app.routers.push_notifications import send_push_notification
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +235,12 @@ def _create_churn_notification(
                 "created_at":    _now_iso(),
             }).execute()
             notified_ids.add(assigned_to)
+            # PWA-1: push (S14)
+            try:
+                from app.routers.push_notifications import send_push_notification
+                send_push_notification(db=db, user_id=assigned_to, title=title, body=body)
+            except Exception:
+                pass
         except Exception as exc:
             logger.warning("churn_worker: notification failed for rep %s — %s", assigned_to, exc)
 
@@ -276,6 +283,12 @@ def _create_churn_notification(
                         "is_read":       False,
                         "created_at":    _now_iso(),
                     }).execute()
+                    # PWA-1: push (S14)
+                    try:
+                        from app.routers.push_notifications import send_push_notification
+                        send_push_notification(db=db, user_id=uid, title=title, body=body)
+                    except Exception:
+                        pass
         except Exception as exc:
             logger.warning(
                 "churn_worker: critical escalation notifications failed — %s", exc
@@ -458,6 +471,16 @@ def run_lead_aging_checker(self):
                                 "created_at": _now_iso(),
                             }
                         ).execute()
+                        # PWA-1: push (S14)
+                        try:
+                            from app.routers.push_notifications import send_push_notification
+                            send_push_notification(
+                                db=db, user_id=assigned_to,
+                                title=f"Lead needs attention: {lead.get('full_name', 'Unknown')}",
+                                body="No activity recorded for 3+ days. Please follow up.",
+                            )
+                        except Exception:
+                            pass
                         # Task — system_event so it appears on the Task Board
                         db.table("tasks").insert({
                             "org_id":           org_id,
@@ -596,6 +619,15 @@ def run_anomaly_detector(self):
                                     "created_at": _now_iso(),
                                 }
                             ).execute()
+                            # PWA-1: push (S14)
+                            try:
+                                from app.routers.push_notifications import send_push_notification
+                                send_push_notification(
+                                    db=db, user_id=user["id"],
+                                    title="⚠️ Anomaly Detected", body=msg,
+                                )
+                            except Exception:
+                                pass
                             anomalies_found += 1
                         except Exception as exc:
                             logger.warning(
@@ -671,6 +703,16 @@ def run_re_engagement_queue(self):
                                     "created_at": _now_iso(),
                                 }
                             ).execute()
+                            # PWA-1: push (S14)
+                            try:
+                                from app.routers.push_notifications import send_push_notification
+                                send_push_notification(
+                                    db=db, user_id=assigned_to,
+                                    title=f"Re-engage: {lead.get('full_name', 'Lead')}",
+                                    body="This lead is scheduled for re-engagement today.",
+                                )
+                            except Exception:
+                                pass
                         reengaged += 1
                     except Exception as exc:
                         logger.warning(

@@ -213,37 +213,46 @@ export default function HealthDashboard() {
 
   const fetchSummary = useCallback(async () => {
     setLoad("summary", true);
-    try { setSummary((await getHealthSummary(params())).data); } catch {}
+    try { setSummary((await getHealthSummary(params())).data); } catch (err) { console.error("fetchSummary:", err?.response?.data || err?.message); if (err?.response?.status === 401 || err?.response?.status === 403) { clearSuperadminToken(); setAuthed(false); } }
     setLoad("summary", false);
   }, [params]);
 
   const fetchIntegrations = useCallback(async () => {
     setLoad("integrations", true);
-    try { setIntegrations((await getHealthIntegrations()).data); } catch {}
+    try { setIntegrations((await getHealthIntegrations()).data); } catch (err) { console.error("fetchIntegrations:", err?.response?.data || err?.message); }
     setLoad("integrations", false);
   }, []);
 
   const fetchErrors = useCallback(async () => {
     setLoad("errors", true);
-    try { setErrors((await getHealthErrors(params())).data); } catch {}
+    try {
+      const res = await getHealthErrors(params());
+      setErrors(res.data);
+    } catch (err) {
+      console.error("fetchErrors failed:", err?.response?.data || err?.message);
+      // If JWT expired, reset auth
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        clearSuperadminToken(); setAuthed(false);
+      }
+    }
     setLoad("errors", false);
   }, [params]);
 
   const fetchJobs = useCallback(async () => {
     setLoad("jobs", true);
-    try { setJobs((await getHealthJobs(params())).data); } catch {}
+    try { setJobs((await getHealthJobs(params())).data); } catch (err) { console.error("fetchJobs:", err?.response?.data || err?.message); }
     setLoad("jobs", false);
   }, [params]);
 
   const fetchClaude = useCallback(async () => {
     setLoad("claude", true);
-    try { setClaudeUsage((await getHealthClaudeUsage(params())).data); } catch {}
+    try { setClaudeUsage((await getHealthClaudeUsage(params())).data); } catch (err) { console.error("fetchClaude:", err?.response?.data || err?.message); }
     setLoad("claude", false);
   }, [params]);
 
   const fetchWebhooks = useCallback(async () => {
     setLoad("webhooks", true);
-    try { setWebhooks((await getHealthWebhooks(params())).data); } catch {}
+    try { setWebhooks((await getHealthWebhooks(params())).data); } catch (err) { console.error("fetchWebhooks:", err?.response?.data || err?.message); }
     setLoad("webhooks", false);
   }, [params]);
 
@@ -459,7 +468,7 @@ export default function HealthDashboard() {
       <div style={{ display: activePanel === "errors" ? "block" : "none" }}>
         <div style={card}>
           <h3 style={sectionTitle}>Error Log {errors?.count > 0 && `— ${errors.count} errors`}</h3>
-          {loading.errors && !errors ? <PanelLoader /> : (
+          {!errors ? <PanelLoader /> : (
             errors?.items?.length === 0
               ? <Empty text="No errors in this time range." />
               : errors?.items?.map((e, i) => (
@@ -495,7 +504,7 @@ export default function HealthDashboard() {
       <div style={{ display: activePanel === "jobs" ? "block" : "none" }}>
         <div style={card}>
           <h3 style={sectionTitle}>Background Job History</h3>
-          {loading.jobs && !jobs ? <PanelLoader /> : (
+          {!jobs ? <PanelLoader /> : (
             jobs?.items?.length === 0
               ? <Empty text="No job runs in this time range." />
               : (
@@ -544,7 +553,7 @@ export default function HealthDashboard() {
         </div>
         <div style={card}>
           <h3 style={sectionTitle}>By Function</h3>
-          {loading.claude && !claudeUsage ? <PanelLoader /> : (
+          {!claudeUsage ? <PanelLoader /> : (
             claudeUsage?.by_function?.length === 0
               ? <Empty text="No Claude calls in this time range." />
               : (
@@ -576,7 +585,7 @@ export default function HealthDashboard() {
       <div style={{ display: activePanel === "webhooks" ? "block" : "none" }}>
         <div style={card}>
           <h3 style={sectionTitle}>Webhook Request Log</h3>
-          {loading.webhooks && !webhooks ? <PanelLoader /> : (
+          {!webhooks ? <PanelLoader /> : (
             webhooks?.items?.length === 0
               ? <Empty text="No webhook hits in this time range." />
               : (
@@ -612,7 +621,7 @@ export default function HealthDashboard() {
       <div style={{ display: activePanel === "orgs" ? "block" : "none" }}>
         <div style={card}>
           <h3 style={sectionTitle}>Per-Organisation Health</h3>
-          {loading.orgs && !orgs ? <PanelLoader /> : (
+          {!orgs ? <PanelLoader /> : (
             orgs?.items?.length === 0
               ? <Empty text="No organisations found." />
               : orgs?.items?.map((o, i) => (
@@ -651,7 +660,7 @@ export default function HealthDashboard() {
           <div style={card}>
             <h3 style={sectionTitle}>Recent Errors</h3>
             {loading.errors && !errors ? <PanelLoader /> : (
-              errors?.items?.slice(0, 5).length === 0
+              !errors?.items?.length
                 ? <Empty text="No errors." />
                 : errors?.items?.slice(0, 5).map((e, i) => (
                   <div key={i} style={{ ...rowStyle, flexDirection: "column", alignItems: "flex-start", gap: 4 }}>

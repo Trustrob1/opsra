@@ -2625,3 +2625,377 @@ def update_messaging_limits(
         new_value={k: v for k, v in updates.items() if k != "updated_at"},
     )
     return ok(data=updates, message="Messaging limits saved")
+
+# ===========================================================================
+# ASSIGN-1 — Lead Assignment Engine Routes
+# ===========================================================================
+
+_VALID_DAYS_SET = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+_VALID_STRATEGIES = {"least_loaded", "round_robin", "fixed"}
+_TIME_RE = __import__("re").compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class ShiftCreate(BaseModel):
+    shift_name:    str           = Field(..., max_length=100)
+    shift_start:   str           = Field(...)
+    shift_end:     str           = Field(...)
+    days_active:   list[str]
+    assignee_ids:  list[str]     = Field(default_factory=list)
+    strategy:      str           = Field(default="least_loaded")
+    fixed_user_id: Optional[str] = None
+
+    @field_validator("shift_start", "shift_end")
+    @classmethod
+    def _validate_time(cls, v: str) -> str:
+        if not _TIME_RE.match(v):
+            raise ValueError("Time must be HH:MM format")
+        return v
+
+    @field_validator("days_active")
+    @classmethod
+    def _validate_days(cls, v: list) -> list:
+        if not v:
+            raise ValueError("days_active must not be empty")
+        invalid = set(v) - _VALID_DAYS_SET
+        if invalid:
+            raise ValueError(f"Invalid days: {invalid}")
+        return v
+
+    @field_validator("strategy")
+    @classmethod
+    def _validate_strategy(cls, v: str) -> str:
+        if v not in _VALID_STRATEGIES:
+            raise ValueError(f"strategy must be one of {_VALID_STRATEGIES}")
+        return v
+
+
+class ShiftUpdate(BaseModel):
+    shift_name:    Optional[str]       = Field(None, max_length=100)
+    shift_start:   Optional[str]       = None
+    shift_end:     Optional[str]       = None
+    days_active:   Optional[list[str]] = None
+    assignee_ids:  Optional[list[str]] = None
+    strategy:      Optional[str]       = None
+    fixed_user_id: Optional[str]       = None
+    is_active:     Optional[bool]      = None
+
+    @field_validator("shift_start", "shift_end")
+    @classmethod
+    def _validate_time(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not _TIME_RE.match(v):
+            raise ValueError("Time must be HH:MM format")
+        return v
+
+    @field_validator("days_active")
+    @classmethod
+    def _validate_days(cls, v: Optional[list]) -> Optional[list]:
+        if v is not None:
+            if not v:
+                raise ValueError("days_active must not be empty")
+            invalid = set(v) - _VALID_DAYS_SET
+            if invalid:
+                raise ValueError(f"Invalid days: {invalid}")
+        return v
+
+    @field_validator("strategy")
+    @classmethod
+    def _validate_strategy(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_STRATEGIES:
+            raise ValueError(f"strategy must be one of {_VALID_STRATEGIES}")
+        return v
+
+
+class AssignmentModeUpdate(BaseModel):
+    mode: str = Field(...)
+
+    @field_validator("mode")
+    @classmethod
+    def _validate_mode(cls, v: str) -> str:
+        if v not in ("manual", "auto"):
+            raise ValueError("mode must be 'manual' or 'auto'")
+        return v
+
+
+def _validate_assignee_ids(db, org_id: str, assignee_ids: list) -> None:
+    """Raise 422 if any assignee_id doesn't belong to this org."""
+    if not assignee_ids:
+        return
+    result = (
+        db.table("users")
+        .select("id")
+        .eq("org_id", org_id)
+        .in_("id", assignee_ids)
+        .execute()
+    )
+    found = {r["id"] for r in (result.data or [])}
+    invalid = set(assignee_ids) - found
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"assignee_ids not in this org: {list(invalid)}",
+        )
+
+
+# ── GET /admin/lead-assignment ───────────────────────────────────────────────
+# Pattern 53: static before parameterised
+
+@router.get("/lead-assignment")
+def get_lead_assignment(
+    org: dict = Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    org_id = org["org_id"]
+
+    org_result = (
+        db.table("organisations")
+        .select("lead_assignment_mode")
+        .eq("id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    org_data = org_result.data or {}
+    if isinstance(org_data, list):
+        org_data = org_data[0] if org_data else {}
+
+    mode = org_data.get("lead_assignment_mode", "manual")
+
+    shifts_result = (
+        db.table("lead_assignment_shifts")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at")
+        .execute()
+    )
+    shifts = shifts_result.data or []
+
+    return ok(data={"mode": mode, "shifts": shifts}, message="ok")
+
+
+# ── PUT /admin/lead-assignment/mode ─────────────────────────────────────────
+
+@router.put("/lead-assignment/mode")
+def update_assignment_mode(
+    payload: AssignmentModeUpdate,
+    org: dict = Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    org_id  = org["org_id"]
+    user_id = org["id"]
+
+    # Fetch current mode
+    org_result = (
+        db.table("organisations")
+        .select("lead_assignment_mode, sla_business_hours")
+        .eq("id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    org_data = org_result.data or {}
+    if isinstance(org_data, list):
+        org_data = org_data[0] if org_data else {}
+
+    current_mode = org_data.get("lead_assignment_mode", "manual")
+
+    # On first switch to auto: pre-fill Day Shift from sla_business_hours
+    if payload.mode == "auto" and current_mode == "manual":
+        existing_shifts = (
+            db.table("lead_assignment_shifts")
+            .select("id")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        if not (existing_shifts.data or []):
+            # Pre-fill from sla_business_hours or default 08:00–18:00 Mon–Fri
+            bh = org_data.get("sla_business_hours") or {}
+            shift_start = "08:00"
+            shift_end   = "18:00"
+            days_active = ["mon", "tue", "wed", "thu", "fri"]
+            if isinstance(bh, dict):
+                mon = bh.get("mon") or {}
+                if mon.get("start"):
+                    shift_start = mon["start"]
+                if mon.get("end"):
+                    shift_end   = mon["end"]
+                days_active = [
+                    d for d in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                    if bh.get(d, {}).get("start")
+                ]
+                if not days_active:
+                    days_active = ["mon", "tue", "wed", "thu", "fri"]
+
+            db.table("lead_assignment_shifts").insert({
+                "org_id":       org_id,
+                "shift_name":   "Day Shift",
+                "shift_start":  shift_start,
+                "shift_end":    shift_end,
+                "days_active":  days_active,
+                "assignee_ids": [],
+                "strategy":     "least_loaded",
+                "is_active":    True,
+            }).execute()
+
+    # Update org mode
+    db.table("organisations").update(
+        {"lead_assignment_mode": payload.mode}
+    ).eq("id", org_id).execute()
+
+    # Audit log
+    write_audit_log(
+        db=db, org_id=org_id, user_id=user_id,
+        action="lead_assignment_mode.updated",
+        resource_type="organisation", resource_id=org_id,
+        new_value={"lead_assignment_mode": payload.mode},
+    )
+
+    return ok(data={"mode": payload.mode}, message=f"Assignment mode set to {payload.mode}")
+
+
+# ── GET /admin/lead-assignment/shifts ────────────────────────────────────────
+
+@router.get("/lead-assignment/shifts")
+def list_assignment_shifts(
+    org: dict = Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    org_id = org["org_id"]
+
+    result = (
+        db.table("lead_assignment_shifts")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at")
+        .execute()
+    )
+    return ok(data=result.data or [], message="ok")
+
+
+# ── POST /admin/lead-assignment/shifts ───────────────────────────────────────
+
+@router.post("/lead-assignment/shifts", status_code=status.HTTP_201_CREATED)
+def create_assignment_shift(
+    payload: ShiftCreate,
+    org: dict = Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    org_id = org["org_id"]
+
+    _validate_assignee_ids(db, org_id, payload.assignee_ids)
+
+    if payload.strategy == "fixed" and not payload.fixed_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="fixed_user_id is required when strategy is 'fixed'",
+        )
+    if payload.fixed_user_id and payload.fixed_user_id not in payload.assignee_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="fixed_user_id must be in assignee_ids",
+        )
+
+    result = db.table("lead_assignment_shifts").insert({
+        "org_id":        org_id,
+        "shift_name":    payload.shift_name,
+        "shift_start":   payload.shift_start,
+        "shift_end":     payload.shift_end,
+        "days_active":   payload.days_active,
+        "assignee_ids":  payload.assignee_ids,
+        "strategy":      payload.strategy,
+        "fixed_user_id": payload.fixed_user_id,
+        "is_active":     True,
+    }).execute()
+
+    shift = result.data[0] if result.data else {}
+    return ok(data=shift, message="Shift created")
+
+
+# ── PATCH /admin/lead-assignment/shifts/{shift_id} ───────────────────────────
+# Pattern 53: static routes above, parameterised here
+
+@router.patch("/lead-assignment/shifts/{shift_id}")
+def update_assignment_shift(
+    shift_id: str,
+    payload: ShiftUpdate,
+    org: dict = Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    org_id = org["org_id"]
+
+    # Verify shift belongs to org
+    existing = (
+        db.table("lead_assignment_shifts")
+        .select("id, org_id")
+        .eq("id", shift_id)
+        .eq("org_id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    updates = {
+        k: v for k, v in payload.model_dump(exclude_unset=True).items()
+        if v is not None
+    }
+    if not updates:
+        return ok(data={}, message="No changes")
+
+    if "assignee_ids" in updates:
+        _validate_assignee_ids(db, org_id, updates["assignee_ids"])
+
+    updates["updated_at"] = datetime.utcnow().isoformat()
+
+    result = (
+        db.table("lead_assignment_shifts")
+        .update(updates)
+        .eq("id", shift_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    shift = result.data[0] if result.data else {}
+    return ok(data=shift, message="Shift updated")
+
+
+# ── DELETE /admin/lead-assignment/shifts/{shift_id} ──────────────────────────
+
+@router.delete("/lead-assignment/shifts/{shift_id}")
+def delete_assignment_shift(
+    shift_id: str,
+    org: dict = Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    org_id = org["org_id"]
+
+    # Verify shift belongs to org
+    existing = (
+        db.table("lead_assignment_shifts")
+        .select("id, org_id, is_active")
+        .eq("id", shift_id)
+        .eq("org_id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    # Block deletion if this is the last active shift
+    if existing.data.get("is_active"):
+        active_count = (
+            db.table("lead_assignment_shifts")
+            .select("id", count="exact")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        if (active_count.count or 0) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cannot delete the last active shift. Deactivate it or add another shift first.",
+            )
+
+    # Soft delete — set is_active=false
+    db.table("lead_assignment_shifts").update(
+        {"is_active": False, "updated_at": datetime.utcnow().isoformat()}
+    ).eq("id", shift_id).eq("org_id", org_id).execute()
+
+    return ok(data={}, message="Shift deactivated")

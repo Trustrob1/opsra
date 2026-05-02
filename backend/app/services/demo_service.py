@@ -253,6 +253,12 @@ def _insert_notification(db, org_id: str, user_id: str, notif_type: str,
             "resource_type": "lead_demo", "resource_id": demo_id,
             "is_read": False, "created_at": _now_iso(),
         }).execute()
+        # PWA-1: push (S14)
+        try:
+            from app.routers.push_notifications import send_push_notification
+            send_push_notification(db=db, user_id=user_id, title=title, body=body)
+        except Exception:
+            pass
     except Exception as exc:
         logger.warning("demo_service: notification insert failed — %s", exc)
 

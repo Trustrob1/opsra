@@ -374,3 +374,30 @@ export const updateMetaCatalogId = (payload) =>
   // payload: { meta_catalog_id: string | null }
   axios.patch(`${BASE}/api/v1/admin/shopify/connect`, payload, { headers: _h() })
     .then(r => r.data)
+
+// ── ASSIGN-1: Lead Assignment Engine ─────────────────────────────────────────
+// Pattern 50: axios + _h() only, relative paths.
+
+export const getLeadAssignment = () =>
+  axios.get('/api/v1/admin/lead-assignment', { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateAssignmentMode = (mode) =>
+  axios.put('/api/v1/admin/lead-assignment/mode', { mode }, { headers: _h() })
+    .then(r => r.data.data)
+
+export const getAssignmentShifts = () =>
+  axios.get('/api/v1/admin/lead-assignment/shifts', { headers: _h() })
+    .then(r => r.data.data)
+
+export const createShift = (payload) =>
+  axios.post('/api/v1/admin/lead-assignment/shifts', payload, { headers: _h() })
+    .then(r => r.data.data)
+
+export const updateShift = (id, payload) =>
+  axios.patch(`/api/v1/admin/lead-assignment/shifts/${id}`, payload, { headers: _h() })
+    .then(r => r.data.data)
+
+export const deleteShift = (id) =>
+  axios.delete(`/api/v1/admin/lead-assignment/shifts/${id}`, { headers: _h() })
+    .then(r => r.data.data)

@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # Super-admin provisioning
     SUPERADMIN_SECRET: str = ""
 
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_SUBJECT: str = "mailto:trustrobert34@gmail.com"
+
     # Observability — 9E-A
     # Set this to your Sentry project DSN in Render env vars on both services.
     # Empty string = Sentry disabled (safe for local dev).

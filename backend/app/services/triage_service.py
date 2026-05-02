@@ -1406,6 +1406,12 @@ def _notify_single_user(
             "resource_id":   resource_id,
             "is_read":       False,
         }).execute()
+        # PWA-1: fire push notification (S14 — never blocks)
+        try:
+            from app.routers.push_notifications import send_push_notification
+            send_push_notification(db=db, user_id=user_id, title=title, body=body)
+        except Exception:
+            pass
     except Exception as exc:
         logger.warning("_notify_single_user failed user=%s: %s", user_id, exc)
 

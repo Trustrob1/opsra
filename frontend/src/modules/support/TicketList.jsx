@@ -1,10 +1,16 @@
 /**
  * frontend/src/modules/support/TicketList.jsx
- * Paginated, filterable ticket table with stat cards.
+ *
+ * PWA-1 (P6) additions:
+ *   - useIsMobile: card-based list replaces table on mobile
+ *   - Filter row stacks vertically on mobile (already flex-wrap, refined layout)
+ *   - Stat cards stack 2-col on mobile instead of 4-col
+ *   - 44px minimum tap targets on all interactive elements
  */
 
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import useTickets from '../../hooks/useTickets'
 import TicketCreateModal from './TicketCreateModal'
 import Pagination from '../../shared/Pagination'
@@ -30,32 +36,58 @@ const STATUS_MAP = {
 
 function UrgencyBadge({ urgency }) {
   const s = URGENCY_STYLE[urgency] || URGENCY_STYLE.low
-  return (
-    <span style={{ ...s, padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, textTransform: 'capitalize', display: 'inline-block' }}>
-      {urgency || '—'}
-    </span>
-  )
+  return <span style={{ ...s, padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, textTransform: 'capitalize', display: 'inline-block' }}>{urgency || '—'}</span>
 }
 
 function StatusBadge({ status }) {
   const s = STATUS_MAP[status] || STATUS_MAP.open
-  return (
-    <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>
-      {s.label}
-    </span>
-  )
+  return <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>{s.label}</span>
 }
 
 function StatCard({ label, value, accent }) {
   return (
-    <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: '12px', padding: '16px 20px' }}>
-      <div style={{ fontSize: '11px', fontWeight: 500, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '6px' }}>{label}</div>
-      <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: '26px', color: accent || ds.dark }}>{value}</div>
+    <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: '12px', padding: '14px 16px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 500, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>{label}</div>
+      <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: '24px', color: accent || ds.dark }}>{value}</div>
     </div>
   )
 }
 
-// Filter options — urgency and status are system-defined, categories are org-configured
+// ── Mobile ticket card ────────────────────────────────────────────────────────
+
+function TicketCard({ ticket, categories, onSelectTicket }) {
+  const categoryLabel = ticket.category
+    ? (categories.find(c => c.key === ticket.category)?.label ?? ticket.category.replace(/_/g, ' '))
+    : null
+
+  return (
+    <div
+      onClick={() => onSelectTicket(ticket.id)}
+      style={{
+        background: 'white', border: `1px solid ${ds.border}`, borderRadius: '12px',
+        padding: '14px 16px', marginBottom: 10, cursor: 'pointer',
+        boxShadow: ds.cardShadow, transition: 'box-shadow 0.15s',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 11, color: ds.teal, marginBottom: 3, fontFamily: 'Syne, sans-serif' }}>{ticket.reference}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: ds.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ticket.title || '—'}</div>
+        </div>
+        <StatusBadge status={ticket.status} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <UrgencyBadge urgency={ticket.urgency} />
+        {categoryLabel && <span style={{ fontSize: 11, color: ds.gray, textTransform: 'capitalize' }}>{categoryLabel}</span>}
+        {ticket.sla_breached
+          ? <span style={{ fontSize: 11, color: '#C0392B', fontWeight: 700 }}>⚠ SLA Breached</span>
+          : <span style={{ fontSize: 11, color: ds.green }}>✓ SLA OK</span>}
+        {ticket.assigned_user?.full_name && <span style={{ fontSize: 11, color: ds.gray }}>{ticket.assigned_user.full_name}</span>}
+      </div>
+    </div>
+  )
+}
+
 const STATUSES   = ['', 'open', 'in_progress', 'awaiting_customer', 'resolved', 'closed']
 const URGENCIES  = ['', 'critical', 'high', 'medium', 'low']
 
@@ -69,24 +101,19 @@ const DEFAULT_CATEGORIES = [
 ]
 
 export default function TicketList({ onSelectTicket }) {
+  const isMobile = useIsMobile()
   const [showCreate, setShowCreate]       = useState(false)
   const [localFilters, setLocalFilters]   = useState({ status: '', category: '', urgency: '', sla_breached: '' })
   const [categories, setCategories]       = useState(DEFAULT_CATEGORIES)
 
   useEffect(() => {
-    getTicketCategories()
-      .then(data => {
-        const cats = data?.categories
-        if (Array.isArray(cats) && cats.length > 0)
-          setCategories(cats.filter(c => c.enabled !== false))
-      })
-      .catch(() => {})
+    getTicketCategories().then(data => {
+      const cats = data?.categories
+      if (Array.isArray(cats) && cats.length > 0) setCategories(cats.filter(c => c.enabled !== false))
+    }).catch(() => {})
   }, [])
 
-  const {
-    tickets, total, page, pageSize, hasMore,
-    loading, error, refresh, applyFilters, goToPage,
-  } = useTickets({}, 20)
+  const { tickets, total, page, pageSize, loading, error, refresh, applyFilters, goToPage } = useTickets({}, 20)
 
   function handleFilterChange(field, val) {
     const next = { ...localFilters, [field]: val }
@@ -101,8 +128,7 @@ export default function TicketList({ onSelectTicket }) {
   }
 
   function onCreated(ticket) {
-    setShowCreate(false)
-    refresh()
+    setShowCreate(false); refresh()
     if (ticket?.id) onSelectTicket(ticket.id)
   }
 
@@ -110,16 +136,12 @@ export default function TicketList({ onSelectTicket }) {
   const breachedCount = tickets.filter(t => t.sla_breached).length
   const resolvedCount = tickets.filter(t => t.status === 'resolved').length
 
-  const sel = {
-    border: `1.5px solid ${ds.border}`, borderRadius: '8px',
-    padding: '8px 12px', fontSize: '12.5px', color: ds.dark,
-    background: 'white', cursor: 'pointer', outline: 'none',
-  }
+  const sel = { border: `1.5px solid ${ds.border}`, borderRadius: '8px', padding: '8px 12px', fontSize: '12.5px', color: ds.dark, background: 'white', cursor: 'pointer', outline: 'none', minHeight: 40 }
 
   return (
     <div>
-      {/* Stat row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '22px' }}>
+      {/* Stat row — 2-col on mobile, 4-col on desktop */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '18px' }}>
         <StatCard label="Total Tickets"   value={total} />
         <StatCard label="Open / Active"   value={openCount}     accent={ds.teal} />
         <StatCard label="SLA Breached"    value={breachedCount} accent="#C0392B" />
@@ -128,90 +150,92 @@ export default function TicketList({ onSelectTicket }) {
 
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <select style={sel} value={localFilters.status} onChange={e => handleFilterChange('status', e.target.value)}>
+        <select style={sel} value={localFilters.status}       onChange={e => handleFilterChange('status', e.target.value)}>
           <option value="">All Statuses</option>
           {STATUSES.filter(Boolean).map(s => <option key={s} value={s}>{STATUS_MAP[s]?.label || s}</option>)}
         </select>
-
-        <select style={sel} value={localFilters.category} onChange={e => handleFilterChange('category', e.target.value)}>
+        <select style={sel} value={localFilters.category}     onChange={e => handleFilterChange('category', e.target.value)}>
           <option value="">All Categories</option>
           {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
-
-        <select style={sel} value={localFilters.urgency} onChange={e => handleFilterChange('urgency', e.target.value)}>
-          <option value="">All Urgencies</option>
-          {URGENCIES.filter(Boolean).map(u => <option key={u} value={u} style={{ textTransform: 'capitalize' }}>{u}</option>)}
-        </select>
-
-        <select style={sel} value={localFilters.sla_breached} onChange={e => handleFilterChange('sla_breached', e.target.value)}>
-          <option value="">SLA: All</option>
-          <option value="true">SLA Breached</option>
-          <option value="false">SLA OK</option>
-        </select>
-
+        {!isMobile && (
+          <>
+            <select style={sel} value={localFilters.urgency}     onChange={e => handleFilterChange('urgency', e.target.value)}>
+              <option value="">All Urgencies</option>
+              {URGENCIES.filter(Boolean).map(u => <option key={u} value={u} style={{ textTransform: 'capitalize' }}>{u}</option>)}
+            </select>
+            <select style={sel} value={localFilters.sla_breached} onChange={e => handleFilterChange('sla_breached', e.target.value)}>
+              <option value="">SLA: All</option>
+              <option value="true">SLA Breached</option>
+              <option value="false">SLA OK</option>
+            </select>
+          </>
+        )}
         <div style={{ flex: 1 }} />
-
         <button
           onClick={() => setShowCreate(true)}
-          style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: ds.teal, color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+          style={{ padding: '10px 18px', borderRadius: '8px', border: 'none', background: ds.teal, color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer', minHeight: 44, whiteSpace: 'nowrap' }}
         >
           + New Ticket
         </button>
       </div>
 
-      {/* Error */}
       {error && <div style={{ color: '#C0392B', marginBottom: '12px', fontSize: '13px' }}>{error}</div>}
 
-      {/* Table */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: ds.gray, fontSize: '13px' }}>Loading tickets…</div>
-      ) : tickets.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: ds.gray, fontSize: '13px' }}>No tickets found for the selected filters.</div>
+      {/* ── Mobile: card list ───────────────────────────────────── */}
+      {isMobile ? (
+        loading ? (
+          <div style={{ textAlign: 'center', padding: '48px', color: ds.gray, fontSize: '13px' }}>Loading tickets…</div>
+        ) : tickets.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px', color: ds.gray, fontSize: '13px' }}>No tickets found for the selected filters.</div>
+        ) : (
+          tickets.map(t => <TicketCard key={t.id} ticket={t} categories={categories} onSelectTicket={onSelectTicket} />)
+        )
       ) : (
-        <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: '14px', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-            <thead>
-              <tr style={{ background: ds.mint }}>
-                {['Reference', 'Title', 'Category', 'Urgency', 'Status', 'SLA', 'Assigned'].map(h => (
-                  <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: ds.tealDark, textTransform: 'uppercase', letterSpacing: '0.6px', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {tickets.map(t => (
-                <tr
-                  key={t.id}
-                  onClick={() => onSelectTicket(t.id)}
-                  style={{ cursor: 'pointer', borderBottom: `1px solid ${ds.border}`, background: 'white', transition: 'background 0.12s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f8fdfe'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                >
-                  <td style={{ padding: '11px 14px', fontWeight: 700, color: ds.teal, whiteSpace: 'nowrap' }}>{t.reference}</td>
-                  <td style={{ padding: '11px 14px', color: ds.dark, maxWidth: '260px' }}>
-                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title || '—'}</div>
-                  </td>
-                  <td style={{ padding: '11px 14px', color: ds.gray, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
-                    {t.category ? (categories.find(c => c.key === t.category)?.label ?? t.category.replace(/_/g, ' ')) : '—'}
-                  </td>
-                  <td style={{ padding: '11px 14px' }}><UrgencyBadge urgency={t.urgency} /></td>
-                  <td style={{ padding: '11px 14px' }}><StatusBadge status={t.status} /></td>
-                  <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
-                    {t.sla_breached
-                      ? <span style={{ color: '#C0392B', fontWeight: 700, fontSize: '11px' }}>⚠ Breached</span>
-                      : <span style={{ color: ds.green, fontSize: '11px' }}>✓ OK</span>
-                    }
-                  </td>
-                  <td style={{ padding: '11px 14px', color: ds.gray, fontSize: '12px' }}>
-                    {t.assigned_user?.full_name || '—'}
-                  </td>
+        /* ── Desktop: table ──────────────────────────────────────── */
+        loading ? (
+          <div style={{ textAlign: 'center', padding: '48px', color: ds.gray, fontSize: '13px' }}>Loading tickets…</div>
+        ) : tickets.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px', color: ds.gray, fontSize: '13px' }}>No tickets found for the selected filters.</div>
+        ) : (
+          <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: '14px', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: ds.mint }}>
+                  {['Reference', 'Title', 'Category', 'Urgency', 'Status', 'SLA', 'Assigned'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: ds.tealDark, textTransform: 'uppercase', letterSpacing: '0.6px', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {tickets.map(t => (
+                  <tr key={t.id} onClick={() => onSelectTicket(t.id)}
+                    style={{ cursor: 'pointer', borderBottom: `1px solid ${ds.border}`, background: 'white', transition: 'background 0.12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fdfe'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'white'}>
+                    <td style={{ padding: '11px 14px', fontWeight: 700, color: ds.teal, whiteSpace: 'nowrap' }}>{t.reference}</td>
+                    <td style={{ padding: '11px 14px', color: ds.dark, maxWidth: '260px' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title || '—'}</div>
+                    </td>
+                    <td style={{ padding: '11px 14px', color: ds.gray, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                      {t.category ? (categories.find(c => c.key === t.category)?.label ?? t.category.replace(/_/g, ' ')) : '—'}
+                    </td>
+                    <td style={{ padding: '11px 14px' }}><UrgencyBadge urgency={t.urgency} /></td>
+                    <td style={{ padding: '11px 14px' }}><StatusBadge status={t.status} /></td>
+                    <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+                      {t.sla_breached
+                        ? <span style={{ color: '#C0392B', fontWeight: 700, fontSize: '11px' }}>⚠ Breached</span>
+                        : <span style={{ color: ds.green, fontSize: '11px' }}>✓ OK</span>}
+                    </td>
+                    <td style={{ padding: '11px 14px', color: ds.gray, fontSize: '12px' }}>{t.assigned_user?.full_name || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
       )}
 
-      {/* Pagination */}
       <Pagination page={page} total={total} pageSize={pageSize} onGoToPage={goToPage} />
 
       {showCreate && <TicketCreateModal onCreated={onCreated} onClose={() => setShowCreate(false)} />}
