@@ -287,13 +287,21 @@ async def health_integrations(
     except Exception as exc:
         results["sentry"] = {"status": "error", "detail": str(exc)[:200]}
 
-    # 4. Claude API (lightweight models list call)
+    # REPLACE with:
+    # 4. Claude API (lightweight ping — compatible with anthropic 0.26.x)
     try:
         from app.config import settings as _s
         import anthropic
-        client = anthropic.Anthropic(api_key=_s.ANTHROPIC_API_KEY)
-        client.models.list(limit=1)
-        results["claude"] = {"status": "ok"}
+        if not _s.ANTHROPIC_API_KEY:
+            results["claude"] = {"status": "unconfigured", "detail": "ANTHROPIC_API_KEY not set"}
+        else:
+            client = anthropic.Anthropic(api_key=_s.ANTHROPIC_API_KEY)
+            client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1,
+                messages=[{"role": "user", "content": "ping"}],
+            )
+            results["claude"] = {"status": "ok"}
     except Exception as exc:
         results["claude"] = {"status": "error", "detail": str(exc)[:200]}
 
