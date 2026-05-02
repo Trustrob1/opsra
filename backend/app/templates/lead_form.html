@@ -41,9 +41,17 @@
     .field label { display:block; font-size:12.5px; font-weight:600; color:var(--dark); margin-bottom:6px; }
     .req { color:var(--teal); margin-left:2px; }
     .opt { color:var(--gray); font-weight:400; font-size:11px; margin-left:4px; }
-    .field input { width:100%; border:1.5px solid var(--border); border-radius:9px; padding:12px 14px; font-size:14px; font-family:var(--font-body); color:var(--dark); background:var(--white); outline:none; transition:border-color .15s, box-shadow .15s; }
-    .field input:focus { border-color:var(--teal); box-shadow:0 0 0 3px rgba(2,128,144,.10); }
-    .btn-wa { width:100%; padding:15px; background:var(--wa); color:white; border:none; border-radius:10px; font-family:var(--font-head); font-size:15px; font-weight:700; cursor:pointer; transition:background .15s, transform .1s; display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; }
+    .field input, .field textarea, .field select {
+      width:100%; border:1.5px solid var(--border); border-radius:9px;
+      padding:12px 14px; font-size:14px; font-family:var(--font-body);
+      color:var(--dark); background:var(--white); outline:none;
+      transition:border-color .15s, box-shadow .15s;
+    }
+    .field input:focus, .field textarea:focus, .field select:focus {
+      border-color:var(--teal); box-shadow:0 0 0 3px rgba(2,128,144,.10);
+    }
+    .field textarea { resize:vertical; min-height:80px; }
+    .btn-wa { width:100%; padding:15px; background:var(--wa); color:white; border:none; border-radius:10px; font-family:var(--font-head); font-size:15px; font-weight:700; cursor:pointer; transition:background .15s, transform .1s; display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; min-height:52px; }
     .btn-wa:hover:not(:disabled) { background:#1da851; }
     .btn-wa:active:not(:disabled) { transform:scale(.99); }
     .btn-wa:disabled { opacity:.65; cursor:not-allowed; }
@@ -60,6 +68,7 @@
     .no-wa-note { margin-top:16px; font-size:12.5px; color:var(--gray); line-height:1.5; }
     .privacy { margin-top:18px; font-size:11.5px; color:var(--gray); text-align:center; line-height:1.5; }
     .powered { margin-top:28px; text-align:center; font-size:11px; color:#bbc0c8; }
+    #config-fields { display:none; } /* hidden until config loaded */
   </style>
 </head>
 <body>
@@ -85,11 +94,24 @@
       <div class="form-subtitle">Fill in your details and we'll continue on <span>WhatsApp →</span></div>
       <div id="alert-box" class="alert" style="display:none"></div>
       <form id="lead-form" novalidate>
-        <div class="field"><label for="full_name">Full Name <span class="req">*</span></label><input type="text" id="full_name" placeholder="e.g. Emeka Obi" autocomplete="name" /></div>
-        <div class="field"><label for="phone">WhatsApp Number <span class="req">*</span></label><input type="tel" id="phone" placeholder="e.g. 08012345678" autocomplete="tel" /></div>
-        <div class="field"><label for="email">Email Address <span class="opt">(optional)</span></label><input type="email" id="email" placeholder="e.g. emeka@yourstore.com" autocomplete="email" /></div>
-        <div class="field"><label for="location">City / Location <span class="opt">(optional)</span></label><input type="text" id="location" placeholder="e.g. Lagos, Abuja, Kano…" /></div>
-        <input type="hidden" id="utm_source" /><input type="hidden" id="utm_campaign" /><input type="hidden" id="utm_ad" />
+        <!-- Always-required fields (never configurable) -->
+        <div class="field">
+          <label for="full_name">Full Name <span class="req">*</span></label>
+          <input type="text" id="full_name" placeholder="e.g. Emeka Obi" autocomplete="name" />
+        </div>
+        <div class="field">
+          <label for="phone">Phone Number <span class="req">*</span></label>
+          <input type="tel" id="phone" placeholder="e.g. 08012345678" autocomplete="tel" />
+        </div>
+
+        <!-- Config-driven fields — rendered by JS after fetching lead_form_config -->
+        <div id="config-fields"></div>
+
+        <!-- Hidden UTM fields -->
+        <input type="hidden" id="utm_source" />
+        <input type="hidden" id="utm_campaign" />
+        <input type="hidden" id="utm_ad" />
+
         <button type="submit" class="btn-wa" id="submit-btn"><span>💬</span> Continue on WhatsApp</button>
       </form>
       <p class="privacy">🔒 Your details are kept private and used only to follow up with you.</p>
@@ -100,38 +122,216 @@
 <script>
   const ORG_SLUG = '{{ORG_SLUG}}';
   const API_BASE = '{{API_BASE}}';
+
+  // UTM params
   const p = new URLSearchParams(window.location.search);
   document.getElementById('utm_source').value   = p.get('utm_source')   || '';
   document.getElementById('utm_campaign').value = p.get('utm_campaign') || '';
   document.getElementById('utm_ad').value       = p.get('utm_ad')       || '';
-  fetch(`${API_BASE}/api/v1/leads/form/${ORG_SLUG}`)
-    .then(r=>r.json()).then(j=>{ const n=j?.data?.org_name||ORG_SLUG; document.getElementById('org-name').textContent=n; document.title=`Get in Touch — ${n}`; })
-    .catch(()=>{ document.getElementById('org-name').textContent='Get in Touch'; });
-  const form=document.getElementById('lead-form'), alertBox=document.getElementById('alert-box'), btn=document.getElementById('submit-btn');
-  const showAlert=m=>{alertBox.textContent=m;alertBox.style.display='block';alertBox.scrollIntoView({behavior:'smooth',block:'nearest'});};
-  const setLoading=on=>{btn.disabled=on;btn.innerHTML=on?'<div class="spinner"></div> Sending…':'<span>💬</span> Continue on WhatsApp';};
-  const v=id=>document.getElementById(id).value.trim();
-  form.addEventListener('submit',async e=>{
-    e.preventDefault(); alertBox.style.display='none';
-    const name=v('full_name'),phone=v('phone');
-    if(!name){showAlert('Please enter your full name.');document.getElementById('full_name').focus();return;}
-    if(!phone){showAlert('Please enter your WhatsApp number.');document.getElementById('phone').focus();return;}
-    if(phone.replace(/\D/g,'').length<7){showAlert('Please enter a valid phone number.');return;}
+
+  // ── Field rendering helpers ──────────────────────────────────────────────
+
+  const TEXTAREA_KEYS = ['problem_stated', 'product_interest'];
+  const PLACEHOLDER_MAP = {
+    email:            'e.g. emeka@yourstore.com',
+    whatsapp:         'e.g. 08012345678',
+    business_name:    'e.g. Emeka Supermarket',
+    business_type:    'e.g. Supermarket, Pharmacy',
+    location:         'e.g. Lagos, Abuja, Kano…',
+    branches:         '',
+    problem_stated:   'What challenge or problem brought you here?',
+    product_interest: 'e.g. Mattresses, Pillow Tops…',
+    referrer:         'Name of person who referred you',
+  };
+  const BRANCHES_OPTIONS = ['1', '2-3', '4-10', '10+'];
+  const INPUT_TYPE_MAP = { email: 'email', whatsapp: 'tel' };
+
+  function buildField(cfg) {
+    const { key, label, required } = cfg;
+    const div = document.createElement('div');
+    div.className = 'field';
+    div.dataset.fieldKey = key;
+
+    const lbl = document.createElement('label');
+    lbl.htmlFor = key;
+    lbl.textContent = label;
+    if (required) {
+      const req = document.createElement('span');
+      req.className = 'req';
+      req.textContent = ' *';
+      lbl.appendChild(req);
+    } else {
+      const opt = document.createElement('span');
+      opt.className = 'opt';
+      opt.textContent = '(optional)';
+      lbl.appendChild(opt);
+    }
+    div.appendChild(lbl);
+
+    let input;
+    if (key === 'branches') {
+      input = document.createElement('select');
+      input.id = key;
+      const blank = document.createElement('option');
+      blank.value = ''; blank.textContent = '— Select —';
+      input.appendChild(blank);
+      BRANCHES_OPTIONS.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o; opt.textContent = o;
+        input.appendChild(opt);
+      });
+    } else if (TEXTAREA_KEYS.includes(key)) {
+      input = document.createElement('textarea');
+      input.id = key;
+      input.placeholder = PLACEHOLDER_MAP[key] || '';
+    } else {
+      input = document.createElement('input');
+      input.type = INPUT_TYPE_MAP[key] || 'text';
+      input.id = key;
+      input.placeholder = PLACEHOLDER_MAP[key] || '';
+      if (key === 'email') input.autocomplete = 'email';
+    }
+
+    if (required) input.required = true;
+    div.appendChild(input);
+    return div;
+  }
+
+  function renderConfigFields(fields) {
+    const container = document.getElementById('config-fields');
+    container.innerHTML = '';
+    (fields || []).forEach(cfg => {
+      if (cfg.visible) container.appendChild(buildField(cfg));
+    });
+    container.style.display = 'block';
+  }
+
+  // ── Fetch org info + lead_form_config ───────────────────────────────────
+
+  // Default config — all visible, none required (safe fallback)
+  const DEFAULT_CONFIG = [
+    { key: 'email',            label: 'Email Address',    visible: true,  required: false },
+    { key: 'whatsapp',         label: 'WhatsApp Number',  visible: true,  required: false },
+    { key: 'business_name',    label: 'Business Name',    visible: true,  required: false },
+    { key: 'business_type',    label: 'Business Type',    visible: true,  required: false },
+    { key: 'location',         label: 'City / Location',  visible: true,  required: false },
+    { key: 'problem_stated',   label: 'How can we help?', visible: true,  required: false },
+  ];
+
+  Promise.all([
+    fetch(`${API_BASE}/api/v1/leads/form/${ORG_SLUG}`).then(r => r.json()).catch(() => ({})),
+    fetch(`${API_BASE}/api/v1/leads/form/${ORG_SLUG}/config`).then(r => r.json()).catch(() => null),
+  ]).then(([orgData, configData]) => {
+    // Org name
+    const orgName = orgData?.data?.org_name || ORG_SLUG;
+    document.getElementById('org-name').textContent = orgName;
+    document.title = `Get in Touch — ${orgName}`;
+
+    // Form config — use org config if available, else default
+    const fields = configData?.data?.fields || DEFAULT_CONFIG;
+    renderConfigFields(fields);
+  }).catch(() => {
+    document.getElementById('org-name').textContent = 'Get in Touch';
+    renderConfigFields(DEFAULT_CONFIG);
+  });
+
+  // ── Form submission ──────────────────────────────────────────────────────
+
+  const form     = document.getElementById('lead-form');
+  const alertBox = document.getElementById('alert-box');
+  const btn      = document.getElementById('submit-btn');
+
+  const showAlert = m => {
+    alertBox.textContent = m;
+    alertBox.style.display = 'block';
+    alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+  const setLoading = on => {
+    btn.disabled = on;
+    btn.innerHTML = on
+      ? '<div class="spinner"></div> Sending…'
+      : '<span>💬</span> Continue on WhatsApp';
+  };
+  const v = id => {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  };
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    alertBox.style.display = 'none';
+
+    const name  = v('full_name');
+    const phone = v('phone');
+
+    if (!name)  { showAlert('Please enter your full name.');    document.getElementById('full_name').focus(); return; }
+    if (!phone) { showAlert('Please enter your phone number.'); document.getElementById('phone').focus();    return; }
+    if (phone.replace(/\D/g, '').length < 7) { showAlert('Please enter a valid phone number.'); return; }
+
+    // Validate config-required fields
+    const configFields = document.querySelectorAll('#config-fields .field[data-field-key]');
+    for (const fieldDiv of configFields) {
+      const input = fieldDiv.querySelector('input, textarea, select');
+      if (input && input.required && !input.value.trim()) {
+        const labelEl = fieldDiv.querySelector('label');
+        const labelText = labelEl ? labelEl.textContent.replace('*', '').replace('(optional)', '').trim() : 'A required field';
+        showAlert(`${labelText} is required.`);
+        input.focus();
+        return;
+      }
+    }
+
     setLoading(true);
-    const body={org_slug:ORG_SLUG,full_name:name,phone,email:v('email')||null,location:v('location')||null,utm_source:v('utm_source')||null,utm_campaign:v('utm_campaign')||null,utm_ad:v('utm_ad')||null};
-    try{
-      const res=await fetch(`${API_BASE}/api/v1/leads/capture`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      const json=await res.json();
-      if(res.ok){
-        const waLink=json?.data?.whatsapp_link||'';
-        document.getElementById('form-section').style.display='none';
+
+    // Build payload from always-required fields + all visible config fields
+    const body = {
+      org_slug: ORG_SLUG,
+      full_name: name,
+      phone,
+      utm_source:   v('utm_source')   || null,
+      utm_campaign: v('utm_campaign') || null,
+      utm_ad:       v('utm_ad')       || null,
+    };
+
+    // Collect all config-driven field values
+    configFields.forEach(fieldDiv => {
+      const key   = fieldDiv.dataset.fieldKey;
+      const input = fieldDiv.querySelector('input, textarea, select');
+      if (key && input) {
+        const val = input.value.trim();
+        if (val) body[key] = val;
+      }
+    });
+
+    try {
+      const res  = await fetch(`${API_BASE}/api/v1/leads/capture`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+
+      if (res.ok) {
+        const waLink = json?.data?.whatsapp_link || '';
+        document.getElementById('form-section').style.display = 'none';
         document.getElementById('success-screen').classList.add('visible');
-        const waBtn=document.getElementById('wa-link-btn');
-        if(waLink){waBtn.href=waLink;setTimeout(()=>window.open(waLink,'_blank'),600);}
-        else{waBtn.style.display='none';document.getElementById('no-wa-note').style.display='block';}
-        window.scrollTo({top:0,behavior:'smooth'});
-      }else{showAlert(json?.detail?.message||json?.message||'Something went wrong. Please try again.');setLoading(false);}
-    }catch{showAlert('Network error. Please check your connection and try again.');setLoading(false);}
+        const waBtn = document.getElementById('wa-link-btn');
+        if (waLink) {
+          waBtn.href = waLink;
+          setTimeout(() => window.open(waLink, '_blank'), 600);
+        } else {
+          waBtn.style.display = 'none';
+          document.getElementById('no-wa-note').style.display = 'block';
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        showAlert(json?.detail?.message || json?.message || 'Something went wrong. Please try again.');
+        setLoading(false);
+      }
+    } catch {
+      showAlert('Network error. Please check your connection and try again.');
+      setLoading(false);
+    }
   });
 </script>
 </body>

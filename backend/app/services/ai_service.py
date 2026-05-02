@@ -330,7 +330,10 @@ def score_lead_with_ai(lead: dict, rubric: Optional[dict] = None, model: str = S
         {"score": str, "score_reason": str | None}
     """
     # Token optimisation — only send the fields needed, never metadata
-    problem = sanitise_for_prompt(lead.get("problem_stated") or "", max_length=500)
+    problem_stated   = sanitise_for_prompt(lead.get("problem_stated")   or "", max_length=500)
+    product_interest = sanitise_for_prompt(lead.get("product_interest") or "", max_length=500)
+    # LEAD-FORM-CONFIG: product_interest is an alternative intent signal (S14).
+    problem = problem_stated or product_interest
     biz_name = sanitise_for_prompt(lead.get("business_name") or "")
     biz_type = sanitise_for_prompt(lead.get("business_type") or "")
     full_name = sanitise_for_prompt(lead.get("full_name") or "")
@@ -358,7 +361,7 @@ def score_lead_with_ai(lead: dict, rubric: Optional[dict] = None, model: str = S
         f"Business type: {biz_type}\n"
         f"Location: {location}\n"
         f"Branches: {branches}\n"
-        f"Problem stated: {problem}\n"
+        f"Problem / Product interest: {problem}\n"
         f"Lead source: {source}\n"
         "</lead_data>\n\n"
     )

@@ -338,6 +338,60 @@ async def serve_lead_form(
     return HTMLResponse(content=html)
 
 
+
+# ── LEAD-FORM-CONFIG: Public form config route ───────────────────────────────
+#
+# Add to app/routers/leads.py — append near the existing leads/form/{org_slug} route.
+# This is a PUBLIC route (no auth) — returns the org's visible field config so
+# lead_form.html can render the correct fields without exposing private data.
+#
+# Pattern 53: static before parameterised — ensure this is declared BEFORE
+# any /{lead_id} parameterised routes in the router.
+#
+# The helper get_lead_form_config() is imported from lead_service.py.
+
+from app.services.lead_service import get_lead_form_config as _get_lead_form_config
+
+@router.get("/form/{org_slug}/config")
+def get_public_form_config(
+    org_slug: str,
+    db=Depends(get_supabase),
+):
+    """
+    LEAD-FORM-CONFIG: Public endpoint — returns visible field config for the org.
+    Used by lead_form.html to render only visible fields with correct labels.
+    No auth required — only returns visible: true fields. Labels and required status
+    are safe to expose (they are configured by the admin for public display).
+    Never returns org_id or any internal identifiers.
+    S14: falls back to default config if org not found or DB error.
+    """
+    # Resolve org_id from slug
+    try:
+        result = (
+            db.table("organisations")
+            .select("id")
+            .eq("slug", org_slug)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if not data:
+            # Return default config rather than 404 — public form should always render
+            from app.services.lead_service import _DEFAULT_LEAD_FORM_CONFIG
+            return ok(data={"fields": [f for f in _DEFAULT_LEAD_FORM_CONFIG if f["visible"]]})
+        org_id = data["id"]
+    except Exception:
+        from app.services.lead_service import _DEFAULT_LEAD_FORM_CONFIG
+        return ok(data={"fields": [f for f in _DEFAULT_LEAD_FORM_CONFIG if f["visible"]]})
+
+    all_fields = _get_lead_form_config(db, org_id)
+    # Only return visible fields — no need to expose hidden field config publicly
+    visible_fields = [f for f in all_fields if f.get("visible", True)]
+    return ok(data={"fields": visible_fields})
+
+
 # ---------------------------------------------------------------------------
 # GET /api/v1/leads/form/{org_slug} — public form config (no JWT)
 # M01-2: Returns org name for the hosted landing page form.

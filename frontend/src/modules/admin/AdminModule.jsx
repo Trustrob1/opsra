@@ -9,6 +9,7 @@
  * SHOP-1B: "🛍️ Shopify" tab added — ShopifyIntegration.
  * GPM-1E: "💰 Sales Log" tab added — SalesLog.
  * MULTI-ORG-WA-1: "📱 WhatsApp" tab added — WhatsAppIntegration.
+ * LEAD-FORM-CONFIG: "📋 Lead Form" tab added — LeadFormConfig.
  *
  * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
  * table state, filters, and open modals when switching between tabs.
@@ -38,34 +39,34 @@ import GrowthConfig            from './GrowthConfig'
 import SalesLog                from './SalesLog'
 import WhatsAppIntegration     from './WhatsAppIntegration'
 import CommerceSettings        from './CommerceSettings'    // COMM-1
-import MessagingLimitsConfig from './MessagingLimitsConfig'
-import LeadAssignmentConfig  from './LeadAssignmentConfig'
+import MessagingLimitsConfig   from './MessagingLimitsConfig'
+import LeadAssignmentConfig    from './LeadAssignmentConfig'
+import LeadFormConfig          from './LeadFormConfig'      // LEAD-FORM-CONFIG
 
 const TABS = [
-  { id: 'users',          label: '👥 Users' },
-  { id: 'roles',          label: '🎭 Roles' },
-  { id: 'routing',        label: '🔀 Routing Rules' },
-  { id: 'integrations',   label: '🔌 Integrations' },
-  { id: 'whatsapp',       label: '📱 WhatsApp' },
-  { id: 'commission',     label: '💼 Commissions' },
-  { id: 'scoring',        label: '🎯 Lead Scoring' },
-  { id: 'qualification',  label: '📋 Qualification Flow' },
-  { id: 'sla',            label: '⏱️ SLA Targets' },
-  { id: 'sla-hours',      label: '🕐 Business Hours' },
-  { id: 'lead-assignment', label: '🔀 Lead Assignment' },
-  { id: 'nurture',        label: '🌱 Nurture Engine' },
-  { id: 'whatsapp-menu',  label: '📋 WhatsApp Menu' },
-  { id: 'pipeline',       label: '🗂️ Pipeline' },
-  { id: 'categories',     label: '🏷️ Categories' },
-  { id: 'biz-types',      label: '🏢 Business Types' },
-  { id: 'sales-system',   label: '🛒 Sales System' },
-  { id: 'shopify',        label: '🛍️ Shopify' },
-  { id: 'commerce',       label: '🛒 Commerce' },       // COMM-1
-  { id: 'growth-config',  label: '📈 Growth Config' },
-  { id: 'sales-log',      label: '💰 Sales Log' },
-  { id: 'messaging-limits', label: '💬 Messaging Limits' }
-  
-
+  { id: 'users',            label: '👥 Users' },
+  { id: 'roles',            label: '🎭 Roles' },
+  { id: 'routing',          label: '🔀 Routing Rules' },
+  { id: 'integrations',     label: '🔌 Integrations' },
+  { id: 'whatsapp',         label: '📱 WhatsApp' },
+  { id: 'commission',       label: '💼 Commissions' },
+  { id: 'scoring',          label: '🎯 Lead Scoring' },
+  { id: 'qualification',    label: '📋 Qualification Flow' },
+  { id: 'lead-form',        label: '📝 Lead Form' },       // LEAD-FORM-CONFIG
+  { id: 'sla',              label: '⏱️ SLA Targets' },
+  { id: 'sla-hours',        label: '🕐 Business Hours' },
+  { id: 'lead-assignment',  label: '🔀 Lead Assignment' },
+  { id: 'nurture',          label: '🌱 Nurture Engine' },
+  { id: 'whatsapp-menu',    label: '📋 WhatsApp Menu' },
+  { id: 'pipeline',         label: '🗂️ Pipeline' },
+  { id: 'categories',       label: '🏷️ Categories' },
+  { id: 'biz-types',        label: '🏢 Business Types' },
+  { id: 'sales-system',     label: '🛒 Sales System' },
+  { id: 'shopify',          label: '🛍️ Shopify' },
+  { id: 'commerce',         label: '🛒 Commerce' },
+  { id: 'growth-config',    label: '📈 Growth Config' },
+  { id: 'sales-log',        label: '💰 Sales Log' },
+  { id: 'messaging-limits', label: '💬 Messaging Limits' },
 ]
 
 const SALES_SUB_TABS = [
@@ -161,24 +162,25 @@ export default function AdminModule({ user }) {
       </div>
 
       <div style={{ padding: 28 }}>
-        <div style={{ display: tab === 'users'         ? 'block' : 'none' }}><UserManagement /></div>
-        <div style={{ display: tab === 'roles'         ? 'block' : 'none' }}><RoleBuilder /></div>
-        <div style={{ display: tab === 'routing'       ? 'block' : 'none' }}><RoutingRules /></div>
-        <div style={{ display: tab === 'integrations'  ? 'block' : 'none' }}><IntegrationStatus /></div>
-        <div style={{ display: tab === 'whatsapp'      ? 'block' : 'none' }}><WhatsAppIntegration /></div>
-        <div style={{ display: tab === 'commission'    ? 'block' : 'none' }}><CommissionSettings /></div>
-        <div style={{ display: tab === 'scoring'       ? 'block' : 'none' }}><ScoringRubric /></div>
-        <div style={{ display: tab === 'qualification' ? 'block' : 'none' }}><QualificationFlow /></div>
-        <div style={{ display: tab === 'sla'           ? 'block' : 'none' }}><LeadSLASettings /></div>
-        <div style={{ display: tab === 'sla-hours'     ? 'block' : 'none' }}><SLABusinessHoursConfig /></div>
-        <div style={{ display: tab === 'lead-assignment' ? 'block' : 'none' }}><LeadAssignmentConfig /></div>
-        <div style={{ display: tab === 'nurture'       ? 'block' : 'none' }}><NurtureSettings /></div>
-        <div style={{ display: tab === 'whatsapp-menu' ? 'block' : 'none' }}><CustomerMenuConfig /></div>
-        <div style={{ display: tab === 'pipeline'      ? 'block' : 'none' }}><PipelineConfig /></div>
-        <div style={{ display: tab === 'categories'    ? 'block' : 'none' }}><TicketCategoriesConfig /></div>
-        <div style={{ display: tab === 'biz-types'     ? 'block' : 'none' }}><DripBusinessTypesConfig /></div>
+        <div style={{ display: tab === 'users'            ? 'block' : 'none' }}><UserManagement /></div>
+        <div style={{ display: tab === 'roles'            ? 'block' : 'none' }}><RoleBuilder /></div>
+        <div style={{ display: tab === 'routing'          ? 'block' : 'none' }}><RoutingRules /></div>
+        <div style={{ display: tab === 'integrations'     ? 'block' : 'none' }}><IntegrationStatus /></div>
+        <div style={{ display: tab === 'whatsapp'         ? 'block' : 'none' }}><WhatsAppIntegration /></div>
+        <div style={{ display: tab === 'commission'       ? 'block' : 'none' }}><CommissionSettings /></div>
+        <div style={{ display: tab === 'scoring'          ? 'block' : 'none' }}><ScoringRubric /></div>
+        <div style={{ display: tab === 'qualification'    ? 'block' : 'none' }}><QualificationFlow /></div>
+        <div style={{ display: tab === 'lead-form'        ? 'block' : 'none' }}><LeadFormConfig /></div>
+        <div style={{ display: tab === 'sla'              ? 'block' : 'none' }}><LeadSLASettings /></div>
+        <div style={{ display: tab === 'sla-hours'        ? 'block' : 'none' }}><SLABusinessHoursConfig /></div>
+        <div style={{ display: tab === 'lead-assignment'  ? 'block' : 'none' }}><LeadAssignmentConfig /></div>
+        <div style={{ display: tab === 'nurture'          ? 'block' : 'none' }}><NurtureSettings /></div>
+        <div style={{ display: tab === 'whatsapp-menu'    ? 'block' : 'none' }}><CustomerMenuConfig /></div>
+        <div style={{ display: tab === 'pipeline'         ? 'block' : 'none' }}><PipelineConfig /></div>
+        <div style={{ display: tab === 'categories'       ? 'block' : 'none' }}><TicketCategoriesConfig /></div>
+        <div style={{ display: tab === 'biz-types'        ? 'block' : 'none' }}><DripBusinessTypesConfig /></div>
         <div style={{ display: tab === 'messaging-limits' ? 'block' : 'none' }}><MessagingLimitsConfig /></div>
-        
+
         {/* SM-1: Sales System — sub-tabbed */}
         <div style={{ display: tab === 'sales-system' ? 'block' : 'none' }}>
           <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>

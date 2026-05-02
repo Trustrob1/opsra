@@ -2999,3 +2999,157 @@ def delete_assignment_shift(
     ).eq("id", shift_id).eq("org_id", org_id).execute()
 
     return ok(data={}, message="Shift deactivated")
+
+# ── LEAD-FORM-CONFIG — Configurable lead capture form per org ─────────────────
+#
+# Appended to app/routers/admin.py (after the existing ASSIGN-1 routes).
+#
+# Spec: LEAD-FORM-CONFIG section in Build Status.
+# Pattern 28: get_current_org — org_id from JWT only (S1).
+# Pattern 62: db via Depends(get_supabase).
+# S3: Pydantic validation on every field.
+# Pattern 53: static routes declared before any parameterised routes.
+
+
+_CONFIGURABLE_LEAD_FIELD_KEYS = {
+    "email",
+    "whatsapp",
+    "business_name",
+    "business_type",
+    "location",
+    "branches",
+    "problem_stated",
+    "product_interest",
+    "referrer",
+}
+
+# Always mandatory — never configurable
+_IMMUTABLE_LEAD_FIELD_KEYS = {"phone", "full_name"}
+
+_DEFAULT_LEAD_FORM_CONFIG = [
+    {"key": "email",            "label": "Email Address",    "visible": True,  "required": False},
+    {"key": "whatsapp",         "label": "WhatsApp Number",  "visible": True,  "required": False},
+    {"key": "business_name",    "label": "Business Name",    "visible": True,  "required": False},
+    {"key": "business_type",    "label": "Business Type",    "visible": True,  "required": False},
+    {"key": "location",         "label": "Location",         "visible": True,  "required": False},
+    {"key": "branches",         "label": "No. of Branches",  "visible": False, "required": False},
+    {"key": "problem_stated",   "label": "Problem Stated",   "visible": True,  "required": False},
+    {"key": "product_interest", "label": "Product Interest", "visible": False, "required": False},
+    {"key": "referrer",         "label": "Referred By",      "visible": False, "required": False},
+]
+
+
+class LeadFormFieldItem(BaseModel):
+    key: str
+    label: str = Field(..., min_length=1, max_length=50)
+    visible: bool = True
+    required: bool = False
+
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v: str) -> str:
+        # Silently ignore phone/full_name — never configurable
+        if v in _IMMUTABLE_LEAD_FIELD_KEYS:
+            return v  # will be filtered out by route handler
+        if v not in _CONFIGURABLE_LEAD_FIELD_KEYS:
+            raise ValueError(
+                f"'{v}' is not a configurable field key. "
+                f"Valid keys: {', '.join(sorted(_CONFIGURABLE_LEAD_FIELD_KEYS))}"
+            )
+        return v
+
+    @field_validator("label")
+    @classmethod
+    def _validate_label(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("label is required")
+        if len(v) > 50:
+            raise ValueError("label must be 50 characters or fewer")
+        return v
+
+    @model_validator(mode="after")
+    def _validate_required_visible(self) -> "LeadFormFieldItem":
+        if self.required and not self.visible:
+            raise ValueError(
+                f"Field '{self.key}': required=true is not valid when visible=false. "
+                "A hidden field cannot be required."
+            )
+        return self
+
+
+class LeadFormConfigUpdate(BaseModel):
+    fields: List[LeadFormFieldItem]
+
+    @field_validator("fields")
+    @classmethod
+    def _validate_fields(cls, v: List[LeadFormFieldItem]) -> List[LeadFormFieldItem]:
+        # Filter out immutable keys — silently ignored per spec
+        return [f for f in v if f.key not in _IMMUTABLE_LEAD_FIELD_KEYS]
+
+
+@router.get("/lead-form-config")
+def get_lead_form_config(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    LEAD-FORM-CONFIG: Return org lead_form_config. Falls back to default if null.
+    owner + ops_manager access (inline RBAC check).
+    S1 — org_id from JWT only. Pattern 28. Pattern 62.
+    """
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can view lead form config."},
+        )
+
+    result = (
+        db.table("organisations")
+        .select("lead_form_config")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    fields = (data or {}).get("lead_form_config") or _DEFAULT_LEAD_FORM_CONFIG
+    return ok(data={"fields": fields})
+
+
+@router.patch("/lead-form-config")
+def update_lead_form_config(
+    payload: LeadFormConfigUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    LEAD-FORM-CONFIG: Save org lead_form_config.
+    owner only — ops_manager can view but not save.
+    S1 — org_id from JWT only. Pattern 28. Pattern 62. S3 — Pydantic validated above.
+    """
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners can update the lead form configuration."},
+        )
+
+    fields_data = [f.model_dump() for f in payload.fields]
+
+    updates = {
+        "lead_form_config": fields_data,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    db.table("organisations").update(updates).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="lead_form_config.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"fields": fields_data},
+    )
+    return ok(data={"fields": fields_data}, message="Lead form configuration saved")
+

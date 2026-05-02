@@ -1,65 +1,115 @@
 /**
- * LeadCreateModal
+ * LeadCreateModal — LEAD-FORM-CONFIG updated
+ *
+ * On modal open: fetches GET /api/v1/admin/lead-form-config.
+ * Renders only fields where visible: true, in config order.
+ * Applies required attribute per config.
+ * Applies custom label per config.
+ * phone and full_name always rendered first, always required — never from config.
+ * If fetch fails → falls back to showing all fields (safe default, no blocking).
+ *
+ * Also adds product_interest field (new LEAD-FORM-CONFIG field).
  *
  * Calls POST /api/v1/leads
  * Required: full_name, source
- * All other fields optional — matches LeadCreate Pydantic model in models/leads.py
- *
- * Field names come from the `leads` table schema (Technical Spec §3.2).
+ * All other fields optional — matches LeadCreate Pydantic model.
  * org_id is NEVER in the payload — derived from JWT server-side.
  *
- * Sources (LeadSource enum): facebook_ad | instagram_ad | landing_page |
- *   whatsapp_inbound | manual_phone | manual_referral | import
- *
- * Branches (LeadBranches): 1 | 2-3 | 4-10 | 10+
+ * Pattern 51: full rewrite.
+ * Mobile-first: modal is full-screen below 600px (Section 13.3).
  */
 import { useState, useEffect } from 'react'
 import { createLead } from '../../services/leads.service'
 import { getGrowthTeams } from '../../services/growth.service'
+import { getLeadFormConfig } from '../../services/admin.service'
 import { ds, SOURCE_LABELS, BRANCHES_OPTIONS } from '../../utils/ds'
 import UserSelect from '../../shared/UserSelect'
 
 const SOURCES = Object.entries(SOURCE_LABELS)
 
 const INITIAL = {
-  full_name:      '',
-  source:         '',
-  phone:          '',
-  whatsapp:       '',
-  email:          '',
-  business_name:  '',
-  business_type:  '',
-  location:       '',
-  branches:       '',
-  problem_stated: '',
-  referrer:       '',
-  assigned_to:    '',
-  source_team:    '',
+  full_name:        '',
+  source:           '',
+  phone:            '',
+  whatsapp:         '',
+  email:            '',
+  business_name:    '',
+  business_type:    '',
+  location:         '',
+  branches:         '',
+  problem_stated:   '',
+  product_interest: '',
+  referrer:         '',
+  assigned_to:      '',
+  source_team:      '',
 }
 
-export default function LeadCreateModal({ onClose, onCreated }) {
-  const [form, setForm]         = useState(INITIAL)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError]       = useState(null)
-  const [teams, setTeams]       = useState([])  // GPM-1D: active growth_teams
+// Default config — shown if fetch fails (all visible, none required)
+const DEFAULT_FORM_CONFIG = [
+  { key: 'email',            label: 'Email Address',    visible: true,  required: false },
+  { key: 'whatsapp',         label: 'WhatsApp Number',  visible: true,  required: false },
+  { key: 'business_name',    label: 'Business Name',    visible: true,  required: false },
+  { key: 'business_type',    label: 'Business Type',    visible: true,  required: false },
+  { key: 'location',         label: 'Location',         visible: true,  required: false },
+  { key: 'branches',         label: 'No. of Branches',  visible: false, required: false },
+  { key: 'problem_stated',   label: 'Problem Stated',   visible: true,  required: false },
+  { key: 'product_interest', label: 'Product Interest', visible: false, required: false },
+  { key: 'referrer',         label: 'Referred By',      visible: false, required: false },
+]
 
-  // GPM-1D: silently fetch active growth_teams on mount — never blocking
+export default function LeadCreateModal({ onClose, onCreated }) {
+  const [form, setForm]             = useState(INITIAL)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError]           = useState(null)
+  const [teams, setTeams]           = useState([])
+  const [formConfig, setFormConfig] = useState(DEFAULT_FORM_CONFIG)
+  const [configLoaded, setConfigLoaded] = useState(false)
+
+  // Fetch form config + growth teams on mount — both fail silently
   useEffect(() => {
+    getLeadFormConfig()
+      .then(data => {
+        if (data?.fields?.length) setFormConfig(data.fields)
+      })
+      .catch(() => {}) // fall back to DEFAULT_FORM_CONFIG
+      .finally(() => setConfigLoaded(true))
+
     getGrowthTeams()
       .then(data => setTeams((data || []).filter(t => t.is_active)))
-      .catch(() => {}) // fail silently — field simply won't render
+      .catch(() => {})
   }, [])
 
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+  const set = key => e => setForm(f => ({ ...f, [key]: e.target.value }))
+
+  // Visible fields from config, in config order
+  const visibleConfig = formConfig.filter(f => f.visible)
+
+  // Build dynamic required check
+  const configRequired = key => {
+    const cfg = formConfig.find(f => f.key === key)
+    return cfg?.required ?? false
+  }
+
+  // Check all config-required fields are filled
+  const configRequiredMet = visibleConfig
+    .filter(f => f.required)
+    .every(f => (form[f.key] || '').trim() !== '')
 
   const handleSubmit = async () => {
     if (!form.full_name.trim()) { setError('Full name is required.'); return }
     if (!form.source)            { setError('Source is required.'); return }
 
+    // Check config-required fields
+    for (const cfg of visibleConfig.filter(f => f.required)) {
+      if (!(form[cfg.key] || '').trim()) {
+        setError(`${cfg.label} is required.`)
+        return
+      }
+    }
+
     setSubmitting(true)
     setError(null)
 
-    // Build payload — omit empty strings so optional fields are truly absent
     const payload = Object.fromEntries(
       Object.entries(form).filter(([, v]) => v !== ''),
     )
@@ -80,7 +130,7 @@ export default function LeadCreateModal({ onClose, onCreated }) {
     }
   }
 
-  const showReferrer = form.source === 'manual_referral'
+  const isSubmitDisabled = submitting || !form.full_name || !form.source || !configRequiredMet
 
   return (
     <ModalOverlay onClose={onClose}>
@@ -100,7 +150,7 @@ export default function LeadCreateModal({ onClose, onCreated }) {
       {/* Body */}
       <div style={{ padding: '24px' }}>
 
-        {/* Required section */}
+        {/* Always-required section */}
         <SectionLabel>Contact Details</SectionLabel>
 
         <TwoCol>
@@ -124,103 +174,84 @@ export default function LeadCreateModal({ onClose, onCreated }) {
           </Field>
         </TwoCol>
 
-        <TwoCol>
-          <Field label="Phone">
-            <input
-              type="tel"
-              placeholder="+234 800 000 0000"
-              value={form.phone}
-              onChange={set('phone')}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="WhatsApp Number">
-            <input
-              type="tel"
-              placeholder="+234 800 000 0000"
-              value={form.whatsapp}
-              onChange={set('whatsapp')}
-              style={inputStyle}
-            />
-          </Field>
-        </TwoCol>
-
-        <Field label="Email Address">
+        {/* Phone — always shown, always required */}
+        <Field label="Phone *">
           <input
-            type="email"
-            placeholder="amaka@business.com"
-            value={form.email}
-            onChange={set('email')}
+            type="tel"
+            placeholder="+234 800 000 0000"
+            value={form.phone}
+            onChange={set('phone')}
             style={inputStyle}
           />
         </Field>
 
-        {/* Referrer — only shown for manual_referral source */}
-        {showReferrer && (
-          <Field label="Referred By">
-            <input
-              type="text"
-              placeholder="Name of person who referred this lead"
-              value={form.referrer}
-              onChange={set('referrer')}
-              style={inputStyle}
-            />
-          </Field>
+        {/* Config-driven fields */}
+        {!configLoaded ? null : (
+          <>
+            {/* Group: contact-type fields */}
+            {visibleConfig.some(f => ['whatsapp', 'email'].includes(f.key)) && (
+              <>
+                {renderConfigField('whatsapp', form, set, formConfig, inputStyle)}
+                {renderConfigField('email', form, set, formConfig, inputStyle)}
+              </>
+            )}
+
+            {/* Referrer — conditional on source AND config */}
+            {form.source === 'manual_referral' &&
+              visibleConfig.find(f => f.key === 'referrer') &&
+              renderConfigField('referrer', form, set, formConfig, inputStyle)}
+
+            {/* Business section — if any business fields are visible */}
+            {visibleConfig.some(f => ['business_name', 'business_type', 'location', 'branches'].includes(f.key)) && (
+              <>
+                <SectionLabel>Business Details</SectionLabel>
+                <TwoCol>
+                  {renderConfigField('business_name', form, set, formConfig, inputStyle)}
+                  {renderConfigField('business_type', form, set, formConfig, inputStyle)}
+                </TwoCol>
+                <TwoCol>
+                  {renderConfigField('location', form, set, formConfig, inputStyle)}
+                  {/* branches is a select */}
+                  {visibleConfig.find(f => f.key === 'branches') && (
+                    <Field label={getLabelWithRequired('branches', formConfig)}>
+                      <select value={form.branches} onChange={set('branches')} style={inputStyle}>
+                        <option value="">— Select —</option>
+                        {BRANCHES_OPTIONS.map(b => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                </TwoCol>
+              </>
+            )}
+
+            {/* Intent fields */}
+            {visibleConfig.find(f => f.key === 'problem_stated') && (
+              <Field label={getLabelWithRequired('problem_stated', formConfig)}>
+                <textarea
+                  placeholder="What challenge or problem did they describe?"
+                  value={form.problem_stated}
+                  onChange={set('problem_stated')}
+                  style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
+                />
+              </Field>
+            )}
+            {visibleConfig.find(f => f.key === 'product_interest') && (
+              <Field label={getLabelWithRequired('product_interest', formConfig)}>
+                <input
+                  type="text"
+                  placeholder="e.g. Mattresses, Pillow Tops, Bed Frames"
+                  value={form.product_interest}
+                  onChange={set('product_interest')}
+                  style={inputStyle}
+                />
+              </Field>
+            )}
+          </>
         )}
 
-        <SectionLabel>Business Details</SectionLabel>
-
-        <TwoCol>
-          <Field label="Business Name">
-            <input
-              type="text"
-              placeholder="e.g. Amaka Supermarket"
-              value={form.business_name}
-              onChange={set('business_name')}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Business Type">
-            <input
-              type="text"
-              placeholder="e.g. Supermarket, Pharmacy"
-              value={form.business_type}
-              onChange={set('business_type')}
-              style={inputStyle}
-            />
-          </Field>
-        </TwoCol>
-
-        <TwoCol>
-          <Field label="Location">
-            <input
-              type="text"
-              placeholder="e.g. Ikeja, Lagos"
-              value={form.location}
-              onChange={set('location')}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Number of Branches">
-            <select value={form.branches} onChange={set('branches')} style={inputStyle}>
-              <option value="">— Select —</option>
-              {BRANCHES_OPTIONS.map((b) => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
-          </Field>
-        </TwoCol>
-
-        <Field label="Problem / Need Stated">
-          <textarea
-            placeholder="What challenge or problem did they describe?"
-            value={form.problem_stated}
-            onChange={set('problem_stated')}
-            style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
-          />
-        </Field>
-
-        {/* Assignment */}
+        {/* Assignment — always shown */}
         <SectionLabel>Assignment</SectionLabel>
         <Field label="Assign To (optional)">
           <UserSelect
@@ -234,7 +265,7 @@ export default function LeadCreateModal({ onClose, onCreated }) {
           </p>
         </Field>
 
-        {/* GPM-1D: Source Team — only rendered when active teams exist */}
+        {/* GPM-1D: Source Team */}
         {teams.length > 0 && (
           <Field label="Source Team (optional)">
             <select value={form.source_team} onChange={set('source_team')} style={inputStyle}>
@@ -244,28 +275,26 @@ export default function LeadCreateModal({ onClose, onCreated }) {
               ))}
             </select>
             <p style={{ fontSize: 11, color: ds.gray, margin: '4px 0 0' }}>
-              Used for Growth Dashboard attribution. Sets first-touch team at creation.
+              Used for Growth Dashboard attribution.
             </p>
           </Field>
         )}
 
-        {/* Error */}
         {error && (
           <p style={{ color: ds.red, fontSize: 13, marginBottom: 14 }}>⚠ {error}</p>
         )}
 
-        {/* Actions */}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
           <button onClick={onClose} disabled={submitting} style={secondaryBtn}>
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting || !form.full_name || !form.source}
+            disabled={isSubmitDisabled}
             style={{
               ...primaryBtn,
-              opacity: (!form.full_name || !form.source || submitting) ? 0.5 : 1,
-              cursor:  (!form.full_name || !form.source || submitting) ? 'not-allowed' : 'pointer',
+              opacity: isSubmitDisabled ? 0.5 : 1,
+              cursor: isSubmitDisabled ? 'not-allowed' : 'pointer',
             }}
           >
             {submitting ? 'Creating…' : '+ Create Lead'}
@@ -276,31 +305,64 @@ export default function LeadCreateModal({ onClose, onCreated }) {
   )
 }
 
-// ─── Layout helpers ───────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function getLabelWithRequired(key, formConfig) {
+  const cfg = formConfig.find(f => f.key === key)
+  if (!cfg) return key
+  return `${cfg.label}${cfg.required ? ' *' : ''}`
+}
+
+function renderConfigField(key, form, set, formConfig, inputStyle) {
+  const cfg = formConfig.find(f => f.key === key)
+  if (!cfg || !cfg.visible) return null
+
+  const label = getLabelWithRequired(key, formConfig)
+  const TYPE_MAP = { email: 'email', whatsapp: 'tel', phone: 'tel' }
+  const PLACEHOLDER_MAP = {
+    email:    'amaka@business.com',
+    whatsapp: '+234 800 000 0000',
+    business_name: 'e.g. Amaka Supermarket',
+    business_type: 'e.g. Supermarket, Pharmacy',
+    location: 'e.g. Ikeja, Lagos',
+    referrer: 'Name of person who referred this lead',
+    product_interest: 'e.g. Mattresses, Pillow Tops',
+  }
+
+  return (
+    <Field label={label} key={key}>
+      <input
+        type={TYPE_MAP[key] || 'text'}
+        placeholder={PLACEHOLDER_MAP[key] || ''}
+        value={form[key] || ''}
+        onChange={set(key)}
+        style={inputStyle}
+        required={cfg.required}
+      />
+    </Field>
+  )
+}
+
+// ── Layout helpers ────────────────────────────────────────────────────────
 
 function ModalOverlay({ children, onClose }) {
   return (
     <div
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={e => e.target === e.currentTarget && onClose()}
       style={{
-        position:       'fixed',
-        inset:          0,
-        background:     'rgba(0,0,0,0.45)',
-        zIndex:         ds.z.modal,
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'center',
-        padding:        16,
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.45)',
+        zIndex: ds.z.modal,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
       }}
     >
       <div style={{
-        background:   'white',
+        background: 'white',
         borderRadius: ds.radius.xxl,
-        width:        680,
-        maxWidth:     '100%',
-        maxHeight:    '90vh',
-        overflowY:    'auto',
-        boxShadow:    ds.modalShadow,
+        width: 680, maxWidth: '100%',
+        maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: ds.modalShadow,
       }}>
         {children}
       </div>
@@ -309,9 +371,17 @@ function ModalOverlay({ children, onClose }) {
 }
 
 function TwoCol({ children }) {
+  const validChildren = Array.isArray(children)
+    ? children.filter(Boolean)
+    : [children].filter(Boolean)
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 0 }}>
-      {children}
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: validChildren.length === 1 ? '1fr' : '1fr 1fr',
+      gap: 14, marginBottom: 0,
+    }}>
+      {validChildren}
     </div>
   )
 }
@@ -328,16 +398,10 @@ function Field({ label, children }) {
 function SectionLabel({ children }) {
   return (
     <div style={{
-      display:       'flex',
-      alignItems:    'center',
-      gap:           12,
-      margin:        '4px 0 16px',
-      fontFamily:    ds.fontSyne,
-      fontWeight:    600,
-      fontSize:      12,
-      color:         ds.teal,
-      textTransform: 'uppercase',
-      letterSpacing: '0.8px',
+      display: 'flex', alignItems: 'center', gap: 12,
+      margin: '4px 0 16px', fontFamily: ds.fontSyne,
+      fontWeight: 600, fontSize: 12, color: ds.teal,
+      textTransform: 'uppercase', letterSpacing: '0.8px',
     }}>
       {children}
       <span style={{ flex: 1, height: 1, background: ds.border }} />
@@ -346,44 +410,33 @@ function SectionLabel({ children }) {
 }
 
 const headerStyle = {
-  padding:        '20px 24px',
-  borderBottom:   `1px solid ${ds.border}`,
-  display:        'flex',
-  alignItems:     'center',
-  justifyContent: 'space-between',
-  position:       'sticky',
-  top:            0,
-  background:     'white',
-  zIndex:         10,
+  padding: '20px 24px',
+  borderBottom: `1px solid ${ds.border}`,
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  position: 'sticky', top: 0, background: 'white', zIndex: 10,
 }
 
 const labelStyle = {
-  fontSize:      12,
-  fontWeight:    500,
-  color:         ds.gray,
-  textTransform: 'uppercase',
-  letterSpacing: '0.6px',
+  fontSize: 12, fontWeight: 500, color: ds.gray,
+  textTransform: 'uppercase', letterSpacing: '0.6px',
 }
 
 const inputStyle = {
-  width:        '100%',
-  border:       `1.5px solid ${ds.border}`,
+  width: '100%',
+  border: `1.5px solid ${ds.border}`,
   borderRadius: ds.radius.md,
-  padding:      '11px 14px',
-  fontSize:     13.5,
-  color:        ds.dark,
-  fontFamily:   ds.fontDm,
-  background:   'white',
-  outline:      'none',
-  boxSizing:    'border-box',
-  transition:   'border-color 0.2s',
+  padding: '11px 14px', fontSize: 13.5,
+  color: ds.dark, fontFamily: ds.fontDm,
+  background: 'white', outline: 'none',
+  boxSizing: 'border-box', transition: 'border-color 0.2s',
 }
 
-const closeBtn  = { background: 'none', border: 'none', fontSize: 20, color: ds.gray, cursor: 'pointer', padding: '4px 8px' }
+const closeBtn = { background: 'none', border: 'none', fontSize: 20, color: ds.gray, cursor: 'pointer', padding: '4px 8px' }
 const primaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 8,
   padding: '11px 22px', borderRadius: ds.radius.md, border: 'none',
   background: ds.teal, color: 'white', fontSize: 13.5, fontWeight: 600,
   fontFamily: ds.fontSyne, cursor: 'pointer', transition: 'all 0.15s',
+  minHeight: 44,
 }
 const secondaryBtn = { ...primaryBtn, background: ds.mint, color: ds.tealDark, border: `1px solid ${ds.border}` }

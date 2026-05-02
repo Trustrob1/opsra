@@ -396,3 +396,12 @@ export const updateShift = (id, payload) =>
 export const deleteShift = (id) =>
   axios.delete(`${BASE}/api/v1/admin/lead-assignment/shifts/${id}`, { headers: _h() })
     .then(r => r.data.data)
+
+
+export const getLeadFormConfig = () =>
+  axios.get(`${BASE}/api/v1/admin/lead-form-config`, _h())
+    .then(r => r.data?.data)
+ 
+export const updateLeadFormConfig = (payload) =>
+  axios.patch(`${BASE}/api/v1/admin/lead-form-config`, payload, _h())
+    .then(r => r.data?.data)

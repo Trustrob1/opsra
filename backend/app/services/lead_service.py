@@ -1633,3 +1633,46 @@ def process_csv_import(
 
     job["status"] = "done"
     job["completed_at"] = _now_iso()
+
+# ── LEAD-FORM-CONFIG helper — append to app/services/lead_service.py ─────────
+#
+# Placed after the existing get_timeline / get_lead_tasks functions.
+# Zero callers today — required for future AddLeadModal / lead_form.html use.
+
+
+_DEFAULT_LEAD_FORM_CONFIG = [
+    {"key": "email",            "label": "Email Address",    "visible": True,  "required": False},
+    {"key": "whatsapp",         "label": "WhatsApp Number",  "visible": True,  "required": False},
+    {"key": "business_name",    "label": "Business Name",    "visible": True,  "required": False},
+    {"key": "business_type",    "label": "Business Type",    "visible": True,  "required": False},
+    {"key": "location",         "label": "Location",         "visible": True,  "required": False},
+    {"key": "branches",         "label": "No. of Branches",  "visible": False, "required": False},
+    {"key": "problem_stated",   "label": "Problem Stated",   "visible": True,  "required": False},
+    {"key": "product_interest", "label": "Product Interest", "visible": False, "required": False},
+    {"key": "referrer",         "label": "Referred By",      "visible": False, "required": False},
+]
+
+
+def get_lead_form_config(db: Any, org_id: str) -> list:
+    """
+    LEAD-FORM-CONFIG: Return resolved lead form config for org.
+    Returns org config if set, otherwise returns _DEFAULT_LEAD_FORM_CONFIG.
+    S14: any DB failure returns the default — never raises.
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("lead_form_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        config = (data or {}).get("lead_form_config") if data else None
+        if config and isinstance(config, list) and len(config) > 0:
+            return config
+    except Exception as exc:
+        logger.warning("get_lead_form_config: DB error for org %s — %s", org_id, exc)
+    return _DEFAULT_LEAD_FORM_CONFIG
