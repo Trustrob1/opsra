@@ -11,11 +11,12 @@ import re
 import uuid
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 
 from app.database import get_supabase
+from app.routers.superadmin_health import require_superadmin
 
 logger = logging.getLogger(__name__)
 
@@ -252,26 +253,13 @@ class OrgProvisionPayload(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Auth dependency
-# ---------------------------------------------------------------------------
-
-def _require_superadmin(x_superadmin_secret: Optional[str] = Header(default=None)) -> None:
-    expected = os.getenv("SUPERADMIN_SECRET")
-    if not expected:
-        logger.error("SUPERADMIN_SECRET env var is not set")
-        raise HTTPException(status_code=403, detail="Forbidden")
-    if x_superadmin_secret != expected:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-
-# ---------------------------------------------------------------------------
 # Route
 # ---------------------------------------------------------------------------
 
 @router.post("/superadmin/organisations")
 async def provision_organisation(
     payload: OrgProvisionPayload,
-    _: None = Depends(_require_superadmin),
+    _: None = Depends(require_superadmin),
     db=Depends(get_supabase),
 ):
     """
