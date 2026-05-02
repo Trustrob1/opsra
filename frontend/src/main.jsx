@@ -35,6 +35,7 @@ if ('serviceWorker' in navigator) {
 // Exposed on window so App.jsx can invoke it without importing here.
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 /**
  * urlBase64ToUint8Array — converts VAPID public key from base64 to Uint8Array.
@@ -69,7 +70,7 @@ window.opsraSubscribeToPush = async function subscribeToPush(apiToken) {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     })
 
-    await fetch('/api/v1/notifications/push-token', {
+    await fetch(`${BASE}/api/v1/notifications/push-token`, {
       method:  'POST',
       headers: {
         'Content-Type':  'application/json',
