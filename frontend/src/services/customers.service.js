@@ -15,7 +15,9 @@
 import axios from 'axios'
 import useAuthStore from '../store/authStore'
 
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api/v1`
+  : 'http://localhost:8000/api/v1'
 
 const api = axios.create({ baseURL: BASE })
 
@@ -45,29 +47,29 @@ api.interceptors.response.use(
  * Scoped roles receive only their assigned customers.
  */
 export async function getCustomerAttentionSummary() {
-  const res = await api.get('/api/v1/customers/attention-summary')
+  const res = await api.get('/customers/attention-summary')
   return res.data
 }
 
 // ── Customer Contacts — WH-0 ──────────────────────────────────────────────────
 
 export async function getCustomerContacts(customerId) {
-  const res = await api.get(`/api/v1/customers/${customerId}/contacts`)
+  const res = await api.get(`/customers/${customerId}/contacts`)
   return res.data
 }
 
 export async function addCustomerContact(customerId, payload) {
   // payload: { phone_number, name?, contact_role? }
-  const res = await api.post(`/api/v1/customers/${customerId}/contacts`, payload)
+  const res = await api.post(`/customers/${customerId}/contacts`, payload)
   return res.data
 }
 
 export async function approveContact(contactId) {
-  const res = await api.patch(`/api/v1/customers/contacts/${contactId}/approve`)
+  const res = await api.patch(`/customers/contacts/${contactId}/approve`)
   return res.data
 }
 
 export async function removeContact(contactId) {
-  const res = await api.delete(`/api/v1/customers/contacts/${contactId}`)
+  const res = await api.delete(`/customers/contacts/${contactId}`)
   return res.data
 }

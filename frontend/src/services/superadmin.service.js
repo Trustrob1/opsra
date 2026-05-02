@@ -6,8 +6,9 @@
 
 import axios from "axios";
 
-const BASE = "/api/v1";
-
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+  ? `${import.meta.env.VITE_API_URL}/api/v1`
+  : "/api/v1";
 // ---------------------------------------------------------------------------
 // In-memory JWT store — never touches localStorage or sessionStorage (Pattern 11)
 // ---------------------------------------------------------------------------
@@ -38,7 +39,7 @@ function _h() {
 // ---------------------------------------------------------------------------
 
 export async function superadminLogin(secret) {
-  const res = await axios.post(`${BASE}/superadmin/auth/login`, { secret });
+  const res = await axios.post(`${BASE}/api/v1/superadmin/auth/login`, { secret });
   const token = res.data?.data?.token;
   if (token) setSuperadminToken(token);
   return res.data;
@@ -50,7 +51,7 @@ export async function superadminLogin(secret) {
 
 export async function createOrganisation(payload) {
   const res = await axios.post(
-    `${BASE}/superadmin/organisations`,
+    `${BASE}/api/v1/superadmin/organisations`,
     payload,
     { headers: _h() }
   );

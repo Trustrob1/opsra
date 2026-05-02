@@ -173,15 +173,15 @@ export async function updateScoringRubric(payload) {
 // ── Qualification Bot — M01-3 ─────────────────────────────────────────────────
 
 export const getQualificationBot = () =>
-  axios.get('/api/v1/admin/qualification-bot', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/qualification-bot`, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateQualificationBot = (payload) =>
-  axios.patch('/api/v1/admin/qualification-bot', payload, { headers: _h() })
+  axios.patch(`${BASE}/api/v1/admin/qualification-bot`, payload, { headers: _h() })
     .then(r => r.data.data)
 
 export const getQualificationAiRecommendations = () =>
-  axios.post('/api/v1/admin/qualification-bot/ai-recommendations', {}, { headers: _h() })
+  axios.post(`${BASE}/api/v1/admin/qualification-bot/ai-recommendations`, {}, { headers: _h() })
     .then(r => r.data.data)
 
 // ── Lead SLA Config — M01-6 ──────────────────────────────────────────────────
@@ -232,18 +232,16 @@ export async function updateTriageConfig(payload) {
   return r.data.data
 }
 
-// ---------------------------------------------------------------------------
-// WH-1b: Add these two functions to frontend/src/services/admin.service.js
-// Pattern 50 — axios + _h() only, never fetch.
-// ---------------------------------------------------------------------------
+// ── WH-1b: Qualification Flow ─────────────────────────────────────────────────
 
 export const getQualificationFlow = () =>
-  axios.get('/api/v1/admin/qualification-flow', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/qualification-flow`, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateQualificationFlow = (payload) =>
-  axios.patch('/api/v1/admin/qualification-flow', payload, { headers: _h() })
+  axios.patch(`${BASE}/api/v1/admin/qualification-flow`, payload, { headers: _h() })
     .then(r => r.data.data)
+
 // ── Pipeline Stage Config — CONFIG-6 ─────────────────────────────────────────
 
 export async function getPipelineStages() {
@@ -264,60 +262,59 @@ export async function updatePipelineStages(payload) {
 // ── Ticket/KB Category Config — CONFIG-1 ─────────────────────────────────────
 
 export const getTicketCategories = () =>
-  axios.get('/api/v1/admin/ticket-categories', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/ticket-categories`, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateTicketCategories = (payload) =>
-  axios.patch('/api/v1/admin/ticket-categories', payload, { headers: _h() })
+  axios.patch(`${BASE}/api/v1/admin/ticket-categories`, payload, { headers: _h() })
     .then(r => r.data.data)
-
 
 // ── Drip Business Types — CONFIG-2 ───────────────────────────────────────────
 
 export const getDripBusinessTypes = () =>
-  axios.get('/api/v1/admin/drip-business-types', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/drip-business-types`, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateDripBusinessTypes = (payload) =>
-  axios.patch('/api/v1/admin/drip-business-types', payload, { headers: _h() })
+  axios.patch(`${BASE}/api/v1/admin/drip-business-types`, payload, { headers: _h() })
     .then(r => r.data.data)
 
 // ── SLA Business Hours — CONFIG-3 ────────────────────────────────────────────
 
 export const getSlaBusinessHours = () =>
-  axios.get('/api/v1/admin/sla-business-hours', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/sla-business-hours`, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateSlaBusinessHours = (payload) =>
-  axios.patch('/api/v1/admin/sla-business-hours', payload, { headers: _h() })
+  axios.patch(`${BASE}/api/v1/admin/sla-business-hours`, payload, { headers: _h() })
     .then(r => r.data.data)
 
-// Pattern 50: axios + _h() only, relative paths, no hardcoded base URL.
- 
+// ── SM-1: Sales Mode + Contact Menus ─────────────────────────────────────────
+
 export const getSalesMode = () =>
   axios.get(`${BASE}/api/v1/admin/sales-mode`, { headers: _h() })
     .then(r => r.data)
- 
+
 export const updateSalesMode = (mode) =>
   axios.patch(`${BASE}/api/v1/admin/sales-mode`, { mode }, { headers: _h() })
     .then(r => r.data)
- 
+
 export const getContactMenus = () =>
   axios.get(`${BASE}/api/v1/admin/contact-menus`, { headers: _h() })
     .then(r => r.data)
- 
+
 export const updateContactMenus = (payload) =>
   axios.patch(`${BASE}/api/v1/admin/contact-menus`, payload, { headers: _h() })
     .then(r => r.data)
 
-// ── SHOP-1B: Shopify Integration — append to frontend/src/services/admin.service.js ──
+// ── SHOP-1B: Shopify Integration ──────────────────────────────────────────────
 
 export const getShopifyStatus = () =>
   axios.get(`${BASE}/api/v1/admin/shopify/status`, { headers: _h() })
     .then(r => r.data)
 
 export const connectShopify = (payload) =>
-  // SHOP-2 payload: { shop_domain, client_id, client_secret, webhook_secret? }
+  // payload: { shop_domain, client_id, client_secret, webhook_secret? }
   axios.post(`${BASE}/api/v1/admin/shopify/connect`, payload, { headers: _h() })
     .then(r => r.data)
 
@@ -330,7 +327,6 @@ export const triggerShopifySync = () =>
     .then(r => r.data)
 
 // ── MULTI-ORG-WA-1: WhatsApp connection management ───────────────────────────
-// Pattern 50: axios + _h() only.
 
 export const getWhatsAppStatus = () =>
   axios.get(`${BASE}/api/v1/admin/whatsapp/status`, { headers: _h() })
@@ -344,30 +340,30 @@ export const connectWhatsApp = (payload) =>
 export const disconnectWhatsApp = () =>
   axios.delete(`${BASE}/api/v1/admin/whatsapp/disconnect`, { headers: _h() })
     .then(r => r.data.data)
+
 // ── COMM-1: Commerce Settings ─────────────────────────────────────────────────
 
 export const getCommerceSettings = () =>
-  axios.get('/api/v1/admin/commerce/settings', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/commerce/settings`, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateCommerceSettings = (payload) =>
   // payload: { enabled?: boolean, checkout_message?: string }
-  axios.patch('/api/v1/admin/commerce/settings', payload, { headers: _h() })
+  axios.patch(`${BASE}/api/v1/admin/commerce/settings`, payload, { headers: _h() })
     .then(r => r.data.data)
 
 // ── 9E-D: Messaging Limits ───────────────────────────────────────────────────
-// Append to frontend/src/services/admin.service.js
-// Pattern 50: axios + _h() only, relative paths (no ${BASE} prefix)
 
 export const getMessagingLimits = () =>
-  axios.get('/api/v1/admin/messaging-limits', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/messaging-limits`, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateMessagingLimits = (payload) =>
   // payload: { daily_customer_message_limit?, quiet_hours_start?,
   //            quiet_hours_end?, timezone? }
-  axios.patch('/api/v1/admin/messaging-limits', payload, { headers: _h() })
+  axios.patch(`${BASE}/api/v1/admin/messaging-limits`, payload, { headers: _h() })
     .then(r => r.data.data)
+
 // ── SHOP-3: Meta Commerce Catalog ID ─────────────────────────────────────────
 
 export const updateMetaCatalogId = (payload) =>
@@ -376,28 +372,27 @@ export const updateMetaCatalogId = (payload) =>
     .then(r => r.data)
 
 // ── ASSIGN-1: Lead Assignment Engine ─────────────────────────────────────────
-// Pattern 50: axios + _h() only, relative paths.
 
 export const getLeadAssignment = () =>
-  axios.get('/api/v1/admin/lead-assignment', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/lead-assignment`, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateAssignmentMode = (mode) =>
-  axios.put('/api/v1/admin/lead-assignment/mode', { mode }, { headers: _h() })
+  axios.put(`${BASE}/api/v1/admin/lead-assignment/mode`, { mode }, { headers: _h() })
     .then(r => r.data.data)
 
 export const getAssignmentShifts = () =>
-  axios.get('/api/v1/admin/lead-assignment/shifts', { headers: _h() })
+  axios.get(`${BASE}/api/v1/admin/lead-assignment/shifts`, { headers: _h() })
     .then(r => r.data.data)
 
 export const createShift = (payload) =>
-  axios.post('/api/v1/admin/lead-assignment/shifts', payload, { headers: _h() })
+  axios.post(`${BASE}/api/v1/admin/lead-assignment/shifts`, payload, { headers: _h() })
     .then(r => r.data.data)
 
 export const updateShift = (id, payload) =>
-  axios.patch(`/api/v1/admin/lead-assignment/shifts/${id}`, payload, { headers: _h() })
+  axios.patch(`${BASE}/api/v1/admin/lead-assignment/shifts/${id}`, payload, { headers: _h() })
     .then(r => r.data.data)
 
 export const deleteShift = (id) =>
-  axios.delete(`/api/v1/admin/lead-assignment/shifts/${id}`, { headers: _h() })
+  axios.delete(`${BASE}/api/v1/admin/lead-assignment/shifts/${id}`, { headers: _h() })
     .then(r => r.data.data)

@@ -2,12 +2,14 @@
  * frontend/src/services/growth.service.js
  * Growth & Performance Dashboard API service — GPM-1B + GPM-1E (watermark).
  *
- * Pattern 50: axios + _h() only, relative paths.
+ * Pattern 50: axios + _h() only.
  * Pattern 11: JWT in Zustand memory only.
  */
 
 import axios from 'axios'
 import useAuthStore from '../store/authStore'
+
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 function _h() {
   const token = useAuthStore.getState().token
@@ -27,42 +29,42 @@ function _params(p = {}) {
 // ---------------------------------------------------------------------------
 
 export async function getGrowthOverview(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/overview', { ..._h(), params: _params(params) })
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/overview`, { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getTeamPerformance(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/teams', { ..._h(), params: _params(params) })
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/teams`, { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getFunnelMetrics(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/funnel', { ..._h(), params: _params(params) })
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/funnel`, { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getSalesRepMetrics(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/sales-reps', { ..._h(), params: _params(params) })
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/sales-reps`, { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getChannelMetrics(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/channels', { ..._h(), params: _params(params) })
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/channels`, { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getLeadVelocity(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/velocity', { ..._h(), params: _params(params) })
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/velocity`, { ..._h(), params: _params(params) })
   return r.data.data
 }
 
 export async function getPipelineAtRisk(stuckDays = 7) {
-  const r = await axios.get('/api/v1/analytics/growth/pipeline-at-risk', { ..._h(), params: { stuck_days: stuckDays } })
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/pipeline-at-risk`, { ..._h(), params: { stuck_days: stuckDays } })
   return r.data.data
 }
 
 export async function getWinLoss(params = {}) {
-  const r = await axios.get('/api/v1/analytics/growth/win-loss', { ..._h(), params: _params(params) })
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/win-loss`, { ..._h(), params: _params(params) })
   return r.data.data
 }
 
@@ -71,22 +73,22 @@ export async function getWinLoss(params = {}) {
 // ---------------------------------------------------------------------------
 
 export async function getGrowthTeams() {
-  const r = await axios.get('/api/v1/growth/teams', _h())
+  const r = await axios.get(`${BASE}/api/v1/growth/teams`, _h())
   return r.data.data
 }
 
 export async function createGrowthTeam(payload) {
-  const r = await axios.post('/api/v1/growth/teams', payload, _h())
+  const r = await axios.post(`${BASE}/api/v1/growth/teams`, payload, _h())
   return r.data.data
 }
 
 export async function updateGrowthTeam(teamId, payload) {
-  const r = await axios.patch(`/api/v1/growth/teams/${teamId}`, payload, _h())
+  const r = await axios.patch(`${BASE}/api/v1/growth/teams/${teamId}`, payload, _h())
   return r.data.data
 }
 
 export async function deleteGrowthTeam(teamId) {
-  const r = await axios.delete(`/api/v1/growth/teams/${teamId}`, _h())
+  const r = await axios.delete(`${BASE}/api/v1/growth/teams/${teamId}`, _h())
   return r.data
 }
 
@@ -95,7 +97,7 @@ export async function deleteGrowthTeam(teamId) {
 // ---------------------------------------------------------------------------
 
 export async function getSpendEntries(params = {}) {
-  const r = await axios.get('/api/v1/growth/spend', {
+  const r = await axios.get(`${BASE}/api/v1/growth/spend`, {
     ..._h(),
     params: {
       ...(params.periodStart ? { period_start: params.periodStart } : {}),
@@ -106,12 +108,12 @@ export async function getSpendEntries(params = {}) {
 }
 
 export async function createSpendEntry(payload) {
-  const r = await axios.post('/api/v1/growth/spend', payload, _h())
+  const r = await axios.post(`${BASE}/api/v1/growth/spend`, payload, _h())
   return r.data.data
 }
 
 export async function deleteSpendEntry(spendId) {
-  const r = await axios.delete(`/api/v1/growth/spend/${spendId}`, _h())
+  const r = await axios.delete(`${BASE}/api/v1/growth/spend/${spendId}`, _h())
   return r.data
 }
 
@@ -120,24 +122,24 @@ export async function deleteSpendEntry(spendId) {
 // ---------------------------------------------------------------------------
 
 export async function getDirectSales(page = 1, pageSize = 20) {
-  const r = await axios.get('/api/v1/growth/direct-sales', {
+  const r = await axios.get(`${BASE}/api/v1/growth/direct-sales`, {
     ..._h(), params: { page, page_size: pageSize },
   })
   return r.data.data
 }
 
 export async function createDirectSale(payload) {
-  const r = await axios.post('/api/v1/growth/direct-sales', payload, _h())
+  const r = await axios.post(`${BASE}/api/v1/growth/direct-sales`, payload, _h())
   return r.data.data
 }
 
 export async function updateDirectSale(saleId, payload) {
-  const r = await axios.patch(`/api/v1/growth/direct-sales/${saleId}`, payload, _h())
+  const r = await axios.patch(`${BASE}/api/v1/growth/direct-sales/${saleId}`, payload, _h())
   return r.data.data
 }
 
 export async function deleteDirectSale(saleId) {
-  const r = await axios.delete(`/api/v1/growth/direct-sales/${saleId}`, _h())
+  const r = await axios.delete(`${BASE}/api/v1/growth/direct-sales/${saleId}`, _h())
   return r.data
 }
 
@@ -159,7 +161,7 @@ export async function importSalesExcel(formData, confirm = false, selectedIndice
     params.append('selected_indices', selectedIndices.join(','))
   }
   const r = await axios.post(
-    `/api/v1/growth/direct-sales/import/excel?${params.toString()}`,
+    `${BASE}/api/v1/growth/direct-sales/import/excel?${params.toString()}`,
     formData,
     {
       headers: {
@@ -180,7 +182,7 @@ export async function importSalesExcel(formData, confirm = false, selectedIndice
  */
 export async function importSalesSheets(url, confirm = false, selectedIndices = null, fromBeginning = false) {
   const r = await axios.post(
-    '/api/v1/growth/direct-sales/import/sheets',
+    `${BASE}/api/v1/growth/direct-sales/import/sheets`,
     {
       url,
       confirm,
@@ -199,7 +201,7 @@ export async function importSalesSheets(url, confirm = false, selectedIndices = 
  */
 export async function resetImportWatermark(sourceType, sheetUrl = null) {
   const r = await axios.delete(
-    '/api/v1/growth/direct-sales/import/watermark',
+    `${BASE}/api/v1/growth/direct-sales/import/watermark`,
     { ..._h(), data: { source_type: sourceType, sheet_url: sheetUrl } }
   )
   return r.data
@@ -210,7 +212,7 @@ export async function resetImportWatermark(sourceType, sheetUrl = null) {
 // ---------------------------------------------------------------------------
 
 export async function getInsightSections(dateFrom, dateTo) {
-  const r = await axios.get('/api/v1/analytics/growth/insights/sections', {
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/insights/sections`, {
     ..._h(),
     params: {
       ...(dateFrom ? { date_from: dateFrom } : {}),
@@ -222,7 +224,7 @@ export async function getInsightSections(dateFrom, dateTo) {
 
 export async function getInsightPanel(dateFrom, dateTo) {
   const r = await axios.post(
-    '/api/v1/analytics/growth/insights/panel',
+    `${BASE}/api/v1/analytics/growth/insights/panel`,
     {},
     {
       ..._h(),
@@ -236,11 +238,11 @@ export async function getInsightPanel(dateFrom, dateTo) {
 }
 
 export async function getInsightAnomalies() {
-  const r = await axios.get('/api/v1/analytics/growth/insights/anomalies', _h())
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/insights/anomalies`, _h())
   return r.data.data
 }
 
 export async function clearInsightCache() {
-  const r = await axios.delete('/api/v1/analytics/growth/insights/sections/cache', _h())
+  const r = await axios.delete(`${BASE}/api/v1/analytics/growth/insights/sections/cache`, _h())
   return r.data
 }
