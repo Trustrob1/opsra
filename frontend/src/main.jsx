@@ -57,6 +57,7 @@ function urlBase64ToUint8Array(base64String) {
  */
 window.opsraSubscribeToPush = async function subscribeToPush(apiToken) {
   try {
+    console.log('[Push] Token received, length:', apiToken?.length, 'starts:', apiToken?.substring(0, 20))
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !VAPID_PUBLIC_KEY) return
 
     const permission = await Notification.requestPermission()
