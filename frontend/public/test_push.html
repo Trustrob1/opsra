@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Push Test</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #0a1a24; color: white; }
+    button { background: #028090; color: white; border: none; padding: 14px 24px; border-radius: 8px; font-size: 16px; width: 100%; margin: 8px 0; cursor: pointer; }
+    .result { background: #0d2233; border: 1px solid #1e3a4f; border-radius: 8px; padding: 16px; margin: 8px 0; word-break: break-all; font-size: 13px; line-height: 1.6; }
+    .ok { border-color: #00b894; }
+    .err { border-color: #d63031; }
+    .warn { border-color: #fdcb6e; }
+    h2 { color: #028090; }
+  </style>
+</head>
+<body>
+  <h2>Opsra Push Debug</h2>
+  <p style="font-size:13px;color:#7a9bad">Run each check in order and screenshot the results.</p>
+
+  <button onclick="check1()">1. Check Notification Permission</button>
+  <div id="r1" class="result">—</div>
+
+  <button onclick="check2()">2. Check Service Worker</button>
+  <div id="r2" class="result">—</div>
+
+  <button onclick="check3()">3. Check Push Subscription</button>
+  <div id="r3" class="result">—</div>
+
+  <button onclick="check4()">4. Test POST to Backend</button>
+  <div id="r4" class="result">—</div>
+
+  <script>
+    const BASE = 'https://opsra.onrender.com'
+    const TOKEN = prompt('Paste your login token (from localStorage is not available — skip if unknown)', '') || ''
+
+    function show(id, msg, type) {
+      const el = document.getElementById(id)
+      el.textContent = msg
+      el.className = 'result ' + (type || '')
+    }
+
+    async function check1() {
+      try {
+        const p = Notification.permission
+        show('r1', 'Permission: ' + p, p === 'granted' ? 'ok' : 'warn')
+        if (p === 'default') {
+          const r = await Notification.requestPermission()
+          show('r1', 'Permission after request: ' + r, r === 'granted' ? 'ok' : 'err')
+        }
+      } catch(e) {
+        show('r1', 'ERROR: ' + e.message, 'err')
+      }
+    }
+
+    async function check2() {
+      try {
+        if (!('serviceWorker' in navigator)) { show('r2', 'Service Worker NOT supported', 'err'); return }
+        const regs = await navigator.serviceWorker.getRegistrations()
+        if (regs.length === 0) { show('r2', 'No SW registered', 'err'); return }
+        const reg = regs[0]
+        show('r2', 'SW found: ' + reg.scope + '\nState: ' + (reg.active?.state || 'unknown'), 'ok')
+      } catch(e) {
+        show('r2', 'ERROR: ' + e.message, 'err')
+      }
+    }
+
+    async function check3() {
+      try {
+        const reg = await navigator.serviceWorker.ready
+        const sub = await reg.pushManager.getSubscription()
+        if (!sub) {
+          show('r3', 'No subscription found — never subscribed or subscription expired', 'warn')
+        } else {
+          show('r3', 'Subscription exists!\nEndpoint: ' + sub.endpoint.substring(0, 60) + '...', 'ok')
+        }
+      } catch(e) {
+        show('r3', 'ERROR: ' + e.message, 'err')
+      }
+    }
+
+    async function check4() {
+      try {
+        const res = await fetch(BASE + '/api/v1/notifications/push-token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + TOKEN,
+          },
+          body: JSON.stringify({ token: 'test-token-debug', platform: 'web' })
+        })
+        const text = await res.text()
+        show('r4', 'Status: ' + res.status + '\nResponse: ' + text, res.ok ? 'ok' : 'err')
+      } catch(e) {
+        show('r4', 'ERROR: ' + e.message, 'err')
+      }
+    }
+  </script>
+</body>
+</html>
