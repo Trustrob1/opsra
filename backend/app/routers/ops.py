@@ -82,7 +82,7 @@ def _cache_set(key: str, value, ttl: int) -> None:
             return
         r.setex(key, ttl, json.dumps(value, default=str))
     except Exception as exc:
-        logger.debug("ops._cache_set %s: %s", key, exc)
+        logger.warning("ops._cache_set FAILED %s: %s", key, exc)
 
 
 @router.get("/dashboard/metrics", tags=["ops"])
