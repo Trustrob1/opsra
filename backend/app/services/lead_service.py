@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -696,8 +697,15 @@ def create_lead(
         new_value={"stage": "new", "source": data.get("source")},
     )
 
-    # Feature 3: notify assigned rep + all owner/ops_manager users (S14 — never blocks)
-    _notify_new_lead(db, org_id, lead, lead_id)
+    # Feature 3: notify assigned rep + all owner/ops_manager users
+    # PERF-1: runs in a daemon thread so the HTTP response is not blocked
+    # by Meta WhatsApp API calls. S14 guarantee is preserved — lead is
+    # already committed to DB before this thread starts.
+    threading.Thread(
+        target=_notify_new_lead,
+        args=(db, org_id, lead, lead_id),
+        daemon=True,
+    ).start()
 
     # ASSIGN-1: auto-assign lead to rep if org is in auto mode (S14 — never blocks)
     try:

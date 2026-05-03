@@ -7,14 +7,63 @@ All functions:
   - Pattern 62: db passed in, never called directly
   - S14: individual metric failures never crash the whole response
   - org_id always scoped — never cross-org leakage
+
+PERF-1 (LOAD-TEST-1 fixes):
+  get_overview_metrics, get_channel_metrics, get_sales_rep_metrics are cached
+  in Redis for 5 minutes per org+date-range. Cache miss falls through to live
+  computation. S14: Redis unavailable → live query, no error raised.
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 from datetime import date, datetime, timezone, timedelta
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Redis cache helpers — PERF-1
+# 5-minute TTL for expensive aggregation routes (overview, channels, sales-reps).
+# These are manager-only, low-frequency, and expensive to compute.
+# ---------------------------------------------------------------------------
+
+_GROWTH_CACHE_TTL = 300   # 5 minutes
+
+
+def _growth_cache_get(key: str):
+    """Return parsed JSON from Redis or None. S14."""
+    try:
+        import redis as _redis
+        url = os.environ.get("REDIS_URL", "")
+        if not url:
+            return None
+        if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}ssl_cert_reqs=CERT_NONE"
+        r = _redis.from_url(url, decode_responses=True, socket_connect_timeout=1)
+        raw = r.get(key)
+        return json.loads(raw) if raw else None
+    except Exception as exc:
+        logger.debug("growth_cache_get %s: %s", key, exc)
+        return None
+
+
+def _growth_cache_set(key: str, value, ttl: int) -> None:
+    """Store value as JSON with TTL. S14: silently swallows all errors."""
+    try:
+        import redis as _redis
+        url = os.environ.get("REDIS_URL", "")
+        if not url:
+            return
+        if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}ssl_cert_reqs=CERT_NONE"
+        r = _redis.from_url(url, decode_responses=True, socket_connect_timeout=1)
+        r.setex(key, ttl, json.dumps(value, default=str))
+    except Exception as exc:
+        logger.debug("growth_cache_set %s: %s", key, exc)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -349,7 +398,24 @@ def get_overview_metrics(
     """
     Top-level KPI summary.
     Revenue sources: leads (closed deal_value) + renewals + direct_sales.
+    PERF-1: Results cached in Redis for 5 minutes per org+date-range.
     """
+    cache_key = f"growth:overview:{org_id}:{date_from}:{date_to}"
+    cached = _growth_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    result = _compute_overview_metrics(db, org_id, date_from, date_to)
+    _growth_cache_set(cache_key, result, _GROWTH_CACHE_TTL)
+    return result
+
+
+def _compute_overview_metrics(
+    db: Any,
+    org_id: str,
+    date_from: Optional[date],
+    date_to: Optional[date],
+) -> dict:
     leads = _fetch_leads(db, org_id)
 
     # --- Leads revenue (current period) ---
@@ -667,6 +733,37 @@ def get_sales_rep_metrics(
     sales_agent role: returns only their own row.
     owner/ops_manager: returns all reps.
     Pattern 33: Python-side grouping.
+    PERF-1: Results cached in Redis for 5 minutes.
+    Cache key includes requesting_user_id for sales_agent role-scoping.
+    """
+    cache_key = (
+        f"growth:sales_reps:{org_id}:{date_from}:{date_to}"
+        f":{requesting_user_id}:{requesting_user_role}"
+    )
+    cached = _growth_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    result = _compute_sales_rep_metrics(
+        db, org_id, date_from, date_to, requesting_user_id, requesting_user_role
+    )
+    _growth_cache_set(cache_key, result, _GROWTH_CACHE_TTL)
+    return result
+
+
+def _compute_sales_rep_metrics(
+    db: Any,
+    org_id: str,
+    date_from: Optional[date],
+    date_to: Optional[date],
+    requesting_user_id: str,
+    requesting_user_role: str,
+) -> list[dict]:
+    """
+    Per-rep performance.
+    sales_agent role: returns only their own row.
+    owner/ops_manager: returns all reps.
+    Pattern 33: Python-side grouping.
     """
     leads = _fetch_leads(db, org_id)
     period_leads = [
@@ -758,7 +855,24 @@ def get_channel_metrics(
     Channels with 0 conversions still included.
     Includes direct_sales grouped by utm_source.
     Pattern 33: Python-side grouping.
+    PERF-1: Results cached in Redis for 5 minutes per org+date-range.
     """
+    cache_key = f"growth:channels:{org_id}:{date_from}:{date_to}"
+    cached = _growth_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    result = _compute_channel_metrics(db, org_id, date_from, date_to)
+    _growth_cache_set(cache_key, result, _GROWTH_CACHE_TTL)
+    return result
+
+
+def _compute_channel_metrics(
+    db: Any,
+    org_id: str,
+    date_from: Optional[date],
+    date_to: Optional[date],
+) -> list[dict]:
     leads = _fetch_leads(db, org_id)
     period_leads = [
         l for l in leads

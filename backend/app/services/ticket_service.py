@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import threading
 import uuid as _uuid_mod
 from datetime import datetime, timezone
 from typing import Optional
@@ -554,6 +555,26 @@ def list_tickets(
         "page_size": page_size,
     }
 
+def _run_background_triage(db, org_id, ticket_id, content, category_hint, ai_handling_mode):
+    """S14: runs AI triage after ticket creation. Any failure is logged and swallowed."""
+    try:
+        ai = _triage_with_ai(content=content, db=db, org_id=org_id, category_hint=category_hint)
+        now = _now_iso()
+        updates = {"updated_at": now}
+        if ai.get("category"):              updates["category"] = ai["category"]
+        if ai.get("urgency"):               updates["urgency"] = ai["urgency"]
+        if ai.get("title"):                 updates["title"] = ai["title"]
+        if "knowledge_gap_flagged" in ai:   updates["knowledge_gap_flagged"] = ai["knowledge_gap_flagged"]
+        db.table("tickets").update(updates).eq("id", ticket_id).eq("org_id", org_id).execute()
+        if ai.get("draft_reply") and ai_handling_mode in ("draft_review", "auto"):
+            db.table("ticket_messages").insert({
+                "org_id": org_id, "ticket_id": ticket_id,
+                "message_type": "ai_draft", "content": ai["draft_reply"],
+                "author_id": None, "is_sent": False, "created_at": now,
+            }).execute()
+    except Exception as exc:
+        logger.warning("_run_background_triage failed for ticket %s: %s", ticket_id, exc)
+
 
 def create_ticket(db, org_id: str, user_id: str, data: TicketCreate) -> dict:
     """
@@ -576,9 +597,9 @@ def create_ticket(db, org_id: str, user_id: str, data: TicketCreate) -> dict:
         category_hint=data.category,  # use manual category as KB filter hint
     )
 
-    category = data.category or ai["category"] or "feature_question"
-    urgency = data.urgency or ai["urgency"] or "medium"
-    title = data.title or ai["title"] or reference
+    category = data.category or "feature_question"
+    urgency = data.urgency or "medium"
+    title = data.title or reference
     knowledge_gap_flagged = ai["knowledge_gap_flagged"]
 
     now = _now_iso()
@@ -621,20 +642,6 @@ def create_ticket(db, org_id: str, user_id: str, data: TicketCreate) -> dict:
         }
     ).execute()
 
-    # AI first-touch draft (only for draft_review and auto modes)
-    if ai.get("draft_reply") and data.ai_handling_mode in ("draft_review", "auto"):
-        db.table("ticket_messages").insert(
-            {
-                "org_id": org_id,
-                "ticket_id": ticket_id,
-                "message_type": "ai_draft",
-                "content": ai["draft_reply"],
-                "author_id": None,
-                "is_sent": False,
-                "created_at": now,
-            }
-        ).execute()
-
     write_audit_log(
         db=db,
         org_id=org_id,
@@ -644,6 +651,13 @@ def create_ticket(db, org_id: str, user_id: str, data: TicketCreate) -> dict:
         resource_id=ticket_id,
         new_value={"reference": reference, "category": category, "urgency": urgency},
     )
+
+    # PERF-1: AI triage runs in background — does not block HTTP response
+    threading.Thread(
+        target=_run_background_triage,
+        args=(db, org_id, ticket_id, data.content, data.category, data.ai_handling_mode),
+        daemon=True,
+    ).start()
 
     return ticket
 
