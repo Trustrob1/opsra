@@ -41,7 +41,8 @@ import WhatsAppIntegration     from './WhatsAppIntegration'
 import CommerceSettings        from './CommerceSettings'    // COMM-1
 import MessagingLimitsConfig   from './MessagingLimitsConfig'
 import LeadAssignmentConfig    from './LeadAssignmentConfig'
-import LeadFormConfig          from './LeadFormConfig'      // LEAD-FORM-CONFIG
+import LeadFormConfig          from './LeadFormConfig'
+import GrowthDashboardConfig   from './GrowthDashboardConfig'
 
 const TABS = [
   { id: 'users',            label: '👥 Users' },
@@ -52,7 +53,8 @@ const TABS = [
   { id: 'commission',       label: '💼 Commissions' },
   { id: 'scoring',          label: '🎯 Lead Scoring' },
   { id: 'qualification',    label: '📋 Qualification Flow' },
-  { id: 'lead-form',        label: '📝 Lead Form' },       // LEAD-FORM-CONFIG
+  { id: 'lead-form',        label: '📝 Lead Form' },
+  { id: 'growth-dashboard', label: '📊 Dashboard Config' },
   { id: 'sla',              label: '⏱️ SLA Targets' },
   { id: 'sla-hours',        label: '🕐 Business Hours' },
   { id: 'lead-assignment',  label: '🔀 Lead Assignment' },
@@ -171,6 +173,7 @@ export default function AdminModule({ user }) {
         <div style={{ display: tab === 'scoring'          ? 'block' : 'none' }}><ScoringRubric /></div>
         <div style={{ display: tab === 'qualification'    ? 'block' : 'none' }}><QualificationFlow /></div>
         <div style={{ display: tab === 'lead-form'        ? 'block' : 'none' }}><LeadFormConfig /></div>
+        <div style={{ display: tab === 'growth-dashboard' ? 'block' : 'none' }}><GrowthDashboardConfig /></div>
         <div style={{ display: tab === 'sla'              ? 'block' : 'none' }}><LeadSLASettings /></div>
         <div style={{ display: tab === 'sla-hours'        ? 'block' : 'none' }}><SLABusinessHoursConfig /></div>
         <div style={{ display: tab === 'lead-assignment'  ? 'block' : 'none' }}><LeadAssignmentConfig /></div>

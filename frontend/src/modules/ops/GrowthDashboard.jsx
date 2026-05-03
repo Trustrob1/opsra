@@ -34,6 +34,7 @@ import {
   clearInsightCache,
 } from '../../services/growth.service'
 import useAuthStore from '../../store/authStore'
+import { getGrowthDashboardConfig } from '../../services/admin.service'
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -542,13 +543,13 @@ const STAGE_LABELS = {
 
 const STAGE_COLORS = ['#0ea5e9','#06b6d4','#14b8a6','#10b981','#16a34a']
 
-function FunnelBar({ stage, count, pctFromTop, pctFromPrev, color, isLast }) {
+function FunnelBar({ stage, count, pctFromTop, pctFromPrev, color, isLast, stageLabels }) {
   const width = Math.max(pctFromTop, 4)
   return (
     <div style={{ marginBottom: isLast ? 0 : 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 3 }}>
         <div style={{ width: 100, fontSize: 12, color: '#6b8fa0', fontFamily: ds.fontDm, fontWeight: 600 }}>
-          {STAGE_LABELS[stage] || stage}
+          {stageLabels[stage] || stage}
         </div>
         <div style={{ flex: 1, background: '#f1f5f8', borderRadius: 4, height: 28, overflow: 'hidden' }}>
           <div style={{
@@ -570,6 +571,8 @@ function FunnelBar({ stage, count, pctFromTop, pctFromPrev, color, isLast }) {
 }
 
 function FunnelSection({ data, loading, teams, params, onParamsChange }) {
+  // GROWTH-DASH-CONFIG: use org stage labels from API if available, fall back to constant
+  const stageLabels = data?.stage_labels || STAGE_LABELS
   const allTeams = ['All', ...(teams || []).map(t => t.name), 'Unattributed']
   if (loading) return <Skeleton height={180} />
   if (!data)   return null
@@ -598,7 +601,7 @@ function FunnelSection({ data, loading, teams, params, onParamsChange }) {
         </div>
         {(data.stages || []).map((s, i) => (
           <FunnelBar key={s.stage} stage={s.stage} count={s.count} pctFromTop={s.pct_from_top}
-            pctFromPrev={s.pct_from_previous_stage} color={STAGE_COLORS[i] || ds.teal} isLast={i === data.stages.length - 1} />
+            pctFromPrev={s.pct_from_previous_stage} color={STAGE_COLORS[i] || ds.teal} isLast={i === data.stages.length - 1} stageLabels={stageLabels} />
         ))}
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -609,7 +612,7 @@ function FunnelSection({ data, loading, teams, params, onParamsChange }) {
           <tbody>
             {(data.stages || []).map(s => (
               <tr key={s.stage}>
-                <td style={{ ...td, fontWeight: 600 }}>{STAGE_LABELS[s.stage] || s.stage}</td>
+                <td style={{ ...td, fontWeight: 600 }}>{stageLabels[s.stage] || s.stage}</td>
                 <td style={td}>{s.count}</td>
                 <td style={td}>{pct(s.pct_from_top)}</td>
                 <td style={{ ...td, color: s.pct_from_previous_stage < 50 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
@@ -899,8 +902,10 @@ export default function GrowthDashboard({ user, setView }) {
   const [winLoss,   setWinLoss]   = useState(null)
   const [teamsList, setTeamsList] = useState([])
 
-  const [loadingMap, setLoadingMap] = useState({})
-  const [error,      setError]      = useState(null)
+  const [loadingMap,   setLoadingMap]   = useState({})
+  const [error,        setError]        = useState(null)
+  // GROWTH-DASH-CONFIG: section visibility config
+  const [dashConfig,   setDashConfig]   = useState(null)
 
   // GPM-2: AI insight state
   const [insights,        setInsights]        = useState({})
@@ -966,6 +971,10 @@ export default function GrowthDashboard({ user, setView }) {
     import('../../services/growth.service').then(m =>
       m.getGrowthTeams().then(setTeamsList).catch(() => {})
     )
+    // GROWTH-DASH-CONFIG: fetch section visibility — fail silently (show all on error)
+    getGrowthDashboardConfig()
+      .then(data => { if (data?.sections) setDashConfig(data) })
+      .catch(() => {})
   }, [])
 
   function handleDateApply(range) {
@@ -985,6 +994,13 @@ export default function GrowthDashboard({ user, setView }) {
   }
 
   const anyLoading = Object.values(loadingMap).some(Boolean)
+
+  // GROWTH-DASH-CONFIG: return true if section is visible (default true if config not loaded)
+  function isSectionVisible(key) {
+    if (!dashConfig?.sections) return true
+    const section = dashConfig.sections.find(s => s.key === key)
+    return section ? section.visible : true
+  }
 
   return (
     <div style={{ padding: '20px 28px', maxWidth: 1200 }}>
@@ -1062,40 +1078,52 @@ export default function GrowthDashboard({ user, setView }) {
       </Section>
 
       {/* Section 2 — Team Performance */}
-      <Section title="👥 Team Performance" insight={insights.team_performance} insightLoading={insightsLoading}>
-        <TeamSection data={teams} loading={loadingMap.teams} />
-      </Section>
+      {isSectionVisible('team_performance') && (
+        <Section title="👥 Team Performance" insight={insights.team_performance} insightLoading={insightsLoading}>
+          <TeamSection data={teams} loading={loadingMap.teams} />
+        </Section>
+      )}
 
       {/* Section 3 — Funnel */}
-      <Section title="🔽 Funnel Breakdown" insight={insights.funnel} insightLoading={insightsLoading}>
-        <FunnelSection data={funnel} loading={loadingMap.funnel} teams={teamsList} params={funnelParams} onParamsChange={handleFunnelParamsChange} />
-      </Section>
+      {isSectionVisible('funnel') && (
+        <Section title="🔽 Funnel Breakdown" insight={insights.funnel} insightLoading={insightsLoading}>
+          <FunnelSection data={funnel} loading={loadingMap.funnel} teams={teamsList} params={funnelParams} onParamsChange={handleFunnelParamsChange} />
+        </Section>
+      )}
 
       {/* Section 4 — Lead Velocity */}
-      <Section title="📈 Lead Velocity" insight={insights.velocity} insightLoading={insightsLoading}>
-        <VelocitySection data={velocity} loading={loadingMap.velocity} />
-      </Section>
+      {isSectionVisible('velocity') && (
+        <Section title="📈 Lead Velocity" insight={insights.velocity} insightLoading={insightsLoading}>
+          <VelocitySection data={velocity} loading={loadingMap.velocity} />
+        </Section>
+      )}
 
-      {/* Section 5 — Pipeline at Risk */}
+      {/* Section 5 — Pipeline at Risk (always visible) */}
       <Section title="⚠️ Pipeline at Risk" insight={insights.pipeline_at_risk} insightLoading={insightsLoading}>
         <RiskSection data={atRisk} loading={loadingMap.atRisk} onLeadClick={setView ? (id) => setView('lead-profile', id) : null} />
       </Section>
 
       {/* Section 6 — Rep Leaderboard */}
-      <Section title="🏆 Sales Rep Leaderboard" insight={insights.sales_reps} insightLoading={insightsLoading}>
-        <RepSection data={reps} loading={loadingMap.reps} />
-      </Section>
+      {isSectionVisible('sales_reps') && (
+        <Section title="🏆 Sales Rep Leaderboard" insight={insights.sales_reps} insightLoading={insightsLoading}>
+          <RepSection data={reps} loading={loadingMap.reps} />
+        </Section>
+      )}
 
       {/* Section 7 — Channels */}
-      <Section title="📡 Channel Performance" insight={insights.channels} insightLoading={insightsLoading}>
-        <ChannelSection data={channels} loading={loadingMap.channels} />
-      </Section>
+      {isSectionVisible('channels') && (
+        <Section title="📡 Channel Performance" insight={insights.channels} insightLoading={insightsLoading}>
+          <ChannelSection data={channels} loading={loadingMap.channels} />
+        </Section>
+      )}
 
       {/* Section 8 — Win / Loss */}
-      <Section title="🎯 Win / Loss Analysis" insight={insights.win_loss} insightLoading={insightsLoading}>
-        <WinLossSection data={winLoss} loading={loadingMap.winLoss} />
-      </Section>
-
+      {isSectionVisible('win_loss') && (
+        <Section title="🎯 Win / Loss Analysis" insight={insights.win_loss} insightLoading={insightsLoading}>
+          <WinLossSection data={winLoss} loading={loadingMap.winLoss} />
+        </Section>
+      )}
+      
       {/* GPM-2: AI Insight Panel — Pattern 26, always mounted */}
       <InsightPanel
         open={panelOpen}

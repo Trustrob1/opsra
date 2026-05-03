@@ -517,6 +517,43 @@ def get_team_performance(
 
     return results
 
+def _get_stage_labels(db: Any, org_id: str) -> dict:
+    """
+    GROWTH-DASH-CONFIG: Return a dict mapping system stage keys to org-configured labels.
+    Falls back to title-cased system key if pipeline_stages config is null or key absent.
+    S14: returns system key fallbacks on any DB error — never raises.
+    """
+    _SYSTEM_KEYS = ["new", "contacted", "meeting_done", "proposal_sent", "converted"]
+    fallback = {k: k.replace("_", " ").title() for k in _SYSTEM_KEYS}
+
+    try:
+        result = (
+            db.table("organisations")
+            .select("pipeline_stages")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        config = (data or {}).get("pipeline_stages") if data else None
+        if not config or not isinstance(config, list):
+            return fallback
+        label_map = {}
+        for stage in config:
+            key = stage.get("key")
+            label = stage.get("label")
+            if key and label:
+                label_map[key] = label
+        for k in _SYSTEM_KEYS:
+            if k not in label_map:
+                label_map[k] = fallback[k]
+        return label_map
+    except Exception as exc:
+        logger.warning("_get_stage_labels failed for org %s: %s", org_id, exc)
+        return fallback
+
 
 # ---------------------------------------------------------------------------
 # 3. get_funnel_metrics
@@ -549,9 +586,36 @@ def get_funnel_metrics(
                 if (l.get("first_touch_team") or "") == team
             ]
 
+    # GROWTH-DASH-CONFIG: use org-configured enabled stages only
+    # Falls back to _FUNNEL_STAGES if pipeline_stages config is null
+    try:
+        _org_result = (
+            db.table("organisations")
+            .select("pipeline_stages")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        _org_data = _org_result.data
+        if isinstance(_org_data, list):
+            _org_data = _org_data[0] if _org_data else None
+        _pipeline_config = (_org_data or {}).get("pipeline_stages") if _org_data else None
+        if _pipeline_config and isinstance(_pipeline_config, list):
+            active_stages = [
+                s["key"] for s in _pipeline_config
+                if s.get("enabled", True) and s.get("key") in set(_FUNNEL_STAGES)
+            ]
+            # Always ensure new + converted are present and in correct order
+            if not active_stages:
+                active_stages = _FUNNEL_STAGES
+        else:
+            active_stages = _FUNNEL_STAGES
+    except Exception:
+        active_stages = _FUNNEL_STAGES
+
     # Count leads that reached each stage or beyond
     # A lead "reached" a stage if its current stage is that stage or a later one
-    stage_order = {s: i for i, s in enumerate(_FUNNEL_STAGES)}
+    stage_order = {s: i for i, s in enumerate(active_stages)}
 
     def reached_stage(lead: dict, stage: str) -> bool:
         current = lead.get("stage") or "new"
@@ -563,7 +627,7 @@ def get_funnel_metrics(
     stages_data = []
     prev_count = top
 
-    for stage in _FUNNEL_STAGES:
+    for stage in active_stages:
         count = sum(1 for l in period_leads if reached_stage(l, stage))
         stages_data.append({
             "stage":                    stage,
@@ -573,6 +637,7 @@ def get_funnel_metrics(
         })
         prev_count = count
 
+    stage_labels = _get_stage_labels(db, org_id)
     return {
         "team":        team,
         "total_leads": top,
@@ -581,6 +646,7 @@ def get_funnel_metrics(
             next((s["count"] for s in stages_data if s["stage"] == "converted"), 0),
             top,
         ),
+        "stage_labels": stage_labels,
     }
 
 

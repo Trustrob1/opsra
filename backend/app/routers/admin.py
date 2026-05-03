@@ -3153,3 +3153,168 @@ def update_lead_form_config(
     )
     return ok(data={"fields": fields_data}, message="Lead form configuration saved")
 
+
+# ── GROWTH-DASH-CONFIG — Configurable Growth Dashboard sections per org ────────
+#
+# Append to bottom of app/routers/admin.py (after LEAD-FORM-CONFIG routes).
+#
+# Pattern 28: get_current_org — org_id from JWT only (S1).
+# Pattern 62: db via Depends(get_supabase).
+# S3: Pydantic validation on every field.
+# Pattern 53: static routes before parameterised.
+
+_VALID_SECTION_KEYS = {
+    "overview",
+    "team_performance",
+    "funnel",
+    "velocity",
+    "pipeline_at_risk",
+    "sales_reps",
+    "channels",
+    "win_loss",
+}
+
+# Sections that are always visible — visible:false silently corrected to true
+_ALWAYS_VISIBLE_KEYS = {"overview", "pipeline_at_risk"}
+
+_DEFAULT_GROWTH_DASHBOARD_CONFIG = {
+    "sections": [
+        {"key": "overview",         "visible": True},
+        {"key": "team_performance", "visible": True},
+        {"key": "funnel",           "visible": True},
+        {"key": "velocity",         "visible": True},
+        {"key": "pipeline_at_risk", "visible": True},
+        {"key": "sales_reps",       "visible": True},
+        {"key": "channels",         "visible": True},
+        {"key": "win_loss",         "visible": True},
+    ]
+}
+
+
+class GrowthDashboardSectionItem(BaseModel):
+    key: str
+    visible: bool = True
+
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v: str) -> str:
+        if v not in _VALID_SECTION_KEYS:
+            raise ValueError(
+                f"'{v}' is not a valid section key. "
+                f"Valid keys: {', '.join(sorted(_VALID_SECTION_KEYS))}"
+            )
+        return v
+
+
+class GrowthDashboardConfigUpdate(BaseModel):
+    sections: List[GrowthDashboardSectionItem]
+
+    @field_validator("sections")
+    @classmethod
+    def _validate_sections(
+        cls, v: List[GrowthDashboardSectionItem]
+    ) -> List[GrowthDashboardSectionItem]:
+        # Silently correct always-visible sections if submitted as visible:false
+        for item in v:
+            if item.key in _ALWAYS_VISIBLE_KEYS:
+                item.visible = True
+        return v
+
+
+@router.get("/growth-dashboard-config")
+def get_growth_dashboard_config(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    GROWTH-DASH-CONFIG: Return org growth_dashboard_config. Falls back to default if null.
+    owner + ops_manager access.
+    S1 — org_id from JWT only. Pattern 28. Pattern 62.
+    """
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can view dashboard config."},
+        )
+
+    result = (
+        db.table("organisations")
+        .select("growth_dashboard_config")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    config = (data or {}).get("growth_dashboard_config") or _DEFAULT_GROWTH_DASHBOARD_CONFIG
+    return ok(data=config)
+
+
+@router.patch("/growth-dashboard-config")
+def update_growth_dashboard_config(
+    payload: GrowthDashboardConfigUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    GROWTH-DASH-CONFIG: Save org growth_dashboard_config.
+    Partial payload: only submitted sections updated, others retain current value.
+    overview + pipeline_at_risk: silently corrected to visible:true if submitted as false.
+    owner only.
+    S1 — org_id from JWT only. Pattern 28. Pattern 62. S3 — Pydantic validated above.
+    """
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners can update the dashboard configuration."},
+        )
+
+    # Load current config for partial merge
+    current_result = (
+        db.table("organisations")
+        .select("growth_dashboard_config")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    current_data = current_result.data
+    if isinstance(current_data, list):
+        current_data = current_data[0] if current_data else {}
+    current_config = (current_data or {}).get("growth_dashboard_config") or _DEFAULT_GROWTH_DASHBOARD_CONFIG
+
+    # Merge: build a dict of current sections, update only submitted keys
+    current_sections = {s["key"]: s for s in current_config.get("sections", [])}
+
+    for item in payload.sections:
+        current_sections[item.key] = {"key": item.key, "visible": item.visible}
+
+    # Preserve original ordering from _DEFAULT_GROWTH_DASHBOARD_CONFIG
+    ordered_keys = [s["key"] for s in _DEFAULT_GROWTH_DASHBOARD_CONFIG["sections"]]
+    merged_sections = [
+        current_sections[k]
+        for k in ordered_keys
+        if k in current_sections
+    ]
+    # Also include any keys that exist in current but not in default order (future-proof)
+    for k, v in current_sections.items():
+        if k not in ordered_keys:
+            merged_sections.append(v)
+
+    new_config = {"sections": merged_sections}
+
+    updates = {
+        "growth_dashboard_config": new_config,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    db.table("organisations").update(updates).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="growth_dashboard_config.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value=new_config,
+    )
+    return ok(data=new_config, message="Dashboard configuration saved")

@@ -405,3 +405,11 @@ export const getLeadFormConfig = () =>
 export const updateLeadFormConfig = (payload) =>
   axios.patch(`${BASE}/api/v1/admin/lead-form-config`, payload, { headers: _h() })
     .then(r => r.data?.data)
+
+export const getGrowthDashboardConfig = () =>
+  axios.get(`${BASE}/api/v1/admin/growth-dashboard-config`, { headers: _h() })
+    .then(r => r.data?.data)
+
+export const updateGrowthDashboardConfig = (payload) =>
+  axios.patch(`${BASE}/api/v1/admin/growth-dashboard-config`, payload, { headers: _h() })
+    .then(r => r.data?.data)
