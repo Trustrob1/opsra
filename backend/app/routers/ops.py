@@ -99,7 +99,6 @@ async def dashboard_metrics(
     cache_key = f"dashboard:metrics:{org_id}:{role}"
 
     cached = _cache_get(cache_key)
-    logger.info("Dashboard cache key: %s | hit: %s", cache_key, cached is not None)
     if cached is not None:
         return ok(data=cached)
 
