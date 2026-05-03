@@ -51,10 +51,6 @@ def _get_redis():
         url = os.environ.get("REDIS_URL", "")
         if not url:
             return None
-        # Upstash requires ssl_cert_reqs=CERT_NONE appended to rediss:// URLs
-        if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}ssl_cert_reqs=CERT_NONE"
         return _redis.from_url(url, decode_responses=True, socket_connect_timeout=1)
     except Exception as exc:
         logger.debug("ops._get_redis: unavailable — %s", exc)

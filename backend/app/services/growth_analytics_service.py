@@ -39,9 +39,6 @@ def _growth_cache_get(key: str):
         url = os.environ.get("REDIS_URL", "")
         if not url:
             return None
-        if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}ssl_cert_reqs=CERT_NONE"
         r = _redis.from_url(url, decode_responses=True, socket_connect_timeout=1)
         raw = r.get(key)
         return json.loads(raw) if raw else None
@@ -57,9 +54,6 @@ def _growth_cache_set(key: str, value, ttl: int) -> None:
         url = os.environ.get("REDIS_URL", "")
         if not url:
             return
-        if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}ssl_cert_reqs=CERT_NONE"
         r = _redis.from_url(url, decode_responses=True, socket_connect_timeout=1)
         r.setex(key, ttl, json.dumps(value, default=str))
     except Exception as exc:
