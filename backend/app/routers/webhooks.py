@@ -752,6 +752,10 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             if _shopify_ok:
                 logger.info("[WH] transactional mode — sending to commerce entry")
                 session = triage_service.get_or_create_session(db, org_id, sender_phone)
+                if not session:
+                    # 409 conflict — fetch existing session
+                    session = triage_service.get_active_session(db, org_id, sender_phone)
+                    logger.info("[WH] transactional: reused existing session=%s", session and session.get("id"))
                 if session:
                     triage_service._action_transactional_entry(
                         db, org_id, sender_phone, session["id"], contact_name
@@ -762,8 +766,15 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         elif sales_mode == "hybrid":
             logger.info("[WH] hybrid mode — sending hybrid gate")
             session = triage_service.get_or_create_session(db, org_id, sender_phone)
+            if not session:
+                # 409 conflict — session already exists (duplicate delivery or race).
+                # Fetch the existing session so the gate still fires.
+                session = triage_service.get_active_session(db, org_id, sender_phone)
+                logger.info("[WH] hybrid: reused existing session=%s", session and session.get("id"))
             if session:
                 triage_service.send_hybrid_entry_choice(db, org_id, sender_phone)
+            else:
+                logger.warning("[WH] hybrid: could not get or create session for %s", sender_phone)
             return
 
         if behavior == "qualify_immediately":
