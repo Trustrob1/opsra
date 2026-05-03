@@ -18,3 +18,9 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+tests/load_tests/
+tests/load_tests/results/
+backend/tests/load_tests/results/
+backend/tests/load_tests/wa_locustfile.py
+backend/tests/load_tests/wa_test_data.py

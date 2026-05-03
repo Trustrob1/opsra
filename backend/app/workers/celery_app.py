@@ -154,7 +154,7 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     task_max_retries=3,
     # Worker concurrency — sensible default for Render's free tier
-    worker_concurrency=2,
+    worker_concurrency=4,
     # Beat scheduler — file-based scheduler.
     # Schedule is stored in celerybeat-schedule file in the working directory.
     # NOTE: redbeat (Redis-backed) was trialled but could not be reliably
