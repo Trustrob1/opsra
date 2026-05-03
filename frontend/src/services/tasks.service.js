@@ -34,7 +34,7 @@ function authHeaders() {
  *                          due_from, due_to
  */
 export async function listTasks(params = {}) {
-  const res = await axios.get(`${BASE}/api/v1/tasks`, {
+  const res = await axios.get(`${BASE}/tasks`, {
     headers: authHeaders(),
     params,
   })
@@ -47,7 +47,7 @@ export async function listTasks(params = {}) {
  *                           source_module, source_record_id, assigned_to
  */
 export async function createTask(payload) {
-  const res = await axios.post(`${BASE}/api/v1/tasks`, payload, {
+  const res = await axios.post(`${BASE}/tasks`, payload, {
     headers: authHeaders(),
   })
   return res.data.data
@@ -57,7 +57,7 @@ export async function createTask(payload) {
  * Get a single task by ID.
  */
 export async function getTask(id) {
-  const res = await axios.get(`${BASE}/api/v1/tasks/${id}`, {
+  const res = await axios.get(`${BASE}/tasks/${id}`, {
     headers: authHeaders(),
   })
   return res.data.data
@@ -67,7 +67,7 @@ export async function getTask(id) {
  * Partial update on a task.
  */
 export async function updateTask(id, payload) {
-  const res = await axios.patch(`${BASE}/api/v1/tasks/${id}`, payload, {
+  const res = await axios.patch(`${BASE}/tasks/${id}`, payload, {
     headers: authHeaders(),
   })
   return res.data.data
@@ -80,7 +80,7 @@ export async function updateTask(id, payload) {
  */
 export async function completeTask(id, notes = null) {
   const res = await axios.post(
-    `${BASE}/api/v1/tasks/${id}/complete`,
+    `${BASE}/tasks/${id}/complete`,
     { completion_notes: notes },
     { headers: authHeaders() },
   )
@@ -94,7 +94,7 @@ export async function completeTask(id, notes = null) {
  */
 export async function snoozeTask(id, snoozedUntil) {
   const res = await axios.post(
-    `${BASE}/api/v1/tasks/${id}/snooze`,
+    `${BASE}/tasks/${id}/snooze`,
     { snoozed_until: snoozedUntil },
     { headers: authHeaders() },
   )
@@ -108,7 +108,7 @@ export async function snoozeTask(id, snoozedUntil) {
  * @param {string} id
  */
 export async function deleteTask(id) {
-  const res = await axios.delete(`${BASE}/api/v1/tasks/${id}`, {
+  const res = await axios.delete(`${BASE}/tasks/${id}`, {
     headers: authHeaders(),
   })
   return res.data.data
@@ -122,7 +122,7 @@ export async function deleteTask(id) {
  */
 export async function restoreTask(id) {
   const res = await axios.post(
-    `${BASE}/api/v1/tasks/${id}/restore`,
+    `${BASE}/tasks/${id}/restore`,
     {},
     { headers: authHeaders() },
   )
