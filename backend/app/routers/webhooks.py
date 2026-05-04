@@ -2326,7 +2326,6 @@ def _handle_commerce_message(
         if _btn_id == "talk_sales":
             from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
             from app.services.commerce_service import mark_cart_abandoned
-            from app.services.notification_service import _insert_notification
 
             # 1. Abandon the open commerce session
             cs_escape = (
@@ -2404,14 +2403,21 @@ def _handle_commerce_message(
 
             if assigned_to and lead_id:
                 display_name = contact_name or phone_number
-                _insert_notification(
-                    db, org_id, assigned_to,
-                    notif_type="new_lead",
-                    title="Contact switched from shopping to sales",
-                    body=f"{display_name} was browsing products and asked to speak with someone.",
-                    resource_type="lead",
-                    resource_id=lead_id,
-                )
+                try:
+                    db.table("notifications").insert({
+                        "org_id":        org_id,
+                        "user_id":       assigned_to,
+                        "type":          "new_lead",
+                        "title":         "Contact switched from shopping to sales",
+                        "body":          f"{display_name} was browsing products and asked to speak with someone.",
+                        "is_read":       False,
+                        "channel":       "inapp",
+                    }).execute()
+                except Exception as _notif_exc:
+                    logger.warning(
+                        "_handle_commerce_message talk_sales: notification failed: %s",
+                        _notif_exc,
+                    )
 
             # 5. Confirm to the user
             phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
