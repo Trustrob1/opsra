@@ -149,7 +149,7 @@ def _get_org_wa_credentials(db, org_id: str) -> tuple:
             db.table("organisations")
             .select(
                 "whatsapp_phone_id, whatsapp_access_token, "
-                "whatsapp_waba_id, whatsapp_connected"
+                "whatsapp_waba_id"
             )
             .eq("id", org_id)
             .maybe_single()
@@ -167,14 +167,11 @@ def _get_org_wa_credentials(db, org_id: str) -> tuple:
         waba_id      = row.get("whatsapp_waba_id") or None
  
         if not access_token:
-            # Warn loudly if the org claims to be connected but has no token.
-            if row.get("whatsapp_connected"):
-                logger.warning(
-                    "_get_org_wa_credentials: org %s has whatsapp_connected=True "
-                    "but whatsapp_access_token is null — integration is broken. "
-                    "Admin must reconnect WhatsApp in Admin → Integrations.",
-                    org_id,
-                )
+            logger.warning(
+                "_get_org_wa_credentials: org %s has no whatsapp_access_token — "
+                "integration is broken. Admin must set the token in Admin → Integrations.",
+                org_id,
+            )
             return None, None, None
  
         return phone_id, access_token, waba_id

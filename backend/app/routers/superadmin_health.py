@@ -324,7 +324,7 @@ async def health_integrations(
     try:
         from app.services.whatsapp_service import check_meta_token_validity
         wa_orgs = (db.table("organisations")
-                   .not_.is_("whatsapp_access_token", "null")
+                   .select("id, name, whatsapp_access_token")
                    .filter("whatsapp_access_token", "not.is", "null")
                    .execute().data or [])
         invalid = []
