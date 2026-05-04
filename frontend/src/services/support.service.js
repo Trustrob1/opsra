@@ -54,19 +54,19 @@ export async function listTickets({
   if (lead_id)      params.set('lead_id', lead_id)
   params.set('page', page)
   params.set('page_size', page_size)
-  return request('GET', `/api/v1/tickets?${params}`)
+  return request('GET', `/tickets?${params}`)
 }
 
 export async function createTicket(data) {
-  return request('POST', '/api/v1/tickets', data)
+  return request('POST', '/tickets', data)
 }
 
 export async function getTicket(ticketId) {
-  return request('GET', `/api/v1/tickets/${ticketId}`)
+  return request('GET', `/tickets/${ticketId}`)
 }
 
 export async function updateTicket(ticketId, data) {
-  return request('PATCH', `/api/v1/tickets/${ticketId}`, data)
+  return request('PATCH', `/tickets/${ticketId}`, data)
 }
 
 // ---------------------------------------------------------------------------
@@ -74,23 +74,23 @@ export async function updateTicket(ticketId, data) {
 // ---------------------------------------------------------------------------
 
 export async function addMessage(ticketId, data) {
-  return request('POST', `/api/v1/tickets/${ticketId}/messages`, data)
+  return request('POST', `/tickets/${ticketId}/messages`, data)
 }
 
 export async function resolveTicket(ticketId, resolution_notes) {
-  return request('POST', `/api/v1/tickets/${ticketId}/resolve`, { resolution_notes })
+  return request('POST', `/tickets/${ticketId}/resolve`, { resolution_notes })
 }
 
 export async function closeTicket(ticketId) {
-  return request('POST', `/api/v1/tickets/${ticketId}/close`)
+  return request('POST', `/tickets/${ticketId}/close`)
 }
 
 export async function reopenTicket(ticketId) {
-  return request('POST', `/api/v1/tickets/${ticketId}/reopen`)
+  return request('POST', `/tickets/${ticketId}/reopen`)
 }
 
 export async function escalateTicket(ticketId) {
-  return request('POST', `/api/v1/tickets/${ticketId}/escalate`)
+  return request('POST', `/tickets/${ticketId}/escalate`)
 }
 
 // ---------------------------------------------------------------------------
@@ -98,14 +98,14 @@ export async function escalateTicket(ticketId) {
 // ---------------------------------------------------------------------------
 
 export async function listAttachments(ticketId) {
-  return request('GET', `/api/v1/tickets/${ticketId}/attachments`)
+  return request('GET', `/tickets/${ticketId}/attachments`)
 }
 
 export async function uploadAttachment(ticketId, file) {
   const token = useAuthStore.getState().token
   const form = new FormData()
   form.append('file', file)
-  const resp = await fetch(`${BASE}/api/v1/tickets/${ticketId}/attachments`, {
+  const resp = await fetch(`${BASE}/tickets/${ticketId}/attachments`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: form,
@@ -124,27 +124,27 @@ export async function listKBArticles({ category, page = 1, page_size = 20 } = {}
   if (category) params.set('category', category)
   params.set('page', page)
   params.set('page_size', page_size)
-  return request('GET', `/api/v1/knowledge-base?${params}`)
+  return request('GET', `/knowledge-base?${params}`)
 }
 
 export async function createKBArticle(data) {
-  return request('POST', '/api/v1/knowledge-base', data)
+  return request('POST', '/knowledge-base', data)
 }
 
 export async function getKBArticle(articleId) {
-  return request('GET', `/api/v1/knowledge-base/${articleId}`)
+  return request('GET', `/knowledge-base/${articleId}`)
 }
 
 export async function updateKBArticle(articleId, data) {
-  return request('PATCH', `/api/v1/knowledge-base/${articleId}`, data)
+  return request('PATCH', `/knowledge-base/${articleId}`, data)
 }
 
 export async function unpublishKBArticle(articleId) {
-  return request('DELETE', `/api/v1/knowledge-base/${articleId}`)
+  return request('DELETE', `/knowledge-base/${articleId}`)
 }
 
 export async function suggestKBArticle(ticketId) {
-  return request('POST', `/api/v1/tickets/${ticketId}/suggest-kb-article`)
+  return request('POST', `/tickets/${ticketId}/suggest-kb-article`)
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ export async function suggestKBArticle(ticketId) {
 // ---------------------------------------------------------------------------
 
 export async function createInteractionLog(data) {
-  return request('POST', '/api/v1/interaction-logs', data)
+  return request('POST', '/interaction-logs', data)
 }
 
 export async function listInteractionLogs({
@@ -165,5 +165,5 @@ export async function listInteractionLogs({
   if (logged_by)   params.set('logged_by', logged_by)
   params.set('page', page)
   params.set('page_size', page_size)
-  return request('GET', `/api/v1/interaction-logs?${params}`)
+  return request('GET', `/interaction-logs?${params}`)
 }
