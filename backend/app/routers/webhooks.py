@@ -1058,6 +1058,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     msg_type=msg_type,
                     assigned_to=assigned_to,
                     now_ts=now_ts,
+                    phone_number=sender_phone,
                 )
                 if handled:
                     return
@@ -2339,6 +2340,7 @@ def _handle_commerce_message(
             # 3. Find or create a lead for this phone number
             lead_id = (session.get("session_data") or {}).get("lead_id")
             assigned_to = None
+            _lead_was_preexisting = False
             if not lead_id:
                 try:
                     lead_r = (
@@ -2354,10 +2356,11 @@ def _handle_commerce_message(
                     if lead_rows:
                         lead_id = lead_rows[0]["id"]
                         assigned_to = lead_rows[0].get("assigned_to")
+                        _lead_was_preexisting = True
                 except Exception:
                     pass
 
-            if not lead_id:
+            if not lead_id:                
                 from app.models.leads import LeadCreate, LeadSource
                 from app.services import lead_service
                 new_lead = lead_service.create_lead(
@@ -2409,13 +2412,24 @@ def _handle_commerce_message(
                     )
 
             # 5. Confirm to the user
+            # If they already had an assigned rep, they're in the queue —
+            # send reassurance rather than a generic handoff message.
             phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
             if phone_id:
+                if _lead_was_preexisting and assigned_to:
+                    reply_body = (
+                        "You're already in our queue! 😊 A member of our team "
+                        "will be with you shortly — no need to worry."
+                    )
+                else:
+                    reply_body = (
+                        "No problem! One of our team will be in touch with you shortly. 😊"
+                    )
                 _call_meta_send(phone_id, {
                     "messaging_product": "whatsapp",
                     "to": phone_number,
                     "type": "text",
-                    "text": {"body": "No problem! One of our team will be in touch with you shortly. 😊"},
+                    "text": {"body": reply_body},
                 }, token=access_token)
 
             logger.info(

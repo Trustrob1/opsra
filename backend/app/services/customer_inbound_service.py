@@ -224,6 +224,72 @@ Respond with EXACTLY one word: ticket, billing, renewal, or general."""
         logger.warning("classify_customer_intent failed — returning 'general': %s", exc)
         return "general"
 
+# ---------------------------------------------------------------------------
+# Product intent classifier  (S6, S7, S8, S14)
+# Haiku-first with keyword fallback
+# ---------------------------------------------------------------------------
+
+_PRODUCT_KEYWORDS = frozenset({
+    "product", "products", "catalogue", "catalog", "buy", "purchase",
+    "shop", "store", "browse", "what do you sell", "what do you have",
+    "what do you offer", "your products", "your items", "available",
+    "inventory", "price", "prices", "pricing", "how much", "cost",
+    "collection", "range", "items", "goods", "stock", "order",
+})
+
+
+def classify_product_intent(content: str) -> bool:
+    """
+    Determine if the message is a product browsing or purchase request.
+
+    Strategy: Haiku first (most accurate), keyword fallback if Haiku
+    fails or gives unexpected output.
+
+    Returns True if product intent detected, False otherwise.
+    S14 — never raises.
+    """
+    try:
+        safe = _sanitise_for_prompt(content, max_length=500)
+        system = (
+            "You are a classification assistant for a business software platform. "
+            "Your only task is to determine if a customer message is asking to "
+            "browse products, see what is available for purchase, check prices, "
+            "or buy something."
+        )
+        prompt = f"""Does the message below indicate that the person wants to browse 
+products, see what is available, check prices, or make a purchase?
+
+<message>
+{safe}
+</message>
+
+Respond with EXACTLY one word: yes or no."""
+
+        result = _call_haiku(system, prompt, max_tokens=5)
+        cleaned = result.lower().strip().rstrip(".")
+        if cleaned == "yes":
+            return True
+        if cleaned == "no":
+            return False
+        # Unexpected output — fall through to keyword fallback
+        logger.debug(
+            "classify_product_intent: unexpected Haiku response '%s' — "
+            "using keyword fallback", cleaned,
+        )
+    except Exception as exc:
+        logger.warning(
+            "classify_product_intent: Haiku failed — using keyword fallback: %s", exc
+        )
+
+    # Keyword fallback
+    try:
+        content_lower = content.lower()
+        return any(kw in content_lower for kw in _PRODUCT_KEYWORDS)
+    except Exception as exc:
+        logger.warning("classify_product_intent: keyword fallback failed: %s", exc)
+        return False
+
+
 
 # ---------------------------------------------------------------------------
 # Lead stage signal classifier  (S6, S7, S8, S14)
@@ -1333,6 +1399,7 @@ def handle_lead_post_handoff_inbound(
     msg_type: str,
     assigned_to: Optional[str],
     now_ts: str,
+    phone_number: str = "",
 ) -> bool:
     """
     WH-1b: Handle inbound messages from leads whose qualification has been
@@ -1461,12 +1528,117 @@ def handle_lead_post_handoff_inbound(
                 )
             return True  # KB answered — no further notification needed
 
-        # ── No KB answer — all non-greeting messages from leads are
-        # treated as questions worth forwarding to the rep. The intent
-        # classifier (built for customers) incorrectly labels sales
-        # enquiries like "where is your store?" as 'general'. For leads,
-        # any message that reaches this point has substance and deserves
-        # a rep response.
+        # ── Product intent — commerce re-entry ───────────────────────────────
+        # If the lead asks to browse products and the org has Shopify connected
+        # with hybrid or transactional mode, launch the commerce flow directly.
+        # Rep is notified with context. Falls through to forwarding if:
+        #   - Haiku + keywords both say no product intent
+        #   - Shopify not connected
+        #   - sales_mode is consultative
+        #   - No active products in the catalogue
+        if phone_number:
+            try:
+                is_product_intent = classify_product_intent(content_for_analysis)
+                if is_product_intent:
+                    org_commerce_r = (
+                        db.table("organisations")
+                        .select("shopify_connected, sales_mode")
+                        .eq("id", org_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    org_commerce_d = org_commerce_r.data
+                    if isinstance(org_commerce_d, list):
+                        org_commerce_d = org_commerce_d[0] if org_commerce_d else None
+                    org_commerce_d = org_commerce_d or {}
+                    shopify_ok = org_commerce_d.get("shopify_connected", False)
+                    sales_mode = org_commerce_d.get("sales_mode", "consultative")
+
+                    if shopify_ok and sales_mode in ("hybrid", "transactional"):
+                        products_r = (
+                            db.table("products")
+                            .select("*")
+                            .eq("org_id", org_id)
+                            .eq("is_active", True)
+                            .order("title")
+                            .execute()
+                        )
+                        products = (
+                            products_r.data
+                            if isinstance(products_r.data, list)
+                            else []
+                        )
+
+                        if products:
+                            from app.services import triage_service
+                            from app.services.commerce_service import (
+                                get_or_create_commerce_session,
+                            )
+                            from app.services.whatsapp_service import send_product_list
+
+                            # Open commerce session linked to existing lead
+                            get_or_create_commerce_session(
+                                db, org_id, phone_number, lead_id=lead_id
+                            )
+
+                            # Get or create whatsapp session and set commerce state
+                            wa_session = triage_service.get_active_session(
+                                db, org_id, phone_number
+                            )
+                            if not wa_session:
+                                wa_session = triage_service.create_session(
+                                    db=db, org_id=org_id, phone_number=phone_number
+                                )
+                            if wa_session:
+                                db.table("whatsapp_sessions").update(
+                                    {"commerce_state": "commerce_browsing"}
+                                ).eq("id", wa_session["id"]).execute()
+                                triage_service.update_session(
+                                    db, wa_session["id"], "active",
+                                    selected_action="commerce_entry",
+                                )
+
+                            # Send product list
+                            send_product_list(db, org_id, phone_number, products)
+
+                            # Notify rep — different wording from initial routing
+                            if assigned_to:
+                                _insert_notification(
+                                    db=db, org_id=org_id, user_id=assigned_to,
+                                    notif_type="lead_pre_contact_message",
+                                    title=f"{safe_name} asked to browse products",
+                                    body=(
+                                        f"{safe_name} asked to see products while waiting "
+                                        f"for a rep. Commerce session opened."
+                                    ),
+                                    resource_type="lead", resource_id=lead_id,
+                                    now_ts=now_ts,
+                                )
+                            logger.info(
+                                "handle_lead_post_handoff_inbound: product intent — "
+                                "commerce re-entry for lead=%s org=%s",
+                                lead_id, org_id,
+                            )
+                            return True
+
+                        logger.info(
+                            "handle_lead_post_handoff_inbound: product intent but "
+                            "no active products for org=%s — falling through", org_id,
+                        )
+                    else:
+                        logger.info(
+                            "handle_lead_post_handoff_inbound: product intent but "
+                            "shopify_ok=%s sales_mode=%s — falling through",
+                            shopify_ok, sales_mode,
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "handle_lead_post_handoff_inbound: product intent block "
+                    "failed for lead=%s — falling through: %s", lead_id, exc,
+                )
+        # ── End product intent block ──────────────────────────────────────────
+
+        # No KB answer and no commerce re-entry — forward to rep
         forwarding_msg = (
             "Thanks for your message! Unfortunately I'm not able to provide "
             "a full response to that right now, but a member of our support "
