@@ -1547,27 +1547,131 @@ def _action_transactional_entry(
             org_id, phone_number, exc,
         )
 
+def _send_typing_indicator(phone_id: str, message_id: str, token: str) -> None:
+    """
+    Show the WhatsApp typing indicator (wiggling dots) to the user.
+    Also marks the incoming message as read (blue double ticks).
+    Automatically dismissed when next message is sent or after 25 seconds.
+    S14: never raises.
+    """
+    try:
+        from app.services.whatsapp_service import _call_meta_send
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "status": "read",
+            "message_id": message_id,
+            "typing_indicator": {"type": "text"},
+        }, token=token)
+    except Exception as exc:
+        logger.warning(
+            "_send_typing_indicator failed phone_id=%s: %s", phone_id, exc
+        )
+
 
 def send_hybrid_entry_choice(
     db,
     org_id: str,
     phone_number: str,
+    contact_name: Optional[str] = None,
+    msg_id: Optional[str] = None,
 ) -> None:
     """
     SM-1: Send the hybrid gate (Buy Now / Speak to Sales) to the contact.
+
+    Sequence:
+      1. Show typing indicator (wiggling dots + blue ticks on their message)
+      2. Wait 1.5s
+      3. Send org-configured greeting as a plain text bubble, personalised
+         with {{name}} placeholder if contact name is available
+      4. Show typing indicator again
+      5. Wait 1.0s
+      6. Send interactive Buy Now / Speak to Sales buttons with org-configured
+         button_prompt as body text
+
+    Greeting and button_prompt are read from whatsapp_triage_config["unknown"].
+    Falls back gracefully if org has no config set.
     S14.
     """
+    import time
     try:
         from app.services.sales_mode_service import build_hybrid_entry_message
         from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
 
         phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
         phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_hybrid_entry_choice: no phone_id for org %s", org_id
+            )
+            return
 
-        if phone_id:
-            payload = build_hybrid_entry_message(phone_number)
-            if payload:
-                _call_meta_send(phone_id, payload, token=access_token)
+        # Fetch org triage config for greeting and button_prompt
+        org_r = (
+            db.table("organisations")
+            .select("whatsapp_triage_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        org_d = org_d or {}
+
+        triage_config = (org_d.get("whatsapp_triage_config") or {})
+        unknown_config = triage_config.get("unknown") or {}
+        raw_greeting = (
+            unknown_config.get("greeting")
+            or "Hello! How can we help you today?"
+        )
+
+        # Personalise greeting — replace {{name}} with contact's first name
+        first_name = (
+            (contact_name or "").strip().split()[0].title()
+            if contact_name and contact_name.strip()
+            else None
+        )
+        if first_name and "{{name}}" in raw_greeting:
+            greeting_text = raw_greeting.replace("{{name}}", first_name)
+        elif "{{name}}" in raw_greeting:
+            # Placeholder present but no name — strip it cleanly
+            greeting_text = (
+                raw_greeting
+                .replace("{{name}}! ", "")
+                .replace("{{name}} ", "")
+                .replace("{{name}}", "")
+                .strip()
+            )
+        else:
+            greeting_text = raw_greeting
+
+        # Step 1: Typing indicator — shows wiggling dots + blue ticks
+        if msg_id:
+            _send_typing_indicator(phone_id, msg_id, access_token)
+
+        # Step 2: Pause while "typing"
+        time.sleep(1.5)
+
+        # Step 3: Send personalised greeting as plain text bubble
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "text",
+            "text": {"body": greeting_text},
+        }, token=access_token)
+
+        # Step 4: Typing indicator again before buttons
+        if msg_id:
+            _send_typing_indicator(phone_id, msg_id, access_token)
+
+        # Step 5: Pause
+        time.sleep(1.0)
+
+        # Step 6: Send interactive Buy Now / Speak to Sales buttons
+        payload = build_hybrid_entry_message(phone_number, org=org_d)
+        if payload:
+            _call_meta_send(phone_id, payload, token=access_token)
+
     except Exception as exc:
         logger.warning(
             "send_hybrid_entry_choice failed org=%s phone=%s: %s",

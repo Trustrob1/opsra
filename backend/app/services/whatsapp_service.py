@@ -2327,6 +2327,10 @@ def send_cart_summary(
                             "type": "reply",
                             "reply": {"id": "checkout", "title": "Checkout"},
                         },
+                        {
+                            "type": "reply",
+                            "reply": {"id": "talk_sales", "title": "💬 Talk to Sales"},
+                        },
                     ]
                 },
             },
@@ -2369,13 +2373,31 @@ def send_checkout_link(
             or "Here's your checkout link:"
         ).strip()
 
-        body = f"{intro}\n{checkout_url}\n\nReply CANCEL to cancel your order."
-
         _call_meta_send(phone_id, {
             "messaging_product": "whatsapp",
             "to": phone_number,
-            "type": "text",
-            "text": {"body": body},
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "header": {
+                    "type": "text",
+                    "text": "Your checkout link 🛒",
+                },
+                "body": {
+                    "text": f"{intro}\n{checkout_url}",
+                },
+                "footer": {
+                    "text": "Reply CANCEL to cancel your order.",
+                },
+                "action": {
+                    "buttons": [
+                        {
+                            "type": "reply",
+                            "reply": {"id": "talk_sales", "title": "💬 Talk to Sales"},
+                        },
+                    ]
+                },
+            },
         }, token=access_token)
 
     except Exception as exc:

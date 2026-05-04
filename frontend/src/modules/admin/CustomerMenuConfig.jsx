@@ -68,6 +68,7 @@ const DEFAULT_CUSTOMER_ITEMS = [
 const DEFAULT_CONFIG = {
   unknown: {
     greeting:      'Hi! How can we help you today?',
+    button_prompt: 'What would you like to do?',
     section_title: 'Choose an option',
     items:         DEFAULT_UNKNOWN_ITEMS,
   },
@@ -316,8 +317,9 @@ export default function CustomerMenuConfig() {
   }, [])
 
   // ── Unknown section helpers ────────────────────────────────────────────────
-  const unknownItems    = config?.unknown?.items || []
-  const unknownGreeting = config?.unknown?.greeting || ''
+  const unknownItems        = config?.unknown?.items || []
+  const unknownGreeting     = config?.unknown?.greeting || ''
+  const unknownButtonPrompt = config?.unknown?.button_prompt || ''
   const unknownSectionTitle = config?.unknown?.section_title || 'Choose an option'
 
   function setUnknownItems(newItems) {
@@ -325,6 +327,9 @@ export default function CustomerMenuConfig() {
   }
   function setUnknownGreeting(v) {
     setConfig(c => ({ ...c, unknown: { ...c.unknown, greeting: v } }))
+  }
+  function setUnknownButtonPrompt(v) {
+    setConfig(c => ({ ...c, unknown: { ...c.unknown, button_prompt: v } }))
   }
   function setUnknownSectionTitle(v) {
     setConfig(c => ({ ...c, unknown: { ...c.unknown, section_title: v } }))
@@ -450,7 +455,7 @@ export default function CustomerMenuConfig() {
             {/* Menu text */}
             <div style={S.card}>
               <div style={S.cardTitle}>Menu Text</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div>
                   <label style={S.label}>Greeting message</label>
                   <input
@@ -458,8 +463,24 @@ export default function CustomerMenuConfig() {
                     value={unknownGreeting}
                     maxLength={200}
                     onChange={e => setUnknownGreeting(e.target.value)}
-                    placeholder="Hi! How can we help you today?"
+                    placeholder="Hi {{name}}! I'm Sophia. Welcome!"
                   />
+                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>
+                    Use {'{{name}}'} to personalise with the contact's WhatsApp name.
+                  </div>
+                </div>
+                <div>
+                  <label style={S.label}>Button prompt <span style={{ color: '#9CA3AF', textTransform: 'none', fontWeight: 400 }}>(hybrid mode only)</span></label>
+                  <input
+                    style={S.input}
+                    value={unknownButtonPrompt}
+                    maxLength={160}
+                    onChange={e => setUnknownButtonPrompt(e.target.value)}
+                    placeholder="What would you like to do?"
+                  />
+                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>
+                    Appears above the Buy Now / Speak to Sales buttons.
+                  </div>
                 </div>
                 <div>
                   <label style={S.label}>Section title (shown in menu)</label>

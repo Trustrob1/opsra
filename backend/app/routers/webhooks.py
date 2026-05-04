@@ -697,6 +697,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     msg_type=msg_type,
                     content=content,
                     interactive_payload=interactive_payload,
+                    contact_name=contact_name,
                 )
                 return
             logger.info("[WH] routing to session handler")
@@ -781,7 +782,11 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 except Exception as exc:
                     logger.warning("[WH] hybrid: could not clear expired session for %s: %s", sender_phone, exc)
             if session:
-                triage_service.send_hybrid_entry_choice(db, org_id, sender_phone)
+                   triage_service.send_hybrid_entry_choice(
+                    db, org_id, sender_phone,
+                    contact_name=contact_name,
+                    msg_id=msg_id,
+                )
             else:
                 logger.warning("[WH] hybrid: could not get or create session for %s", sender_phone)
             return
@@ -1087,6 +1092,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     msg_type=msg_type,
                     content=content,
                     interactive_payload=interactive_payload,
+                    contact_name=contact_name,
                 )
                 return
     except Exception as _comm_exc:
@@ -2283,6 +2289,7 @@ def _handle_commerce_message(
     msg_type: str,
     content: Optional[str],
     interactive_payload: Optional[dict],
+    contact_name: Optional[str] = None,
 ) -> None:
     """
     COMM-1: Route an inbound message from a contact currently in a commerce flow.
@@ -2308,6 +2315,121 @@ def _handle_commerce_message(
     )
 
     try:
+        # ── Talk to Sales escape — fires before any state routing ────────────
+        # Handles button tap from cart summary, checkout, OR any old message
+        # the user scrolls back to. The intent is unambiguous regardless of origin.
+        _btn_id = (
+            (interactive_payload or {})
+            .get("button_reply", {})
+            .get("id", "")
+        )
+        if _btn_id == "talk_sales":
+            from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
+            from app.services.commerce_service import mark_cart_abandoned
+            from app.services.notification_service import _insert_notification
+
+            # 1. Abandon the open commerce session
+            cs_escape = (
+                db.table("commerce_sessions")
+                .select("id")
+                .eq("org_id", org_id)
+                .eq("phone_number", phone_number)
+                .in_("status", ["open", "checkout_sent"])
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            cs_escape_rows = cs_escape.data if isinstance(cs_escape.data, list) else []
+            if cs_escape_rows:
+                mark_cart_abandoned(db, cs_escape_rows[0]["id"])
+
+            # 2. Clear commerce_state on whatsapp_session
+            db.table("whatsapp_sessions").update(
+                {"commerce_state": None}
+            ).eq("id", session["id"]).execute()
+
+            # 3. Find or create a lead for this phone number
+            lead_id = (session.get("session_data") or {}).get("lead_id")
+            assigned_to = None
+            if not lead_id:
+                try:
+                    lead_r = (
+                        db.table("leads")
+                        .select("id, assigned_to")
+                        .eq("org_id", org_id)
+                        .eq("whatsapp", phone_number)
+                        .is_("deleted_at", "null")
+                        .limit(1)
+                        .execute()
+                    )
+                    lead_rows = lead_r.data if isinstance(lead_r.data, list) else []
+                    if lead_rows:
+                        lead_id = lead_rows[0]["id"]
+                        assigned_to = lead_rows[0].get("assigned_to")
+                except Exception:
+                    pass
+
+            if not lead_id:
+                from app.models.leads import LeadCreate, LeadSource
+                from app.services import lead_service
+                new_lead = lead_service.create_lead(
+                    db, org_id, None,
+                    LeadCreate(
+                        full_name=contact_name or phone_number,
+                        phone=phone_number,
+                        whatsapp=phone_number,
+                        source=LeadSource.whatsapp_inbound.value,
+                        contact_type="sales_lead",
+                    ),
+                )
+                if new_lead:
+                    lead_id = new_lead["id"]
+                    assigned_to = new_lead.get("assigned_to")
+
+            # 4. Notify assigned rep — no qualification flow
+            if not assigned_to:
+                try:
+                    users_r = (
+                        db.table("users")
+                        .select("id, roles(template)")
+                        .eq("org_id", org_id)
+                        .execute()
+                    )
+                    for u in (users_r.data or []):
+                        if (u.get("roles") or {}).get("template", "").lower() == "owner":
+                            assigned_to = u["id"]
+                            break
+                except Exception:
+                    pass
+
+            if assigned_to and lead_id:
+                display_name = contact_name or phone_number
+                _insert_notification(
+                    db, org_id, assigned_to,
+                    notif_type="new_lead",
+                    title="Contact switched from shopping to sales",
+                    body=f"{display_name} was browsing products and asked to speak with someone.",
+                    resource_type="lead",
+                    resource_id=lead_id,
+                )
+
+            # 5. Confirm to the user
+            phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+            if phone_id:
+                _call_meta_send(phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to": phone_number,
+                    "type": "text",
+                    "text": {"body": "No problem! One of our team will be in touch with you shortly. 😊"},
+                }, token=access_token)
+
+            logger.info(
+                "[WH] talk_sales escape from commerce — org=%s phone=%s lead=%s",
+                org_id, phone_number, lead_id,
+            )
+            return
+        # ── End Talk to Sales escape ─────────────────────────────────────────
+
         state = session.get("commerce_state", "")
 
         # Fetch the active commerce_session

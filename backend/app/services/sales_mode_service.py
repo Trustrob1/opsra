@@ -123,13 +123,19 @@ def get_sales_path(org: dict, entry_point: str, user_action: str) -> str:
 # WhatsApp message payload builders
 # ---------------------------------------------------------------------------
 
-def build_hybrid_entry_message(phone_number: str) -> dict:
+def build_hybrid_entry_message(phone_number: str, org: Optional[dict] = None) -> dict:
     """
     Build the WhatsApp interactive buttons payload for the hybrid gate.
     Two buttons: Buy Now (buy_now) and Speak to Sales (talk_sales).
+    Reads button_prompt from org's whatsapp_triage_config["unknown"]["button_prompt"].
     S14: returns empty dict on failure.
     """
     try:
+        triage_config = ((org or {}).get("whatsapp_triage_config") or {})
+        button_prompt = (
+            (triage_config.get("unknown") or {}).get("button_prompt")
+            or "What would you like to do?"
+        )
         return {
             "messaging_product": "whatsapp",
             "to": phone_number,
@@ -137,7 +143,7 @@ def build_hybrid_entry_message(phone_number: str) -> dict:
             "interactive": {
                 "type": "button",
                 "body": {
-                    "text": "Hi! How can we help you today?",
+                    "text": button_prompt,
                 },
                 "action": {
                     "buttons": [
