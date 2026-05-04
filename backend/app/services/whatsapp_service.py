@@ -210,10 +210,19 @@ def _call_meta_send(phone_id: str, meta_payload: dict, token: str | None = None)
         with httpx.Client(timeout=10.0) as client:
             response = client.post(url, json=meta_payload, headers=headers)
         if response.status_code not in (200, 201):
-            logger.warning(
-                "_call_meta_send: Meta returned %s for phone_id=%s — body: %s",
-                response.status_code, phone_id, response.text,
-            )
+            if response.status_code in (401, 403):
+                logger.error(
+                    "WHATSAPP TOKEN EXPIRED or INVALID — phone_id=%s HTTP %s. "
+                    "Go to Meta Business Manager → System Users → regenerate token. "
+                    "Then update organisations.whatsapp_access_token in the DB. "
+                    "Body: %s",
+                    phone_id, response.status_code, response.text,
+                )
+            else:
+                logger.warning(
+                    "_call_meta_send: Meta returned %s for phone_id=%s — body: %s",
+                    response.status_code, phone_id, response.text,
+                )
             raise HTTPException(
                 status_code=503,
                 detail=f"{ErrorCode.INTEGRATION_ERROR} — Meta {response.status_code}: {response.text}",

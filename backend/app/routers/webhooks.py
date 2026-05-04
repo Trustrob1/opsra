@@ -767,10 +767,19 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             logger.info("[WH] hybrid mode — sending hybrid gate")
             session = triage_service.get_or_create_session(db, org_id, sender_phone)
             if not session:
-                # 409 conflict — session already exists (duplicate delivery or race).
-                # Fetch the existing session so the gate still fires.
+                # 409 conflict — fetch existing active session first
                 session = triage_service.get_active_session(db, org_id, sender_phone)
                 logger.info("[WH] hybrid: reused existing session=%s", session and session.get("id"))
+            if not session:
+                # Session exists but is expired — blocking new creation.
+                # Delete the stale row and create a fresh session.
+                logger.info("[WH] hybrid: expired session blocking creation — clearing for %s", sender_phone)
+                try:
+                    db.table("whatsapp_sessions").delete().eq("org_id", org_id).eq("phone_number", sender_phone).execute()
+                    session = triage_service.create_session(db=db, org_id=org_id, phone_number=sender_phone)
+                    logger.info("[WH] hybrid: fresh session created=%s", session and session.get("id"))
+                except Exception as exc:
+                    logger.warning("[WH] hybrid: could not clear expired session for %s: %s", sender_phone, exc)
             if session:
                 triage_service.send_hybrid_entry_choice(db, org_id, sender_phone)
             else:

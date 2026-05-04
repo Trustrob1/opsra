@@ -207,6 +207,19 @@ async def health_summary(
             logger.warning("health_summary: webhook_error_count failed — %s", exc)
             return 0
 
+    def _wa_token_issues() -> int:
+        """Count orgs with a token_invalid notification in the window."""
+        try:
+            r = (db.table("notifications")
+                 .select("id", count="exact")
+                 .eq("type", "whatsapp.token_invalid")
+                 .gte("created_at", since)
+                 .execute())
+            return r.count or 0
+        except Exception as exc:
+            logger.warning("health_summary: wa_token_issues failed — %s", exc)
+            return 0
+
     return {
         "success": True,
         "data": {
@@ -214,6 +227,7 @@ async def health_summary(
             "errors_since": _error_count(),
             "failed_jobs_since": _failed_jobs(since),
             "webhook_errors_since": _webhook_error_count(),
+            "wa_token_issues": _wa_token_issues(),
             "since": since,
         },
         "message": "ok",
@@ -306,13 +320,31 @@ async def health_integrations(
         results["claude"] = {"status": "error", "detail": str(exc)[:200]}
 
     # 5. WhatsApp / Meta Graph API
+    # 5. WhatsApp / Meta Graph API — validate actual org tokens
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get("https://graph.facebook.com/v18.0/")
-        if resp.status_code < 500:
-            results["whatsapp"] = {"status": "ok"}
+        from app.services.whatsapp_service import check_meta_token_validity
+        wa_orgs = (db.table("organisations")
+                   .not_.is_("whatsapp_access_token", "null")
+                   .filter("whatsapp_access_token", "not.is", "null")
+                   .execute().data or [])
+        invalid = []
+        for o in wa_orgs:
+            if o.get("whatsapp_access_token"):
+                valid = check_meta_token_validity(db, o["id"])
+                if not valid:
+                    invalid.append(o.get("name") or o["id"])
+        if not wa_orgs:
+            results["whatsapp"] = {"status": "unconfigured", "detail": "No orgs connected"}
+        elif invalid:
+            results["whatsapp"] = {
+                "status": "error",
+                "detail": f"Token expired for: {', '.join(invalid)}",
+            }
         else:
-            results["whatsapp"] = {"status": "error", "detail": f"HTTP {resp.status_code}"}
+            results["whatsapp"] = {
+                "status": "ok",
+                "detail": f"{len(wa_orgs)} org(s) — tokens valid",
+            }
     except Exception as exc:
         results["whatsapp"] = {"status": "error", "detail": str(exc)[:200]}
 
@@ -575,17 +607,33 @@ async def health_orgs(
     err_counts = _error_counts()
     job_counts = _job_fail_counts()
 
+    def _token_invalid_org_ids() -> set:
+        try:
+            rows = (db.table("notifications")
+                    .select("org_id")
+                    .eq("action", "whatsapp.token_invalid")
+                    .gte("created_at", since)
+                    .execute().data or [])
+            return {r["org_id"] for r in rows if r.get("org_id")}
+        except Exception as exc:
+            logger.warning("health_orgs: token_invalid_org_ids failed — %s", exc)
+            return set()
+
+    token_invalid_ids = _token_invalid_org_ids()
+
     items = []
     for org in orgs:
         oid = org["id"]
         errs = err_counts.get(oid, 0)
         jobs = job_counts.get(oid, 0)
         sub = org.get("subscription_status", "")
-        needs = errs > 0 or jobs > 0 or sub not in ("active", "trial")
+        wa_token_expired = oid in token_invalid_ids
+        needs = errs > 0 or jobs > 0 or sub not in ("active", "trial") or wa_token_expired
         items.append({
             **org,
             "error_count": errs,
             "failed_jobs_count": jobs,
+            "wa_token_expired": wa_token_expired,
             "needs_attention": needs,
         })
 

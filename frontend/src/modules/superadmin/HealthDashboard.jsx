@@ -397,12 +397,13 @@ export default function HealthDashboard() {
       </div>
 
       {/* ── Summary metrics row ────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 22 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Total Orgs",      value: summary?.total_orgs        ?? "—", accent: ds.teal    },
-          { label: "Errors",          value: summary?.errors_since       ?? "—", accent: "#ef4444"  },
-          { label: "Failed Jobs",     value: summary?.failed_jobs_since  ?? "—", accent: "#f59e0b"  },
-          { label: "Webhook Errors",  value: summary?.webhook_errors_since ?? "—", accent: "#a78bfa" },
+          { label: "Total Orgs",      value: summary?.total_orgs          ?? "—", accent: ds.teal    },
+          { label: "Errors",          value: summary?.errors_since         ?? "—", accent: "#ef4444"  },
+          { label: "Failed Jobs",     value: summary?.failed_jobs_since    ?? "—", accent: "#f59e0b"  },
+          { label: "Webhook Errors",  value: summary?.webhook_errors_since ?? "—", accent: "#a78bfa"  },
+          { label: "WA Token Issues", value: integrations?.whatsapp?.status === "error" ? "⚠ 1+" : (summary?.wa_token_issues > 0 ? summary.wa_token_issues : integrations?.whatsapp ? "0" : "—"), accent: integrations?.whatsapp?.status === "error" ? "#fb923c" : "#6b7280"  },
         ].map(m => (
           <div key={m.label} style={{ ...card, marginBottom: 0, borderLeft: `3px solid ${m.accent}` }}>
             <div style={labelStyle}>{m.label}</div>
@@ -457,6 +458,15 @@ export default function HealthDashboard() {
                     <span style={badge(STATUS_COLORS[info.status] ?? "#6b7280")}>{info.status}</span>
                   </div>
                   {info.detail && <div style={{ fontSize: 11, color: "#7A9BAD" }}>{info.detail}</div>}
+                  {name === "whatsapp" && info.status === "error" && (
+                    <div style={{
+                      marginTop: 8, fontSize: 11, color: "#fb923c",
+                      background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)",
+                      borderRadius: 6, padding: "5px 9px",
+                    }}>
+                      🔑 Token expired — Meta Business Manager → System Users → regenerate token, then update DB.
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -645,6 +655,7 @@ export default function HealthDashboard() {
                   </span>
                   {o.error_count > 0 && <span style={badge("#ef4444")}>{o.error_count} errors</span>}
                   {o.failed_jobs_count > 0 && <span style={badge("#f59e0b")}>{o.failed_jobs_count} failed jobs</span>}
+                  {o.wa_token_expired && <span style={badge("#fb923c")}>🔑 Token expired</span>}
                   {o.needs_attention && <span style={badge("#ef4444")}>⚠ Needs attention</span>}
                   {!o.needs_attention && <span style={badge("#22d3a5")}>✓ Healthy</span>}
                   {filterOrgId === o.id && <span style={{ fontSize: 11, color: ds.teal }}>← filtering</span>}
@@ -708,6 +719,7 @@ export default function HealthDashboard() {
                     <span style={{ flex: 1, color: "white", fontSize: 12 }}>{o.name}</span>
                     {o.error_count > 0 && <span style={badge("#ef4444")}>{o.error_count} errors</span>}
                     {o.failed_jobs_count > 0 && <span style={badge("#f59e0b")}>{o.failed_jobs_count} jobs</span>}
+                    {o.wa_token_expired && <span style={badge("#fb923c")}>🔑 Token</span>}
                   </div>
                 ))
             )}
