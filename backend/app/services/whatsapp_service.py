@@ -95,6 +95,53 @@ def _personalise_greeting(raw_greeting: str, contact_name: Optional[str] = None)
     except Exception:
         return raw_greeting
 
+def _get_last_inbound_msg_id(db, org_id: str, phone_number: str) -> Optional[str]:
+    """
+    Fetch the meta_message_id of the most recent inbound WhatsApp message
+    from this phone number. Used to fire the typing indicator.
+    S14 — returns None on any failure.
+    """
+    try:
+        r = (
+            db.table("whatsapp_messages")
+            .select("meta_message_id")
+            .eq("org_id", org_id)
+            .eq("direction", "inbound")
+            .eq("status", "delivered")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = r.data if isinstance(r.data, list) else []
+        if rows:
+            return rows[0].get("meta_message_id")
+    except Exception as exc:
+        logger.warning(
+            "_get_last_inbound_msg_id failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+    return None
+
+
+def _fire_typing_indicator(phone_id: str, msg_id: str, token: str) -> None:
+    """
+    Show the WhatsApp typing indicator (wiggling dots) to the contact.
+    Also marks the incoming message as read (blue double ticks).
+    Dismissed automatically when next message is sent or after 25 seconds.
+    S14 — never raises.
+    """
+    try:
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "status": "read",
+            "message_id": msg_id,
+            "typing_indicator": {"type": "text"},
+        }, token=token)
+    except Exception as exc:
+        logger.warning(
+            "_fire_typing_indicator failed phone_id=%s: %s", phone_id, exc
+        )
+
 def _build_template_components(variables, recipient_name=None):
     """
     Build the Meta Cloud API components array for a template send.
@@ -1815,6 +1862,11 @@ def send_qualification_question(
             )
             return
 
+        # Show typing indicator before sending the question
+        _last_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
+        if _last_msg_id:
+            _fire_typing_indicator(phone_id, _last_msg_id, access_token)
+            
         q_type = question.get("type", "free_text")
         q_text = question.get("text", "")
         options = question.get("options") or []
@@ -1912,6 +1964,11 @@ def send_qualification_handoff_message(
                 "send_qualification_handoff_message: no whatsapp_phone_id for org %s", org_id
             )
             return
+
+        # Show typing indicator before the handoff message
+        _last_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
+        if _last_msg_id:
+            _fire_typing_indicator(phone_id, _last_msg_id, access_token)
 
         _call_meta_send(phone_id, {
             "messaging_product": "whatsapp",

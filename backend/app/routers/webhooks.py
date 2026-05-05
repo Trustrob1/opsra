@@ -1469,16 +1469,18 @@ def _handle_structured_qualification_turn(
             lead_id, exc,
         )
 
-    # COMM-1: Post-qualification commerce offer for transactional/hybrid orgs.
-    # Additive step after all WH-1b handoff steps complete — WH-1b flow unaffected.
-    # _action_transactional_entry() is a no-op for consultative orgs (internal guard).
-    # S14 — never raises; failure is logged and ignored.
+    # COMM-1: Post-qualification commerce offer — only for transactional orgs
+    # where the user originally entered via the Buy Now path.
+    # Never fires for users who chose the consultative/speak-to-sales path,
+    # as they expect a human follow-up, not an immediate product push.
     try:
         _post_qual_session = triage_service.get_active_session(db, org_id, lead_phone)
-        _post_qual_session_id = (_post_qual_session or {}).get("id") or ""
-        triage_service._action_transactional_entry(
-            db, org_id, lead_phone, _post_qual_session_id, None
-        )
+        _prior_action = (_post_qual_session or {}).get("selected_action", "")
+        if _prior_action == "transactional_entry":
+            _post_qual_session_id = (_post_qual_session or {}).get("id") or ""
+            triage_service._action_transactional_entry(
+                db, org_id, lead_phone, _post_qual_session_id, None
+            )
     except Exception as exc:
         logger.warning(
             "_handle_structured_qualification_turn: post-qual transactional "

@@ -1635,7 +1635,7 @@ def send_hybrid_entry_choice(
             _send_typing_indicator(phone_id, msg_id, access_token)
 
         # Step 2: Pause while "typing"
-        time.sleep(1.5)
+        time.sleep(0.5)
 
         # Step 3: Send personalised greeting as plain text bubble
         _call_meta_send(phone_id, {
@@ -1650,7 +1650,7 @@ def send_hybrid_entry_choice(
             _send_typing_indicator(phone_id, msg_id, access_token)
 
         # Step 5: Pause
-        time.sleep(1.0)
+        time.sleep(0.3)
 
         # Step 6: Send interactive Buy Now / Speak to Sales buttons
         payload = build_hybrid_entry_message(phone_number, org=org_d)
