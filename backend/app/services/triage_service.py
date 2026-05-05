@@ -357,7 +357,8 @@ def handle_session_message(
                 # Free text while menu is pending — re-send the correct menu
                 from app.services.whatsapp_service import send_triage_menu
                 send_triage_menu(db=db, org_id=org_id,
-                                 phone_number=phone_number, section=section)
+                                 phone_number=phone_number, section=section,
+                                 contact_name=contact_name)
 
         elif state == "awaiting_identifier":
             if msg_type == "text" and content:
@@ -1625,25 +1626,9 @@ def send_hybrid_entry_choice(
             or "Hello! How can we help you today?"
         )
 
-        # Personalise greeting — replace {{name}} with contact's first name
-        first_name = (
-            (contact_name or "").strip().split()[0].title()
-            if contact_name and contact_name.strip()
-            else None
-        )
-        if first_name and "{{name}}" in raw_greeting:
-            greeting_text = raw_greeting.replace("{{name}}", first_name)
-        elif "{{name}}" in raw_greeting:
-            # Placeholder present but no name — strip it cleanly
-            greeting_text = (
-                raw_greeting
-                .replace("{{name}}! ", "")
-                .replace("{{name}} ", "")
-                .replace("{{name}}", "")
-                .strip()
-            )
-        else:
-            greeting_text = raw_greeting
+        # Personalise greeting using shared helper
+        from app.services.whatsapp_service import _personalise_greeting
+        greeting_text = _personalise_greeting(raw_greeting, contact_name)
 
         # Step 1: Typing indicator — shows wiggling dots + blue ticks
         if msg_id:

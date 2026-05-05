@@ -44,6 +44,7 @@ class IntegrationError(Exception):
     """
     pass
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -65,6 +66,34 @@ def _first_name(full_name):
         return "there"
     return full_name.strip().split()[0].title()
 
+
+def _personalise_greeting(raw_greeting: str, contact_name: Optional[str] = None) -> str:
+    """
+    Replace {{name}} placeholder with contact's first name if available.
+    Strips {{name}} cleanly if no name is available.
+    S14 — never raises.
+    """
+    try:
+        if "{{name}}" not in raw_greeting:
+            return raw_greeting
+        first_name = (
+            (contact_name or "").strip().split()[0].title()
+            if contact_name and contact_name.strip()
+            else None
+        )
+        if first_name:
+            return raw_greeting.replace("{{name}}", first_name)
+        # No name — strip the placeholder cleanly
+        return (
+            raw_greeting
+            .replace("{{name}}! ", "")
+            .replace("{{name}}, ", "")
+            .replace("{{name}} ", "")
+            .replace("{{name}}", "")
+            .strip()
+        )
+    except Exception:
+        return raw_greeting
 
 def _build_template_components(variables, recipient_name=None):
     """
@@ -288,6 +317,7 @@ def send_triage_menu(
     org_id: str,
     phone_number: str,
     section: str = "unknown",
+    contact_name: Optional[str] = None,
 ) -> None:
     """
     WH-0: Send an Interactive List Message to an unknown contact.
@@ -345,7 +375,10 @@ def send_triage_menu(
             "type": "interactive",
             "interactive": {
                 "type": "list",
-                "body": {"text": config.get("greeting", "How can we help you today?")},
+                "body": {"text": _personalise_greeting(
+                    config.get("greeting", "How can we help you today?"),
+                    contact_name,
+                )},
                 "action": {
                     "button": "See options",
                     "sections": [{

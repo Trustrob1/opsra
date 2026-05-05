@@ -863,6 +863,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 send_triage_menu(
                     db=db, org_id=org_id,
                     phone_number=sender_phone, section="unknown",
+                    contact_name=contact_name,
                 )
                 logger.info("[WH] triage menu sent successfully")
                 triage_service.create_session(
@@ -1138,6 +1139,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 _wa_svc.send_triage_menu(
                     db=db, org_id=org_id,
                     phone_number=sender_phone, section="customer",
+                    contact_name=contact_name,
                 )
                 triage_service.create_customer_session(
                     db=db, org_id=org_id,
