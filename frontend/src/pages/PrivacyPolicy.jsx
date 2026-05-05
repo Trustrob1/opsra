@@ -7,12 +7,12 @@
  *   2. First-contact WhatsApp message footnote
  *
  * Content is intentionally written at the ORG level:
- * "the Organisation" = the business using Opsra, not Opsra/Ovaloop itself.
+ * "the Organisation" = the business using Opsra, not Opsra/Coreai Cloud Tech itself.
  * This is correct under NDPR — Opsra is a data processor; the org is the controller.
  */
 import React from "react";
 
-const PRIVACY_EMAIL = "privacy@ovaloop.com"; // Replace per org in production
+const PRIVACY_EMAIL = "info@opsra.com"; // Replace per org in production
 
 export default function PrivacyPolicy() {
   return (
@@ -43,7 +43,7 @@ export default function PrivacyPolicy() {
         <p>
           The organisation you interacted with (the business that contacted you or
           whose product or service you enquired about) is the Data Controller
-          responsible for your personal information. Opsra, a product of Ovaloop
+          responsible for your personal information. Opsra, a product of Coreai Cloud
           Technologies, provides the software platform they use — Opsra acts as a
           Data Processor on their behalf.
         </p>
@@ -84,7 +84,7 @@ export default function PrivacyPolicy() {
         <p>Your personal data may be shared with the following service providers
           who process it on behalf of the organisation:</p>
         <ul>
-          <li><strong>Ovaloop Technologies / Opsra</strong> — the CRM platform provider.</li>
+          <li><strong>Coreai Cloud Technologies / Opsra</strong> — the CRM platform provider.</li>
           <li><strong>Supabase</strong> — secure cloud database hosting.</li>
           <li><strong>Meta (WhatsApp)</strong> — WhatsApp Business API for message delivery.</li>
           <li><strong>Resend</strong> — email notification delivery.</li>
