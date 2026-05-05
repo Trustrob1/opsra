@@ -55,6 +55,7 @@ import { getBriefing } from './services/assistant.service'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import CreateOrg from "./modules/superadmin/CreateOrg.jsx"
 import HealthDashboard from "./modules/superadmin/HealthDashboard.jsx"
+import TermsOfService from './pages/TermsOfService'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -102,6 +103,7 @@ export default function App() {
   }, [])
 
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />
+  if (window.location.pathname === '/terms') return <TermsOfService />
   if (!token) return <LoginScreen onAuth={setAuth} />
   return (
     <ErrorBoundary>
@@ -258,6 +260,8 @@ function LoginScreen({ onAuth }) {
             <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16 }}>Forgot your password? Contact your administrator.</p>
             <p style={{ fontSize: 11, color: '#2a4a5a', textAlign: 'center', marginTop: 8 }}>
               <a href="/privacy" style={{ color: '#3a6a7a', textDecoration: 'none' }}>Privacy Policy</a>
+              {" · "}
+              <a href="/terms" style={{ color: '#3a6a7a', textDecoration: 'none' }}>Terms of Service</a>
             </p>
           </>
         )}
