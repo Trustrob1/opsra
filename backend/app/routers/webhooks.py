@@ -2437,6 +2437,48 @@ def _handle_commerce_message(
                     "text": {"body": reply_body},
                 }, token=access_token)
 
+                # ── Backfill whatsapp_messages so the 24-hour window is recorded ──
+                # Without this, _is_lead_window_open returns False and reps
+                # cannot send free-form messages to commerce-originated leads.
+                # S14 — failure swallowed; window will open on next real inbound.
+                if lead_id:
+                    try:
+                        from datetime import datetime, timezone, timedelta
+                        _window_expires = (
+                            datetime.now(timezone.utc) + timedelta(hours=24)
+                        ).isoformat()
+                        _now = _now_iso()
+                        # Inbound — the "Speak to Sales" button click
+                        db.table("whatsapp_messages").insert({
+                            "org_id":            org_id,
+                            "lead_id":           lead_id,
+                            "direction":         "inbound",
+                            "message_type":      "text",
+                            "content":           "Speak to Sales",
+                            "status":            "delivered",
+                            "window_open":       True,
+                            "window_expires_at": _window_expires,
+                            "created_at":        _now,
+                        }).execute()
+                        # Outbound — the confirmation reply we just sent
+                        db.table("whatsapp_messages").insert({
+                            "org_id":            org_id,
+                            "lead_id":           lead_id,
+                            "direction":         "outbound",
+                            "message_type":      "text",
+                            "content":           reply_body,
+                            "status":            "sent",
+                            "window_open":       True,
+                            "window_expires_at": _window_expires,
+                            "sent_by":           None,
+                            "created_at":        _now,
+                        }).execute()
+                    except Exception as _wm_exc:
+                        logger.warning(
+                            "_handle_commerce_message talk_sales: whatsapp_messages "
+                            "backfill failed for lead %s: %s", lead_id, _wm_exc,
+                        )
+
             logger.info(
                 "[WH] talk_sales escape from commerce — org=%s phone=%s lead=%s",
                 org_id, phone_number, lead_id,
