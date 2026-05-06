@@ -1038,7 +1038,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 try:
                     _ln = (
                         db.table("leads")
-                        .select("full_name")
+                        .select("full_name, stage")
                         .eq("id", lead_id)
                         .maybe_single()
                         .execute()
@@ -1047,6 +1047,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     if isinstance(_ld, list):
                         _ld = _ld[0] if _ld else None
                     _lead_name = (_ld or {}).get("full_name") or "Lead"
+                    _lead_stage = (_ld or {}).get("stage") or "new"
                 except Exception:
                     pass
 
@@ -1060,6 +1061,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     assigned_to=assigned_to,
                     now_ts=now_ts,
                     phone_number=sender_phone,
+                    lead_stage=_lead_stage,
                 )
                 if handled:
                     return

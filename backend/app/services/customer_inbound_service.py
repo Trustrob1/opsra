@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -1400,6 +1401,7 @@ def handle_lead_post_handoff_inbound(
     assigned_to: Optional[str],
     now_ts: str,
     phone_number: str = "",
+    lead_stage: str = "new",
 ) -> bool:
     """
     WH-1b: Handle inbound messages from leads whose qualification has been
@@ -1433,6 +1435,44 @@ def handle_lead_post_handoff_inbound(
 
         safe_name = _sanitise_for_prompt(lead_name, max_length=100)
 
+        # ── WhatsApp helpers — typing indicator + personalisation ─────────
+        # Lazy import — matches Pattern 63. S14: failure is non-fatal.
+        _pg = None          # _personalise_greeting
+        _phone_id = None
+        _access_token = None
+        try:
+            from app.services.whatsapp_service import (
+                _fire_typing_indicator,
+                _get_last_inbound_msg_id,
+                _get_org_wa_credentials,
+                _personalise_greeting,
+            )
+            _pg = _personalise_greeting
+            _phone_id, _access_token, _ = _get_org_wa_credentials(db, org_id)
+            if _phone_id and _access_token and phone_number:
+                _last_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
+                if _last_msg_id:
+                    _fire_typing_indicator(_phone_id, _last_msg_id, _access_token)
+                    time.sleep(0.8)
+        except Exception as _te:
+            logger.warning(
+                "handle_lead_post_handoff_inbound: typing/personalise setup failed "
+                "for lead %s — continuing without indicator: %s", lead_id, _te,
+            )
+
+        def _build_reply(raw: str) -> str:
+            """Apply {{name}} personalisation if helper available, else return raw."""
+            if _pg is not None:
+                return _pg(raw, lead_name)
+            # Inline fallback — strips {{name}} cleanly if no helper
+            first = lead_name.strip().split()[0].title() if lead_name and lead_name.strip() else None
+            if first:
+                return raw.replace("{{name}}", first)
+            return (
+                raw.replace("{{name}}! ", "").replace("{{name}}, ", "")
+                   .replace("{{name}} ", "").replace("{{name}}", "").strip()
+            )
+
         # ── Strip greeting prefix ──────────────────────────────────────────
         # Handles "Good afternoon, do you have a Lagos branch?" and also the
         # case where the user sends the greeting and question in one message.
@@ -1463,10 +1503,28 @@ def handle_lead_post_handoff_inbound(
         )
         
         if is_pure_greeting:
-            greeting_reply = (
-                "Good to hear from you! 😊 Feel free to ask us anything — "
-                "we're happy to help while you wait to hear from our team."
-            )
+            _STAGE_GREETINGS = {
+                "new": (
+                    "Good to hear from you, {{name}}! 😊 Feel free to ask me anything — "
+                    "I'm happy to help while you wait to hear from our team."
+                ),
+                "contacted": (
+                    "Hey {{name}}! 😊 Great to hear from you again. What can I help you with? "
+                    
+                ),
+                "demo_done": (
+                    "Hey {{name}}! 😊 Good to hear from you. "
+                    "Your assigned rep will follow up with you shortly. "
+                    "In the meantime, is there something I can help with?"
+                ),
+                "proposal_sent": (
+                    "Hey {{name}}! 😊 Good to hear from you. "
+                    "Hope the transaction process is going well! "
+                    "Is there something else i can help with?."
+                ),
+            }
+            _raw = _STAGE_GREETINGS.get(lead_stage, _STAGE_GREETINGS["new"])
+            greeting_reply = _build_reply(_raw)
             _send_whatsapp_reply_to_lead(
                 db=db, org_id=org_id, lead_id=lead_id,
                 answer=greeting_reply, now_ts=now_ts,
@@ -1640,40 +1698,9 @@ def handle_lead_post_handoff_inbound(
 
         # No KB answer and no commerce re-entry — forward to rep
         forwarding_msg = (
-            "Thanks for your message! Unfortunately I'm not able to provide "
-            "a full response to that right now, but a member of our support "
-            "team has been informed and will get back to you shortly. 🙏"
-        )
-        _send_whatsapp_reply_to_lead(
-            db=db, org_id=org_id, lead_id=lead_id,
-            answer=forwarding_msg, now_ts=now_ts,
-        )
-
-        _create_lead_action_task(
-            db=db, org_id=org_id, lead_id=lead_id,
-            lead_name=safe_name, article_title="Pre-contact question",
-            action_label="Answer lead's pre-contact question",
-            message_content=content,
-            assigned_to=assigned_to, now_ts=now_ts,
-        )
-
-        if assigned_to:
-            _insert_notification(
-                db=db, org_id=org_id, user_id=assigned_to,
-                notif_type="lead_pre_contact_question",
-                title=f"Pre-contact question from {safe_name}",
-                body=content[:200],
-                resource_type="lead", resource_id=lead_id,
-                now_ts=now_ts,
-            )
-
-        return True  # Fully handled
-
-        # Specific question with no KB answer — inform lead and create rep task
-        forwarding_msg = (
-            "Thanks for your message! Unfortunately I'm not able to provide "
-            "a full response to that right now, but a member of our support "
-            "team has been informed and will get back to you shortly. 🙏"
+            "Hmmm, unfortunately I'm not sure about that one. "
+            "I'm now informing a member of our team who would be able to help. "
+            "They will reach out to you on this number shortly. 🙏"
         )
         _send_whatsapp_reply_to_lead(
             db=db, org_id=org_id, lead_id=lead_id,
