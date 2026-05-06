@@ -93,7 +93,7 @@ export default function LeadProfile({ leadId, onBack }) {
       const cfg = data?.stages
       if (Array.isArray(cfg) && cfg.length > 0) {
         const DOT = { new: '#7A9BAD', contacted: '#3b82f6', meeting_done: '#8b5cf6', proposal_sent: '#f59e0b', converted: '#10b981', lost: '#ef4444', not_ready: '#6b7280' }
-        const mapped = cfg.map(s => ({ key: s.key, label: s.label, dot: DOT[s.key] || '#7A9BAD' }))
+        const mapped = cfg.map(s => ({ key: s.key, label: s.label, dot: DOT[s.key] || '#7A9BAD', enabled: s.enabled !== false }))
         setPipelineStages(mapped)
         const nonTerminal = new Set(['converted', 'lost', 'not_ready'])
         setMovableStageKeys(cfg.filter(s => s.enabled !== false && !nonTerminal.has(s.key)).map(s => s.key))
@@ -195,12 +195,14 @@ export default function LeadProfile({ leadId, onBack }) {
   const isAffiliate = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
   const isManager   = useAuthStore.getState().isManager()
 
+  const demoEnabled = pipelineStages.some(s => s.key === 'meeting_done' && s.enabled !== false)
+
   const TABS = [
     { key: 'profile',         label: '👤', fullLabel: 'Profile'         },
     { key: 'messages',        label: '💬', fullLabel: 'Messages',  badge: attention.unread_messages, badgeColor: '#E53E3E' },
     { key: 'timeline',        label: '📋', fullLabel: 'Timeline'         },
     { key: 'tasks',           label: '✅', fullLabel: 'Tasks',     badge: attention.pending_tasks,   badgeColor: '#D97706' },
-    { key: 'demos',           label: '📅', fullLabel: 'Demos',     badge: attention.pending_demos,   badgeColor: '#D97706' },
+    ...(demoEnabled ? [{ key: 'demos', label: '📅', fullLabel: 'Demos', badge: attention.pending_demos, badgeColor: '#D97706' }] : []),
     { key: 'log-interaction', label: '📞', fullLabel: 'Log'              },
     { key: 'create-ticket',   label: '🎫', fullLabel: 'Tickets',   badge: attention.open_tickets,    badgeColor: '#E53E3E' },
   ]
@@ -310,7 +312,7 @@ export default function LeadProfile({ leadId, onBack }) {
           zIndex: ds.z.topbar - 1,
           boxShadow: '0 -2px 12px rgba(0,0,0,0.08)',
         }}>
-          {TABS.map(({ key, label, badge, badgeColor }) => (
+          {TABS.map(({ key, label, fullLabel, badge, badgeColor }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -324,7 +326,8 @@ export default function LeadProfile({ leadId, onBack }) {
                 transition: 'all 0.15s',
               }}
             >
-              <span style={{ fontSize: 18, lineHeight: 1, marginBottom: 3 }}>{label}</span>
+              <span style={{ fontSize: 18, lineHeight: 1, marginBottom: 2 }}>{label}</span>
+              <span style={{ fontSize: 9, lineHeight: 1, letterSpacing: '0.2px' }}>{fullLabel}</span>
               {badge > 0 && (
                 <span style={{ position: 'absolute', top: 6, right: '50%', transform: 'translateX(12px)', background: badgeColor, color: 'white', borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700 }}>{badge > 9 ? '9+' : badge}</span>
               )}

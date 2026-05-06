@@ -385,6 +385,8 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   const pendingDemosTotal = useMemo(() =>
     Object.values(attentionMap).reduce((sum, a) => sum + (a.pending_demos || 0), 0), [attentionMap])
 
+  const demoEnabled = pipelineStages.some(s => s.key === 'meeting_done')
+
   const onDragStart = useCallback((e, leadId) => {
     if (isAffiliate) return
     setDraggedId(leadId); setMoveError(null)
@@ -451,7 +453,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
               <button onClick={() => handleViewToggle('kanban')} style={{ padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: ds.fontSyne, background: viewMode === 'kanban' ? ds.teal : 'white', color: viewMode === 'kanban' ? 'white' : ds.teal, transition: 'all 0.15s' }}>⊞ Kanban</button>
               <button onClick={() => handleViewToggle('list')}   style={{ padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: ds.fontSyne, background: viewMode === 'list' ? ds.teal : 'white', color: viewMode === 'list' ? 'white' : ds.teal, borderLeft: `1.5px solid ${ds.teal}`, transition: 'all 0.15s' }}>☰ List</button>
             </div>
-            {isManager && onOpenDemoQueue && (
+            {isManager && onOpenDemoQueue && demoEnabled && (
               <button onClick={onOpenDemoQueue} style={{ ...secondaryBtn, position: 'relative' }}>
                 📅 Demo Queue
                 {pendingDemosTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{pendingDemosTotal > 9 ? '9+' : pendingDemosTotal}</span>}
@@ -473,7 +475,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
         {isMobile && !isAffiliate && (
           <div style={{ display: 'flex', gap: 8, width: '100%', marginTop: 4 }}>
             <button onClick={() => setShowCreate(true)} style={{ ...primaryBtn, flex: 1, justifyContent: 'center', fontSize: 13, padding: '10px 12px', minHeight: 44 }}>+ New Lead</button>
-            {isManager && onOpenDemoQueue && (
+            {isManager && onOpenDemoQueue && demoEnabled && (
               <button onClick={onOpenDemoQueue} style={{ ...secondaryBtn, position: 'relative', minHeight: 44, padding: '10px 12px', fontSize: 12 }}>
                 📅 Demos
                 {pendingDemosTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{pendingDemosTotal > 9 ? '9+' : pendingDemosTotal}</span>}
@@ -537,7 +539,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
                 </div>
                 {loading && cards.length === 0 && <LoadingCard />}
                 {cards.map(lead => (
-                  <KanbanCard key={lead.id} lead={lead} onOpen={() => onOpenLead(lead.id)} onDragStart={e => onDragStart(e, lead.id)} onDragEnd={onDragEnd} isMoving={movingId === lead.id} canDrag={!isAffiliate} attention={attentionMap[lead.id] ?? null} />
+                  <KanbanCard key={lead.id} lead={lead} onOpen={() => onOpenLead(lead.id)} onDragStart={e => onDragStart(e, lead.id)} onDragEnd={onDragEnd} isMoving={movingId === lead.id} canDrag={!isAffiliate} attention={attentionMap[lead.id] ?? null} demoEnabled={demoEnabled} />
                 ))}
                 {!loading && cards.length === 0 && (
                   <div style={{ border: `1px dashed ${ds.border}`, borderRadius: ds.radius.md, padding: '20px 10px', textAlign: 'center', fontSize: 12, color: ds.border }}>
@@ -575,12 +577,12 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
 
 // ── Kanban card ───────────────────────────────────────────────────────────────
 
-function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, attention }) {
+function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, attention, demoEnabled }) {
   const scoreStyle = SCORE_STYLE[lead.score] ?? SCORE_STYLE.unscored
   const badges = []
   if (attention) {
     if ((attention.unread_messages ?? 0) > 0) badges.push({ key: 'msg', label: `💬 ${attention.unread_messages}`, bg: '#E53E3E', color: 'white', title: `${attention.unread_messages} unread` })
-    if ((attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: '📅', bg: '#D97706', color: 'white', title: 'Demo awaiting' })
+    if (demoEnabled && (attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: '📅', bg: '#D97706', color: 'white', title: 'Demo awaiting' })
     if ((attention.open_tickets ?? 0) > 0) badges.push({ key: 'ticket', label: `🎫 ${attention.open_tickets}`, bg: '#ED8936', color: 'white', title: `${attention.open_tickets} open tickets` })
   }
   return (
