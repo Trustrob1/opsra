@@ -487,6 +487,45 @@ def _is_window_open(db, org_id: str, customer_id: str) -> bool:
     except (ValueError, TypeError):
         return False
 
+def _is_lead_window_open(db, org_id: str, lead_id: str) -> bool:
+    """
+    Return True if the 24-hour Meta conversation window is currently open
+    for this lead. Mirror of _is_window_open but queries by lead_id.
+    S14 — returns False on any failure.
+    """
+    try:
+        result = (
+            db.table("whatsapp_messages")
+            .select("window_open, window_expires_at")
+            .eq("org_id", org_id)
+            .eq("lead_id", lead_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        data = result.data
+        rows = data if isinstance(data, list) else ([data] if data else [])
+        if not rows:
+            return False
+
+        msg = rows[0]
+        if not msg.get("window_open"):
+            return False
+
+        expires_raw = msg.get("window_expires_at")
+        if not expires_raw:
+            return False
+
+        if isinstance(expires_raw, str):
+            expires_dt = datetime.fromisoformat(
+                expires_raw.replace("Z", "+00:00")
+            )
+        else:
+            expires_dt = expires_raw
+        return expires_dt > datetime.now(timezone.utc)
+    except (ValueError, TypeError):
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Message dispatch
@@ -579,6 +618,8 @@ def send_whatsapp_message(
     window_open = False
     if customer_id_str:
         window_open = _is_window_open(db, org_id, customer_id_str)
+    elif lead_id_str:
+        window_open = _is_lead_window_open(db, org_id, lead_id_str)
 
     if not window_open and not payload.template_name:
         raise HTTPException(
@@ -1866,7 +1907,7 @@ def send_qualification_question(
         _last_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
         if _last_msg_id:
             _fire_typing_indicator(phone_id, _last_msg_id, access_token)
-            
+
         q_type = question.get("type", "free_text")
         q_text = question.get("text", "")
         options = question.get("options") or []
