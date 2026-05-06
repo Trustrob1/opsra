@@ -329,7 +329,6 @@ function AppShell() {
       if (result?.show && result?.content) {
         setAriaBriefing(result.content)
         setAriaBadge(true)
-        setAriaOpen(true)
       }
     }).catch(() => {})
   }, [])
