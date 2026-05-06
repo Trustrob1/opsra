@@ -1003,6 +1003,7 @@ def handle_customer_inbound(
     msg_type: str,
     assigned_to: Optional[str],
     now_ts: str,
+    phone_number: str = "",
 ) -> None:
     """
     WH-1 master dispatcher for all inbound messages from known customers.
@@ -1011,15 +1012,17 @@ def handle_customer_inbound(
       1. Resolve customer name for notifications.
       2. Context check — is this a reply to NPS survey, renewal reminder, or drip?
          If yes: handle in context, return.
-      3. KB lookup (Sonnet) — does the KB have an answer?
+      3. Pure greeting check — "Hello", "Hi", "Good morning" with nothing else.
+         If yes: send warm personalised acknowledgement, quiet rep notification, return.
+      4. KB lookup (Sonnet) — does the KB have an answer?
          Found + informational  → auto-send answer, increment usage_count, return.
          Found + action_required → auto-send answer, create rep task, notify chain, return.
-      4. No KB answer — classify intent (Haiku):
+      5. No KB answer — classify intent (Haiku):
          ticket  → auto-create support ticket, knowledge_gap_flagged=True
          billing → notify finance role
          renewal → notify ops_manager/owner
          general → store + notify rep (already done by caller)
-      5. All paths: S14 — no exception propagates.
+      6. All paths: S14 — no exception propagates.
 
     Non-text messages (images, audio, etc.) skip KB lookup and go straight
     to general → notify rep path.
@@ -1076,7 +1079,85 @@ def handle_customer_inbound(
         if msg_type != "text" or not content:
             return False
 
-        # ── 3. KB lookup ───────────────────────────────────────────────────
+        # ── 3. Pure greeting check ─────────────────────────────────────────
+        # If the customer sends just a greeting with nothing else, send a warm
+        # personalised acknowledgement and quietly notify the rep.
+        # Saves the KB a pointless lookup and stops the customer getting silence.
+        _GREETING_PREFIXES = (
+            "good morning", "good afternoon", "good evening", "good day",
+            "good night", "hello", "hi", "hey", "greetings", "howdy",
+        )
+        _FILLER_WORDS = {
+            "mate", "sir", "madam", "ma", "boss", "dear", "bro", "sis",
+            "oga", "oga sir", "there", "all", "everyone",
+        }
+        _content_stripped = re.sub(r'[\U00010000-\U0010ffff]', '', content).strip()
+        _content_lower = _content_stripped.lower()
+        _after_greeting = _content_stripped
+        for _pfx in _GREETING_PREFIXES:
+            if _content_lower.startswith(_pfx):
+                _after_greeting = _content_stripped[len(_pfx):].lstrip(" ,!.'\n")
+                break
+
+        _is_pure_greeting = (
+            not _after_greeting
+            or _after_greeting.lower() in _GREETING_PREFIXES
+            or _after_greeting.strip(" ,!.'") == ""
+            or _after_greeting.lower().strip(" ,!.'") in _FILLER_WORDS
+        )
+
+        if _is_pure_greeting:
+            # Typing indicator + personalised reply — S14, non-fatal on failure
+            try:
+                from app.services.whatsapp_service import (
+                    _fire_typing_indicator,
+                    _get_last_inbound_msg_id,
+                    _get_org_wa_credentials,
+                    _personalise_greeting,
+                )
+                _phone_id, _access_token, _ = _get_org_wa_credentials(db, org_id)
+                if _phone_id and _access_token and phone_number:
+                    _last_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
+                    if _last_msg_id:
+                        _fire_typing_indicator(_phone_id, _last_msg_id, _access_token)
+                        time.sleep(0.8)
+                _raw_greeting = (
+                    "Hey {{name}}! 😊 Good to hear from you. "
+                    "What can we help you with today?"
+                )
+                greeting_reply = _personalise_greeting(_raw_greeting, customer_name)
+            except Exception as _ge:
+                logger.warning(
+                    "handle_customer_inbound: greeting setup failed for customer %s "
+                    "— using plain fallback: %s", customer_id, _ge,
+                )
+                first = (
+                    customer_name.strip().split()[0].title()
+                    if customer_name and customer_name.strip()
+                    else None
+                )
+                greeting_reply = (
+                    f"Hey {first}! 😊 Good to hear from you. What can we help you with today?"
+                    if first
+                    else "Hey! 😊 Good to hear from you. What can we help you with today?"
+                )
+
+            _send_whatsapp_reply(
+                db=db, org_id=org_id, customer_id=customer_id,
+                answer=greeting_reply, now_ts=now_ts,
+            )
+            if assigned_to:
+                _insert_notification(
+                    db=db, org_id=org_id, user_id=assigned_to,
+                    notif_type="customer_message",
+                    title=f"{customer_name} said hello",
+                    body=content[:200],
+                    resource_type="customer", resource_id=customer_id,
+                    now_ts=now_ts,
+                )
+            return True
+
+        # ── 4. KB lookup ───────────────────────────────────────────────────
         kb_result = lookup_kb_answer(db, org_id, content)
 
         if kb_result and kb_result.get("found"):
@@ -1122,7 +1203,7 @@ def handle_customer_inbound(
                 )
             return True  # KB answered — no further routing
 
-        # ── 4. No KB answer — classify intent ─────────────────────────────
+        # ── 5. No KB answer — classify intent ─────────────────────────────
         intent = classify_customer_intent(content)
 
         if intent == "ticket":
@@ -1401,7 +1482,6 @@ def handle_lead_post_handoff_inbound(
     assigned_to: Optional[str],
     now_ts: str,
     phone_number: str = "",
-    lead_stage: str = "new",
 ) -> bool:
     """
     WH-1b: Handle inbound messages from leads whose qualification has been
@@ -1435,44 +1515,6 @@ def handle_lead_post_handoff_inbound(
 
         safe_name = _sanitise_for_prompt(lead_name, max_length=100)
 
-        # ── WhatsApp helpers — typing indicator + personalisation ─────────
-        # Lazy import — matches Pattern 63. S14: failure is non-fatal.
-        _pg = None          # _personalise_greeting
-        _phone_id = None
-        _access_token = None
-        try:
-            from app.services.whatsapp_service import (
-                _fire_typing_indicator,
-                _get_last_inbound_msg_id,
-                _get_org_wa_credentials,
-                _personalise_greeting,
-            )
-            _pg = _personalise_greeting
-            _phone_id, _access_token, _ = _get_org_wa_credentials(db, org_id)
-            if _phone_id and _access_token and phone_number:
-                _last_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
-                if _last_msg_id:
-                    _fire_typing_indicator(_phone_id, _last_msg_id, _access_token)
-                    time.sleep(0.8)
-        except Exception as _te:
-            logger.warning(
-                "handle_lead_post_handoff_inbound: typing/personalise setup failed "
-                "for lead %s — continuing without indicator: %s", lead_id, _te,
-            )
-
-        def _build_reply(raw: str) -> str:
-            """Apply {{name}} personalisation if helper available, else return raw."""
-            if _pg is not None:
-                return _pg(raw, lead_name)
-            # Inline fallback — strips {{name}} cleanly if no helper
-            first = lead_name.strip().split()[0].title() if lead_name and lead_name.strip() else None
-            if first:
-                return raw.replace("{{name}}", first)
-            return (
-                raw.replace("{{name}}! ", "").replace("{{name}}, ", "")
-                   .replace("{{name}} ", "").replace("{{name}}", "").strip()
-            )
-
         # ── Strip greeting prefix ──────────────────────────────────────────
         # Handles "Good afternoon, do you have a Lagos branch?" and also the
         # case where the user sends the greeting and question in one message.
@@ -1503,28 +1545,10 @@ def handle_lead_post_handoff_inbound(
         )
         
         if is_pure_greeting:
-            _STAGE_GREETINGS = {
-                "new": (
-                    "Good to hear from you, {{name}}! 😊 Feel free to ask me anything — "
-                    "I'm happy to help while you wait to hear from our team."
-                ),
-                "contacted": (
-                    "Hey {{name}}! 😊 Great to hear from you again. What can I help you with? "
-                    
-                ),
-                "demo_done": (
-                    "Hey {{name}}! 😊 Good to hear from you. "
-                    "Your assigned rep will follow up with you shortly. "
-                    "In the meantime, is there something I can help with?"
-                ),
-                "proposal_sent": (
-                    "Hey {{name}}! 😊 Good to hear from you. "
-                    "Hope the transaction process is going well! "
-                    "Is there something else i can help with?."
-                ),
-            }
-            _raw = _STAGE_GREETINGS.get(lead_stage, _STAGE_GREETINGS["new"])
-            greeting_reply = _build_reply(_raw)
+            greeting_reply = (
+                "Good to hear from you! 😊 Feel free to ask us anything — "
+                "we're happy to help while you wait to hear from our team."
+            )
             _send_whatsapp_reply_to_lead(
                 db=db, org_id=org_id, lead_id=lead_id,
                 answer=greeting_reply, now_ts=now_ts,
@@ -1698,9 +1722,9 @@ def handle_lead_post_handoff_inbound(
 
         # No KB answer and no commerce re-entry — forward to rep
         forwarding_msg = (
-            "Hmmm, unfortunately I'm not sure about that one. "
-            "I'm now informing a member of our team who would be able to help. "
-            "They will reach out to you on this number shortly. 🙏"
+            "Thanks for your message! Unfortunately I'm not able to provide "
+            "a full response to that right now, but a member of our support "
+            "team has been informed and will get back to you shortly. 🙏"
         )
         _send_whatsapp_reply_to_lead(
             db=db, org_id=org_id, lead_id=lead_id,
