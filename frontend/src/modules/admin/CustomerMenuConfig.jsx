@@ -77,6 +77,15 @@ const DEFAULT_CONFIG = {
     section_title: 'Choose an option',
     items:         DEFAULT_CUSTOMER_ITEMS,
   },
+  lead: {
+    post_handoff: {
+      greeting_new:          "Good to hear from you, {{name}}! 😊 Feel free to ask us anything — I'm happy to help while you wait to hear from our team.",
+      greeting_contacted:    "Hey {{name}}! 😊 Great to hear from you again. What can I help you with?",
+      greeting_demo_done:    "Hey {{name}}! 😊 Good to hear from you. Your rep will follow up with you shortly.",
+      greeting_proposal_sent:"Hey {{name}}! 😊 Good to hear from you. Hope the transaction process is going well! Is there something else I can help with?",
+      forwarding_message:    "Thanks for your message! Unfortunately I'm not able to provide a full response to that right now, but a member of our support team has been informed and will get back to you shortly. 🙏",
+    },
+  },
 }
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
@@ -309,6 +318,9 @@ export default function CustomerMenuConfig() {
             customer: (loaded.customer && (loaded.customer.items || []).length > 0)
               ? loaded.customer
               : DEFAULT_CONFIG.customer,
+            lead: (loaded.lead && loaded.lead.post_handoff)
+              ? { post_handoff: { ...DEFAULT_CONFIG.lead.post_handoff, ...loaded.lead.post_handoff } }
+              : DEFAULT_CONFIG.lead,
           })
         }
       })
@@ -348,6 +360,16 @@ export default function CustomerMenuConfig() {
   }
   function setCustomerSectionTitle(v) {
     setConfig(c => ({ ...c, customer: { ...c.customer, section_title: v } }))
+  }
+
+  // ── Lead post-handoff message helpers ─────────────────────────────────────
+  const postHandoff = config?.lead?.post_handoff || DEFAULT_CONFIG.lead.post_handoff
+
+  function setPostHandoff(field, v) {
+    setConfig(c => ({
+      ...c,
+      lead: { ...c.lead, post_handoff: { ...(c.lead?.post_handoff || {}), [field]: v } },
+    }))
   }
 
   async function handleSave() {
@@ -430,6 +452,7 @@ export default function CustomerMenuConfig() {
         {[
           { key: 'unknown',  label: 'Unknown Contacts' },
           { key: 'customer', label: 'Existing Customers' },
+          { key: 'lead',     label: 'Lead Messages' },
         ].map(tab => (
           <button
             key={tab.key}
@@ -584,6 +607,63 @@ export default function CustomerMenuConfig() {
             sectionTitle={customerSectionTitle}
             items={customerItems}
           />
+        </div>
+      </div>
+
+      {/* ── Lead post-handoff messages section ───────────────────────────── */}
+      <div style={{ display: activeTab === 'lead' ? 'block' : 'none' }}>
+        <div style={{ ...S.card, background: '#F0FAFA', border: `1px solid ${ds.teal}30`, marginBottom: 20 }}>
+          <p style={{ fontSize: 13, color: '#1a7a8a', margin: 0, lineHeight: 1.6 }}>
+            These messages are sent automatically to leads who message in while waiting for a rep.
+            Use <strong>{'{{name}}'}</strong> to personalise with the lead's name.
+            Changes take effect immediately — no deployment needed.
+          </p>
+        </div>
+
+        {/* Stage greeting messages */}
+        <div style={S.card}>
+          <div style={S.cardTitle}>Greeting Messages (by pipeline stage)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {[
+              { field: 'greeting_new',           label: 'New lead (not yet contacted)' },
+              { field: 'greeting_contacted',      label: 'Contacted stage' },
+              { field: 'greeting_demo_done',      label: 'Demo done stage' },
+              { field: 'greeting_proposal_sent',  label: 'Proposal sent stage' },
+            ].map(({ field, label }) => (
+              <div key={field}>
+                <label style={S.label}>{label}</label>
+                <input
+                  style={S.input}
+                  value={postHandoff[field] || ''}
+                  maxLength={300}
+                  onChange={e => setPostHandoff(field, e.target.value)}
+                  placeholder={DEFAULT_CONFIG.lead.post_handoff[field]}
+                />
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>
+                  {(postHandoff[field] || '').length}/300 — use {'{{name}}'} for personalisation
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Forwarding message */}
+        <div style={S.card}>
+          <div style={S.cardTitle}>Fallback Message (no KB answer found)</div>
+          <p style={{ fontSize: 12.5, color: '#5a8a9f', margin: '0 0 12px', lineHeight: 1.5 }}>
+            Sent when a lead asks a question the knowledge base can't answer.
+            The rep is also notified with the lead's question.
+          </p>
+          <textarea
+            style={{ ...S.input, height: 80, resize: 'vertical' }}
+            value={postHandoff.forwarding_message || ''}
+            maxLength={500}
+            onChange={e => setPostHandoff('forwarding_message', e.target.value)}
+            placeholder={DEFAULT_CONFIG.lead.post_handoff.forwarding_message}
+          />
+          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>
+            {(postHandoff.forwarding_message || '').length}/500
+          </div>
         </div>
       </div>
 

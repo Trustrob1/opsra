@@ -1003,7 +1003,6 @@ def handle_customer_inbound(
     msg_type: str,
     assigned_to: Optional[str],
     now_ts: str,
-    phone_number: str = "",
 ) -> None:
     """
     WH-1 master dispatcher for all inbound messages from known customers.
@@ -1482,6 +1481,7 @@ def handle_lead_post_handoff_inbound(
     assigned_to: Optional[str],
     now_ts: str,
     phone_number: str = "",
+    lead_stage: str = "new",
 ) -> bool:
     """
     WH-1b: Handle inbound messages from leads whose qualification has been
@@ -1492,17 +1492,17 @@ def handle_lead_post_handoff_inbound(
 
     Flow:
       1. Non-text messages → return False (rep notification fires in caller).
-      2. Strip greeting prefix — "Good afternoon, do you have a Lagos branch?"
+      2. Load org post-handoff message config from whatsapp_triage_config.
+      3. Strip greeting prefix — "Good afternoon, do you have a Lagos branch?"
          becomes "do you have a Lagos branch?" before any lookup.
-      3. Pure greeting with no follow-up → warm acknowledgement inviting
-         questions, quiet rep notification, no task.
-      4. KB lookup (Sonnet) on de-greeted content:
+      4. Pure greeting with no follow-up → stage-aware personalised
+         acknowledgement, typing indicator, quiet rep notification, no task.
+      5. KB lookup (Sonnet) on de-greeted content:
          Found + informational  → auto-send answer, return True.
          Found + action_required → auto-send answer, create task, return True.
-      5. No KB answer → classify intent (Haiku) on de-greeted content:
-         general  → warm acknowledgement, quiet rep notification, no task.
-         specific → inform lead a support staff has been notified,
-                    create rep task, notify rep.
+      6. Product intent check — commerce re-entry if Shopify connected.
+      7. No KB answer → forwarding message (config-driven), create rep task,
+         notify rep.
 
     Returns True if fully handled (caller should NOT send another notification).
     Returns False only on non-text messages (caller sends standard rep notification).
@@ -1515,9 +1515,31 @@ def handle_lead_post_handoff_inbound(
 
         safe_name = _sanitise_for_prompt(lead_name, max_length=100)
 
+        # ── Load post-handoff message config from org triage config ───────
+        # Reads whatsapp_triage_config["lead"]["post_handoff"] from the org row.
+        # All values are optional — falls back to hardcoded defaults if absent.
+        # S14 — failure is non-fatal; defaults are used.
+        _post_handoff = {}
+        try:
+            _cfg_r = (
+                db.table("organisations")
+                .select("whatsapp_triage_config")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            _cfg_d = _cfg_r.data
+            if isinstance(_cfg_d, list):
+                _cfg_d = _cfg_d[0] if _cfg_d else None
+            _triage_cfg = (_cfg_d or {}).get("whatsapp_triage_config") or {}
+            _post_handoff = (_triage_cfg.get("lead") or {}).get("post_handoff") or {}
+        except Exception as _ce:
+            logger.warning(
+                "handle_lead_post_handoff_inbound: could not load triage config "
+                "for org %s — using defaults: %s", org_id, _ce,
+            )
+
         # ── Strip greeting prefix ──────────────────────────────────────────
-        # Handles "Good afternoon, do you have a Lagos branch?" and also the
-        # case where the user sends the greeting and question in one message.
         _GREETING_PREFIXES = (
             "good morning", "good afternoon", "good evening", "good day",
             "good night", "hello", "hi", "hey", "greetings", "howdy",
@@ -1543,12 +1565,63 @@ def handle_lead_post_handoff_inbound(
             or content_for_analysis.strip(" ,!.'") == ""
             or content_for_analysis.lower().strip(" ,!.'") in _FILLER_WORDS
         )
-        
+
         if is_pure_greeting:
-            greeting_reply = (
-                "Good to hear from you! 😊 Feel free to ask us anything — "
-                "we're happy to help while you wait to hear from our team."
+            # Stage-aware greeting — org-configurable, falls back to hardcoded defaults
+            _STAGE_GREETING_DEFAULTS = {
+                "new": (
+                    "Good to hear from you, {{name}}! 😊 Feel free to ask us anything — "
+                    "I'm happy to help while you wait to hear from our team."
+                ),
+                "contacted": (
+                    "Hey {{name}}! 😊 Great to hear from you again. "
+                    "What can I help you with?"
+                ),
+                "demo_done": (
+                    "Hey {{name}}! 😊 Good to hear from you. "
+                    "Your rep will follow up with you shortly."
+                ),
+                "proposal_sent": (
+                    "Hey {{name}}! 😊 Good to hear from you. "
+                    "Hope the transaction process is going well! "
+                    "Is there something else I can help with?"
+                ),
+            }
+            _stage_key = f"greeting_{lead_stage}"
+            _raw_greeting = (
+                _post_handoff.get(_stage_key)
+                or _STAGE_GREETING_DEFAULTS.get(lead_stage)
+                or _STAGE_GREETING_DEFAULTS["new"]
             )
+
+            # Typing indicator + personalisation — S14, non-fatal on failure
+            try:
+                from app.services.whatsapp_service import (
+                    _fire_typing_indicator,
+                    _get_last_inbound_msg_id,
+                    _get_org_wa_credentials,
+                    _personalise_greeting,
+                )
+                _phone_id, _access_token, _ = _get_org_wa_credentials(db, org_id)
+                if _phone_id and _access_token and phone_number:
+                    _last_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
+                    if _last_msg_id:
+                        _fire_typing_indicator(_phone_id, _last_msg_id, _access_token)
+                        time.sleep(0.8)
+                greeting_reply = _personalise_greeting(_raw_greeting, lead_name)
+            except Exception as _ge:
+                logger.warning(
+                    "handle_lead_post_handoff_inbound: typing/personalise failed "
+                    "for lead %s: %s", lead_id, _ge,
+                )
+                _first = lead_name.strip().split()[0].title() if lead_name and lead_name.strip() else None
+                greeting_reply = (
+                    _raw_greeting.replace("{{name}}", _first)
+                    if _first else
+                    _raw_greeting.replace("{{name}}! ", "").replace("{{name}}, ", "")
+                    .replace("{{name}} ", "").replace("{{name}}", "").strip()
+                )
+
             _send_whatsapp_reply_to_lead(
                 db=db, org_id=org_id, lead_id=lead_id,
                 answer=greeting_reply, now_ts=now_ts,
@@ -1611,13 +1684,6 @@ def handle_lead_post_handoff_inbound(
             return True  # KB answered — no further notification needed
 
         # ── Product intent — commerce re-entry ───────────────────────────────
-        # If the lead asks to browse products and the org has Shopify connected
-        # with hybrid or transactional mode, launch the commerce flow directly.
-        # Rep is notified with context. Falls through to forwarding if:
-        #   - Haiku + keywords both say no product intent
-        #   - Shopify not connected
-        #   - sales_mode is consultative
-        #   - No active products in the catalogue
         if phone_number:
             try:
                 is_product_intent = classify_product_intent(content_for_analysis)
@@ -1658,12 +1724,10 @@ def handle_lead_post_handoff_inbound(
                             )
                             from app.services.whatsapp_service import send_product_list
 
-                            # Open commerce session linked to existing lead
                             get_or_create_commerce_session(
                                 db, org_id, phone_number, lead_id=lead_id
                             )
 
-                            # Get or create whatsapp session and set commerce state
                             wa_session = triage_service.get_active_session(
                                 db, org_id, phone_number
                             )
@@ -1680,10 +1744,8 @@ def handle_lead_post_handoff_inbound(
                                     selected_action="commerce_entry",
                                 )
 
-                            # Send product list
                             send_product_list(db, org_id, phone_number, products)
 
-                            # Notify rep — different wording from initial routing
                             if assigned_to:
                                 _insert_notification(
                                     db=db, org_id=org_id, user_id=assigned_to,
@@ -1722,9 +1784,12 @@ def handle_lead_post_handoff_inbound(
 
         # No KB answer and no commerce re-entry — forward to rep
         forwarding_msg = (
-            "Thanks for your message! Unfortunately I'm not able to provide "
-            "a full response to that right now, but a member of our support "
-            "team has been informed and will get back to you shortly. 🙏"
+            _post_handoff.get("forwarding_message")
+            or (
+                "Thanks for your message! Unfortunately I'm not able to provide "
+                "a full response to that right now, but a member of our support "
+                "team has been informed and will get back to you shortly. 🙏"
+            )
         )
         _send_whatsapp_reply_to_lead(
             db=db, org_id=org_id, lead_id=lead_id,
