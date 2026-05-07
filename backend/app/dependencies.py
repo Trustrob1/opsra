@@ -92,17 +92,49 @@ async def get_current_org(
     request — every route uses this value for DB scoping, never
     anything from the request body.
     """
-    try:
-        result = (
-            supabase.table("users")
-            .select("id, org_id, email, full_name, is_active, whatsapp_number, notification_prefs, roles(*)")
-            .eq("id", current_user.id)
-            .single()
-            .execute()
+    import asyncio
+
+    db_user = None
+    last_exc = None
+
+    for attempt in range(3):
+        try:
+            result = (
+                supabase.table("users")
+                .select("id, org_id, email, full_name, is_active, whatsapp_number, notification_prefs, roles(*)")
+                .eq("id", current_user.id)
+                .execute()
+            )
+            rows = result.data or []
+            if rows:
+                db_user = rows[0]
+                break
+            # Row not returned — likely a transient Supabase connection pool issue.
+            # Wait briefly and retry before giving up.
+            logger.warning(
+                "User record returned 0 rows for %s (attempt %d/3) — retrying",
+                getattr(current_user, "id", "?"),
+                attempt + 1,
+            )
+            if attempt < 2:
+                await asyncio.sleep(0.15 * (attempt + 1))
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "User fetch exception for %s (attempt %d/3): %s",
+                getattr(current_user, "id", "?"),
+                attempt + 1,
+                exc,
+            )
+            if attempt < 2:
+                await asyncio.sleep(0.15 * (attempt + 1))
+
+    if db_user is None:
+        logger.error(
+            "Failed to fetch user record for %s after 3 attempts. Last exception: %s",
+            getattr(current_user, "id", "?"),
+            last_exc,
         )
-        db_user = result.data
-    except Exception as exc:
-        logger.error("Failed to fetch user record for %s: %s", getattr(current_user, "id", "?"), exc)
         raise HTTPException(
             status_code=401,
             detail={
