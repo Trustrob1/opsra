@@ -1063,6 +1063,26 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 "Qualification turn failed for lead %s — checking post-handoff path: %s",
                 lead_id, exc,
             )
+            # Commerce routing — if lead is currently in a commerce flow (e.g. was
+            # sent a product list via the post-handoff path), route interactive
+            # messages (product selections, Speak to Sales) to the commerce handler
+            # before falling through to the text-only post-handoff handler.
+            try:
+                _ph_session = triage_service.get_active_session(db, org_id, sender_phone)
+                if _ph_session and (_ph_session.get("commerce_state") or "") in COMMERCE_STATES:
+                    _handle_commerce_message(
+                        db=db, org_id=org_id, phone_number=sender_phone,
+                        message=message, session=_ph_session,
+                        msg_type=msg_type, content=content,
+                        interactive_payload=interactive_payload,
+                        contact_name=contact_name,
+                    )
+                    return
+            except Exception as _ce:
+                logger.warning(
+                    "Commerce routing in post-handoff path failed lead=%s: %s",
+                    lead_id, _ce,
+                )
             if msg_type == "text" and content:
                 # Use the post-handoff handler for ALL leads with no active
                 # qualification session — covers handed-off leads AND leads
@@ -2355,7 +2375,12 @@ def _handle_commerce_message(
             .get("button_reply", {})
             .get("id", "")
         )
-        if _btn_id == "talk_sales":
+        _list_id = (
+            (interactive_payload or {})
+            .get("list_reply", {})
+            .get("id", "")
+        )
+        if _btn_id == "talk_sales" or _list_id == "talk_sales":
             from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
             from app.services.commerce_service import mark_cart_abandoned
 
