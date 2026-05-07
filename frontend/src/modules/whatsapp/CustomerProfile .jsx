@@ -137,6 +137,12 @@ export default function CustomerProfile({ customerId, onBack }) {
       .finally(() => setLoading(false))
   }, [customerId])
 
+  const refreshMessages = useCallback(() => {
+    getCustomerMessages(customerId)
+      .then(res => setMessages(res.data?.data?.items ?? []))
+      .catch(() => {})
+  }, [customerId])
+
   useEffect(() => { loadCustomer() }, [loadCustomer])
 
   // COMM-1: Fetch commerce session + shopify status after customer loads
@@ -185,7 +191,7 @@ export default function CustomerProfile({ customerId, onBack }) {
 
   useEffect(() => {
     if (tab === 'messages') {
-      getCustomerMessages(customerId).then(res => setMessages(res.data?.data?.items ?? []))
+      refreshMessages()
     }
     if (tab === 'tasks') {
       loadTasks()
@@ -200,7 +206,7 @@ export default function CustomerProfile({ customerId, onBack }) {
         .catch(() => setContacts([]))
         .finally(() => setContactsLoading(false))
     }
-  }, [tab, customerId, loadTasks])
+  }, [tab, customerId, loadTasks, refreshMessages])
 
   useEffect(() => {
     listTemplates().then(res => setTemplates(res.data?.data ?? []))
@@ -572,17 +578,19 @@ export default function CustomerProfile({ customerId, onBack }) {
             )}
           </div>
 
-          {/* Message compose */}
-          <div style={S.card}>
-            <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 14, color: ds.dark, marginBottom: 14 }}>
-              Send Message
-            </div>
-            <MessageComposer
-              customerId={customerId}
-              windowOpen={windowOpen}
-              templates={templates}
-              onSent={() => setTab('messages')}
-            />
+          {/* Send Message — go to Messages tab */}
+          <div style={{ marginTop: 4 }}>
+            <button
+              onClick={() => setTab('messages')}
+              style={{
+                padding: '10px 20px', background: '#25D366', color: '#fff',
+                border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600,
+                fontFamily: ds.fontHead, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              💬 Send WhatsApp Message
+            </button>
           </div>
         </div>
       )}
@@ -687,29 +695,45 @@ export default function CustomerProfile({ customerId, onBack }) {
 
       {/* ── Messages tab ───────────────────────────────────────────────── */}
       {tab === 'messages' && (
-        <div style={S.card}>
-          <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 14, color: ds.dark, marginBottom: 14 }}>
-            Message History
+        <div>
+          {/* Compose panel — always visible at top of Messages tab */}
+          <div style={{ marginBottom: 20 }}>
+            <MessageComposer
+              customerId={customerId}
+              windowOpen={true}
+              templates={templates}
+              onSent={refreshMessages}
+            />
           </div>
-          {messages.length === 0 ? (
-            <div style={S.empty}>No messages yet.</div>
-          ) : (
-            <div style={{ background: '#ECE5DD', borderRadius: 12, padding: 14 }}>
-              {messages.map(m => (
-                <div key={m.id}>
-                  <div style={S.msgMeta(m.direction)}>
-                    {m.direction === 'outbound'
-                      ? `Sent · ${new Date(m.created_at).toLocaleString()}`
-                      : `Received · ${new Date(m.created_at).toLocaleString()}`}
-                    {m.template_name && ` · Template: ${m.template_name}`}
+
+          {/* Message thread */}
+          <div style={S.card}>
+            <p style={{
+              fontSize: 11, fontWeight: 600, color: ds.teal,
+              textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 12px',
+            }}>
+              Message History
+            </p>
+            {messages.length === 0 ? (
+              <div style={S.empty}>No messages yet. Send a WhatsApp message above.</div>
+            ) : (
+              <div style={{ background: '#ECE5DD', borderRadius: 12, padding: 14 }}>
+                {messages.map(m => (
+                  <div key={m.id}>
+                    <div style={S.msgMeta(m.direction)}>
+                      {m.direction === 'outbound'
+                        ? `Sent · ${new Date(m.created_at).toLocaleString()}`
+                        : `Received · ${new Date(m.created_at).toLocaleString()}`}
+                      {m.template_name && ` · Template: ${m.template_name}`}
+                    </div>
+                    <div style={S.msgBubble(m.direction)}>
+                      {m.content || '(Media message)'}
+                    </div>
                   </div>
-                  <div style={S.msgBubble(m.direction)}>
-                    {m.content || '(Media message)'}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
