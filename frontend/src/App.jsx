@@ -55,6 +55,7 @@ import { getBriefing } from './services/assistant.service'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import CreateOrg from "./modules/superadmin/CreateOrg.jsx"
 import HealthDashboard from "./modules/superadmin/HealthDashboard.jsx"
+import ConversationsModule from './modules/conversations/ConversationsModule'
 import TermsOfService from './pages/TermsOfService'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -71,6 +72,7 @@ const NAV = [
   { id: 'renewal',  label: 'Renewal & Upsell',     icon: '🔄', module: '04', active: true  },
   { id: 'ops',      label: 'Operations Intel',     icon: '📊', module: '05', active: true  },
   { id: 'tasks',    label: 'Task Board',            icon: '✅', module: '—',  active: true  },
+  { id: 'conversations', label: 'Conversations',      icon: '📨', module: '—',  active: true  },
   { id: 'commissions', label: 'Commissions',        icon: '💼', module: '—',  active: true  },
 ]
 
@@ -621,6 +623,9 @@ function AppShell() {
         {view === 'admin' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} /></div>
         )}
+        {view === 'conversations' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><ConversationsModule user={user} /></div>
+        )}
         {view === 'commissions' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><CommissionsModule user={user} /></div>
         )}
@@ -630,7 +635,7 @@ function AppShell() {
         {view === 'superadmin_health' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><HealthDashboard /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'commissions', 'superadmin_create_org', 'superadmin_health'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

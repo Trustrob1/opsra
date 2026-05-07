@@ -101,6 +101,35 @@ def get_unread_counts(
     return ok(data=counts)
 
 
+
+
+# ---------------------------------------------------------------------------
+# Conversations — unified inbox
+# ---------------------------------------------------------------------------
+
+@router.get("/conversations")
+def list_conversations(
+    channel: Optional[str] = Query(None),
+    contact_type: Optional[str] = Query(None),
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    Returns one conversation row per lead/customer sorted by most recent
+    message.  Scoped roles see only their assigned contacts.
+    """
+    from app.utils.rbac import is_scoped_role
+    conversations = whatsapp_service.get_conversations(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        is_scoped=is_scoped_role(org),
+        channel=channel,
+        contact_type=contact_type,
+    )
+    return ok(data=conversations)
+
+
 # ---------------------------------------------------------------------------
 # Broadcasts
 # ---------------------------------------------------------------------------

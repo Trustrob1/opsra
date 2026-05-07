@@ -2536,3 +2536,182 @@ def send_checkout_link(
             "send_checkout_link failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
+
+
+# ---------------------------------------------------------------------------
+# Conversations — unified inbox list
+# ---------------------------------------------------------------------------
+
+def get_conversations(
+    db,
+    org_id: str,
+    user_id: str,
+    is_scoped: bool,
+    channel: Optional[str] = None,
+    contact_type: Optional[str] = None,
+) -> list:
+    """
+    Returns one conversation entry per lead/customer, sorted by most recent
+    message descending.  Scoped roles (sales_agent etc.) see only their
+    assigned contacts.  Admins/owners see all.
+
+    S14: per-section failures are swallowed — the other section still returns.
+    """
+    conversations: list = []
+
+    # ── Leads ───────────────────────────────────────────────────────────────
+    if contact_type in (None, "lead"):
+        try:
+            leads_q = (
+                db.table("leads")
+                .select(
+                    "id, full_name, whatsapp_number, assigned_to,"
+                    " assigned_user:users!assigned_to(full_name)"
+                )
+                .eq("org_id", org_id)
+                .is_("deleted_at", "null")
+                .limit(300)
+            )
+            if is_scoped:
+                leads_q = leads_q.eq("assigned_to", user_id)
+            leads = leads_q.execute().data or []
+
+            if leads:
+                lead_ids = [l["id"] for l in leads]
+
+                # Latest message per lead (fetch, python-side dedup)
+                msgs = (
+                    db.table("whatsapp_messages")
+                    .select("lead_id, content, created_at, direction, status, message_type")
+                    .eq("org_id", org_id)
+                    .in_("lead_id", lead_ids)
+                    .order("created_at", desc=True)
+                    .limit(min(len(lead_ids) * 3, 600))
+                    .execute()
+                ).data or []
+                lead_latest: dict = {}
+                for m in msgs:
+                    lid = m.get("lead_id")
+                    if lid and lid not in lead_latest:
+                        lead_latest[lid] = m
+
+                # Unread counts
+                unread_rows = (
+                    db.table("whatsapp_messages")
+                    .select("lead_id")
+                    .eq("org_id", org_id)
+                    .in_("lead_id", lead_ids)
+                    .eq("direction", "inbound")
+                    .is_("read_at", "null")
+                    .execute()
+                ).data or []
+                lead_unread: dict = {}
+                for u in unread_rows:
+                    lid = u.get("lead_id")
+                    if lid:
+                        lead_unread[lid] = lead_unread.get(lid, 0) + 1
+
+                for lead in leads:
+                    try:
+                        lid = lead["id"]
+                        last = lead_latest.get(lid)
+                        conversations.append({
+                            "contact_id":             lid,
+                            "contact_type":           "lead",
+                            "contact_name":           lead.get("full_name") or "Unknown",
+                            "phone":                  lead.get("whatsapp_number") or "",
+                            "channel":                "whatsapp",
+                            "last_message":           (last.get("content") or "(media)") if last else None,
+                            "last_message_at":        last.get("created_at") if last else None,
+                            "last_message_direction": last.get("direction") if last else None,
+                            "unread_count":           lead_unread.get(lid, 0),
+                            "assigned_to":            lead.get("assigned_to"),
+                            "assigned_name":          (lead.get("assigned_user") or {}).get("full_name"),
+                        })
+                    except Exception:
+                        pass
+        except Exception as exc:
+            logger.warning("get_conversations leads error org=%s: %s", org_id, exc)
+
+    # ── Customers ───────────────────────────────────────────────────────────
+    if contact_type in (None, "customer"):
+        try:
+            customers_q = (
+                db.table("customers")
+                .select(
+                    "id, full_name, whatsapp, assigned_to,"
+                    " assigned_user:users!assigned_to(full_name)"
+                )
+                .eq("org_id", org_id)
+                .is_("deleted_at", "null")
+                .limit(300)
+            )
+            if is_scoped:
+                customers_q = customers_q.eq("assigned_to", user_id)
+            customers = customers_q.execute().data or []
+
+            if customers:
+                customer_ids = [c["id"] for c in customers]
+
+                msgs = (
+                    db.table("whatsapp_messages")
+                    .select("customer_id, content, created_at, direction, status, message_type")
+                    .eq("org_id", org_id)
+                    .in_("customer_id", customer_ids)
+                    .order("created_at", desc=True)
+                    .limit(min(len(customer_ids) * 3, 600))
+                    .execute()
+                ).data or []
+                customer_latest: dict = {}
+                for m in msgs:
+                    cid = m.get("customer_id")
+                    if cid and cid not in customer_latest:
+                        customer_latest[cid] = m
+
+                unread_rows = (
+                    db.table("whatsapp_messages")
+                    .select("customer_id")
+                    .eq("org_id", org_id)
+                    .in_("customer_id", customer_ids)
+                    .eq("direction", "inbound")
+                    .is_("read_at", "null")
+                    .execute()
+                ).data or []
+                customer_unread: dict = {}
+                for u in unread_rows:
+                    cid = u.get("customer_id")
+                    if cid:
+                        customer_unread[cid] = customer_unread.get(cid, 0) + 1
+
+                for customer in customers:
+                    try:
+                        cid = customer["id"]
+                        last = customer_latest.get(cid)
+                        conversations.append({
+                            "contact_id":             cid,
+                            "contact_type":           "customer",
+                            "contact_name":           customer.get("full_name") or "Unknown",
+                            "phone":                  customer.get("whatsapp") or "",
+                            "channel":                "whatsapp",
+                            "last_message":           (last.get("content") or "(media)") if last else None,
+                            "last_message_at":        last.get("created_at") if last else None,
+                            "last_message_direction": last.get("direction") if last else None,
+                            "unread_count":           customer_unread.get(cid, 0),
+                            "assigned_to":            customer.get("assigned_to"),
+                            "assigned_name":          (customer.get("assigned_user") or {}).get("full_name"),
+                        })
+                    except Exception:
+                        pass
+        except Exception as exc:
+            logger.warning("get_conversations customers error org=%s: %s", org_id, exc)
+
+    # Sort: most recent message first; contacts with no messages go to the end
+    conversations.sort(
+        key=lambda x: x.get("last_message_at") or "0000",
+        reverse=True,
+    )
+
+    if channel:
+        conversations = [c for c in conversations if c.get("channel") == channel]
+
+    return conversations
