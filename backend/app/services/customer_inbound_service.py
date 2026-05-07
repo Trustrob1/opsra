@@ -194,7 +194,18 @@ Respond with EXACTLY one word: cancel, confirm, or other."""
 def classify_customer_intent(content: str) -> str:
     """
     Classify a general inbound message when no KB answer was found.
-    Returns: 'ticket' | 'billing' | 'renewal' | 'general'
+
+    Returns:
+      'ticket'      — support request, technical issue, account problem
+      'billing'     — invoice, payment, refund, pricing query
+      'renewal'     — subscription renewal, upgrade, cancellation
+      'delivery'    — delivery scheduling, status, or pickup request
+      'return'      — return or exchange request
+      'complaint'   — product defect, damage, or quality complaint
+      'appointment' — store visit, viewing, or in-person pickup scheduling
+      'product'     — product inquiry or purchase intent from existing customer
+      'general'     — everything else
+
     S14 — returns 'general' on any failure.
     """
     try:
@@ -203,22 +214,30 @@ def classify_customer_intent(content: str) -> str:
             "You are a classification assistant for a business software platform. "
             "Your only task is to classify an inbound customer message by intent."
         )
-        prompt = f"""Classify the customer message below as one of: ticket, billing, renewal, general.
+        prompt = f"""Classify the customer message below as exactly one of:
+ticket, billing, renewal, delivery, return, complaint, appointment, product, general.
 
-'ticket'  = support request, bug report, technical issue, feature question, account access problem.
-'billing' = invoice, payment, refund, pricing, charge query.
-'renewal' = subscription renewal, plan upgrade, cancellation of subscription.
-'general' = everything else — greetings, feedback, general enquiries.
+'ticket'      = support request, technical issue, account access problem, feature question.
+'billing'     = invoice, payment confirmation, refund request, pricing query, charge dispute.
+'renewal'     = subscription renewal, plan upgrade or downgrade, cancellation of subscription.
+'delivery'    = delivery scheduling, estimated arrival, order status, dispatch query, pickup logistics.
+'return'      = return request, exchange request, item not as described, wants refund on physical item.
+'complaint'   = product defect, damage, poor quality, mattress issue, item not working as expected.
+'appointment' = wants to visit the store, schedule a showroom visit, book a viewing, in-person collection.
+'product'     = asking about products, prices, availability, sizes, or wants to buy something new.
+'general'     = greetings, thank you messages, feedback, anything that does not fit the above.
 
 <customer_message>
 {safe}
 </customer_message>
 
-Respond with EXACTLY one word: ticket, billing, renewal, or general."""
+Respond with EXACTLY one word from the list above."""
 
         result = _call_haiku(system, prompt, max_tokens=10)
         cleaned = result.lower().strip().rstrip(".")
-        if cleaned in ("ticket", "billing", "renewal", "general"):
+        valid = ("ticket", "billing", "renewal", "delivery", "return",
+                 "complaint", "appointment", "product", "general")
+        if cleaned in valid:
             return cleaned
         return "general"
     except Exception as exc:
@@ -1210,14 +1229,14 @@ def handle_customer_inbound(
                 db=db, org_id=org_id, customer_id=customer_id,
                 content=content, assigned_to=assigned_to, now_ts=now_ts,
             )
-            return True  # fully handled — skip standard rep notification
+            return True
 
         elif intent == "billing":
             _notify_finance(
                 db=db, org_id=org_id, customer_id=customer_id,
                 customer_name=customer_name, content=content, now_ts=now_ts,
             )
-            return True  # fully handled
+            return True
 
         elif intent == "renewal":
             _notify_managers(
@@ -1227,7 +1246,171 @@ def handle_customer_inbound(
                 resource_type="customer", resource_id=customer_id,
                 now_ts=now_ts,
             )
-            return True  # fully handled
+            return True
+
+        elif intent == "delivery":
+            # Auto-reply + task + rep notification
+            _send_whatsapp_reply(
+                db=db, org_id=org_id, customer_id=customer_id,
+                answer=(
+                    f"Hi {customer_name.strip().split()[0].title() if customer_name else 'there'}! 🚚 "
+                    "Thanks for reaching out about your delivery. Our team has been "
+                    "notified and will get back to you shortly with an update."
+                ),
+                now_ts=now_ts,
+            )
+            _auto_create_ticket(
+                db=db, org_id=org_id, customer_id=customer_id,
+                content=content, assigned_to=assigned_to, now_ts=now_ts,
+                title_override=f"Delivery enquiry — {customer_name}",
+            )
+            return True
+
+        elif intent == "return":
+            # Auto-reply + high-priority task + rep notification
+            _send_whatsapp_reply(
+                db=db, org_id=org_id, customer_id=customer_id,
+                answer=(
+                    f"Hi {customer_name.strip().split()[0].title() if customer_name else 'there'}! "
+                    "We've received your return/exchange request and a member of our "
+                    "team will be in touch shortly to assist you. 🙏"
+                ),
+                now_ts=now_ts,
+            )
+            _auto_create_ticket(
+                db=db, org_id=org_id, customer_id=customer_id,
+                content=content, assigned_to=assigned_to, now_ts=now_ts,
+                title_override=f"Return/exchange request — {customer_name}",
+                priority="high",
+            )
+            return True
+
+        elif intent == "complaint":
+            # Auto-reply + high-priority task + manager notification
+            _send_whatsapp_reply(
+                db=db, org_id=org_id, customer_id=customer_id,
+                answer=(
+                    f"Hi {customer_name.strip().split()[0].title() if customer_name else 'there'}! "
+                    "We're sorry to hear about this. Our team has been notified and "
+                    "will be in touch with you shortly to resolve this. 🙏"
+                ),
+                now_ts=now_ts,
+            )
+            _auto_create_ticket(
+                db=db, org_id=org_id, customer_id=customer_id,
+                content=content, assigned_to=assigned_to, now_ts=now_ts,
+                title_override=f"Product complaint — {customer_name}",
+                priority="urgent",
+            )
+            _notify_managers(
+                db=db, org_id=org_id,
+                title=f"Product complaint from {customer_name}",
+                body=content[:200],
+                resource_type="customer", resource_id=customer_id,
+                now_ts=now_ts,
+            )
+            return True
+
+        elif intent == "appointment":
+            # Auto-reply + task for rep to confirm
+            _send_whatsapp_reply(
+                db=db, org_id=org_id, customer_id=customer_id,
+                answer=(
+                    f"Hi {customer_name.strip().split()[0].title() if customer_name else 'there'}! 😊 "
+                    "We'd love to see you! Our team will be in touch shortly to "
+                    "confirm the details of your visit."
+                ),
+                now_ts=now_ts,
+            )
+            _auto_create_ticket(
+                db=db, org_id=org_id, customer_id=customer_id,
+                content=content, assigned_to=assigned_to, now_ts=now_ts,
+                title_override=f"Store visit/appointment — {customer_name}",
+            )
+            return True
+
+        elif intent == "product":
+            # Existing customer asking about products — trigger commerce flow
+            # if Shopify connected, otherwise notify rep.
+            try:
+                from app.services.whatsapp_service import send_product_list
+                org_commerce_r = (
+                    db.table("organisations")
+                    .select("shopify_connected, sales_mode")
+                    .eq("id", org_id)
+                    .maybe_single()
+                    .execute()
+                )
+                org_commerce_d = org_commerce_r.data
+                if isinstance(org_commerce_d, list):
+                    org_commerce_d = org_commerce_d[0] if org_commerce_d else None
+                org_commerce_d = org_commerce_d or {}
+                shopify_ok = org_commerce_d.get("shopify_connected", False)
+                sales_mode = org_commerce_d.get("sales_mode", "consultative")
+
+                if shopify_ok and sales_mode in ("hybrid", "transactional"):
+                    products_r = (
+                        db.table("products")
+                        .select("*")
+                        .eq("org_id", org_id)
+                        .eq("is_active", True)
+                        .order("title")
+                        .execute()
+                    )
+                    products = (
+                        products_r.data if isinstance(products_r.data, list) else []
+                    )
+                    if products and phone_number:
+                        # Try catalog, fall back to text list
+                        _catalog_sent = False
+                        try:
+                            send_product_list(db, org_id, phone_number, products)
+                            _catalog_sent = True
+                        except Exception as _pl_exc:
+                            logger.warning(
+                                "handle_customer_inbound product intent: "
+                                "send_product_list failed — text fallback: %s", _pl_exc,
+                            )
+                        if not _catalog_sent:
+                            _product_names = [
+                                p.get("title") or p.get("name") or "Product"
+                                for p in products[:10]
+                            ]
+                            _names_str = "\n".join(f"• {n}" for n in _product_names)
+                            _more = (
+                                f"\n...and {len(products) - 10} more items"
+                                if len(products) > 10 else ""
+                            )
+                            _first = (
+                                customer_name.strip().split()[0].title()
+                                if customer_name else "there"
+                            )
+                            _send_whatsapp_reply(
+                                db=db, org_id=org_id, customer_id=customer_id,
+                                answer=(
+                                    f"Hi {_first}! 🛏 Here's what we currently have available:\n\n"
+                                    f"{_names_str}{_more}\n\n"
+                                    f"Let us know what you're interested in and we'll help!"
+                                ),
+                                now_ts=now_ts,
+                            )
+                        if assigned_to:
+                            _insert_notification(
+                                db=db, org_id=org_id, user_id=assigned_to,
+                                notif_type="customer_product_inquiry",
+                                title=f"{customer_name} asked about products",
+                                body=content[:200],
+                                resource_type="customer", resource_id=customer_id,
+                                now_ts=now_ts,
+                            )
+                        return True
+            except Exception as _pe:
+                logger.warning(
+                    "handle_customer_inbound product intent failed "
+                    "for customer=%s — falling through: %s", customer_id, _pe,
+                )
+            # Fall through to general rep notification if commerce not available
+            return False
 
         # 'general' — return False so caller sends standard rep notification
         return False
@@ -1251,22 +1434,30 @@ def _auto_create_ticket(
     content: str,
     assigned_to: Optional[str],
     now_ts: str,
+    title_override: Optional[str] = None,
+    priority: str = "medium",
 ) -> None:
     """
     Auto-create a support ticket from a customer WhatsApp message.
     Sets ai_handling_mode='human_only', knowledge_gap_flagged=True.
+
+    title_override: if set, used as the ticket title instead of truncated content.
+    priority: urgency level — 'low' | 'medium' | 'high' | 'urgent'. Defaults to 'medium'.
     S14 — never raises.
     """
     try:
-        title = content[:80].strip()
-        if len(content) > 80:
-            title += "..."
+        if title_override:
+            title = title_override[:120].strip()
+        else:
+            title = content[:80].strip()
+            if len(content) > 80:
+                title += "..."
 
         ticket_row: dict = {
             "org_id": org_id,
             "customer_id": customer_id,
             "category": "unclassified",
-            "urgency": "medium",
+            "urgency": priority,
             "status": "open",
             "title": title,
             "ai_handling_mode": "human_only",
@@ -1744,7 +1935,42 @@ def handle_lead_post_handoff_inbound(
                                     selected_action="commerce_entry",
                                 )
 
-                            send_product_list(db, org_id, phone_number, products)
+                            # Try catalog product list — fall back to text list
+                            # if Meta rejects the catalog_id (e.g. test WABA or
+                            # catalog not yet linked to the WABA).
+                            _catalog_sent = False
+                            try:
+                                send_product_list(db, org_id, phone_number, products)
+                                _catalog_sent = True
+                            except Exception as _pl_exc:
+                                logger.warning(
+                                    "handle_lead_post_handoff_inbound: send_product_list "
+                                    "failed for lead=%s — sending text fallback: %s",
+                                    lead_id, _pl_exc,
+                                )
+
+                            if not _catalog_sent:
+                                # Text-based product list fallback
+                                _product_names = [
+                                    p.get("title") or p.get("name") or "Product"
+                                    for p in products[:10]
+                                ]
+                                _names_str = "\n".join(
+                                    f"• {n}" for n in _product_names
+                                )
+                                _more = (
+                                    f"\n...and {len(products) - 10} more items"
+                                    if len(products) > 10 else ""
+                                )
+                                _text_reply = (
+                                    f"Great choice! 🛏 Here's what we currently have available:\n\n"
+                                    f"{_names_str}{_more}\n\n"
+                                    f"Our team will be in touch shortly to help with your order!"
+                                )
+                                _send_whatsapp_reply_to_lead(
+                                    db=db, org_id=org_id, lead_id=lead_id,
+                                    answer=_text_reply, now_ts=now_ts,
+                                )
 
                             if assigned_to:
                                 _insert_notification(
@@ -1760,8 +1986,8 @@ def handle_lead_post_handoff_inbound(
                                 )
                             logger.info(
                                 "handle_lead_post_handoff_inbound: product intent — "
-                                "commerce re-entry for lead=%s org=%s",
-                                lead_id, org_id,
+                                "commerce re-entry for lead=%s org=%s catalog_sent=%s",
+                                lead_id, org_id, _catalog_sent,
                             )
                             return True
 
