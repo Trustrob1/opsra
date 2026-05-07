@@ -1724,6 +1724,119 @@ def handle_lead_post_handoff_inbound(
                 )
             return True
 
+        # ── Product list selection intercept ──────────────────────────────────
+        # When the user selects a product from the interactive list, msg_type is
+        # "interactive" with a list_reply. The content is the product title, not
+        # a product intent phrase, so classify_product_intent would return False.
+        # We catch it here directly and route into the commerce flow.
+        if msg_type == "interactive" and phone_number:
+            try:
+                from app.services.whatsapp_service import _get_org_wa_credentials  # noqa
+                _interactive_payload = None
+                # We need the raw interactive payload — reconstruct from context
+                # The list_reply id is what we need to add to cart
+                # content holds the title; we need to look up the product by title
+                # But actually: the product id comes from the list_reply id, not the title.
+                # handle_lead_post_handoff_inbound doesn't receive interactive_payload,
+                # so we fall through to the commerce flow setup below and let
+                # _handle_commerce_message handle the selection on the next message.
+                # Instead: set commerce_state = commerce_browsing so the NEXT
+                # message (which IS the list_reply) routes to _handle_commerce_message.
+                # Actually the list_reply IS this message — we just don't have
+                # interactive_payload here. So we need to look up the product by
+                # matching content (title) against products.
+                org_commerce_r = (
+                    db.table("organisations")
+                    .select("shopify_connected, sales_mode")
+                    .eq("id", org_id)
+                    .maybe_single()
+                    .execute()
+                )
+                org_commerce_d = org_commerce_r.data
+                if isinstance(org_commerce_d, list):
+                    org_commerce_d = org_commerce_d[0] if org_commerce_d else None
+                org_commerce_d = org_commerce_d or {}
+                shopify_ok = org_commerce_d.get("shopify_connected", False)
+                sales_mode = org_commerce_d.get("sales_mode", "consultative")
+
+                if shopify_ok and sales_mode in ("hybrid", "transactional"):
+                    # Find the product whose title matches the list_reply content
+                    products_r = (
+                        db.table("products")
+                        .select("*")
+                        .eq("org_id", org_id)
+                        .eq("is_active", True)
+                        .execute()
+                    )
+                    products = products_r.data if isinstance(products_r.data, list) else []
+                    matched_product = None
+                    for p in products:
+                        if (p.get("title") or "").strip() == (content or "").strip():
+                            matched_product = p
+                            break
+
+                    if matched_product:
+                        from app.services import triage_service
+                        from app.services.commerce_service import (
+                            get_or_create_commerce_session,
+                            add_to_cart,
+                        )
+                        from app.services.whatsapp_service import send_cart_summary
+
+                        commerce_session = get_or_create_commerce_session(
+                            db, org_id, phone_number, lead_id=lead_id
+                        )
+                        wa_session = triage_service.get_active_session(db, org_id, phone_number)
+                        if not wa_session:
+                            wa_session = triage_service.create_session(
+                                db=db, org_id=org_id, phone_number=phone_number
+                            )
+
+                        variants = matched_product.get("variants") or []
+                        if len(variants) <= 1:
+                            variant = variants[0] if variants else {}
+                            variant_id = str(variant.get("id") or variant.get("variant_id") or "")
+                            commerce_session = add_to_cart(
+                                db, commerce_session, matched_product, variant_id, quantity=1
+                            )
+                            if wa_session:
+                                db.table("whatsapp_sessions").update(
+                                    {"commerce_state": "commerce_cart"}
+                                ).eq("id", wa_session["id"]).execute()
+                                triage_service.update_session(
+                                    db, wa_session["id"], "active",
+                                    selected_action="commerce_entry",
+                                )
+                            send_cart_summary(db, org_id, phone_number, commerce_session)
+                        else:
+                            # Multiple variants — ask user to choose
+                            from app.services.whatsapp_service import send_variant_selection
+                            if wa_session:
+                                db.table("whatsapp_sessions").update({
+                                    "commerce_state": "commerce_variant_select",
+                                    "pending_product_id": str(matched_product.get("id", "")),
+                                }).eq("id", wa_session["id"]).execute()
+                                triage_service.update_session(
+                                    db, wa_session["id"], "active",
+                                    selected_action="commerce_entry",
+                                )
+                            send_variant_selection(db, org_id, phone_number, matched_product)
+
+                        logger.info(
+                            "handle_lead_post_handoff_inbound: list_reply product "
+                            "selection — product=%s lead=%s org=%s",
+                            matched_product.get("id"), lead_id, org_id,
+                        )
+                        return True
+            except Exception as _lr_exc:
+                logger.warning(
+                    "handle_lead_post_handoff_inbound: list_reply intercept "
+                    "failed for lead=%s: %s", lead_id, _lr_exc,
+                )
+            # Non-product interactive (e.g. button replies not caught above) —
+            # fall through to rep notification
+            return False
+
         # Non-text messages — skip KB, let caller send standard notification
         if msg_type != "text" or not content:
             return False
