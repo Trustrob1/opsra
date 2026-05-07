@@ -707,18 +707,6 @@ def send_whatsapp_message(
         old_value=None,
         new_value={"to": to_number, "template": template_name_db},
     )
-
-    # Human takeover: when a real user (not "system") sends manually,
-    # set ai_paused=True so AI stops auto-responding. S14: never blocks send.
-    if user_id and user_id != "system":
-        try:
-            if lead_id_str:
-                db.table("leads").update({"ai_paused": True}).eq("id", lead_id_str).eq("org_id", org_id).execute()
-            elif customer_id_str:
-                db.table("customers").update({"ai_paused": True}).eq("id", customer_id_str).eq("org_id", org_id).execute()
-        except Exception as _ap_exc:
-            logger.warning("Failed to set ai_paused after human send: %s", _ap_exc)
-
     return msg_data
 
 
@@ -2172,15 +2160,18 @@ def send_product_list(
     org_id: str,
     phone_number: str,
     products: list,
+    force_text_list: bool = False,
 ) -> bool:
     """
     SHOP-3 / COMM-1: Send WhatsApp product message.
 
-    If the org has meta_catalog_id set: sends a native WhatsApp product_list
-    message (shows product images, name, price via Meta Commerce Catalog).
+    If the org has meta_catalog_id set and force_text_list is False:
+    sends a native WhatsApp product_list message (shows product images,
+    name, price via Meta Commerce Catalog).
 
-    Falls back to the COMM-1 interactive text list if meta_catalog_id is not
-    set -- backwards compatible, no behaviour change for unconfigured orgs.
+    Falls back to the COMM-1 interactive button list if meta_catalog_id
+    is not set OR force_text_list=True — used when the catalog is
+    configured but rejected by Meta (e.g. test WABA, catalog not linked).
 
     Returns True if the message was sent successfully, False otherwise.
     S14 -- never raises.
@@ -2199,30 +2190,32 @@ def send_product_list(
         phone_id = (phone_id or "").strip()
         if not phone_id:
             logger.warning("send_product_list: no whatsapp_phone_id for org %s", org_id)
-            return
+            return False
 
         if not products:
             logger.warning("send_product_list: no products for org %s", org_id)
-            return
+            return False
 
-        # SHOP-3: check if org has a Meta Catalog ID configured
+        # SHOP-3: check if org has a Meta Catalog ID configured.
+        # Skip catalog if force_text_list=True (catalog rejected by Meta).
         catalog_id = None
-        try:
-            org_r = (
-                db.table("organisations")
-                .select("meta_catalog_id")
-                .eq("id", org_id)
-                .maybe_single()
-                .execute()
-            )
-            org_data = org_r.data
-            if isinstance(org_data, list):
-                org_data = org_data[0] if org_data else None
-            catalog_id = ((org_data or {}).get("meta_catalog_id") or "").strip() or None
-        except Exception as _cat_exc:
-            logger.warning(
-                "send_product_list: catalog_id lookup failed org=%s: %s", org_id, _cat_exc
-            )
+        if not force_text_list:
+            try:
+                org_r = (
+                    db.table("organisations")
+                    .select("meta_catalog_id")
+                    .eq("id", org_id)
+                    .maybe_single()
+                    .execute()
+                )
+                org_data = org_r.data
+                if isinstance(org_data, list):
+                    org_data = org_data[0] if org_data else None
+                catalog_id = ((org_data or {}).get("meta_catalog_id") or "").strip() or None
+            except Exception as _cat_exc:
+                logger.warning(
+                    "send_product_list: catalog_id lookup failed org=%s: %s", org_id, _cat_exc
+                )
 
         if catalog_id:
             # -- SHOP-3 path: WhatsApp product_list (native Meta Commerce format) --
@@ -2252,7 +2245,7 @@ def send_product_list(
                 logger.warning(
                     "send_product_list: no catalog sections built for org %s", org_id
                 )
-                return
+                return False
 
             meta_payload = {
                 "messaging_product": "whatsapp",
@@ -2298,19 +2291,30 @@ def send_product_list(
             sections2 = []
             total_rows = 0
             for section_title, section_products in tag_map2.items():
-                if total_rows >= 10:
+                # Cap at 9 product rows — 1 slot reserved for "Speak to Sales"
+                if total_rows >= 9:
                     break
-                remaining = 10 - total_rows
+                remaining = 9 - total_rows
                 rows = [_make_row(p) for p in section_products[:remaining]]
                 if rows:
                     sections2.append({"title": section_title[:24], "rows": rows})
                     total_rows += len(rows)
-                if len(sections2) >= 10:
+                if len(sections2) >= 9:
                     break
 
             if not sections2:
                 logger.warning("send_product_list: no sections built for org %s", org_id)
-                return
+                return False
+
+            # Always append "Speak to Sales" as the last option.
+            sections2.append({
+                "title": "Need Help?",
+                "rows": [{
+                    "id": "talk_sales",
+                    "title": "Speak to Sales",
+                    "description": "Connect with a sales rep directly",
+                }],
+            })
 
             meta_payload = {
                 "messaging_product": "whatsapp",
@@ -2318,7 +2322,7 @@ def send_product_list(
                 "type": "interactive",
                 "interactive": {
                     "type": "list",
-                    "body": {"text": "Here are our available products. Tap one to add it to your cart:"},
+                    "body": {"text": "Here are our available products. Tap one to add to your cart, or choose “Speak to Sales” to connect with our team directly:"},
                     "action": {"button": "View products", "sections": sections2},
                 },
             }
@@ -2554,43 +2558,6 @@ def send_checkout_link(
 
 
 # ---------------------------------------------------------------------------
-# AI pause control
-# ---------------------------------------------------------------------------
-
-def set_ai_paused(db, org_id: str, contact_type: str, contact_id: str, paused: bool) -> None:
-    """Set ai_paused on a lead or customer. S14: never raises."""
-    try:
-        table = "leads" if contact_type == "lead" else "customers"
-        db.table(table).update({"ai_paused": paused}).eq("id", contact_id).eq("org_id", org_id).execute()
-    except Exception as exc:
-        logger.warning("set_ai_paused failed %s=%s paused=%s: %s", contact_type, contact_id, paused, exc)
-
-
-def get_contact_status(db, org_id: str, contact_type: str, contact_id: str) -> dict:
-    """
-    Returns { window_open: bool, ai_paused: bool } for a lead or customer.
-    S14: returns safe defaults on any failure.
-    """
-    result = {"window_open": False, "ai_paused": False}
-    try:
-        if contact_type == "lead":
-            result["window_open"] = _is_lead_window_open(db, org_id, contact_id)
-            paused_r = db.table("leads").select("ai_paused").eq("id", contact_id).eq("org_id", org_id).maybe_single().execute()
-            pd = paused_r.data
-            if isinstance(pd, list): pd = pd[0] if pd else None
-            result["ai_paused"] = bool((pd or {}).get("ai_paused", False))
-        else:
-            result["window_open"] = _is_window_open(db, org_id, contact_id)
-            paused_r = db.table("customers").select("ai_paused").eq("id", contact_id).eq("org_id", org_id).maybe_single().execute()
-            pd = paused_r.data
-            if isinstance(pd, list): pd = pd[0] if pd else None
-            result["ai_paused"] = bool((pd or {}).get("ai_paused", False))
-    except Exception as exc:
-        logger.warning("get_contact_status failed %s=%s: %s", contact_type, contact_id, exc)
-    return result
-
-
-# ---------------------------------------------------------------------------
 # Conversations — unified inbox list
 # ---------------------------------------------------------------------------
 
@@ -2617,7 +2584,7 @@ def get_conversations(
             leads_q = (
                 db.table("leads")
                 .select(
-                    "id, full_name, whatsapp, assigned_to, ai_paused,"
+                    "id, full_name, whatsapp, assigned_to,"
                     " assigned_user:users!assigned_to(full_name)"
                 )
                 .eq("org_id", org_id)
@@ -2679,7 +2646,6 @@ def get_conversations(
                             "unread_count":           lead_unread.get(lid, 0),
                             "assigned_to":            lead.get("assigned_to"),
                             "assigned_name":          (lead.get("assigned_user") or {}).get("full_name"),
-                            "ai_paused":              bool(lead.get("ai_paused", False)),
                         })
                     except Exception:
                         pass
@@ -2692,7 +2658,7 @@ def get_conversations(
             customers_q = (
                 db.table("customers")
                 .select(
-                    "id, full_name, whatsapp, assigned_to, ai_paused,"
+                    "id, full_name, whatsapp, assigned_to,"
                     " assigned_user:users!assigned_to(full_name)"
                 )
                 .eq("org_id", org_id)
@@ -2752,7 +2718,6 @@ def get_conversations(
                             "unread_count":           customer_unread.get(cid, 0),
                             "assigned_to":            customer.get("assigned_to"),
                             "assigned_name":          (customer.get("assigned_user") or {}).get("full_name"),
-                            "ai_paused":              bool(customer.get("ai_paused", False)),
                         })
                     except Exception:
                         pass

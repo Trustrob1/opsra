@@ -1371,27 +1371,12 @@ def handle_customer_inbound(
                                 customer_id,
                             )
                         if not _catalog_sent:
-                            _product_names = [
-                                p.get("title") or p.get("name") or "Product"
-                                for p in products[:10]
-                            ]
-                            _names_str = "\n".join(f"• {n}" for n in _product_names)
-                            _more = (
-                                f"\n...and {len(products) - 10} more items"
-                                if len(products) > 10 else ""
-                            )
-                            _first = (
-                                customer_name.strip().split()[0].title()
-                                if customer_name else "there"
-                            )
-                            _send_whatsapp_reply(
-                                db=db, org_id=org_id, customer_id=customer_id,
-                                answer=(
-                                    f"Hi {_first}! 🛏 Here's what we currently have available:\n\n"
-                                    f"{_names_str}{_more}\n\n"
-                                    f"Let us know what you're interested in and we'll help!"
-                                ),
-                                now_ts=now_ts,
+                            # Catalog was rejected by Meta — fall back to the
+                            # COMM-1 interactive button list which works on
+                            # all WABAs including test numbers.
+                            send_product_list(
+                                db, org_id, phone_number, products,
+                                force_text_list=True,
                             )
                         if assigned_to:
                             _insert_notification(
@@ -1947,26 +1932,12 @@ def handle_lead_post_handoff_inbound(
                                 )
 
                             if not _catalog_sent:
-                                # Text-based product list fallback
-                                _product_names = [
-                                    p.get("title") or p.get("name") or "Product"
-                                    for p in products[:10]
-                                ]
-                                _names_str = "\n".join(
-                                    f"• {n}" for n in _product_names
-                                )
-                                _more = (
-                                    f"\n...and {len(products) - 10} more items"
-                                    if len(products) > 10 else ""
-                                )
-                                _text_reply = (
-                                    f"Great choice! 🛏 Here's what we currently have available:\n\n"
-                                    f"{_names_str}{_more}\n\n"
-                                    f"Our team will be in touch shortly to help with your order!"
-                                )
-                                _send_whatsapp_reply_to_lead(
-                                    db=db, org_id=org_id, lead_id=lead_id,
-                                    answer=_text_reply, now_ts=now_ts,
+                                # Catalog was rejected by Meta — fall back to the
+                                # COMM-1 interactive button list which works on
+                                # all WABAs including test numbers.
+                                send_product_list(
+                                    db, org_id, phone_number, products,
+                                    force_text_list=True,
                                 )
 
                             if assigned_to:
