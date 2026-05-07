@@ -2308,30 +2308,19 @@ def send_product_list(
             sections2 = []
             total_rows = 0
             for section_title, section_products in tag_map2.items():
-                # Cap at 9 product rows — 1 slot reserved for "Speak to Sales"
-                if total_rows >= 9:
+                if total_rows >= 10:
                     break
-                remaining = 9 - total_rows
+                remaining = 10 - total_rows
                 rows = [_make_row(p) for p in section_products[:remaining]]
                 if rows:
                     sections2.append({"title": section_title[:24], "rows": rows})
                     total_rows += len(rows)
-                if len(sections2) >= 9:
+                if len(sections2) >= 10:
                     break
 
             if not sections2:
                 logger.warning("send_product_list: no sections built for org %s", org_id)
                 return False
-
-            # Always append "Speak to Sales" as the last option.
-            sections2.append({
-                "title": "Need Help?",
-                "rows": [{
-                    "id": "talk_sales",
-                    "title": "Speak to Sales",
-                    "description": "Connect with a sales rep directly",
-                }],
-            })
 
             meta_payload = {
                 "messaging_product": "whatsapp",
@@ -2341,7 +2330,6 @@ def send_product_list(
                     "type": "list",
                     "body": {"text": (
                         "Here's a selection of our popular products \ud83d\uded2\n\n"
-                        "Tap one to order, or tap *Speak to Sales* if you're looking for something specific.\n\n"
                         + (
                             f"Browse our full catalog here:\n"
                             f"https://{_shop_domain}?utm_source=whatsapp&utm_medium=chat&utm_campaign=product_browse"
@@ -2359,6 +2347,34 @@ def send_product_list(
 
         result = _call_meta_send(phone_id, meta_payload, token=access_token)
         logger.info("send_product_list: Meta response for %s: %s", phone_number, result)
+
+        # Send a visible "Speak to Sales" button immediately below the product list.
+        # A list_reply buried inside a scrollable sheet is easy to miss — this button
+        # sits in the chat thread and is always visible without any scrolling.
+        try:
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": "Not seeing what you're looking for?"},
+                    "action": {
+                        "buttons": [
+                            {
+                                "type": "reply",
+                                "reply": {"id": "talk_sales", "title": "💬 Speak to Sales"},
+                            }
+                        ]
+                    },
+                },
+            }, token=access_token)
+        except Exception as _sales_btn_exc:
+            logger.warning(
+                "send_product_list: talk_sales follow-up button failed org=%s: %s",
+                org_id, _sales_btn_exc,
+            )
+
         return True
 
     except Exception as exc:

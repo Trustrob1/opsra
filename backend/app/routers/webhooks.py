@@ -1068,16 +1068,44 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             # messages (product selections, Speak to Sales) to the commerce handler
             # before falling through to the text-only post-handoff handler.
             try:
+                # Post-handoff leads may not have a whatsapp_session row.
+                # Check for an open commerce_session directly — if one exists,
+                # the lead is mid-commerce-flow and the message must go there.
                 _ph_session = triage_service.get_active_session(db, org_id, sender_phone)
-                if _ph_session and (_ph_session.get("commerce_state") or "") in COMMERCE_STATES:
-                    _handle_commerce_message(
-                        db=db, org_id=org_id, phone_number=sender_phone,
-                        message=message, session=_ph_session,
-                        msg_type=msg_type, content=content,
-                        interactive_payload=interactive_payload,
-                        contact_name=contact_name,
-                    )
-                    return
+                _open_cs = (
+                    db.table("commerce_sessions")
+                    .select("id")
+                    .eq("org_id", org_id)
+                    .eq("phone_number", sender_phone)
+                    .in_("status", ["open", "checkout_sent"])
+                    .limit(1)
+                    .execute()
+                )
+                _has_open_commerce = bool((_open_cs.data or []))
+                if _has_open_commerce or (
+                    _ph_session and (_ph_session.get("commerce_state") or "") in COMMERCE_STATES
+                ):
+                    # Ensure we have a session object for the commerce handler.
+                    # If no whatsapp_session exists, create a minimal synthetic one
+                    # so _handle_commerce_message can read/write commerce_state.
+                    if not _ph_session:
+                        _ph_session = triage_service.get_or_create_session(
+                            db, org_id, sender_phone
+                        )
+                    if _ph_session:
+                        # Restore commerce_state from open commerce_session if missing
+                        if not _ph_session.get("commerce_state") and _has_open_commerce:
+                            _restore_commerce_state_if_open(
+                                db, org_id, sender_phone, _ph_session
+                            )
+                        _handle_commerce_message(
+                            db=db, org_id=org_id, phone_number=sender_phone,
+                            message=message, session=_ph_session,
+                            msg_type=msg_type, content=content,
+                            interactive_payload=interactive_payload,
+                            contact_name=contact_name,
+                        )
+                        return
             except Exception as _ce:
                 logger.warning(
                     "Commerce routing in post-handoff path failed lead=%s: %s",
