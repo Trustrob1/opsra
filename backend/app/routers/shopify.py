@@ -6,6 +6,7 @@ SHOP-1A: Shopify Integration — admin routes.
 Routes:
   GET    /api/v1/admin/shopify/status      — connection status + product count
   POST   /api/v1/admin/shopify/connect     — save credentials + trigger initial sync
+  PATCH  /api/v1/admin/shopify/connect     — update meta_catalog_id (SHOP-3)
   DELETE /api/v1/admin/shopify/disconnect  — clear credentials
   POST   /api/v1/admin/shopify/sync        — trigger manual product re-sync
 
@@ -50,6 +51,10 @@ class ShopifyConnectRequest(BaseModel):
     client_secret: str = Field(..., min_length=10, max_length=500,
         description="Client Secret from dev.shopify.com → Settings")
     webhook_secret: Optional[str] = Field(default=None, max_length=500)
+
+
+class MetaCatalogUpdate(BaseModel):
+    meta_catalog_id: Optional[str] = Field(default=None, max_length=500)
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +201,56 @@ def connect_shopify(
     return ok(
         data={"connected": True, "shop_domain": shop_domain},
         message="Shopify connected. Product sync started in the background.",
+    )
+
+
+@router.patch("/shopify/connect", status_code=status.HTTP_200_OK)
+def update_shopify_settings(
+    payload: MetaCatalogUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    SHOP-3: Update Shopify-adjacent settings — currently meta_catalog_id.
+    Passing an empty string clears the catalog ID (removal).
+    Owner + ops_manager only.
+    """
+    _require_owner(org)
+
+    update_data = {}
+    if payload.meta_catalog_id is not None:
+        # Empty string → store as None (removal)
+        update_data["meta_catalog_id"] = payload.meta_catalog_id.strip() or None
+
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "data": None,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "No fields provided to update.",
+                    "field": None,
+                },
+            },
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = now
+
+    db.table("organisations").update(update_data).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="shopify.meta_catalog_updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"meta_catalog_id": update_data.get("meta_catalog_id")},
+    )
+
+    return ok(
+        data={"meta_catalog_id": update_data.get("meta_catalog_id")},
+        message="Meta catalog ID saved.",
     )
 
 
