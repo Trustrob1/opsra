@@ -2172,7 +2172,7 @@ def send_product_list(
     org_id: str,
     phone_number: str,
     products: list,
-) -> None:
+) -> bool:
     """
     SHOP-3 / COMM-1: Send WhatsApp product message.
 
@@ -2182,6 +2182,7 @@ def send_product_list(
     Falls back to the COMM-1 interactive text list if meta_catalog_id is not
     set -- backwards compatible, no behaviour change for unconfigured orgs.
 
+    Returns True if the message was sent successfully, False otherwise.
     S14 -- never raises.
     """
     import re as _re
@@ -2328,12 +2329,14 @@ def send_product_list(
 
         result = _call_meta_send(phone_id, meta_payload, token=access_token)
         logger.info("send_product_list: Meta response for %s: %s", phone_number, result)
+        return True
 
     except Exception as exc:
         logger.warning(
             "send_product_list failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
+        return False
 
 def send_variant_selection(
     db,

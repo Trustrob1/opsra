@@ -1361,15 +1361,14 @@ def handle_customer_inbound(
                         products_r.data if isinstance(products_r.data, list) else []
                     )
                     if products and phone_number:
-                        # Try catalog, fall back to text list
-                        _catalog_sent = False
-                        try:
-                            send_product_list(db, org_id, phone_number, products)
-                            _catalog_sent = True
-                        except Exception as _pl_exc:
-                            logger.warning(
+                        # Try catalog, fall back to text list.
+                        # send_product_list returns True on success, False on failure.
+                        _catalog_sent = send_product_list(db, org_id, phone_number, products)
+                        if not _catalog_sent:
+                            logger.info(
                                 "handle_customer_inbound product intent: "
-                                "send_product_list failed — text fallback: %s", _pl_exc,
+                                "send_product_list returned False — text fallback for customer=%s",
+                                customer_id,
                             )
                         if not _catalog_sent:
                             _product_names = [
@@ -1938,15 +1937,13 @@ def handle_lead_post_handoff_inbound(
                             # Try catalog product list — fall back to text list
                             # if Meta rejects the catalog_id (e.g. test WABA or
                             # catalog not yet linked to the WABA).
-                            _catalog_sent = False
-                            try:
-                                send_product_list(db, org_id, phone_number, products)
-                                _catalog_sent = True
-                            except Exception as _pl_exc:
-                                logger.warning(
+                            # send_product_list returns True on success, False on failure.
+                            _catalog_sent = send_product_list(db, org_id, phone_number, products)
+                            if not _catalog_sent:
+                                logger.info(
                                     "handle_lead_post_handoff_inbound: send_product_list "
-                                    "failed for lead=%s — sending text fallback: %s",
-                                    lead_id, _pl_exc,
+                                    "returned False for lead=%s — sending text fallback",
+                                    lead_id,
                                 )
 
                             if not _catalog_sent:
