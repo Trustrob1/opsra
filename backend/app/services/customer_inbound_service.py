@@ -1684,6 +1684,46 @@ def handle_lead_post_handoff_inbound(
     S14 — never raises.
     """
     try:
+        # ── Talk to Sales intercept — fires before any other routing ─────────
+        # Handles the standalone "Speak to Sales" button that appears below the
+        # product list. This is a button_reply (interactive), not a text message,
+        # so it must be caught here before the msg_type != "text" guard below.
+        if msg_type == "interactive" and content in ("talk_sales", "💬 Speak to Sales"):
+            try:
+                from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+                _ts_phone_id, _ts_token, _ = _get_org_wa_credentials(db, org_id)
+                if _ts_phone_id and _ts_token:
+                    if assigned_to:
+                        _ts_reply = (
+                            "You're already in our queue! 😊 A member of our team "
+                            "will be with you shortly — no need to worry."
+                        )
+                    else:
+                        _ts_reply = (
+                            "No problem! One of our team will be in touch with you shortly. 😊"
+                        )
+                    _call_meta_send(_ts_phone_id, {
+                        "messaging_product": "whatsapp",
+                        "to": phone_number,
+                        "type": "text",
+                        "text": {"body": _ts_reply},
+                    }, token=_ts_token)
+                if assigned_to:
+                    _insert_notification(
+                        db=db, org_id=org_id, user_id=assigned_to,
+                        notif_type="lead_pre_contact_message",
+                        title=f"{lead_name} asked to speak to sales",
+                        body=f"{lead_name} tapped 'Speak to Sales' while browsing products.",
+                        resource_type="lead", resource_id=lead_id,
+                        now_ts=now_ts,
+                    )
+            except Exception as _ts_exc:
+                logger.warning(
+                    "handle_lead_post_handoff_inbound: talk_sales intercept "
+                    "failed for lead=%s: %s", lead_id, _ts_exc,
+                )
+            return True
+
         # Non-text messages — skip KB, let caller send standard notification
         if msg_type != "text" or not content:
             return False
@@ -1899,6 +1939,59 @@ def handle_lead_post_handoff_inbound(
                             )
                             from app.services.whatsapp_service import send_product_list
 
+                            # ── "All products" / full catalog request ─────────
+                            # If the user explicitly asked to see everything,
+                            # send the Shopify store link instead of the list.
+                            _all_products_keywords = (
+                                "all products", "full catalog", "see all",
+                                "more products", "all items", "everything",
+                            )
+                            _content_lower = (content_for_analysis or "").lower().strip()
+                            if any(k in _content_lower for k in _all_products_keywords):
+                                try:
+                                    from app.services.whatsapp_service import (
+                                        _get_org_wa_credentials, _call_meta_send,
+                                    )
+                                    _ap_phone_id, _ap_token, _ = _get_org_wa_credentials(db, org_id)
+                                    _shop_r = (
+                                        db.table("organisations")
+                                        .select("shopify_shop_domain")
+                                        .eq("id", org_id)
+                                        .maybe_single()
+                                        .execute()
+                                    )
+                                    _shop_d = _shop_r.data
+                                    if isinstance(_shop_d, list):
+                                        _shop_d = _shop_d[0] if _shop_d else None
+                                    _shop_domain = (_shop_d or {}).get("shopify_shop_domain") or None
+                                    if _ap_phone_id and _ap_token:
+                                        if _shop_domain:
+                                            _catalog_body = (
+                                                f"Here's our full product catalog \U0001f6cd\ufe0f\n\n"
+                                                f"https://{_shop_domain}"
+                                                f"?utm_source=whatsapp&utm_medium=chat"
+                                                f"&utm_campaign=product_browse\n\n"
+                                                "Feel free to come back here to place your order on WhatsApp!"
+                                            )
+                                        else:
+                                            _catalog_body = (
+                                                "Reply *products* and I'll show you what we have available. "
+                                                "Or tap *Speak to Sales* and our team will help you find "
+                                                "what you need."
+                                            )
+                                        _call_meta_send(_ap_phone_id, {
+                                            "messaging_product": "whatsapp",
+                                            "to": phone_number,
+                                            "type": "text",
+                                            "text": {"body": _catalog_body},
+                                        }, token=_ap_token)
+                                except Exception as _ap_exc:
+                                    logger.warning(
+                                        "handle_lead_post_handoff_inbound: full catalog "
+                                        "reply failed lead=%s: %s", lead_id, _ap_exc,
+                                    )
+                                return True
+
                             get_or_create_commerce_session(
                                 db, org_id, phone_number, lead_id=lead_id
                             )
@@ -1919,10 +2012,8 @@ def handle_lead_post_handoff_inbound(
                                     selected_action="commerce_entry",
                                 )
 
-                            # Try catalog product list — fall back to text list
-                            # if Meta rejects the catalog_id (e.g. test WABA or
-                            # catalog not yet linked to the WABA).
-                            # send_product_list returns True on success, False on failure.
+                            # Try catalog product list first — fall back to
+                            # interactive text list if Meta rejects catalog_id.
                             _catalog_sent = send_product_list(db, org_id, phone_number, products)
                             if not _catalog_sent:
                                 logger.info(
@@ -1930,11 +2021,6 @@ def handle_lead_post_handoff_inbound(
                                     "returned False for lead=%s — sending text fallback",
                                     lead_id,
                                 )
-
-                            if not _catalog_sent:
-                                # Catalog was rejected by Meta — fall back to the
-                                # COMM-1 interactive button list which works on
-                                # all WABAs including test numbers.
                                 send_product_list(
                                     db, org_id, phone_number, products,
                                     force_text_list=True,
