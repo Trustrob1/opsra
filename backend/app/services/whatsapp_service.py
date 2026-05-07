@@ -2282,6 +2282,23 @@ def send_product_list(
                     "description": description,
                 }
 
+            # Fetch Shopify store domain for the browse link
+            _shop_domain = None
+            try:
+                _shop_r = (
+                    db.table("organisations")
+                    .select("shopify_shop_domain")
+                    .eq("id", org_id)
+                    .maybe_single()
+                    .execute()
+                )
+                _shop_d = _shop_r.data
+                if isinstance(_shop_d, list):
+                    _shop_d = _shop_d[0] if _shop_d else None
+                _shop_domain = (_shop_d or {}).get("shopify_shop_domain") or None
+            except Exception:
+                pass
+
             tag_map2: dict = {}
             for product in products:
                 tags = product.get("tags") or []
@@ -2322,7 +2339,16 @@ def send_product_list(
                 "type": "interactive",
                 "interactive": {
                     "type": "list",
-                    "body": {"text": "Here are our available products. Tap one to add to your cart, or choose “Speak to Sales” to connect with our team directly:"},
+                    "body": {"text": (
+                        "Here's a selection of our popular products \ud83d\uded2\n\n"
+                        "Tap one to order, or tap *Speak to Sales* if you're looking for something specific.\n\n"
+                        + (
+                            f"Browse our full catalog here:\n"
+                            f"https://{_shop_domain}?utm_source=whatsapp&utm_medium=chat&utm_campaign=product_browse"
+                            if _shop_domain else
+                            "Let us know if you\u2019re looking for something specific \u2014 we\u2019re happy to help!"
+                        )
+                    )},
                     "action": {"button": "View products", "sections": sections2},
                 },
             }
