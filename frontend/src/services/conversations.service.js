@@ -1,10 +1,6 @@
 /**
  * conversations.service.js — Unified Conversations inbox API calls.
- *
- * Route: GET /api/v1/conversations
- * Returns one entry per lead/customer sorted by most recent message.
  */
-
 import axios from 'axios'
 import useAuthStore from '../store/authStore'
 
@@ -24,9 +20,20 @@ api.interceptors.response.use(
   }
 )
 
-/**
- * GET /api/v1/conversations
- * @param {object} params — { channel, contact_type }
- */
+/** GET /api/v1/conversations */
 export const getConversations = (params = {}) =>
   api.get('/api/v1/conversations', { params })
+
+/**
+ * GET /api/v1/conversations/{contact_type}/{contact_id}/status
+ * Returns { window_open: bool, ai_paused: bool }
+ */
+export const getThreadStatus = (contact_type, contact_id) =>
+  api.get(`/api/v1/conversations/${contact_type}/${contact_id}/status`)
+
+/**
+ * POST /api/v1/conversations/{contact_type}/{contact_id}/resume-ai
+ * Clears ai_paused — hands conversation back to AI.
+ */
+export const resumeAI = (contact_type, contact_id) =>
+  api.post(`/api/v1/conversations/${contact_type}/${contact_id}/resume-ai`)

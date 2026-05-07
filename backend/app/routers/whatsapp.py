@@ -373,3 +373,39 @@ def cancel_outbox(
         user_id=org["id"],
     )
     return ok(data=result, message="Message cancelled")
+
+@router.get("/conversations/{contact_type}/{contact_id}/status")
+def get_conversation_status(
+    contact_type: str,
+    contact_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    if contact_type not in ("lead", "customer"):
+        raise HTTPException(status_code=422, detail="contact_type must be 'lead' or 'customer'")
+    status = whatsapp_service.get_contact_status(
+        db=db,
+        org_id=org["org_id"],
+        contact_type=contact_type,
+        contact_id=contact_id,
+    )
+    return ok(data=status)
+
+
+@router.post("/conversations/{contact_type}/{contact_id}/resume-ai")
+def resume_ai(
+    contact_type: str,
+    contact_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    if contact_type not in ("lead", "customer"):
+        raise HTTPException(status_code=422, detail="contact_type must be 'lead' or 'customer'")
+    whatsapp_service.set_ai_paused(
+        db=db,
+        org_id=org["org_id"],
+        contact_type=contact_type,
+        contact_id=contact_id,
+        paused=False,
+    )
+    return ok(message="AI resumed for this conversation")

@@ -1011,10 +1011,45 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 lead_id, exc,
             )
 
+    # ── Human takeover gate ──────────────────────────────────────────────────
+    # When a human rep manually messages a contact via Opsra,
+    # ai_paused=True is set on the lead/customer row. While paused, skip
+    # ALL AI routing (qualification, KB lookup, intent classifier, stage
+    # signal detection) and route straight to rep notification.
+    # S14: fail-open — if the check fails, ai_is_paused=False so AI responds.
+    ai_is_paused = False
+    if lead_id or customer_id:
+        try:
+            _ai_table = "leads" if lead_id else "customers"
+            _ai_id    = lead_id or customer_id
+            _paused_r = (
+                db.table(_ai_table)
+                .select("ai_paused")
+                .eq("id", _ai_id)
+                .eq("org_id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            _pd = _paused_r.data
+            if isinstance(_pd, list):
+                _pd = _pd[0] if _pd else None
+            ai_is_paused = bool((_pd or {}).get("ai_paused", False))
+            if ai_is_paused:
+                logger.info(
+                    "[WH] AI paused for %s=%s — routing to rep notification only",
+                    _ai_table.rstrip("s"), _ai_id,
+                )
+        except Exception as _pause_exc:
+            logger.warning(
+                "ai_paused check failed for %s — defaulting to AI active: %s",
+                lead_id or customer_id, _pause_exc,
+            )
+            ai_is_paused = False  # fail-open
+
     # M01-3: Check if this lead has an active qualification session.
     # If yes and ai_active=true, route to the AI qualification bot instead of
     # notifying the rep directly. S14 — all failures fall back to rep notification.
-    if lead_id and not customer_id:
+    if lead_id and not customer_id and not ai_is_paused:
         try:
             _handle_structured_qualification_turn(
                 db=db, org_id=org_id, lead_id=lead_id,
@@ -1152,23 +1187,25 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 "intent classifier: %s", sender_phone, exc
             )
 
-        handled = customer_inbound_service.handle_customer_inbound(
-            db=db,
-            org_id=org_id,
-            customer_id=customer_id,
-            content=content,
-            msg_type=msg_type,
-            assigned_to=assigned_to,
-            now_ts=now_ts,
-            phone_number=sender_phone,
-        )
-        if handled:
-            return  # KB or context handler took care of it — skip rep notification
+        if not ai_is_paused:
+            handled = customer_inbound_service.handle_customer_inbound(
+                db=db,
+                org_id=org_id,
+                customer_id=customer_id,
+                content=content,
+                msg_type=msg_type,
+                assigned_to=assigned_to,
+                now_ts=now_ts,
+                phone_number=sender_phone,
+            )
+            if handled:
+                return  # KB or context handler took care of it — skip rep notification
 
     # WH-1: Mid-pipeline lead stage signal detection (GAP-C7).
     # Only for leads in contacted | meeting_done | proposal_sent stages.
     # S14 — all failures swallowed inside handle_lead_stage_signal.
-    if lead_id and not customer_id and msg_type == "text" and content:
+    # Skipped when ai_is_paused — human rep owns the conversation.
+    if lead_id and not customer_id and msg_type == "text" and content and not ai_is_paused:
         try:
             stage_check = (
                 db.table("leads")

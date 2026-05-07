@@ -707,6 +707,18 @@ def send_whatsapp_message(
         old_value=None,
         new_value={"to": to_number, "template": template_name_db},
     )
+
+    # Human takeover: when a real user (not "system") sends manually,
+    # set ai_paused=True so AI stops auto-responding. S14: never blocks send.
+    if user_id and user_id != "system":
+        try:
+            if lead_id_str:
+                db.table("leads").update({"ai_paused": True}).eq("id", lead_id_str).eq("org_id", org_id).execute()
+            elif customer_id_str:
+                db.table("customers").update({"ai_paused": True}).eq("id", customer_id_str).eq("org_id", org_id).execute()
+        except Exception as _ap_exc:
+            logger.warning("Failed to set ai_paused after human send: %s", _ap_exc)
+
     return msg_data
 
 
@@ -2539,6 +2551,43 @@ def send_checkout_link(
 
 
 # ---------------------------------------------------------------------------
+# AI pause control
+# ---------------------------------------------------------------------------
+
+def set_ai_paused(db, org_id: str, contact_type: str, contact_id: str, paused: bool) -> None:
+    """Set ai_paused on a lead or customer. S14: never raises."""
+    try:
+        table = "leads" if contact_type == "lead" else "customers"
+        db.table(table).update({"ai_paused": paused}).eq("id", contact_id).eq("org_id", org_id).execute()
+    except Exception as exc:
+        logger.warning("set_ai_paused failed %s=%s paused=%s: %s", contact_type, contact_id, paused, exc)
+
+
+def get_contact_status(db, org_id: str, contact_type: str, contact_id: str) -> dict:
+    """
+    Returns { window_open: bool, ai_paused: bool } for a lead or customer.
+    S14: returns safe defaults on any failure.
+    """
+    result = {"window_open": False, "ai_paused": False}
+    try:
+        if contact_type == "lead":
+            result["window_open"] = _is_lead_window_open(db, org_id, contact_id)
+            paused_r = db.table("leads").select("ai_paused").eq("id", contact_id).eq("org_id", org_id).maybe_single().execute()
+            pd = paused_r.data
+            if isinstance(pd, list): pd = pd[0] if pd else None
+            result["ai_paused"] = bool((pd or {}).get("ai_paused", False))
+        else:
+            result["window_open"] = _is_window_open(db, org_id, contact_id)
+            paused_r = db.table("customers").select("ai_paused").eq("id", contact_id).eq("org_id", org_id).maybe_single().execute()
+            pd = paused_r.data
+            if isinstance(pd, list): pd = pd[0] if pd else None
+            result["ai_paused"] = bool((pd or {}).get("ai_paused", False))
+    except Exception as exc:
+        logger.warning("get_contact_status failed %s=%s: %s", contact_type, contact_id, exc)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Conversations — unified inbox list
 # ---------------------------------------------------------------------------
 
@@ -2565,7 +2614,7 @@ def get_conversations(
             leads_q = (
                 db.table("leads")
                 .select(
-                    "id, full_name, whatsapp_number, assigned_to,"
+                    "id, full_name, whatsapp, assigned_to, ai_paused,"
                     " assigned_user:users!assigned_to(full_name)"
                 )
                 .eq("org_id", org_id)
@@ -2619,7 +2668,7 @@ def get_conversations(
                             "contact_id":             lid,
                             "contact_type":           "lead",
                             "contact_name":           lead.get("full_name") or "Unknown",
-                            "phone":                  lead.get("whatsapp_number") or "",
+                            "phone":                  lead.get("whatsapp") or "",
                             "channel":                "whatsapp",
                             "last_message":           (last.get("content") or "(media)") if last else None,
                             "last_message_at":        last.get("created_at") if last else None,
@@ -2627,6 +2676,7 @@ def get_conversations(
                             "unread_count":           lead_unread.get(lid, 0),
                             "assigned_to":            lead.get("assigned_to"),
                             "assigned_name":          (lead.get("assigned_user") or {}).get("full_name"),
+                            "ai_paused":              bool(lead.get("ai_paused", False)),
                         })
                     except Exception:
                         pass
@@ -2639,7 +2689,7 @@ def get_conversations(
             customers_q = (
                 db.table("customers")
                 .select(
-                    "id, full_name, whatsapp, assigned_to,"
+                    "id, full_name, whatsapp, assigned_to, ai_paused,"
                     " assigned_user:users!assigned_to(full_name)"
                 )
                 .eq("org_id", org_id)
@@ -2699,6 +2749,7 @@ def get_conversations(
                             "unread_count":           customer_unread.get(cid, 0),
                             "assigned_to":            customer.get("assigned_to"),
                             "assigned_name":          (customer.get("assigned_user") or {}).get("full_name"),
+                            "ai_paused":              bool(customer.get("ai_paused", False)),
                         })
                     except Exception:
                         pass
