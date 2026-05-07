@@ -805,7 +805,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                         return
             except Exception as _ce:
                 logger.warning("Commerce routing in post-handoff path failed lead=%s: %s", lead_id, _ce)
-            if msg_type == "text" and content:
+            if content:
                 _lead_name = "Lead"
                 try:
                     _ln = (
