@@ -98,13 +98,8 @@ COMMERCE_STATES = {
 # ---------------------------------------------------------------------------
 
 def _verify_meta_signature(payload_bytes: bytes, signature_header: Optional[str]) -> bool:
-    """
-    Verify X-Hub-Signature-256 header against META_APP_SECRET.
-    Returns False if header is missing or signature does not match.
-    """
     if not signature_header or not signature_header.startswith("sha256="):
         return False
-
     expected = (
         "sha256="
         + hmac.new(
@@ -117,11 +112,6 @@ def _verify_meta_signature(payload_bytes: bytes, signature_header: Optional[str]
 
 
 def _verify_paystack_signature(payload_bytes: bytes, sig_header: Optional[str]) -> bool:
-    """
-    Verify X-Paystack-Signature header using HMAC-SHA512 with PAYSTACK_SECRET_KEY.
-    Technical Spec §6 — payment webhooks verified using provider-specific headers.
-    Returns False if header is missing, key is not configured, or signature mismatches.
-    """
     secret = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
     if not secret or not sig_header:
         return False
@@ -134,12 +124,6 @@ def _verify_paystack_signature(payload_bytes: bytes, sig_header: Optional[str]) 
 
 
 def _verify_flutterwave_hash(hash_header: Optional[str]) -> bool:
-    """
-    Verify verif-hash header by direct comparison with FLUTTERWAVE_SECRET_HASH.
-    Flutterwave sends the secret hash value verbatim — no HMAC computation needed.
-    Technical Spec §6 — payment webhooks verified using provider-specific headers.
-    Returns False if header is missing or key is not configured.
-    """
     secret = os.getenv("FLUTTERWAVE_SECRET_HASH", "").strip()
     if not secret or not hash_header:
         return False
@@ -151,10 +135,6 @@ def _verify_flutterwave_hash(hash_header: Optional[str]) -> bool:
 # ---------------------------------------------------------------------------
 
 async def _fetch_meta_lead(leadgen_id: str, access_token: str) -> dict:
-    """
-    GET https://graph.facebook.com/v18.0/{leadgen_id}?fields=field_data
-    Returns the full response dict including field_data.
-    """
     url = f"{GRAPH_API_BASE}/{leadgen_id}"
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
@@ -166,10 +146,6 @@ async def _fetch_meta_lead(leadgen_id: str, access_token: str) -> dict:
 
 
 def _parse_field_data(field_data: list[dict]) -> dict:
-    """
-    Convert Meta field_data list into a flat dict keyed by field name.
-    [{"name": "full_name", "values": ["Emeka Obi"]}, ...] → {"full_name": "Emeka Obi"}
-    """
     return {
         item.get("name", ""): (item.get("values") or [None])[0]
         for item in field_data
@@ -177,16 +153,12 @@ def _parse_field_data(field_data: list[dict]) -> dict:
 
 
 def _map_meta_fields_to_lead(fields: dict, meta_payload: dict) -> dict:
-    """Map Graph API field_data to LeadCreate field names."""
     full_name = fields.get("full_name") or fields.get("name")
     if fields.get("first_name") and fields.get("last_name"):
         full_name = f"{fields['first_name']} {fields['last_name']}".strip()
-
-    # Default to facebook_ad; distinguish Instagram by ad_name if available
     source = LeadSource.facebook_ad.value
     if "instagram" in (fields.get("ad_name") or "").lower():
         source = LeadSource.instagram_ad.value
-
     return {
         "full_name": full_name or "Unknown",
         "phone": fields.get("phone_number") or fields.get("phone"),
@@ -198,7 +170,6 @@ def _map_meta_fields_to_lead(fields: dict, meta_payload: dict) -> dict:
         "source": source,
         "campaign_id": meta_payload.get("campaign_id"),
         "ad_id": meta_payload.get("ad_id"),
-        # GPM-1A: utm_source for attribution — popped out before LeadCreate instantiation
         "utm_source": "instagram" if source == "instagram_ad" else "facebook",
     }
 
@@ -213,7 +184,6 @@ async def verify_meta_webhook(
     hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
     hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
 ):
-    """Meta webhook verification challenge — returns hub.challenge."""
     if hub_mode == "subscribe" and hub_verify_token == settings.META_VERIFY_TOKEN:
         logger.info("Meta webhook verified successfully")
         if hub_challenge and hub_challenge.isdigit():
@@ -234,22 +204,9 @@ async def receive_meta_lead_ad(
     request: Request,
     db=Depends(get_supabase),
 ):
-    """
-    Receives Facebook/Instagram Lead Ad form submissions — Section 6.1.
-
-    Flow:
-      1. Verify X-Hub-Signature-256 (reject 403 on failure)
-      2. Parse leadgen_id + page_id from payload
-      3. Look up org by meta_page_id
-      4. Fetch full lead from Graph API
-      5. Create lead (duplicate check applies)
-      6. Return 200 always (Meta requires 200)
-    """
     raw_body = await request.body()
     import time as _time
     _t0 = _time.monotonic()
-
-    # Step 1 — signature verification
     signature = request.headers.get("X-Hub-Signature-256")
     if not _verify_meta_signature(raw_body, signature):
         logger.warning("Meta lead-ads webhook: invalid signature — rejecting")
@@ -258,19 +215,13 @@ async def receive_meta_lead_ad(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid webhook signature",
         )
-
     payload: dict = json.loads(raw_body)
-
     if payload.get("object") != "page":
         return {"status": "ignored", "reason": "not a page event"}
-
     processed = 0
     errors: list[str] = []
-
     for entry in payload.get("entry", []):
         page_id = entry.get("id", "")
-
-        # Step 3 — look up org by meta_page_id
         org_result = (
             db.table("organisations")
             .select("id, meta_page_id, whatsapp_phone_id")
@@ -278,17 +229,13 @@ async def receive_meta_lead_ad(
             .maybe_single()
             .execute()
         )
-        # Normalise: real supabase returns dict, mocks return list
         org_data = org_result.data
         if isinstance(org_data, list):
             org_data = org_data[0] if org_data else None
         if not org_data:
             logger.info("No org found for page_id=%s — skipping", page_id)
             continue
-
         org_id = org_data["id"]
-
-        # Get org's Meta access token
         token_result = (
             db.table("integrations")
             .select("access_token")
@@ -300,7 +247,6 @@ async def receive_meta_lead_ad(
         token_data = token_result.data
         if isinstance(token_data, list):
             token_data = token_data[0] if token_data else None
-        # I0: Token must come from the integrations table — no env-var fallback.
         access_token = (token_data or {}).get("access_token")
         if not access_token:
             logger.warning(
@@ -309,7 +255,6 @@ async def receive_meta_lead_ad(
                 org_id,
             )
             continue
-
         for change in entry.get("changes", []):
             if change.get("field") != "leadgen":
                 continue
@@ -317,22 +262,16 @@ async def receive_meta_lead_ad(
             leadgen_id = value.get("leadgen_id")
             if not leadgen_id:
                 continue
-
             meta_payload = {
                 "ad_id":       value.get("ad_id"),
                 "campaign_id": value.get("campaign_id"),
                 "form_id":     value.get("form_id"),
             }
-
             try:
-                # Step 4 — fetch from Graph API
                 graph_resp = await _fetch_meta_lead(leadgen_id, access_token)
                 field_data = graph_resp.get("field_data", [])
                 fields = _parse_field_data(field_data)
                 mapped = _map_meta_fields_to_lead(fields, meta_payload)
-
-                # Step 5 — create lead
-                # GPM-1A: strip UTM fields from payload dict (they go as explicit kwargs)
                 utm_source_val  = mapped.pop("utm_source", None)
                 campaign_id_val = mapped.pop("campaign_id", None)
                 payload_obj = LeadCreate(
@@ -349,7 +288,6 @@ async def receive_meta_lead_ad(
                     utm_ad=meta_payload.get("ad_id"),
                 )
                 processed += 1
-
             except HTTPException as exc:
                 code = (exc.detail or {}).get("code", "")
                 if code == ErrorCode.DUPLICATE_DETECTED:
@@ -357,10 +295,9 @@ async def receive_meta_lead_ad(
                 else:
                     logger.error("Lead creation error leadgen=%s: %s", leadgen_id, exc.detail)
                 errors.append(f"{leadgen_id}: {code or str(exc.detail)}")
-            except Exception as exc:  # pylint: disable=broad-except
+            except Exception as exc:
                 logger.error("Meta webhook processing error: %s", exc)
                 errors.append(str(exc))
-
     _log_webhook(
         db,
         route="/webhooks/meta/lead-ads",
@@ -373,7 +310,6 @@ async def receive_meta_lead_ad(
 
 # ---------------------------------------------------------------------------
 # POST /webhooks/meta/whatsapp
-# Inbound WhatsApp messages and delivery status updates — Technical Spec §6.2
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
@@ -382,22 +318,12 @@ def _now_iso() -> str:
 
 
 def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
-    """
-    Find a customer or lead matching the given WhatsApp phone number.
-    Searches ALL orgs — returns (org_id, customer_id, lead_id, assigned_to).
-    Customers take priority over leads.
-    Uses Python-side filtering (Pattern 33 — no ILIKE).
-    Returns (None, None, None, None) if no match found.
-    """
-    # Normalise phone — strip spaces, dashes, leading zeros; try with/without +
     clean = phone.replace(" ", "").replace("-", "")
     variants = {clean}
     if clean.startswith("+"):
         variants.add(clean[1:])
     else:
         variants.add("+" + clean)
-
-    # Search customers first
     try:
         cust_result = (
             db.table("customers")
@@ -412,8 +338,6 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
                 return row["org_id"], row["id"], None, row.get("assigned_to")
     except Exception as exc:
         logger.warning("Customer phone lookup failed: %s", exc)
-
-    # Search customer_contacts — B2B employees linked to a customer account (WH-0)
     try:
         cc_result = (
             db.table("customer_contacts")
@@ -440,8 +364,6 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
                 )
     except Exception as exc:
         logger.warning("Customer contacts phone lookup failed: %s", exc)
-
-    # Fall back to leads
     try:
         lead_result = (
             db.table("leads")
@@ -456,18 +378,10 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
                 return row["org_id"], None, row["id"], row.get("assigned_to")
     except Exception as exc:
         logger.warning("Lead phone lookup failed: %s", exc)
-
     return None, None, None, None
 
 
 def _lookup_org_by_phone_number_id(db, phone_number_id: str) -> Optional[str]:
-    """
-    Look up org_id by matching phone_number_id against organisations.whatsapp_phone_id.
-    Used when an inbound WhatsApp message arrives from an unknown number — we still
-    need to know which org owns the receiving WhatsApp number to create the lead.
-    Returns org_id string or None if not found.
-    S14: failures swallowed — returns None.
-    """
     if not phone_number_id:
         return None
     try:
@@ -491,7 +405,7 @@ _OPT_OUT_KEYWORDS: frozenset = frozenset({
 _OPT_IN_KEYWORDS: frozenset = frozenset({
     "start", "subscribe", "optin", "opt in",
 })
- 
+
 _OPT_OUT_REPLY = (
     "You've been unsubscribed from our WhatsApp messages. "
     "Reply START at any time to opt back in. "
@@ -501,8 +415,8 @@ _OPT_IN_REPLY = (
     "Welcome back! You're now subscribed to receive messages from us again. "
     "Reply STOP at any time to unsubscribe."
 )
- 
- 
+
+
 def _handle_opt_keywords(
     db,
     content: str,
@@ -511,59 +425,31 @@ def _handle_opt_keywords(
     customer_id: Optional[str],
     lead_id: Optional[str],
 ) -> bool:
-    """
-    I1: Check if the inbound message is an opt-out or opt-in keyword.
- 
-    If matched:
-      - Set whatsapp_opted_out on the lead or customer record
-      - Send one final reply via Meta API
-      - Return True (message consumed — caller must return immediately)
- 
-    Returns False if the message is not a recognised keyword.
-    S14 — never raises; on any failure logs a warning and returns False
-    so normal processing continues.
-    """
     normalised = content.strip().lower()
     is_opt_out = normalised in _OPT_OUT_KEYWORDS
     is_opt_in  = normalised in _OPT_IN_KEYWORDS
- 
     if not is_opt_out and not is_opt_in:
         return False
- 
     try:
-        opted_out_flag = is_opt_out  # True → opted out; False → opted back in
+        opted_out_flag = is_opt_out
         reply_msg      = _OPT_OUT_REPLY if is_opt_out else _OPT_IN_REPLY
- 
-        # ── Update the correct record ─────────────────────────────────────
         if customer_id:
             db.table("customers").update(
                 {"whatsapp_opted_out": opted_out_flag}
             ).eq("id", customer_id).eq("org_id", org_id).execute()
-            logger.info(
-                "_handle_opt_keywords: customer %s whatsapp_opted_out=%s",
-                customer_id, opted_out_flag,
-            )
+            logger.info("_handle_opt_keywords: customer %s whatsapp_opted_out=%s", customer_id, opted_out_flag)
         elif lead_id:
             db.table("leads").update(
                 {"whatsapp_opted_out": opted_out_flag}
             ).eq("id", lead_id).eq("org_id", org_id).execute()
-            logger.info(
-                "_handle_opt_keywords: lead %s whatsapp_opted_out=%s",
-                lead_id, opted_out_flag,
-            )
+            logger.info("_handle_opt_keywords: lead %s whatsapp_opted_out=%s", lead_id, opted_out_flag)
         else:
-            # Unknown contact — no record to update, still confirm the opt-out.
             logger.info(
                 "_handle_opt_keywords: opt-%s from unknown contact %s (no record found)",
                 "out" if is_opt_out else "in", sender_phone,
             )
- 
-        # ── Send one reply via Meta API ───────────────────────────────────
         try:
-            from app.services.whatsapp_service import (
-                _get_org_wa_credentials,
-                _call_meta_send,
-            )
+            from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
             phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
             if phone_id and access_token:
                 _call_meta_send(phone_id, {
@@ -573,40 +459,18 @@ def _handle_opt_keywords(
                     "text": {"body": reply_msg},
                 }, token=access_token)
         except Exception as send_exc:
-            logger.warning(
-                "_handle_opt_keywords: failed to send reply to %s: %s",
-                sender_phone, send_exc,
-            )
- 
+            logger.warning("_handle_opt_keywords: failed to send reply to %s: %s", sender_phone, send_exc)
         return True
- 
     except Exception as exc:
-        logger.warning(
-            "_handle_opt_keywords: error processing keyword from %s: %s",
-            sender_phone, exc,
-        )
+        logger.warning("_handle_opt_keywords: error processing keyword from %s: %s", sender_phone, exc)
         return False
- 
- 
+
+
 def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_id: str) -> None:
-    """
-    Process one inbound WhatsApp text message.
-
-    Flow:
-      1. Look up customer/lead by sender phone number
-      2a. If found → save message, notify assigned rep
-      2b. If NOT found → look up org by phone_number_id, auto-create new lead (M01-1),
-          save message against the new lead, notify via new-lead notification
-
-    S14 — all failures after message save are swallowed.
-    """
     from datetime import datetime, timezone, timedelta
 
-    sender_phone = normalize_phone(message.get("from", ""))   # 9E-B normalise
+    sender_phone = normalize_phone(message.get("from", ""))
     msg_id       = message.get("id", "")
-    # 9E-B: Deduplication gate — skip if this exact message_id was already
-    # processed. The whatsapp_messages INSERT is the idempotency record.
-    # Fail-open: if the check itself fails, proceed rather than drop the message.
     try:
         _dedup = (
             db.table("whatsapp_messages")
@@ -619,9 +483,8 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             logger.info("Duplicate message_id=%s — skipping", msg_id)
             return
     except Exception as _dedup_exc:
-        logger.warning(
-            "Dedup check failed for msg_id=%s — proceeding: %s", msg_id, _dedup_exc
-        )
+        logger.warning("Dedup check failed for msg_id=%s — proceeding: %s", msg_id, _dedup_exc)
+
     msg_type     = message.get("type", "text")
     content: Optional[str] = None
 
@@ -639,82 +502,55 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         interactive_type = (message.get("interactive") or {}).get("type")
         if interactive_type == "list_reply":
             list_reply = (message.get("interactive") or {}).get("list_reply") or {}
-            # Store human-readable title; fall back to id if title absent
             content = list_reply.get("title") or list_reply.get("id")
         elif interactive_type == "button_reply":
             button_reply = (message.get("interactive") or {}).get("button_reply") or {}
-            # Store human-readable title; fall back to id if title absent
             content = button_reply.get("title") or button_reply.get("id")
         else:
             content = f"[interactive:{interactive_type}]"
     else:
         content = f"[{msg_type}]"
 
-    # WH-0: capture full interactive dict for triage session handler
     interactive_payload = message.get("interactive") if msg_type == "interactive" else None
     logger.info("[WH] msg_type=%s content=%r from=%s", msg_type, content, sender_phone)
 
     org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
     logger.info("[WH] lookup result: org_id=%s customer_id=%s lead_id=%s", org_id, customer_id, lead_id)
- 
-    # I1: Opt-out / opt-in keywords are handled before any other routing.
-    # If the message is consumed here, we return immediately without any
-    # pipeline action, triage, or scoring.
+
     if org_id and msg_type == "text" and content:
-        if _handle_opt_keywords(
-            db, content, sender_phone, org_id, customer_id, lead_id
-        ):
+        if _handle_opt_keywords(db, content, sender_phone, org_id, customer_id, lead_id):
             return
- 
+
     if not org_id:
-        # Derive org from the receiving WhatsApp phone_number_id.
         org_id = _lookup_org_by_phone_number_id(db, phone_number_id)
         logger.info("[WH] unknown number — org_id from phone_number_id=%s", org_id)
-        if not org_id: 
+        if not org_id:
             logger.info("[WH] no org found — dropping message")
             return
 
-        # WH-0: Check for an active triage session before taking any pipeline action.
         active_session = triage_service.get_active_session(db, org_id, sender_phone)
         logger.info("[WH] active_session=%s", active_session)
         if active_session:
-            # COMM-1: Cart state restoration — if session has no commerce_state but an
-            # open commerce_session exists, restore the state before routing.
             if not active_session.get("commerce_state"):
                 _restore_commerce_state_if_open(db, org_id, sender_phone, active_session)
-            # COMM-1: Commerce routing — takes precedence over triage session handler.
             if (active_session.get("commerce_state") or "") in COMMERCE_STATES:
-                logger.info(
-                    "[WH] routing to commerce handler state=%s",
-                    active_session.get('commerce_state'),
-                )
+                logger.info("[WH] routing to commerce handler state=%s", active_session.get('commerce_state'))
                 _handle_commerce_message(
-                    db=db,
-                    org_id=org_id,
-                    phone_number=sender_phone,
-                    message=message,
-                    session=active_session,
-                    msg_type=msg_type,
-                    content=content,
-                    interactive_payload=interactive_payload,
-                    contact_name=contact_name,
+                    db=db, org_id=org_id, phone_number=sender_phone,
+                    message=message, session=active_session,
+                    msg_type=msg_type, content=content,
+                    interactive_payload=interactive_payload, contact_name=contact_name,
                 )
                 return
             logger.info("[WH] routing to session handler")
             triage_service.handle_session_message(
-                db=db,
-                org_id=org_id,
-                phone_number=sender_phone,
-                session=active_session,
-                msg_type=msg_type,
-                content=content,
-                interactive_payload=interactive_payload,
-                contact_name=contact_name,
+                db=db, org_id=org_id, phone_number=sender_phone,
+                session=active_session, msg_type=msg_type, content=content,
+                interactive_payload=interactive_payload, contact_name=contact_name,
                 now_ts=_now_iso(),
             )
             return
 
-        # No active session — check org behavior setting.
         org_behavior_result = (
             db.table("organisations")
             .select("unknown_contact_behavior, whatsapp_triage_config, whatsapp_phone_id, sales_mode")
@@ -728,16 +564,9 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         behavior = (org_behavior or {}).get("unknown_contact_behavior", "triage_first")
         triage_config = (org_behavior or {}).get("whatsapp_triage_config")
         sales_mode = (org_behavior or {}).get("sales_mode", "consultative")
-        # SM-1: sales_mode is read and available for SHOP-1A to branch on.
-        # Transactional and hybrid routing require Shopify to be connected (SHOP-1A).
-        # Until SHOP-1A adds the shopify_connected column and wires the commerce path,
-        # all modes fall through to the existing triage_first / qualify_immediately logic.
         logger.info("[WH] behavior=%s sales_mode=%s", behavior, sales_mode)
 
-        
-        # SM-1: Route based on sales_mode before falling through to consultative logic.
         if sales_mode == "transactional":
-            # Check Shopify connected
             _shopify_r = (
                 db.table("organisations")
                 .select("shopify_connected")
@@ -749,31 +578,23 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             if isinstance(_shopify_d, list):
                 _shopify_d = _shopify_d[0] if _shopify_d else None
             _shopify_ok = (_shopify_d or {}).get("shopify_connected", False)
-
             if _shopify_ok:
                 logger.info("[WH] transactional mode — sending to commerce entry")
                 session = triage_service.get_or_create_session(db, org_id, sender_phone)
                 if not session:
-                    # 409 conflict — fetch existing session
                     session = triage_service.get_active_session(db, org_id, sender_phone)
                     logger.info("[WH] transactional: reused existing session=%s", session and session.get("id"))
                 if session:
-                    triage_service._action_transactional_entry(
-                        db, org_id, sender_phone, session["id"], contact_name
-                    )
+                    triage_service._action_transactional_entry(db, org_id, sender_phone, session["id"], contact_name)
                 return
-            # Shopify not connected — fall through to triage below
 
         elif sales_mode == "hybrid":
             logger.info("[WH] hybrid mode — sending hybrid gate")
             session = triage_service.get_or_create_session(db, org_id, sender_phone)
             if not session:
-                # 409 conflict — fetch existing active session first
                 session = triage_service.get_active_session(db, org_id, sender_phone)
                 logger.info("[WH] hybrid: reused existing session=%s", session and session.get("id"))
             if not session:
-                # Session exists but is expired — blocking new creation.
-                # Delete the stale row and create a fresh session.
                 logger.info("[WH] hybrid: expired session blocking creation — clearing for %s", sender_phone)
                 try:
                     db.table("whatsapp_sessions").delete().eq("org_id", org_id).eq("phone_number", sender_phone).execute()
@@ -782,10 +603,8 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 except Exception as exc:
                     logger.warning("[WH] hybrid: could not clear expired session for %s: %s", sender_phone, exc)
             if session:
-                   triage_service.send_hybrid_entry_choice(
-                    db, org_id, sender_phone,
-                    contact_name=contact_name,
-                    msg_id=msg_id,
+                triage_service.send_hybrid_entry_choice(
+                    db, org_id, sender_phone, contact_name=contact_name, msg_id=msg_id,
                 )
             else:
                 logger.warning("[WH] hybrid: could not get or create session for %s", sender_phone)
@@ -793,86 +612,52 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
         if behavior == "qualify_immediately":
             logger.info("[WH] qualify_immediately path")
-            # Preserved legacy path — auto-create lead + fire qualification bot.
-            # Duplicate-race handler lives in this branch only.
             provisional_name = (contact_name or "").strip() or sender_phone
             try:
-                # GPM-1A: extract Click-to-WhatsApp referral object for attribution
                 _referral = message.get("referral") or {}
                 _wa_utm_source = None
                 _wa_campaign_id = None
                 _wa_utm_ad = None
                 if _referral:
-                    _wa_utm_source = "facebook"  # Click-to-WA always originates from Meta
-                    _wa_campaign_id = (
-                        _referral.get("ctwa_clid")
-                        or _referral.get("ref")
-                    )
-                    # GPM-1D: referral headline is the ad creative identifier
+                    _wa_utm_source = "facebook"
+                    _wa_campaign_id = _referral.get("ctwa_clid") or _referral.get("ref")
                     _wa_utm_ad = _referral.get("headline") or None
-
                 new_lead_payload = LeadCreate(
-                    full_name      = provisional_name,
-                    phone          = sender_phone,
-                    whatsapp       = sender_phone,
-                    source         = LeadSource.whatsapp_inbound.value,
-                    problem_stated = content if msg_type == "text" else None,
+                    full_name=provisional_name, phone=sender_phone, whatsapp=sender_phone,
+                    source=LeadSource.whatsapp_inbound.value,
+                    problem_stated=content if msg_type == "text" else None,
                 )
                 new_lead = lead_service.create_lead(
-                    db          = db,
-                    org_id      = org_id,
-                    user_id     = "system",
-                    payload     = new_lead_payload,
-                    utm_source  = _wa_utm_source,
-                    campaign_id = _wa_campaign_id,
-                    entry_path  = "whatsapp",
-                    utm_ad      = _wa_utm_ad,
+                    db=db, org_id=org_id, user_id="system", payload=new_lead_payload,
+                    utm_source=_wa_utm_source, campaign_id=_wa_campaign_id,
+                    entry_path="whatsapp", utm_ad=_wa_utm_ad,
                 )
                 lead_id     = new_lead["id"]
                 assigned_to = new_lead.get("assigned_to")
-                logger.info(
-                    "Auto-created lead %s for inbound WhatsApp from %s (org=%s)",
-                    lead_id, sender_phone, org_id,
-                )
+                logger.info("Auto-created lead %s for inbound WhatsApp from %s (org=%s)", lead_id, sender_phone, org_id)
             except Exception as exc:
                 detail = getattr(exc, "detail", {}) or {}
                 code   = detail.get("code", "") if isinstance(detail, dict) else str(detail)
                 if code == ErrorCode.DUPLICATE_DETECTED:
-                    logger.info(
-                        "Duplicate on auto-create for %s — re-looking up", sender_phone
-                    )
-                    org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(
-                        db, sender_phone
-                    )
+                    logger.info("Duplicate on auto-create for %s — re-looking up", sender_phone)
+                    org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
                     if not lead_id and not customer_id:
-                        logger.warning(
-                            "Re-lookup after duplicate also found nothing for %s",
-                            sender_phone,
-                        )
+                        logger.warning("Re-lookup after duplicate also found nothing for %s", sender_phone)
                         return
                 else:
                     logger.error("Failed to auto-create lead for %s: %s", sender_phone, exc)
                     return
-
         else:
-            # triage_first (default) — send interactive menu and create session.
-            # Do NOT create a lead or fire the qualification bot.
             logger.info("[WH] triage_first path — sending menu")
             from app.services.whatsapp_service import send_triage_menu
             try:
-                send_triage_menu(
-                    db=db, org_id=org_id,
-                    phone_number=sender_phone, section="unknown",
-                    contact_name=contact_name,
-                )
+                send_triage_menu(db=db, org_id=org_id, phone_number=sender_phone, section="unknown", contact_name=contact_name)
                 logger.info("[WH] triage menu sent successfully")
-                triage_service.create_session(
-                    db=db, org_id=org_id, phone_number=sender_phone,
-                )
+                triage_service.create_session(db=db, org_id=org_id, phone_number=sender_phone)
                 logger.info("[WH] session created")
             except Exception as exc:
                 logger.warning("[WH] triage menu FAILED: %s", exc)
-            return  # No lead/customer yet — nothing further to save
+            return
 
     now_ts = _now_iso()
     window_expires = (
@@ -902,162 +687,83 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         logger.error("Failed to save inbound WhatsApp message: %s", exc)
         return
 
-    # M01-10a: Nurture track handling — GAP-4 unsubscribe check fires first,
-    # then re-engagement. Only one branch executes per message.
-    # S14 — all failures are swallowed; flow continues to qualification check.
     reengaged_from_nurture = False
     if lead_id and not customer_id:
         try:
             nurture_check = (
-                db.table("leads")
-                .select("nurture_track")
-                .eq("id", lead_id)
-                .maybe_single()
-                .execute()
+                db.table("leads").select("nurture_track").eq("id", lead_id).maybe_single().execute()
             )
             nurture_data = nurture_check.data
             if isinstance(nurture_data, list):
                 nurture_data = nurture_data[0] if nurture_data else None
             if (nurture_data or {}).get("nurture_track"):
-                # GAP-4: Unsubscribe takes highest priority — check before re-engagement.
-                # If lead opts out, mark permanently and stop all further processing.
                 if msg_type == "text" and content:
-                    from app.services.nurture_service import (
-                        is_unsubscribe_signal,
-                        mark_lead_unsubscribed,
-                    )
+                    from app.services.nurture_service import is_unsubscribe_signal, mark_lead_unsubscribed
                     if is_unsubscribe_signal(content):
-                        mark_lead_unsubscribed(
-                            db=db,
-                            org_id=org_id,
-                            lead_id=lead_id,
-                            now_ts=now_ts,
-                        )
-                        logger.info(
-                            "Lead %s opted out of nurture via unsubscribe signal — "
-                            "no re-engagement or rep notification",
-                            lead_id,
-                        )
-                        return  # Do NOT re-engage, do NOT notify rep
-
-                # Normal reply on nurture track — re-engage lead to active pipeline
+                        mark_lead_unsubscribed(db=db, org_id=org_id, lead_id=lead_id, now_ts=now_ts)
+                        logger.info("Lead %s opted out of nurture via unsubscribe signal", lead_id)
+                        return
                 from app.services.nurture_service import handle_re_engagement
-                handle_re_engagement(
-                    db=db,
-                    org_id=org_id,
-                    lead_id=lead_id,
-                    assigned_to=assigned_to,
-                    now_ts=now_ts,
-                )
+                handle_re_engagement(db=db, org_id=org_id, lead_id=lead_id, assigned_to=assigned_to, now_ts=now_ts)
                 reengaged_from_nurture = True
-        except Exception as exc:  # S14
-            logger.warning(
-                "Re-engagement check failed for lead %s — continuing: %s",
-                lead_id, exc,
-            )
+        except Exception as exc:
+            logger.warning("Re-engagement check failed for lead %s — continuing: %s", lead_id, exc)
 
-    # M01-10a (gap fix): Self-identified not-ready detection.
-    # GAP-2: Skipped if lead has an active qualification session — the bot handles it.
-    # Only runs for active (non-nurture) leads on text messages.
-    # Skips if the lead just re-engaged from nurture (handled above).
-    # S14 — failures are swallowed; flow continues to qualification/rep notification.
     if lead_id and not customer_id and not reengaged_from_nurture and msg_type == "text":
         try:
-            # GAP-2: Check for active qualification session before running not-ready
-            # detection. If the bot is mid-session, skip graduation — the bot manages
-            # the conversation. Fail-safe: treat as active session on any DB error.
             _has_active_session = False
             try:
                 _sess = (
                     db.table("lead_qualification_sessions")
-                    .select("id")
-                    .eq("lead_id", lead_id)
-                    .eq("ai_active", True)
-                    .execute()
+                    .select("id").eq("lead_id", lead_id).eq("ai_active", True).execute()
                 )
                 _has_active_session = bool(_sess.data)
             except Exception:
-                _has_active_session = True  # fail-safe: skip detection if unsure
-
+                _has_active_session = True
             if not _has_active_session:
                 from app.services.nurture_service import is_not_ready_signal, graduate_lead_self_identified
                 if content and is_not_ready_signal(content):
-                    # Verify lead is not already on nurture track before graduating
                     lead_status = (
-                        db.table("leads")
-                        .select("nurture_track, stage")
-                        .eq("id", lead_id)
-                        .maybe_single()
-                        .execute()
+                        db.table("leads").select("nurture_track, stage").eq("id", lead_id).maybe_single().execute()
                     )
                     lead_status_data = lead_status.data or {}
                     if isinstance(lead_status_data, list):
                         lead_status_data = lead_status_data[0] if lead_status_data else {}
                     if not (lead_status_data or {}).get("nurture_track"):
                         graduate_lead_self_identified(
-                            db=db,
-                            org_id=org_id,
-                            lead_id=lead_id,
-                            assigned_to=assigned_to,
-                            now_ts=now_ts,
+                            db=db, org_id=org_id, lead_id=lead_id, assigned_to=assigned_to, now_ts=now_ts,
                         )
-                        logger.info(
-                            "Lead %s self-identified as not ready — graduated to nurture",
-                            lead_id,
-                        )
-        except Exception as exc:  # S14
-            logger.warning(
-                "Not-ready detection failed for lead %s — continuing: %s",
-                lead_id, exc,
-            )
+                        logger.info("Lead %s self-identified as not ready — graduated to nurture", lead_id)
+        except Exception as exc:
+            logger.warning("Not-ready detection failed for lead %s — continuing: %s", lead_id, exc)
 
-    # ── Human takeover gate ──────────────────────────────────────────────────
-    # When a human rep manually messages a contact via Opsra,
-    # ai_paused=True is set on the lead/customer row. While paused, skip
-    # ALL AI routing (qualification, KB lookup, intent classifier, stage
-    # signal detection) and route straight to rep notification.
-    # S14: fail-open — if the check fails, ai_is_paused=False so AI responds.
     ai_is_paused = False
     if lead_id or customer_id:
         try:
             _ai_table = "leads" if lead_id else "customers"
             _ai_id    = lead_id or customer_id
             _paused_r = (
-                db.table(_ai_table)
-                .select("ai_paused")
-                .eq("id", _ai_id)
-                .eq("org_id", org_id)
-                .maybe_single()
-                .execute()
+                db.table(_ai_table).select("ai_paused")
+                .eq("id", _ai_id).eq("org_id", org_id).maybe_single().execute()
             )
             _pd = _paused_r.data
             if isinstance(_pd, list):
                 _pd = _pd[0] if _pd else None
             ai_is_paused = bool((_pd or {}).get("ai_paused", False))
             if ai_is_paused:
-                logger.info(
-                    "[WH] AI paused for %s=%s — routing to rep notification only",
-                    _ai_table.rstrip("s"), _ai_id,
-                )
+                logger.info("[WH] AI paused for %s=%s — routing to rep notification only", _ai_table.rstrip("s"), _ai_id)
         except Exception as _pause_exc:
-            logger.warning(
-                "ai_paused check failed for %s — defaulting to AI active: %s",
-                lead_id or customer_id, _pause_exc,
-            )
-            ai_is_paused = False  # fail-open
+            logger.warning("ai_paused check failed for %s — defaulting to AI active: %s", lead_id or customer_id, _pause_exc)
+            ai_is_paused = False
 
-    # M01-3: Check if this lead has an active qualification session.
-    # If yes and ai_active=true, route to the AI qualification bot instead of
-    # notifying the rep directly. S14 — all failures fall back to rep notification.
     if lead_id and not customer_id and not ai_is_paused:
         try:
             _handle_structured_qualification_turn(
                 db=db, org_id=org_id, lead_id=lead_id,
                 assigned_to=assigned_to, content=content or f"[{msg_type}]",
-                interactive_payload=interactive_payload,
-                now_ts=now_ts,
+                interactive_payload=interactive_payload, now_ts=now_ts,
             )
-            return  # qualification handler manages its own notifications
+            return
         except Exception as exc:
             logger.warning(
                 "Qualification turn failed for lead %s — checking post-handoff path: %s",
@@ -1085,46 +791,25 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 if _has_open_commerce or (
                     _ph_session and (_ph_session.get("commerce_state") or "") in COMMERCE_STATES
                 ):
-                    # Ensure we have a session object for the commerce handler.
-                    # If no whatsapp_session exists, create a minimal synthetic one
-                    # so _handle_commerce_message can read/write commerce_state.
                     if not _ph_session:
-                        _ph_session = triage_service.get_or_create_session(
-                            db, org_id, sender_phone
-                        )
+                        _ph_session = triage_service.get_or_create_session(db, org_id, sender_phone)
                     if _ph_session:
-                        # Restore commerce_state from open commerce_session if missing
                         if not _ph_session.get("commerce_state") and _has_open_commerce:
-                            _restore_commerce_state_if_open(
-                                db, org_id, sender_phone, _ph_session
-                            )
+                            _restore_commerce_state_if_open(db, org_id, sender_phone, _ph_session)
                         _handle_commerce_message(
                             db=db, org_id=org_id, phone_number=sender_phone,
                             message=message, session=_ph_session,
                             msg_type=msg_type, content=content,
-                            interactive_payload=interactive_payload,
-                            contact_name=contact_name,
+                            interactive_payload=interactive_payload, contact_name=contact_name,
                         )
                         return
             except Exception as _ce:
-                logger.warning(
-                    "Commerce routing in post-handoff path failed lead=%s: %s",
-                    lead_id, _ce,
-                )
+                logger.warning("Commerce routing in post-handoff path failed lead=%s: %s", lead_id, _ce)
             if msg_type == "text" and content:
-                # Use the post-handoff handler for ALL leads with no active
-                # qualification session — covers handed-off leads AND leads
-                # created via commerce Talk to Sales escape. The function does
-                # KB lookup first, sends a guardrail response if no KB match,
-                # and notifies the rep either way.
                 _lead_name = "Lead"
                 try:
                     _ln = (
-                        db.table("leads")
-                        .select("full_name")
-                        .eq("id", lead_id)
-                        .maybe_single()
-                        .execute()
+                        db.table("leads").select("full_name").eq("id", lead_id).maybe_single().execute()
                     )
                     _ld = _ln.data
                     if isinstance(_ld, list):
@@ -1132,25 +817,14 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     _lead_name = (_ld or {}).get("full_name") or "Lead"
                 except Exception:
                     pass
-
                 handled = handle_lead_post_handoff_inbound(
-                    db=db,
-                    org_id=org_id,
-                    lead_id=lead_id,
-                    lead_name=_lead_name,
-                    content=content,
-                    msg_type=msg_type,
-                    assigned_to=assigned_to,
-                    now_ts=now_ts,
-                    phone_number=sender_phone,
+                    db=db, org_id=org_id, lead_id=lead_id, lead_name=_lead_name,
+                    content=content, msg_type=msg_type, assigned_to=assigned_to,
+                    now_ts=now_ts, phone_number=sender_phone,
                 )
                 if handled:
                     return
-            # Fall through to standard rep notification
 
-    # COMM-1: Commerce routing for known contacts (post-qualification hybrid/transactional).
-    # Runs after qualification check — qualification always takes precedence.
-    # S14 — wrapped in try/except; any failure falls through to customer/rep notification.
     try:
         _known_wa_session = triage_service.get_active_session(db, org_id, sender_phone)
         if _known_wa_session:
@@ -1158,59 +832,29 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 _restore_commerce_state_if_open(db, org_id, sender_phone, _known_wa_session)
             if (_known_wa_session.get("commerce_state") or "") in COMMERCE_STATES:
                 _handle_commerce_message(
-                    db=db,
-                    org_id=org_id,
-                    phone_number=sender_phone,
-                    message=message,
-                    session=_known_wa_session,
-                    msg_type=msg_type,
-                    content=content,
-                    interactive_payload=interactive_payload,
-                    contact_name=contact_name,
+                    db=db, org_id=org_id, phone_number=sender_phone,
+                    message=message, session=_known_wa_session,
+                    msg_type=msg_type, content=content,
+                    interactive_payload=interactive_payload, contact_name=contact_name,
                 )
                 return
     except Exception as _comm_exc:
-        logger.warning(
-            "Commerce routing (known contact) failed org=%s phone=%s: %s",
-            org_id, sender_phone, _comm_exc,
-        )
+        logger.warning("Commerce routing (known contact) failed org=%s phone=%s: %s", org_id, sender_phone, _comm_exc)
 
-    # WH-1: Customer intent classifier — KB-first routing for known customers.
-    # Returns True if fully handled (no rep notification needed).
-    # Returns False for 'general' intent or non-text — rep notification fires below.
-    # S14 — all failures swallowed inside handle_customer_inbound; returns False.
     if customer_id and not lead_id:
-        # WH-2: Check for an active customer triage session first.
-        # If one exists, route to the customer triage dispatcher instead of
-        # the intent classifier.
-        active_customer_session = triage_service.get_active_session(
-            db, org_id, sender_phone
-        )
+        active_customer_session = triage_service.get_active_session(db, org_id, sender_phone)
         if active_customer_session:
             triage_service.handle_session_message(
-                db=db,
-                org_id=org_id,
-                phone_number=sender_phone,
-                session=active_customer_session,
-                msg_type=msg_type,
-                content=content,
-                interactive_payload=interactive_payload,
-                contact_name=contact_name,
-                now_ts=now_ts,
-                section="customer",
+                db=db, org_id=org_id, phone_number=sender_phone,
+                session=active_customer_session, msg_type=msg_type, content=content,
+                interactive_payload=interactive_payload, contact_name=contact_name,
+                now_ts=now_ts, section="customer",
             )
             return
-
-        # WH-2: No active session — check if org has a customer triage menu
-        # configured. If yes, send the menu and create a session.
-        # Falls through to handle_customer_inbound if not configured.
         try:
             org_triage_r = (
-                db.table("organisations")
-                .select("whatsapp_triage_config")
-                .eq("id", org_id)
-                .maybe_single()
-                .execute()
+                db.table("organisations").select("whatsapp_triage_config")
+                .eq("id", org_id).maybe_single().execute()
             )
             org_triage_d = org_triage_r.data
             if isinstance(org_triage_d, list):
@@ -1220,47 +864,31 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             if customer_menu.get("items"):
                 from app.services import whatsapp_service as _wa_svc
                 _wa_svc.send_triage_menu(
-                    db=db, org_id=org_id,
-                    phone_number=sender_phone, section="customer",
-                    contact_name=contact_name,
+                    db=db, org_id=org_id, phone_number=sender_phone,
+                    section="customer", contact_name=contact_name,
                 )
                 triage_service.create_customer_session(
-                    db=db, org_id=org_id,
-                    phone_number=sender_phone, customer_id=customer_id,
+                    db=db, org_id=org_id, phone_number=sender_phone, customer_id=customer_id,
                 )
                 return
         except Exception as exc:
             logger.warning(
-                "Customer triage menu check failed for %s — falling through to "
-                "intent classifier: %s", sender_phone, exc
+                "Customer triage menu check failed for %s — falling through to intent classifier: %s",
+                sender_phone, exc,
             )
-
         if not ai_is_paused:
             handled = customer_inbound_service.handle_customer_inbound(
-                db=db,
-                org_id=org_id,
-                customer_id=customer_id,
-                content=content,
-                msg_type=msg_type,
-                assigned_to=assigned_to,
-                now_ts=now_ts,
-                phone_number=sender_phone,
+                db=db, org_id=org_id, customer_id=customer_id,
+                content=content, msg_type=msg_type, assigned_to=assigned_to,
+                now_ts=now_ts, phone_number=sender_phone,
             )
             if handled:
-                return  # KB or context handler took care of it — skip rep notification
+                return
 
-    # WH-1: Mid-pipeline lead stage signal detection (GAP-C7).
-    # Only for leads in contacted | meeting_done | proposal_sent stages.
-    # S14 — all failures swallowed inside handle_lead_stage_signal.
-    # Skipped when ai_is_paused — human rep owns the conversation.
     if lead_id and not customer_id and msg_type == "text" and content and not ai_is_paused:
         try:
             stage_check = (
-                db.table("leads")
-                .select("stage")
-                .eq("id", lead_id)
-                .maybe_single()
-                .execute()
+                db.table("leads").select("stage").eq("id", lead_id).maybe_single().execute()
             )
             stage_data = stage_check.data
             if isinstance(stage_data, list):
@@ -1268,22 +896,12 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             lead_stage = (stage_data or {}).get("stage", "")
             if lead_stage in ("contacted", "meeting_done", "proposal_sent"):
                 customer_inbound_service.handle_lead_stage_signal(
-                    db=db,
-                    org_id=org_id,
-                    lead_id=lead_id,
-                    stage=lead_stage,
-                    content=content,
-                    assigned_to=assigned_to,
-                    now_ts=now_ts,
+                    db=db, org_id=org_id, lead_id=lead_id, stage=lead_stage,
+                    content=content, assigned_to=assigned_to, now_ts=now_ts,
                 )
         except Exception as exc:
-            logger.warning(
-                "Lead stage signal check failed for lead %s — continuing: %s",
-                lead_id, exc,
-            )
+            logger.warning("Lead stage signal check failed for lead %s — continuing: %s", lead_id, exc)
 
-    # Standard rep notification (for customers, or leads without active sessions,
-    # or when the qualification handler fails)
     if not assigned_to:
         return
     try:
@@ -1294,11 +912,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             name_table  = "customers" if customer_id else "leads"
             name_id     = customer_id or lead_id
             name_result = (
-                db.table(name_table)
-                .select("full_name")
-                .eq("id", name_id)
-                .maybe_single()
-                .execute()
+                db.table(name_table).select("full_name").eq("id", name_id).maybe_single().execute()
             )
             name_data = name_result.data
             if isinstance(name_data, list):
@@ -1307,15 +921,12 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 display_name = name_data["full_name"]
         except Exception:
             pass
-
         is_new_lead = (lead_id is not None and customer_id is None)
         notif_title = (
-            f"New lead via WhatsApp: {display_name}"
-            if is_new_lead
+            f"New lead via WhatsApp: {display_name}" if is_new_lead
             else f"New WhatsApp reply from {display_name}"
         )
         notif_type = "whatsapp_new_lead" if is_new_lead else "whatsapp_reply"
-
         db.table("notifications").insert({
             "org_id":         org_id,
             "user_id":        assigned_to,
@@ -1340,252 +951,139 @@ def _handle_structured_qualification_turn(
     interactive_payload,
     now_ts: str,
 ) -> None:
-    """
-    WH-1b: Handle one turn of the structured WhatsApp qualification flow.
- 
-    Replaces the old AI-per-turn _handle_qualification_turn().
- 
-    Flow:
-      1. Fetch active qualification session (ai_active=True). Raises if none.
-      2. Fetch org qualification_flow. Raises if null.
-      3. Read current_question_index. Get current question from flow["questions"].
-      4. Record answer:
-         - button_reply / list_reply: extract selected option id; resolve label.
-         - free_text: content as-is.
-         - Store as answers[question["answer_key"]] = answer_value.
-      5. If map_to_lead_field is set: update leads table column with answer_value.
-      6. Advance: next_index = current_question_index + 1.
-      7. If more questions remain: send next question, update session index.
-      8. If all questions answered:
-         a. Generate Haiku summary.
-         b. Send handoff_message to lead.
-         c. Update session: ai_active=False, stage='handed_off', handoff_summary=summary.
-         d. Notify rep with summary.
-         e. Trigger lead scoring.
- 
-    S14: entire function wrapped in try/except — raises ValueError on unrecoverable
-    error so caller (_handle_inbound_message) falls back to rep notification.
-    """
-
- 
-    # 1 — Fetch active qualification session
     session_result = (
         db.table("lead_qualification_sessions")
-        .select("*")
-        .eq("lead_id", lead_id)
-        .eq("ai_active", True)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
+        .select("*").eq("lead_id", lead_id).eq("ai_active", True)
+        .order("created_at", desc=True).limit(1).execute()
     )
     session_rows = session_result.data if isinstance(session_result.data, list) else []
     if not session_rows:
         raise ValueError(f"No active qualification session for lead {lead_id}")
- 
     session = session_rows[0]
     session_id = session["id"]
- 
-    # 2 — Fetch org qualification_flow
+
     org_result = (
         db.table("organisations")
         .select("id, name, qualification_flow, whatsapp_phone_id")
-        .eq("id", org_id)
-        .maybe_single()
-        .execute()
+        .eq("id", org_id).maybe_single().execute()
     )
     org_data = org_result.data
     if isinstance(org_data, list):
         org_data = org_data[0] if org_data else None
     if not org_data:
         raise ValueError(f"Org {org_id} not found")
- 
     qualification_flow = (org_data or {}).get("qualification_flow")
     if not qualification_flow:
         raise ValueError(f"qualification_flow not configured for org {org_id}")
- 
     questions = qualification_flow.get("questions") or []
     if not questions:
         raise ValueError(f"qualification_flow has no questions for org {org_id}")
- 
-    # 3 — Read current question
+
     current_index = session.get("current_question_index") or 0
     if current_index >= len(questions):
-        # Already completed — should not happen, but raise so caller falls back
-        raise ValueError(
-            f"qualification session {session_id} already past last question"
-        )
- 
+        raise ValueError(f"qualification session {session_id} already past last question")
     current_question = questions[current_index]
     answer_key = current_question.get("answer_key", f"q{current_index}")
     q_type = current_question.get("type", "free_text")
- 
-    # 4 — Record answer
+
     existing_answers = dict(session.get("answers") or {})
- 
     if interactive_payload and q_type in ("multiple_choice", "yes_no", "list_select"):
-        # Extract option id from interactive payload
         button_reply = interactive_payload.get("button_reply") or {}
         list_reply = interactive_payload.get("list_reply") or {}
         selected_id = button_reply.get("id") or list_reply.get("id") or content
- 
-        # Resolve human-readable label from flow config
         options = current_question.get("options") or []
-        selected_label = selected_id  # fallback to id if label not found
+        selected_label = selected_id
         for opt in options:
             if opt.get("id") == selected_id:
                 selected_label = opt.get("label", selected_id)
                 break
         answer_value = selected_label
     else:
-        # free_text or fallback
         answer_value = content
- 
     existing_answers[answer_key] = answer_value
- 
-    # 5 — map_to_lead_field: write answer to leads table column
+
     map_to = current_question.get("map_to_lead_field")
-    _VALID_LEAD_FIELDS = {
-        "business_name", "business_type", "location", "problem_stated", "branches"
-    }
+    _VALID_LEAD_FIELDS = {"business_name", "business_type", "location", "problem_stated", "branches"}
     if map_to and map_to in _VALID_LEAD_FIELDS:
         try:
-            db.table("leads").update(
-                {map_to: answer_value}
-            ).eq("id", lead_id).execute()
+            db.table("leads").update({map_to: answer_value}).eq("id", lead_id).execute()
         except Exception as exc:
             logger.warning(
-                "_handle_structured_qualification_turn: failed to map field %s "
-                "for lead %s: %s", map_to, lead_id, exc
+                "_handle_structured_qualification_turn: failed to map field %s for lead %s: %s",
+                map_to, lead_id, exc,
             )
- 
-    # 6 — Advance index
+
     next_index = current_index + 1
- 
-    # 7 — More questions remain
     if next_index < len(questions):
-        # Update session: advance index + merge answers
         db.table("lead_qualification_sessions").update({
             "current_question_index": next_index,
             "answers": existing_answers,
             "last_message_at": now_ts,
         }).eq("id", session_id).execute()
- 
-        # Send next question (no opening_message after Q1)
         send_qualification_question(
-            db=db,
-            org_id=org_id,
+            db=db, org_id=org_id,
             phone_number=_get_lead_phone(db, lead_id),
             question=questions[next_index],
             question_index=next_index,
             total=len(questions),
             opening_message=None,
         )
-        return  # Caller returns True — rep notification suppressed
- 
-    # 8 — All questions answered — handoff
+        return
+
     org_name = (org_data or {}).get("name", "")
     handoff_message = qualification_flow.get(
         "handoff_message",
         "Thanks so much! A member of our team will reach out to you shortly. 🙏",
     )
- 
-    # 8a — Generate Haiku summary
     lead_data = _get_lead_basic(db, lead_id)
-    summary = generate_qualification_summary(
-        answers=existing_answers,
-        lead=lead_data,
-        org_name=org_name,
-    )
- 
-    # 8b — Send handoff message to lead
+    summary = generate_qualification_summary(answers=existing_answers, lead=lead_data, org_name=org_name)
     lead_phone = _get_lead_phone(db, lead_id)
-    send_qualification_handoff_message(
-        db=db,
-        org_id=org_id,
-        phone_number=lead_phone,
-        handoff_message=handoff_message,
-    )
- 
-    # 8c — Close session
+    send_qualification_handoff_message(db=db, org_id=org_id, phone_number=lead_phone, handoff_message=handoff_message)
     db.table("lead_qualification_sessions").update({
-        "ai_active": False,
-        "stage": "handed_off",
-        "answers": existing_answers,
-        "handed_off_at": now_ts,
-        "handoff_summary": summary,
-        "last_message_at": now_ts,
+        "ai_active": False, "stage": "handed_off", "answers": existing_answers,
+        "handed_off_at": now_ts, "handoff_summary": summary, "last_message_at": now_ts,
     }).eq("id", session_id).execute()
- 
-    # 8d — Notify rep with summary
+
     if assigned_to:
         try:
             db.table("notifications").insert({
-                "org_id":        org_id,
-                "user_id":       assigned_to,
-                "title":         "Lead ready for follow-up 🎯",
-                "body":          summary,
-                "type":          "qualification_complete",
-                "resource_type": "lead",
-                "resource_id":   lead_id,
-                "is_read":       False,
-                "created_at":    now_ts,
+                "org_id": org_id, "user_id": assigned_to,
+                "title": "Lead ready for follow-up 🎯", "body": summary,
+                "type": "qualification_complete", "resource_type": "lead",
+                "resource_id": lead_id, "is_read": False, "created_at": now_ts,
             }).execute()
         except Exception as exc:
             logger.warning(
-                "_handle_structured_qualification_turn: handoff notification "
-                "failed for user %s: %s", assigned_to, exc
+                "_handle_structured_qualification_turn: handoff notification failed for user %s: %s",
+                assigned_to, exc,
             )
- 
-    # 8e — Trigger lead scoring (S14 — never disrupts handoff flow)
+
     try:
         from app.services import lead_service
-        lead_service.score_lead(
-            db=db,
-            org_id=org_id,
-            lead_id=lead_id,
-            user_id=assigned_to,
-        )
-        logger.info(
-            "AI scoring triggered at structured qualification handoff for lead %s",
-            lead_id,
-        )
+        lead_service.score_lead(db=db, org_id=org_id, lead_id=lead_id, user_id=assigned_to)
+        logger.info("AI scoring triggered at structured qualification handoff for lead %s", lead_id)
     except Exception as exc:
         logger.warning(
-            "_handle_structured_qualification_turn: scoring failed for lead %s: %s",
-            lead_id, exc,
+            "_handle_structured_qualification_turn: scoring failed for lead %s: %s", lead_id, exc,
         )
 
-    # COMM-1: Post-qualification commerce offer — only for transactional orgs
-    # where the user originally entered via the Buy Now path.
-    # Never fires for users who chose the consultative/speak-to-sales path,
-    # as they expect a human follow-up, not an immediate product push.
     try:
         _post_qual_session = triage_service.get_active_session(db, org_id, lead_phone)
         _prior_action = (_post_qual_session or {}).get("selected_action", "")
         if _prior_action == "transactional_entry":
             _post_qual_session_id = (_post_qual_session or {}).get("id") or ""
-            triage_service._action_transactional_entry(
-                db, org_id, lead_phone, _post_qual_session_id, None
-            )
+            triage_service._action_transactional_entry(db, org_id, lead_phone, _post_qual_session_id, None)
     except Exception as exc:
         logger.warning(
-            "_handle_structured_qualification_turn: post-qual transactional "
-            "entry failed lead=%s: %s",
+            "_handle_structured_qualification_turn: post-qual transactional entry failed lead=%s: %s",
             lead_id, exc,
         )
 
+
 def _get_lead_phone(db, lead_id: str) -> str:
-    """
-    Helper: fetch whatsapp or phone from leads table for a given lead_id.
-    Returns empty string on any failure (S14).
-    """
     try:
         r = (
-            db.table("leads")
-            .select("phone, whatsapp")
-            .eq("id", lead_id)
-            .maybe_single()
-            .execute()
+            db.table("leads").select("phone, whatsapp").eq("id", lead_id).maybe_single().execute()
         )
         d = r.data
         if isinstance(d, list):
@@ -1594,20 +1092,12 @@ def _get_lead_phone(db, lead_id: str) -> str:
     except Exception as exc:
         logger.warning("_get_lead_phone failed for lead %s: %s", lead_id, exc)
         return ""
- 
- 
+
+
 def _get_lead_basic(db, lead_id: str) -> dict:
-    """
-    Helper: fetch full_name + phone from leads table.
-    Returns empty dict on any failure (S14).
-    """
     try:
         r = (
-            db.table("leads")
-            .select("full_name, phone, whatsapp")
-            .eq("id", lead_id)
-            .maybe_single()
-            .execute()
+            db.table("leads").select("full_name, phone, whatsapp").eq("id", lead_id).maybe_single().execute()
         )
         d = r.data
         if isinstance(d, list):
@@ -1617,53 +1107,28 @@ def _get_lead_basic(db, lead_id: str) -> dict:
         logger.warning("_get_lead_basic failed for lead %s: %s", lead_id, exc)
         return {}
 
-def _send_qualification_reply(
-    db, org_id: str, lead_id: str, org_data: dict, reply: str, now_ts: str
-) -> None:
-    """
-    Save the AI's reply to whatsapp_messages and send via Meta Cloud API.
-    S14 — swallows failures silently.
-    """
+
+def _send_qualification_reply(db, org_id: str, lead_id: str, org_data: dict, reply: str, now_ts: str) -> None:
     from app.services.whatsapp_service import _call_meta_send, _now_iso, _get_org_wa_credentials
     from datetime import datetime, timezone, timedelta
-
-    # MULTI-ORG-WA-1: use per-org credentials from DB instead of org_data dict
     phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
     phone_id = (phone_id or "").strip()
-
-    # Save the outbound message to whatsapp_messages first
-    window_expires = (
-        datetime.now(timezone.utc) + timedelta(hours=24)
-    ).isoformat()
+    window_expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
     try:
         db.table("whatsapp_messages").insert({
-            "org_id":          org_id,
-            "lead_id":         lead_id,
-            "direction":       "outbound",
-            "message_type":    "text",
-            "content":         reply,
-            "status":          "sent",
-            "window_open":     True,
-            "window_expires_at": window_expires,
-            "sent_by":         None,  # system / AI
-            "created_at":      now_ts,
+            "org_id": org_id, "lead_id": lead_id, "direction": "outbound",
+            "message_type": "text", "content": reply, "status": "sent",
+            "window_open": True, "window_expires_at": window_expires,
+            "sent_by": None, "created_at": now_ts,
         }).execute()
     except Exception as exc:
         logger.warning("Failed to save qualification reply to DB: %s", exc)
-
-    # Send via Meta API if phone_id is configured
     if not phone_id:
         logger.warning("No whatsapp_phone_id configured for org %s — reply saved but not sent", org_id)
         return
-
-    # We need the lead's phone number to send to
     try:
         lead_result = (
-            db.table("leads")
-            .select("phone, whatsapp")
-            .eq("id", lead_id)
-            .maybe_single()
-            .execute()
+            db.table("leads").select("phone, whatsapp").eq("id", lead_id).maybe_single().execute()
         )
         lead_data = lead_result.data
         if isinstance(lead_data, list):
@@ -1672,309 +1137,168 @@ def _send_qualification_reply(
         if not to_number:
             logger.warning("No phone/whatsapp on lead %s — cannot send reply", lead_id)
             return
-
-        meta_payload = {
-            "messaging_product": "whatsapp",
-            "to":   to_number,
-            "type": "text",
-            "text": {"body": reply},
-        }
-        _call_meta_send(phone_id, meta_payload, token=access_token)
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp", "to": to_number,
+            "type": "text", "text": {"body": reply},
+        }, token=access_token)
     except Exception as exc:
         logger.warning("Failed to send qualification reply via Meta API: %s", exc)
 
 
 def _handle_status_update(db, status_update: dict) -> None:
-    """
-    Process a delivery/read status update from Meta.
-    Updates the whatsapp_messages row matched by meta_message_id.
-    S14 — failures are logged and swallowed.
-    """
     meta_msg_id = status_update.get("id")
-    new_status  = status_update.get("status")  # sent | delivered | read | failed
-
+    new_status  = status_update.get("status")
     if not meta_msg_id or not new_status:
         return
-
     updates: dict = {"status": new_status}
     now_ts = _now_iso()
-
     if new_status == "delivered":
         updates["delivered_at"] = now_ts
     elif new_status == "read":
         updates["read_at"] = now_ts
-
     try:
-        db.table("whatsapp_messages") \
-            .update(updates) \
-            .eq("meta_message_id", meta_msg_id) \
-            .execute()
+        db.table("whatsapp_messages").update(updates).eq("meta_message_id", meta_msg_id).execute()
     except Exception as exc:
         logger.warning("Status update failed for meta_message_id=%s: %s", meta_msg_id, exc)
 
 
 def _handle_template_status_update(db, value: dict) -> None:
-    """
-    Handle a message_template_status_update event from Meta.
-
-    Meta sends this when a template is APPROVED, REJECTED, DISABLED, or
-    PAUSED. We update whatsapp_templates.meta_status and category in the DB.
-
-    Matching strategy: match on meta_template_id (integer from Meta) first,
-    fall back to name + org lookup if meta_template_id is not stored yet.
-
-    S14 — never raises.
-    """
     try:
-        meta_id    = str(value.get("message_template_id", ""))
-        name       = value.get("message_template_name", "")
-        event      = (value.get("event") or "").upper()
-        new_cat    = (value.get("new_message_template_category") or "").lower()
-
-        # Map Meta event → our meta_status values
+        meta_id  = str(value.get("message_template_id", ""))
+        name     = value.get("message_template_name", "")
+        event    = (value.get("event") or "").upper()
+        new_cat  = (value.get("new_message_template_category") or "").lower()
         status_map = {
-            "APPROVED": "approved",
-            "REJECTED": "rejected",
-            "DISABLED": "rejected",
-            "PAUSED":   "rejected",
-            "FLAGGED":  "rejected",
-            "PENDING_DELETION": "rejected",
+            "APPROVED": "approved", "REJECTED": "rejected", "DISABLED": "rejected",
+            "PAUSED": "rejected", "FLAGGED": "rejected", "PENDING_DELETION": "rejected",
         }
         new_status = status_map.get(event)
         if not new_status:
-            logger.info(
-                "_handle_template_status_update: unhandled event '%s' for "
-                "template '%s' — ignoring", event, name,
-            )
+            logger.info("_handle_template_status_update: unhandled event '%s' for template '%s' — ignoring", event, name)
             return
-
         updates: dict = {"meta_status": new_status}
-        # If Meta recategorised the template, update our local category too
         if new_cat and new_cat in ("marketing", "utility", "authentication"):
             updates["category"] = new_cat
-
-        # Try matching by meta_template_id first (most reliable)
         matched = False
         if meta_id:
-            result = (
-                db.table("whatsapp_templates")
-                .update(updates)
-                .eq("meta_template_id", meta_id)
-                .execute()
-            )
+            result = db.table("whatsapp_templates").update(updates).eq("meta_template_id", meta_id).execute()
             rows = result.data if isinstance(result.data, list) else []
             if rows:
                 matched = True
                 logger.info(
-                    "_handle_template_status_update: template '%s' (meta_id=%s) "
-                    "updated to status=%s category=%s",
+                    "_handle_template_status_update: template '%s' (meta_id=%s) updated to status=%s category=%s",
                     name, meta_id, new_status, new_cat or "unchanged",
                 )
-
-        # Fall back to matching by name across all orgs if no match by ID
         if not matched and name:
             result = (
-                db.table("whatsapp_templates")
-                .update(updates)
-                .eq("name", name)
-                .eq("meta_status", "pending")
-                .execute()
+                db.table("whatsapp_templates").update(updates)
+                .eq("name", name).eq("meta_status", "pending").execute()
             )
             rows = result.data if isinstance(result.data, list) else []
             if rows:
                 logger.info(
-                    "_handle_template_status_update: template '%s' matched by name — "
-                    "updated to status=%s category=%s",
+                    "_handle_template_status_update: template '%s' matched by name — updated to status=%s category=%s",
                     name, new_status, new_cat or "unchanged",
                 )
             else:
                 logger.warning(
-                    "_handle_template_status_update: no template found for "
-                    "name='%s' meta_id='%s' — update skipped", name, meta_id,
+                    "_handle_template_status_update: no template found for name='%s' meta_id='%s' — update skipped",
+                    name, meta_id,
                 )
-
-        # G4 — Cancel any active broadcasts using a rejected template
         if new_status == "rejected":
             _cancel_broadcasts_for_rejected_template(db, meta_id, name)
-
     except Exception as exc:
-        logger.warning(
-            "_handle_template_status_update failed: %s", exc
-        )
+        logger.warning("_handle_template_status_update failed: %s", exc)
 
 
-def _cancel_broadcasts_for_rejected_template(
-    db, meta_template_id: str, template_name: str
-) -> None:
-    """
-    G4: When a WhatsApp template is rejected by Meta, cancel any scheduled
-    or in-progress broadcasts that use it, and notify the org owner.
-
-    S14: never raises — all failures are logged and swallowed.
-    """
+def _cancel_broadcasts_for_rejected_template(db, meta_template_id: str, template_name: str) -> None:
     try:
         from datetime import datetime, timezone
-
         now = datetime.now(timezone.utc).isoformat()
-
-        # Find the template record(s) to get org_id and template db id
         template_rows = []
         if meta_template_id:
-            res = (
-                db.table("whatsapp_templates")
-                .select("id, org_id, name")
-                .eq("meta_template_id", meta_template_id)
-                .execute()
-            )
+            res = db.table("whatsapp_templates").select("id, org_id, name").eq("meta_template_id", meta_template_id).execute()
             template_rows = res.data if isinstance(res.data, list) else []
-
         if not template_rows and template_name:
-            res = (
-                db.table("whatsapp_templates")
-                .select("id, org_id, name")
-                .eq("name", template_name)
-                .execute()
-            )
+            res = db.table("whatsapp_templates").select("id, org_id, name").eq("name", template_name).execute()
             template_rows = res.data if isinstance(res.data, list) else []
-
         if not template_rows:
             logger.info(
-                "_cancel_broadcasts_for_rejected_template: no template rows found "
-                "for meta_id=%s name=%s — nothing to cancel", meta_template_id, template_name,
+                "_cancel_broadcasts_for_rejected_template: no template rows found for meta_id=%s name=%s — nothing to cancel",
+                meta_template_id, template_name,
             )
             return
-
         for tmpl in template_rows:
-            tmpl_id  = tmpl.get("id")
-            org_id   = tmpl.get("org_id")
+            tmpl_id   = tmpl.get("id")
+            org_id    = tmpl.get("org_id")
             tmpl_name = tmpl.get("name", template_name)
-
             if not tmpl_id or not org_id:
                 continue
-
             try:
-                # Find broadcasts using this template that are still active
                 bc_res = (
-                    db.table("broadcasts")
-                    .select("id, name")
-                    .eq("org_id", org_id)
-                    .eq("template_id", tmpl_id)
-                    .in_("status", ["scheduled", "sending"])
-                    .execute()
+                    db.table("broadcasts").select("id, name")
+                    .eq("org_id", org_id).eq("template_id", tmpl_id)
+                    .in_("status", ["scheduled", "sending"]).execute()
                 )
                 broadcasts = bc_res.data if isinstance(bc_res.data, list) else []
-
                 if not broadcasts:
                     continue
-
-                # Cancel each broadcast
                 bc_ids = [b["id"] for b in broadcasts]
-                db.table("broadcasts").update({
-                    "status":     "cancelled",
-                    "updated_at": now,
-                }).eq("org_id", org_id).in_("id", bc_ids).execute()
-
-                logger.info(
-                    "G4: cancelled %d broadcast(s) for rejected template '%s' org=%s",
-                    len(bc_ids), tmpl_name, org_id,
-                )
-
-                # Notify org owner
+                db.table("broadcasts").update({"status": "cancelled", "updated_at": now}).eq("org_id", org_id).in_("id", bc_ids).execute()
+                logger.info("G4: cancelled %d broadcast(s) for rejected template '%s' org=%s", len(bc_ids), tmpl_name, org_id)
                 _notify_owner_template_rejected(db, org_id, tmpl_name, len(bc_ids), now)
-
             except Exception as inner_exc:
                 logger.warning(
-                    "_cancel_broadcasts_for_rejected_template: failed for template %s "
-                    "org=%s — %s", tmpl_id, org_id, inner_exc,
+                    "_cancel_broadcasts_for_rejected_template: failed for template %s org=%s — %s",
+                    tmpl_id, org_id, inner_exc,
                 )
-
     except Exception as exc:
         logger.warning("_cancel_broadcasts_for_rejected_template failed: %s", exc)
 
 
-def _notify_owner_template_rejected(
-    db, org_id: str, template_name: str, cancelled_count: int, now: str
-) -> None:
-    """Insert an in-app notification for the org owner about the rejected template."""
+def _notify_owner_template_rejected(db, org_id: str, template_name: str, cancelled_count: int, now: str) -> None:
     try:
-        # Find owner user(s) for this org
-        users_res = (
-            db.table("users")
-            .select("id, roles(template)")
-            .eq("org_id", org_id)
-            .execute()
-        )
+        users_res = db.table("users").select("id, roles(template)").eq("org_id", org_id).execute()
         users = users_res.data if isinstance(users_res.data, list) else []
-
         for user in users:
             template = ((user.get("roles") or {}).get("template") or "").lower()
             if template != "owner":
                 continue
-
             plural = "broadcasts" if cancelled_count > 1 else "broadcast"
             db.table("notifications").insert({
-                "org_id":        org_id,
-                "user_id":       user["id"],
-                "type":          "broadcast_cancelled",
-                "title":         "Broadcast Cancelled — Template Rejected",
-                "body":          (
+                "org_id": org_id, "user_id": user["id"],
+                "type": "broadcast_cancelled",
+                "title": "Broadcast Cancelled — Template Rejected",
+                "body": (
                     f"Meta rejected your WhatsApp template '{template_name}'. "
                     f"{cancelled_count} {plural} using this template "
                     f"{'have' if cancelled_count > 1 else 'has'} been cancelled. "
                     "Please review your template and resubmit."
                 ),
-                "resource_type": "broadcast",
-                "is_read":       False,
-                "created_at":    now,
+                "resource_type": "broadcast", "is_read": False, "created_at": now,
             }).execute()
-
     except Exception as exc:
-        logger.warning(
-            "_notify_owner_template_rejected failed org=%s: %s", org_id, exc
-        )
+        logger.warning("_notify_owner_template_rejected failed org=%s: %s", org_id, exc)
 
 
 @router.post("/meta/whatsapp", status_code=status.HTTP_200_OK)
-async def receive_whatsapp_message(
-    request: Request,
-    db=Depends(get_supabase),
-):
-    
-    """
-    WhatsApp inbound message and status update handler — Technical Spec §6.2.
- 
-    9E-B: Returns HTTP 200 immediately after signature verification.
-    All processing is dispatched to the Celery webhook_worker task.
-    Meta requires a 200 within 5 seconds — synchronous processing violated this.
-    """
+async def receive_whatsapp_message(request: Request, db=Depends(get_supabase)):
     import time as _time
     _t0 = _time.monotonic()
     raw_body  = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
- 
     if not _verify_meta_signature(raw_body, signature):
         _log_webhook(db, route="/webhooks/meta/whatsapp", response_status=403, error_message="Invalid signature")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid webhook signature",
-        )
- 
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook signature")
     payload: dict = json.loads(raw_body)
- 
-    # Dispatch to Celery — do NOT process synchronously.
-    # webhook_worker handles org lookup, routing, dedup, and dead lettering.
     from app.workers.webhook_worker import process_inbound_webhook
     process_inbound_webhook.delay(payload)
- 
     _log_webhook(
-        db,
-        route="/webhooks/meta/whatsapp",
-        response_status=200,
-        topic="whatsapp_inbound",
-        processing_ms=int((_time.monotonic() - _t0) * 1000),
+        db, route="/webhooks/meta/whatsapp", response_status=200,
+        topic="whatsapp_inbound", processing_ms=int((_time.monotonic() - _t0) * 1000),
     )
-    # Return 200 immediately — Meta will retry if we don't respond fast enough.
     return Response(status_code=200)
+
 
 @router.get("/meta/whatsapp")
 async def verify_whatsapp_webhook(
@@ -1982,36 +1306,20 @@ async def verify_whatsapp_webhook(
     hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
     hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
 ):
-    """Meta webhook verification challenge for WhatsApp endpoint."""
     if hub_mode == "subscribe" and hub_verify_token == settings.META_VERIFY_TOKEN:
         logger.info("WhatsApp webhook verified successfully")
         if hub_challenge and hub_challenge.isdigit():
             return int(hub_challenge)
         return hub_challenge
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Webhook verification failed — token mismatch",
-    )
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification failed — token mismatch")
+
 
 # ---------------------------------------------------------------------------
-# POST /webhooks/payment/paystack  — Technical Spec §6.3
+# POST /webhooks/payment/paystack
 # ---------------------------------------------------------------------------
 
 @router.post("/payment/paystack", status_code=status.HTTP_200_OK)
-async def receive_paystack_webhook(
-    request: Request,
-    db=Depends(get_supabase),
-):
-    """
-    Paystack charge.success webhook handler.
-    Technical Spec §6.3.  Route: POST /webhooks/payment/paystack.
-
-    Security: HMAC-SHA512 of raw body verified against PAYSTACK_SECRET_KEY
-    using X-Paystack-Signature header before any processing.
-
-    Always returns 200 after signature check — Paystack retries on non-200.
-    S14: processing errors are logged and swallowed; never return 5xx.
-    """
+async def receive_paystack_webhook(request: Request, db=Depends(get_supabase)):
     raw_body = await request.body()
     import time as _time
     _t0 = _time.monotonic()
@@ -2019,50 +1327,28 @@ async def receive_paystack_webhook(
     if not _verify_paystack_signature(raw_body, sig):
         logger.warning("Paystack webhook: invalid signature — rejecting")
         _log_webhook(db, route="/webhooks/payment/paystack", response_status=403, error_message="Invalid signature")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid Paystack signature",
-        )
-
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Paystack signature")
     payload: dict = json.loads(raw_body)
     _err = None
     try:
         process_paystack_webhook(db=db, payload=payload)
-    except Exception as exc:  # pylint: disable=broad-except
-        # S14 — never return 5xx to Paystack; log and acknowledge
+    except Exception as exc:
         logger.error("Paystack webhook processing error: %s", exc)
         _err = str(exc)[:500]
-
     _log_webhook(
-        db,
-        route="/webhooks/payment/paystack",
-        response_status=200,
+        db, route="/webhooks/payment/paystack", response_status=200,
         topic=json.loads(raw_body).get("event") if not _err else None,
-        processing_ms=int((_time.monotonic() - _t0) * 1000),
-        error_message=_err,
+        processing_ms=int((_time.monotonic() - _t0) * 1000), error_message=_err,
     )
     return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------
-# POST /webhooks/payment/flutterwave  — Technical Spec §6
+# POST /webhooks/payment/flutterwave
 # ---------------------------------------------------------------------------
 
 @router.post("/payment/flutterwave", status_code=status.HTTP_200_OK)
-async def receive_flutterwave_webhook(
-    request: Request,
-    db=Depends(get_supabase),
-):
-    """
-    Flutterwave charge.completed webhook handler.
-    Route: POST /webhooks/payment/flutterwave.
-
-    Security: verif-hash header compared directly against FLUTTERWAVE_SECRET_HASH
-    env var (Flutterwave sends the secret verbatim — no HMAC computation).
-
-    Always returns 200 after hash check — Flutterwave retries on non-200.
-    S14: processing errors are logged and swallowed; never return 5xx.
-    """
+async def receive_flutterwave_webhook(request: Request, db=Depends(get_supabase)):
     raw_body = await request.body()
     import time as _time
     _t0 = _time.monotonic()
@@ -2070,77 +1356,41 @@ async def receive_flutterwave_webhook(
     if not _verify_flutterwave_hash(hash_header):
         logger.warning("Flutterwave webhook: invalid hash — rejecting")
         _log_webhook(db, route="/webhooks/payment/flutterwave", response_status=403, error_message="Invalid hash")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid Flutterwave hash",
-        )
-
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Flutterwave hash")
     payload: dict = json.loads(raw_body)
     _err = None
     try:
         process_flutterwave_webhook(db=db, payload=payload)
-    except Exception as exc:  # pylint: disable=broad-except
-        # S14 — never return 5xx to Flutterwave; log and acknowledge
+    except Exception as exc:
         logger.error("Flutterwave webhook processing error: %s", exc)
         _err = str(exc)[:500]
-
     _log_webhook(
-        db,
-        route="/webhooks/payment/flutterwave",
-        response_status=200,
+        db, route="/webhooks/payment/flutterwave", response_status=200,
         topic=payload.get("event", {}).get("type") if not _err else None,
-        processing_ms=int((_time.monotonic() - _t0) * 1000),
-        error_message=_err,
+        processing_ms=int((_time.monotonic() - _t0) * 1000), error_message=_err,
     )
     return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------
-# POST /webhooks/shopify  — Shopify webhook handler (SHOP-1A)
+# POST /webhooks/shopify
 # ---------------------------------------------------------------------------
 
 @router.post("/shopify", status_code=status.HTTP_200_OK)
-async def receive_shopify_webhook(
-    request: Request,
-    db=Depends(get_supabase),
-):
-    """
-    Shopify webhook handler.
-    Route: POST /webhooks/shopify
-
-    Security: X-Shopify-Hmac-Sha256 verified per org's shopify_webhook_secret.
-    Topic routing via X-Shopify-Topic header.
-
-    Supported topics:
-      checkouts/update  → handle_abandoned_cart
-      orders/create     → handle_order_created
-      fulfillments/create → handle_fulfillment_created
-      products/update   → sync_product
-      products/create   → sync_product
-      products/delete   → handle_product_deleted
-
-    S14: processing errors are logged and swallowed — always return 200.
-    """
+async def receive_shopify_webhook(request: Request, db=Depends(get_supabase)):
     raw_body = await request.body()
     import time as _time
     _t0 = _time.monotonic()
     topic = request.headers.get("X-Shopify-Topic") or ""
     shop_domain = request.headers.get("X-Shopify-Shop-Domain") or ""
     hmac_header = request.headers.get("X-Shopify-Hmac-Sha256") or ""
-
     logger.info("[SHOPIFY] topic=%s shop=%s", topic, shop_domain)
-
-    # Resolve org by shop domain
     if not shop_domain:
         logger.warning("[SHOPIFY] missing X-Shopify-Shop-Domain header — dropping")
         return {"status": "ok"}
-
     org_r = (
-        db.table("organisations")
-        .select("id, shopify_webhook_secret, shopify_connected")
-        .eq("shopify_shop_domain", shop_domain)
-        .maybe_single()
-        .execute()
+        db.table("organisations").select("id, shopify_webhook_secret, shopify_connected")
+        .eq("shopify_shop_domain", shop_domain).maybe_single().execute()
     )
     org_d = org_r.data
     if isinstance(org_d, list):
@@ -2148,105 +1398,60 @@ async def receive_shopify_webhook(
     if not org_d:
         logger.warning("[SHOPIFY] no org found for shop_domain=%s — dropping", shop_domain)
         return {"status": "ok"}
-
     org_id = org_d["id"]
     webhook_secret = (org_d.get("shopify_webhook_secret") or "").strip()
-
-    # Verify HMAC — reject if secret is configured and signature is wrong
     if webhook_secret:
         if not shopify_service.verify_webhook(raw_body, hmac_header, webhook_secret):
             logger.warning("[SHOPIFY] invalid HMAC for org=%s topic=%s", org_id, topic)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Shopify webhook signature",
-            )
-
-    # Parse body
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Shopify webhook signature")
     try:
         payload = json.loads(raw_body)
     except Exception as exc:
         logger.warning("[SHOPIFY] invalid JSON for org=%s: %s", org_id, exc)
         return {"status": "ok"}
-
-    # Dispatch by topic — S14 per handler
     try:
         if topic in ("products/create", "products/update"):
             shopify_service.sync_product(db=db, org_id=org_id, shopify_product=payload)
-
         elif topic == "products/delete":
-            shopify_service.handle_product_deleted(
-                db=db, org_id=org_id, shopify_product_id=payload.get("id")
-            )
-
+            shopify_service.handle_product_deleted(db=db, org_id=org_id, shopify_product_id=payload.get("id"))
         elif topic == "checkouts/update":
             shopify_service.handle_abandoned_cart(db=db, org_id=org_id, checkout=payload)
-
         elif topic == "orders/create":
             shopify_service.handle_order_created(db=db, org_id=org_id, order=payload)
-
         elif topic == "fulfillments/create":
-            shopify_service.handle_fulfillment_created(
-                db=db, org_id=org_id, fulfillment=payload
-            )
-
+            shopify_service.handle_fulfillment_created(db=db, org_id=org_id, fulfillment=payload)
         else:
             logger.info("[SHOPIFY] unhandled topic=%s org=%s — ignoring", topic, org_id)
-
     except Exception as exc:
-        # S14 — never return 5xx to Shopify
         logger.error("[SHOPIFY] handler error org=%s topic=%s: %s", org_id, topic, exc)
         _log_webhook(
-            db,
-            route="/webhooks/shopify",
-            org_id=org_id,
-            topic=topic,
-            response_status=200,
-            processing_ms=int((_time.monotonic() - _t0) * 1000),
+            db, route="/webhooks/shopify", org_id=org_id, topic=topic,
+            response_status=200, processing_ms=int((_time.monotonic() - _t0) * 1000),
             error_message=str(exc)[:500],
         )
         return {"status": "ok"}
-
     _log_webhook(
-        db,
-        route="/webhooks/shopify",
-        org_id=org_id,
-        topic=topic,
-        response_status=200,
-        processing_ms=int((_time.monotonic() - _t0) * 1000),
+        db, route="/webhooks/shopify", org_id=org_id, topic=topic,
+        response_status=200, processing_ms=int((_time.monotonic() - _t0) * 1000),
     )
     return {"status": "ok"}
+
 
 # ---------------------------------------------------------------------------
 # COMM-1 — Commerce Helper Functions
 # ---------------------------------------------------------------------------
 
-def _restore_commerce_state_if_open(
-    db,
-    org_id: str,
-    phone_number: str,
-    session: dict,
-) -> None:
-    """
-    COMM-1: If whatsapp_session has no commerce_state but an open commerce_session
-    exists, restore the commerce_state on the whatsapp_session row.
-    Mutates session dict in-place so caller sees restored state immediately.
-    S14 — never raises.
-    """
+def _restore_commerce_state_if_open(db, org_id: str, phone_number: str, session: dict) -> None:
     try:
         open_cs = (
-            db.table("commerce_sessions")
-            .select("*")
-            .eq("org_id", org_id)
-            .eq("phone_number", phone_number)
+            db.table("commerce_sessions").select("*")
+            .eq("org_id", org_id).eq("phone_number", phone_number)
             .in_("status", ["open", "checkout_sent"])
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
+            .order("created_at", desc=True).limit(1).execute()
         )
         cs_rows = open_cs.data if isinstance(open_cs.data, list) else []
         if not cs_rows:
             return
-
         cs = cs_rows[0]
         if cs.get("status") == "checkout_sent":
             restored_state = "commerce_checkout"
@@ -2254,32 +1459,20 @@ def _restore_commerce_state_if_open(
             restored_state = "commerce_cart"
         else:
             restored_state = "commerce_browsing"
-
-        triage_service.update_session(
-            db, session["id"], "active", selected_action="commerce_entry"
-        )
-        db.table("whatsapp_sessions").update(
-            {"commerce_state": restored_state}
-        ).eq("id", session["id"]).execute()
-
-        session["commerce_state"] = restored_state  # update in-memory
-
+        triage_service.update_session(db, session["id"], "active", selected_action="commerce_entry")
+        db.table("whatsapp_sessions").update({"commerce_state": restored_state}).eq("id", session["id"]).execute()
+        session["commerce_state"] = restored_state
     except Exception as exc:
-        logger.warning(
-            "_restore_commerce_state_if_open failed org=%s phone=%s: %s",
-            org_id, phone_number, exc,
-        )
+        logger.warning("_restore_commerce_state_if_open failed org=%s phone=%s: %s", org_id, phone_number, exc)
 
 
 def _extract_interactive_id(message: dict) -> Optional[str]:
-    """Extract the ID from a button_reply or list_reply interactive message."""
     interactive = message.get("interactive") or {}
     reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
     return reply.get("id")
 
 
 def _extract_list_selection(message: dict) -> Optional[str]:
-    """Return list_reply ID if present, else None."""
     interactive = message.get("interactive") or {}
     reply = interactive.get("list_reply") or {}
     return reply.get("id") or None
@@ -2310,16 +1503,11 @@ def _is_add_more_intent(message: dict, content: Optional[str]) -> bool:
 
 
 def _fetch_product(db, org_id: str, product_id: str) -> dict:
-    """Fetch a single product by id. Returns {} on failure (S14)."""
     try:
         r = (
-            db.table("products")
-            .select("*")
-            .eq("id", product_id)
-            .eq("org_id", org_id)
-            .eq("is_active", True)
-            .maybe_single()
-            .execute()
+            db.table("products").select("*")
+            .eq("id", product_id).eq("org_id", org_id).eq("is_active", True)
+            .maybe_single().execute()
         )
         d = r.data
         if isinstance(d, list):
@@ -2331,15 +1519,10 @@ def _fetch_product(db, org_id: str, product_id: str) -> dict:
 
 
 def _fetch_products(db, org_id: str) -> list:
-    """Fetch all active products for org. Returns [] on failure (S14)."""
     try:
         r = (
-            db.table("products")
-            .select("*")
-            .eq("org_id", org_id)
-            .eq("is_active", True)
-            .order("title")
-            .execute()
+            db.table("products").select("*")
+            .eq("org_id", org_id).eq("is_active", True).order("title").execute()
         )
         return r.data if isinstance(r.data, list) else []
     except Exception as exc:
@@ -2348,7 +1531,6 @@ def _fetch_products(db, org_id: str) -> list:
 
 
 def _find_variant(product: dict, variant_id: str) -> dict:
-    """Find a variant dict from product.variants by ID."""
     for v in (product.get("variants") or []):
         vid = str(v.get("id") or v.get("variant_id") or "")
         if vid and vid == str(variant_id):
@@ -2371,16 +1553,6 @@ def _handle_commerce_message(
     interactive_payload: Optional[dict],
     contact_name: Optional[str] = None,
 ) -> None:
-    """
-    COMM-1: Route an inbound message from a contact currently in a commerce flow.
-    Dispatches based on session.commerce_state:
-      commerce_browsing        → product list selection → add to cart
-      commerce_variant_select  → variant selection → add to cart
-      commerce_cart            → checkout or add more
-      commerce_checkout        → cancel, resend, or reminder
-
-    Fetches commerce_session from DB at start. All branches S14.
-    """
     from app.services.commerce_service import (
         get_or_create_commerce_session,
         add_to_cart,
@@ -2396,36 +1568,16 @@ def _handle_commerce_message(
 
     try:
         # ── Talk to Sales escape — fires before any state routing ────────────
-        # Handles button tap from cart summary, checkout, OR any old message
-        # the user scrolls back to. The intent is unambiguous regardless of origin.
-        _btn_id = (
-            (interactive_payload or {})
-            .get("button_reply", {})
-            .get("id", "")
-        )
-        _list_id = (
-            (interactive_payload or {})
-            .get("list_reply", {})
-            .get("id", "")
-        )
+        _btn_id = (interactive_payload or {}).get("button_reply", {}).get("id", "")
+        _list_id = (interactive_payload or {}).get("list_reply", {}).get("id", "")
         if _btn_id == "talk_sales" or _list_id == "talk_sales":
             from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
-            from app.services.commerce_service import mark_cart_abandoned
 
-            # 1. Abandon the open commerce session
-            cs_escape = (
-                db.table("commerce_sessions")
-                .select("id")
-                .eq("org_id", org_id)
-                .eq("phone_number", phone_number)
-                .in_("status", ["open", "checkout_sent"])
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            cs_escape_rows = cs_escape.data if isinstance(cs_escape.data, list) else []
-            if cs_escape_rows:
-                mark_cart_abandoned(db, cs_escape_rows[0]["id"])
+            # 1. Leave the commerce_session open — do NOT abandon it.
+            # If the user changes their mind and goes back to browse products,
+            # _restore_commerce_state_if_open will find this session and
+            # re-enter the commerce flow seamlessly. The session will be
+            # abandoned naturally if the rep closes it or the user checks out.
 
             # 2. Clear commerce_state on whatsapp_session
             db.table("whatsapp_sessions").update(
@@ -2439,13 +1591,9 @@ def _handle_commerce_message(
             if not lead_id:
                 try:
                     lead_r = (
-                        db.table("leads")
-                        .select("id, assigned_to")
-                        .eq("org_id", org_id)
-                        .eq("whatsapp", phone_number)
-                        .is_("deleted_at", "null")
-                        .limit(1)
-                        .execute()
+                        db.table("leads").select("id, assigned_to")
+                        .eq("org_id", org_id).eq("whatsapp", phone_number)
+                        .is_("deleted_at", "null").limit(1).execute()
                     )
                     lead_rows = lead_r.data if isinstance(lead_r.data, list) else []
                     if lead_rows:
@@ -2455,15 +1603,14 @@ def _handle_commerce_message(
                 except Exception:
                     pass
 
-            if not lead_id:                
+            if not lead_id:
                 from app.models.leads import LeadCreate, LeadSource
                 from app.services import lead_service
                 new_lead = lead_service.create_lead(
                     db, org_id, None,
                     LeadCreate(
                         full_name=contact_name or phone_number,
-                        phone=phone_number,
-                        whatsapp=phone_number,
+                        phone=phone_number, whatsapp=phone_number,
                         source=LeadSource.whatsapp_inbound.value,
                         contact_type="sales_lead",
                     ),
@@ -2472,15 +1619,10 @@ def _handle_commerce_message(
                     lead_id = new_lead["id"]
                     assigned_to = new_lead.get("assigned_to")
 
-            # 4. Notify assigned rep — no qualification flow
+            # 4. Notify assigned rep
             if not assigned_to:
                 try:
-                    users_r = (
-                        db.table("users")
-                        .select("id, roles(template)")
-                        .eq("org_id", org_id)
-                        .execute()
-                    )
+                    users_r = db.table("users").select("id, roles(template)").eq("org_id", org_id).execute()
                     for u in (users_r.data or []):
                         if (u.get("roles") or {}).get("template", "").lower() == "owner":
                             assigned_to = u["id"]
@@ -2492,25 +1634,26 @@ def _handle_commerce_message(
                 display_name = contact_name or phone_number
                 try:
                     db.table("notifications").insert({
-                        "org_id":        org_id,
-                        "user_id":       assigned_to,
-                        "type":          "new_lead",
-                        "title":         "Contact switched from shopping to sales",
-                        "body":          f"{display_name} was browsing products and asked to speak with someone.",
-                        "is_read":       False,
-                        "channel":       "inapp",
+                        "org_id": org_id, "user_id": assigned_to,
+                        "type": "new_lead",
+                        "title": "Contact switched from shopping to sales",
+                        "body": f"{display_name} was browsing products and asked to speak with someone.",
+                        "is_read": False, "channel": "inapp",
                     }).execute()
                 except Exception as _notif_exc:
-                    logger.warning(
-                        "_handle_commerce_message talk_sales: notification failed: %s",
-                        _notif_exc,
-                    )
+                    logger.warning("_handle_commerce_message talk_sales: notification failed: %s", _notif_exc)
 
-            # 5. Confirm to the user
-            # If they already had an assigned rep, they're in the queue —
-            # send reassurance rather than a generic handoff message.
+            # 5. Confirm to the user — fetch credentials first so a missing
+            # phone_id is surfaced as a warning, not a silent no-op.
             phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
-            if phone_id:
+            if not phone_id:
+                logger.warning(
+                    "_handle_commerce_message talk_sales: no whatsapp_phone_id "
+                    "for org %s — confirmation not sent to %s", org_id, phone_number,
+                )
+            else:
+                # If they already had an assigned rep, they're in the queue —
+                # send reassurance rather than a generic handoff message.
                 if _lead_was_preexisting and assigned_to:
                     reply_body = (
                         "You're already in our queue! 😊 A member of our team "
@@ -2528,40 +1671,24 @@ def _handle_commerce_message(
                 }, token=access_token)
 
                 # ── Backfill whatsapp_messages so the 24-hour window is recorded ──
-                # Without this, _is_lead_window_open returns False and reps
-                # cannot send free-form messages to commerce-originated leads.
-                # S14 — failure swallowed; window will open on next real inbound.
                 if lead_id:
                     try:
                         from datetime import datetime, timezone, timedelta
-                        _window_expires = (
-                            datetime.now(timezone.utc) + timedelta(hours=24)
-                        ).isoformat()
+                        _window_expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
                         _now = _now_iso()
-                        # Inbound — the "Speak to Sales" button click
                         db.table("whatsapp_messages").insert({
-                            "org_id":            org_id,
-                            "lead_id":           lead_id,
-                            "direction":         "inbound",
-                            "message_type":      "text",
-                            "content":           "Speak to Sales",
-                            "status":            "delivered",
-                            "window_open":       True,
-                            "window_expires_at": _window_expires,
-                            "created_at":        _now,
+                            "org_id": org_id, "lead_id": lead_id,
+                            "direction": "inbound", "message_type": "text",
+                            "content": "Speak to Sales", "status": "delivered",
+                            "window_open": True, "window_expires_at": _window_expires,
+                            "created_at": _now,
                         }).execute()
-                        # Outbound — the confirmation reply we just sent
                         db.table("whatsapp_messages").insert({
-                            "org_id":            org_id,
-                            "lead_id":           lead_id,
-                            "direction":         "outbound",
-                            "message_type":      "text",
-                            "content":           reply_body,
-                            "status":            "sent",
-                            "window_open":       True,
-                            "window_expires_at": _window_expires,
-                            "sent_by":           None,
-                            "created_at":        _now,
+                            "org_id": org_id, "lead_id": lead_id,
+                            "direction": "outbound", "message_type": "text",
+                            "content": reply_body, "status": "sent",
+                            "window_open": True, "window_expires_at": _window_expires,
+                            "sent_by": None, "created_at": _now,
                         }).execute()
                     except Exception as _wm_exc:
                         logger.warning(
@@ -2569,36 +1696,24 @@ def _handle_commerce_message(
                             "backfill failed for lead %s: %s", lead_id, _wm_exc,
                         )
 
-            logger.info(
-                "[WH] talk_sales escape from commerce — org=%s phone=%s lead=%s",
-                org_id, phone_number, lead_id,
-            )
+            logger.info("[WH] talk_sales escape from commerce — org=%s phone=%s lead=%s", org_id, phone_number, lead_id)
             return
         # ── End Talk to Sales escape ─────────────────────────────────────────
 
         state = session.get("commerce_state", "")
 
-        # Fetch the active commerce_session
         cs_result = (
-            db.table("commerce_sessions")
-            .select("*")
-            .eq("org_id", org_id)
-            .eq("phone_number", phone_number)
+            db.table("commerce_sessions").select("*")
+            .eq("org_id", org_id).eq("phone_number", phone_number)
             .in_("status", ["open", "checkout_sent"])
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
+            .order("created_at", desc=True).limit(1).execute()
         )
         cs_rows = cs_result.data if isinstance(cs_result.data, list) else []
         commerce_session = cs_rows[0] if cs_rows else {}
 
-        # Fetch commerce_config for checkout message
         org_cfg_r = (
-            db.table("organisations")
-            .select("commerce_config")
-            .eq("id", org_id)
-            .maybe_single()
-            .execute()
+            db.table("organisations").select("commerce_config")
+            .eq("id", org_id).maybe_single().execute()
         )
         org_cfg_d = org_cfg_r.data
         if isinstance(org_cfg_d, list):
@@ -2608,41 +1723,80 @@ def _handle_commerce_message(
         if state == "commerce_browsing":
             product_id = _extract_list_selection(message)
             if not product_id:
-                # No product selected yet — show product list
+                # Check if user asked to see the full catalog
+                _browse_text = (content or "").lower().strip()
+                _full_catalog_keywords = (
+                    "all products", "full catalog", "see all",
+                    "more products", "all items", "everything",
+                )
+                if any(k in _browse_text for k in _full_catalog_keywords):
+                    try:
+                        from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+                        _cat_phone_id, _cat_token, _ = _get_org_wa_credentials(db, org_id)
+                        _shop_r = (
+                            db.table("organisations").select("shopify_shop_domain")
+                            .eq("id", org_id).maybe_single().execute()
+                        )
+                        _shop_d = _shop_r.data
+                        if isinstance(_shop_d, list):
+                            _shop_d = _shop_d[0] if _shop_d else None
+                        _shop_domain = (_shop_d or {}).get("shopify_shop_domain") or None
+                        if _cat_phone_id and _cat_token:
+                            if _shop_domain:
+                                _catalog_url = (
+                                    f"https://{_shop_domain}"
+                                    f"?utm_source=whatsapp&utm_medium=chat"
+                                    f"&utm_campaign=product_browse"
+                                )
+                                _catalog_body = (
+                                    f"Here's our full product catalog \U0001f6cd\ufe0f\n\n"
+                                    f"{_catalog_url}\n\n"
+                                    "Feel free to come back here to place your order on WhatsApp!"
+                                )
+                            else:
+                                _catalog_body = (
+                                    "Our product selection is shown in the list above. "
+                                    "Tap any item to add it to your cart, or tap "
+                                    "*Speak to Sales* and our team will help you find "
+                                    "what you need."
+                                )
+                            _call_meta_send(_cat_phone_id, {
+                                "messaging_product": "whatsapp",
+                                "to": phone_number,
+                                "type": "text",
+                                "text": {"body": _catalog_body},
+                            }, token=_cat_token)
+                    except Exception as _cat_exc:
+                        logger.warning(
+                            "_handle_commerce_message: full catalog reply failed "
+                            "org=%s phone=%s: %s", org_id, phone_number, _cat_exc,
+                        )
+                    return
+
+                # No product selected and no catalog request — show product list
                 products = _fetch_products(db, org_id)
                 send_product_list(db, org_id, phone_number, products)
                 return
 
             product = _fetch_product(db, org_id, product_id)
             if not product:
-                logger.warning(
-                    "_handle_commerce_message: product %s not found org=%s",
-                    product_id, org_id,
-                )
+                logger.warning("_handle_commerce_message: product %s not found org=%s", product_id, org_id)
                 products = _fetch_products(db, org_id)
                 send_product_list(db, org_id, phone_number, products)
                 return
 
             variants = product.get("variants") or []
             if len(variants) <= 1:
-                # Single or no variant — add immediately
                 variant = variants[0] if variants else {}
                 variant_id = str(variant.get("id") or variant.get("variant_id") or "")
                 if not commerce_session:
                     lead_id = session.get("session_data", {}).get("lead_id")
-                    commerce_session = get_or_create_commerce_session(
-                        db, org_id, phone_number, lead_id=lead_id
-                    )
-                commerce_session = add_to_cart(
-                    db, commerce_session, product, variant_id, quantity=1
-                )
-                db.table("whatsapp_sessions").update(
-                    {"commerce_state": "commerce_cart"}
-                ).eq("id", session["id"]).execute()
+                    commerce_session = get_or_create_commerce_session(db, org_id, phone_number, lead_id=lead_id)
+                commerce_session = add_to_cart(db, commerce_session, product, variant_id, quantity=1)
+                db.table("whatsapp_sessions").update({"commerce_state": "commerce_cart"}).eq("id", session["id"]).execute()
                 session["commerce_state"] = "commerce_cart"
                 send_cart_summary(db, org_id, phone_number, commerce_session)
             else:
-                # Multiple variants — ask contact to choose
                 db.table("whatsapp_sessions").update({
                     "commerce_state": "commerce_variant_select",
                     "pending_product_id": product_id,
@@ -2651,11 +1805,9 @@ def _handle_commerce_message(
 
         elif state == "commerce_variant_select":
             raw_id = _extract_interactive_id(message) or ""
-            # IDs are prefixed "variant_" per send_variant_selection spec
             variant_id = raw_id.removeprefix("variant_") if raw_id.startswith("variant_") else raw_id
             product_id = session.get("pending_product_id") or ""
             product = _fetch_product(db, org_id, product_id) if product_id else {}
-
             if not product or not variant_id:
                 logger.warning(
                     "_handle_commerce_message: variant_select missing product or variant "
@@ -2668,18 +1820,12 @@ def _handle_commerce_message(
                     {"commerce_state": "commerce_browsing", "pending_product_id": None}
                 ).eq("id", session["id"]).execute()
                 return
-
             if not commerce_session:
                 lead_id = session.get("session_data", {}).get("lead_id")
-                commerce_session = get_or_create_commerce_session(
-                    db, org_id, phone_number, lead_id=lead_id
-                )
-            commerce_session = add_to_cart(
-                db, commerce_session, product, variant_id, quantity=1
-            )
+                commerce_session = get_or_create_commerce_session(db, org_id, phone_number, lead_id=lead_id)
+            commerce_session = add_to_cart(db, commerce_session, product, variant_id, quantity=1)
             db.table("whatsapp_sessions").update({
-                "commerce_state": "commerce_cart",
-                "pending_product_id": None,
+                "commerce_state": "commerce_cart", "pending_product_id": None,
             }).eq("id", session["id"]).execute()
             send_cart_summary(db, org_id, phone_number, commerce_session)
 
@@ -2687,24 +1833,15 @@ def _handle_commerce_message(
             if _is_checkout_intent(message, content):
                 if not commerce_session:
                     lead_id = session.get("session_data", {}).get("lead_id")
-                    commerce_session = get_or_create_commerce_session(
-                        db, org_id, phone_number, lead_id=lead_id
-                    )
+                    commerce_session = get_or_create_commerce_session(db, org_id, phone_number, lead_id=lead_id)
                 checkout_url = generate_shopify_checkout(db, org_id, commerce_session)
-                db.table("whatsapp_sessions").update(
-                    {"commerce_state": "commerce_checkout"}
-                ).eq("id", session["id"]).execute()
-                send_checkout_link(
-                    db, org_id, phone_number, checkout_url, commerce_config
-                )
+                db.table("whatsapp_sessions").update({"commerce_state": "commerce_checkout"}).eq("id", session["id"]).execute()
+                send_checkout_link(db, org_id, phone_number, checkout_url, commerce_config)
             elif _is_add_more_intent(message, content):
                 products = _fetch_products(db, org_id)
-                db.table("whatsapp_sessions").update(
-                    {"commerce_state": "commerce_browsing"}
-                ).eq("id", session["id"]).execute()
+                db.table("whatsapp_sessions").update({"commerce_state": "commerce_browsing"}).eq("id", session["id"]).execute()
                 send_product_list(db, org_id, phone_number, products)
             else:
-                # Unrecognised message while in cart — resend summary as reminder
                 if commerce_session:
                     send_cart_summary(db, org_id, phone_number, commerce_session)
 
@@ -2712,16 +1849,13 @@ def _handle_commerce_message(
             if _is_cancel_intent(message, content):
                 if commerce_session:
                     mark_cart_abandoned(db, commerce_session["id"])
-                db.table("whatsapp_sessions").update(
-                    {"commerce_state": None}
-                ).eq("id", session["id"]).execute()
+                db.table("whatsapp_sessions").update({"commerce_state": None}).eq("id", session["id"]).execute()
                 from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
                 try:
                     phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
                     if phone_id:
                         _call_meta_send(phone_id, {
-                            "messaging_product": "whatsapp",
-                            "to": phone_number,
+                            "messaging_product": "whatsapp", "to": phone_number,
                             "type": "text",
                             "text": {"body": "Your cart has been cleared. Feel free to browse again anytime."},
                         }, token=access_token)
@@ -2732,7 +1866,6 @@ def _handle_commerce_message(
                     checkout_url = generate_shopify_checkout(db, org_id, commerce_session)
                     send_checkout_link(db, org_id, phone_number, checkout_url, commerce_config)
             else:
-                # Any other message — resend existing link as reminder
                 existing_url = (commerce_session or {}).get("checkout_url") or ""
                 if existing_url:
                     send_checkout_link(db, org_id, phone_number, existing_url, commerce_config)

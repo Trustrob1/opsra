@@ -2282,7 +2282,7 @@ def send_product_list(
                     "description": description,
                 }
 
-            # Fetch Shopify store domain for the browse link
+            # Fetch Shopify store domain for the full catalog link (sent only on explicit request)
             _shop_domain = None
             try:
                 _shop_r = (
@@ -2330,12 +2330,7 @@ def send_product_list(
                     "type": "list",
                     "body": {"text": (
                         "Here's a selection of our popular products \ud83d\uded2\n\n"
-                        + (
-                            f"Browse our full catalog here:\n"
-                            f"https://{_shop_domain}?utm_source=whatsapp&utm_medium=chat&utm_campaign=product_browse"
-                            if _shop_domain else
-                            "Let us know if you\u2019re looking for something specific \u2014 we\u2019re happy to help!"
-                        )
+                        "Tap any product to add it to your cart, or reply *all products* to see our full catalog."
                     )},
                     "action": {"button": "View products", "sections": sections2},
                 },
