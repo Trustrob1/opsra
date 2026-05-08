@@ -1789,14 +1789,23 @@ def handle_lead_post_handoff_inbound(
                         commerce_session = get_or_create_commerce_session(
                             db, org_id, phone_number, lead_id=lead_id
                         )
+                        # Write commerce_state directly on the whatsapp_sessions row
+                        # using (org_id, phone_number) — bypasses get_active_session
+                        # which filters out expired sessions. Also extend expires_at
+                        # to 24 hours so the session stays alive for the full
+                        # commerce flow regardless of the default 30-minute window.
+                        from datetime import datetime, timezone, timedelta
+                        _commerce_expires = (
+                            datetime.now(timezone.utc) + timedelta(hours=24)
+                        ).isoformat()
+
                         wa_session = triage_service.get_active_session(db, org_id, phone_number)
                         if not wa_session:
                             wa_session = triage_service.create_session(
                                 db=db, org_id=org_id, phone_number=phone_number
                             )
-                        # create_session returns None on 409 conflict (session already exists)
-                        # — fetch the existing session as fallback so the commerce_state
-                        # update below always has a valid session to write to.
+                        # create_session returns None on 409 conflict (session already
+                        # exists, possibly expired) — fetch as fallback.
                         if not wa_session:
                             wa_session = triage_service.get_active_session(db, org_id, phone_number)
 
@@ -1807,27 +1816,26 @@ def handle_lead_post_handoff_inbound(
                             commerce_session = add_to_cart(
                                 db, commerce_session, matched_product, variant_id, quantity=1
                             )
-                            if wa_session:
-                                db.table("whatsapp_sessions").update(
-                                    {"commerce_state": "commerce_cart"}
-                                ).eq("id", wa_session["id"]).execute()
-                                triage_service.update_session(
-                                    db, wa_session["id"], "active",
-                                    selected_action="commerce_entry",
-                                )
+                            # Write commerce_state directly by (org_id, phone_number)
+                            # so it works even if the session is expired. Also extend
+                            # expires_at to 24h to keep the session alive for checkout.
+                            db.table("whatsapp_sessions").update({
+                                "commerce_state": "commerce_cart",
+                                "session_state": "active",
+                                "selected_action": "commerce_entry",
+                                "expires_at": _commerce_expires,
+                            }).eq("org_id", org_id).eq("phone_number", phone_number).execute()
                             send_cart_summary(db, org_id, phone_number, commerce_session)
                         else:
                             # Multiple variants — ask user to choose
                             from app.services.whatsapp_service import send_variant_selection
-                            if wa_session:
-                                db.table("whatsapp_sessions").update({
-                                    "commerce_state": "commerce_variant_select",
-                                    "pending_product_id": str(matched_product.get("id", "")),
-                                }).eq("id", wa_session["id"]).execute()
-                                triage_service.update_session(
-                                    db, wa_session["id"], "active",
-                                    selected_action="commerce_entry",
-                                )
+                            db.table("whatsapp_sessions").update({
+                                "commerce_state": "commerce_variant_select",
+                                "pending_product_id": str(matched_product.get("id", "")),
+                                "session_state": "active",
+                                "selected_action": "commerce_entry",
+                                "expires_at": _commerce_expires,
+                            }).eq("org_id", org_id).eq("phone_number", phone_number).execute()
                             send_variant_selection(db, org_id, phone_number, matched_product)
 
                         logger.info(
