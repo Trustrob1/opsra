@@ -2161,6 +2161,7 @@ def send_product_list(
     phone_number: str,
     products: list,
     force_text_list: bool = False,
+    add_more_context: Optional[str] = None,
 ) -> bool:
     """
     SHOP-3 / COMM-1: Send WhatsApp product message.
@@ -2172,6 +2173,10 @@ def send_product_list(
     Falls back to the COMM-1 interactive button list if meta_catalog_id
     is not set OR force_text_list=True — used when the catalog is
     configured but rejected by Meta (e.g. test WABA, catalog not linked).
+
+    add_more_context: optional override for the body text — used when the
+    user taps "Add more" so the message acknowledges their existing cart
+    rather than repeating the first-time entry copy.
 
     Returns True if the message was sent successfully, False otherwise.
     S14 -- never raises.
@@ -2282,7 +2287,7 @@ def send_product_list(
                     "description": description,
                 }
 
-            # Fetch Shopify store domain for the full catalog link (sent only on explicit request)
+            # Fetch Shopify store domain for the browse link
             _shop_domain = None
             try:
                 _shop_r = (
@@ -2329,6 +2334,8 @@ def send_product_list(
                 "interactive": {
                     "type": "list",
                     "body": {"text": (
+                        add_more_context
+                        if add_more_context else
                         "Here's a selection of our popular products \ud83d\uded2\n\n"
                         "Tap any product to add it to your cart, or reply *all products* to see our full catalog."
                     )},
@@ -2344,8 +2351,6 @@ def send_product_list(
         logger.info("send_product_list: Meta response for %s: %s", phone_number, result)
 
         # Send a visible "Speak to Sales" button immediately below the product list.
-        # A list_reply buried inside a scrollable sheet is easy to miss — this button
-        # sits in the chat thread and is always visible without any scrolling.
         try:
             _call_meta_send(phone_id, {
                 "messaging_product": "whatsapp",

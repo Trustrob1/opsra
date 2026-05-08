@@ -1840,7 +1840,15 @@ def _handle_commerce_message(
             elif _is_add_more_intent(message, content):
                 products = _fetch_products(db, org_id)
                 db.table("whatsapp_sessions").update({"commerce_state": "commerce_browsing"}).eq("id", session["id"]).execute()
-                send_product_list(db, org_id, phone_number, products)
+                # Build a context-aware message so the user knows they're adding
+                # to an existing cart, not starting from scratch.
+                _cart_items = (commerce_session or {}).get("cart") or []
+                _item_count = len(_cart_items)
+                _add_more_body = (
+                    f"You have {_item_count} item{'s' if _item_count != 1 else ''} in your cart. "
+                    f"What else would you like to add? \ud83d\uded2"
+                )
+                send_product_list(db, org_id, phone_number, products, add_more_context=_add_more_body)
             else:
                 if commerce_session:
                     send_cart_summary(db, org_id, phone_number, commerce_session)
