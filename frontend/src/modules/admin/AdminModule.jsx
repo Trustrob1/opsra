@@ -43,6 +43,7 @@ import MessagingLimitsConfig   from './MessagingLimitsConfig'
 import LeadAssignmentConfig    from './LeadAssignmentConfig'
 import LeadFormConfig          from './LeadFormConfig'
 import GrowthDashboardConfig   from './GrowthDashboardConfig'
+import WASalesModeConfig       from './WASalesModeConfig'
 
 const TABS = [
   { id: 'users',            label: '👥 Users' },
@@ -66,6 +67,7 @@ const TABS = [
   { id: 'sales-system',     label: '🛒 Sales System' },
   { id: 'shopify',          label: '🛍️ Shopify' },
   { id: 'commerce',         label: '🛒 Commerce' },
+  { id: 'wa-sales-mode',    label: '🤖 WA Sales Mode' },
   { id: 'growth-config',    label: '📈 Growth Config' },
   { id: 'sales-log',        label: '💰 Sales Log' },
   { id: 'messaging-limits', label: '💬 Messaging Limits' },
@@ -219,6 +221,11 @@ export default function AdminModule({ user }) {
           <CommerceSettings />
         </div>
 
+        {/* COMM-2: WhatsApp Sales Mode */}
+        <div style={{ display: tab === 'wa-sales-mode' ? 'block' : 'none' }}>
+          <WASalesModeConfig />
+        </div>
+        
         {/* GPM-1D: Growth Config */}
         <div style={{ display: tab === 'growth-config' ? 'block' : 'none' }}>
           <GrowthConfig />

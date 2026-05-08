@@ -3318,3 +3318,103 @@ def update_growth_dashboard_config(
         new_value=new_config,
     )
     return ok(data=new_config, message="Dashboard configuration saved")
+
+class WhatsAppSalesModeUpdate(BaseModel):
+    """COMM-2: Update org whatsapp_sales_mode."""
+    mode: Literal["human", "bot", "ai_agent"]
+ 
+ 
+@router.get("/whatsapp-sales-mode")
+def get_whatsapp_sales_mode(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    COMM-2: Return org whatsapp_sales_mode. Defaults to 'human' if null.
+    All authenticated users may read (consistent with /sales-mode GET).
+    S1 — org_id from JWT. Pattern 28. Pattern 62.
+    """
+    result = (
+        db.table("organisations")
+        .select("whatsapp_sales_mode")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    mode = (data or {}).get("whatsapp_sales_mode") or "human"
+    return ok(data={"mode": mode})
+ 
+ 
+@router.patch("/whatsapp-sales-mode")
+def update_whatsapp_sales_mode(
+    payload: WhatsAppSalesModeUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    COMM-2: Set org whatsapp_sales_mode to 'human', 'bot', or 'ai_agent'.
+    Guard: switching to 'bot' or 'ai_agent' requires commerce_enabled = True
+           (i.e. Shopify connected + commerce toggled on).
+    RBAC: owner + ops_manager only.
+    S1 — org_id from JWT. Pattern 28. Pattern 62. S3 — Pydantic validated above.
+    Audit: writes to audit_logs.
+    """
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "FORBIDDEN",
+                "message": "Only owners and ops managers can update the WhatsApp sales mode.",
+            },
+        )
+ 
+    # Guard: bot and ai_agent modes require commerce to be enabled
+    if payload.mode in ("bot", "ai_agent"):
+        org_result = (
+            db.table("organisations")
+            .select("commerce_config, shopify_connected")
+            .eq("id", org["org_id"])
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else {}
+        org_data = org_data or {}
+ 
+        shopify_connected = org_data.get("shopify_connected", False)
+        commerce_config   = org_data.get("commerce_config") or {}
+        commerce_enabled  = commerce_config.get("enabled", False)
+ 
+        if not shopify_connected or not commerce_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "VALIDATION_ERROR",
+                    "message": (
+                        "Commerce must be enabled before switching to Bot or AI Agent mode. "
+                        "Connect Shopify and enable commerce on the Commerce tab first."
+                    ),
+                },
+            )
+ 
+    db.table("organisations").update({
+        "whatsapp_sales_mode": payload.mode,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+ 
+    write_audit_log(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        action="whatsapp_sales_mode.updated",
+        resource_type="organisation",
+        resource_id=org["org_id"],
+        new_value={"whatsapp_sales_mode": payload.mode},
+    )
+ 
+    return ok(data={"mode": payload.mode}, message="WhatsApp sales mode saved")

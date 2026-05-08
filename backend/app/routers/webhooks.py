@@ -465,6 +465,246 @@ def _handle_opt_keywords(
         logger.warning("_handle_opt_keywords: error processing keyword from %s: %s", sender_phone, exc)
         return False
 
+def _is_lead_pre_qualified(db, org_id: str, lead_id: str) -> bool:
+    """
+    PRE-QUAL: Returns True if the lead already has qualification data populated.
+    Reads the org's qualification_flow to find which lead fields it collects
+    (via map_to_lead_field). If any of those fields are already populated on
+    the lead, qualification bot is not needed.
+    Returns True also if no flow is configured (nothing to collect).
+    S14: returns False on any error — safe default is normal qualification.
+    """
+    try:
+        org_r = (
+            db.table("organisations")
+            .select("qualification_flow")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+
+        qualification_flow = (org_d or {}).get("qualification_flow")
+
+        # No flow configured → skip qualification
+        if not qualification_flow:
+            logger.info("[PRE-QUAL] no qualification_flow for org %s — skipping bot", org_id)
+            return True
+
+        questions = qualification_flow.get("questions") or []
+        mapped_fields = [
+            q.get("map_to_lead_field")
+            for q in questions
+            if q.get("map_to_lead_field")
+        ]
+
+        # No mapped fields → nothing to collect → skip qualification
+        if not mapped_fields:
+            logger.info("[PRE-QUAL] no mapped fields in flow for org %s — skipping bot", org_id)
+            return True
+
+        # Check lead — if any mapped field is already populated, pre-qualified
+        select_fields = ", ".join(set(mapped_fields))
+        lead_r = (
+            db.table("leads")
+            .select(select_fields)
+            .eq("id", lead_id)
+            .maybe_single()
+            .execute()
+        )
+        lead_d = lead_r.data
+        if isinstance(lead_d, list):
+            lead_d = lead_d[0] if lead_d else None
+        lead_d = lead_d or {}
+
+        for field in mapped_fields:
+            value = lead_d.get(field)
+            if value and str(value).strip():
+                logger.info(
+                    "[PRE-QUAL] lead %s pre-qualified — field '%s' already populated",
+                    lead_id, field,
+                )
+                return True
+
+        logger.info(
+            "[PRE-QUAL] lead %s NOT pre-qualified — none of %s populated",
+            lead_id, mapped_fields,
+        )
+        return False
+
+    except Exception as exc:
+        logger.warning("_is_lead_pre_qualified failed lead=%s: %s", lead_id, exc)
+        return False
+
+def _handle_pre_qualified_lead(
+    db,
+    org_id: str,
+    lead_id: str,
+    phone_number: str,
+    contact_name: Optional[str],
+    assigned_to: Optional[str],
+    now_ts: str,
+) -> None:
+    """
+    PRE-QUAL: Handle a lead that is already pre-qualified.
+    1. Send a warm greeting
+    2. Notify assigned rep (owner fallback)
+    3. If whatsapp_sales_mode == 'bot' → go straight to product list
+    4. Mark qualification as complete so this doesn't fire again on repeat messages
+    S14: never raises.
+    """
+    try:
+        from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+
+        # Fetch wa_sales_mode and shopify status
+        org_r = (
+            db.table("organisations")
+            .select("whatsapp_sales_mode, shopify_connected")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        org_d = org_d or {}
+
+        wa_sales_mode = org_d.get("whatsapp_sales_mode", "human")
+        shopify_connected = org_d.get("shopify_connected", False)
+
+        # Get lead name for personalised greeting
+        lead_name = contact_name
+        if not lead_name:
+            try:
+                lead_r = (
+                    db.table("leads")
+                    .select("full_name")
+                    .eq("id", lead_id)
+                    .maybe_single()
+                    .execute()
+                )
+                lead_d = lead_r.data
+                if isinstance(lead_d, list):
+                    lead_d = lead_d[0] if lead_d else None
+                lead_name = (lead_d or {}).get("full_name") or phone_number
+            except Exception:
+                lead_name = phone_number
+
+        first_name = (lead_name or "").split()[0] if lead_name else ""
+        greeting = (
+            f"Hi {first_name}! 👋 Thanks for reaching out. "
+            "A member of our team will be in touch with you shortly."
+            if first_name else
+            "Hi there! 👋 Thanks for reaching out. "
+            "A member of our team will be in touch with you shortly."
+        )
+
+        # 1 — Send warm greeting
+        if phone_id:
+            try:
+                _call_meta_send(phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to": phone_number,
+                    "type": "text",
+                    "text": {"body": greeting},
+                }, token=access_token)
+            except Exception as send_exc:
+                logger.warning("_handle_pre_qualified_lead: greeting send failed: %s", send_exc)
+
+        # 2 — Notify assigned rep (owner fallback)
+        notify_user_id = assigned_to
+        if not notify_user_id:
+            try:
+                users_r = (
+                    db.table("users")
+                    .select("id, roles(template)")
+                    .eq("org_id", org_id)
+                    .execute()
+                )
+                for u in (users_r.data or []):
+                    if (u.get("roles") or {}).get("template", "").lower() == "owner":
+                        notify_user_id = u["id"]
+                        break
+            except Exception:
+                pass
+
+        if notify_user_id:
+            try:
+                db.table("notifications").insert({
+                    "org_id":        org_id,
+                    "user_id":       notify_user_id,
+                    "type":          "new_lead",
+                    "title":         f"Pre-qualified lead messaged: {lead_name}",
+                    "body":          (
+                        f"{lead_name} came in via a Lead Ad and has now messaged on WhatsApp. "
+                        "Their details are already on file — no qualification needed."
+                    ),
+                    "resource_type": "lead",
+                    "resource_id":   lead_id,
+                    "is_read":       False,
+                    "created_at":    now_ts,
+                }).execute()
+            except Exception as notif_exc:
+                logger.warning("_handle_pre_qualified_lead: notification failed: %s", notif_exc)
+
+        # 3 — If bot mode and Shopify connected → go straight to product list
+        if wa_sales_mode == "bot" and shopify_connected and phone_id:
+            try:
+                from app.services.commerce_service import get_or_create_commerce_session
+                from app.services.whatsapp_service import send_product_list
+
+                session = triage_service.get_or_create_session(db, org_id, phone_number)
+                if session:
+                    get_or_create_commerce_session(db, org_id, phone_number, lead_id=lead_id)
+                    products_r = (
+                        db.table("products")
+                        .select("*")
+                        .eq("org_id", org_id)
+                        .eq("is_active", True)
+                        .order("title")
+                        .execute()
+                    )
+                    products = products_r.data if isinstance(products_r.data, list) else []
+                    if products:
+                        send_product_list(db, org_id, phone_number, products)
+                        db.table("whatsapp_sessions").update(
+                            {"commerce_state": "commerce_browsing"}
+                        ).eq("id", session["id"]).execute()
+            except Exception as commerce_exc:
+                logger.warning(
+                    "_handle_pre_qualified_lead: commerce entry failed org=%s phone=%s: %s",
+                    org_id, phone_number, commerce_exc,
+                )
+
+        # 4 — Mark qualification complete so this doesn't fire again on repeat messages
+        try:
+            db.table("lead_qualification_sessions").insert({
+                "org_id":                 org_id,
+                "lead_id":                lead_id,
+                "ai_active":              False,
+                "stage":                  "handed_off",
+                "current_question_index": 0,
+                "answers":                {"pre_qualified": True},
+                "created_at":             now_ts,
+                "last_message_at":        now_ts,
+                "handed_off_at":          now_ts,
+                "handoff_summary":        "Lead pre-qualified via Lead Ad form — qualification bot skipped.",
+            }).execute()
+        except Exception as sess_exc:
+            logger.warning("_handle_pre_qualified_lead: session mark failed: %s", sess_exc)
+
+        logger.info(
+            "[PRE-QUAL] handled pre-qualified lead=%s org=%s wa_sales_mode=%s",
+            lead_id, org_id, wa_sales_mode,
+        )
+
+    except Exception as exc:
+        logger.warning("_handle_pre_qualified_lead failed lead=%s: %s", lead_id, exc)
 
 def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_id: str) -> None:
     from datetime import datetime, timezone, timedelta
@@ -553,7 +793,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
         org_behavior_result = (
             db.table("organisations")
-            .select("unknown_contact_behavior, whatsapp_triage_config, whatsapp_phone_id, sales_mode")
+            .select("unknown_contact_behavior, whatsapp_triage_config, whatsapp_phone_id, sales_mode, whatsapp_sales_mode, shopify_connected")
             .eq("id", org_id)
             .maybe_single()
             .execute()
@@ -564,20 +804,11 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         behavior = (org_behavior or {}).get("unknown_contact_behavior", "triage_first")
         triage_config = (org_behavior or {}).get("whatsapp_triage_config")
         sales_mode = (org_behavior or {}).get("sales_mode", "consultative")
-        logger.info("[WH] behavior=%s sales_mode=%s", behavior, sales_mode)
+        wa_sales_mode = (org_behavior or {}).get("whatsapp_sales_mode", "human")
+        logger.info("[WH] behavior=%s sales_mode=%s wa_sales_mode=%s", behavior, sales_mode, wa_sales_mode)
 
-        if sales_mode == "transactional":
-            _shopify_r = (
-                db.table("organisations")
-                .select("shopify_connected")
-                .eq("id", org_id)
-                .maybe_single()
-                .execute()
-            )
-            _shopify_d = _shopify_r.data
-            if isinstance(_shopify_d, list):
-                _shopify_d = _shopify_d[0] if _shopify_d else None
-            _shopify_ok = (_shopify_d or {}).get("shopify_connected", False)
+        if sales_mode == "transactional" or wa_sales_mode == "bot":
+            _shopify_ok = (org_behavior or {}).get("shopify_connected", False)
             if _shopify_ok:
                 logger.info("[WH] transactional mode — sending to commerce entry")
                 session = triage_service.get_or_create_session(db, org_id, sender_phone)
@@ -757,6 +988,27 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             ai_is_paused = False
 
     if lead_id and not customer_id and not ai_is_paused:
+        # PRE-QUAL: Skip qualification bot if lead already has data from a Lead Ad form
+        try:
+            _any_qual = (
+                db.table("lead_qualification_sessions")
+                .select("id")
+                .eq("lead_id", lead_id)
+                .limit(1)
+                .execute()
+            )
+            _has_any_qual_session = bool(_any_qual.data)
+        except Exception:
+            _has_any_qual_session = False
+
+        if not _has_any_qual_session and _is_lead_pre_qualified(db, org_id, lead_id):
+            _handle_pre_qualified_lead(
+                db=db, org_id=org_id, lead_id=lead_id,
+                phone_number=sender_phone, contact_name=contact_name,
+                assigned_to=assigned_to, now_ts=now_ts,
+            )
+            return
+
         try:
             _handle_structured_qualification_turn(
                 db=db, org_id=org_id, lead_id=lead_id,

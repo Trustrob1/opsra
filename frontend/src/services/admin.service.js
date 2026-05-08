@@ -413,3 +413,12 @@ export const getGrowthDashboardConfig = () =>
 export const updateGrowthDashboardConfig = (payload) =>
   axios.patch(`${BASE}/api/v1/admin/growth-dashboard-config`, payload, { headers: _h() })
     .then(r => r.data?.data)
+
+export const getWASalesMode = () =>
+  axios.get(`${BASE}/api/v1/admin/whatsapp-sales-mode`, { headers: _h() })
+    .then(r => r.data.data)
+ 
+export const updateWASalesMode = (mode) =>
+  // mode: 'human' | 'bot' | 'ai_agent'
+  axios.patch(`${BASE}/api/v1/admin/whatsapp-sales-mode`, { mode }, { headers: _h() })
+    .then(r => r.data.data)
