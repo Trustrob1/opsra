@@ -1688,7 +1688,10 @@ def handle_lead_post_handoff_inbound(
         # Handles the standalone "Speak to Sales" button that appears below the
         # product list. This is a button_reply (interactive), not a text message,
         # so it must be caught here before the msg_type != "text" guard below.
-        if msg_type == "interactive" and content in ("talk_sales", "💬 Speak to Sales"):
+        if msg_type == "interactive" and content in (
+            "talk_sales", "💬 Speak to Sales", "💬 Talk to Sales",
+            "Speak to Sales", "Talk to Sales",
+        ):
             try:
                 from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
                 _ts_phone_id, _ts_token, _ = _get_org_wa_credentials(db, org_id)
@@ -1791,6 +1794,11 @@ def handle_lead_post_handoff_inbound(
                             wa_session = triage_service.create_session(
                                 db=db, org_id=org_id, phone_number=phone_number
                             )
+                        # create_session returns None on 409 conflict (session already exists)
+                        # — fetch the existing session as fallback so the commerce_state
+                        # update below always has a valid session to write to.
+                        if not wa_session:
+                            wa_session = triage_service.get_active_session(db, org_id, phone_number)
 
                         variants = matched_product.get("variants") or []
                         if len(variants) <= 1:
