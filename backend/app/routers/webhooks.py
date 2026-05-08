@@ -399,8 +399,8 @@ def _lookup_org_by_phone_number_id(db, phone_number_id: str) -> Optional[str]:
 
 
 _OPT_OUT_KEYWORDS: frozenset = frozenset({
-    "stop", "unsubscribe", "optout", "opt out", "opt-out",
-    "cancel", "quit", "remove me",
+    "unsubscribe", "optout", "opt out", "opt-out",
+    "quit", "remove me",
 })
 _OPT_IN_KEYWORDS: frozenset = frozenset({
     "start", "subscribe", "optin", "opt in",
@@ -1874,9 +1874,14 @@ def _handle_commerce_message(
                     checkout_url = generate_shopify_checkout(db, org_id, commerce_session)
                     send_checkout_link(db, org_id, phone_number, checkout_url, commerce_config)
             else:
+                # Any other message — resend existing link as reminder
                 existing_url = (commerce_session or {}).get("checkout_url") or ""
                 if existing_url:
-                    send_checkout_link(db, org_id, phone_number, existing_url, commerce_config)
+                    _reminder_config = {
+                        **(commerce_config or {}),
+                        "checkout_message": "You have a pending checkout! Complete your order here 👇",
+                    }
+                    send_checkout_link(db, org_id, phone_number, existing_url, _reminder_config)
 
     except Exception as exc:
         logger.warning(
