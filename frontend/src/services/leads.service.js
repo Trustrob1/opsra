@@ -27,11 +27,14 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-/** On 401 — clear auth so the app shows the login screen */
+/** On 401 — retry once (handles cold starts / transient pool exhaustion),
+ *  then clear auth so the app shows the login screen */
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
+  async (err) => {
+    if (err.response?.status === 401 && !err.config._retried) {
+      err.config._retried = true
+      try { return await api(err.config) } catch {}
       useAuthStore.getState().clearAuth()
     }
     return Promise.reject(err)

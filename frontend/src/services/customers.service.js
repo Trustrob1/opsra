@@ -29,8 +29,10 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
+  async (err) => {
+    if (err.response?.status === 401 && !err.config._retried) {
+      err.config._retried = true
+      try { return await api(err.config) } catch {}
       useAuthStore.getState().clearAuth()
     }
     return Promise.reject(err)
