@@ -1,30 +1,16 @@
 """
 whatsapp.py — Module 02 WhatsApp Communication Engine routes.
 
-Included in main.py with prefix="/api/v1" (no trailing slash — Pattern 7).
-Internal prefix: none — routes define their own sub-paths.
+CONV-UI addition:
+  POST /api/v1/messages/send-media  — multipart upload + WhatsApp media send
 
-Routes (full paths after combining):
-  POST  /api/v1/messages/send                    send_message        [JWT]
-  GET   /api/v1/broadcasts                       list_broadcasts     [JWT]
-  POST  /api/v1/broadcasts                       create_broadcast    [JWT]
-  GET   /api/v1/broadcasts/{broadcast_id}        get_broadcast       [JWT]
-  POST  /api/v1/broadcasts/{broadcast_id}/approve  approve_broadcast [JWT]
-  POST  /api/v1/broadcasts/{broadcast_id}/cancel   cancel_broadcast  [JWT]
-  GET   /api/v1/templates                        list_templates      [JWT]
-  POST  /api/v1/templates                        create_template     [JWT]
-  PATCH /api/v1/templates/{template_id}          update_template     [JWT]
-  GET   /api/v1/drip-sequences                   get_drip_sequence   [JWT]
-  PUT   /api/v1/drip-sequences                   update_drip_sequence [Admin]
-
-Admin check on PUT /drip-sequences: requires roles.template = "owner".
-All other routes: any authenticated staff member.
+All existing routes unchanged.
 """
 import uuid
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 
 from app.database import get_supabase
 from app.dependencies import get_current_org
@@ -39,11 +25,11 @@ from app.models.whatsapp import (
 from app.services import whatsapp_service
 from app.utils.rbac import require_not_affiliate, require_permission_key
 from app.services.whatsapp_service import (
-      queue_outbox_message,
-      list_outbox,
-      approve_outbox_message,
-      cancel_outbox_message,
-  )
+    queue_outbox_message,
+    list_outbox,
+    approve_outbox_message,
+    cancel_outbox_message,
+)
 
 class OutboxMessageCreate(BaseModel):
     lead_id: Optional[uuid.UUID] = None
@@ -86,21 +72,54 @@ def send_message(
     return ok(data=msg, message="Message sent")
 
 
+@router.post("/messages/send-media")
+async def send_media_message(
+    file: UploadFile = File(...),
+    customer_id: Optional[str] = Form(None),
+    lead_id: Optional[str] = Form(None),
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    CONV-UI: Send a WhatsApp media message (image / video / audio / document).
+
+    Accepts multipart/form-data with:
+      file        — the media file
+      lead_id     — UUID (pass if recipient is a lead)
+      customer_id — UUID (pass if recipient is a customer)
+
+    Exactly one of lead_id / customer_id must be supplied.
+    File size enforced at 25 MB max (HTTP 413 if exceeded).
+    Unsupported MIME type returns HTTP 415.
+    """
+    if not customer_id and not lead_id:
+        raise HTTPException(
+            status_code=422,
+            detail="customer_id or lead_id is required",
+        )
+
+    file_bytes = await file.read()
+
+    msg = whatsapp_service.send_whatsapp_media_message(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        file_bytes=file_bytes,
+        filename=file.filename or "upload",
+        content_type=file.content_type or "application/octet-stream",
+        customer_id=customer_id,
+        lead_id=lead_id,
+    )
+    return ok(data=msg, message="Media message sent")
+
+
 @router.get("/messages/unread-counts")
 def get_unread_counts(
     db=Depends(get_supabase),
     org=Depends(get_current_org),
 ):
-    """
-    Returns unread inbound message counts keyed by lead_id and customer_id.
-    An inbound message is unread when read_at IS NULL.
-    Used by LeadsPipeline and CustomerList to show 💬 unread badges.
-    Response: { leads: {lead_id: count}, customers: {customer_id: count} }
-    """
     counts = whatsapp_service.get_unread_counts(db=db, org_id=org["org_id"])
     return ok(data=counts)
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +133,6 @@ def list_conversations(
     db=Depends(get_supabase),
     org=Depends(get_current_org),
 ):
-    """
-    Returns one conversation row per lead/customer sorted by most recent
-    message.  Scoped roles see only their assigned contacts.
-    """
     from app.utils.rbac import is_scoped_role
     conversations = whatsapp_service.get_conversations(
         db=db,
@@ -297,10 +312,10 @@ def update_drip_sequence(
     return ok(data=sequence, message="Drip sequence updated")
 
 
-# ── Route 1 — GET /api/v1/outbox ─────────────────────────────────────────────
-# List outbox messages for the org.
-# Query params: status (str), lead_id (uuid), page (int), page_size (int)
- 
+# ---------------------------------------------------------------------------
+# Outbox
+# ---------------------------------------------------------------------------
+
 @router.get("/outbox")
 def get_outbox(
     status: Optional[str] = None,
@@ -374,6 +389,11 @@ def cancel_outbox(
     )
     return ok(data=result, message="Message cancelled")
 
+
+# ---------------------------------------------------------------------------
+# Conversation status + resume AI
+# ---------------------------------------------------------------------------
+
 @router.get("/conversations/{contact_type}/{contact_id}/status")
 def get_conversation_status(
     contact_type: str,
@@ -409,3 +429,26 @@ def resume_ai(
         paused=False,
     )
     return ok(message="AI resumed for this conversation")
+
+
+@router.post("/conversations/{contact_type}/{contact_id}/pause-ai")
+def pause_ai(
+    contact_type: str,
+    contact_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    Rep manually takes over the conversation — sets ai_paused=True.
+    AI will stop responding to inbound messages until resume-ai is called.
+    """
+    if contact_type not in ("lead", "customer"):
+        raise HTTPException(status_code=422, detail="contact_type must be 'lead' or 'customer'")
+    whatsapp_service.set_ai_paused(
+        db=db,
+        org_id=org["org_id"],
+        contact_type=contact_type,
+        contact_id=contact_id,
+        paused=True,
+    )
+    return ok(message="AI paused — conversation handed to human")

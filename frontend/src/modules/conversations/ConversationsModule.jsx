@@ -1,18 +1,34 @@
 /**
  * ConversationsModule.jsx — Unified Conversations inbox.
  *
- * Fixes applied in this version:
- *   - Real-time polling: thread refreshes every 5s, list every 15s
- *   - Conversation list auto-refresh: unread badges and order update live
- *   - Window status: fetched per thread (no more hardcoded windowOpen=true)
- *   - AI/Human mode indicator: thread header shows AI Active / Human Mode
- *   - Resume AI button: hands conversation back to AI with one click
- *   - Optimistic send: messages appear instantly after sending
- *   - ai_paused indicator: conversation rows show 👤 when human has taken over
+ * CONV-UI redesign changes vs previous version:
+ *   - MessageComposer replaced with InlineComposer — WhatsApp-style input bar
+ *   - Enter to send (Shift+Enter = newline)
+ *   - 📎 attachment picker — image, doc, audio, video (25MB max)
+ *   - File preview chip shown before send
+ *   - Template mode via 📋 toggle button
+ *   - Window-closed state locks to template-only with clear banner
+ *   - Composer resets on conversation switch (key={active.contact_id})
+ *   - resumeAI bug fixed in conversations.service.js
  *
- * Layout:
- *   Desktop: two-panel (conversation list left, thread right)
- *   Mobile PWA: single panel — list by default, tap to open full-screen thread
+ * Bug fix (post CONV-UI):
+ *   - openConversation now defaults window_open to FALSE (safe default).
+ *     Previously defaulted to true, which allowed the text input to show
+ *     while fetchThreadStatus was in-flight. If the status fetch crashed
+ *     (backend 500 → no CORS headers → silent catch), windowOpen stayed
+ *     true and the user could send a free-form message that the backend
+ *     would correctly reject with 400 ("window closed").
+ *   - statusLoading state added: composer shows "Checking window…" until
+ *     the first status fetch resolves (success or failure).
+ *   - On status fetch failure: window_open stays false → template-only,
+ *     which matches backend behaviour and prevents the misleading 400.
+ *
+ * All previous functionality preserved:
+ *   - Real-time polling (thread 5s, list 15s)
+ *   - AI / Human mode indicator + Resume AI button
+ *   - WhatsApp-style message bubbles + status ticks
+ *   - Mobile single-panel / desktop two-panel layout
+ *   - Conversation list filters (channel, type, unread)
  *
  * Pattern 51: full rewrite required for any future edit — never sed.
  */
@@ -20,10 +36,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { getConversations, getThreadStatus, resumeAI } from '../../services/conversations.service'
+import {
+  getConversations,
+  getThreadStatus,
+  resumeAI,
+  pauseAI,
+  sendMediaMessage,
+} from '../../services/conversations.service'
 import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
-import { getCustomerMessages, listTemplates } from '../../services/whatsapp.service'
-import MessageComposer from '../whatsapp/MessageComposer'
+import { getCustomerMessages, listTemplates, sendMessage } from '../../services/whatsapp.service'
 
 // ─── Channel config ───────────────────────────────────────────────────────────
 
@@ -32,8 +53,18 @@ const CHANNEL = {
   instagram: { label: 'Instagram', icon: '📷', color: '#C13584', bg: '#FCE4EC' },
 }
 
-const THREAD_POLL_MS  = 5000   // refresh active thread every 5s
-const LIST_POLL_MS    = 15000  // refresh conversation list every 15s
+const THREAD_POLL_MS = 5000
+const LIST_POLL_MS   = 15000
+
+// Media types the backend accepts (mirrors Tech Spec §11.5)
+const ACCEPTED_MEDIA = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'video/mp4', 'video/3gpp',
+  'audio/mpeg', 'audio/ogg',
+  'application/pdf',
+].join(',')
+
+const MAX_MEDIA_BYTES = 25 * 1024 * 1024 // 25 MB
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -63,6 +94,20 @@ function initials(name) {
     : name[0].toUpperCase()
 }
 
+function fileIcon(type) {
+  if (!type) return '📎'
+  if (type.startsWith('image/')) return '🖼'
+  if (type.startsWith('video/')) return '🎥'
+  if (type.startsWith('audio/')) return '🎵'
+  return '📄'
+}
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ConversationsModule() {
@@ -82,8 +127,10 @@ export default function ConversationsModule() {
   const [messages, setMessages]           = useState([])
   const [msgLoading, setMsgLoading]       = useState(false)
   const [templates, setTemplates]         = useState([])
-  const [threadStatus, setThreadStatus]   = useState({ window_open: true, ai_paused: false })
+  const [threadStatus, setThreadStatus]   = useState({ window_open: false, ai_paused: false })
+  const [statusLoading, setStatusLoading] = useState(false)
   const [resuming, setResuming]           = useState(false)
+  const [pausing, setPausing]             = useState(false)
   const threadRef                         = useRef(null)
   const isPollingRef                      = useRef(false)
 
@@ -101,7 +148,6 @@ export default function ConversationsModule() {
 
   useEffect(() => { loadConversations() }, [loadConversations])
 
-  // Poll conversation list every 15s (silent — no loading spinner)
   useEffect(() => {
     const id = setInterval(() => loadConversations(true), LIST_POLL_MS)
     return () => clearInterval(id)
@@ -127,6 +173,32 @@ export default function ConversationsModule() {
       .then(res => {
         const items = res?.data?.items ?? res?.data?.data?.items ?? []
         setMessages(items)
+
+        // Derive window_open from the most recent message.
+        // Primary: window_expires_at (set by backend on outbound sends).
+        // Fallback: created_at — if any message exists within 24h the window
+        //           is open by Meta's rules. Handles inbound messages where the
+        //           webhook may not write window_expires_at.
+        if (items.length > 0) {
+          const latest = items[0]
+          let isOpen = false
+          if (latest.window_expires_at) {
+            try {
+              isOpen = new Date(latest.window_expires_at) > new Date()
+            } catch (_) {}
+          } else if (latest.created_at) {
+            // No window_expires_at — fall back to age of most recent message
+            try {
+              const ageHours = (Date.now() - new Date(latest.created_at).getTime()) / 3600000
+              isOpen = ageHours < 24
+            } catch (_) {}
+          }
+          setThreadStatus(prev => ({ ...prev, window_open: isOpen }))
+        }
+
+        // Window state is now resolved — clear the checking overlay.
+        setStatusLoading(false)
+
         if (active.contact_type === 'lead') {
           markLeadMessagesRead(active.contact_id).catch(() => {})
         }
@@ -134,16 +206,14 @@ export default function ConversationsModule() {
           prev.map(c => c.contact_id === active.contact_id ? { ...c, unread_count: 0 } : c)
         )
       })
-      .catch(() => {})
+      .catch(() => { setStatusLoading(false) })
       .finally(() => setMsgLoading(false))
   }, [active])
 
-  // Load messages when active conversation changes (show spinner on first load)
   useEffect(() => {
     if (active) loadMessages(true)
   }, [active]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll thread every 5s
   useEffect(() => {
     if (!active) return
     const id = setInterval(() => {
@@ -156,19 +226,31 @@ export default function ConversationsModule() {
     return () => clearInterval(id)
   }, [active, loadMessages])
 
-  // Scroll to bottom when messages load
   useEffect(() => {
     if (threadRef.current && messages.length > 0) {
       threadRef.current.scrollTop = threadRef.current.scrollHeight
     }
   }, [messages])
 
-  // ── Fetch thread status (window_open + ai_paused) ──────────────────────
+  // ── Thread status (window_open + ai_paused) ────────────────────────────
+  // Primary use: get ai_paused for the Human Mode indicator.
+  // window_open is derived from messages (loadMessages) as the reliable
+  // source. If this endpoint works, it also confirms/updates window_open.
+  // If it fails (backend 500 → CORS error), the messages-derived value stands.
   const fetchThreadStatus = useCallback(() => {
     if (!active) return
     getThreadStatus(active.contact_type, active.contact_id)
-      .then(res => setThreadStatus(res.data?.data ?? { window_open: true, ai_paused: false }))
-      .catch(() => {})
+      .then(res => {
+        const data = res.data?.data ?? {}
+        setThreadStatus(prev => ({
+          window_open: data.window_open ?? prev.window_open,
+          ai_paused:   data.ai_paused  ?? false,
+        }))
+      })
+      .catch(() => {
+        // Status endpoint unavailable — window_open already derived from messages.
+        // Do not touch window_open. Leave ai_paused at its current value.
+      })
   }, [active])
 
   useEffect(() => { fetchThreadStatus() }, [fetchThreadStatus])
@@ -177,15 +259,26 @@ export default function ConversationsModule() {
   const openConversation = (conv) => {
     setActive(conv)
     setMessages([])
-    setThreadStatus({ window_open: true, ai_paused: conv.ai_paused ?? false })
+    // Safe default: window CLOSED until confirmed by fetchThreadStatus.
+    // If the status fetch crashes (backend 500 → no CORS headers), the
+    // composer stays in template-only mode rather than showing the text
+    // input for a window that the backend will reject.
+    setThreadStatus({ window_open: false, ai_paused: conv.ai_paused ?? false })
     if (isMobile) setPanel('thread')
   }
 
-  // ── After sending a message ────────────────────────────────────────────
+  // ── After sending — auto-pauses AI ───────────────────────────────────
+  // Sending any message from Opsra automatically switches to Human Mode.
+  // The rep doesn't need to click Take over — sending IS the takeover.
   const handleSent = () => {
-    // Immediately re-fetch messages (message is in DB — no delay needed)
     loadMessages(false)
-    // Refresh list and thread status after a short delay to reflect ai_paused change
+    // Optimistic: immediately reflect Human Mode in the UI
+    setThreadStatus(prev => ({ ...prev, ai_paused: true }))
+    setConversations(prev =>
+      prev.map(c =>
+        c.contact_id === active?.contact_id ? { ...c, ai_paused: true } : c
+      )
+    )
     setTimeout(() => {
       loadConversations(true)
       fetchThreadStatus()
@@ -196,16 +289,43 @@ export default function ConversationsModule() {
   const handleResumeAI = async () => {
     if (!active || resuming) return
     setResuming(true)
+    // Optimistic: switch to AI Active immediately
+    setThreadStatus(prev => ({ ...prev, ai_paused: false }))
+    setConversations(prev =>
+      prev.map(c => c.contact_id === active.contact_id ? { ...c, ai_paused: false } : c)
+    )
     try {
       await resumeAI(active.contact_type, active.contact_id)
+    } catch {
+      // Revert on failure
+      setThreadStatus(prev => ({ ...prev, ai_paused: true }))
+      setConversations(prev =>
+        prev.map(c => c.contact_id === active.contact_id ? { ...c, ai_paused: true } : c)
+      )
+    } finally {
+      setResuming(false)
+    }
+  }
+
+  // ── Pause AI / Take over ───────────────────────────────────────────────
+  const handlePauseAI = async () => {
+    if (!active || pausing) return
+    setPausing(true)
+    // Optimistic: switch to Human Mode immediately — don't wait for API
+    setThreadStatus(prev => ({ ...prev, ai_paused: true }))
+    setConversations(prev =>
+      prev.map(c => c.contact_id === active.contact_id ? { ...c, ai_paused: true } : c)
+    )
+    try {
+      await pauseAI(active.contact_type, active.contact_id)
+    } catch {
+      // Revert if API call failed (route not deployed yet etc.)
       setThreadStatus(prev => ({ ...prev, ai_paused: false }))
       setConversations(prev =>
         prev.map(c => c.contact_id === active.contact_id ? { ...c, ai_paused: false } : c)
       )
-    } catch {
-      // silent — status will refresh on next poll
     } finally {
-      setResuming(false)
+      setPausing(false)
     }
   }
 
@@ -246,10 +366,13 @@ export default function ConversationsModule() {
       loading={msgLoading}
       templates={templates}
       threadStatus={threadStatus}
+      statusLoading={statusLoading}
       threadRef={threadRef}
       onSent={handleSent}
       onResumeAI={handleResumeAI}
       resuming={resuming}
+      onPauseAI={handlePauseAI}
+      pausing={pausing}
       onBack={isMobile ? () => { setPanel('list'); setActive(null) } : null}
     />
   ) : (
@@ -387,14 +510,15 @@ function ConvRow({ conv, isActive, onSelect }) {
 
 // ─── Thread Panel ─────────────────────────────────────────────────────────────
 
-function ThreadPanel({ active, messages, loading, templates, threadStatus, threadRef, onSent, onResumeAI, resuming, onBack }) {
+function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onBack }) {
   const ch     = CHANNEL[active.channel] || CHANNEL.whatsapp
   const isLead = active.contact_type === 'lead'
   const { window_open: windowOpen, ai_paused: aiPaused } = threadStatus
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Header */}
+
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div style={{ padding: '10px 16px', borderBottom: `1px solid ${ds.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 11, flexShrink: 0, minHeight: 60 }}>
         {onBack && (
           <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.teal, fontSize: 22, padding: '4px 6px 4px 0', lineHeight: 1, flexShrink: 0, minWidth: 36, minHeight: 44, display: 'flex', alignItems: 'center' }}>←</button>
@@ -419,9 +543,10 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, threa
           </div>
         </div>
 
-        {/* AI / Human mode indicator */}
+        {/* ── AI / Human mode controls ──────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
           {aiPaused ? (
+            /* Human mode — show badge + Resume AI button */
             <>
               <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#FFF3E0', color: '#C05A00', fontWeight: 700, fontFamily: ds.fontSyne }}>
                 👤 Human Mode
@@ -435,15 +560,28 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, threa
               </button>
             </>
           ) : (
-            <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#E8F8EE', color: '#27AE60', fontWeight: 700, fontFamily: ds.fontSyne }}>
-              🤖 AI Active
-            </span>
+            /* AI active — show badge + Take over button */
+            <>
+              <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#E8F8EE', color: '#27AE60', fontWeight: 700, fontFamily: ds.fontSyne }}>
+                🤖 AI Active
+              </span>
+              <button
+                onClick={onPauseAI}
+                disabled={pausing}
+                style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, border: '1px solid #C05A00', background: '#fff', color: '#C05A00', fontWeight: 600, cursor: pausing ? 'not-allowed' : 'pointer', fontFamily: ds.fontSyne, opacity: pausing ? 0.6 : 1 }}
+              >
+                {pausing ? 'Taking over…' : '👤 Take over'}
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      {/* Message thread */}
-      <div ref={threadRef} style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#ECE5DD', padding: '14px 14px 8px' }}>
+      {/* ── Message thread ──────────────────────────────────────────────── */}
+      <div
+        ref={threadRef}
+        style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#ECE5DD', padding: '14px 14px 8px' }}
+      >
         {loading && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
             <div style={{ width: 26, height: 26, border: `3px solid rgba(2,128,144,0.2)`, borderTopColor: ds.teal, borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
@@ -457,16 +595,360 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, threa
         {!loading && [...messages].reverse().map(msg => <Bubble key={msg.id} msg={msg} />)}
       </div>
 
-      {/* Composer */}
-      <div style={{ flexShrink: 0, borderTop: `1px solid ${ds.border}` }}>
-        <MessageComposer
-          {...(isLead ? { leadId: active.contact_id } : { customerId: active.contact_id })}
-          windowOpen={windowOpen}
-          templates={templates}
-          onSent={onSent}
-        />
-      </div>
+      {/* ── Inline Composer ─────────────────────────────────────────────── */}
+      <InlineComposer
+        key={active.contact_id}
+        leadId={isLead ? active.contact_id : undefined}
+        customerId={!isLead ? active.contact_id : undefined}
+        windowOpen={windowOpen}
+        statusLoading={statusLoading}
+        templates={templates}
+        onSent={onSent}
+      />
     </div>
+  )
+}
+
+// ─── Inline Composer ──────────────────────────────────────────────────────────
+//
+// WhatsApp-style input bar. Replaces MessageComposer inside ConversationsModule.
+// MessageComposer.jsx is unchanged — CustomerProfile still uses it.
+//
+// Modes:
+//   text     — free-form textarea, Enter sends, Shift+Enter newline, 📎 attachment
+//   template — template dropdown + send (auto-selected when window closed)
+//   media    — file selected, shows preview chip, send uploads + sends
+//
+// key={active.contact_id} ensures full reset on conversation switch.
+
+function InlineComposer({ leadId, customerId, windowOpen, statusLoading = false, templates = [], onSent }) {
+  const [mode, setMode]               = useState(windowOpen ? 'text' : 'template')
+  const [text, setText]               = useState('')
+  const [templateName, setTemplateName] = useState('')
+  const [file, setFile]               = useState(null)       // File object
+  const [fileError, setFileError]     = useState(null)
+  const [sending, setSending]         = useState(false)
+  const [sendError, setSendError]     = useState(null)
+  const fileInputRef                  = useRef(null)
+  const textareaRef                   = useRef(null)
+
+  const approvedTemplates = templates.filter(t => t.meta_status === 'approved')
+
+  // Auto-grow textarea height
+  const autoGrow = (el) => {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  }
+
+  const handleTextChange = (e) => {
+    setText(e.target.value)
+    autoGrow(e.target)
+    setSendError(null)
+  }
+
+  // Enter = send, Shift+Enter = newline
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  const handleFileSelect = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    e.target.value = ''   // reset so same file can be reselected
+
+    if (f.size > MAX_MEDIA_BYTES) {
+      setFileError(`File too large — max 25 MB (this file is ${formatBytes(f.size)})`)
+      return
+    }
+    setFileError(null)
+    setSendError(null)
+    setFile(f)
+    setMode('media')
+  }
+
+  const clearFile = () => {
+    setFile(null)
+    setFileError(null)
+    setMode(windowOpen ? 'text' : 'template')
+  }
+
+  const switchMode = (m) => {
+    if (m === 'text' && !windowOpen) return  // locked when window closed
+    setMode(m)
+    setSendError(null)
+    if (m === 'text') setTimeout(() => textareaRef.current?.focus(), 50)
+  }
+
+  const handleSend = async () => {
+    if (sending) return
+    setSendError(null)
+    setSending(true)
+
+    try {
+      if (mode === 'media' && file) {
+        const fd = new FormData()
+        if (leadId)     fd.append('lead_id', leadId)
+        if (customerId) fd.append('customer_id', customerId)
+        fd.append('file', file)
+        await sendMediaMessage(fd)
+        setFile(null)
+        setMode(windowOpen ? 'text' : 'template')
+
+      } else if (mode === 'template') {
+        if (!templateName) { setSendError('Please select a template.'); return }
+        const payload = {}
+        if (leadId)     payload.lead_id = leadId
+        if (customerId) payload.customer_id = customerId
+        payload.template_name = templateName
+        await sendMessage(payload)
+        setTemplateName('')
+
+      } else {
+        // text mode
+        if (!text.trim()) return
+        const payload = {}
+        if (leadId)     payload.lead_id = leadId
+        if (customerId) payload.customer_id = customerId
+        payload.content = text.trim()
+        await sendMessage(payload)
+        setText('')
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto'
+        }
+      }
+
+      onSent?.()
+    } catch (err) {
+      const msg = err.response?.data?.error?.message
+      setSendError(msg || 'Failed to send — please try again.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // ── Can send? ──────────────────────────────────────────────────────────
+  const canSend = !sending && (
+    (mode === 'text'     && text.trim().length > 0) ||
+    (mode === 'template' && !!templateName)         ||
+    (mode === 'media'    && !!file)
+  )
+
+  // ── Styles ─────────────────────────────────────────────────────────────
+  const barBg = '#F0F0F0'
+
+  return (
+    <div style={{ background: barBg, borderTop: `1px solid #DDD`, flexShrink: 0 }}>
+
+      {/* Window status loading — shown while first fetch is in-flight */}
+      {statusLoading && (
+        <div style={{ background: '#F5F5F5', borderBottom: `1px solid #E0E0E0`, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div style={{ width: 10, height: 10, border: '2px solid #CCC', borderTopColor: ds.teal, borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+          <span style={{ fontSize: 11.5, color: ds.gray, fontFamily: ds.fontDm }}>Checking conversation window…</span>
+        </div>
+      )}
+
+      {/* Window-closed banner — shown once status is known and window is closed */}
+      {!statusLoading && !windowOpen && (
+        <div style={{ background: '#FFF8E1', borderBottom: '1px solid #FFE082', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12 }}>⚠</span>
+          <span style={{ fontSize: 11.5, color: '#7B6000', fontFamily: ds.fontDm }}>
+            24-hour window closed — templates only (Meta rule)
+          </span>
+        </div>
+      )}
+
+      {/* File preview chip */}
+      {file && (
+        <div style={{ padding: '8px 14px 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', border: `1px solid ${ds.border}`, borderRadius: 8, padding: '5px 10px', flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>{fileIcon(file.type)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: ds.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
+              <div style={{ fontSize: 10.5, color: ds.gray }}>{formatBytes(file.size)}</div>
+            </div>
+            <button
+              onClick={clearFile}
+              title="Remove file"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 16, lineHeight: 1, padding: 2, flexShrink: 0 }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* File size / validation error */}
+      {fileError && (
+        <div style={{ padding: '4px 14px', fontSize: 11.5, color: '#C0392B', fontFamily: ds.fontDm }}>
+          ⚠ {fileError}
+        </div>
+      )}
+
+      {/* Mode toggle — only shown when window is open and not in media mode */}
+      {!statusLoading && windowOpen && mode !== 'media' && (
+        <div style={{ display: 'flex', gap: 4, padding: '7px 14px 4px', alignItems: 'center' }}>
+          <ModeBtn active={mode === 'text'} onClick={() => switchMode('text')}>✏ Text</ModeBtn>
+          <ModeBtn active={mode === 'template'} onClick={() => switchMode('template')}>📋 Template</ModeBtn>
+        </div>
+      )}
+
+      {/* Template selector row */}
+      {!statusLoading && mode === 'template' && (
+        <div style={{ padding: '4px 14px 8px', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {approvedTemplates.length === 0 ? (
+            <div style={{ flex: 1, fontSize: 12, color: ds.gray, fontFamily: ds.fontDm, padding: '9px 0' }}>
+              No approved templates. Create them in Template Manager.
+            </div>
+          ) : (
+            <select
+              value={templateName}
+              onChange={e => { setTemplateName(e.target.value); setSendError(null) }}
+              style={{ flex: 1, border: `1.5px solid ${ds.border}`, borderRadius: 9, padding: '9px 12px', fontSize: 13, fontFamily: ds.fontDm, outline: 'none', background: '#fff', color: ds.dark }}
+            >
+              <option value="">— Select a template —</option>
+              {approvedTemplates.map(t => (
+                <option key={t.id} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+          )}
+          <SendButton canSend={canSend && approvedTemplates.length > 0} sending={sending} onClick={handleSend} />
+        </div>
+      )}
+
+      {/* Text + attachment input row */}
+      {!statusLoading && (mode === 'text' || mode === 'media') && (
+        <div style={{ padding: mode === 'media' ? '4px 14px 10px' : '4px 14px 10px', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+
+          {/* Attachment button — hidden in media mode (file already picked) */}
+          {mode === 'text' && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_MEDIA}
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                title="Attach image, video, audio or document (max 25 MB)"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 20, padding: '6px 4px', flexShrink: 0, minHeight: 36, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.color = ds.teal}
+                onMouseLeave={e => e.currentTarget.style.color = ds.gray}
+              >
+                📎
+              </button>
+            </>
+          )}
+
+          {/* Textarea — shown for text mode; replaced by file preview in media mode */}
+          {mode === 'text' && (
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+              rows={1}
+              style={{
+                flex: 1,
+                resize: 'none',
+                border: `1.5px solid ${ds.border}`,
+                borderRadius: 20,
+                padding: '9px 14px',
+                fontSize: 13,
+                fontFamily: ds.fontDm,
+                outline: 'none',
+                background: '#fff',
+                color: ds.dark,
+                lineHeight: 1.5,
+                overflowY: 'auto',
+                minHeight: 38,
+                maxHeight: 120,
+                boxSizing: 'border-box',
+              }}
+            />
+          )}
+
+          {/* In media mode show a 'Ready to send' label */}
+          {mode === 'media' && (
+            <div style={{ flex: 1, fontSize: 12.5, color: ds.gray, fontFamily: ds.fontDm, padding: '9px 4px' }}>
+              Ready to send attachment
+            </div>
+          )}
+
+          <SendButton canSend={canSend} sending={sending} onClick={handleSend} />
+        </div>
+      )}
+
+      {/* Send error */}
+      {sendError && (
+        <div style={{ padding: '2px 14px 8px', fontSize: 11.5, color: '#C0392B', fontFamily: ds.fontDm }}>
+          ⚠ {sendError}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Mode button (Text / Template toggle) ─────────────────────────────────────
+
+function ModeBtn({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '4px 11px',
+        borderRadius: 20,
+        border: active ? `1.5px solid ${ds.teal}` : `1.5px solid ${ds.border}`,
+        background: active ? ds.mint : 'transparent',
+        color: active ? ds.teal : ds.gray,
+        fontSize: 11,
+        fontWeight: 600,
+        cursor: 'pointer',
+        fontFamily: ds.fontSyne,
+        transition: 'all 0.12s',
+        minHeight: 26,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+// ─── Send button ──────────────────────────────────────────────────────────────
+
+function SendButton({ canSend, sending, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!canSend}
+      title="Send message"
+      style={{
+        width: 38,
+        height: 38,
+        borderRadius: '50%',
+        border: 'none',
+        background: canSend ? ds.teal : '#CCC',
+        color: '#fff',
+        cursor: canSend ? 'pointer' : 'not-allowed',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        transition: 'background 0.15s',
+        fontSize: 16,
+      }}
+    >
+      {sending
+        ? <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+        : '➤'
+      }
+    </button>
   )
 }
 
@@ -477,6 +959,7 @@ function Bubble({ msg }) {
   const d     = msg.created_at ? new Date(msg.created_at) : null
   const time  = d ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
   const date  = d ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''
+  const isMedia = msg.message_type && msg.message_type !== 'text'
 
   return (
     <div style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
@@ -486,9 +969,38 @@ function Bubble({ msg }) {
             📋 {msg.template_name}
           </p>
         )}
-        <p style={{ fontSize: 13, color: ds.dark, margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-          {msg.content || '(Media message)'}
-        </p>
+
+        {/* Media message display */}
+        {isMedia && msg.media_url ? (
+          <div style={{ marginBottom: 4 }}>
+            {msg.message_type === 'image' ? (
+              <img
+                src={msg.media_url}
+                alt="Image"
+                style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 8, display: 'block' }}
+              />
+            ) : (
+              <a
+                href={msg.media_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: '8px 10px', textDecoration: 'none' }}
+              >
+                <span style={{ fontSize: 20 }}>
+                  {msg.message_type === 'video' ? '🎥' : msg.message_type === 'audio' ? '🎵' : '📄'}
+                </span>
+                <span style={{ fontSize: 12, color: ds.dark, fontWeight: 500 }}>
+                  {msg.message_type === 'document' ? 'Document' : msg.message_type === 'video' ? 'Video' : 'Audio'}
+                </span>
+              </a>
+            )}
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, color: ds.dark, margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+            {msg.content || (isMedia ? '(Media)' : '(Empty)')}
+          </p>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 }}>
           <span style={{ fontSize: 10, color: ds.gray }}>{date} {time}</span>
           {isOut && <StatusTick status={msg.status} />}

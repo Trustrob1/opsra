@@ -451,52 +451,78 @@ def send_triage_menu(
 def _is_window_open(db, org_id: str, customer_id: str) -> bool:
     """
     Return True if the 24-hour Meta conversation window is currently open
-    for this customer.  The window is tracked via the most recent message row's
-    window_open / window_expires_at fields.
+    for this customer.
+ 
+    Primary:  check window_expires_at on the most recent message row.
+    Fallback: if window_expires_at is NULL (inbound messages written by the
+              webhook may omit it), check created_at instead.
+              Meta's rule: any message within 24 hours = window open.
+ 
+    S14 — returns False on any exception.
     """
-    result = (
-        db.table("whatsapp_messages")
-        .select("window_open, window_expires_at")
-        .eq("org_id", org_id)
-        .eq("customer_id", customer_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    data = result.data
-    rows = data if isinstance(data, list) else ([data] if data else [])
-    if not rows:
-        return False   # No prior messages → window closed
-
-    msg = rows[0]
-    if not msg.get("window_open"):
-        return False
-
-    expires_raw = msg.get("window_expires_at")
-    if not expires_raw:
-        return False
-
     try:
-        if isinstance(expires_raw, str):
-            expires_dt = datetime.fromisoformat(
-                expires_raw.replace("Z", "+00:00")
-            )
-        else:
-            expires_dt = expires_raw
-        return expires_dt > datetime.now(timezone.utc)
-    except (ValueError, TypeError):
+        result = (
+            db.table("whatsapp_messages")
+            .select("window_open, window_expires_at, created_at")
+            .eq("org_id", org_id)
+            .eq("customer_id", customer_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        data = result.data
+        rows = data if isinstance(data, list) else ([data] if data else [])
+        if not rows:
+            return False
+ 
+        msg = rows[0]
+ 
+        # ── Primary: window_expires_at ────────────────────────────────────
+        expires_raw = msg.get("window_expires_at")
+        if expires_raw:
+            if isinstance(expires_raw, str):
+                expires_dt = datetime.fromisoformat(
+                    expires_raw.replace("Z", "+00:00")
+                )
+            else:
+                expires_dt = expires_raw
+            return expires_dt > datetime.now(timezone.utc)
+ 
+        # ── Fallback: created_at ──────────────────────────────────────────
+        # Webhook-written inbound messages may not have window_expires_at.
+        # If the most recent message is < 24 hours old the window is open.
+        created_raw = msg.get("created_at")
+        if created_raw:
+            if isinstance(created_raw, str):
+                created_dt = datetime.fromisoformat(
+                    created_raw.replace("Z", "+00:00")
+                )
+            else:
+                created_dt = created_raw
+            age_seconds = (datetime.now(timezone.utc) - created_dt).total_seconds()
+            return age_seconds < 86400  # 24 hours
+ 
+        return False
+ 
+    except (ValueError, TypeError, Exception):
         return False
 
 def _is_lead_window_open(db, org_id: str, lead_id: str) -> bool:
     """
     Return True if the 24-hour Meta conversation window is currently open
     for this lead. Mirror of _is_window_open but queries by lead_id.
+ 
+    Primary:  check window_expires_at on the most recent message row.
+    Fallback: if window_expires_at is NULL (inbound messages written by the
+              webhook may omit it), check created_at instead.
+              Meta's rule: any message within 24 hours = window open.
+ 
     S14 — returns False on any failure.
     """
     try:
         result = (
             db.table("whatsapp_messages")
-            .select("window_open, window_expires_at")
+            .select("window_open, window_expires_at, created_at")
             .eq("org_id", org_id)
             .eq("lead_id", lead_id)
             .order("created_at", desc=True)
@@ -507,24 +533,39 @@ def _is_lead_window_open(db, org_id: str, lead_id: str) -> bool:
         rows = data if isinstance(data, list) else ([data] if data else [])
         if not rows:
             return False
-
+ 
         msg = rows[0]
-        if not msg.get("window_open"):
-            return False
-
+ 
+        # ── Primary: window_expires_at ────────────────────────────────────
         expires_raw = msg.get("window_expires_at")
-        if not expires_raw:
-            return False
-
-        if isinstance(expires_raw, str):
-            expires_dt = datetime.fromisoformat(
-                expires_raw.replace("Z", "+00:00")
-            )
-        else:
-            expires_dt = expires_raw
-        return expires_dt > datetime.now(timezone.utc)
-    except (ValueError, TypeError):
+        if expires_raw:
+            if isinstance(expires_raw, str):
+                expires_dt = datetime.fromisoformat(
+                    expires_raw.replace("Z", "+00:00")
+                )
+            else:
+                expires_dt = expires_raw
+            return expires_dt > datetime.now(timezone.utc)
+ 
+        # ── Fallback: created_at ──────────────────────────────────────────
+        # Webhook-written inbound messages may not have window_expires_at.
+        # If the most recent message is < 24 hours old the window is open.
+        created_raw = msg.get("created_at")
+        if created_raw:
+            if isinstance(created_raw, str):
+                created_dt = datetime.fromisoformat(
+                    created_raw.replace("Z", "+00:00")
+                )
+            else:
+                created_dt = created_raw
+            age_seconds = (datetime.now(timezone.utc) - created_dt).total_seconds()
+            return age_seconds < 86400  # 24 hours
+ 
         return False
+ 
+    except (ValueError, TypeError, Exception):
+        return False
+ 
 
 
 # ---------------------------------------------------------------------------
@@ -707,6 +748,35 @@ def send_whatsapp_message(
         old_value=None,
         new_value={"to": to_number, "template": template_name_db},
     )
+ 
+    # Auto-pause AI when a human rep sends via the Conversations module.
+    # Sending a message IS the takeover — the rep doesn't need to click
+    # "Take over" separately. AI stops responding until "Resume AI" is clicked.
+    # S14 — failure is non-blocking; the message was already sent successfully.
+    try:
+        if customer_id_str:
+            set_ai_paused(
+                db=db,
+                org_id=org_id,
+                contact_type="customer",
+                contact_id=customer_id_str,
+                paused=True,
+            )
+        elif lead_id_str:
+            set_ai_paused(
+                db=db,
+                org_id=org_id,
+                contact_type="lead",
+                contact_id=lead_id_str,
+                paused=True,
+            )
+    except Exception as exc:
+        logger.warning(
+            "send_whatsapp_message: auto-pause AI failed for %s: %s",
+            customer_id_str or lead_id_str,
+            exc,
+        )
+ 
     return msg_data
 
 
@@ -2776,3 +2846,381 @@ def get_conversations(
         conversations = [c for c in conversations if c.get("channel") == channel]
 
     return conversations
+
+"""
+CONV-UI addition for app/services/whatsapp_service.py
+======================================================
+Append this block to the END of whatsapp_service.py.
+Do not replace or reorder any existing functions.
+
+Adds:
+  - ALLOWED_MEDIA_CONTENT_TYPES  dict
+  - MAX_MEDIA_SIZE                constant
+  - send_whatsapp_media_message() function
+
+Requires:
+  - The Supabase project must have a private storage bucket named
+    "whatsapp-media". Create it manually in Supabase dashboard if it
+    does not exist (Storage → New bucket → Name: whatsapp-media → Private).
+"""
+
+import uuid as _uuid_mod
+
+# ---------------------------------------------------------------------------
+# Media type registry (mirrors Tech Spec §11.5 allowed types)
+# ---------------------------------------------------------------------------
+
+ALLOWED_MEDIA_CONTENT_TYPES: dict = {
+    "image/jpeg":       "image",
+    "image/png":        "image",
+    "image/gif":        "image",
+    "image/webp":       "image",
+    "video/mp4":        "video",
+    "video/3gpp":       "video",
+    "audio/mpeg":       "audio",
+    "audio/ogg":        "audio",
+    "application/pdf":  "document",
+}
+
+MAX_MEDIA_SIZE = 25 * 1024 * 1024  # 25 MB — enforced both here and at Meta
+
+
+# ---------------------------------------------------------------------------
+# Media message dispatch
+# ---------------------------------------------------------------------------
+
+def send_whatsapp_media_message(
+    db,
+    org_id: str,
+    user_id: str,
+    file_bytes: bytes,
+    filename: str,
+    content_type: str,
+    customer_id: Optional[str] = None,
+    lead_id: Optional[str] = None,
+) -> dict:
+    """
+    CONV-UI: Upload a media file to Supabase Storage and send it as a
+    WhatsApp message via Meta Cloud API.
+
+    Supported types (mirrors Tech Spec §11.5):
+      image/jpeg, image/png, image/gif, image/webp
+      video/mp4, video/3gpp
+      audio/mpeg, audio/ogg
+      application/pdf
+
+    File size limit: 25 MB (HTTP 413 returned if exceeded).
+
+    Storage bucket: "whatsapp-media" (must exist in Supabase — create
+    manually if not present: Storage → New bucket → Private).
+
+    Meta send strategy:
+      - Uploads file to Supabase Storage, gets a 1-hour signed URL.
+      - Sends signed URL to Meta via the `link` field in the media object.
+        Meta fetches and caches the file during the send window.
+
+    Raises:
+      HTTPException 413 — file exceeds 25 MB
+      HTTPException 415 — unsupported content_type
+      HTTPException 422 — missing customer_id / lead_id
+      HTTPException 400 — conversation window closed (media requires open window)
+      HTTPException 503 — Meta API / Supabase Storage failure
+
+    S14 pattern applied to Storage and Meta calls — failures surface as
+    HTTPException rather than being silently swallowed, so the frontend
+    can display a meaningful error to the rep.
+    """
+    import logging as _log
+    _logger = _log.getLogger(__name__)
+
+    # ── Validate inputs ────────────────────────────────────────────────────
+    if not customer_id and not lead_id:
+        raise HTTPException(
+            status_code=422,
+            detail="customer_id or lead_id is required",
+        )
+
+    if len(file_bytes) > MAX_MEDIA_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds maximum size of 25 MB",
+        )
+
+    msg_type = ALLOWED_MEDIA_CONTENT_TYPES.get(content_type)
+    if not msg_type:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"Unsupported media type '{content_type}'. "
+                f"Allowed: {', '.join(sorted(ALLOWED_MEDIA_CONTENT_TYPES))}"
+            ),
+        )
+
+    # ── Resolve org WhatsApp credentials ──────────────────────────────────
+    phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+    phone_id = (phone_id or "").strip()
+
+    # ── Resolve recipient number and name ──────────────────────────────────
+    to_number: Optional[str] = None
+    customer_id_str: Optional[str] = None
+    lead_id_str:     Optional[str] = None
+
+    if customer_id:
+        customer = _customer_or_404(db, org_id, customer_id)
+        if customer.get("whatsapp_opted_out"):
+            raise HTTPException(
+                status_code=400,
+                detail="This contact has opted out of WhatsApp messages.",
+            )
+        to_number = customer.get("whatsapp") or customer.get("phone")
+        customer_id_str = customer_id
+    else:
+        lead_result = (
+            db.table("leads")
+            .select("whatsapp, phone, whatsapp_opted_out")
+            .eq("id", lead_id)
+            .eq("org_id", org_id)
+            .is_("deleted_at", "null")
+            .maybe_single()
+            .execute()
+        )
+        lead_data = _normalise_data(lead_result.data)
+        if not lead_data:
+            raise HTTPException(status_code=404, detail=ErrorCode.NOT_FOUND)
+        if lead_data.get("whatsapp_opted_out"):
+            raise HTTPException(
+                status_code=400,
+                detail="This lead has opted out of WhatsApp messages.",
+            )
+        to_number = lead_data.get("whatsapp") or lead_data.get("phone")
+        lead_id_str = lead_id
+
+    if not to_number:
+        raise HTTPException(
+            status_code=422,
+            detail="Recipient has no WhatsApp number on record",
+        )
+
+    # ── Conversation window check (media requires open window) ─────────────
+    window_open = False
+    if customer_id_str:
+        window_open = _is_window_open(db, org_id, customer_id_str)
+    elif lead_id_str:
+        window_open = _is_lead_window_open(db, org_id, lead_id_str)
+
+    if not window_open:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Conversation window is closed — "
+                "media messages can only be sent within the 24-hour window"
+            ),
+        )
+
+    # ── Upload to Supabase Storage ─────────────────────────────────────────
+    safe_filename = filename.replace("/", "_").replace("\\", "_").replace("'", "").replace('"', "")
+    storage_path = f"whatsapp-media/{org_id}/{_uuid_mod.uuid4()}_{safe_filename}"
+
+    try:
+        db.storage.from_("whatsapp-media").upload(
+            path=storage_path,
+            file=file_bytes,
+            file_options={"content-type": content_type},
+        )
+    except Exception as exc:
+        _logger.warning(
+            "send_whatsapp_media_message: Supabase Storage upload failed "
+            "org=%s path=%s: %s", org_id, storage_path, exc
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to upload file to storage — please try again",
+        )
+
+    # ── Get signed URL (1-hour expiry) ─────────────────────────────────────
+    media_url: Optional[str] = None
+    try:
+        signed_result = db.storage.from_("whatsapp-media").create_signed_url(
+            path=storage_path,
+            expires_in=3600,
+        )
+        # Handle both supabase-py v1 and v2 response shapes
+        if hasattr(signed_result, "data"):
+            d = signed_result.data or {}
+            media_url = d.get("signedUrl") or d.get("signedURL")
+        elif isinstance(signed_result, dict):
+            media_url = (
+                signed_result.get("signedUrl")
+                or signed_result.get("signedURL")
+                or (signed_result.get("data") or {}).get("signedUrl")
+            )
+    except Exception as exc:
+        _logger.warning(
+            "send_whatsapp_media_message: signed URL creation failed "
+            "org=%s path=%s: %s", org_id, storage_path, exc
+        )
+
+    if not media_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to generate media URL — please try again",
+        )
+
+    # ── Build Meta payload ─────────────────────────────────────────────────
+    if msg_type == "image":
+        media_body = {"link": media_url}
+    elif msg_type == "video":
+        media_body = {"link": media_url}
+    elif msg_type == "audio":
+        media_body = {"link": media_url}
+    else:  # document
+        media_body = {"link": media_url, "filename": safe_filename}
+
+    meta_payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": msg_type,
+        msg_type: media_body,
+    }
+
+    # ── Call Meta Cloud API ────────────────────────────────────────────────
+    meta_response = _call_meta_send(phone_id, meta_payload, token=access_token)
+    meta_messages = meta_response.get("messages")
+    meta_message_id: Optional[str] = None
+    if isinstance(meta_messages, list) and meta_messages:
+        meta_message_id = meta_messages[0].get("id")
+
+    # ── Persist to whatsapp_messages ───────────────────────────────────────
+    now_ts = _now_iso()
+    window_expires = (
+        datetime.now(timezone.utc) + timedelta(hours=24)
+    ).isoformat()
+
+    row: dict = {
+        "org_id":           org_id,
+        "direction":        "outbound",
+        "message_type":     msg_type,
+        "content":          None,
+        "media_url":        media_url,
+        "template_name":    None,
+        "status":           "sent",
+        "meta_message_id":  meta_message_id,
+        "window_open":      True,
+        "window_expires_at": window_expires,
+        "sent_by":          user_id,
+        "created_at":       now_ts,
+    }
+    if customer_id_str:
+        row["customer_id"] = customer_id_str
+    if lead_id_str:
+        row["lead_id"] = lead_id_str
+
+    insert_result = db.table("whatsapp_messages").insert(row).execute()
+    msg_data = insert_result.data
+    if isinstance(msg_data, list):
+        msg_data = msg_data[0] if msg_data else row
+
+    write_audit_log(
+        db=db,
+        org_id=org_id,
+        user_id=user_id,
+        action="whatsapp.media_message_sent",
+        resource_type="whatsapp_message",
+        resource_id=msg_data.get("id"),
+        old_value=None,
+        new_value={"to": to_number, "message_type": msg_type, "filename": safe_filename},
+    )
+
+    return msg_data
+
+# ---------------------------------------------------------------------------
+# AI pause / resume
+# ---------------------------------------------------------------------------
+ 
+def set_ai_paused(
+    db,
+    org_id: str,
+    contact_type: str,
+    contact_id: str,
+    paused: bool,
+) -> None:
+    """
+    Set ai_paused on a lead or customer record.
+ 
+    contact_type : "lead" | "customer"
+    paused       : True  → human has taken over, AI stops responding
+                   False → AI resumed
+ 
+    Called by:
+      - POST /conversations/{type}/{id}/pause-ai  (manual Take over button)
+      - POST /conversations/{type}/{id}/resume-ai (manual Resume AI button)
+      - send_whatsapp_message()                   (auto-pause when rep sends)
+ 
+    S14 — never raises.
+    """
+    try:
+        table = "leads" if contact_type == "lead" else "customers"
+        db.table(table).update(
+            {"ai_paused": paused}
+        ).eq("id", contact_id).eq("org_id", org_id).execute()
+        logger.info(
+            "set_ai_paused: %s %s → ai_paused=%s",
+            contact_type, contact_id, paused,
+        )
+    except Exception as exc:
+        logger.warning(
+            "set_ai_paused failed for %s %s: %s",
+            contact_type, contact_id, exc,
+        )
+ 
+ 
+# ---------------------------------------------------------------------------
+# Conversation status (window + AI mode)
+# ---------------------------------------------------------------------------
+ 
+def get_contact_status(
+    db,
+    org_id: str,
+    contact_type: str,
+    contact_id: str,
+) -> dict:
+    """
+    Return { window_open: bool, ai_paused: bool } for a lead or customer.
+ 
+    Used by GET /conversations/{contact_type}/{contact_id}/status.
+    Its absence was the root cause of the CORS 500 error on the status
+    endpoint — an AttributeError was raised before CORS headers could be added.
+ 
+    S14 — never raises; returns safe defaults on any error.
+    """
+    try:
+        # ── ai_paused from the lead / customer record ──────────────────────
+        table = "leads" if contact_type == "lead" else "customers"
+        record_result = (
+            db.table(table)
+            .select("ai_paused")
+            .eq("id", contact_id)
+            .eq("org_id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        record_data = _normalise_data(record_result.data) or {}
+        ai_paused = bool(record_data.get("ai_paused", False))
+ 
+        # ── window_open from most recent message ───────────────────────────
+        if contact_type == "lead":
+            window_open = _is_lead_window_open(db, org_id, contact_id)
+        else:
+            window_open = _is_window_open(db, org_id, contact_id)
+ 
+        return {
+            "window_open": window_open,
+            "ai_paused":   ai_paused,
+        }
+ 
+    except Exception as exc:
+        logger.warning(
+            "get_contact_status failed for %s %s: %s",
+            contact_type, contact_id, exc,
+        )
+        return {"window_open": False, "ai_paused": False}

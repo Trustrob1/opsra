@@ -1,5 +1,12 @@
 /**
  * conversations.service.js — Unified Conversations inbox API calls.
+ *
+ * CONV-UI additions:
+ *   - sendMediaMessage() — POST /api/v1/messages/send-media (multipart)
+ *   - pauseAI()          — POST /api/v1/conversations/{type}/{id}/pause-ai
+ *
+ * Bug fix:
+ *   - resumeAI: corrupted [api.post](http://api.post)(...) → api.post(...)
  */
 import axios from 'axios'
 import useAuthStore from '../store/authStore'
@@ -37,3 +44,26 @@ export const getThreadStatus = (contact_type, contact_id) =>
  */
 export const resumeAI = (contact_type, contact_id) =>
   api.post(`/api/v1/conversations/${contact_type}/${contact_id}/resume-ai`)
+
+/**
+ * POST /api/v1/conversations/{contact_type}/{contact_id}/pause-ai
+ * Sets ai_paused=true — rep takes over, AI stops responding.
+ */
+export const pauseAI = (contact_type, contact_id) =>
+  api.post(`/api/v1/conversations/${contact_type}/${contact_id}/pause-ai`)
+
+/**
+ * POST /api/v1/messages/send-media  (multipart/form-data)
+ * Uploads a media file and sends it as a WhatsApp message.
+ *
+ * FormData fields:
+ *   file        — File object (image, video, audio, pdf — max 25 MB)
+ *   lead_id     — UUID string (pass if recipient is a lead)
+ *   customer_id — UUID string (pass if recipient is a customer)
+ *
+ * Returns the whatsapp_messages row on success.
+ */
+export const sendMediaMessage = (formData) =>
+  api.post('/api/v1/messages/send-media', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })

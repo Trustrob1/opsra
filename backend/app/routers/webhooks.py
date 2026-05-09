@@ -1079,7 +1079,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     try:
         _known_wa_session = triage_service.get_active_session(db, org_id, sender_phone)
-        if _known_wa_session:
+        if _known_wa_session and not ai_is_paused:
             if not _known_wa_session.get("commerce_state"):
                 _restore_commerce_state_if_open(db, org_id, sender_phone, _known_wa_session)
             if (_known_wa_session.get("commerce_state") or "") in COMMERCE_STATES:
@@ -1095,7 +1095,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     if customer_id and not lead_id:
         active_customer_session = triage_service.get_active_session(db, org_id, sender_phone)
-        if active_customer_session:
+        if active_customer_session and not ai_is_paused:
             triage_service.handle_session_message(
                 db=db, org_id=org_id, phone_number=sender_phone,
                 session=active_customer_session, msg_type=msg_type, content=content,
@@ -1113,7 +1113,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 org_triage_d = org_triage_d[0] if org_triage_d else None
             triage_cfg = (org_triage_d or {}).get("whatsapp_triage_config") or {}
             customer_menu = triage_cfg.get("customer") or {}
-            if customer_menu.get("items"):
+            if customer_menu.get("items") and not ai_is_paused:
                 from app.services import whatsapp_service as _wa_svc
                 _wa_svc.send_triage_menu(
                     db=db, org_id=org_id, phone_number=sender_phone,
