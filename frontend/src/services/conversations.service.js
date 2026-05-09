@@ -24,6 +24,8 @@ api.interceptors.response.use(
   async err => {
     if (err.response?.status === 401 && !err.config._retried) {
       err.config._retried = true
+      // Wait 4s — gives cold-starting Render instance time to warm up
+      await new Promise(r => setTimeout(r, 4000))
       try { return await api(err.config) } catch {}
       useAuthStore.getState().clearAuth()
     }
