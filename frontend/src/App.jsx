@@ -323,6 +323,9 @@ function AppShell() {
   const [ariaOpen,     setAriaOpen]    = useState(false)
   const [ariaBriefing, setAriaBriefing] = useState(null)
   const [ariaBadge,    setAriaBadge]   = useState(false)
+  const [ariaMinimised, setAriaMinimised] = useState(() => {
+    try { return localStorage.getItem('aria_minimised') === '1' } catch { return false }
+  })
 
   useEffect(() => {
     const token = useAuthStore.getState().token
@@ -624,7 +627,9 @@ function AppShell() {
           <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} /></div>
         )}
         {view === 'conversations' && (
-          <div style={{ animation: 'fadeIn 0.25s ease' }}><ConversationsModule user={user} /></div>
+          <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <ConversationsModule user={user} onOpenAria={() => setAriaOpen(true)} />
+          </div>
         )}
         {view === 'commissions' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><CommissionsModule user={user} /></div>
@@ -646,7 +651,18 @@ function AppShell() {
       )}
 
       {/* Aria AI Assistant (M01-10b) */}
-      <AriaButton onClick={() => setAriaOpen(prev => !prev)} hasBadge={ariaBadge} panelOpen={ariaOpen} />
+      <AriaButton
+        onClick={() => setAriaOpen(prev => !prev)}
+        hasBadge={ariaBadge}
+        panelOpen={ariaOpen}
+        view={view}
+        minimised={ariaMinimised}
+        onMinimise={() => {
+          const next = !ariaMinimised
+          setAriaMinimised(next)
+          try { localStorage.setItem('aria_minimised', next ? '1' : '0') } catch {}
+        }}
+      />
       <AriaPanel open={ariaOpen} onClose={() => setAriaOpen(false)} briefing={ariaBriefing} onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }} />
 
       {/* Onboarding Checklist (ORG-ONBOARDING-B) */}

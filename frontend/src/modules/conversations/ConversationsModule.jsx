@@ -66,6 +66,9 @@ const ACCEPTED_MEDIA = [
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024 // 25 MB
 
+// Show inactivity nudge after 1 hour of human mode with no rep reply
+const HUMAN_MODE_NUDGE_MS = 60 * 60 * 1000
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeAgo(iso) {
@@ -108,9 +111,18 @@ function formatBytes(n) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function formatHumanModeDuration(ms) {
+  const m = Math.floor(ms / 60000)
+  if (m < 1)  return 'just now'
+  if (m < 60) return `${m}m`
+  const h   = Math.floor(m / 60)
+  const rem = m % 60
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ConversationsModule() {
+export default function ConversationsModule({ onOpenAria }) {
   const isMobile = useIsMobile()
 
   // Conversation list
@@ -133,6 +145,13 @@ export default function ConversationsModule() {
   const [pausing, setPausing]             = useState(false)
   const threadRef                         = useRef(null)
   const isPollingRef                      = useRef(false)
+
+  // Human mode duration counter + inactivity nudge
+  const [humanModeStart, setHumanModeStart]       = useState(null)
+  const [humanModeDuration, setHumanModeDuration] = useState('')
+  const [showNudge, setShowNudge]                 = useState(false)
+  const lastSentRef                               = useRef(null)
+  const nudgeDismissedRef                         = useRef(false)
 
   // Mobile panel
   const [panel, setPanel] = useState('list')
@@ -271,6 +290,9 @@ export default function ConversationsModule() {
   // Sending any message from Opsra automatically switches to Human Mode.
   // The rep doesn't need to click Take over — sending IS the takeover.
   const handleSent = () => {
+    lastSentRef.current = Date.now()   // reset inactivity nudge timer
+    nudgeDismissedRef.current = false
+    setShowNudge(false)
     loadMessages(false)
     // Optimistic: immediately reflect Human Mode in the UI
     setThreadStatus(prev => ({ ...prev, ai_paused: true }))
@@ -329,6 +351,52 @@ export default function ConversationsModule() {
     }
   }
 
+  // ── Human mode timer — resets when conversation switches ─────────────
+  useEffect(() => {
+    setHumanModeStart(null)
+    setHumanModeDuration('')
+    setShowNudge(false)
+    nudgeDismissedRef.current = false
+    lastSentRef.current = null
+  }, [active?.contact_id])
+
+  // Start / stop the timer based on ai_paused state
+  useEffect(() => {
+    if (threadStatus.ai_paused) {
+      // Only set start time if not already counting
+      setHumanModeStart(prev => prev ?? Date.now())
+    } else {
+      setHumanModeStart(null)
+      setHumanModeDuration('')
+      setShowNudge(false)
+      nudgeDismissedRef.current = false
+    }
+  }, [threadStatus.ai_paused])
+
+  // Tick every 30s — update duration string and check inactivity nudge
+  useEffect(() => {
+    if (!humanModeStart) return
+    const tick = () => {
+      const elapsed = Date.now() - humanModeStart
+      setHumanModeDuration(formatHumanModeDuration(elapsed))
+      // Show nudge if no rep message sent for HUMAN_MODE_NUDGE_MS
+      const sinceLastSent = lastSentRef.current
+        ? Date.now() - lastSentRef.current
+        : elapsed
+      if (sinceLastSent >= HUMAN_MODE_NUDGE_MS && !nudgeDismissedRef.current) {
+        setShowNudge(true)
+      }
+    }
+    tick() // immediate first tick
+    const id = setInterval(tick, 30000)
+    return () => clearInterval(id)
+  }, [humanModeStart])
+
+  const handleDismissNudge = () => {
+    setShowNudge(false)
+    nudgeDismissedRef.current = true
+  }
+
   // ── Filtered list ──────────────────────────────────────────────────────
   const filtered = conversations.filter(c => {
     const q = search.toLowerCase()
@@ -367,12 +435,16 @@ export default function ConversationsModule() {
       templates={templates}
       threadStatus={threadStatus}
       statusLoading={statusLoading}
+      humanModeDuration={humanModeDuration}
+      showNudge={showNudge}
+      onDismissNudge={handleDismissNudge}
       threadRef={threadRef}
       onSent={handleSent}
       onResumeAI={handleResumeAI}
       resuming={resuming}
       onPauseAI={handlePauseAI}
       pausing={pausing}
+      onOpenAria={onOpenAria}
       onBack={isMobile ? () => { setPanel('list'); setActive(null) } : null}
     />
   ) : (
@@ -510,7 +582,7 @@ function ConvRow({ conv, isActive, onSelect }) {
 
 // ─── Thread Panel ─────────────────────────────────────────────────────────────
 
-function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onBack }) {
+function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, humanModeDuration, showNudge, onDismissNudge, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onOpenAria, onBack }) {
   const ch     = CHANNEL[active.channel] || CHANNEL.whatsapp
   const isLead = active.contact_type === 'lead'
   const { window_open: windowOpen, ai_paused: aiPaused } = threadStatus
@@ -546,10 +618,9 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
         {/* ── AI / Human mode controls ──────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
           {aiPaused ? (
-            /* Human mode — show badge + Resume AI button */
             <>
               <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#FFF3E0', color: '#C05A00', fontWeight: 700, fontFamily: ds.fontSyne }}>
-                👤 Human Mode
+                👤 Human Mode{humanModeDuration ? ` · ${humanModeDuration}` : ''}
               </span>
               <button
                 onClick={onResumeAI}
@@ -560,7 +631,6 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
               </button>
             </>
           ) : (
-            /* AI active — show badge + Take over button */
             <>
               <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#E8F8EE', color: '#27AE60', fontWeight: 700, fontFamily: ds.fontSyne }}>
                 🤖 AI Active
@@ -573,6 +643,19 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
                 {pausing ? 'Taking over…' : '👤 Take over'}
               </button>
             </>
+          )}
+
+          {/* Ask Aria — opens Aria panel without leaving Conversations */}
+          {onOpenAria && (
+            <button
+              onClick={onOpenAria}
+              title="Ask Aria — AI Operations Assistant"
+              style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, border: `1px solid #1e3a4f`, background: '#0e2030', color: ds.teal, fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontSyne, display: 'flex', alignItems: 'center', gap: 4 }}
+              onMouseEnter={e => e.currentTarget.style.background = '#1a3040'}
+              onMouseLeave={e => e.currentTarget.style.background = '#0e2030'}
+            >
+              ✦ Ask Aria
+            </button>
           )}
         </div>
       </div>
@@ -594,6 +677,30 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
         )}
         {!loading && [...messages].reverse().map(msg => <Bubble key={msg.id} msg={msg} />)}
       </div>
+
+      {/* ── Inactivity nudge ────────────────────────────────────────────── */}
+      {showNudge && aiPaused && (
+        <div style={{ flexShrink: 0, background: '#FFF8E1', borderTop: `1px solid #FFE082`, borderBottom: `1px solid #FFE082`, padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 12.5, color: '#7B4F00', fontFamily: ds.fontDm, flex: 1 }}>
+            ⏱ Human Mode active for <strong>{humanModeDuration}</strong> — remember to Resume AI when done.
+          </span>
+          <div style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
+            <button
+              onClick={onResumeAI}
+              style={{ fontSize: 11.5, padding: '4px 11px', borderRadius: 20, border: `1px solid ${ds.teal}`, background: '#fff', color: ds.teal, fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontSyne }}
+            >
+              🤖 Resume AI
+            </button>
+            <button
+              onClick={onDismissNudge}
+              title="Dismiss"
+              style={{ fontSize: 13, padding: '2px 8px', background: 'none', border: 'none', cursor: 'pointer', color: '#A07820', lineHeight: 1 }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Inline Composer ─────────────────────────────────────────────── */}
       <InlineComposer
@@ -687,16 +794,15 @@ function InlineComposer({ leadId, customerId, windowOpen, statusLoading = false,
     if (sending) return
     setSendError(null)
     setSending(true)
+    const wasMediaSend = mode === 'media' && !!file
 
     try {
-      if (mode === 'media' && file) {
+      if (wasMediaSend) {
         const fd = new FormData()
         if (leadId)     fd.append('lead_id', leadId)
         if (customerId) fd.append('customer_id', customerId)
         fd.append('file', file)
         await sendMediaMessage(fd)
-        setFile(null)
-        setMode(windowOpen ? 'text' : 'template')
 
       } else if (mode === 'template') {
         if (!templateName) { setSendError('Please select a template.'); return }
@@ -727,6 +833,12 @@ function InlineComposer({ leadId, customerId, windowOpen, statusLoading = false,
       setSendError(msg || 'Failed to send — please try again.')
     } finally {
       setSending(false)
+      // Always clear file state so the preview never gets stuck,
+      // even if the API threw — the file may have already been sent.
+      if (wasMediaSend) {
+        setFile(null)
+        setMode(windowOpen ? 'text' : 'template')
+      }
     }
   }
 

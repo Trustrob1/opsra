@@ -64,6 +64,4 @@ export const pauseAI = (contact_type, contact_id) =>
  * Returns the whatsapp_messages row on success.
  */
 export const sendMediaMessage = (formData) =>
-  api.post('/api/v1/messages/send-media', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  api.post('/api/v1/messages/send-media', formData)
