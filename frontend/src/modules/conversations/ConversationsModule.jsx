@@ -1113,9 +1113,23 @@ function Bubble({ msg }) {
           </p>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 }}>
-          <span style={{ fontSize: 10, color: ds.gray }}>{date} {time}</span>
-          {isOut && <StatusTick status={msg.status} />}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: isOut ? 'space-between' : 'flex-end', gap: 4, marginTop: 4 }}>
+          {/* Attribution tag — shows AI or rep name on every outbound message */}
+          {isOut && (
+            <span style={{
+              fontSize:   9.5,
+              fontFamily: ds.fontSyne,
+              fontWeight: 600,
+              color:      msg.sent_by_name ? ds.teal : ds.gray,
+              flexShrink: 0,
+            }}>
+              {msg.sent_by_name ? `👤 ${msg.sent_by_name.split(' ')[0]}` : '🤖 AI'}
+            </span>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 10, color: ds.gray }}>{date} {time}</span>
+            {isOut && <StatusTick status={msg.status} />}
+          </div>
         </div>
       </div>
     </div>

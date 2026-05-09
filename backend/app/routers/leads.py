@@ -1002,6 +1002,29 @@ async def get_lead_messages(
         page=page,
         page_size=page_size,
     )
+
+    # Enrich messages with sender name for Conversations UI attribution tags.
+    # sent_by=None → AI message (sent_by_name=None).
+    # sent_by=UUID → rep message (sent_by_name=rep's full_name).
+    # S14: failure silently skips enrichment — messages still return without names.
+    try:
+        messages = result["items"]
+        rep_ids = list({m["sent_by"] for m in messages if m.get("sent_by")})
+        names_map = {}
+        if rep_ids:
+            users_r = (
+                db.table("users")
+                .select("id, full_name")
+                .in_("id", rep_ids)
+                .execute()
+            )
+            for u in (users_r.data or []):
+                names_map[u["id"]] = u["full_name"]
+        for m in messages:
+            m["sent_by_name"] = names_map.get(m["sent_by"]) if m.get("sent_by") else None
+    except Exception as _exc:
+        logger.warning("sent_by_name enrichment failed for lead %s: %s", lead_id, _exc)
+
     return paginated(
         items=result["items"],
         total=result["total"],
