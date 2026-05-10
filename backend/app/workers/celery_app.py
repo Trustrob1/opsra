@@ -433,6 +433,6 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     "ai_auto_resume": {
         "task": "app.workers.ai_resume_worker.run_ai_auto_resume",
-        "schedule": crontab(minute="*/5"),
+        "schedule": crontab(minute="*"),
     },
 }
