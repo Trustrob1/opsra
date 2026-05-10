@@ -66,8 +66,8 @@ const ACCEPTED_MEDIA = [
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024 // 25 MB
 
-// Show inactivity nudge after 1 hour of human mode with no rep reply
-const HUMAN_MODE_NUDGE_MS = 60 * 60 * 1000
+// Show inactivity nudge after 10 minutes — auto-resume fires at 15 minutes
+const HUMAN_MODE_NUDGE_MS = 10 * 60 * 1000
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -682,7 +682,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
       {showNudge && aiPaused && (
         <div style={{ flexShrink: 0, background: '#FFF8E1', borderTop: `1px solid #FFE082`, borderBottom: `1px solid #FFE082`, padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <span style={{ fontSize: 12.5, color: '#7B4F00', fontFamily: ds.fontDm, flex: 1 }}>
-            ⏱ Human Mode active for <strong>{humanModeDuration}</strong> — remember to Resume AI when done.
+            ⏱ Human Mode active for <strong>{humanModeDuration}</strong> — AI will auto-resume in 5 minutes, or tap Resume AI now.
           </span>
           <div style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
             <button

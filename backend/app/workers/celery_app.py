@@ -127,6 +127,7 @@ celery_app = Celery(
         "app.workers.cart_abandonment_worker",# ← COMM-1
         "app.workers.meta_token_worker",      # ← 9E-A
         "app.workers.webhook_worker",      # ← 9E-B
+        "app.workers.ai_resume_worker",    # ← AI-AUTO-RESUME
     ],
 )
 
@@ -425,4 +426,13 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=2, minute=0),
     },
 
+    # ------------------------------------------------------------------ #
+    # ai_auto_resume — Every 5 minutes  (AI-AUTO-RESUME)                  #
+    # Worker: ai_resume_worker.py                                          #
+    # Auto-resumes AI for contacts left in Human Mode > 15 min inactive.  #
+    # ------------------------------------------------------------------ #
+    "ai_auto_resume": {
+        "task": "app.workers.ai_resume_worker.run_ai_auto_resume",
+        "schedule": crontab(minute="*/5"),
+    },
 }
