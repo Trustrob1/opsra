@@ -40,6 +40,13 @@ security = HTTPBearer()
 # ---------------------------------------------------------------------------
 _user_cache: TTLCache = TTLCache(maxsize=500, ttl=30)
 
+# Per-user async locks — prevents cache stampede on cold cache (first login).
+# Without this, all concurrent startup requests miss the empty cache simultaneously
+# and all query Supabase at once, saturating the connection pool.
+# With this, only ONE request per user_id queries the DB; all others wait
+# and then read from cache when the lock is released.
+_user_locks: dict = {}
+
 
 # ---------------------------------------------------------------------------
 # get_current_user — verify JWT with Supabase Auth
@@ -104,52 +111,69 @@ async def get_current_org(
     The org_id in the returned dict is the authoritative org_id for the
     request — every route uses this value for DB scoping, never
     anything from the request body.
+
+    Uses double-checked locking to prevent cache stampede on first login:
+    - First cache check (no lock) handles the common case cheaply
+    - Per-user asyncio.Lock ensures only ONE request queries the DB
+    - Second cache check inside the lock means waiting requests read
+      from cache once the first request populates it, never hitting DB
     """
     import asyncio
 
-    # Check cache first — eliminates burst DB queries on login
+    # First cache check — no lock needed, handles all non-cold-cache cases
     cached = _user_cache.get(current_user.id)
     if cached:
         return cached
 
-    db_user = None
-    last_exc = None
+    # Get or create a per-user lock — one lock per active user ID
+    if current_user.id not in _user_locks:
+        _user_locks[current_user.id] = asyncio.Lock()
 
-    for attempt in range(3):
-        try:
-            result = (
-                supabase.table("users")
-                .select("id, org_id, email, full_name, is_active, whatsapp_number, notification_prefs, roles(*)")
-                .eq("id", current_user.id)
-                .execute()
-            )
-            rows = result.data or []
-            if rows:
-                db_user = rows[0]
-                _user_cache[current_user.id] = db_user  # cache for 30s
-                break
-            # Row not returned — likely a transient Supabase connection pool issue.
-            # Wait briefly and retry before giving up.
-            logger.warning(
-                "User record returned 0 rows for %s (attempt %d/3) — retrying",
-                getattr(current_user, "id", "?"),
-                attempt + 1,
-            )
-            if attempt < 2:
-                # Delays: 2s after attempt 1, 4s after attempt 2.
-                # The Supabase connection pool burst on login lasts ~6 seconds.
-                # 150ms/300ms was too short — all 3 attempts fired inside the burst window.
-                await asyncio.sleep(2.0 * (attempt + 1))
-        except Exception as exc:
-            last_exc = exc
-            logger.warning(
-                "User fetch exception for %s (attempt %d/3): %s",
-                getattr(current_user, "id", "?"),
-                attempt + 1,
-                exc,
-            )
-            if attempt < 2:
-                await asyncio.sleep(2.0 * (attempt + 1))
+    async with _user_locks[current_user.id]:
+        # Second cache check inside the lock — the request that got here
+        # first may have already fetched and cached the result while
+        # the current request was waiting to acquire the lock
+        cached = _user_cache.get(current_user.id)
+        if cached:
+            return cached
+
+        # Only ONE request per user_id reaches here at a time
+        db_user = None
+        last_exc = None
+
+        for attempt in range(3):
+            try:
+                result = (
+                    supabase.table("users")
+                    .select("id, org_id, email, full_name, is_active, whatsapp_number, notification_prefs, roles(*)")
+                    .eq("id", current_user.id)
+                    .execute()
+                )
+                rows = result.data or []
+                if rows:
+                    db_user = rows[0]
+                    _user_cache[current_user.id] = db_user  # cache for 30s
+                    break
+                logger.warning(
+                    "User record returned 0 rows for %s (attempt %d/3) — retrying",
+                    getattr(current_user, "id", "?"),
+                    attempt + 1,
+                )
+                if attempt < 2:
+                    await asyncio.sleep(2.0 * (attempt + 1))
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "User fetch exception for %s (attempt %d/3): %s",
+                    getattr(current_user, "id", "?"),
+                    attempt + 1,
+                    exc,
+                )
+                if attempt < 2:
+                    await asyncio.sleep(2.0 * (attempt + 1))
+
+    # Lock released — clean up the lock entry to prevent unbounded dict growth
+    _user_locks.pop(current_user.id, None)
 
     if db_user is None:
         logger.error(
