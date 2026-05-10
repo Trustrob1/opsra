@@ -117,7 +117,10 @@ async def get_current_org(
                 attempt + 1,
             )
             if attempt < 2:
-                await asyncio.sleep(0.15 * (attempt + 1))
+                # Delays: 2s after attempt 1, 4s after attempt 2.
+                # The Supabase connection pool burst on login lasts ~6 seconds.
+                # 150ms/300ms was too short — all 3 attempts fired inside the burst window.
+                await asyncio.sleep(2.0 * (attempt + 1))
         except Exception as exc:
             last_exc = exc
             logger.warning(
@@ -127,7 +130,7 @@ async def get_current_org(
                 exc,
             )
             if attempt < 2:
-                await asyncio.sleep(0.15 * (attempt + 1))
+                await asyncio.sleep(2.0 * (attempt + 1))
 
     if db_user is None:
         logger.error(
