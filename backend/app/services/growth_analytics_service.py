@@ -767,6 +767,43 @@ def _compute_sales_rep_metrics(
 
     users = _fetch_users(db, org_id)
 
+    # Fetch customers per rep in the period
+    customers_by_rep: dict[str, int] = {}
+    try:
+        cust_result = (
+            db.table("customers")
+            .select("id, assigned_to, created_at")
+            .eq("org_id", org_id)
+            .is_("deleted_at", None)
+            .execute()
+        )
+        for c in (cust_result.data or []):
+            if _in_range(c.get("created_at"), date_from, date_to):
+                aid = c.get("assigned_to")
+                if aid:
+                    customers_by_rep[aid] = customers_by_rep.get(aid, 0) + 1
+    except Exception as exc:
+        logger.warning("sales_rep_metrics: customer fetch failed: %s", exc)
+
+    # Fetch outbound messages sent by each rep in the period
+    messages_by_rep: dict[str, int] = {}
+    try:
+        msg_result = (
+            db.table("whatsapp_messages")
+            .select("sent_by, created_at")
+            .eq("org_id", org_id)
+            .eq("direction", "outbound")
+            .not_.is_("sent_by", "null")
+            .execute()
+        )
+        for m in (msg_result.data or []):
+            if _in_range(m.get("created_at"), date_from, date_to):
+                sb = m.get("sent_by")
+                if sb:
+                    messages_by_rep[sb] = messages_by_rep.get(sb, 0) + 1
+    except Exception as exc:
+        logger.warning("sales_rep_metrics: messages fetch failed: %s", exc)
+
     # Identify sales reps — users with sales_agent template or any non-owner/ops_manager
     # Include all active users who have leads assigned
     all_rep_ids: set[str] = set()
@@ -818,15 +855,17 @@ def _compute_sales_rep_metrics(
         valid_scores = [s for s in scores if s is not None]
 
         results.append({
-            "rep_id":               rep_id,
-            "rep_name":             rep_user_map.get(rep_id, rep_id),
-            "leads_assigned":       len(rep_leads),
+            "rep_id":                 rep_id,
+            "rep_name":               rep_user_map.get(rep_id, rep_id),
+            "leads_assigned":         len(rep_leads),
+            "customers_assigned":     customers_by_rep.get(rep_id, 0),
+            "messages_sent":          messages_by_rep.get(rep_id, 0),
             "avg_response_time_mins": _safe_avg(sum(response_times), len(response_times)),
-            "demos_booked":         demos_booked,
-            "demo_show_rate":       demo_show_rate,
-            "close_rate":           _safe_pct(len(closed), len(rep_leads)),
-            "revenue_closed":       round(revenue, 2),
-            "avg_lead_score":       _safe_avg(sum(valid_scores), len(valid_scores)),
+            "demos_booked":           demos_booked,
+            "demo_show_rate":         demo_show_rate,
+            "close_rate":             _safe_pct(len(closed), len(rep_leads)),
+            "revenue_closed":         round(revenue, 2),
+            "avg_lead_score":         _safe_avg(sum(valid_scores), len(valid_scores)),
         })
 
     # Sort by revenue_closed descending
@@ -861,6 +900,26 @@ def get_channel_metrics(
     return result
 
 
+def _get_lead_channel(lead: dict) -> str:
+    """
+    Derives the acquisition channel label for a lead.
+    utm_source takes priority when set.
+    Falls back to entry_path mapping so WhatsApp inbound leads are shown
+    as 'WhatsApp' rather than lumped into 'organic'.
+    """
+    utm = (lead.get("utm_source") or "").strip()
+    if utm:
+        return utm
+    ep = (lead.get("entry_path") or "").strip().lower()
+    mapping = {
+        "whatsapp":     "WhatsApp",
+        "web_form":     "Web Form",
+        "meta_lead_ad": "Meta Lead Ad",
+        "manual":       "Manual",
+    }
+    return mapping.get(ep, "Organic")
+
+
 def _compute_channel_metrics(
     db: Any,
     org_id: str,
@@ -889,18 +948,20 @@ def _compute_channel_metrics(
     except Exception as exc:
         logger.warning("Direct sales channel fetch failed: %s", exc)
 
-    # Collect all channel names
+    # Collect all channel names — uses _get_lead_channel so WhatsApp inbound
+    # leads (utm_source=null, entry_path='whatsapp') appear as 'WhatsApp'
+    # rather than being lumped into 'organic'
     channels: set[str] = set()
     for l in period_leads:
-        channels.add(l.get("utm_source") or "organic")
+        channels.add(_get_lead_channel(l))
     for ds in direct_sales:
-        channels.add(ds.get("utm_source") or "organic")
+        channels.add(ds.get("utm_source") or "Organic")
 
     results = []
     for channel in sorted(channels):
         ch_leads = [
             l for l in period_leads
-            if (l.get("utm_source") or "organic") == channel
+            if _get_lead_channel(l) == channel
         ]
         closed = [l for l in ch_leads if _is_closed(l)]
         leads_revenue = sum(_get_revenue(l, db, org_id) for l in closed)
@@ -908,7 +969,7 @@ def _compute_channel_metrics(
         ds_revenue = sum(
             float(ds.get("amount") or 0)
             for ds in direct_sales
-            if (ds.get("utm_source") or "organic") == channel
+            if (ds.get("utm_source") or "Organic") == channel
         )
         total_revenue = leads_revenue + ds_revenue
 

@@ -317,6 +317,79 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str) -> Optional[str]:
+    """
+    Downloads a media file from Meta's media API and stores it in
+    Supabase Storage bucket 'whatsapp-media'.
+    Returns a long-lived signed URL, or None on any failure. S14.
+
+    Used for inbound audio (voice notes) so reps can play them back
+    in the Conversations thread.
+    """
+    try:
+        from app.services.whatsapp_service import _get_org_wa_credentials
+        _, access_token, _ = _get_org_wa_credentials(db, org_id)
+        if not access_token:
+            logger.warning("_fetch_and_store_media: no access token for org %s", org_id)
+            return None
+
+        # Step 1 — resolve the download URL from Meta's media endpoint
+        url_resp = httpx.get(
+            f"https://graph.facebook.com/v17.0/{media_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+        url_resp.raise_for_status()
+        download_url = url_resp.json().get("url")
+        if not download_url:
+            logger.warning("_fetch_and_store_media: no url in Meta response for %s", media_id)
+            return None
+
+        # Step 2 — download the binary file
+        file_resp = httpx.get(
+            download_url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=30,
+        )
+        file_resp.raise_for_status()
+        file_bytes = file_resp.content
+
+        # Step 3 — determine extension from mime_type
+        if "ogg" in mime_type:
+            ext = "ogg"
+        elif "mpeg" in mime_type or "mp3" in mime_type:
+            ext = "mp3"
+        elif "mp4" in mime_type:
+            ext = "mp4"
+        elif "aac" in mime_type:
+            ext = "aac"
+        else:
+            ext = "ogg"  # WhatsApp default for voice notes
+
+        storage_path = f"{org_id}/audio/{media_id}.{ext}"
+
+        # Step 4 — upload to Supabase Storage (private bucket 'whatsapp-media')
+        db.storage.from_("whatsapp-media").upload(
+            path=storage_path,
+            file=file_bytes,
+            file_options={"content-type": mime_type},
+        )
+
+        # Step 5 — get a long-lived signed URL (1 year)
+        signed = db.storage.from_("whatsapp-media").create_signed_url(
+            storage_path, expires_in=31_536_000
+        )
+        signed_url = (signed or {}).get("signedURL") or (signed or {}).get("signedUrl")
+        return signed_url
+
+    except Exception as exc:
+        logger.warning(
+            "_fetch_and_store_media failed for media_id=%s org=%s: %s",
+            media_id, org_id, exc,
+        )
+        return None
+
+
 def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     clean = phone.replace(" ", "").replace("-", "")
     variants = {clean}
@@ -735,7 +808,9 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     elif msg_type == "video":
         content = "[Video]"
     elif msg_type == "audio":
-        content = "[Audio]"
+        content = "[Voice note]"
+        _audio_media_id = (message.get("audio") or {}).get("id")
+        _audio_mime     = (message.get("audio") or {}).get("mime_type", "audio/ogg")
     elif msg_type == "document":
         content = "[Document]"
     elif msg_type == "interactive":
@@ -895,11 +970,21 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         datetime.now(timezone.utc) + timedelta(hours=24)
     ).isoformat()
 
+    # For inbound voice notes — download from Meta and store in Supabase Storage
+    # so reps can play audio back in the Conversations thread.
+    # S14: failure returns None, message is still saved without media_url.
+    _inbound_media_url: Optional[str] = None
+    if msg_type == "audio" and locals().get("_audio_media_id") and org_id:
+        _inbound_media_url = _fetch_and_store_media(
+            db, org_id, _audio_media_id, _audio_mime
+        )
+
     row: dict = {
         "org_id":          org_id,
         "direction":       "inbound",
         "message_type":    msg_type,
         "content":         content,
+        "media_url":       _inbound_media_url,
         "status":          "delivered",
         "meta_message_id": msg_id,
         "window_open":     True,

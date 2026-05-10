@@ -2600,6 +2600,27 @@ def send_cart_summary(
 
         _call_meta_send(phone_id, meta_payload, token=access_token)
 
+        # Store in whatsapp_messages so cart summary appears in Conversations thread
+        try:
+            _lead_id     = (session or {}).get("lead_id")
+            _customer_id = (session or {}).get("customer_id")
+            _win_exp     = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           _lead_id,
+                "customer_id":       _customer_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           summary_text,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning("send_cart_summary: whatsapp_messages insert failed: %s", _db_exc)
+
     except Exception as exc:
         logger.warning(
             "send_cart_summary failed org=%s phone=%s: %s",
@@ -2661,6 +2682,47 @@ def send_checkout_link(
                 },
             },
         }, token=access_token)
+
+        # Store in whatsapp_messages so checkout link appears in Conversations thread
+        try:
+            _win_exp      = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            _intro        = ((commerce_config or {}).get("checkout_message") or "Here's your checkout link:").strip()
+            _link_content = f"{_intro}\n{checkout_url}"
+            # Look up lead_id / customer_id from phone number
+            _lead_id, _customer_id = None, None
+            try:
+                _lk = (
+                    db.table("leads").select("id")
+                    .eq("org_id", org_id)
+                    .or_(f"whatsapp.eq.{phone_number},phone.eq.{phone_number}")
+                    .is_("deleted_at", None).limit(1).execute()
+                )
+                _lead_id = ((_lk.data or [{}])[0] or {}).get("id")
+                if not _lead_id:
+                    _ck = (
+                        db.table("customers").select("id")
+                        .eq("org_id", org_id)
+                        .or_(f"whatsapp.eq.{phone_number},phone.eq.{phone_number}")
+                        .is_("deleted_at", None).limit(1).execute()
+                    )
+                    _customer_id = ((_ck.data or [{}])[0] or {}).get("id")
+            except Exception:
+                pass
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           _lead_id,
+                "customer_id":       _customer_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           _link_content,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning("send_checkout_link: whatsapp_messages insert failed: %s", _db_exc)
 
     except Exception as exc:
         logger.warning(

@@ -1091,6 +1091,12 @@ function Bubble({ msg }) {
                 alt="Image"
                 style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 8, display: 'block' }}
               />
+            ) : msg.message_type === 'audio' ? (
+              <audio
+                controls
+                src={msg.media_url}
+                style={{ maxWidth: '100%', borderRadius: 8, outline: 'none', height: 36 }}
+              />
             ) : (
               <a
                 href={msg.media_url}
@@ -1099,10 +1105,10 @@ function Bubble({ msg }) {
                 style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: '8px 10px', textDecoration: 'none' }}
               >
                 <span style={{ fontSize: 20 }}>
-                  {msg.message_type === 'video' ? '🎥' : msg.message_type === 'audio' ? '🎵' : '📄'}
+                  {msg.message_type === 'video' ? '🎥' : '📄'}
                 </span>
                 <span style={{ fontSize: 12, color: ds.dark, fontWeight: 500 }}>
-                  {msg.message_type === 'document' ? 'Document' : msg.message_type === 'video' ? 'Video' : 'Audio'}
+                  {msg.message_type === 'document' ? 'Document' : 'Video'}
                 </span>
               </a>
             )}

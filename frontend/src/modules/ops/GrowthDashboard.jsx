@@ -723,12 +723,14 @@ function RiskSection({ data, loading, onLeadClick }) {
 // ─── 7. Sales Rep Leaderboard ─────────────────────────────────────────────────
 
 const REP_COLS = [
-  { key: 'rep_name',               label: 'Rep',       fmt: v => v },
-  { key: 'leads_assigned',         label: 'Leads',     fmt: v => v },
-  { key: 'avg_response_time_mins', label: 'Resp Time', fmt: v => v != null ? `${v}m` : '—' },
-  { key: 'demo_show_rate',         label: 'Demo Rate', fmt: pct },
-  { key: 'close_rate',             label: 'Close Rate',fmt: pct },
-  { key: 'revenue_closed',         label: 'Revenue',   fmt: fmt },
+  { key: 'rep_name',               label: 'Rep',          fmt: v => v },
+  { key: 'leads_assigned',         label: 'Leads',        fmt: v => v },
+  { key: 'customers_assigned',     label: 'Customers',    fmt: v => v ?? '—' },
+  { key: 'messages_sent',          label: 'Msgs Sent',    fmt: v => v ?? '—' },
+  { key: 'avg_response_time_mins', label: 'Resp Time',    fmt: v => v != null ? `${v}m` : '—' },
+  { key: 'demo_show_rate',         label: 'Demo Rate',    fmt: pct },
+  { key: 'close_rate',             label: 'Close Rate',   fmt: pct },
+  { key: 'revenue_closed',         label: 'Revenue',      fmt: fmt },
 ]
 
 function RepSection({ data, loading }) {
@@ -786,6 +788,18 @@ function ChannelSection({ data, loading }) {
     <div style={{ color: '#6b8fa0', fontSize: 13, fontFamily: ds.fontDm }}>No channel data for this period.</div>
   )
 
+  const channelIcon = (source) => {
+    const s = (source || '').toLowerCase()
+    if (s === 'whatsapp')       return '💬 '
+    if (s === 'instagram')      return '📸 '
+    if (s === 'facebook')       return '🔵 '
+    if (s === 'messenger')      return '💙 '
+    if (s === 'web form')       return '🌐 '
+    if (s === 'meta lead ad')   return '📣 '
+    if (s === 'manual')         return '✍️ '
+    return ''
+  }
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={tableStyle}>
@@ -797,7 +811,7 @@ function ChannelSection({ data, loading }) {
             <tr key={row.utm_source}>
               <td style={{ ...td, fontWeight: 600 }}>
                 <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, background: '#f0f9ff', color: '#0369a1', fontSize: 11.5, fontWeight: 600 }}>
-                  {row.utm_source}
+                  {channelIcon(row.utm_source)}{row.utm_source}
                 </span>
               </td>
               <td style={td}>{row.total_leads}</td>
