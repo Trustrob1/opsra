@@ -61,3 +61,4 @@ sentry-sdk==2.58.0
 tenacity==8.2.3
 
 pywebpush>=1.14.0
+cachetools==7.1.1

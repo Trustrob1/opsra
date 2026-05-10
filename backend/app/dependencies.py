@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from cachetools import TTLCache
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -26,6 +27,18 @@ from app.database import get_supabase
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
+
+# ---------------------------------------------------------------------------
+# User record cache — reduces Supabase users table queries under burst load.
+# On login, 10+ concurrent startup requests all call get_current_org and all
+# query the users table simultaneously. This saturates Supabase's connection
+# pool and causes transient empty results → 401 → sign-out loop.
+#
+# TTL of 30 seconds: user record changes (role, is_active) propagate within
+# 30s — acceptable for a CRM where role changes are infrequent admin actions.
+# maxsize=500: supports 500 concurrent active sessions before eviction.
+# ---------------------------------------------------------------------------
+_user_cache: TTLCache = TTLCache(maxsize=500, ttl=30)
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +107,11 @@ async def get_current_org(
     """
     import asyncio
 
+    # Check cache first — eliminates burst DB queries on login
+    cached = _user_cache.get(current_user.id)
+    if cached:
+        return cached
+
     db_user = None
     last_exc = None
 
@@ -108,6 +126,7 @@ async def get_current_org(
             rows = result.data or []
             if rows:
                 db_user = rows[0]
+                _user_cache[current_user.id] = db_user  # cache for 30s
                 break
             # Row not returned — likely a transient Supabase connection pool issue.
             # Wait briefly and retry before giving up.
