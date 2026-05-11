@@ -22,6 +22,7 @@ class LeadSource(str, Enum):
     instagram_ad = "instagram_ad"
     landing_page = "landing_page"
     whatsapp_inbound = "whatsapp_inbound"
+    instagram_dm = "instagram_dm"
     manual_phone = "manual_phone"
     manual_referral = "manual_referral"
     import_ = "import"  # 'import' is a Python keyword — use import_ internally

@@ -1648,6 +1648,70 @@ async def receive_whatsapp_message(request: Request, db=Depends(get_supabase)):
     return Response(status_code=200)
 
 
+# ---------------------------------------------------------------------------
+# GET /webhooks/instagram — Meta verification challenge
+# POST /webhooks/instagram — Instagram DM inbound
+# UNIFIED-INBOX-1A
+# ---------------------------------------------------------------------------
+
+@router.get("/instagram")
+async def verify_instagram_webhook(
+    hub_mode: Optional[str] = Query(None, alias="hub.mode"),
+    hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
+    hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
+):
+    """Meta hub.challenge verification for Instagram webhook."""
+    if hub_mode == "subscribe" and hub_verify_token == settings.META_VERIFY_TOKEN:
+        logger.info("Instagram webhook verified successfully")
+        if hub_challenge and hub_challenge.isdigit():
+            return int(hub_challenge)
+        return hub_challenge
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Instagram webhook verification failed — token mismatch",
+    )
+
+
+@router.post("/instagram", status_code=status.HTTP_200_OK)
+async def receive_instagram_message(request: Request, db=Depends(get_supabase)):
+    """
+    Receive Instagram DM inbound events from Meta.
+    Returns 200 immediately — processing dispatched to Celery (9E-B pattern).
+    Signature verified against META_APP_SECRET (same Meta App as WhatsApp).
+    """
+    import time as _time
+    _t0 = _time.monotonic()
+
+    raw_body  = await request.body()
+    signature = request.headers.get("X-Hub-Signature-256")
+
+    if not _verify_meta_signature(raw_body, signature):
+        _log_webhook(
+            db,
+            route="/webhooks/instagram",
+            response_status=403,
+            error_message="Invalid signature",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook signature",
+        )
+
+    payload: dict = json.loads(raw_body)
+
+    from app.workers.instagram_worker import process_instagram_webhook
+    process_instagram_webhook.delay(payload)
+
+    _log_webhook(
+        db,
+        route="/webhooks/instagram",
+        response_status=200,
+        topic="instagram_inbound",
+        processing_ms=int((_time.monotonic() - _t0) * 1000),
+    )
+    return Response(status_code=200)
+
+
 @router.get("/meta/whatsapp")
 async def verify_whatsapp_webhook(
     hub_mode: Optional[str] = Query(None, alias="hub.mode"),

@@ -42,6 +42,7 @@ import {
   resumeAI,
   pauseAI,
   sendMediaMessage,
+  sendInstagramMessage,
 } from '../../services/conversations.service'
 import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
 import { getCustomerMessages, listTemplates, sendMessage } from '../../services/whatsapp.service'
@@ -707,6 +708,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
         key={active.contact_id}
         leadId={isLead ? active.contact_id : undefined}
         customerId={!isLead ? active.contact_id : undefined}
+        channel={active.channel || 'whatsapp'}
         windowOpen={windowOpen}
         statusLoading={statusLoading}
         templates={templates}
@@ -728,7 +730,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
 //
 // key={active.contact_id} ensures full reset on conversation switch.
 
-function InlineComposer({ leadId, customerId, windowOpen, statusLoading = false, templates = [], onSent }) {
+function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, statusLoading = false, templates = [], onSent }) {
   const [mode, setMode]               = useState(windowOpen ? 'text' : 'template')
   const [text, setText]               = useState('')
   const [templateName, setTemplateName] = useState('')
@@ -816,11 +818,16 @@ function InlineComposer({ leadId, customerId, windowOpen, statusLoading = false,
       } else {
         // text mode
         if (!text.trim()) return
-        const payload = {}
-        if (leadId)     payload.lead_id = leadId
-        if (customerId) payload.customer_id = customerId
-        payload.content = text.trim()
-        await sendMessage(payload)
+        if (channel === 'instagram') {
+          // Instagram DM — routes to dedicated endpoint, lead only
+          await sendInstagramMessage(leadId, text.trim())
+        } else {
+          const payload = {}
+          if (leadId)     payload.lead_id = leadId
+          if (customerId) payload.customer_id = customerId
+          payload.content = text.trim()
+          await sendMessage(payload)
+        }
         setText('')
         if (textareaRef.current) {
           textareaRef.current.style.height = 'auto'
@@ -868,7 +875,9 @@ function InlineComposer({ leadId, customerId, windowOpen, statusLoading = false,
         <div style={{ background: '#FFF8E1', borderBottom: '1px solid #FFE082', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 12 }}>⚠</span>
           <span style={{ fontSize: 11.5, color: '#7B6000', fontFamily: ds.fontDm }}>
-            24-hour window closed — templates only (Meta rule)
+            {channel === 'instagram'
+              ? '24-hour window closed — you can only reply within 24 hours of the last message'
+              : '24-hour window closed — templates only (Meta rule)'}
           </span>
         </div>
       )}
@@ -900,8 +909,8 @@ function InlineComposer({ leadId, customerId, windowOpen, statusLoading = false,
         </div>
       )}
 
-      {/* Mode toggle — only shown when window is open and not in media mode */}
-      {!statusLoading && windowOpen && mode !== 'media' && (
+      {/* Mode toggle — only shown for WhatsApp when window is open and not in media mode */}
+      {!statusLoading && windowOpen && mode !== 'media' && channel !== 'instagram' && (
         <div style={{ display: 'flex', gap: 4, padding: '7px 14px 4px', alignItems: 'center' }}>
           <ModeBtn active={mode === 'text'} onClick={() => switchMode('text')}>✏ Text</ModeBtn>
           <ModeBtn active={mode === 'template'} onClick={() => switchMode('template')}>📋 Template</ModeBtn>
@@ -935,8 +944,8 @@ function InlineComposer({ leadId, customerId, windowOpen, statusLoading = false,
       {!statusLoading && (mode === 'text' || mode === 'media') && (
         <div style={{ padding: mode === 'media' ? '4px 14px 10px' : '4px 14px 10px', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
 
-          {/* Attachment button — hidden in media mode (file already picked) */}
-          {mode === 'text' && (
+          {/* Attachment button — hidden for Instagram (text only in UNIFIED-INBOX-1A) and in media mode */}
+          {mode === 'text' && channel !== 'instagram' && (
             <>
               <input
                 ref={fileInputRef}

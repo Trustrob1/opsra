@@ -431,6 +431,69 @@ def resume_ai(
     return ok(message="AI resumed for this conversation")
 
 
+# ---------------------------------------------------------------------------
+# UNIFIED-INBOX-1A — Instagram DM outbound send
+# ---------------------------------------------------------------------------
+
+class InstagramSendRequest(BaseModel):
+    lead_id: str = Field(..., max_length=36)
+    message: str = Field(..., max_length=1000)
+
+
+@router.post("/conversations/instagram/send")
+def send_instagram_dm(
+    payload: InstagramSendRequest,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    Send an outbound Instagram DM to a lead.
+    Lead must have instagram_scoped_id set (populated automatically when they
+    first message the org's Instagram page).
+    Enforces the 24-hour Instagram conversation window.
+    S1: org_id from JWT only.
+    """
+    from app.services.instagram_service import send_instagram_message
+
+    org_id = org["org_id"]
+
+    # Fetch instagram_scoped_id from lead — never trust it from the request body
+    lead_result = (
+        db.table("leads")
+        .select("id, instagram_scoped_id")
+        .eq("id", payload.lead_id)
+        .eq("org_id", org_id)
+        .is_("deleted_at", None)
+        .maybe_single()
+        .execute()
+    )
+    lead_data = lead_result.data
+    if isinstance(lead_data, list):
+        lead_data = lead_data[0] if lead_data else None
+    if not lead_data:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    instagram_scoped_id = (lead_data or {}).get("instagram_scoped_id")
+    if not instagram_scoped_id:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "This lead has no Instagram identity on record. "
+                "They must message you on Instagram first before you can reply."
+            ),
+        )
+
+    msg = send_instagram_message(
+        db=db,
+        org_id=org_id,
+        lead_id=payload.lead_id,
+        instagram_scoped_id=instagram_scoped_id,
+        text=payload.message,
+        sent_by=org["id"],
+    )
+    return ok(data=msg, message="Instagram DM sent")
+
+
 @router.post("/conversations/{contact_type}/{contact_id}/pause-ai")
 def pause_ai(
     contact_type: str,

@@ -2813,7 +2813,7 @@ def get_conversations(
                             "contact_type":           "lead",
                             "contact_name":           lead.get("full_name") or "Unknown",
                             "phone":                  lead.get("whatsapp") or "",
-                            "channel":                "whatsapp",
+                            "channel":                (last.get("channel") or "whatsapp") if last else "whatsapp",
                             "last_message":           (last.get("content") or "(media)") if last else None,
                             "last_message_at":        last.get("created_at") if last else None,
                             "last_message_direction": last.get("direction") if last else None,

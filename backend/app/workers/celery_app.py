@@ -128,6 +128,7 @@ celery_app = Celery(
         "app.workers.meta_token_worker",      # ← 9E-A
         "app.workers.webhook_worker",      # ← 9E-B
         "app.workers.ai_resume_worker",    # ← AI-AUTO-RESUME
+        "app.workers.instagram_worker",    # ← UNIFIED-INBOX-1A
     ],
 )
 
