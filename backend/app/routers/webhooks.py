@@ -376,10 +376,21 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str) -> Op
         )
 
         # Step 5 — get a long-lived signed URL (1 year)
+        # Handle both supabase-py v1 (object with .data) and v2 (dict) response shapes
         signed = db.storage.from_("whatsapp-media").create_signed_url(
-            storage_path, expires_in=31_536_000
+            path=storage_path, expires_in=31_536_000
         )
-        signed_url = (signed or {}).get("signedURL") or (signed or {}).get("signedUrl")
+        if hasattr(signed, "data"):
+            d = signed.data or {}
+            signed_url = d.get("signedUrl") or d.get("signedURL")
+        elif isinstance(signed, dict):
+            signed_url = (
+                signed.get("signedUrl")
+                or signed.get("signedURL")
+                or (signed.get("data") or {}).get("signedUrl")
+            )
+        else:
+            signed_url = None
         return signed_url
 
     except Exception as exc:

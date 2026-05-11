@@ -2695,7 +2695,7 @@ def send_checkout_link(
                     db.table("leads").select("id")
                     .eq("org_id", org_id)
                     .or_(f"whatsapp.eq.{phone_number},phone.eq.{phone_number}")
-                    .is_("deleted_at", None).limit(1).execute()
+                    .is_("deleted_at", "null").limit(1).execute()
                 )
                 _lead_id = ((_lk.data or [{}])[0] or {}).get("id")
                 if not _lead_id:
@@ -2703,7 +2703,7 @@ def send_checkout_link(
                         db.table("customers").select("id")
                         .eq("org_id", org_id)
                         .or_(f"whatsapp.eq.{phone_number},phone.eq.{phone_number}")
-                        .is_("deleted_at", None).limit(1).execute()
+                        .is_("deleted_at", "null").limit(1).execute()
                     )
                     _customer_id = ((_ck.data or [{}])[0] or {}).get("id")
             except Exception:
