@@ -10,6 +10,10 @@ Routes:
 Access: owner + ops_manager only.
 Pattern 53: static routes before parameterised.
 Pattern 62: db via Depends(get_supabase).
+
+GPM-2-FIX: On cache miss, GET /sections now dispatches a Celery background task
+and returns 202 immediately instead of running 8 sequential Haiku calls inline.
+This prevents Gunicorn worker timeouts. Frontend polls until cache is populated.
 """
 
 import logging
@@ -17,6 +21,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from app.dependencies import get_current_org, get_supabase
 from app.services.growth_analytics_service import (
@@ -31,10 +36,8 @@ from app.services.growth_analytics_service import (
 )
 from app.services.growth_insights_service import (
     generate_panel_narrative,
-    generate_section_insight,
     get_active_anomalies,
     get_cached_insights,
-    save_cached_insights,
     _make_cache_key,
 )
 
@@ -72,7 +75,7 @@ def _check_panel_rate_limit(org_id: str) -> None:
     _panel_rate[org_id] = calls
 
 
-# ── Section data fetcher ──────────────────────────────────────────────────────
+# ── Section data fetcher (used by panel route only) ───────────────────────────
 
 def _parse_date(s: str) -> date:
     """Convert ISO date string to date object for analytics service compatibility."""
@@ -83,16 +86,15 @@ def _fetch_all_section_data(db, org_id: str, date_from: str, date_to: str, user_
     df = _parse_date(date_from)
     dt = _parse_date(date_to)
     fetchers = {
-        "overview":        lambda: get_overview_metrics(db, org_id, df, dt),
+        "overview":         lambda: get_overview_metrics(db, org_id, df, dt),
         "team_performance": lambda: get_team_performance(db, org_id, df, dt),
-        "funnel":          lambda: get_funnel_metrics(db, org_id, df, dt),
-        "sales_reps":      lambda: get_sales_rep_metrics(db, org_id, df, dt, user_id, "owner"),
-        "channels":        lambda: get_channel_metrics(db, org_id, df, dt),
-        "velocity":        lambda: get_lead_velocity(db, org_id, df, dt),
+        "funnel":           lambda: get_funnel_metrics(db, org_id, df, dt),
+        "sales_reps":       lambda: get_sales_rep_metrics(db, org_id, df, dt, user_id, "owner"),
+        "channels":         lambda: get_channel_metrics(db, org_id, df, dt),
+        "velocity":         lambda: get_lead_velocity(db, org_id, df, dt),
         "pipeline_at_risk": lambda: get_pipeline_at_risk(db, org_id),
-        "win_loss":        lambda: get_win_loss_analysis(db, org_id, df, dt),
+        "win_loss":         lambda: get_win_loss_analysis(db, org_id, df, dt),
     }
-    ...
     results = {}
     for key, fn in fetchers.items():
         try:
@@ -115,7 +117,10 @@ async def get_insight_sections(
     """
     Returns insight cards for all 8 dashboard sections.
     Cached per org per date range for 6 hours.
-    Partial failures return null for that section — never 500.
+
+    GPM-2-FIX: On cache miss, dispatches a Celery background task and returns
+    202 immediately. Frontend polls this endpoint until cache is populated.
+    Cache hit path is unchanged — returns instantly with no Haiku calls.
     """
     _require_growth_access(org)
     org_id = org["org_id"]
@@ -125,34 +130,28 @@ async def get_insight_sections(
     dt = date_to or today
     cache_key = _make_cache_key(df, dt)
 
-    # Cache check
+    # Cache hit — return immediately, no Haiku calls
     cached = get_cached_insights(db, org_id, cache_key)
     if cached:
         return {"success": True, "data": {"sections": cached, "from_cache": True}}
 
-    # Fetch section data
-    section_data = _fetch_all_section_data(db, org_id, df, dt, org["id"])
+    # Cache miss — dispatch background task and return 202 immediately.
+    # The Celery task runs all 8 Haiku calls and writes the result to cache.
+    # Frontend polls this endpoint until cache is populated (status != generating).
+    from app.workers.growth_insights_worker import run_generate_section_insights
+    run_generate_section_insights.delay(str(org_id), df, dt)
 
-    # Generate insight cards — S14: each section isolated
-    SECTION_KEYS = [
-        "overview", "team_performance", "funnel", "sales_reps",
-        "channels", "velocity", "pipeline_at_risk", "win_loss",
-    ]
-    sections = {}
-    for key in SECTION_KEYS:
-        try:
-            sections[key] = generate_section_insight(key, section_data.get(key, {}))
-        except Exception as exc:
-            logger.warning("Insight generation failed [%s] org %s: %s", key, org_id, exc)
-            sections[key] = None
-
-    # Cache results
-    save_cached_insights(db, org_id, cache_key, sections)
-
-    # Log usage
-    _log_claude_usage(db, org_id, org["id"], "growth_section_insights", len(SECTION_KEYS))
-
-    return {"success": True, "data": {"sections": sections, "from_cache": False}}
+    return JSONResponse(
+        status_code=202,
+        content={
+            "success": True,
+            "data": {
+                "status":     "generating",
+                "sections":   {},
+                "from_cache": False,
+            },
+        },
+    )
 
 
 @router.post("/panel")
@@ -208,12 +207,12 @@ def _log_claude_usage(db, org_id: str, user_id: str, action_type: str, call_coun
     try:
         rows = [
             {
-                "org_id": org_id,
-                "user_id": user_id,
-                "action_type": action_type,
-                "model": "claude-haiku-4-5-20251001",
-                "input_tokens": 0,
-                "output_tokens": 0,
+                "org_id":             org_id,
+                "user_id":            user_id,
+                "action_type":        action_type,
+                "model":              "claude-haiku-4-5-20251001",
+                "input_tokens":       0,
+                "output_tokens":      0,
                 "estimated_cost_usd": 0,
             }
             for _ in range(call_count)

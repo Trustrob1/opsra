@@ -955,13 +955,23 @@ export default function GrowthDashboard({ user, setView }) {
     })
   }, [funnelParams])
 
-  // GPM-2: fetch insight cards
-  const fetchInsights = useCallback((range) => {
+  // GPM-2: fetch insight cards — polls if backend returns generating status
+  const fetchInsights = useCallback((range, attempt = 0) => {
     setInsightsLoading(true)
     getInsightSections(range.dateFrom, range.dateTo)
-      .then(d => setInsights(d?.sections || {}))
-      .catch(() => setInsights({}))
-      .finally(() => setInsightsLoading(false))
+      .then(d => {
+        if (d?.status === 'generating' && attempt < 6) {
+          // Cache miss — backend is generating in background, poll every 4s
+          setTimeout(() => fetchInsights(range, attempt + 1), 4000)
+        } else {
+          setInsights(d?.sections || {})
+          setInsightsLoading(false)
+        }
+      })
+      .catch(() => {
+        setInsights({})
+        setInsightsLoading(false)
+      })
   }, [])
 
   // GPM-2: fetch anomaly alerts

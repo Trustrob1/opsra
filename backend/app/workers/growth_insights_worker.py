@@ -290,3 +290,82 @@ def _send_whatsapp_text(
         )
     if resp.status_code not in (200, 201):
         raise RuntimeError(f"Meta API {resp.status_code}: {resp.text[:200]}")
+
+@celery_app.task(
+    name="app.workers.growth_insights_worker.run_generate_section_insights",
+    bind=True,
+    max_retries=0,
+)
+def run_generate_section_insights(self, org_id: str, date_from, date_to) -> dict:
+    """
+    GPM-2-FIX: Background generation of all 8 section insight cards.
+    Dispatched by GET /insights/sections on cache miss.
+    Writes result to cache on completion.
+    S14: per-section failure returns null for that section, never stops the loop.
+    """
+    from datetime import date as _date
+    from app.services.growth_insights_service import (
+        get_cached_insights,
+        save_cached_insights,
+        generate_section_insight,
+        _make_cache_key,
+    )
+    from app.services.growth_analytics_service import (
+        get_overview_metrics,
+        get_team_performance,
+        get_funnel_metrics,
+        get_sales_rep_metrics,
+        get_channel_metrics,
+        get_lead_velocity,
+        get_pipeline_at_risk,
+        get_win_loss_analysis,
+    )
+
+    db = get_supabase()
+
+    # Normalise date args — accept both date objects and ISO strings
+    try:
+        df = date_from if isinstance(date_from, _date) else _date.fromisoformat(str(date_from))
+        dt = date_to   if isinstance(date_to,   _date) else _date.fromisoformat(str(date_to))
+    except Exception as exc:
+        logger.warning("run_generate_section_insights: bad dates %s/%s — %s", date_from, date_to, exc)
+        return {"status": "error", "reason": "invalid_dates"}
+
+    cache_key = _make_cache_key(df.isoformat(), dt.isoformat())
+
+    # Don't regenerate if another worker already populated the cache
+    existing = get_cached_insights(db, org_id, cache_key)
+    if existing:
+        return {"status": "already_cached", "org_id": org_id}
+
+    section_fetchers = {
+        "overview":         lambda: get_overview_metrics(db, org_id, df, dt),
+        "team_performance": lambda: get_team_performance(db, org_id, df, dt),
+        "funnel":           lambda: get_funnel_metrics(db, org_id, df, dt),
+        "sales_reps":       lambda: get_sales_rep_metrics(db, org_id, df, dt),
+        "channels":         lambda: get_channel_metrics(db, org_id, df, dt),
+        "velocity":         lambda: get_lead_velocity(db, org_id, df, dt),
+        "pipeline_at_risk": lambda: get_pipeline_at_risk(db, org_id),
+        "win_loss":         lambda: get_win_loss_analysis(db, org_id, df, dt),
+    }
+
+    sections = {}
+    for section_key, fetcher in section_fetchers.items():
+        try:
+            data = fetcher()
+            sections[section_key] = generate_section_insight(
+                section_key, data, db=db, org_id=org_id
+            )
+        except Exception as exc:
+            logger.warning(
+                "run_generate_section_insights: section %s failed for org %s — %s",
+                section_key, org_id, exc,
+            )
+            sections[section_key] = None
+
+    save_cached_insights(db, org_id, cache_key, sections)
+    logger.info(
+        "run_generate_section_insights: complete for org %s (%d sections)",
+        org_id, len(sections),
+    )
+    return {"status": "complete", "org_id": org_id}
