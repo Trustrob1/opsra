@@ -331,7 +331,7 @@ def build_digest_context(db, org_id: str) -> dict:
 
 # ── Haiku API caller ─────────────────────────────────────────────────────────
 
-def _call_haiku(system_prompt: str, user_content: str) -> Optional[str]:
+def _call_haiku(system_prompt: str, user_content: str, db=None, org_id: Optional[str] = None) -> Optional[str]:
     """
     Makes a synchronous call to Claude Haiku.
     Returns raw text response or None on failure.
@@ -359,7 +359,41 @@ def _call_haiku(system_prompt: str, user_content: str) -> Optional[str]:
             return None
         data = resp.json()
         blocks = data.get("content", [])
-        return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+
+        if db and org_id:
+            try:
+                usage = data.get("usage", {})
+                from app.services.ai_service import _log_claude_usage
+                _log_claude_usage(
+                    db,
+                    org_id=org_id,
+                    function_name="growth_section_insights",
+                    model=HAIKU_MODEL,
+                    input_tokens=usage.get("input_tokens", 0),
+                    output_tokens=usage.get("output_tokens", 0),
+                )
+            except Exception as exc:
+                logger.warning("_call_haiku: usage log failed — %s", exc)
+
+        return text
+
+        # SA-2A: log usage — S14, never raises
+        try:
+            usage = data.get("usage", {})
+            from app.services.ai_service import _log_claude_usage
+            _log_claude_usage(
+                None,  # no db available here; pass db in when refactored
+                org_id=None,
+                function_name="growth_section_insights",
+                model=HAIKU_MODEL,
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+            )
+        except Exception:
+            pass
+
+        return text
     except Exception as exc:
         logger.warning("Haiku call failed: %s", exc)
         return None
@@ -382,7 +416,7 @@ def _parse_json_response(raw: Optional[str]) -> Optional[dict]:
 
 # ── Core insight generators ───────────────────────────────────────────────────
 
-def generate_section_insight(section_key: str, section_data) -> Optional[dict]:
+def generate_section_insight(section_key: str, section_data, db=None, org_id: Optional[str] = None) -> Optional[dict]:
     """
     Generates a single insight card for one dashboard section.
     Returns None on failure (S14 — caller handles null gracefully).
@@ -393,7 +427,7 @@ def generate_section_insight(section_key: str, section_data) -> Optional[dict]:
     context = build_section_context(section_key, section_data)
     if not context:
         return None
-    raw = _call_haiku(system, json.dumps(context))
+    raw = _call_haiku(system, json.dumps(context), db=db, org_id=org_id)
     result = _parse_json_response(raw)
     if not result:
         return None
@@ -404,13 +438,13 @@ def generate_section_insight(section_key: str, section_data) -> Optional[dict]:
     }
 
 
-def generate_panel_narrative(all_section_data: dict) -> Optional[dict]:
+def generate_panel_narrative(all_section_data: dict, db=None, org_id: Optional[str] = None) -> Optional[dict]:
     """
     Generates the full AI Insight Panel narrative on demand.
     Returns None on failure.
     """
     context = build_panel_context(all_section_data)
-    raw = _call_haiku(PANEL_SYSTEM_PROMPT, json.dumps(context))
+    raw = _call_haiku(PANEL_SYSTEM_PROMPT, json.dumps(context), db=db, org_id=org_id)
     result = _parse_json_response(raw)
     if not result:
         return None
@@ -423,12 +457,12 @@ def generate_panel_narrative(all_section_data: dict) -> Optional[dict]:
     }
 
 
-def generate_weekly_digest(digest_context: dict) -> Optional[str]:
+def generate_weekly_digest(digest_context: dict, db=None, org_id: Optional[str] = None) -> Optional[str]:
     """
     Generates a WhatsApp-formatted weekly digest string.
     Returns None on failure.
     """
-    raw = _call_haiku(DIGEST_SYSTEM_PROMPT, json.dumps(digest_context))
+    raw = _call_haiku(DIGEST_SYSTEM_PROMPT, json.dumps(digest_context), db=db, org_id=org_id)
     if not raw:
         return None
     return raw.strip()[:1500]
