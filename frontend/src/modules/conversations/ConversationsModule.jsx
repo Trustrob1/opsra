@@ -732,6 +732,12 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
 
 function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, statusLoading = false, templates = [], onSent }) {
   const [mode, setMode]               = useState(windowOpen ? 'text' : 'template')
+
+  useEffect(() => {
+    if (windowOpen && mode === 'template') {
+      setMode('text')
+    }
+  }, [windowOpen])
   const [text, setText]               = useState('')
   const [templateName, setTemplateName] = useState('')
   const [file, setFile]               = useState(null)       // File object
