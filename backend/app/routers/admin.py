@@ -711,7 +711,7 @@ async def create_user(
         "is_active": True,
         "is_out_of_office": False,
     }
-    result = db.table("users").insert(user_data).execute()
+    result = db.table("users").upsert(user_data, on_conflict="id").execute()
 
     write_audit_log(
         db=db,
