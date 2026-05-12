@@ -110,11 +110,12 @@ export default function LeadAssignmentConfig() {
     setEditingId('new')
   }
 
+  // AFTER
   const openEdit = (shift) => {
     setForm({
       shift_name:    shift.shift_name,
-      shift_start:   shift.shift_start,
-      shift_end:     shift.shift_end,
+      shift_start:   (shift.shift_start || '').slice(0, 5),
+      shift_end:     (shift.shift_end   || '').slice(0, 5),
       days_active:   shift.days_active || [],
       assignee_ids:  shift.assignee_ids || [],
       strategy:      shift.strategy || 'least_loaded',
