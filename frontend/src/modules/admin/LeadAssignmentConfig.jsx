@@ -490,13 +490,13 @@ function ShiftEditor({ form, setForm, formErr, users, saving, onSave, onCancel, 
         <div>
           <FieldLabel>Start Time</FieldLabel>
           <input type="time" value={form.shift_start}
-            onChange={e => setForm(f => ({ ...f, shift_start: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, shift_start: e.target.value.slice(0, 5) }))}
             style={inputStyle} />
         </div>
         <div>
           <FieldLabel>End Time</FieldLabel>
           <input type="time" value={form.shift_end}
-            onChange={e => setForm(f => ({ ...f, shift_end: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, shift_end: e.target.value.slice(0, 5) }))}
             style={inputStyle} />
         </div>
       </div>
