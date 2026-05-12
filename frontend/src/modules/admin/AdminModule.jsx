@@ -11,8 +11,12 @@
  * MULTI-ORG-WA-1: "📱 WhatsApp" tab added — WhatsAppIntegration.
  * LEAD-FORM-CONFIG: "📋 Lead Form" tab added — LeadFormConfig.
  *
- * Pattern 26: main content tabs use mount-and-hide (display:none) to preserve
- * table state, filters, and open modals when switching between tabs.
+ * LAZY MOUNT FIX: Tab components are only mounted when first visited.
+ * Once mounted they stay mounted (display:none) to preserve state.
+ * This replaces Pattern 26 (mount-all-on-load) which caused 25+ simultaneous
+ * API calls on mount, saturating the Supabase connection pool and triggering
+ * the sign-out loop via clearAuth().
+ *
  * Pattern 51: full rewrite only — never sed.
  */
 import { useState, useEffect } from 'react'
@@ -38,7 +42,7 @@ import ShopifyIntegration      from './ShopifyIntegration'
 import GrowthConfig            from './GrowthConfig'
 import SalesLog                from './SalesLog'
 import WhatsAppIntegration     from './WhatsAppIntegration'
-import CommerceSettings        from './CommerceSettings'    // COMM-1
+import CommerceSettings        from './CommerceSettings'
 import MessagingLimitsConfig   from './MessagingLimitsConfig'
 import LeadAssignmentConfig    from './LeadAssignmentConfig'
 import LeadFormConfig          from './LeadFormConfig'
@@ -78,11 +82,31 @@ const SALES_SUB_TABS = [
   { id: 'contact-menus', label: 'Contact Menus' },
 ]
 
+// ── Lazy mount helper ─────────────────────────────────────────────────────────
+// Renders children only after the tab has been visited at least once.
+// Once mounted, stays mounted (display:none when inactive) to preserve state.
+function LazyTab({ active, visited, children }) {
+  if (!visited) return null
+  return (
+    <div style={{ display: active ? 'block' : 'none' }}>
+      {children}
+    </div>
+  )
+}
+
 export default function AdminModule({ user }) {
   const [tab, setTab]                 = useState('users')
   const [salesSubTab, setSalesSubTab] = useState('sales-mode')
   const [accessDenied, setAccessDenied] = useState(false)
   const [checking, setChecking]       = useState(true)
+
+  // Track which tabs have been visited so we only mount them on first visit
+  const [visited, setVisited] = useState({ users: true }) // 'users' is default tab
+
+  function handleTabChange(newTab) {
+    setTab(newTab)
+    setVisited(prev => ({ ...prev, [newTab]: true }))
+  }
 
   useEffect(() => {
     adminSvc.listUsers()
@@ -145,7 +169,7 @@ export default function AdminModule({ user }) {
             return (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => handleTabChange(t.id)}
                 title={t.link ? 'View-only — manage in the respective module' : undefined}
                 style={{
                   background: 'none', border: 'none',
@@ -166,28 +190,29 @@ export default function AdminModule({ user }) {
       </div>
 
       <div style={{ padding: 28 }}>
-        <div style={{ display: tab === 'users'            ? 'block' : 'none' }}><UserManagement /></div>
-        <div style={{ display: tab === 'roles'            ? 'block' : 'none' }}><RoleBuilder /></div>
-        <div style={{ display: tab === 'routing'          ? 'block' : 'none' }}><RoutingRules /></div>
-        <div style={{ display: tab === 'integrations'     ? 'block' : 'none' }}><IntegrationStatus /></div>
-        <div style={{ display: tab === 'whatsapp'         ? 'block' : 'none' }}><WhatsAppIntegration /></div>
-        <div style={{ display: tab === 'commission'       ? 'block' : 'none' }}><CommissionSettings /></div>
-        <div style={{ display: tab === 'scoring'          ? 'block' : 'none' }}><ScoringRubric /></div>
-        <div style={{ display: tab === 'qualification'    ? 'block' : 'none' }}><QualificationFlow /></div>
-        <div style={{ display: tab === 'lead-form'        ? 'block' : 'none' }}><LeadFormConfig /></div>
-        <div style={{ display: tab === 'growth-dashboard' ? 'block' : 'none' }}><GrowthDashboardConfig /></div>
-        <div style={{ display: tab === 'sla'              ? 'block' : 'none' }}><LeadSLASettings /></div>
-        <div style={{ display: tab === 'sla-hours'        ? 'block' : 'none' }}><SLABusinessHoursConfig /></div>
-        <div style={{ display: tab === 'lead-assignment'  ? 'block' : 'none' }}><LeadAssignmentConfig /></div>
-        <div style={{ display: tab === 'nurture'          ? 'block' : 'none' }}><NurtureSettings /></div>
-        <div style={{ display: tab === 'whatsapp-menu'    ? 'block' : 'none' }}><CustomerMenuConfig /></div>
-        <div style={{ display: tab === 'pipeline'         ? 'block' : 'none' }}><PipelineConfig /></div>
-        <div style={{ display: tab === 'categories'       ? 'block' : 'none' }}><TicketCategoriesConfig /></div>
-        <div style={{ display: tab === 'biz-types'        ? 'block' : 'none' }}><DripBusinessTypesConfig /></div>
-        <div style={{ display: tab === 'messaging-limits' ? 'block' : 'none' }}><MessagingLimitsConfig /></div>
+
+        <LazyTab active={tab === 'users'}            visited={visited['users']}>            <UserManagement /></LazyTab>
+        <LazyTab active={tab === 'roles'}            visited={visited['roles']}>            <RoleBuilder /></LazyTab>
+        <LazyTab active={tab === 'routing'}          visited={visited['routing']}>          <RoutingRules /></LazyTab>
+        <LazyTab active={tab === 'integrations'}     visited={visited['integrations']}>     <IntegrationStatus /></LazyTab>
+        <LazyTab active={tab === 'whatsapp'}         visited={visited['whatsapp']}>         <WhatsAppIntegration /></LazyTab>
+        <LazyTab active={tab === 'commission'}       visited={visited['commission']}>       <CommissionSettings /></LazyTab>
+        <LazyTab active={tab === 'scoring'}          visited={visited['scoring']}>          <ScoringRubric /></LazyTab>
+        <LazyTab active={tab === 'qualification'}    visited={visited['qualification']}>    <QualificationFlow /></LazyTab>
+        <LazyTab active={tab === 'lead-form'}        visited={visited['lead-form']}>        <LeadFormConfig /></LazyTab>
+        <LazyTab active={tab === 'growth-dashboard'} visited={visited['growth-dashboard']}> <GrowthDashboardConfig /></LazyTab>
+        <LazyTab active={tab === 'sla'}              visited={visited['sla']}>              <LeadSLASettings /></LazyTab>
+        <LazyTab active={tab === 'sla-hours'}        visited={visited['sla-hours']}>        <SLABusinessHoursConfig /></LazyTab>
+        <LazyTab active={tab === 'lead-assignment'}  visited={visited['lead-assignment']}>  <LeadAssignmentConfig /></LazyTab>
+        <LazyTab active={tab === 'nurture'}          visited={visited['nurture']}>          <NurtureSettings /></LazyTab>
+        <LazyTab active={tab === 'whatsapp-menu'}    visited={visited['whatsapp-menu']}>    <CustomerMenuConfig /></LazyTab>
+        <LazyTab active={tab === 'pipeline'}         visited={visited['pipeline']}>         <PipelineConfig /></LazyTab>
+        <LazyTab active={tab === 'categories'}       visited={visited['categories']}>       <TicketCategoriesConfig /></LazyTab>
+        <LazyTab active={tab === 'biz-types'}        visited={visited['biz-types']}>        <DripBusinessTypesConfig /></LazyTab>
+        <LazyTab active={tab === 'messaging-limits'} visited={visited['messaging-limits']}> <MessagingLimitsConfig /></LazyTab>
 
         {/* SM-1: Sales System — sub-tabbed */}
-        <div style={{ display: tab === 'sales-system' ? 'block' : 'none' }}>
+        <LazyTab active={tab === 'sales-system'} visited={visited['sales-system']}>
           <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
             {SALES_SUB_TABS.map(st => (
               <button
@@ -209,32 +234,13 @@ export default function AdminModule({ user }) {
           </div>
           <div style={{ display: salesSubTab === 'sales-mode'    ? 'block' : 'none' }}><SalesModeConfig /></div>
           <div style={{ display: salesSubTab === 'contact-menus' ? 'block' : 'none' }}><ContactMenuConfig /></div>
-        </div>
+        </LazyTab>
 
-        {/* SHOP-1B: Shopify */}
-        <div style={{ display: tab === 'shopify' ? 'block' : 'none' }}>
-          <ShopifyIntegration />
-        </div>
-
-        {/* COMM-1: Commerce Settings */}
-        <div style={{ display: tab === 'commerce' ? 'block' : 'none' }}>
-          <CommerceSettings />
-        </div>
-
-        {/* COMM-2: WhatsApp Sales Mode */}
-        <div style={{ display: tab === 'wa-sales-mode' ? 'block' : 'none' }}>
-          <WASalesModeConfig />
-        </div>
-        
-        {/* GPM-1D: Growth Config */}
-        <div style={{ display: tab === 'growth-config' ? 'block' : 'none' }}>
-          <GrowthConfig />
-        </div>
-
-        {/* GPM-1E: Sales Log */}
-        <div style={{ display: tab === 'sales-log' ? 'block' : 'none' }}>
-          <SalesLog />
-        </div>
+        <LazyTab active={tab === 'shopify'}      visited={visited['shopify']}>      <ShopifyIntegration /></LazyTab>
+        <LazyTab active={tab === 'commerce'}     visited={visited['commerce']}>     <CommerceSettings /></LazyTab>
+        <LazyTab active={tab === 'wa-sales-mode'} visited={visited['wa-sales-mode']}><WASalesModeConfig /></LazyTab>
+        <LazyTab active={tab === 'growth-config'} visited={visited['growth-config']}><GrowthConfig /></LazyTab>
+        <LazyTab active={tab === 'sales-log'}    visited={visited['sales-log']}>    <SalesLog /></LazyTab>
 
         {tab === 'kb' && (
           <LinkMessage
