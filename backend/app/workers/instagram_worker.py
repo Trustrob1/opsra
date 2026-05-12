@@ -370,6 +370,31 @@ def _get_or_create_lead(
                 {"instagram_scoped_id": instagram_scoped_id}
             ).eq("id", lead_id).eq("org_id", org_id).execute()
 
+            # Fetch Instagram username from Graph API — S14: never raises
+            try:
+                from app.services.instagram_service import _get_org_instagram_credentials
+                _, access_token = _get_org_instagram_credentials(db, org_id)
+                if access_token:
+                    import httpx as _httpx
+                    resp = _httpx.get(
+                        f"https://graph.facebook.com/v18.0/{instagram_scoped_id}",
+                        params={"fields": "name,username", "access_token": access_token},
+                        timeout=10,
+                    )
+                    if resp.status_code == 200:
+                        ig_data = resp.json()
+                        ig_name = ig_data.get("name") or ig_data.get("username") or "Instagram User"
+                        ig_username = ig_data.get("username")
+                        db.table("leads").update({
+                            "full_name": ig_name,
+                            "instagram_username": ig_username,
+                        }).eq("id", lead_id).eq("org_id", org_id).execute()
+            except Exception as exc:
+                logger.warning(
+                    "_get_or_create_lead: could not fetch Instagram username "
+                    "for scoped_id=%s: %s", instagram_scoped_id, exc
+                )
+
         return lead_id, assigned_to
 
     except Exception as exc:

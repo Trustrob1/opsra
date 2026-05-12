@@ -2775,7 +2775,7 @@ def get_conversations(
                 # Latest message per lead (fetch, python-side dedup)
                 msgs = (
                     db.table("whatsapp_messages")
-                    .select("lead_id, content, created_at, direction, status, message_type")
+                    .select("lead_id, content, created_at, direction, status, message_type, channel")
                     .eq("org_id", org_id)
                     .in_("lead_id", lead_ids)
                     .order("created_at", desc=True)
