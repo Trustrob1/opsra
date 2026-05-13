@@ -222,7 +222,7 @@ async def receive_meta_lead_ad(
     import time as _time
     _t0 = _time.monotonic()
     signature = request.headers.get("X-Hub-Signature-256")
-    logger.info("INSTAGRAM_SIG_DEBUG secret_len=%d sig=%s", len(settings.INSTAGRAM_APP_SECRET), signature)
+
     if not _verify_instagram_signature(raw_body, signature):
         logger.warning("Meta lead-ads webhook: invalid signature — rejecting")
         _log_webhook(db, route="/webhooks/meta/lead-ads", response_status=403, error_message="Invalid signature")
@@ -1699,6 +1699,8 @@ async def receive_instagram_message(request: Request, db=Depends(get_supabase)):
 
     raw_body  = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
+
+    logger.info("INSTAGRAM_SIG_DEBUG secret_len=%d sig=%s", len(settings.INSTAGRAM_APP_SECRET), signature)
 
     if not _verify_meta_signature(raw_body, signature):
         _log_webhook(
