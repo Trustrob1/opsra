@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     META_WHATSAPP_PHONE_ID: str = ""
     META_VERIFY_TOKEN: str = ""
     META_APP_SECRET: str = ""
+    INSTAGRAM_APP_SECRET: str = ""
 
     # Redis (Celery broker)
     REDIS_URL: str

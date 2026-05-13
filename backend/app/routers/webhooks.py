@@ -110,6 +110,20 @@ def _verify_meta_signature(payload_bytes: bytes, signature_header: Optional[str]
     )
     return hmac.compare_digest(expected, signature_header)
 
+def _verify_instagram_signature(payload_bytes: bytes, signature_header: Optional[str]) -> bool:
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    secret = getattr(settings, 'INSTAGRAM_APP_SECRET', None) or settings.META_APP_SECRET
+    expected = (
+        "sha256="
+        + hmac.new(
+            secret.encode("utf-8"),
+            payload_bytes,
+            hashlib.sha256,
+        ).hexdigest()
+    )
+    return hmac.compare_digest(expected, signature_header)
+
 
 def _verify_paystack_signature(payload_bytes: bytes, sig_header: Optional[str]) -> bool:
     secret = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
@@ -208,7 +222,7 @@ async def receive_meta_lead_ad(
     import time as _time
     _t0 = _time.monotonic()
     signature = request.headers.get("X-Hub-Signature-256")
-    if not _verify_meta_signature(raw_body, signature):
+    if not _verify_instagram_signature(raw_body, signature):
         logger.warning("Meta lead-ads webhook: invalid signature — rejecting")
         _log_webhook(db, route="/webhooks/meta/lead-ads", response_status=403, error_message="Invalid signature")
         raise HTTPException(
