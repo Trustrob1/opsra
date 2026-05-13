@@ -1700,7 +1700,15 @@ async def receive_instagram_message(request: Request, db=Depends(get_supabase)):
     raw_body  = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
 
-    logger.info("INSTAGRAM_SIG_DEBUG secret_len=%d sig=%s", len(settings.INSTAGRAM_APP_SECRET), signature)
+    logger.info("INSTAGRAM_SIG_DEBUG secret_len=%d sig=%s computed=%s",
+        len(settings.INSTAGRAM_APP_SECRET),
+        signature,
+        "sha256=" + hmac.new(
+            settings.INSTAGRAM_APP_SECRET.encode("utf-8"),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+    )
 
     if not _verify_meta_signature(raw_body, signature):
         _log_webhook(
