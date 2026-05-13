@@ -1710,7 +1710,7 @@ async def receive_instagram_message(request: Request, db=Depends(get_supabase)):
         ).hexdigest()
     )
 
-    if not _verify_meta_signature(raw_body, signature):
+    if not _verify_instagram_signature(raw_body, signature):
         _log_webhook(
             db,
             route="/webhooks/instagram",
