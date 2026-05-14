@@ -74,3 +74,6 @@ export const sendMediaMessage = (formData) =>
 
 export const sendInstagramMessage = (leadId, message) =>
   api.post('/api/v1/conversations/instagram/send', { lead_id: leadId, message })
+
+export const sendMessengerMessage = (leadId, message) =>
+  api.post('/api/v1/conversations/messenger/send', { lead_id: leadId, message })

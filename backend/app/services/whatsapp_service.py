@@ -2848,7 +2848,7 @@ def get_conversations(
 
                 msgs = (
                     db.table("whatsapp_messages")
-                    .select("customer_id, content, created_at, direction, status, message_type")
+                    .select("customer_id, content, created_at, direction, status, message_type, channel")
                     .eq("org_id", org_id)
                     .in_("customer_id", customer_ids)
                     .order("created_at", desc=True)

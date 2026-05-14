@@ -43,6 +43,7 @@ import {
   pauseAI,
   sendMediaMessage,
   sendInstagramMessage,
+  sendMessengerMessage,
 } from '../../services/conversations.service'
 import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
 import { getCustomerMessages, listTemplates, sendMessage } from '../../services/whatsapp.service'
@@ -52,6 +53,7 @@ import { getCustomerMessages, listTemplates, sendMessage } from '../../services/
 const CHANNEL = {
   whatsapp:  { label: 'WhatsApp',  icon: '💬', color: '#25D366', bg: '#E8F8EE' },
   instagram: { label: 'Instagram', icon: '📷', color: '#C13584', bg: '#FCE4EC' },
+  messenger: { label: 'Messenger', icon: '💙', color: '#0084FF', bg: '#E3F2FD' },
 }
 
 const THREAD_POLL_MS = 5000
@@ -498,7 +500,7 @@ function ListPanel({ conversations, allCount, loading, error, search, onSearch, 
         </div>
 
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-          {[{ v: 'all', l: 'All channels' }, { v: 'whatsapp', l: '💬 WA' }, { v: 'instagram', l: '📷 IG' }].map(({ v, l }) => (
+          {[{ v: 'all', l: 'All channels' }, { v: 'whatsapp', l: '💬 WA' }, { v: 'instagram', l: '📷 IG' }, { v: 'messenger', l: '💙 FB' }].map(({ v, l }) => (
             <Chip key={v} active={channelFilter === v} color={ds.teal} onClick={() => onChannelFilter(v)}>{l}</Chip>
           ))}
           {[{ v: 'all', l: 'All' }, { v: 'lead', l: 'Leads' }, { v: 'customer', l: 'Customers' }].map(({ v, l }) => (
@@ -827,6 +829,9 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         if (channel === 'instagram') {
           // Instagram DM — routes to dedicated endpoint, lead only
           await sendInstagramMessage(leadId, text.trim())
+        } else if (channel === 'messenger') {
+          // Facebook Messenger DM — routes to dedicated endpoint, lead only
+          await sendMessengerMessage(leadId, text.trim())
         } else {
           const payload = {}
           if (leadId)     payload.lead_id = leadId
@@ -881,7 +886,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         <div style={{ background: '#FFF8E1', borderBottom: '1px solid #FFE082', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 12 }}>⚠</span>
           <span style={{ fontSize: 11.5, color: '#7B6000', fontFamily: ds.fontDm }}>
-            {channel === 'instagram'
+            {(channel === 'instagram' || channel === 'messenger')
               ? '24-hour window closed — you can only reply within 24 hours of the last message'
               : '24-hour window closed — templates only (Meta rule)'}
           </span>
@@ -951,7 +956,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         <div style={{ padding: mode === 'media' ? '4px 14px 10px' : '4px 14px 10px', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
 
           {/* Attachment button — hidden for Instagram (text only in UNIFIED-INBOX-1A) and in media mode */}
-          {mode === 'text' && channel !== 'instagram' && (
+          {mode === 'text' && channel !== 'instagram' && channel !== 'messenger' && (
             <>
               <input
                 ref={fileInputRef}
