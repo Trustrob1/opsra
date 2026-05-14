@@ -45,6 +45,31 @@ _user_cache: TTLCache = TTLCache(maxsize=500, ttl=30)
 # and all query Supabase at once, saturating the connection pool.
 # With this, only ONE request per user_id queries the DB; all others wait
 # and then read from cache when the lock is released.
+#
+# FIX (session 73+): _user_locks is populated via dict.setdefault(), which is
+# atomic under CPython's GIL. The previous pattern used a check-then-set:
+#
+#   if current_user.id not in _user_locks:           # ← two coroutines can
+#       _user_locks[current_user.id] = Lock()        #   both pass this check
+#
+# Under asyncio, two coroutines can both evaluate the `not in` check as True
+# before either writes to the dict, causing each to create a separate Lock
+# object. The second write silently overwrites the first. Coroutines that
+# already acquired the first lock now hold a lock that nothing else is waiting
+# on — the stampede protection is completely bypassed.
+#
+# setdefault() is a single atomic dict operation: it inserts only if the key
+# is absent, and always returns the value now in the dict. All coroutines for
+# the same user_id are guaranteed to get the same Lock object.
+#
+# Lock entries are intentionally NOT removed after use. Removal introduced a
+# second race: a coroutine could acquire a lock, populate the cache, exit the
+# async with block, and call pop() — but between the exit and the pop, a new
+# coroutine could call setdefault() and get a brand-new lock, bypassing the
+# cache entirely. Retaining lock objects is safe: with maxsize=500 in
+# _user_cache, at most 500 active users exist at any time, each lock is ~200
+# bytes, total overhead ≤ 100KB. Dict entries for inactive users are harmless.
+# ---------------------------------------------------------------------------
 _user_locks: dict = {}
 
 
@@ -117,6 +142,10 @@ async def get_current_org(
     - Per-user asyncio.Lock ensures only ONE request queries the DB
     - Second cache check inside the lock means waiting requests read
       from cache once the first request populates it, never hitting DB
+
+    Lock creation uses dict.setdefault() — a single atomic operation under
+    CPython's GIL — to guarantee all concurrent coroutines for the same
+    user_id share exactly one Lock object. See _user_locks comment above.
     """
     import asyncio
 
@@ -125,11 +154,12 @@ async def get_current_org(
     if cached:
         return cached
 
-    # Get or create a per-user lock — one lock per active user ID
-    if current_user.id not in _user_locks:
-        _user_locks[current_user.id] = asyncio.Lock()
+    # Atomically get-or-create the per-user lock.
+    # setdefault() is a single dict operation — safe under CPython's GIL.
+    # All concurrent coroutines for this user_id receive the same Lock object.
+    lock = _user_locks.setdefault(current_user.id, asyncio.Lock())
 
-    async with _user_locks[current_user.id]:
+    async with lock:
         # Second cache check inside the lock — the request that got here
         # first may have already fetched and cached the result while
         # the current request was waiting to acquire the lock
@@ -172,8 +202,11 @@ async def get_current_org(
                 if attempt < 2:
                     await asyncio.sleep(2.0 * (attempt + 1))
 
-    # Lock released — clean up the lock entry to prevent unbounded dict growth
-    _user_locks.pop(current_user.id, None)
+    # NOTE: lock is intentionally NOT removed from _user_locks here.
+    # Removing it outside the async with block introduces a race condition
+    # where a new coroutine can call setdefault() between the lock exit and
+    # the pop(), receiving a fresh lock that bypasses the populated cache.
+    # See _user_locks comment at the top of this file for full explanation.
 
     if db_user is None:
         logger.error(
