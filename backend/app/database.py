@@ -46,24 +46,29 @@ _supabase_client: Optional[Client] = None
 
 def get_supabase() -> Client:
     """
-    Return the Supabase service-role client, creating it on first call.
+    Return a fresh Supabase service-role client for this request.
 
-    This is used as a FastAPI dependency (Depends(get_supabase)) and can
-    also be called directly in Celery workers.
+    A new client is created on every call. This is intentional.
 
-    The client uses the SERVICE KEY — it bypasses RLS and must only ever
-    be used server-side. Never expose this client or its key to the frontend.
+    supabase-py's sync Client is NOT safe for concurrent use. It uses a
+    mutable PostgREST query builder — chained calls (.table().select().eq())
+    mutate internal state on the builder object. Sharing one instance across
+    concurrent coroutines causes builder state corruption: concurrent requests
+    overwrite each other's query parameters mid-chain, resulting in Supabase
+    returning HTTP 200 with 0 rows (valid response to a malformed query).
+    This manifested as the persistent sign-out loop: 0 rows → 401 → clearAuth().
+
+    Client construction is cheap — no connection is opened until .execute().
+    Each request gets isolated state. Celery workers (single-threaded per task)
+    are unaffected.
+
+    The module-level singleton (_supabase_client) and reset_supabase_client()
+    are retained for test compatibility only.
     """
-    global _supabase_client
-
-    if _supabase_client is None:
-        logger.debug("Initialising Supabase client (first use)")
-        _supabase_client = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_KEY,
-        )
-
-    return _supabase_client
+    return create_client(
+        settings.SUPABASE_URL,
+        settings.SUPABASE_SERVICE_KEY,
+    )
 
 
 def reset_supabase_client() -> None:
