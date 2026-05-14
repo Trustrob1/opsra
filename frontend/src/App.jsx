@@ -51,6 +51,7 @@ import DemoQueue from './modules/leads/DemoQueue'
 import AriaButton from './modules/assistant/AriaButton'
 import AriaPanel  from './modules/assistant/AriaPanel'
 import OnboardingChecklist from './modules/onboarding/OnboardingChecklist'
+import IOSInstallBanner from './components/IOSInstallBanner'
 import { getBriefing } from './services/assistant.service'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import CreateOrg from "./modules/superadmin/CreateOrg.jsx"
@@ -666,6 +667,7 @@ function AppShell() {
       <AriaPanel open={ariaOpen} onClose={() => setAriaOpen(false)} briefing={ariaBriefing} onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }} />
 
       {/* Onboarding Checklist (ORG-ONBOARDING-B) */}
+      <IOSInstallBanner />
       <OnboardingChecklist setView={(v) => { setView(v); setActiveNav(v); setSelectedLeadId(null) }} setActiveNav={setActiveNav} />
     </div>
   )

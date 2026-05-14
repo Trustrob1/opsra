@@ -66,6 +66,14 @@ window.opsraSubscribeToPush = async function subscribeToPush(apiToken) {
     const registration = await navigator.serviceWorker.ready
     if (!registration.pushManager) return
 
+    // iOS 16.4+ supports push only when installed as a PWA (standalone mode).
+    // In Safari browser (not installed), pushManager.subscribe() throws.
+    // Guard: skip subscription if not in standalone mode on iOS.
+    const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent)
+    const isStandalone = window.navigator.standalone === true ||
+      window.matchMedia('(display-mode: standalone)').matches
+    if (isIos && !isStandalone) return
+
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly:      true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
