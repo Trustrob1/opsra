@@ -611,7 +611,7 @@ async def health_orgs(
         try:
             rows = (db.table("notifications")
                     .select("org_id")
-                    .eq("action", "whatsapp.token_invalid")
+                    .eq("type", "whatsapp.token_invalid")
                     .gte("created_at", since)
                     .execute().data or [])
             return {r["org_id"] for r in rows if r.get("org_id")}
