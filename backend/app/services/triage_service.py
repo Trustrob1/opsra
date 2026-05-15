@@ -783,7 +783,7 @@ def _action_route_to_role(
     """
     from app.models.leads import LeadCreate, LeadSource
     from app.services import lead_service
-    from app.services.notification_service import _insert_notification
+    from app.services.notifications_service import _insert_notification
 
     contact_type = item.get("contact_type", "business_inquiry")
     role = item.get("role", "owner")
@@ -834,7 +834,7 @@ def _action_free_form(
     """
     from app.models.leads import LeadCreate, LeadSource
     from app.services import lead_service
-    from app.services.notification_service import _insert_notification
+    from app.services.notifications_service import _insert_notification
 
     contact_type = item.get("contact_type", "other")
 
@@ -1423,7 +1423,7 @@ def _notify_managers(
 ) -> None:
     """Notify all owners and ops_managers in the org. S14."""
     try:
-        from app.services.notification_service import _insert_notification
+        from app.services.notifications_service import _insert_notification
 
         users_result = (
             db.table("users")
