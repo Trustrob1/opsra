@@ -434,6 +434,9 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
             wa = (row.get("whatsapp") or "").replace(" ", "").replace("-", "")
             ph = (row.get("phone") or "").replace(" ", "").replace("-", "")
             if wa in variants or ph in variants:
+                # Skip system/test org — never route real inbound to it
+                if row["org_id"] == "00000000-0000-0000-0000-000000000001":
+                    continue
                 return row["org_id"], row["id"], None, row.get("assigned_to")
     except Exception as exc:
         logger.warning("Customer phone lookup failed: %s", exc)
@@ -474,6 +477,9 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
             wa = (row.get("whatsapp") or "").replace(" ", "").replace("-", "")
             ph = (row.get("phone") or "").replace(" ", "").replace("-", "")
             if wa in variants or ph in variants:
+                # Skip system/test org — never route real inbound to it
+                if row["org_id"] == "00000000-0000-0000-0000-000000000001":
+                    continue
                 return row["org_id"], None, row["id"], row.get("assigned_to")
     except Exception as exc:
         logger.warning("Lead phone lookup failed: %s", exc)
@@ -1057,7 +1063,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             try:
                 _sess = (
                     db.table("lead_qualification_sessions")
-                    .select("id").eq("lead_id", lead_id).eq("ai_active", True).execute()
+                    .select("id").eq("lead_id", lead_id).eq("org_id", org_id).eq("ai_active", True).execute()
                 )
                 _has_active_session = bool(_sess.data)
             except Exception:
@@ -1105,6 +1111,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 db.table("lead_qualification_sessions")
                 .select("id")
                 .eq("lead_id", lead_id)
+                .eq("org_id", org_id)
                 .limit(1)
                 .execute()
             )
