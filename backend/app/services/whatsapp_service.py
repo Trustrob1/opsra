@@ -2802,57 +2802,83 @@ def get_conversations(
             if leads:
                 lead_ids = [l["id"] for l in leads]
 
-                # Latest message per lead (fetch, python-side dedup)
-                msgs = (
-                    db.table("whatsapp_messages")
-                    .select("lead_id, content, created_at, direction, status, message_type, channel")
-                    .eq("org_id", org_id)
-                    .in_("lead_id", lead_ids)
-                    .order("created_at", desc=True)
-                    .limit(min(len(lead_ids) * 3, 600))
-                    .execute()
-                ).data or []
-                lead_latest: dict = {}
-                for m in msgs:
-                    lid = m.get("lead_id")
-                    if lid and lid not in lead_latest:
-                        lead_latest[lid] = m
+                # Hide leads with active qualification sessions from the inbox.
+                # Reps should not see or respond while the bot is qualifying.
+                # Leads that tapped escape have ai_active=False — visible immediately.
+                # S14: on failure show all leads (safe default).
+                try:
+                    active_qual_result = (
+                        db.table("lead_qualification_sessions")
+                        .select("lead_id")
+                        .in_("lead_id", lead_ids)
+                        .eq("org_id", org_id)
+                        .eq("ai_active", True)
+                        .execute()
+                    )
+                    active_qual_lead_ids = {
+                        r["lead_id"]
+                        for r in (active_qual_result.data or [])
+                    }
+                    leads = [l for l in leads if l["id"] not in active_qual_lead_ids]
+                    lead_ids = [l["id"] for l in leads]
+                except Exception as _qual_exc:
+                    logger.warning(
+                        "get_conversations: active qual filter failed org=%s — "
+                        "showing all leads: %s", org_id, _qual_exc,
+                    )
 
-                # Unread counts
-                unread_rows = (
-                    db.table("whatsapp_messages")
-                    .select("lead_id")
-                    .eq("org_id", org_id)
-                    .in_("lead_id", lead_ids)
-                    .eq("direction", "inbound")
-                    .is_("read_at", "null")
-                    .execute()
-                ).data or []
-                lead_unread: dict = {}
-                for u in unread_rows:
-                    lid = u.get("lead_id")
-                    if lid:
-                        lead_unread[lid] = lead_unread.get(lid, 0) + 1
+                if lead_ids:
+                    # Latest message per lead (fetch, python-side dedup)
+                    msgs = (
+                        db.table("whatsapp_messages")
+                        .select("lead_id, content, created_at, direction, status, message_type, channel")
+                        .eq("org_id", org_id)
+                        .in_("lead_id", lead_ids)
+                        .order("created_at", desc=True)
+                        .limit(min(len(lead_ids) * 3, 600))
+                        .execute()
+                    ).data or []
+                    lead_latest: dict = {}
+                    for m in msgs:
+                        lid = m.get("lead_id")
+                        if lid and lid not in lead_latest:
+                            lead_latest[lid] = m
 
-                for lead in leads:
-                    try:
-                        lid = lead["id"]
-                        last = lead_latest.get(lid)
-                        conversations.append({
-                            "contact_id":             lid,
-                            "contact_type":           "lead",
-                            "contact_name":           lead.get("full_name") or "Unknown",
-                            "phone":                  lead.get("whatsapp") or "",
-                            "channel":                (last.get("channel") or "whatsapp") if last else "whatsapp",
-                            "last_message":           (last.get("content") or "(media)") if last else None,
-                            "last_message_at":        last.get("created_at") if last else None,
-                            "last_message_direction": last.get("direction") if last else None,
-                            "unread_count":           lead_unread.get(lid, 0),
-                            "assigned_to":            lead.get("assigned_to"),
-                            "assigned_name":          (lead.get("assigned_user") or {}).get("full_name"),
-                        })
-                    except Exception:
-                        pass
+                    # Unread counts
+                    unread_rows = (
+                        db.table("whatsapp_messages")
+                        .select("lead_id")
+                        .eq("org_id", org_id)
+                        .in_("lead_id", lead_ids)
+                        .eq("direction", "inbound")
+                        .is_("read_at", "null")
+                        .execute()
+                    ).data or []
+                    lead_unread: dict = {}
+                    for u in unread_rows:
+                        lid = u.get("lead_id")
+                        if lid:
+                            lead_unread[lid] = lead_unread.get(lid, 0) + 1
+
+                    for lead in leads:
+                        try:
+                            lid = lead["id"]
+                            last = lead_latest.get(lid)
+                            conversations.append({
+                                "contact_id":             lid,
+                                "contact_type":           "lead",
+                                "contact_name":           lead.get("full_name") or "Unknown",
+                                "phone":                  lead.get("whatsapp") or "",
+                                "channel":                (last.get("channel") or "whatsapp") if last else "whatsapp",
+                                "last_message":           (last.get("content") or "(media)") if last else None,
+                                "last_message_at":        last.get("created_at") if last else None,
+                                "last_message_direction": last.get("direction") if last else None,
+                                "unread_count":           lead_unread.get(lid, 0),
+                                "assigned_to":            lead.get("assigned_to"),
+                                "assigned_name":          (lead.get("assigned_user") or {}).get("full_name"),
+                            })
+                        except Exception:
+                            pass
         except Exception as exc:
             logger.warning("get_conversations leads error org=%s: %s", org_id, exc)
 

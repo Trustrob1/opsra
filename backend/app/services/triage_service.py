@@ -648,6 +648,19 @@ def _action_qualify(
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
     lead_id = lead["id"] if lead else None
 
+    # Backfill lead_id on any messages saved before the lead existed
+    # S14: failure never blocks qualification flow
+    if lead_id:
+        try:
+            db.table("whatsapp_messages").update(
+                {"lead_id": lead_id}
+            ).eq("org_id", org_id).is_("lead_id", "null").execute()
+        except Exception as _backfill_exc:
+            logger.warning(
+                "_action_qualify: lead_id backfill failed lead=%s: %s",
+                lead_id, _backfill_exc,
+            )
+
     # 3 — C2: Atomic state transition — bail if another handler already advanced
     transitioned = update_session(
         db, session_id, "active",

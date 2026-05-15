@@ -875,6 +875,34 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             logger.info("[WH] no org found — dropping message")
             return
 
+        # Save inbound message for unknown contacts — ensures all messages
+        # appear in the conversation thread regardless of contact status.
+        # S14: failure is non-blocking — triage routing continues regardless.
+        try:
+            from datetime import datetime, timezone, timedelta
+            _now_unknown = _now_iso()
+            _window_expires_unknown = (
+                datetime.now(timezone.utc) + timedelta(hours=24)
+            ).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "direction":         "inbound",
+                "message_type":      msg_type,
+                "channel":           "whatsapp",
+                "content":           content,
+                "status":            "delivered",
+                "meta_message_id":   msg_id or None,
+                "window_open":       True,
+                "window_expires_at": _window_expires_unknown,
+                "sent_by":           None,
+                "created_at":        _now_unknown,
+            }).execute()
+        except Exception as _save_exc:
+            logger.warning(
+                "_handle_inbound_message: unknown contact message save failed "
+                "org=%s phone=%s: %s", org_id, sender_phone, _save_exc,
+            )
+
         active_session = triage_service.get_active_session(db, org_id, sender_phone)
         logger.info("[WH] active_session=%s", active_session)
         if active_session:
