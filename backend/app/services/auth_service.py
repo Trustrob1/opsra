@@ -228,7 +228,7 @@ async def admin_request_password_reset(
         supabase_url = os.getenv("SUPABASE_URL", "").strip()
         service_key  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
         resp = _httpx.post(
-            f"{supabase_url}/auth/v1/admin/users/{target_user_id}/generate-link",
+            f"{supabase_url}/auth/v1/admin/generate-link",
             headers={
                 "Authorization": f"Bearer {service_key}",
                 "apikey":        service_key,
