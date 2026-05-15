@@ -810,6 +810,19 @@ def _action_route_to_role(
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
 
+    # Backfill lead_id on inbound messages saved before the lead existed
+    # S14: failure never blocks the route_to_role flow
+    if lead and lead.get("id"):
+        try:
+            db.table("whatsapp_messages").update(
+                {"lead_id": lead["id"]}
+            ).eq("org_id", org_id).is_("lead_id", "null").execute()
+        except Exception as _backfill_exc:
+            logger.warning(
+                "_action_route_to_role: lead_id backfill failed lead=%s: %s",
+                lead["id"], _backfill_exc,
+            )
+
     # Send confirmation message to the lead and save to whatsapp_messages
     # so the rep sees the full context in the conversation thread.
     try:
@@ -908,6 +921,19 @@ def _action_free_form(
         contact_type=contact_type,
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
+
+    # Backfill lead_id on inbound messages saved before the lead existed
+    # S14: failure never blocks the free_form flow
+    if lead and lead.get("id"):
+        try:
+            db.table("whatsapp_messages").update(
+                {"lead_id": lead["id"]}
+            ).eq("org_id", org_id).is_("lead_id", "null").execute()
+        except Exception as _backfill_exc:
+            logger.warning(
+                "_action_free_form: lead_id backfill failed lead=%s: %s",
+                lead["id"], _backfill_exc,
+            )
 
     # Notify assigned rep or first owner
     assigned_to = lead.get("assigned_to")
