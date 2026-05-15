@@ -810,16 +810,42 @@ def _action_route_to_role(
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
 
-    # Send confirmation message to the lead
+    # Send confirmation message to the lead and save to whatsapp_messages
+    # so the rep sees the full context in the conversation thread.
     try:
         phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        confirmation_text = "Thanks for reaching out! 😊 One of our team will be in touch with you shortly."
         if phone_id:
             _call_meta_send(phone_id, {
                 "messaging_product": "whatsapp",
                 "to": phone_number,
                 "type": "text",
-                "text": {"body": "Thanks for reaching out! 😊 One of our team will be in touch with you shortly."},
+                "text": {"body": confirmation_text},
             }, token=access_token)
+        # Save outbound confirmation to whatsapp_messages
+        # so rep sees full conversation context in the thread
+        if lead and lead.get("id"):
+            try:
+                from datetime import datetime, timezone, timedelta
+                _now = datetime.now(timezone.utc).isoformat()
+                _win = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+                db.table("whatsapp_messages").insert({
+                    "org_id":            org_id,
+                    "lead_id":           lead["id"],
+                    "direction":         "outbound",
+                    "message_type":      "text",
+                    "channel":           "whatsapp",
+                    "content":           confirmation_text,
+                    "status":            "sent",
+                    "window_open":       True,
+                    "window_expires_at": _win,
+                    "sent_by":           None,
+                    "created_at":        _now,
+                }).execute()
+            except Exception as _db_exc:
+                logger.warning(
+                    "_action_route_to_role: message save failed: %s", _db_exc
+                )
     except Exception as _msg_exc:
         logger.warning("_action_route_to_role: confirmation message failed: %s", _msg_exc)
 
