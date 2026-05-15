@@ -1352,6 +1352,67 @@ def _handle_structured_qualification_turn(
     current_index = session.get("current_question_index") or 0
     if current_index >= len(questions):
         raise ValueError(f"qualification session {session_id} already past last question")
+
+    # ── Escape button handler ─────────────────────────────────────────────
+    # Lead tapped "Speak to someone" — close qualification, route to human.
+    _escape_id = None
+    if interactive_payload:
+        _escape_id = (
+            (interactive_payload.get("button_reply") or {}).get("id")
+            or (interactive_payload.get("list_reply") or {}).get("id")
+        )
+    if _escape_id == "qual_escape_human":
+        # Close the qualification session
+        db.table("lead_qualification_sessions").update({
+            "ai_active":      False,
+            "stage":          "handed_off",
+            "handed_off_at":  now_ts,
+            "handoff_summary": "Lead requested human assistance during qualification.",
+            "last_message_at": now_ts,
+        }).eq("id", session_id).execute()
+
+        # Send confirmation to lead
+        try:
+            from app.services.whatsapp_service import (
+                _get_org_wa_credentials, _call_meta_send, _get_lead_phone,
+            )
+            _phone_id, _token, _ = _get_org_wa_credentials(db, org_id)
+            _lead_phone = _get_lead_phone(db, lead_id)
+            if _phone_id and _lead_phone:
+                _call_meta_send(_phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to": _lead_phone,
+                    "type": "text",
+                    "text": {"body": "No problem! 😊 One of our team will be in touch with you shortly."},
+                }, token=_token)
+        except Exception as _conf_exc:
+            logger.warning(
+                "_handle_structured_qualification_turn: escape confirmation failed lead=%s: %s",
+                lead_id, _conf_exc,
+            )
+
+        # Notify assigned rep or owner
+        if assigned_to:
+            try:
+                db.table("notifications").insert({
+                    "org_id":        org_id,
+                    "user_id":       assigned_to,
+                    "type":          "qualification_complete",
+                    "title":         "Lead requested human assistance 👋",
+                    "body":          "A lead exited the qualification flow and asked to speak with someone directly.",
+                    "resource_type": "lead",
+                    "resource_id":   lead_id,
+                    "is_read":       False,
+                    "created_at":    now_ts,
+                }).execute()
+            except Exception as _notif_exc:
+                logger.warning(
+                    "_handle_structured_qualification_turn: escape notification failed: %s",
+                    _notif_exc,
+                )
+        return
+    # ── End escape button handler ─────────────────────────────────────────
+
     current_question = questions[current_index]
     answer_key = current_question.get("answer_key", f"q{current_index}")
     q_type = current_question.get("type", "free_text")

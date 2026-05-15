@@ -2049,6 +2049,36 @@ def send_qualification_question(
 
         _call_meta_send(phone_id, meta_payload, token=access_token)
 
+        # Escape button — allows lead to exit qualification and speak to a human
+        # at any point. Sent as a separate message after every question.
+        # S14 — failure never blocks the question send.
+        try:
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": "Need help or prefer to speak with someone?"},
+                    "action": {
+                        "buttons": [
+                            {
+                                "type": "reply",
+                                "reply": {
+                                    "id": "qual_escape_human",
+                                    "title": "💬 Speak to someone",
+                                },
+                            }
+                        ]
+                    },
+                },
+            }, token=access_token)
+        except Exception as _esc_exc:
+            logger.warning(
+                "send_qualification_question: escape button failed org=%s phone=%s: %s",
+                org_id, phone_number, _esc_exc,
+            )
+
     except Exception as exc:
         logger.warning(
             "send_qualification_question failed org=%s phone=%s q_index=%s: %s",
