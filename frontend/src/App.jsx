@@ -152,6 +152,8 @@ function UpdatePasswordScreen() {
     : null
   )
   const [done, setDone]           = useState(false)
+  const [showPwd, setShowPwd]     = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const handleSubmit = async () => {
     if (!password || password.length < 8) { setError('Password must be at least 8 characters.'); return }
@@ -211,20 +213,35 @@ function UpdatePasswordScreen() {
 
             {!errorCode && accessToken && (
               <>
-                <label style={loginLabel}>New password</label>
-                <input
-                  type="password" placeholder="Min 8 characters"
-                  value={password} onChange={e => { setPassword(e.target.value); setError(null) }}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
-                  style={loginInput}
-                />
-                <label style={loginLabel}>Confirm new password</label>
-                <input
-                  type="password" placeholder="Repeat your password"
-                  value={confirm} onChange={e => { setConfirm(e.target.value); setError(null) }}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
-                  style={{ ...loginInput, marginBottom: 28 }}
-                />
+                {/* AI-SUGGEST-1 eye toggle state */}
+            <label style={loginLabel}>New password</label>
+            <div style={{ position: 'relative', marginBottom: 20 }}>
+              <input
+                type={showPwd ? 'text' : 'password'} placeholder="Min 8 characters"
+                value={password} onChange={e => { setPassword(e.target.value); setError(null) }}
+                onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
+                style={{ ...loginInput, marginBottom: 0, paddingRight: 44 }}
+              />
+              <button
+                type="button" onClick={() => setShowPwd(p => !p)}
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
+                title={showPwd ? 'Hide password' : 'Show password'}
+              >{showPwd ? '🙈' : '👁'}</button>
+            </div>
+            <label style={loginLabel}>Confirm new password</label>
+            <div style={{ position: 'relative', marginBottom: 28 }}>
+              <input
+                type={showConfirm ? 'text' : 'password'} placeholder="Repeat your password"
+                value={confirm} onChange={e => { setConfirm(e.target.value); setError(null) }}
+                onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
+                style={{ ...loginInput, marginBottom: 0, paddingRight: 44 }}
+              />
+              <button
+                type="button" onClick={() => setShowConfirm(p => !p)}
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
+                title={showConfirm ? 'Hide password' : 'Show password'}
+              >{showConfirm ? '🙈' : '👁'}</button>
+            </div>
                 <button onClick={handleSubmit} disabled={loading} style={loginBtn(loading)}>
                   {loading ? <Spinner label="Updating…" /> : 'Set New Password'}
                 </button>
@@ -271,7 +288,8 @@ function LoginScreen({ onAuth }) {
     }
   }
 
-  const [mfaStep, setMfaStep]       = useState(false)
+  const [showLoginPwd, setShowLoginPwd] = useState(false)
+  const [mfaStep, setMfaStep]           = useState(false)
   const [mfaCode, setMfaCode]       = useState('')
   const [pendingAuth, setPendingAuth] = useState(null)
 
@@ -434,7 +452,20 @@ function LoginScreen({ onAuth }) {
             <label style={loginLabel}>Email address</label>
             <input type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={handleKeyDown} autoComplete="email" style={loginInput} />
             <label style={loginLabel}>Password</label>
-            <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={handleKeyDown} autoComplete="current-password" style={{ ...loginInput, marginBottom: 24 }} />
+            <div style={{ position: 'relative', marginBottom: 24 }}>
+              <input
+                type={showLoginPwd ? 'text' : 'password'}
+                placeholder="••••••••" value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={handleKeyDown} autoComplete="current-password"
+                style={{ ...loginInput, marginBottom: 0, paddingRight: 44 }}
+              />
+              <button
+                type="button" onClick={() => setShowLoginPwd(p => !p)}
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
+                title={showLoginPwd ? 'Hide password' : 'Show password'}
+              >{showLoginPwd ? '🙈' : '👁'}</button>
+            </div>
             {idleMsg && (
               <div style={{ background: '#0e2a38', border: '1px solid #1e4a60', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#7ecfea', lineHeight: 1.5 }}>
                 🔒 You have been logged out due to inactivity.

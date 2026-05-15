@@ -134,8 +134,8 @@ async def update_user_password(
         raise ValueError(password_error)
 
     try:
-        # Use the user's own access token to update their password.
-        # Supabase Auth will reject if the token is expired or invalid.
+        # Set the user's session using their reset access token before updating
+        supabase.auth.set_session(access_token=access_token, refresh_token="")
         supabase.auth.update_user(
             {"password": new_password},
         )
