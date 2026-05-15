@@ -25,9 +25,11 @@ Security rules applied:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
-from supabase import Client
+import httpx as _httpx
+from supabase import Clientnt
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +331,6 @@ def admin_update_user_email(
 
     # Update Supabase Auth email via Admin API (bypasses confirmation)
     try:
-        import os, httpx as _httpx
         supabase_url = os.getenv("SUPABASE_URL", "").strip()
         service_key  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
         resp = _httpx.patch(
