@@ -224,27 +224,19 @@ async def admin_request_password_reset(
     # Returns a short-lived signed URL the staff member clicks to set a new password.
     reset_link: Optional[str] = None
     try:
-        import os, httpx as _httpx
         supabase_url = os.getenv("SUPABASE_URL", "").strip()
         service_key  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
-        resp = _httpx.post(
-            f"{supabase_url}/auth/v1/admin/generate-link",
-            headers={
-                "Authorization": f"Bearer {service_key}",
-                "apikey":        service_key,
-                "Content-Type":  "application/json",
-            },
-            json={
-                "type":        "recovery",
-                "email":       target_email,
+        link_response = supabase.auth.admin.generate_link({
+            "type":        "recovery",
+            "email":       target_email,
+            "options": {
                 "redirect_to": redirect_url,
             },
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        link_data   = resp.json()
-        # Supabase returns action_link — the full signed URL
-        reset_link  = link_data.get("action_link") or link_data.get("hashed_token")
+        })
+        reset_link = (
+            getattr(link_response, "properties", None) and
+            getattr(link_response.properties, "action_link", None)
+        ) or None
         logger.info(
             "Admin password reset link generated for user %s by admin %s",
             target_user_id, caller_id,
