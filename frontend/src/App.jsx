@@ -126,10 +126,21 @@ function UpdatePasswordScreen() {
   const { setAuth } = useAuthStore()
 
   // Supabase embeds the token in the URL hash as access_token
-  const hashParams  = new URLSearchParams(window.location.hash.replace('#', ''))
-  const accessToken = hashParams.get('access_token')
-  const errorCode   = hashParams.get('error_code')
-  const errorDesc   = hashParams.get('error_description')
+  const [accessToken] = useState(() => {
+    const h = new URLSearchParams(window.location.hash.replace('#', ''))
+    const q = new URLSearchParams(window.location.search)
+    return h.get('access_token') || q.get('access_token') || null
+  })
+  const [errorCode] = useState(() => {
+    const h = new URLSearchParams(window.location.hash.replace('#', ''))
+    const q = new URLSearchParams(window.location.search)
+    return h.get('error_code') || q.get('error_code') || null
+  })
+  const [errorDesc] = useState(() => {
+    const h = new URLSearchParams(window.location.hash.replace('#', ''))
+    const q = new URLSearchParams(window.location.search)
+    return h.get('error_description') || q.get('error_description') || null
+  })
 
   const [password, setPassword]   = useState('')
   const [confirm, setConfirm]     = useState('')
