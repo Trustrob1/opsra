@@ -111,11 +111,118 @@ export default function App() {
 
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />
   if (window.location.pathname === '/terms') return <TermsOfService />
+  if (window.location.pathname === '/auth/update-password') return <UpdatePasswordScreen />
   if (!token) return <LoginScreen onAuth={setAuth} />
   return (
     <ErrorBoundary>
       <AppShell />
     </ErrorBoundary>
+  )
+}
+
+// ─── Update Password screen (reset link landing page) ────────────────────────
+
+function UpdatePasswordScreen() {
+  const { setAuth } = useAuthStore()
+
+  // Supabase embeds the token in the URL hash as access_token
+  const hashParams  = new URLSearchParams(window.location.hash.replace('#', ''))
+  const accessToken = hashParams.get('access_token')
+  const errorCode   = hashParams.get('error_code')
+  const errorDesc   = hashParams.get('error_description')
+
+  const [password, setPassword]   = useState('')
+  const [confirm, setConfirm]     = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState(
+    errorCode ? (errorCode === 'otp_expired'
+      ? 'This reset link has expired. Please request a new one.'
+      : decodeURIComponent((errorDesc ?? '').replace(/\+/g, ' ')) || 'Invalid reset link.')
+    : null
+  )
+  const [done, setDone]           = useState(false)
+
+  const handleSubmit = async () => {
+    if (!password || password.length < 8) { setError('Password must be at least 8 characters.'); return }
+    if (password !== confirm) { setError('Passwords do not match.'); return }
+    if (!accessToken) { setError('Invalid or missing reset token. Please request a new reset link.'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      await _authPatch('/api/v1/auth/update-password', { password }, accessToken)
+      setDone(true)
+      // Redirect to login after 3 seconds
+      setTimeout(() => { window.location.href = '/' }, 3000)
+    } catch (e) {
+      const msg = e?.response?.data?.detail?.message
+      setError(msg || 'Password update failed. The link may have expired — please request a new one.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: ds.dark, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ background: ds.dark2, border: '1px solid #1e3a4f', borderRadius: 16, padding: '48px 44px', width: '100%', maxWidth: 420, boxShadow: '0 32px 80px rgba(0,0,0,0.5)' }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
+          <div style={{ width: 44, height: 44, background: ds.teal, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 20, color: 'white' }}>O</div>
+          <div>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: 0 }}>Opsra</p>
+            <p style={{ fontSize: 11, color: '#6B8FA0', letterSpacing: '1px', textTransform: 'uppercase', margin: 0 }}>AI Growth System</p>
+          </div>
+        </div>
+
+        {done ? (
+          <>
+            <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 16 }}>✅</div>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 12px', textAlign: 'center' }}>Password updated</h1>
+            <p style={{ fontSize: 13, color: '#7A9BAD', textAlign: 'center', lineHeight: 1.6 }}>
+              Your password has been changed successfully.<br />
+              Redirecting you to sign in…
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: 'white', margin: '0 0 8px' }}>Set new password</h1>
+            <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 28, lineHeight: 1.6 }}>Choose a strong password for your Opsra account.</p>
+
+            {error && (
+              <div style={{ background: '#1a0a0a', border: '1px solid #5a1a1a', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>
+                <p style={{ fontSize: 13, color: '#FF9A9A', margin: 0 }}>⚠ {error}</p>
+                {(errorCode || !accessToken) && (
+                  <a href="/" style={{ fontSize: 12, color: '#5a9aaa', display: 'block', marginTop: 8, textDecoration: 'underline' }}>
+                    ← Back to sign in to request a new link
+                  </a>
+                )}
+              </div>
+            )}
+
+            {!errorCode && accessToken && (
+              <>
+                <label style={loginLabel}>New password</label>
+                <input
+                  type="password" placeholder="Min 8 characters"
+                  value={password} onChange={e => { setPassword(e.target.value); setError(null) }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
+                  style={loginInput}
+                />
+                <label style={loginLabel}>Confirm new password</label>
+                <input
+                  type="password" placeholder="Repeat your password"
+                  value={confirm} onChange={e => { setConfirm(e.target.value); setError(null) }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
+                  style={{ ...loginInput, marginBottom: 28 }}
+                />
+                <button onClick={handleSubmit} disabled={loading} style={loginBtn(loading)}>
+                  {loading ? <Spinner label="Updating…" /> : 'Set New Password'}
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
