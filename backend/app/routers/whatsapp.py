@@ -586,3 +586,93 @@ def pause_ai(
         paused=True,
     )
     return ok(message="AI paused — conversation handed to human")
+
+
+# ---------------------------------------------------------------------------
+# AI-SUGGEST-1 — On-demand KB suggestion + suggestion analytics
+# ---------------------------------------------------------------------------
+
+@router.get("/conversations/lead/{lead_id}/kb-suggestion")
+def get_kb_suggestion(
+    lead_id: str,
+    content: str = Query(..., max_length=2000),
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    AI-SUGGEST-1: Rep taps 💡 on an inbound message — returns a KB-sourced
+    suggested reply if a confident match exists.
+
+    Query param:
+      content — the inbound message text to match against the KB.
+
+    Returns { article_id, title, snippet } or null.
+    S1: org_id from JWT only — lead_id verified against org before any lookup.
+    S14: returns null on any failure rather than 500.
+    """
+    from app.services.customer_inbound_service import get_kb_suggestion_for_rep
+
+    org_id = org["org_id"]
+
+    # Verify lead belongs to this org (S1)
+    lead_check = (
+        db.table("leads")
+        .select("id")
+        .eq("id", lead_id)
+        .eq("org_id", org_id)
+        .is_("deleted_at", None)
+        .maybe_single()
+        .execute()
+    )
+    lead_data = lead_check.data
+    if isinstance(lead_data, list):
+        lead_data = lead_data[0] if lead_data else None
+    if not lead_data:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    suggestion = get_kb_suggestion_for_rep(db=db, org_id=org_id, content=content)
+    return ok(data=suggestion)
+
+
+class SuggestionFeedbackRequest(BaseModel):
+    message_id: str = Field(..., max_length=36)
+    article_id: str = Field(..., max_length=36)
+    accepted: bool
+
+
+@router.post("/conversations/lead/{lead_id}/kb-suggestion/feedback")
+def record_suggestion_feedback(
+    lead_id: str,
+    payload: SuggestionFeedbackRequest,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    AI-SUGGEST-1: Record whether the rep accepted or dismissed a KB suggestion.
+    Writes suggested_kb_article_id + suggestion_accepted onto the message row.
+    S1: org_id from JWT. message_id verified to belong to this org + lead.
+    """
+    org_id = org["org_id"]
+
+    # Verify the message belongs to this org and this lead (S1)
+    msg_check = (
+        db.table("whatsapp_messages")
+        .select("id")
+        .eq("id", payload.message_id)
+        .eq("org_id", org_id)
+        .eq("lead_id", lead_id)
+        .maybe_single()
+        .execute()
+    )
+    msg_data = msg_check.data
+    if isinstance(msg_data, list):
+        msg_data = msg_data[0] if msg_data else None
+    if not msg_data:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    db.table("whatsapp_messages").update({
+        "suggested_kb_article_id": payload.article_id,
+        "suggestion_accepted":     payload.accepted,
+    }).eq("id", payload.message_id).eq("org_id", org_id).execute()
+
+    return ok(message="Suggestion feedback recorded")

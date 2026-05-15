@@ -2300,3 +2300,83 @@ def _create_lead_action_task(
         logger.warning(
             "_create_lead_action_task failed for lead %s: %s", lead_id, exc
         )
+
+
+# ---------------------------------------------------------------------------
+# AI-SUGGEST-1 — On-demand KB suggestion for reps in human mode  (S14)
+# ---------------------------------------------------------------------------
+
+def get_kb_suggestion_for_rep(db, org_id: str, content: str) -> Optional[dict]:
+    """
+    AI-SUGGEST-1: On-demand KB suggestion surfaced when a rep taps 💡 on an
+    inbound message while in human mode.
+
+    Two-stage gate — cost control:
+      Stage 1: keyword pre-filter (pure Python, free). If the top-scoring
+               article scores < 2, return None immediately — no Sonnet call.
+      Stage 2: call lookup_kb_answer() only if Stage 1 passes.
+
+    Returns:
+        { "article_id": str, "title": str, "snippet": str }
+        or None if no confident match found or on any failure.
+
+    S14 — never raises.
+    """
+    try:
+        result = (
+            db.table("knowledge_base_articles")
+            .select("id, title, content, tags")
+            .eq("org_id", org_id)
+            .eq("is_published", True)
+            .execute()
+        )
+        articles = result.data if isinstance(result.data, list) else []
+        if not articles:
+            return None
+
+        safe_content = _sanitise_for_prompt(content, max_length=500)
+        content_lower = safe_content.lower()
+
+        scored: list[tuple[int, dict]] = []
+        for article in articles:
+            score = 0
+            title_lower = (article.get("title") or "").lower()
+            body_lower  = (article.get("content") or "")[:500].lower()
+            tags        = article.get("tags") or []
+            for word in content_lower.split():
+                if len(word) < 3:
+                    continue
+                if word in title_lower:
+                    score += 3
+                if word in body_lower:
+                    score += 1
+                if any(word in (t or "").lower() for t in tags):
+                    score += 2
+            if score > 0:
+                scored.append((score, article))
+
+        if not scored:
+            return None
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_score, top_article = scored[0]
+
+        # Stage 1 gate — only proceed if keyword match is meaningful
+        if top_score < 2:
+            return None
+
+        # Stage 2 — call Sonnet via existing lookup_kb_answer()
+        kb_result = lookup_kb_answer(db, org_id, content)
+        if not kb_result or not kb_result.get("found"):
+            return None
+
+        answer = kb_result["answer"]
+        return {
+            "article_id": kb_result["article_id"],
+            "title":      top_article.get("title") or "KB Article",
+            "snippet":    answer[:300].strip(),
+        }
+
+    except Exception as exc:
+        logger.warning("get_kb_suggestion_for_rep failed — returning None: %s", exc)
+        return None

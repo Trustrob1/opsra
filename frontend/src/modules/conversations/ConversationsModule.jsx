@@ -46,7 +46,7 @@ import {
   sendMessengerMessage,
 } from '../../services/conversations.service'
 import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
-import { getCustomerMessages, listTemplates, sendMessage } from '../../services/whatsapp.service'
+import { getCustomerMessages, sendMessage } from '../../services/whatsapp.service'
 
 // ─── Channel config ───────────────────────────────────────────────────────────
 
@@ -141,11 +141,17 @@ export default function ConversationsModule({ onOpenAria }) {
   const [active, setActive]               = useState(null)
   const [messages, setMessages]           = useState([])
   const [msgLoading, setMsgLoading]       = useState(false)
+   // teplates kept for backwards compat — unused after AI-SUGGEST-1
   const [templates, setTemplates]         = useState([])
   const [threadStatus, setThreadStatus]   = useState({ window_open: false, ai_paused: false })
   const [statusLoading, setStatusLoading] = useState(false)
   const [resuming, setResuming]           = useState(false)
   const [pausing, setPausing]             = useState(false)
+
+  // AI-SUGGEST-1 — KB suggestion state
+  const [kbSuggestion, setKbSuggestion]         = useState(null)
+  const [suggestionLoading, setSuggestionLoading] = useState(false)
+  const injectTextRef                             = useRef(null)
   const threadRef                         = useRef(null)
   const isPollingRef                      = useRef(false)
 
@@ -175,12 +181,7 @@ export default function ConversationsModule({ onOpenAria }) {
     return () => clearInterval(id)
   }, [loadConversations])
 
-  // Load templates once
-  useEffect(() => {
-    listTemplates()
-      .then(res => setTemplates(res.data?.data ?? []))
-      .catch(() => {})
-  }, [])
+  // templates useEffect removed — AI-SUGGEST-1 (template mode removed from InlineComposer)
 
   // ── Load thread messages ───────────────────────────────────────────────
   const loadMessages = useCallback((showSpinner = false) => {
@@ -400,7 +401,52 @@ export default function ConversationsModule({ onOpenAria }) {
     nudgeDismissedRef.current = true
   }
 
-  // ── Filtered list ──────────────────────────────────────────────────────
+  // ── AI-SUGGEST-1 — KB suggestion fetch ────────────────────────────────────
+  const handleRequestSuggestion = useCallback(async (msgId, content) => {
+    if (!active || !content) return
+    setKbSuggestion(null)
+    setSuggestionLoading(true)
+    try {
+      const { default: api } = await import('../../services/api')
+      const res = await api.get(
+        `/api/v1/conversations/lead/${active.contact_id}/kb-suggestion`,
+        { params: { content } }
+      )
+      const suggestion = res.data?.data ?? null
+      if (suggestion) {
+        setKbSuggestion({ ...suggestion, msgId })
+      } else {
+        // Show brief "no result" state then clear
+        setKbSuggestion({ noResult: true, msgId })
+        setTimeout(() => setKbSuggestion(null), 3000)
+      }
+    } catch {
+      setKbSuggestion(null)
+    } finally {
+      setSuggestionLoading(false)
+    }
+  }, [active])
+
+  const handleSuggestionFeedback = useCallback(async (msgId, articleId, accepted) => {
+    if (!active || !msgId || !articleId) return
+    try {
+      const { default: api } = await import('../../services/api')
+      await api.post(
+        `/api/v1/conversations/lead/${active.contact_id}/kb-suggestion/feedback`,
+        { message_id: msgId, article_id: articleId, accepted }
+      )
+    } catch {
+      // analytics write failure is non-fatal
+    }
+  }, [active])
+
+  // Clear suggestion when conversation changes
+  useEffect(() => {
+    setKbSuggestion(null)
+    setSuggestionLoading(false)
+  }, [active?.contact_id])
+
+  // ── Filtered list ──────────────────────────────────────────────────────────
   const filtered = conversations.filter(c => {
     const q = search.toLowerCase()
     if (q && !c.contact_name.toLowerCase().includes(q) && !(c.phone || '').includes(q)) return false
@@ -449,6 +495,12 @@ export default function ConversationsModule({ onOpenAria }) {
       pausing={pausing}
       onOpenAria={onOpenAria}
       onBack={isMobile ? () => { setPanel('list'); setActive(null) } : null}
+      kbSuggestion={kbSuggestion}
+      suggestionLoading={suggestionLoading}
+      injectTextRef={injectTextRef}
+      onRequestSuggestion={active?.contact_type === 'lead' ? handleRequestSuggestion : null}
+      onSuggestionFeedback={active?.contact_type === 'lead' ? handleSuggestionFeedback : null}
+      onDismissSuggestion={() => setKbSuggestion(null)}
     />
   ) : (
     <EmptyState totalUnread={totalUnread} />
@@ -585,7 +637,7 @@ function ConvRow({ conv, isActive, onSelect }) {
 
 // ─── Thread Panel ─────────────────────────────────────────────────────────────
 
-function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, humanModeDuration, showNudge, onDismissNudge, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onOpenAria, onBack }) {
+function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, humanModeDuration, showNudge, onDismissNudge, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onOpenAria, onBack, kbSuggestion, suggestionLoading, injectTextRef, onRequestSuggestion, onSuggestionFeedback, onDismissSuggestion }) {
   const ch     = CHANNEL[active.channel] || CHANNEL.whatsapp
   const isLead = active.contact_type === 'lead'
   const { window_open: windowOpen, ai_paused: aiPaused } = threadStatus
@@ -678,7 +730,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
             No messages yet — send the first one below.
           </div>
         )}
-        {!loading && [...messages].reverse().map(msg => <Bubble key={msg.id} msg={msg} />)}
+        {!loading && [...messages].reverse().map(msg => <Bubble key={msg.id} msg={msg} onRequestSuggestion={onRequestSuggestion} />)}
       </div>
 
       {/* ── Inactivity nudge ────────────────────────────────────────────── */}
@@ -705,6 +757,23 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
         </div>
       )}
 
+      {/* ── AI-SUGGEST-1 — KB Suggestion bar ───────────────────────────── */}
+      {(kbSuggestion || suggestionLoading) && (
+        <KBSuggestionBar
+          suggestion={kbSuggestion}
+          loading={suggestionLoading}
+          onUse={(snippet, articleId, msgId) => {
+            injectTextRef.current?.(snippet)
+            onSuggestionFeedback?.(msgId, articleId, true)
+            onDismissSuggestion?.()
+          }}
+          onDismiss={(articleId, msgId) => {
+            onSuggestionFeedback?.(msgId, articleId, false)
+            onDismissSuggestion?.()
+          }}
+        />
+      )}
+
       {/* ── Inline Composer ─────────────────────────────────────────────── */}
       <InlineComposer
         key={active.contact_id}
@@ -715,6 +784,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
         statusLoading={statusLoading}
         templates={templates}
         onSent={onSent}
+        injectTextRef={injectTextRef}
       />
     </div>
   )
@@ -732,16 +802,9 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
 //
 // key={active.contact_id} ensures full reset on conversation switch.
 
-function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, statusLoading = false, templates = [], onSent }) {
-  const [mode, setMode]               = useState(windowOpen ? 'text' : 'template')
-
-  useEffect(() => {
-    if (windowOpen && mode === 'template') {
-      setMode('text')
-    }
-  }, [windowOpen])
+function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, statusLoading = false, templates = [], onSent, injectTextRef }) {
+  const [mode, setMode]               = useState('text')
   const [text, setText]               = useState('')
-  const [templateName, setTemplateName] = useState('')
   const [file, setFile]               = useState(null)       // File object
   const [fileError, setFileError]     = useState(null)
   const [sending, setSending]         = useState(false)
@@ -749,7 +812,17 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
   const fileInputRef                  = useRef(null)
   const textareaRef                   = useRef(null)
 
-  const approvedTemplates = templates.filter(t => t.meta_status === 'approved')
+
+  // AI-SUGGEST-1 — allow parent to inject text into composer
+  useEffect(() => {
+    if (!injectTextRef) return
+    injectTextRef.current = (injected) => {
+      setText(injected)
+      setMode('text')
+      setTimeout(() => textareaRef.current?.focus(), 50)
+    }
+    return () => { if (injectTextRef) injectTextRef.current = null }
+  }, [injectTextRef])
 
   // Auto-grow textarea height
   const autoGrow = (el) => {
@@ -790,14 +863,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
   const clearFile = () => {
     setFile(null)
     setFileError(null)
-    setMode(windowOpen ? 'text' : 'template')
-  }
-
-  const switchMode = (m) => {
-    if (m === 'text' && !windowOpen) return  // locked when window closed
-    setMode(m)
-    setSendError(null)
-    if (m === 'text') setTimeout(() => textareaRef.current?.focus(), 50)
+    setMode('text')
   }
 
   const handleSend = async () => {
@@ -813,15 +879,6 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         if (customerId) fd.append('customer_id', customerId)
         fd.append('file', file)
         await sendMediaMessage(fd)
-
-      } else if (mode === 'template') {
-        if (!templateName) { setSendError('Please select a template.'); return }
-        const payload = {}
-        if (leadId)     payload.lead_id = leadId
-        if (customerId) payload.customer_id = customerId
-        payload.template_name = templateName
-        await sendMessage(payload)
-        setTemplateName('')
 
       } else {
         // text mode
@@ -855,7 +912,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
       // even if the API threw — the file may have already been sent.
       if (wasMediaSend) {
         setFile(null)
-        setMode(windowOpen ? 'text' : 'template')
+        setMode(windowOpen ? 'text')
       }
     }
   }
@@ -863,7 +920,6 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
   // ── Can send? ──────────────────────────────────────────────────────────
   const canSend = !sending && (
     (mode === 'text'     && text.trim().length > 0) ||
-    (mode === 'template' && !!templateName)         ||
     (mode === 'media'    && !!file)
   )
 
@@ -920,36 +976,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         </div>
       )}
 
-      {/* Mode toggle — only shown for WhatsApp when window is open and not in media mode */}
-      {!statusLoading && windowOpen && mode !== 'media' && channel !== 'instagram' && (
-        <div style={{ display: 'flex', gap: 4, padding: '7px 14px 4px', alignItems: 'center' }}>
-          <ModeBtn active={mode === 'text'} onClick={() => switchMode('text')}>✏ Text</ModeBtn>
-          <ModeBtn active={mode === 'template'} onClick={() => switchMode('template')}>📋 Template</ModeBtn>
-        </div>
-      )}
-
-      {/* Template selector row */}
-      {!statusLoading && mode === 'template' && (
-        <div style={{ padding: '4px 14px 8px', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {approvedTemplates.length === 0 ? (
-            <div style={{ flex: 1, fontSize: 12, color: ds.gray, fontFamily: ds.fontDm, padding: '9px 0' }}>
-              No approved templates. Create them in Template Manager.
-            </div>
-          ) : (
-            <select
-              value={templateName}
-              onChange={e => { setTemplateName(e.target.value); setSendError(null) }}
-              style={{ flex: 1, border: `1.5px solid ${ds.border}`, borderRadius: 9, padding: '9px 12px', fontSize: 13, fontFamily: ds.fontDm, outline: 'none', background: '#fff', color: ds.dark }}
-            >
-              <option value="">— Select a template —</option>
-              {approvedTemplates.map(t => (
-                <option key={t.id} value={t.name}>{t.name}</option>
-              ))}
-            </select>
-          )}
-          <SendButton canSend={canSend && approvedTemplates.length > 0} sending={sending} onClick={handleSend} />
-        </div>
-      )}
+      {/* Template mode removed — AI-SUGGEST-1 (templates only useful for broadcasts) */}
 
       {/* Text + attachment input row */}
       {!statusLoading && (mode === 'text' || mode === 'media') && (
@@ -1086,7 +1113,7 @@ function SendButton({ canSend, sending, onClick }) {
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function Bubble({ msg }) {
+function Bubble({ msg, onRequestSuggestion }) {
   const isOut = msg.direction === 'outbound'
   const d     = msg.created_at ? new Date(msg.created_at) : null
   const time  = d ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
@@ -1139,6 +1166,17 @@ function Bubble({ msg }) {
           </p>
         )}
 
+        {!isOut && onRequestSuggestion && msg.content && (
+          <button
+            onClick={() => onRequestSuggestion(msg.id, msg.content)}
+            title="Get a suggested reply from your knowledge base"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 11, padding: '3px 0 0', display: 'block', textAlign: 'left', opacity: 0.55, transition: 'opacity 0.15s', fontFamily: ds.fontDm }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+            onMouseLeave={e => e.currentTarget.style.opacity = '0.55'}
+          >
+            💡 Suggest reply
+          </button>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: isOut ? 'space-between' : 'flex-end', gap: 4, marginTop: 4 }}>
           {/* Attribution tag — shows AI or rep name on every outbound message */}
           {isOut && (
@@ -1171,6 +1209,56 @@ function StatusTick({ status }) {
   if (status === 'read')              return <span style={{ fontSize: 10, color: ds.teal }} title="Read">✓✓</span>
   if (status === 'failed')            return <span style={{ fontSize: 10, color: ds.red  }} title="Failed">✗</span>
   return null
+}
+
+// ─── KB Suggestion Bar — AI-SUGGEST-1 ────────────────────────────────────────
+
+function KBSuggestionBar({ suggestion, loading, onUse, onDismiss }) {
+  if (loading) {
+    return (
+      <div style={{ flexShrink: 0, background: '#F0F7FF', borderTop: '1px solid #BFDBFE', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 12, height: 12, border: '2px solid #BFDBFE', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+        <span style={{ fontSize: 12, color: '#1E40AF', fontFamily: ds.fontDm }}>Looking up knowledge base…</span>
+      </div>
+    )
+  }
+
+  if (!suggestion) return null
+
+  if (suggestion.noResult) {
+    return (
+      <div style={{ flexShrink: 0, background: '#F9FAFB', borderTop: '1px solid #E5E7EB', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, color: ds.gray, fontFamily: ds.fontDm }}>💡 No KB match found for this message.</span>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ flexShrink: 0, background: '#F0F7FF', borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE', padding: '9px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#1E40AF', fontFamily: ds.fontSyne, marginBottom: 3 }}>
+          💡 KB · {suggestion.title}
+        </div>
+        <div style={{ fontSize: 12, color: '#1E3A5F', fontFamily: ds.fontDm, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+          {suggestion.snippet}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
+        <button
+          onClick={() => onUse(suggestion.snippet, suggestion.article_id, suggestion.msgId)}
+          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, border: 'none', background: '#3B82F6', color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontSyne, whiteSpace: 'nowrap' }}
+        >
+          Use this ↑
+        </button>
+        <button
+          onClick={() => onDismiss(suggestion.article_id, suggestion.msgId)}
+          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, border: '1px solid #BFDBFE', background: '#fff', color: '#6B7280', fontWeight: 500, cursor: 'pointer', fontFamily: ds.fontSyne }}
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
