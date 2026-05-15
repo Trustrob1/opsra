@@ -912,7 +912,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
       // even if the API threw — the file may have already been sent.
       if (wasMediaSend) {
         setFile(null)
-        setMode(windowOpen ? 'text')
+        setMode('text')
       }
     }
   }
