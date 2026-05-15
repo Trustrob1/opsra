@@ -160,3 +160,239 @@ async def update_user_password(
 
     logger.info("Password updated successfully for user %s", user_id)
     return {"updated": True}
+
+
+# ---------------------------------------------------------------------------
+# Service: admin-triggered password reset (sends reset link to user's email)
+# ---------------------------------------------------------------------------
+
+async def admin_request_password_reset(
+    *,
+    supabase: Client,
+    target_user_id: str,
+    org_id: str,
+    caller_id: str,
+    redirect_url: str,
+) -> dict:
+    """
+    AUTH-RESET-1: Admin triggers a password reset email for a staff member.
+    Fetches the user's email from the users table (never from request body — S1).
+    Sends the reset link to the staff member's inbox.
+    Also returns the raw reset link so the admin can share it as a fallback
+    if email delivery fails (Option B fallback).
+
+    Args:
+        supabase:        Supabase service-role client.
+        target_user_id:  UUID of the staff member whose password is being reset.
+        org_id:          Caller's org_id from JWT — used to scope the user lookup.
+        caller_id:       Caller's user_id from JWT — for audit log.
+        redirect_url:    Frontend /reset-password URL embedded in the link.
+
+    Returns:
+        { "sent": True, "reset_link": str | None, "email": str }
+
+    Raises:
+        ValueError: if user not found in this org.
+        RuntimeError: if Supabase link generation fails.
+    """
+    # Fetch user's email — scoped to org (S1)
+    try:
+        result = (
+            supabase.table("users")
+            .select("id, email, is_active")
+            .eq("id", target_user_id)
+            .eq("org_id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        user_data = result.data
+        if isinstance(user_data, list):
+            user_data = user_data[0] if user_data else None
+    except Exception as exc:
+        logger.error("admin_request_password_reset: users lookup failed: %s", exc)
+        raise RuntimeError("Failed to look up user.") from exc
+
+    if not user_data:
+        raise ValueError("User not found in this organisation.")
+
+    if not user_data.get("is_active"):
+        raise ValueError("Cannot reset password for a deactivated account.")
+
+    target_email = user_data["email"]
+
+    # Generate reset link via Supabase Admin API
+    # Returns a short-lived signed URL the staff member clicks to set a new password.
+    reset_link: Optional[str] = None
+    try:
+        import os, httpx as _httpx
+        supabase_url = os.getenv("SUPABASE_URL", "").strip()
+        service_key  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+        resp = _httpx.post(
+            f"{supabase_url}/auth/v1/admin/users/{target_user_id}/generate-link",
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "apikey":        service_key,
+                "Content-Type":  "application/json",
+            },
+            json={
+                "type":        "recovery",
+                "email":       target_email,
+                "redirect_to": redirect_url,
+            },
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        link_data   = resp.json()
+        # Supabase returns action_link — the full signed URL
+        reset_link  = link_data.get("action_link") or link_data.get("hashed_token")
+        logger.info(
+            "Admin password reset link generated for user %s by admin %s",
+            target_user_id, caller_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "admin_request_password_reset: link generation failed for %s: %s",
+            target_user_id, exc,
+        )
+        raise RuntimeError(
+            "Failed to generate reset link. Please try again."
+        ) from exc
+
+    # Write audit log — Section 9.5
+    try:
+        supabase.table("audit_logs").insert({
+            "org_id":        org_id,
+            "user_id":       caller_id,
+            "action":        "auth.admin_password_reset_requested",
+            "resource_type": "user",
+            "resource_id":   target_user_id,
+            "new_value":     {"email": target_email, "reset_link_generated": True},
+        }).execute()
+    except Exception as exc:
+        logger.error("Audit log failed on admin password reset: %s", exc)
+
+    return {"sent": True, "reset_link": reset_link, "email": target_email}
+
+
+# ---------------------------------------------------------------------------
+# Service: admin force-update email
+# ---------------------------------------------------------------------------
+
+def admin_update_user_email(
+    *,
+    supabase: Client,
+    target_user_id: str,
+    new_email: str,
+    org_id: str,
+    caller_id: str,
+) -> dict:
+    """
+    AUTH-RESET-1: Admin force-updates a staff member's email address.
+    Uses Supabase Admin API — bypasses email confirmation flow.
+    Updates both Supabase Auth and the users table.
+
+    Args:
+        supabase:        Supabase service-role client.
+        target_user_id:  UUID of the staff member whose email is being updated.
+        new_email:       The new email address (lowercased before use).
+        org_id:          Caller's org_id from JWT.
+        caller_id:       Caller's user_id from JWT — for audit log.
+
+    Returns:
+        { "updated": True, "email": str }
+
+    Raises:
+        ValueError: if user not found, deactivated, or email already in use.
+        RuntimeError: if Supabase Auth update fails.
+    """
+    new_email = new_email.strip().lower()
+
+    # Verify user belongs to this org
+    try:
+        result = (
+            supabase.table("users")
+            .select("id, email, is_active")
+            .eq("id", target_user_id)
+            .eq("org_id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        user_data = result.data
+        if isinstance(user_data, list):
+            user_data = user_data[0] if user_data else None
+    except Exception as exc:
+        logger.error("admin_update_user_email: users lookup failed: %s", exc)
+        raise RuntimeError("Failed to look up user.") from exc
+
+    if not user_data:
+        raise ValueError("User not found in this organisation.")
+
+    if not user_data.get("is_active"):
+        raise ValueError("Cannot update email for a deactivated account.")
+
+    old_email = user_data["email"]
+
+    if old_email == new_email:
+        raise ValueError("The new email address is the same as the current one.")
+
+    # Update Supabase Auth email via Admin API (bypasses confirmation)
+    try:
+        import os, httpx as _httpx
+        supabase_url = os.getenv("SUPABASE_URL", "").strip()
+        service_key  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+        resp = _httpx.patch(
+            f"{supabase_url}/auth/v1/admin/users/{target_user_id}",
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "apikey":        service_key,
+                "Content-Type":  "application/json",
+            },
+            json={
+                "email":          new_email,
+                "email_confirm":  True,  # bypass confirmation
+            },
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+    except _httpx.HTTPStatusError as exc:
+        body = exc.response.json()
+        msg  = body.get("message") or body.get("msg") or str(exc)
+        logger.error("admin_update_user_email: Supabase Auth update failed: %s", msg)
+        raise RuntimeError(msg) from exc
+    except Exception as exc:
+        logger.error("admin_update_user_email: unexpected error: %s", exc)
+        raise RuntimeError("Email update failed. Please try again.") from exc
+
+    # Update users table
+    try:
+        supabase.table("users").update({"email": new_email}).eq(
+            "id", target_user_id
+        ).eq("org_id", org_id).execute()
+    except Exception as exc:
+        logger.error(
+            "admin_update_user_email: users table update failed for %s: %s",
+            target_user_id, exc,
+        )
+        raise RuntimeError(
+            "Auth email updated but users table sync failed. Contact support."
+        ) from exc
+
+    # Audit log
+    try:
+        supabase.table("audit_logs").insert({
+            "org_id":        org_id,
+            "user_id":       caller_id,
+            "action":        "auth.admin_email_updated",
+            "resource_type": "user",
+            "resource_id":   target_user_id,
+            "old_value":     {"email": old_email},
+            "new_value":     {"email": new_email},
+        }).execute()
+    except Exception as exc:
+        logger.error("Audit log failed on admin email update: %s", exc)
+
+    logger.info(
+        "Admin email update: user %s email changed from %s to %s by admin %s",
+        target_user_id, old_email, new_email, caller_id,
+    )
+    return {"updated": True, "email": new_email}

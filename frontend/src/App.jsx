@@ -61,6 +61,10 @@ import TermsOfService from './pages/TermsOfService'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
+// Auth service for password reset (avoids circular dependency with api.js which needs a token)
+const _authPost  = (path, body)    => axios.post(`${BASE}${path}`, body)
+const _authPatch = (path, body, token) => axios.patch(`${BASE}${path}`, body, { headers: { Authorization: `Bearer ${token}` } })
+
 // ─── Session timeout (Phase 9D) ───────────────────────────────────────────────
 let _idleLogout = false
 const IDLE_MS = 30 * 60 * 1000  // 30 minutes
@@ -127,6 +131,27 @@ function LoginScreen({ onAuth }) {
     if (_idleLogout) { _idleLogout = false; return true }
     return false
   })
+
+  // Forgot password flow: 'login' | 'forgot' | 'reset_sent'
+  const [forgotView, setForgotView]   = useState('login')
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotError, setForgotError]   = useState(null)
+
+  const handleForgotSubmit = async () => {
+    if (!forgotEmail.trim()) { setForgotError('Please enter your email address.'); return }
+    setForgotLoading(true)
+    setForgotError(null)
+    try {
+      await _authPost('/api/v1/auth/reset-password', { email: forgotEmail.trim().toLowerCase() })
+      setForgotView('reset_sent')
+    } catch {
+      // Always show success — never reveal if email exists
+      setForgotView('reset_sent')
+    } finally {
+      setForgotLoading(false)
+    }
+  }
 
   const [mfaStep, setMfaStep]       = useState(false)
   const [mfaCode, setMfaCode]       = useState('')
@@ -243,6 +268,47 @@ function LoginScreen({ onAuth }) {
               ← Back to sign in
             </button>
           </>
+        ) : forgotView === 'forgot' ? (
+          <>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 8px' }}>Reset your password</h1>
+            <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 24, lineHeight: 1.6 }}>Enter your email address and we'll send you a reset link.</p>
+            <label style={loginLabel}>Email address</label>
+            <input
+              type="email" placeholder="you@example.com"
+              value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleForgotSubmit() }}
+              autoComplete="email"
+              style={{ ...loginInput, marginBottom: 24 }}
+            />
+            {forgotError && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>⚠ {forgotError}</p>}
+            <button onClick={handleForgotSubmit} disabled={forgotLoading} style={loginBtn(forgotLoading)}>
+              {forgotLoading ? <Spinner label="Sending…" /> : 'Send Reset Link'}
+            </button>
+            <button
+              onClick={() => { setForgotView('login'); setForgotError(null) }}
+              style={{ width: '100%', background: 'none', border: 'none', marginTop: 12, fontSize: 13, color: '#7A9BAD', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              ← Back to sign in
+            </button>
+          </>
+        ) : forgotView === 'reset_sent' ? (
+          <>
+            <div style={{ fontSize: 40, marginBottom: 16, textAlign: 'center' }}>📧</div>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 12px', textAlign: 'center' }}>Check your email</h1>
+            <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 24, lineHeight: 1.6, textAlign: 'center' }}>
+              If an account exists for <strong style={{ color: '#A0BDC8' }}>{forgotEmail}</strong>, a reset link has been sent.<br />
+              The link expires in 1 hour.
+            </p>
+            <p style={{ fontSize: 12, color: '#4a6a7a', background: '#0e2030', borderRadius: 8, padding: '10px 14px', lineHeight: 1.6, marginBottom: 20 }}>
+              💡 Didn't receive it? Check your spam folder, or contact your administrator who can send the link directly.
+            </p>
+            <button
+              onClick={() => { setForgotView('login'); setForgotError(null); setForgotEmail('') }}
+              style={loginBtn(false)}
+            >
+              Back to sign in
+            </button>
+          </>
         ) : (
           <>
             <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 26, color: 'white', margin: '0 0 8px' }}>Welcome back</h1>
@@ -260,7 +326,14 @@ function LoginScreen({ onAuth }) {
             <button onClick={handleLogin} disabled={loading} style={loginBtn(loading)}>
               {loading ? <Spinner label="Signing in…" /> : 'Sign In'}
             </button>
-            <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16 }}>Forgot your password? Contact your administrator.</p>
+            <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16 }}>
+              <button
+                onClick={() => { setForgotView('forgot'); setForgotEmail(''); setForgotError(null) }}
+                style={{ background: 'none', border: 'none', color: '#5a9aaa', cursor: 'pointer', fontSize: 12, textDecoration: 'underline', padding: 0 }}
+              >
+                Forgot your password?
+              </button>
+            </p>
             <p style={{ fontSize: 11, color: '#2a4a5a', textAlign: 'center', marginTop: 8 }}>
               <a href="/privacy" style={{ color: '#3a6a7a', textDecoration: 'none' }}>Privacy Policy</a>
               {" · "}

@@ -73,7 +73,9 @@ export default function UserManagement() {
   const [error, setError]             = useState(null)
   const [showCreate, setShowCreate]   = useState(false)
   const [editingUser, setEditingUser] = useState(null)
-  const [confirmLogout, setConfirmLogout] = useState(null)  // user id
+  const [confirmLogout, setConfirmLogout]     = useState(null)  // user id
+  const [resetPasswordUser, setResetPasswordUser] = useState(null)  // user object
+  const [updateEmailUser, setUpdateEmailUser]     = useState(null)  // user object
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -232,6 +234,20 @@ export default function UserManagement() {
                     )}
 
                     <button
+                      onClick={() => setResetPasswordUser(u)}
+                      style={{ ...GHOST_BTN, color: '#7C3AED', borderColor: '#DDD6FE' }}
+                    >
+                      🔑 Reset Password
+                    </button>
+
+                    <button
+                      onClick={() => setUpdateEmailUser(u)}
+                      style={{ ...GHOST_BTN, color: '#0369A1', borderColor: '#BAE6FD' }}
+                    >
+                      ✉ Update Email
+                    </button>
+
+                    <button
                       onClick={() => handleToggleActive(u)}
                       style={{
                         ...GHOST_BTN,
@@ -267,12 +283,187 @@ export default function UserManagement() {
           onClose={() => setEditingUser(null)}
         />
       )}
+
+      {resetPasswordUser && (
+        <ResetPasswordModal
+          user={resetPasswordUser}
+          onClose={() => setResetPasswordUser(null)}
+        />
+      )}
+
+      {updateEmailUser && (
+        <UpdateEmailModal
+          user={updateEmailUser}
+          onSave={async (newEmail) => {
+            await adminSvc.adminUpdateEmail(updateEmailUser.id, newEmail)
+            setUpdateEmailUser(null)
+            load()
+          }}
+          onClose={() => setUpdateEmailUser(null)}
+        />
+      )}
     </div>
   )
 }
 
 
 // ── User modal (shared create / edit) ─────────────────────────────────────────
+
+// ── Reset Password Modal — AUTH-RESET-1 ───────────────────────────────────────
+
+function ResetPasswordModal({ user, onClose }) {
+  const [sending, setSending]   = useState(false)
+  const [result, setResult]     = useState(null)   // { sent, email, reset_link }
+  const [err, setErr]           = useState(null)
+  const [copied, setCopied]     = useState(false)
+
+  const handleSend = async () => {
+    setSending(true)
+    setErr(null)
+    try {
+      const data = await adminSvc.adminResetPassword(user.id)
+      setResult(data)
+    } catch (e) {
+      setErr(e?.response?.data?.detail?.message ?? 'Failed to send reset link. Please try again.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleCopy = () => {
+    if (result?.reset_link) {
+      navigator.clipboard.writeText(result.reset_link).catch(() => {})
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    }
+  }
+
+  return (
+    <div style={OVERLAY} onClick={onClose}>
+      <div style={MODAL} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+            🔑 Reset Password
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1 }}>×</button>
+        </div>
+
+        {!result ? (
+          <>
+            <p style={{ fontSize: 13.5, color: '#4a7a8a', lineHeight: 1.6, margin: '0 0 20px' }}>
+              A password reset link will be sent to <strong>{user.email}</strong>.<br />
+              The link expires after 1 hour.
+            </p>
+            <p style={{ fontSize: 12.5, color: '#7A9BAD', lineHeight: 1.6, margin: '0 0 20px', background: '#F8FAFC', borderRadius: 8, padding: '10px 14px' }}>
+              💡 If the email doesn't arrive, you can copy the reset link from the next screen and share it directly via WhatsApp or any other channel.
+            </p>
+            {err && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}>⚠ {err}</p>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={onClose} style={{ ...GHOST_BTN, padding: '9px 18px' }}>Cancel</button>
+              <button
+                onClick={handleSend}
+                disabled={sending}
+                style={{ background: sending ? '#aaa' : '#7C3AED', color: 'white', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 14, fontWeight: 600, cursor: sending ? 'not-allowed' : 'pointer', fontFamily: ds.fontSyne }}
+              >
+                {sending ? 'Sending…' : 'Send Reset Link'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+              <p style={{ fontSize: 13.5, color: '#166534', margin: 0, fontWeight: 600 }}>✓ Reset link sent to {result.email}</p>
+            </div>
+            {result.reset_link && (
+              <>
+                <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 8px' }}>
+                  If the email doesn't arrive, copy this link and share it directly:
+                </p>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2EFF4', borderRadius: 8, padding: '10px 14px', wordBreak: 'break-all', fontSize: 11.5, color: '#4a7a8a', marginBottom: 12 }}>
+                  {result.reset_link}
+                </div>
+                <button
+                  onClick={handleCopy}
+                  style={{ ...GHOST_BTN, padding: '7px 16px', color: copied ? '#059669' : '#4a7a8a', borderColor: copied ? '#A7F3D0' : '#CBD5E1' }}
+                >
+                  {copied ? '✓ Copied!' : '📋 Copy Link'}
+                </button>
+              </>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={onClose} style={{ background: ds.teal, color: 'white', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontSyne }}>Done</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+// ── Update Email Modal — AUTH-RESET-1 ─────────────────────────────────────────
+
+function UpdateEmailModal({ user, onSave, onClose }) {
+  const [newEmail, setNewEmail] = useState('')
+  const [saving, setSaving]     = useState(false)
+  const [err, setErr]           = useState(null)
+
+  const handleSubmit = async () => {
+    const trimmed = newEmail.trim().toLowerCase()
+    if (!trimmed || !trimmed.includes('@')) { setErr('Please enter a valid email address.'); return }
+    if (trimmed === user.email.toLowerCase()) { setErr('The new email is the same as the current one.'); return }
+    setSaving(true)
+    setErr(null)
+    try {
+      await onSave(trimmed)
+    } catch (e) {
+      setErr(e?.response?.data?.detail?.message ?? 'Failed to update email. Please try again.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={OVERLAY} onClick={onClose}>
+      <div style={MODAL} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+            ✉ Update Email Address
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1 }}>×</button>
+        </div>
+
+        <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 16px', lineHeight: 1.6 }}>
+          Current email: <strong>{user.email}</strong><br />
+          The new email takes effect immediately — no confirmation required.
+        </p>
+
+        <label style={LABEL}>New Email Address *</label>
+        <input
+          type="email"
+          value={newEmail}
+          onChange={e => { setNewEmail(e.target.value); setErr(null) }}
+          style={INPUT}
+          placeholder="new@example.com"
+          autoFocus
+        />
+
+        {err && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
+          <button onClick={onClose} style={{ ...GHOST_BTN, padding: '9px 18px' }}>Cancel</button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            style={{ background: saving ? '#aaa' : '#0369A1', color: 'white', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: ds.fontSyne }}
+          >
+            {saving ? 'Updating…' : 'Update Email'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 function UserModal({ mode, user, roles, onSave, onClose }) {
   const isCreate = mode === 'create'

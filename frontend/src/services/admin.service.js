@@ -375,3 +375,18 @@ export const updateWASalesMode = (mode) =>
   // mode: 'human' | 'bot' | 'ai_agent'
   api.patch('/api/v1/admin/whatsapp-sales-mode', { mode })
     .then(r => r.data.data)
+
+// ── AUTH-RESET-1: Admin password reset + email update ────────────────────────
+
+export async function adminResetPassword(userId) {
+  // Sends reset link to user's registered email.
+  // Also returns reset_link as a fallback the admin can share directly.
+  const r = await api.post(`/api/v1/admin/users/${userId}/reset-password`, {})
+  return r.data.data  // { sent, email, reset_link }
+}
+
+export async function adminUpdateEmail(userId, newEmail) {
+  // Force-updates a staff member's email — bypasses confirmation.
+  const r = await api.patch(`/api/v1/admin/users/${userId}/email`, { new_email: newEmail })
+  return r.data.data  // { updated, email }
+}

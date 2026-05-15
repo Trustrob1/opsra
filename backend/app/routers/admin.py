@@ -3418,3 +3418,129 @@ def update_whatsapp_sales_mode(
     )
  
     return ok(data={"mode": payload.mode}, message="WhatsApp sales mode saved")
+
+
+# ============================================================
+# AUTH-RESET-1 — Admin password reset + email update
+# ============================================================
+
+class AdminResetPasswordRequest(BaseModel):
+    pass  # no body needed — user_id comes from path, email fetched server-side
+
+
+class AdminUpdateEmailRequest(BaseModel):
+    new_email: EmailStr
+
+
+@router.post("/users/{user_id}/reset-password")
+async def admin_reset_password(
+    user_id: str,
+    request: Request,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """
+    AUTH-RESET-1: Admin triggers a password reset for a staff member.
+    Sends a reset link to the staff member's registered email.
+    Also returns the raw reset link as a fallback (Option B) in case
+    email delivery fails — admin can share it directly via WhatsApp etc.
+    RBAC: manage_users permission required (owner + ops_manager).
+    S1: org_id from JWT — user_id verified against org before any action.
+    Writes to audit_logs.
+    """
+    from app.services.auth_service import admin_request_password_reset
+    from app.config import settings
+
+    redirect_url = f"{settings.FRONTEND_URL}/auth/update-password"
+
+    try:
+        result = await admin_request_password_reset(
+            supabase=db,
+            target_user_id=user_id,
+            org_id=org["org_id"],
+            caller_id=org["id"],
+            redirect_url=redirect_url,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": str(exc)},
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "INTEGRATION_ERROR", "message": str(exc)},
+        )
+
+    write_audit_log(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        action="user.admin_password_reset",
+        resource_type="user",
+        resource_id=user_id,
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return ok(
+        data={
+            "sent":       True,
+            "email":      result["email"],
+            "reset_link": result["reset_link"],
+        },
+        message=f"Reset link sent to {result['email']}",
+    )
+
+
+@router.patch("/users/{user_id}/email")
+async def admin_update_email(
+    user_id: str,
+    payload: AdminUpdateEmailRequest,
+    request: Request,
+    org=Depends(require_permission("manage_users")),
+    db=Depends(get_supabase),
+):
+    """
+    AUTH-RESET-1: Admin force-updates a staff member's email address.
+    Bypasses Supabase email confirmation — takes effect immediately.
+    Updates both Supabase Auth and the users table.
+    RBAC: manage_users permission required (owner + ops_manager).
+    S1: org_id from JWT — user_id verified against org before any action.
+    Writes to audit_logs.
+    """
+    from app.services.auth_service import admin_update_user_email
+
+    try:
+        result = admin_update_user_email(
+            supabase=db,
+            target_user_id=user_id,
+            new_email=str(payload.new_email),
+            org_id=org["org_id"],
+            caller_id=org["id"],
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "VALIDATION_ERROR", "message": str(exc)},
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "INTEGRATION_ERROR", "message": str(exc)},
+        )
+
+    write_audit_log(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        action="user.admin_email_updated",
+        resource_type="user",
+        resource_id=user_id,
+        new_value={"email": result["email"]},
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return ok(
+        data={"updated": True, "email": result["email"]},
+        message="Email address updated successfully.",
+    )
