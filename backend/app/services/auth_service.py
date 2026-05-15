@@ -29,7 +29,7 @@ import os
 from typing import Optional
 
 import httpx as _httpx
-from supabase import Clientnt
+from supabase import Client
 
 logger = logging.getLogger(__name__)
 
