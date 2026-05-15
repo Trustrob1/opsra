@@ -783,7 +783,7 @@ def _action_route_to_role(
     """
     from app.models.leads import LeadCreate, LeadSource
     from app.services import lead_service
-    from app.services.notifications_service import _insert_notification
+    from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
 
     contact_type = item.get("contact_type", "business_inquiry")
     role = item.get("role", "owner")
@@ -797,6 +797,19 @@ def _action_route_to_role(
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
 
+    # Send confirmation message to the lead
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        if phone_id:
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {"body": "Thanks for reaching out! 😊 One of our team will be in touch with you shortly."},
+            }, token=access_token)
+    except Exception as _msg_exc:
+        logger.warning("_action_route_to_role: confirmation message failed: %s", _msg_exc)
+
     # Notify all users in org with the target role
     users_result = (
         db.table("users")
@@ -804,10 +817,11 @@ def _action_route_to_role(
         .eq("org_id", org_id)
         .execute()
     )
+    notified = False
     for user in (users_result.data or []):
         user_role = (user.get("roles") or {}).get("template", "")
         if user_role.lower() == role.lower():
-            _insert_notification(
+            _notify_single_user(
                 db, org_id, user["id"],
                 notif_type="new_lead",
                 title="New inbound contact",
@@ -815,6 +829,16 @@ def _action_route_to_role(
                 resource_type="lead",
                 resource_id=lead["id"],
             )
+            notified = True
+
+    if not notified:
+        _notify_managers(
+            db, org_id,
+            title="New inbound contact",
+            body=f"A new {contact_type} contacted via WhatsApp.",
+            resource_type="lead",
+            resource_id=lead["id"],
+        )
 
     # C2: atomic — bail if already advanced
     update_session(
@@ -834,7 +858,6 @@ def _action_free_form(
     """
     from app.models.leads import LeadCreate, LeadSource
     from app.services import lead_service
-    from app.services.notifications_service import _insert_notification
 
     contact_type = item.get("contact_type", "other")
 
@@ -862,7 +885,7 @@ def _action_free_form(
                 break
 
     if assigned_to:
-        _insert_notification(
+        _notify_single_user(
             db, org_id, assigned_to,
             notif_type="new_lead",
             title="New inbound contact",
@@ -1423,8 +1446,6 @@ def _notify_managers(
 ) -> None:
     """Notify all owners and ops_managers in the org. S14."""
     try:
-        from app.services.notifications_service import _insert_notification
-
         users_result = (
             db.table("users")
             .select("id, roles(template)")
@@ -1434,7 +1455,7 @@ def _notify_managers(
         for user in (users_result.data or []):
             role = (user.get("roles") or {}).get("template", "").lower()
             if role in ("owner", "ops_manager"):
-                _insert_notification(
+                _notify_single_user(
                     db, org_id, user["id"],
                     notif_type="triage_alert",
                     title=title,

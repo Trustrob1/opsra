@@ -1374,7 +1374,7 @@ def _handle_structured_qualification_turn(
         # Send confirmation to lead
         try:
             from app.services.whatsapp_service import (
-                _get_org_wa_credentials, _call_meta_send, _get_lead_phone,
+                _get_org_wa_credentials, _call_meta_send,
             )
             _phone_id, _token, _ = _get_org_wa_credentials(db, org_id)
             _lead_phone = _get_lead_phone(db, lead_id)
