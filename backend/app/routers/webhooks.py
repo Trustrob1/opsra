@@ -906,7 +906,26 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         active_session = triage_service.get_active_session(db, org_id, sender_phone)
         logger.info("[WH] active_session=%s", active_session)
         if active_session:
-            if not active_session.get("commerce_state"):
+            # Only attempt commerce state restore for orgs actually in a commerce mode.
+            # Fetching org mode here prevents _restore_commerce_state_if_open from
+            # finding a stale open commerce_session on a consultative/human org and
+            # hijacking what should be a triage qualification routing.
+            try:
+                _mode_r = (
+                    db.table("organisations")
+                    .select("sales_mode, whatsapp_sales_mode")
+                    .eq("id", org_id).maybe_single().execute()
+                )
+                _mode_d = _mode_r.data
+                if isinstance(_mode_d, list):
+                    _mode_d = _mode_d[0] if _mode_d else None
+                _is_commerce_mode = (
+                    (_mode_d or {}).get("sales_mode") == "transactional"
+                    or (_mode_d or {}).get("whatsapp_sales_mode") == "bot"
+                )
+            except Exception:
+                _is_commerce_mode = False
+            if not active_session.get("commerce_state") and _is_commerce_mode:
                 _restore_commerce_state_if_open(db, org_id, sender_phone, active_session)
             if (active_session.get("commerce_state") or "") in COMMERCE_STATES:
                 logger.info("[WH] routing to commerce handler state=%s", active_session.get('commerce_state'))
