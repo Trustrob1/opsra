@@ -776,9 +776,51 @@ def send_whatsapp_message(
             customer_id_str or lead_id_str,
             exc,
         )
- 
-    return msg_data
 
+    # Auto-advance lead stage: new → contacted when a human rep sends first message.
+    # DRD state machine: new → contacted triggered by "rep sends first WhatsApp message".
+    # Only fires for leads in 'new' stage — never touches any other stage.
+    # S14 — failure is non-blocking; message already sent successfully.
+    try:
+        if lead_id_str:
+            lead_stage_r = (
+                db.table("leads")
+                .select("stage")
+                .eq("id", lead_id_str)
+                .eq("org_id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            lead_stage_d = lead_stage_r.data
+            if isinstance(lead_stage_d, list):
+                lead_stage_d = lead_stage_d[0] if lead_stage_d else None
+            current_stage = (lead_stage_d or {}).get("stage")
+            if current_stage == "new":
+                db.table("leads").update({
+                    "stage": "contacted",
+                    "updated_at": now_ts,
+                }).eq("id", lead_id_str).eq("org_id", org_id).execute()
+                write_audit_log(
+                    db=db,
+                    org_id=org_id,
+                    user_id=user_id,
+                    action="lead.stage_changed",
+                    resource_type="lead",
+                    resource_id=lead_id_str,
+                    old_value={"stage": "new"},
+                    new_value={"stage": "contacted"},
+                )
+                logger.info(
+                    "send_whatsapp_message: lead %s auto-advanced new → contacted",
+                    lead_id_str,
+                )
+    except Exception as exc:
+        logger.warning(
+            "send_whatsapp_message: auto-stage-advance failed for lead %s: %s",
+            lead_id_str, exc,
+        )
+
+    return msg_data
 
 # ---------------------------------------------------------------------------
 # Customer CRUD
