@@ -1038,7 +1038,15 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             try:
                 send_triage_menu(db=db, org_id=org_id, phone_number=sender_phone, section="unknown", contact_name=contact_name)
                 logger.info("[WH] triage menu sent successfully")
-                triage_service.create_session(db=db, org_id=org_id, phone_number=sender_phone)
+                _new_session = triage_service.create_session(db=db, org_id=org_id, phone_number=sender_phone)
+                # Store first message content in session_data for source attribution
+                if _new_session and content:
+                    try:
+                        db.table("whatsapp_sessions").update({
+                            "session_data": {"first_message": content}
+                        }).eq("id", _new_session["id"]).execute()
+                    except Exception as _sd_exc:
+                        logger.warning("[WH] session_data first_message save failed: %s", _sd_exc)
                 logger.info("[WH] session created")
             except Exception as exc:
                 logger.warning("[WH] triage menu FAILED: %s", exc)

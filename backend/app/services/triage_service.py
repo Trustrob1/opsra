@@ -575,8 +575,9 @@ def dispatch_triage_selection(
         action = (matched_item or {}).get("action", "free_form")
 
         if action == "qualify":
+            _first_message = (session.get("session_data") or {}).get("first_message")
             _action_qualify(db, org_id, phone_number, session_id,
-                            contact_name, now_ts)
+                            contact_name, now_ts, first_message=_first_message)
 
         elif action == "identify_customer":
             _action_identify_customer(db, org_id, phone_number, session_id)
@@ -606,6 +607,7 @@ def dispatch_triage_selection(
 def _action_qualify(
     db, org_id: str, phone_number: str, session_id: str,
     contact_name: Optional[str], now_ts,
+    first_message: Optional[str] = None,
 ) -> None:
     """
     WH-1b: Create a sales_lead and start the structured qualification flow.
@@ -661,6 +663,33 @@ def _action_qualify(
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
     lead_id = lead["id"] if lead else None
+
+    # Source attribution — detect [IG] or [FB] tag in the opening message.
+    # Sets utm_source on the lead so pipeline shows where the contact came from.
+    # S14: failure never blocks qualification flow.
+    if lead_id and first_message:
+        try:
+            _msg_lower = first_message.strip().lower()
+            _utm_source = None
+            if "[ig]" in _msg_lower:
+                _utm_source = "instagram"
+            elif "[fb]" in _msg_lower:
+                _utm_source = "facebook"
+            if _utm_source:
+                db.table("leads").update({
+                    "utm_source": _utm_source,
+                    "utm_medium": "social",
+                    "utm_campaign": "whatsapp_redirect",
+                }).eq("id", lead_id).execute()
+                logger.info(
+                    "_action_qualify: source tagged lead=%s utm_source=%s",
+                    lead_id, _utm_source,
+                )
+        except Exception as _utm_exc:
+            logger.warning(
+                "_action_qualify: source attribution failed lead=%s: %s",
+                lead_id, _utm_exc,
+            )
 
     # Backfill lead_id on any messages saved before the lead existed
     # S14: failure never blocks qualification flow
@@ -824,6 +853,28 @@ def _action_route_to_role(
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
 
+    # Source attribution from first message tag
+    if lead and lead.get("id"):
+        try:
+            _first_message = (session.get("session_data") or {}).get("first_message", "")
+            _msg_lower = (_first_message or "").strip().lower()
+            _utm_source = None
+            if "[ig]" in _msg_lower:
+                _utm_source = "instagram"
+            elif "[fb]" in _msg_lower:
+                _utm_source = "facebook"
+            if _utm_source:
+                db.table("leads").update({
+                    "utm_source": _utm_source,
+                    "utm_medium": "social",
+                    "utm_campaign": "whatsapp_redirect",
+                }).eq("id", lead["id"]).execute()
+        except Exception as _utm_exc:
+            logger.warning(
+                "_action_route_to_role: source attribution failed lead=%s: %s",
+                lead["id"], _utm_exc,
+            )
+
     # Backfill lead_id on inbound messages saved before the lead existed
     # S14: failure never blocks the route_to_role flow
     if lead and lead.get("id"):
@@ -935,6 +986,28 @@ def _action_free_form(
         contact_type=contact_type,
     )
     lead = lead_service.create_lead(db, org_id, None, lead_payload)
+
+    # Source attribution from first message tag
+    if lead and lead.get("id"):
+        try:
+            _first_message = (session.get("session_data") or {}).get("first_message", "")
+            _msg_lower = (_first_message or "").strip().lower()
+            _utm_source = None
+            if "[ig]" in _msg_lower:
+                _utm_source = "instagram"
+            elif "[fb]" in _msg_lower:
+                _utm_source = "facebook"
+            if _utm_source:
+                db.table("leads").update({
+                    "utm_source": _utm_source,
+                    "utm_medium": "social",
+                    "utm_campaign": "whatsapp_redirect",
+                }).eq("id", lead["id"]).execute()
+        except Exception as _utm_exc:
+            logger.warning(
+                "_action_free_form: source attribution failed lead=%s: %s",
+                lead["id"], _utm_exc,
+            )
 
     # Backfill lead_id on inbound messages saved before the lead existed
     # S14: failure never blocks the free_form flow
