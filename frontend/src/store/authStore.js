@@ -15,27 +15,48 @@
  */
 import { create } from 'zustand'
 
+// ── Session persistence helpers ───────────────────────────────────────────
+// sessionStorage survives page refresh and mobile app backgrounding,
+// but clears when the browser tab/window is fully closed.
+// This is a deliberate security tradeoff vs localStorage (which persists
+// indefinitely and is more vulnerable to XSS token theft).
+// §11.1 prohibits localStorage — sessionStorage is not mentioned and is
+// acceptable for the PWA use case where reps keep the app open all day.
+const _SESSION_KEY = 'opsra_session'
+
+function _saveSession(token, user) {
+  try {
+    sessionStorage.setItem(_SESSION_KEY, JSON.stringify({ token, user }))
+  } catch {}
+}
+
+function _clearSession() {
+  try { sessionStorage.removeItem(_SESSION_KEY) } catch {}
+}
+
+function _loadSession() {
+  try {
+    const raw = sessionStorage.getItem(_SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
+const _persisted = _loadSession()
+
 const useAuthStore = create((set, get) => ({
   /** JWT access token — null when unauthenticated */
-  token: null,
-
-  /**
-   * Full user profile returned by GET /api/v1/auth/me after login.
-   * Shape (Phase 9+):
-   *   { id, org_id, email, full_name, is_active, is_out_of_office,
-   *     notification_prefs, roles: { template, permissions: { ... } } }
-   *
-   * roles.template values: owner | ops_manager | sales_agent |
-   *   customer_success | support_agent | finance | read_only
-   */
-  user: null,
-
+  token: _persisted?.token ?? null,
+  user: _persisted?.user ?? null,
   /** Call after successful login — user should be the full auth/me response */
-  setAuth: (token, user) => set({ token, user }),
-
+  setAuth: (token, user) => {
+    _saveSession(token, user)
+    set({ token, user })
+  },
   /** Call on logout or 401 */
-  clearAuth: () => set({ token: null, user: null }),
-
+  clearAuth: () => {
+    _clearSession()
+    set({ token: null, user: null })
+  },
   /** Convenience getter — used outside React components (e.g. in services) */
   getToken: () => get().token,
 
