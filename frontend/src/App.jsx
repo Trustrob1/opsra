@@ -67,7 +67,7 @@ const _authPatch = (path, body, token) => axios.patch(`${BASE}${path}`, body, { 
 
 // ─── Session timeout (Phase 9D) ───────────────────────────────────────────────
 let _idleLogout = false
-const IDLE_MS = 30 * 60 * 1000  // 30 minutes
+const IDLE_MS = 12 * 60 * 60 * 1000  // 12 hours
 
 // ─── Sidebar navigation definition ───────────────────────────────────────────
 const NAV = [
@@ -85,6 +85,50 @@ const NAV = [
 
 export default function App() {
   const { token, setAuth } = useAuthStore()
+
+  // Restore session on page refresh or app resume.
+  // Supabase persists its own session in localStorage independently of Zustand.
+  // On mount, we ask Supabase for the current session and hydrate Zustand from it.
+  // This does NOT violate §11.1 — the JWT is never manually written to localStorage;
+  // Supabase manages its own session storage internally.
+  useEffect(() => {
+    const { _supabase } = require('./services/api')
+
+    // Attempt to restore existing session immediately
+    _supabase.auth.getSession().then(async ({ data }) => {
+      if (data?.session?.access_token) {
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/api/v1/auth/me`,
+            { headers: { Authorization: `Bearer ${data.session.access_token}` } }
+          )
+          if (res.ok) {
+            const json = await res.json()
+            setAuth(data.session.access_token, json?.data ?? data.session.user)
+          }
+        } catch {
+          // Session exists but /me failed — still restore with Supabase user
+          setAuth(data.session.access_token, data.session.user)
+        }
+      }
+    }).catch(() => {})
+
+    // Also listen for auth state changes (tab resume, token refresh)
+    const { data: { subscription } } = _supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_OUT' || !session) {
+          useAuthStore.getState().clearAuth()
+          return
+        }
+        if (event === 'TOKEN_REFRESHED' && session?.access_token) {
+          const currentUser = useAuthStore.getState().user
+          useAuthStore.getState().setAuth(session.access_token, currentUser)
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [setAuth])
 
   useEffect(() => {
     if (document.getElementById('opsra-fonts')) return

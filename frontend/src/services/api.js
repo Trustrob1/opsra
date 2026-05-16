@@ -23,7 +23,7 @@ const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 // ── Supabase client (auth only — for session refresh) ──────────────────────
 // Uses the same env vars as the rest of the app.
-const _supabase = createClient(
+export const _supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY,
 )
