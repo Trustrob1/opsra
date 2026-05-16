@@ -423,7 +423,7 @@ def lookup_kb_answer(db, org_id: str, content: str) -> Optional[dict]:
         for article in articles:
             score = 0
             title_lower = (article.get("title") or "").lower()
-            body_lower = (article.get("content") or "")[:500].lower()
+            body_lower = (article.get("content") or "")[:1500].lower()
             tags = article.get("tags") or []
             tags_lower = " ".join(t or "" for t in tags).lower()
             category = (article.get("category") or "").lower()
@@ -468,7 +468,7 @@ def lookup_kb_answer(db, org_id: str, content: str) -> Optional[dict]:
         articles_block = ""
         for i, art in enumerate(top_articles, 1):
             title = _sanitise_for_prompt(art.get("title") or "", max_length=100)
-            body = _sanitise_for_prompt(art.get("content") or "", max_length=500)
+            body = _sanitise_for_prompt(art.get("content") or "", max_length=1500)
             art_id = art.get("id", "")
             action = art.get("action_type") or "informational"
             action_label = _sanitise_for_prompt(art.get("action_label") or "", max_length=200)
