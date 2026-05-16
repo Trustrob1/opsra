@@ -37,6 +37,7 @@ from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ApiResponse, ErrorCode, err, ok
 from app.services.auth_service import request_password_reset, update_user_password
+from app.utils.audit import write_audit_log
 
 load_dotenv()  # Pattern 29
 
@@ -48,6 +49,9 @@ security = HTTPBearer()
 # ---------------------------------------------------------------------------
 # Pydantic request/response schemas
 # ---------------------------------------------------------------------------
+
+class AvailabilityUpdate(BaseModel):
+    is_out_of_office: bool
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -519,6 +523,30 @@ async def me(org=Depends(get_current_org)) -> ApiResponse:
     }
     return ok(data=safe_user)
 
+@router.patch("/me/availability")
+async def set_my_availability(
+    payload: AvailabilityUpdate,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """Toggle own out-of-office status. Excluded from auto-assignment when OOO."""
+    from datetime import datetime, timezone
+    db.table("users").update({
+        "is_out_of_office": payload.is_out_of_office,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", org["id"]).eq("org_id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db,
+        org_id=org["org_id"],
+        user_id=org["id"],
+        action="user.availability_changed",
+        resource_type="user",
+        resource_id=org["id"],
+        old_value=None,
+        new_value={"is_out_of_office": payload.is_out_of_office},
+    )
+    return ok(message="Availability updated")
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/auth/reset-password — Public, rate-limited

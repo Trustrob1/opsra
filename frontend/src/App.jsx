@@ -584,6 +584,27 @@ function AppShell() {
   }
 
   const [loggingOut, setLoggingOut] = useState(false)
+  const [isOOO, setIsOOO] = useState(user?.is_out_of_office ?? false)
+  const [oooLoading, setOooLoading] = useState(false)
+
+  const handleAvailabilityToggle = async () => {
+    const newVal = !isOOO
+    setIsOOO(newVal)
+    setOooLoading(true)
+    try {
+      const token = useAuthStore.getState().token
+      await axios.patch(
+        `${BASE}/api/v1/auth/me/availability`,
+        { is_out_of_office: newVal },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+    } catch {
+      setIsOOO(!newVal)
+    } finally {
+      setOooLoading(false)
+    }
+  }
+
   const handleLogout = async () => {
     setLoggingOut(true)
     try {
@@ -661,17 +682,28 @@ function AppShell() {
         )
       })()}
 
-      {/* Mobile-only: user info + sign out at bottom of drawer */}
+      {/* Mobile-only: user info + availability toggle + sign out at bottom of drawer */}
       {isMobile && (
         <div style={{ marginTop: 'auto', padding: '16px', borderTop: '1px solid #1a2f3f' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: ds.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white', fontFamily: ds.fontSyne, flexShrink: 0 }}>
-              {userInitial}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: isOOO ? '#6B7280' : ds.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white', fontFamily: ds.fontSyne }}>
+                {userInitial}
+              </div>
+              <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: isOOO ? '#F59E0B' : ds.green, border: '2px solid #0f2535' }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, color: '#A0BDC8', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
+              <div style={{ fontSize: 11, color: isOOO ? '#F59E0B' : ds.green, marginTop: 2 }}>{isOOO ? '🔴 Out of Office' : '🟢 Available'}</div>
             </div>
           </div>
+          <button
+            onClick={handleAvailabilityToggle}
+            disabled={oooLoading}
+            style={{ width: '100%', background: 'none', border: '1px solid ' + (isOOO ? '#F59E0B' : '#2a4a5a'), borderRadius: 8, padding: '9px', fontSize: 13, color: isOOO ? '#F59E0B' : '#7A9BAD', cursor: 'pointer', marginBottom: 8 }}
+          >
+            {oooLoading ? '…' : isOOO ? 'Mark as Available' : 'Go Out of Office'}
+          </button>
           <button
             onClick={handleLogout}
             disabled={loggingOut}
@@ -745,15 +777,26 @@ function AppShell() {
             )}
           </button>
 
-          {/* Desktop: user + sign out */}
+          {/* Desktop: user + availability toggle + sign out */}
           {!isMobile && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: ds.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'white', fontFamily: ds.fontSyne }}>
-                  {userInitial}
+                <div style={{ position: 'relative' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: isOOO ? '#6B7280' : ds.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'white', fontFamily: ds.fontSyne }}>
+                    {userInitial}
+                  </div>
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: isOOO ? '#F59E0B' : ds.green, border: '2px solid ' + ds.dark }} />
                 </div>
                 <span style={{ fontSize: 13, color: '#A0BDC8', fontWeight: 500 }}>{userName}</span>
               </div>
+              <button
+                onClick={handleAvailabilityToggle}
+                disabled={oooLoading}
+                title={isOOO ? 'You are out of office — click to mark available' : 'Click to go out of office'}
+                style={{ ...topbarBtn, borderColor: isOOO ? '#F59E0B' : '#2a4a5a', color: isOOO ? '#F59E0B' : '#7A9BAD' }}
+              >
+                {oooLoading ? '…' : isOOO ? '🔴 OOO' : '🟢 Available'}
+              </button>
               <button onClick={handleLogout} disabled={loggingOut} style={topbarBtn}>
                 {loggingOut ? 'Signing out…' : 'Sign out'}
               </button>
