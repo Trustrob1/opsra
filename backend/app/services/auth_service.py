@@ -134,17 +134,30 @@ async def update_user_password(
         raise ValueError(password_error)
 
     try:
-        supabase.auth.set_session(access_token=access_token, refresh_token="")
-    except Exception as set_exc:
-        logger.warning("set_session failed (non-fatal, continuing): %s", set_exc)
-
-    try:
-        supabase.auth.update_user(
-            {"password": new_password},
-        )
-    except Exception as exc:
-        logger.error("Supabase update_user password error for user %s: %s", user_id, exc)
-        raise RuntimeError("Password update failed. The reset link may have expired.") from exc
+            # Use Admin API to update password directly by user_id.
+            # This avoids session management issues with the singleton client
+            # and works reliably regardless of the reset token state.
+            supabase_url = os.getenv("SUPABASE_URL", "").strip()
+            service_key  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+            resp = _httpx.patch(
+                f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                headers={
+                    "Authorization": f"Bearer {service_key}",
+                    "apikey":        service_key,
+                    "Content-Type":  "application/json",
+                },
+                json={"password": new_password},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+        except _httpx.HTTPStatusError as exc:
+            body = exc.response.json()
+            msg  = body.get("message") or body.get("msg") or str(exc)
+            logger.error("Admin update_user password error for user %s: %s", user_id, msg)
+            raise RuntimeError(f"Password update failed: {msg}") from exc
+        except Exception as exc:
+            logger.error("Supabase update_user password error for user %s: %s", user_id, exc)
+            raise RuntimeError("Password update failed. The reset link may have expired.") from exc
 
     # Write audit log — Section 9.5
     try:

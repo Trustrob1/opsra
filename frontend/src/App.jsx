@@ -308,7 +308,7 @@ function LoginScreen({ onAuth }) {
         }
         await _finishLogin(access_token, user)
       } else {
-        setError(res.data.error ?? 'Login failed')
+        setError(res.data.error?.message ?? res.data.error ?? 'Login failed')
       }
     } catch (err) {
       const status = err?.response?.status
