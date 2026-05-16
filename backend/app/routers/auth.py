@@ -613,6 +613,9 @@ async def update_password(
         return err(code=ErrorCode.VALIDATION_ERROR, message=str(exc), field="new_password")
     except RuntimeError as exc:
         return err(code=ErrorCode.INTEGRATION_ERROR, message=str(exc))
+    except Exception as exc:
+        logger.error("update-password: unexpected error: %s", exc)
+        return err(code=ErrorCode.INTEGRATION_ERROR, message="Password update failed unexpectedly.")
 
     return ok(
         data=UpdatePasswordResponse(updated=True),

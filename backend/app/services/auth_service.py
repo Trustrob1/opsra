@@ -134,8 +134,11 @@ async def update_user_password(
         raise ValueError(password_error)
 
     try:
-        # Set the user's session using their reset access token before updating
         supabase.auth.set_session(access_token=access_token, refresh_token="")
+    except Exception as set_exc:
+        logger.warning("set_session failed (non-fatal, continuing): %s", set_exc)
+
+    try:
         supabase.auth.update_user(
             {"password": new_password},
         )
