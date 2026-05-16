@@ -37,7 +37,7 @@ from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ApiResponse, ErrorCode, err, ok
 from app.services.auth_service import request_password_reset, update_user_password
-from app.utils.audit import write_audit_log
+from app.services.lead_service import write_audit_log
 
 load_dotenv()  # Pattern 29
 
