@@ -399,11 +399,12 @@ def lookup_kb_answer(db, org_id: str, content: str) -> Optional[dict]:
             for word in content_lower.split():
                 if len(word) < 3:
                     continue
-                if word in title_lower:
+                stem = word.rstrip("s")
+                if word in title_lower or stem in title_lower:
                     score += 3
-                if word in body_lower:
+                if word in body_lower or stem in body_lower:
                     score += 1
-                if any(word in (t or "").lower() for t in tags):
+                if any(word in (t or "").lower() or stem in (t or "").lower() for t in tags):
                     score += 2
             if score > 0:
                 scored.append((score, article))
@@ -2346,11 +2347,12 @@ def get_kb_suggestion_for_rep(db, org_id: str, content: str) -> Optional[dict]:
             for word in content_lower.split():
                 if len(word) < 3:
                     continue
-                if word in title_lower:
+                stem = word.rstrip("s")
+                if word in title_lower or stem in title_lower:
                     score += 3
-                if word in body_lower:
+                if word in body_lower or stem in body_lower:
                     score += 1
-                if any(word in (t or "").lower() for t in tags):
+                if any(word in (t or "").lower() or stem in (t or "").lower() for t in tags):
                     score += 2
             if score > 0:
                 scored.append((score, article))
