@@ -54,6 +54,7 @@ const useAuthStore = create((set, get) => ({
   },
   /** Call on logout or 401 */
   clearAuth: () => {
+    console.trace('clearAuth called')
     _clearSession()
     set({ token: null, user: null })
   },
