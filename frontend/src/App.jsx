@@ -162,7 +162,7 @@ function UpdatePasswordScreen() {
     setLoading(true)
     setError(null)
     try {
-      await _authPatch('/api/v1/auth/update-password', { password }, accessToken)
+      await _authPatch('/api/v1/auth/update-password', { new_password: password }, accessToken)
       setDone(true)
       // Redirect to login after 3 seconds
       setTimeout(() => { window.location.href = '/' }, 3000)
