@@ -661,7 +661,9 @@ def _action_qualify(
         source=LeadSource.whatsapp_inbound.value,
         contact_type="sales_lead",
     )
-    lead = lead_service.create_lead(db, org_id, None, lead_payload)
+    lead = lead_service.create_lead(
+        db, org_id, None, lead_payload, entry_path="whatsapp"
+    )
     lead_id = lead["id"] if lead else None
 
     # Source attribution — detect [IG] or [FB] tag in the opening message.
@@ -851,7 +853,9 @@ def _action_route_to_role(
         source=LeadSource.whatsapp_inbound.value,
         contact_type=contact_type,
     )
-    lead = lead_service.create_lead(db, org_id, None, lead_payload)
+    lead = lead_service.create_lead(
+        db, org_id, None, lead_payload, entry_path="whatsapp"
+    )
 
     # Source attribution from first message tag
     if lead and lead.get("id"):
@@ -985,7 +989,9 @@ def _action_free_form(
         source=LeadSource.whatsapp_inbound.value,
         contact_type=contact_type,
     )
-    lead = lead_service.create_lead(db, org_id, None, lead_payload)
+    lead = lead_service.create_lead(
+        db, org_id, None, lead_payload, entry_path="whatsapp"
+    )
 
     # Source attribution from first message tag
     if lead and lead.get("id"):

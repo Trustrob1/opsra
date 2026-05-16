@@ -826,6 +826,61 @@ def send_whatsapp_message(
             lead_id_str, exc,
         )
 
+    # Response time tracking — calculate and store on first human reply to a lead.
+    # response_time_minutes = gap between lead's first inbound message and
+    # this human outbound message. Only set once (never overwritten).
+    # S14: failure is non-blocking.
+    if lead_id_str:
+        try:
+            lead_resp_r = (
+                db.table("leads")
+                .select("response_time_minutes, created_at")
+                .eq("id", lead_id_str)
+                .eq("org_id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            lead_resp_d = _normalise_data(lead_resp_r.data) or {}
+            if lead_resp_d.get("response_time_minutes") is None:
+                # Find the first inbound message from this lead
+                first_inbound_r = (
+                    db.table("whatsapp_messages")
+                    .select("created_at")
+                    .eq("org_id", org_id)
+                    .eq("lead_id", lead_id_str)
+                    .eq("direction", "inbound")
+                    .order("created_at", desc=False)
+                    .limit(1)
+                    .execute()
+                )
+                first_inbound_rows = first_inbound_r.data or []
+                if first_inbound_rows:
+                    first_inbound_at = first_inbound_rows[0].get("created_at")
+                    if first_inbound_at:
+                        try:
+                            t_inbound = datetime.fromisoformat(
+                                first_inbound_at.replace("Z", "+00:00")
+                            )
+                            t_now = datetime.now(timezone.utc)
+                            resp_mins = int((t_now - t_inbound).total_seconds() / 60)
+                            db.table("leads").update({
+                                "response_time_minutes": resp_mins
+                            }).eq("id", lead_id_str).eq("org_id", org_id).execute()
+                            logger.info(
+                                "send_whatsapp_message: response_time_minutes=%d "
+                                "set for lead %s", resp_mins, lead_id_str,
+                            )
+                        except Exception as _rt_exc:
+                            logger.warning(
+                                "send_whatsapp_message: response time parse failed "
+                                "lead=%s: %s", lead_id_str, _rt_exc,
+                            )
+        except Exception as _resp_exc:
+            logger.warning(
+                "send_whatsapp_message: response time tracking failed "
+                "lead=%s: %s", lead_id_str, _resp_exc,
+            )
+
     return msg_data
 
 # ---------------------------------------------------------------------------
