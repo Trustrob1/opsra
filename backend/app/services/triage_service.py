@@ -622,6 +622,20 @@ def _action_qualify(
     from app.services import lead_service
     from app.services.whatsapp_service import send_qualification_question
 
+    # Fire typing indicator immediately — before any DB writes — so the user
+    # sees wiggling dots during lead creation and qual session setup.
+    try:
+        from app.services.whatsapp_service import (
+            _get_org_wa_credentials, _get_last_inbound_msg_id, _fire_typing_indicator
+        )
+        _ti_phone_id, _ti_token, _ = _get_org_wa_credentials(db, org_id)
+        if _ti_phone_id and _ti_token:
+            _ti_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
+            if _ti_msg_id:
+                _fire_typing_indicator(_ti_phone_id, _ti_msg_id, _ti_token)
+    except Exception as _ti_exc:
+        logger.warning("_action_qualify: typing indicator failed: %s", _ti_exc)
+
     # 1 — Fetch qualification_flow
     org_r = (
         db.table("organisations")

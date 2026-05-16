@@ -407,6 +407,12 @@ def send_triage_menu(
 
         config = triage_config[section]
 
+        # Fire typing indicator before sending the menu — gives the impression
+        # someone is composing a response rather than an instant bot reply.
+        _last_msg_id = _get_last_inbound_msg_id(db, org_id, phone_number)
+        if _last_msg_id:
+            _fire_typing_indicator(phone_id, _last_msg_id, access_token)
+
         rows = [
             {
                 "id":          item["id"],
