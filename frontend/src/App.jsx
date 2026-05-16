@@ -58,6 +58,7 @@ import CreateOrg from "./modules/superadmin/CreateOrg.jsx"
 import HealthDashboard from "./modules/superadmin/HealthDashboard.jsx"
 import ConversationsModule from './modules/conversations/ConversationsModule'
 import TermsOfService from './pages/TermsOfService'
+import { _supabase } from './services/api'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
