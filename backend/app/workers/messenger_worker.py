@@ -219,7 +219,7 @@ def _process_messaging_event(db, org_id: str, messaging: dict) -> None:
                 user_id=None,   # system-triggered (Pattern 64)
                 payload=LeadCreate(
                     full_name=full_name,
-                    source=LeadSource.instagram_dm.value,  # reuse enum — closest channel
+                    source=LeadSource.facebook_dm.value,
                 ),
                 entry_path="messenger",
             )
