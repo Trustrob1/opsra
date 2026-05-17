@@ -158,6 +158,9 @@ celery_app.conf.update(
     task_max_retries=3,
     # Worker concurrency — sensible default for Render's free tier
     worker_concurrency=4,
+    # Recycle each worker process after 50 tasks to prevent memory growth.
+    # Each fork inherits the full parent memory; recycling caps accumulation.
+    worker_max_tasks_per_child=50,
     # Beat scheduler — file-based scheduler.
     # Schedule is stored in celerybeat-schedule file in the working directory.
     # NOTE: redbeat (Redis-backed) was trialled but could not be reliably
