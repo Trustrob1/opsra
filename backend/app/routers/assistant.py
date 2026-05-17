@@ -47,6 +47,7 @@ from app.services.assistant_service import (
     mark_briefing_seen,
     store_message,
 )
+from app.services.ai_service import _log_claude_usage
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,16 @@ async def post_message(
                     async for chunk in stream.text_stream:
                         full_text.append(chunk)
                         yield f"data: {json.dumps({'text': chunk})}\n\n"
+                    # SA-2A: log usage after stream completes
+                    final_msg = await stream.get_final_message()
+                    _log_claude_usage(
+                        db,
+                        org_id=org_id,
+                        function_name="aria_chat",
+                        model=HAIKU_MODEL,
+                        input_tokens=final_msg.usage.input_tokens,
+                        output_tokens=final_msg.usage.output_tokens,
+                    )
 
         except Exception as exc:
             logger.error("assistant stream error for user %s: %s", user_id, exc)

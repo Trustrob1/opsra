@@ -204,12 +204,19 @@ def _build_briefing_system_prompt(role_template: str, context: dict) -> str:
 
 # ─── Synchronous Haiku call ───────────────────────────────────────────────────
 
-def call_haiku_sync(system_prompt: str, messages: list[dict]) -> str:
+def call_haiku_sync(
+    system_prompt: str,
+    messages: list[dict],
+    db=None,
+    org_id: str | None = None,
+    function_name: str | None = None,
+) -> str:
     """
     Make a synchronous Haiku call. Used by the daily briefing worker.
     Returns the assistant text content.
 
     G1: Retries up to 3 times on RateLimitError or 5xx with exponential backoff.
+    SA-2A: Logs usage to claude_usage_log if db and org_id are provided.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     client  = anthropic.Anthropic(api_key=api_key)
@@ -229,6 +236,22 @@ def call_haiku_sync(system_prompt: str, messages: list[dict]) -> str:
         )
 
     response = _call_with_retry()
+
+    # SA-2A: log usage if db provided — S14: never raises
+    if db and hasattr(response, "usage") and response.usage:
+        try:
+            from app.services.ai_service import _log_claude_usage
+            _log_claude_usage(
+                db,
+                org_id=org_id,
+                function_name=function_name or "aria_briefing",
+                model=HAIKU_MODEL,
+                input_tokens=response.usage.input_tokens or 0,
+                output_tokens=response.usage.output_tokens or 0,
+            )
+        except Exception as exc:
+            logger.warning("call_haiku_sync: usage log failed — %s", exc)
+
     return response.content[0].text if response.content else ""
 
 
@@ -244,7 +267,10 @@ def generate_briefing(db, org_id: str, user_id: str, role_template: str) -> str:
     system_prompt = _build_briefing_system_prompt(role_template, context)
     messages      = [{"role": "user", "content": "Generate my morning briefing."}]
 
-    briefing_text = call_haiku_sync(system_prompt, messages)
+    briefing_text = call_haiku_sync(
+        system_prompt, messages,
+        db=db, org_id=org_id, function_name="aria_briefing",
+    )
 
     db.table("users").update(
         {

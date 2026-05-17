@@ -214,6 +214,8 @@ def call_claude(
     max_tokens: int = 1000,
     system: Optional[str] = None,
     org_id: Optional[str] = None,
+    db=None,
+    function_name: Optional[str] = None,
 ) -> str:
     """
     Standard Claude API call with error handling.
@@ -258,6 +260,17 @@ def call_claude(
                 (response.usage.output_tokens or 0)
             )
             check_and_increment_token_usage(org_id, total_tokens)
+
+        # SA-2A: Persist usage to claude_usage_log
+        if db and hasattr(response, "usage") and response.usage:
+            _log_claude_usage(
+                db,
+                org_id=org_id,
+                function_name=function_name or "ai_service",
+                model=model,
+                input_tokens=response.usage.input_tokens or 0,
+                output_tokens=response.usage.output_tokens or 0,
+            )
 
         return text
 
