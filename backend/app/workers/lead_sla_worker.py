@@ -234,7 +234,7 @@ def _close_stuck_sessions(db) -> dict:
     Find lead_qualification_sessions where:
       - stage = 'qualifying'
       - ai_active = True
-      - updated_at <= now - _STUCK_SESSION_HOURS
+      - created_at <= now - _STUCK_SESSION_HOURS
 
     For each: close the session and notify the assigned rep.
     S14: one failure never stops the loop.
@@ -249,7 +249,7 @@ def _close_stuck_sessions(db) -> dict:
             .select("id, org_id, lead_id")
             .eq("stage", "qualifying")
             .eq("ai_active", True)
-            .lte("updated_at", cutoff)
+            .lte("created_at", cutoff)
             .execute()
         )
         sessions = result.data or []
