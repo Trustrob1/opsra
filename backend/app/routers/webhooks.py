@@ -1051,7 +1051,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     problem_stated=content if msg_type == "text" else None,
                 )
                 _triage_lead = lead_service.create_lead(
-                    db=db, org_id=org_id, user_id="system",
+                    db=db, org_id=org_id, user_id=None,
                     payload=_triage_lead_payload,
                     utm_source=_wa_utm_source,
                     campaign_id=_wa_campaign_id,
