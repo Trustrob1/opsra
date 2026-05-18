@@ -77,8 +77,15 @@ export default function LeadMessages({ leadId, leadName }) {
   const [tick, setTick]               = useState(0)
   const [summary, setSummary]         = useState(null)
   const [summaryOpen, setSummaryOpen] = useState(true)
+  const [templates, setTemplates]     = useState([])
 
   const refresh = useCallback(() => setTick(t => t + 1), [])
+
+  useEffect(() => {
+    axios.get('/api/v1/templates', { headers: _h() })
+      .then(r => setTemplates(r.data?.data ?? []))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!leadId) return
@@ -131,7 +138,7 @@ export default function LeadMessages({ leadId, leadName }) {
         <MessageComposer
           leadId={leadId}
           windowOpen={true}
-          templates={[]}
+          templates={templates}
           onSent={refresh}
         />
       </div>
