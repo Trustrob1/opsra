@@ -99,13 +99,33 @@ def _get_last_inbound_msg_id(db, org_id: str, phone_number: str) -> Optional[str
     """
     Fetch the meta_message_id of the most recent inbound WhatsApp message
     from this phone number. Used to fire the typing indicator.
+    Resolves phone_number → lead_id first so the query is scoped to the
+    correct conversation, not the most recent inbound across the whole org.
     S14 — returns None on any failure.
     """
     try:
+        # Resolve phone number to a lead_id scoped to this org
+        lead_res = (
+            db.table("leads")
+            .select("id")
+            .eq("org_id", org_id)
+            .eq("whatsapp", phone_number)
+            .is_("deleted_at", "null")
+            .maybe_single()
+            .execute()
+        )
+        lead_data = lead_res.data
+        if isinstance(lead_data, list):
+            lead_data = lead_data[0] if lead_data else None
+        lead_id = (lead_data or {}).get("id")
+        if not lead_id:
+            return None
+
         r = (
             db.table("whatsapp_messages")
             .select("meta_message_id")
             .eq("org_id", org_id)
+            .eq("lead_id", lead_id)
             .eq("direction", "inbound")
             .eq("status", "delivered")
             .order("created_at", desc=True)

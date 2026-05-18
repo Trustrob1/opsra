@@ -44,6 +44,9 @@ _NOTIF_ESCALATION = "lead_sla_escalation"
 # Score tiers that have SLA targets
 _SLA_TIERS = {"hot", "warm", "cold"}
 
+# Sessions stuck in qualifying longer than this are auto-closed
+_STUCK_SESSION_HOURS = 2 / 60  # 2 minutes
+
 # Day name → weekday index (Monday=0)
 _DAY_INDEX = {
     "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
@@ -224,6 +227,91 @@ def _insert_notification(db, org_id: str, user_id: str, notif_type: str,
     }).execute()
 
 
+# ── Helper — auto-close stuck qualification sessions ─────────────────────────
+
+def _close_stuck_sessions(db) -> dict:
+    """
+    Find lead_qualification_sessions where:
+      - stage = 'qualifying'
+      - ai_active = True
+      - updated_at <= now - _STUCK_SESSION_HOURS
+
+    For each: close the session and notify the assigned rep.
+    S14: one failure never stops the loop.
+    """
+    summary = {"closed": 0, "notified": 0, "failed": 0}
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(hours=_STUCK_SESSION_HOURS)).isoformat()
+
+    try:
+        result = (
+            db.table("lead_qualification_sessions")
+            .select("id, org_id, lead_id")
+            .eq("stage", "qualifying")
+            .eq("ai_active", True)
+            .lte("updated_at", cutoff)
+            .execute()
+        )
+        sessions = result.data or []
+    except Exception as exc:
+        logger.warning("_close_stuck_sessions: DB query failed: %s", exc)
+        summary["failed"] += 1
+        return summary
+
+    for session in sessions:
+        session_id = session["id"]
+        org_id     = session["org_id"]
+        lead_id    = session["lead_id"]
+        try:
+            db.table("lead_qualification_sessions").update({
+                "ai_active":       False,
+                "stage":           "handed_off",
+                "handed_off_at":   now.isoformat(),
+                "handoff_summary": (
+                    f"Auto-closed by SLA worker — session was stuck in qualifying "
+                    f"for more than {int(_STUCK_SESSION_HOURS * 60)} minutes with no progression."
+                ),
+            }).eq("id", session_id).execute()
+            summary["closed"] += 1
+
+            lead_res = (
+                db.table("leads")
+                .select("full_name, assigned_to")
+                .eq("id", lead_id)
+                .eq("org_id", org_id)
+                .is_("deleted_at", "null")
+                .maybe_single()
+                .execute()
+            )
+            lead = lead_res.data or {}
+            rep_id    = lead.get("assigned_to")
+            lead_name = lead.get("full_name") or "Unknown Lead"
+
+            if rep_id:
+                _insert_notification(
+                    db, org_id, rep_id,
+                    notif_type="qualification_stuck",
+                    title=f"Conversation unlocked: {lead_name}",
+                    body=(
+                        f"The qualification session for '{lead_name}' was stuck "
+                        f"and has been automatically closed. The lead is now "
+                        f"visible in your Conversations inbox."
+                    ),
+                    lead_id=lead_id,
+                )
+                summary["notified"] += 1
+
+        except Exception as exc:  # S14
+            logger.exception(
+                "_close_stuck_sessions: error processing session %s: %s",
+                session_id, exc,
+            )
+            summary["failed"] += 1
+
+    logger.info("_close_stuck_sessions: %s", summary)
+    return summary
+
+
 # ── Helper — check and alert one lead ────────────────────────────────────────
 
 def _process_lead(
@@ -341,14 +429,16 @@ def run_lead_sla_check(self):
     Returns summary dict: {orgs_processed, leads_checked, breaches, escalations, skipped, failed}
     """
     summary = {
-        "orgs_processed": 0,
-        "leads_checked":  0,
-        "breaches":       0,
-        "escalations":    0,
-        "skipped":        0,
-        "failed":         0,
+        "orgs_processed":          0,
+        "leads_checked":           0,
+        "breaches":                0,
+        "escalations":             0,
+        "skipped":                 0,
+        "failed":                  0,
+        "stuck_sessions_closed":   0,
+        "stuck_sessions_notified": 0,
+        "stuck_sessions_failed":   0,
     }
-
     try:
         db = get_supabase()
 
@@ -397,11 +487,17 @@ def run_lead_sla_check(self):
                 if result["skipped"]:
                     summary["skipped"] += 1
 
+         # Auto-close qualification sessions stuck in qualifying
+        stuck_result = _close_stuck_sessions(db)
+        summary["stuck_sessions_closed"]   = stuck_result["closed"]
+        summary["stuck_sessions_notified"] = stuck_result["notified"]
+        summary["stuck_sessions_failed"]   = stuck_result["failed"]
+
         logger.info("lead_sla_worker: %s", summary)
 
     except Exception as exc:
         logger.exception("lead_sla_worker: fatal error: %s", exc)
         summary["failed"] += 1
-        raise self.retry(exc=exc, countdown=30)
+        raise self.retry(exc=exe, countdown=30)
 
     return summary

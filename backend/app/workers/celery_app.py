@@ -157,10 +157,11 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     task_max_retries=3,
     # Worker concurrency — sensible default for Render's free tier
-    worker_concurrency=4,
+    worker_concurrency= 2,
     # Recycle each worker process after 50 tasks to prevent memory growth.
     # Each fork inherits the full parent memory; recycling caps accumulation.
     worker_max_tasks_per_child=50,
+    worker_max_memory_per_child=200000,  # 200MB — recycle if a child exceeds this
     # Beat scheduler — file-based scheduler.
     # Schedule is stored in celerybeat-schedule file in the working directory.
     # NOTE: redbeat (Redis-backed) was trialled but could not be reliably
@@ -307,12 +308,12 @@ celery_app.conf.beat_schedule = {
     },
 
     # ------------------------------------------------------------------ #
-    # lead_sla_check — Every 15 minutes  (M01-6)                          #
+    # lead_sla_check — Every 2 minutes  (M01-6)                          #
     # Worker: lead_sla_worker.py                                           #
     # ------------------------------------------------------------------ #
     "lead_sla_check": {
         "task": "app.workers.lead_sla_worker.run_lead_sla_check",
-        "schedule": crontab(minute="*/15"),
+        "schedule": crontab(minute="*/2"),
     },
 
     # ------------------------------------------------------------------ #
