@@ -82,7 +82,8 @@ export default function LeadMessages({ leadId, leadName }) {
   const refresh = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
-    axios.get('/api/v1/templates', { headers: _h() })
+    const base = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+    axios.get(`${base}/api/v1/templates`, { headers: _h() })
       .then(r => setTemplates(r.data?.data ?? []))
       .catch(() => {})
   }, [])

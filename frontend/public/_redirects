@@ -1,2 +1,1 @@
-/api/*    https://opsra.onrender.com/api/:splat    200
-/*        /index.html                              200
+/*    /index.html    200
