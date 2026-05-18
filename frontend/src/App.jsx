@@ -889,7 +889,7 @@ function AppShell() {
           <div style={{ animation: 'fadeIn 0.25s ease' }}><OpsModule user={user} /></div>
         )}
         {view === 'tasks' && (
-          <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} /></div>
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} onOpenLead={(leadId) =>openLeadProfile(leadId)} /></div>
         )}
         {view === 'admin' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} /></div>

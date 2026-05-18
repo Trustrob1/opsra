@@ -117,7 +117,7 @@ function ModuleHeader({ onNewTask }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function TaskBoard({ user }) {
+export default function TaskBoard({ user, onOpenLead }) {
   const isManager = useAuthStore.getState().isManager()
 
   const [activeTab,  setActiveTab]  = useState('personal')
@@ -161,6 +161,7 @@ export default function TaskBoard({ user }) {
             goToPage={goToPage}
             onRefresh={refresh}
             onActionDone={refresh}
+            onOpenLead={onOpenLead}
           />
         </div>
 
@@ -179,6 +180,7 @@ export default function TaskBoard({ user }) {
               goToPage={goToPage}
               onRefresh={refresh}
               onActionDone={refresh}
+              onOpenLead={onOpenLead}
             />
           </div>
         )}

@@ -145,6 +145,7 @@ export default function TaskCard({
   onRestore,
   onError,
   onReassigned,
+  onOpenLead,
 }) {
   const managerFlag   = useAuthStore.getState().isManager()
   const currentUserId = useAuthStore.getState().user?.id
@@ -157,6 +158,7 @@ export default function TaskCard({
 
   const overdue     = isOverdue(task)
   const dueLabel    = fmtDueDate(task.due_at)
+  const hasLeadLink = task.source_module === 'leads' && task.source_record_id && onOpenLead
   const isCompleted = (task.status || '').toLowerCase() === 'completed'
   const isSnoozed   = (task.status || '').toLowerCase() === 'snoozed'
   const isArchived  = Boolean(task.deleted_at)
@@ -293,6 +295,19 @@ export default function TaskCard({
         <PriorityBadge priority={task.priority} />
         <ModuleBadge module={task.source_module} />
         <TypeBadge taskType={task.task_type} />
+        {hasLeadLink && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenLead(task.source_record_id) }}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              fontSize: 11.5, color: '#0ea5e9',
+              fontFamily: 'inherit', fontWeight: 600,
+              cursor: 'pointer', textDecoration: 'underline',
+            }}
+          >
+            View Lead →
+          </button>
+        )}
         {task.assigned_user?.full_name && (
           <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 'auto' }}>
             → {task.assigned_user.full_name}

@@ -387,6 +387,7 @@ export default function TaskList({
   goToPage,
   onRefresh,
   onActionDone,
+  onOpenLead,
 }) {
   const [innerTab,     setInnerTab]     = useState('active')
   const [actionError,  setActionError]  = useState(null)
@@ -572,6 +573,7 @@ export default function TaskList({
                   onDelete={handleDeleteOptimistic}
                   onError={msg => setActionError(msg)}
                   onReassigned={() => onActionDone?.()}
+                  onOpenLead={onOpenLead}
                 />
               ))}
             </div>
@@ -602,6 +604,7 @@ export default function TaskList({
                 task={task}
                 onDelete={handleDeleteOptimistic}
                 onError={msg => setActionError(msg)}
+                onOpenLead={onOpenLead}
               />
             ))}
           </>
@@ -655,6 +658,7 @@ export default function TaskList({
                 task={task}
                 onRestore={handleRestoreFromArchived}
                 onError={msg => setActionError(msg)}
+                onOpenLead={onOpenLead}
               />
             ))}
             <Pagination
