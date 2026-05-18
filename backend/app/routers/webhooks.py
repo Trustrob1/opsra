@@ -1033,7 +1033,41 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     logger.error("Failed to auto-create lead for %s: %s", sender_phone, exc)
                     return
         else:
-            logger.info("[WH] triage_first path — sending menu")
+            else:
+            logger.info("[WH] triage_first path — creating lead then sending menu")
+            # Create the lead immediately so it appears in the pipeline on first message.
+            # If the lead already exists (repeat message), DUPLICATE_DETECTED is caught silently.
+            # The triage action handlers (_action_qualify, _action_route_to_role) will
+            # handle the lead record when the contact taps a menu option.
+            try:
+                _referral = message.get("referral") or {}
+                _wa_utm_source = "facebook" if _referral else None
+                _wa_campaign_id = _referral.get("ctwa_clid") or _referral.get("ref") if _referral else None
+                _wa_utm_ad = _referral.get("headline") or None if _referral else None
+                _triage_lead_payload = LeadCreate(
+                    full_name=(contact_name or "").strip() or sender_phone,
+                    phone=sender_phone,
+                    whatsapp=sender_phone,
+                    source=LeadSource.whatsapp_inbound.value,
+                    problem_stated=content if msg_type == "text" else None,
+                )
+                _triage_lead = lead_service.create_lead(
+                    db=db, org_id=org_id, user_id="system",
+                    payload=_triage_lead_payload,
+                    utm_source=_wa_utm_source,
+                    campaign_id=_wa_campaign_id,
+                    entry_path="whatsapp",
+                    utm_ad=_wa_utm_ad,
+                )
+                logger.info("[WH] triage_first: lead created %s for %s", _triage_lead.get("id"), sender_phone)
+            except Exception as _lead_exc:
+                _detail = getattr(_lead_exc, "detail", {}) or {}
+                _code = _detail.get("code", "") if isinstance(_detail, dict) else str(_detail)
+                if _code == ErrorCode.DUPLICATE_DETECTED:
+                    logger.info("[WH] triage_first: lead already exists for %s — skipping creation", sender_phone)
+                else:
+                    logger.warning("[WH] triage_first: lead creation failed for %s: %s", sender_phone, _lead_exc)
+
             from app.services.whatsapp_service import send_triage_menu
             try:
                 send_triage_menu(db=db, org_id=org_id, phone_number=sender_phone, section="unknown", contact_name=contact_name)
