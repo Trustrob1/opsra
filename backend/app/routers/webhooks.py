@@ -1033,7 +1033,6 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     logger.error("Failed to auto-create lead for %s: %s", sender_phone, exc)
                     return
         else:
-            else:
             logger.info("[WH] triage_first path — creating lead then sending menu")
             # Create the lead immediately so it appears in the pipeline on first message.
             # If the lead already exists (repeat message), DUPLICATE_DETECTED is caught silently.
