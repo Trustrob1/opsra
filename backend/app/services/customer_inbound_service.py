@@ -2291,18 +2291,45 @@ def handle_lead_post_handoff_inbound(
         # ── End product intent block ──────────────────────────────────────────
 
         # No KB answer and no commerce re-entry — forward to rep
-        forwarding_msg = (
-            _post_handoff.get("forwarding_message")
-            or (
-                "Thanks for your message! Unfortunately I'm not able to provide "
-                "a full response to that right now, but a member of our support "
-                "team has been informed and will get back to you shortly. 🙏"
+        # Anti-spam guard: only send the forwarding message once per 24 hours.
+        # If a system outbound message was already sent to this lead recently,
+        # skip the automated reply and just notify the rep silently.
+        _already_forwarded = False
+        try:
+            _cutoff = (
+                datetime.now(timezone.utc) - timedelta(hours=24)
+            ).isoformat()
+            _recent = (
+                db.table("whatsapp_messages")
+                .select("id")
+                .eq("org_id", org_id)
+                .eq("lead_id", lead_id)
+                .eq("direction", "outbound")
+                .is_("sent_by", "null")
+                .gte("created_at", _cutoff)
+                .limit(1)
+                .execute()
             )
-        )
-        _send_whatsapp_reply_to_lead(
-            db=db, org_id=org_id, lead_id=lead_id,
-            answer=forwarding_msg, now_ts=now_ts,
-        )
+            _already_forwarded = bool((_recent.data or []))
+        except Exception as _af_exc:
+            logger.warning(
+                "handle_lead_post_handoff_inbound: anti-spam check failed "
+                "lead=%s — defaulting to send: %s", lead_id, _af_exc,
+            )
+
+        if not _already_forwarded:
+            forwarding_msg = (
+                _post_handoff.get("forwarding_message")
+                or (
+                    "Thanks for your message! Unfortunately I'm not able to provide "
+                    "a full response to that right now, but a member of our support "
+                    "team has been informed and will get back to you shortly. 🙏"
+                )
+            )
+            _send_whatsapp_reply_to_lead(
+                db=db, org_id=org_id, lead_id=lead_id,
+                answer=forwarding_msg, now_ts=now_ts,
+            )
 
         _create_lead_action_task(
             db=db, org_id=org_id, lead_id=lead_id,
