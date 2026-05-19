@@ -13,7 +13,7 @@
  *   - affiliate_partner users see a read-only board
  *
  * M01-7a additions:
- *   - "Demo Queue" button in header
+ *   - "{meetingLabel} Queue" button in header
  *
  * M01-9b additions:
  *   - View toggle: ⊞ Kanban | ☰ List (pill switcher in header)
@@ -22,6 +22,11 @@
  * GPM-1B additions:
  *   - Deal value pill on Kanban card and list view column
  *   - Deal Value modal on drag-to-converted
+ *
+ * UI-LABEL update:
+ *   - meetingLabel derived from pipelineStages (meeting_done stage label).
+ *   - Queue button and mobile Demos button now use meetingLabel.
+ *   - demoEnabled derived from meetingStage find (same logical result as before).
  */
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useLeads }       from '../../hooks/useLeads'
@@ -385,7 +390,12 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   const pendingDemosTotal = useMemo(() =>
     Object.values(attentionMap).reduce((sum, a) => sum + (a.pending_demos || 0), 0), [attentionMap])
 
-  const demoEnabled = pipelineStages.some(s => s.key === 'meeting_done')
+  // meetingLabel: org-configured label for the meeting_done stage.
+  // pipelineStages here only contains enabled stages (filtered before setPipelineStages).
+  // If meeting_done is disabled it won't appear — demoEnabled is false — button not rendered.
+  const meetingStage = pipelineStages.find(s => s.key === 'meeting_done')
+  const meetingLabel = meetingStage?.label || 'Demo'
+  const demoEnabled  = !!meetingStage
 
   const onDragStart = useCallback((e, leadId) => {
     if (isAffiliate) return
@@ -455,7 +465,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             </div>
             {isManager && onOpenDemoQueue && demoEnabled && (
               <button onClick={onOpenDemoQueue} style={{ ...secondaryBtn, position: 'relative' }}>
-                📅 Demo Queue
+                📅 {meetingLabel} Queue
                 {pendingDemosTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{pendingDemosTotal > 9 ? '9+' : pendingDemosTotal}</span>}
               </button>
             )}
@@ -477,7 +487,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             <button onClick={() => setShowCreate(true)} style={{ ...primaryBtn, flex: 1, justifyContent: 'center', fontSize: 13, padding: '10px 12px', minHeight: 44 }}>+ New Lead</button>
             {isManager && onOpenDemoQueue && demoEnabled && (
               <button onClick={onOpenDemoQueue} style={{ ...secondaryBtn, position: 'relative', minHeight: 44, padding: '10px 12px', fontSize: 12 }}>
-                📅 Demos
+                📅 {meetingLabel}
                 {pendingDemosTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{pendingDemosTotal > 9 ? '9+' : pendingDemosTotal}</span>}
               </button>
             )}
@@ -582,7 +592,7 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
   const badges = []
   if (attention) {
     if ((attention.unread_messages ?? 0) > 0) badges.push({ key: 'msg', label: `💬 ${attention.unread_messages}`, bg: '#E53E3E', color: 'white', title: `${attention.unread_messages} unread` })
-    if (demoEnabled && (attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: '📅', bg: '#D97706', color: 'white', title: 'Demo awaiting' })
+    if (demoEnabled && (attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: '📅', bg: '#D97706', color: 'white', title: 'Visit awaiting confirmation' })
     if ((attention.open_tickets ?? 0) > 0) badges.push({ key: 'ticket', label: `🎫 ${attention.open_tickets}`, bg: '#ED8936', color: 'white', title: `${attention.open_tickets} open tickets` })
   }
   return (

@@ -11,8 +11,13 @@
  *     with explicit prompt that notes feed the AI recap.
  *   - DemoCard: RecapCard section rendered below attended demos that have recap data.
  *
+ * UI-LABEL update:
+ *   - meetingLabel prop (default 'Demo') replaces all hardcoded "Demo" user-visible
+ *     strings. Sourced from org pipeline_stages config (meeting_done stage label).
+ *     Internal field names, error messages, and API keys are unchanged.
+ *
  * Panel sections:
- *   1. "Request Demo" form — any rep/admin creates a pending_assignment request
+ *   1. "Request {meetingLabel}" form — any rep/admin creates a pending_assignment request
  *   2. Demo cards — pending ones show "Confirm" button for admin/manager
  *   3. Confirm modal — admin sets scheduled_at, medium, assigns rep
  *   4. Log Outcome modal — attended | no_show | rescheduled
@@ -54,7 +59,7 @@ const fmtDateTime = (iso) => {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function DemoScheduler({ leadId, leadName }) {
+export default function DemoScheduler({ leadId, leadName, meetingLabel = 'Demo' }) {
   const [demos, setDemos]               = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
@@ -89,7 +94,7 @@ export default function DemoScheduler({ leadId, leadName }) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: ds.dark, margin: 0 }}>
-          📅 Demo Scheduling
+          📅 {meetingLabel} Scheduling
         </h3>
         {!showRequestForm && (
           <button
@@ -100,7 +105,7 @@ export default function DemoScheduler({ leadId, leadName }) {
               fontSize: 13, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer',
             }}
           >
-            + Request Demo
+            + Request {meetingLabel}
           </button>
         )}
       </div>
@@ -112,6 +117,7 @@ export default function DemoScheduler({ leadId, leadName }) {
         <RequestDemoForm
           leadId={leadId}
           leadName={leadName}
+          meetingLabel={meetingLabel}
           onCreated={(demo) => { setDemos(prev => [demo, ...prev]); setShowRequestForm(false) }}
           onCancel={() => setShowRequestForm(false)}
         />
@@ -129,6 +135,7 @@ export default function DemoScheduler({ leadId, leadName }) {
             <DemoCard
               key={demo.id}
               demo={demo}
+              meetingLabel={meetingLabel}
               onConfirm={isManager ? () => setConfirmModal(demo) : null}
             />
           ))}
@@ -143,6 +150,7 @@ export default function DemoScheduler({ leadId, leadName }) {
             <DemoCard
               key={demo.id}
               demo={demo}
+              meetingLabel={meetingLabel}
               onLogOutcome={() => setOutcomeModal(demo)}
             />
           ))}
@@ -153,7 +161,9 @@ export default function DemoScheduler({ leadId, leadName }) {
       {!loading && past.length > 0 && (
         <section>
           <p style={sectionLabel}>History</p>
-          {past.map(demo => <DemoCard key={demo.id} demo={demo} />)}
+          {past.map(demo => (
+            <DemoCard key={demo.id} demo={demo} meetingLabel={meetingLabel} />
+          ))}
         </section>
       )}
 
@@ -166,10 +176,10 @@ export default function DemoScheduler({ leadId, leadName }) {
         }}>
           <p style={{ fontSize: 28, marginBottom: 8 }}>📅</p>
           <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, color: ds.dark, fontSize: 14, margin: '0 0 4px' }}>
-            No demos yet
+            No {meetingLabel} scheduled yet
           </p>
           <p style={{ fontSize: 13, color: ds.gray, margin: 0 }}>
-            Request a demo to start the scheduling process for {leadName}.
+            Request a {meetingLabel.toLowerCase()} to start the scheduling process for {leadName}.
           </p>
         </div>
       )}
@@ -179,6 +189,7 @@ export default function DemoScheduler({ leadId, leadName }) {
         <ConfirmDemoModal
           leadId={leadId}
           demo={confirmModal}
+          meetingLabel={meetingLabel}
           onConfirmed={(updated) => {
             setDemos(prev => prev.map(d => d.id === updated.id ? updated : d))
             setConfirmModal(null)
@@ -192,6 +203,7 @@ export default function DemoScheduler({ leadId, leadName }) {
         <LogOutcomeModal
           leadId={leadId}
           demo={outcomeModal}
+          meetingLabel={meetingLabel}
           onLogged={(updated) => {
             setDemos(prev => prev.map(d => d.id === updated.id ? updated : d))
             setOutcomeModal(null)
@@ -206,7 +218,7 @@ export default function DemoScheduler({ leadId, leadName }) {
 
 // ── Request Demo Form ─────────────────────────────────────────────────────────
 
-function RequestDemoForm({ leadId, leadName, onCreated, onCancel }) {
+function RequestDemoForm({ leadId, leadName, onCreated, onCancel, meetingLabel = 'Demo' }) {
   const [preferredTime, setPreferredTime] = useState('')
   const [medium, setMedium]               = useState('')
   const [notes, setNotes]                 = useState('')
@@ -237,7 +249,7 @@ function RequestDemoForm({ leadId, leadName, onCreated, onCancel }) {
       borderRadius: ds.radius.lg, padding: '18px 20px', marginBottom: 20,
     }}>
       <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: ds.dark, margin: '0 0 14px' }}>
-        📅 Request Demo — {leadName}
+        📅 Request {meetingLabel} — {leadName}
       </p>
       <p style={{ fontSize: 12.5, color: '#276749', margin: '0 0 14px', lineHeight: 1.5 }}>
         Admin will be notified to confirm the date, time, and assign a rep.
@@ -305,7 +317,7 @@ function RequestDemoForm({ leadId, leadName, onCreated, onCancel }) {
 
 // ── Demo Card ─────────────────────────────────────────────────────────────────
 
-function DemoCard({ demo, onConfirm, onLogOutcome }) {
+function DemoCard({ demo, onConfirm, onLogOutcome, meetingLabel = 'Demo' }) {
   const s = STATUS_STYLE[demo.status] ?? STATUS_STYLE.pending_assignment
 
   return (
@@ -393,7 +405,7 @@ function DemoCard({ demo, onConfirm, onLogOutcome }) {
                 fontSize: 12.5, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer',
               }}
             >
-              ✓ Confirm Demo
+              ✓ Confirm {meetingLabel}
             </button>
           )}
           {demo.status === 'confirmed' && onLogOutcome && (
@@ -558,7 +570,7 @@ function ReminderPill({ sent, label }) {
 
 // ── Confirm Demo Modal ────────────────────────────────────────────────────────
 
-function ConfirmDemoModal({ leadId, demo, onConfirmed, onClose }) {
+function ConfirmDemoModal({ leadId, demo, onConfirmed, onClose, meetingLabel = 'Demo' }) {
   const [scheduledAt, setScheduledAt] = useState('')
   const [medium, setMedium]           = useState(demo.medium || '')
   const [assignedTo, setAssignedTo]   = useState(demo.assigned_to || '')
@@ -592,7 +604,7 @@ function ConfirmDemoModal({ leadId, demo, onConfirmed, onClose }) {
   }
 
   return (
-    <Modal title="✓ Confirm Demo" onClose={onClose}>
+    <Modal title={`✓ Confirm ${meetingLabel}`} onClose={onClose}>
       {demo.lead_preferred_time && (
         <div style={{
           background: '#FFFBEB', border: '1px solid #F6E05E',
@@ -657,7 +669,7 @@ function ConfirmDemoModal({ leadId, demo, onConfirmed, onClose }) {
 
 // ── Log Outcome Modal — M01-9: upgraded notes field for attended ──────────────
 
-function LogOutcomeModal({ leadId, demo, onLogged, onClose }) {
+function LogOutcomeModal({ leadId, demo, onLogged, onClose, meetingLabel = 'Demo' }) {
   const [outcome, setOutcome]       = useState('')
   const [outcomeNotes, setNotes]    = useState('')
   const [saving, setSaving]         = useState(false)
@@ -669,7 +681,7 @@ function LogOutcomeModal({ leadId, demo, onLogged, onClose }) {
     {
       value: 'attended',
       label: '🎉 Attended',
-      desc: 'Demo took place. Pipeline will auto-advance to Demo Done.',
+      desc: `${meetingLabel} took place. Pipeline will auto-advance to ${meetingLabel}.`,
     },
     {
       value: 'no_show',
@@ -702,7 +714,7 @@ function LogOutcomeModal({ leadId, demo, onLogged, onClose }) {
   }
 
   return (
-    <Modal title="Log Demo Outcome" onClose={onClose}>
+    <Modal title={`Log ${meetingLabel} Outcome`} onClose={onClose}>
       <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 16px' }}>
         {fmtDateTime(demo.scheduled_at)}
       </p>

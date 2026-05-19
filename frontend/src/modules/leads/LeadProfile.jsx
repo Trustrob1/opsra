@@ -9,9 +9,14 @@
  *   - Back button stays at top on mobile
  *   - All tap targets minimum 44px
  *
+ * UI-LABEL update:
+ *   - meetingLabel derived from pipelineStages (meeting_done stage label).
+ *   - Demos tab fullLabel and DemoScheduler heading now use meetingLabel.
+ *   - meetingLabel threaded via TabContent prop. Default 'Demo' if not found.
+ *
  * Tabs:
  *   Tab 1 — Profile, Tab 2 — Messages, Tab 3 — Timeline,
- *   Tab 4 — Tasks,   Tab 5 — Demos,    Tab 6 — Interaction Log,
+ *   Tab 4 — Tasks,   Tab 5 — {meetingLabel}, Tab 6 — Interaction Log,
  *   Tab 7 — Tickets
  */
 import { useState, useEffect, useCallback } from 'react'
@@ -195,14 +200,18 @@ export default function LeadProfile({ leadId, onBack }) {
   const isAffiliate = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
   const isManager   = useAuthStore.getState().isManager()
 
-  const demoEnabled = pipelineStages.some(s => s.key === 'meeting_done' && s.enabled !== false)
+  const demoEnabled  = pipelineStages.some(s => s.key === 'meeting_done' && s.enabled !== false)
+  // meetingLabel: use the org-configured label for the meeting_done stage.
+  // pipelineStages includes all stages (enabled + disabled) with a .label field.
+  // Falls back to 'Demo' if meeting_done is not found (should not happen in practice).
+  const meetingLabel = pipelineStages.find(s => s.key === 'meeting_done')?.label || 'Demo'
 
   const TABS = [
     { key: 'profile',         label: '👤', fullLabel: 'Profile'         },
     { key: 'messages',        label: '💬', fullLabel: 'Messages',  badge: attention.unread_messages, badgeColor: '#E53E3E' },
     { key: 'timeline',        label: '📋', fullLabel: 'Timeline'         },
     { key: 'tasks',           label: '✅', fullLabel: 'Tasks',     badge: attention.pending_tasks,   badgeColor: '#D97706' },
-    ...(demoEnabled ? [{ key: 'demos', label: '📅', fullLabel: 'Demos', badge: attention.pending_demos, badgeColor: '#D97706' }] : []),
+    ...(demoEnabled ? [{ key: 'demos', label: '📅', fullLabel: meetingLabel, badge: attention.pending_demos, badgeColor: '#D97706' }] : []),
     { key: 'log-interaction', label: '📞', fullLabel: 'Log'              },
     { key: 'create-ticket',   label: '🎫', fullLabel: 'Tickets',   badge: attention.open_tickets,    badgeColor: '#E53E3E' },
   ]
@@ -289,7 +298,7 @@ export default function LeadProfile({ leadId, onBack }) {
             ))}
           </div>
           <div style={{ padding: '24px' }}>
-            <TabContent tab={tab} lead={lead} leadId={leadId} pipelineStages={pipelineStages} />
+            <TabContent tab={tab} lead={lead} leadId={leadId} pipelineStages={pipelineStages} meetingLabel={meetingLabel} />
           </div>
         </div>
       )}
@@ -297,7 +306,7 @@ export default function LeadProfile({ leadId, onBack }) {
       {/* ── Mobile: tab content (no card wrapper) ─────────────── */}
       {isMobile && (
         <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: ds.radius.xl, boxShadow: ds.cardShadow, padding: '16px' }}>
-          <TabContent tab={tab} lead={lead} leadId={leadId} pipelineStages={pipelineStages} />
+          <TabContent tab={tab} lead={lead} leadId={leadId} pipelineStages={pipelineStages} meetingLabel={meetingLabel} />
         </div>
       )}
 
@@ -360,14 +369,14 @@ export default function LeadProfile({ leadId, onBack }) {
 
 // ── Tab content router ────────────────────────────────────────────────────────
 
-function TabContent({ tab, lead, leadId, pipelineStages }) {
+function TabContent({ tab, lead, leadId, pipelineStages, meetingLabel = 'Demo' }) {
   return (
     <>
       {tab === 'profile'         && <ProfileTab lead={lead} pipelineStages={pipelineStages} />}
       {tab === 'messages'        && <LeadMessages leadId={leadId} leadName={lead.full_name} />}
       {tab === 'timeline'        && <LeadTimeline leadId={leadId} />}
       {tab === 'tasks'           && <LeadTasks    leadId={leadId} />}
-      {tab === 'demos'           && <DemoScheduler leadId={leadId} leadName={lead.full_name} />}
+      {tab === 'demos'           && <DemoScheduler leadId={leadId} leadName={lead.full_name} meetingLabel={meetingLabel} />}
       {tab === 'log-interaction' && <LogInteractionPanel linkedTo={{ type: 'lead', id: leadId }} contextName={lead.full_name} />}
       {tab === 'create-ticket'   && <LinkedTicketsPanel  linkedTo={{ type: 'lead', id: leadId }} contextName={lead.full_name} />}
     </>

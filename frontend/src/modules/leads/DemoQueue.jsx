@@ -4,9 +4,15 @@
  * Full-page view showing all pending_assignment demos across the entire org.
  * Accessible only to owner / admin / ops_manager (enforced backend + frontend).
  *
+ * UI-LABEL update:
+ *   - meetingLabel derived internally from getPipelineStages() (meeting_done stage label).
+ *   - Also accepted as an optional prop — if provided, skips the internal fetch.
+ *   - Defaults to 'Demo' if neither prop nor fetch resolves a label.
+ *   - Internal field names, API keys, and error messages are unchanged.
+ *
  * Workflow (distinct, as per spec):
  *   1. Admin sees a table of all pending demos with lead details
- *   2. Clicking "Confirm Demo" opens ConfirmDemoModal (from DemoScheduler)
+ *   2. Clicking "Confirm {meetingLabel}" opens ConfirmDemoModal
  *   3. Admin fills in: exact date/time, medium, assigned rep, duration, notes
  *   4. On submit: WA auto-sent to lead, rep notified in-app, row disappears
  *
@@ -20,6 +26,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { getPendingDemos, confirmDemo } from '../../services/leads.service'
+import { getPipelineStages } from '../../services/admin.service'
 import { ds } from '../../utils/ds'
 import UserSelect from '../../shared/UserSelect'
 
@@ -48,11 +55,27 @@ const fmtRelative = (iso) => {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function DemoQueue({ onBack, onOpenLead }) {
+export default function DemoQueue({ onBack, onOpenLead, meetingLabel: meetingLabelProp }) {
   const [demos, setDemos]           = useState([])
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState(null)
   const [confirmModal, setConfirmModal] = useState(null) // { demo } | null
+
+  // Derive meetingLabel from prop if provided, otherwise fetch from pipeline stages.
+  // Falls back to 'Demo' if neither resolves.
+  const [meetingLabel, setMeetingLabel] = useState(meetingLabelProp || 'Demo')
+  useEffect(() => {
+    if (meetingLabelProp) return  // prop takes precedence — skip fetch
+    getPipelineStages()
+      .then(data => {
+        const cfg = data?.stages
+        if (Array.isArray(cfg)) {
+          const stage = cfg.find(s => s.key === 'meeting_done')
+          if (stage?.label) setMeetingLabel(stage.label)
+        }
+      })
+      .catch(() => {})  // S14 — silently fall back to default
+  }, [meetingLabelProp])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -144,10 +167,10 @@ export default function DemoQueue({ onBack, onOpenLead }) {
         <div style={S.badge}>📅</div>
         <div>
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: 0 }}>
-            Demo Queue
+            {meetingLabel} Queue
           </h1>
           <p style={{ fontSize: 13, color: ds.gray, margin: 0 }}>
-            Pending demos awaiting your confirmation
+            Pending {meetingLabel.toLowerCase()} requests awaiting your confirmation
           </p>
         </div>
         {!loading && (
@@ -182,7 +205,7 @@ export default function DemoQueue({ onBack, onOpenLead }) {
             {loading ? (
               <tr>
                 <td colSpan={6} style={S.emptyCell}>
-                  <span style={{ color: ds.teal }}>Loading demo queue…</span>
+                  <span style={{ color: ds.teal }}>Loading {meetingLabel.toLowerCase()} queue…</span>
                 </td>
               </tr>
             ) : demos.length === 0 ? (
@@ -194,7 +217,7 @@ export default function DemoQueue({ onBack, onOpenLead }) {
                       All caught up
                     </p>
                     <p style={{ fontSize: 13, color: ds.gray, margin: 0 }}>
-                      No demos are currently pending confirmation.
+                      No {meetingLabel.toLowerCase()} requests are currently pending confirmation.
                     </p>
                   </div>
                 </td>
@@ -221,18 +244,9 @@ export default function DemoQueue({ onBack, onOpenLead }) {
                   {/* Preferred time */}
                   <td style={S.td}>
                     {demo.lead_preferred_time ? (
-                      <span style={{
-                        background: '#FFFBEB', color: '#92400E',
-                        border: '1px solid #FCD34D',
-                        borderRadius: 8, padding: '3px 8px',
-                        fontSize: 12, fontWeight: 500,
-                      }}>
-                        {demo.lead_preferred_time}
-                      </span>
+                      <span style={{ fontSize: 12.5 }}>{demo.lead_preferred_time}</span>
                     ) : (
-                      <span style={{ color: ds.border, fontStyle: 'italic', fontSize: 12 }}>
-                        Not specified
-                      </span>
+                      <span style={{ color: ds.border, fontSize: 12 }}>—</span>
                     )}
                   </td>
 
@@ -260,7 +274,7 @@ export default function DemoQueue({ onBack, onOpenLead }) {
                         style={S.confirmBtn}
                         onClick={() => setConfirmModal(demo)}
                       >
-                        ✓ Confirm Demo
+                        ✓ Confirm {meetingLabel}
                       </button>
                       {onOpenLead && (
                         <button
@@ -283,6 +297,7 @@ export default function DemoQueue({ onBack, onOpenLead }) {
       {confirmModal && (
         <ConfirmDemoModal
           demo={confirmModal}
+          meetingLabel={meetingLabel}
           onConfirmed={() => handleConfirmed(confirmModal.id)}
           onClose={() => setConfirmModal(null)}
         />
@@ -295,7 +310,7 @@ export default function DemoQueue({ onBack, onOpenLead }) {
 // Distinct confirmation workflow — admin must fill all fields before committing.
 // Mirrors ConfirmDemoModal in DemoScheduler.jsx but takes leadId from demo.lead_id.
 
-function ConfirmDemoModal({ demo, onConfirmed, onClose }) {
+function ConfirmDemoModal({ demo, onConfirmed, onClose, meetingLabel = 'Demo' }) {
   const [scheduledAt, setScheduledAt] = useState('')
   const [medium, setMedium]           = useState(demo.medium || '')
   const [assignedTo, setAssignedTo]   = useState(demo.lead_assigned_to || '')
@@ -358,7 +373,7 @@ function ConfirmDemoModal({ demo, onConfirmed, onClose }) {
         maxHeight: '90vh', overflowY: 'auto',
       }}>
         <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: ds.dark, margin: '0 0 4px' }}>
-          ✓ Confirm Demo
+          ✓ Confirm {meetingLabel}
         </h3>
         <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 20px' }}>
           For <strong style={{ color: ds.dark }}>{demo.lead_full_name}</strong>
