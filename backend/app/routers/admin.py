@@ -3544,3 +3544,70 @@ async def admin_update_email(
         data={"updated": True, "email": result["email"]},
         message="Email address updated successfully.",
     )
+
+
+# ── DEMO-TMPL — Demo Template Settings ───────────────────────────────────────
+
+class DemoSettingsUpdate(BaseModel):
+    showroom_address:          Optional[str] = Field(default=None, max_length=500)
+    demo_confirmation_template: Optional[str] = Field(default=None, max_length=100)
+    demo_reminder_template:    Optional[str] = Field(default=None, max_length=100)
+
+
+@router.get("/demo-settings")
+def get_demo_settings(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """DEMO-TMPL: Return org demo template settings."""
+    result = (
+        db.table("organisations")
+        .select("showroom_address, demo_confirmation_template, demo_reminder_template")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    data = data or {}
+    return ok(data={
+        "showroom_address":          data.get("showroom_address") or "",
+        "demo_confirmation_template": data.get("demo_confirmation_template") or "showroom_visit_confirmation",
+        "demo_reminder_template":    data.get("demo_reminder_template") or "showroom_visit_reminder",
+    })
+
+
+@router.patch("/demo-settings")
+def update_demo_settings(
+    payload: DemoSettingsUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """DEMO-TMPL: Save org demo template settings. Owner/ops_manager only."""
+    from app.services.lead_service import write_audit_log
+
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update demo settings."},
+        )
+
+    updates: dict = {"updated_at": datetime.utcnow().isoformat()}
+    if payload.showroom_address is not None:
+        updates["showroom_address"] = payload.showroom_address.strip() or None
+    if payload.demo_confirmation_template is not None:
+        updates["demo_confirmation_template"] = payload.demo_confirmation_template.strip() or "showroom_visit_confirmation"
+    if payload.demo_reminder_template is not None:
+        updates["demo_reminder_template"] = payload.demo_reminder_template.strip() or "showroom_visit_reminder"
+
+    db.table("organisations").update(updates).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="demo_settings.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value=updates,
+    )
+    return ok(data=updates, message="Demo settings saved")

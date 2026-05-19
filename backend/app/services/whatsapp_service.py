@@ -181,6 +181,230 @@ def _build_template_components(variables, recipient_name=None):
     return [{"type": "body", "parameters": params}]
 
 
+# ── DEMO-TMPL: Template sends for demo confirmation + reminders ───────────────
+
+def send_demo_confirmation_template(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_name: str,
+    scheduled_at: str,
+    rep_name: str,
+) -> None:
+    """
+    Send the showroom_visit_confirmation WhatsApp template to a lead
+    immediately after a demo is confirmed.
+
+    Variables (positional after {{name}}):
+      {{1}} = lead first name  (via recipient_name → parameter_name: "name")
+      {{2}} = date string      e.g. "Friday, 23 May 2025"
+      {{3}} = time string      e.g. "11:00 AM"
+      {{4}} = showroom address
+      {{5}} = rep first name
+      {{6}} = org/brand name
+
+    Fallback: if template send fails, sends plain text via _call_meta_send.
+    S14: never raises.
+    """
+    try:
+        phone_id, token, _ = _get_org_wa_credentials(db, org_id)
+        if not phone_id or not token:
+            logger.warning(
+                "send_demo_confirmation_template: no WA credentials for org %s — skipping",
+                org_id,
+            )
+            return
+
+        # Fetch org settings
+        org_res = (
+            db.table("organisations")
+            .select("name, showroom_address, demo_confirmation_template")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_res.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else None
+        org_data = org_data or {}
+
+        template_name = (
+            org_data.get("demo_confirmation_template") or "showroom_visit_confirmation"
+        )
+        showroom_address = org_data.get("showroom_address") or ""
+        org_name = org_data.get("name") or ""
+
+        # Format date and time from ISO string
+        try:
+            dt = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+            date_str = dt.strftime("%A, %d %b %Y")
+            time_str = dt.strftime("%I:%M %p")
+        except Exception:
+            date_str = scheduled_at
+            time_str = ""
+
+        # Variables: {{2}}=date, {{3}}=time, {{4}}=address, {{5}}=rep, {{6}}=org
+        variables = [date_str, time_str, showroom_address, _first_name(rep_name), org_name]
+        components = _build_template_components(variables, recipient_name=lead_name)
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": "en"},
+            },
+        }
+        if components:
+            payload["template"]["components"] = components
+
+        try:
+            _call_meta_send(phone_id, payload, token=token)
+            logger.info(
+                "send_demo_confirmation_template: sent template '%s' to %s (org %s)",
+                template_name, phone_number, org_id,
+            )
+        except Exception as exc:
+            # Fallback: plain text
+            logger.warning(
+                "send_demo_confirmation_template: template send failed (%s) — "
+                "falling back to plain text for org %s",
+                exc, org_id,
+            )
+            rep_label = _first_name(rep_name) if rep_name else "our team"
+            plain = (
+                f"Hi {_first_name(lead_name)}! 🎉 Your appointment has been confirmed.\n\n"
+                f"📅 *Date:* {date_str}\n"
+                f"🕐 *Time:* {time_str}\n"
+                + (f"📍 *Location:* {showroom_address}\n" if showroom_address else "")
+                + f"👤 *With:* {rep_label}\n\n"
+                f"We look forward to meeting you. Reply if anything changes."
+            )
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {"body": plain},
+            }, token=token)
+
+    except Exception as exc:
+        logger.warning(
+            "send_demo_confirmation_template: failed for org %s — %s", org_id, exc
+        )
+
+
+def send_demo_reminder_template(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_name: str,
+    scheduled_at: str,
+    rep_name: str,
+    time_context: str,
+) -> None:
+    """
+    Send the showroom_visit_reminder WhatsApp template.
+    Called by demo_reminder_worker for 24h and 1h reminders.
+
+    time_context: "tomorrow" (24h) or "in about an hour" (1h)
+
+    Variables:
+      {{1}} = lead first name  (via recipient_name)
+      {{2}} = time context     e.g. "tomorrow"
+      {{3}} = date string
+      {{4}} = time string
+      {{5}} = showroom address
+      {{6}} = rep first name
+      {{7}} = org/brand name
+
+    Fallback: plain text if template send fails.
+    S14: never raises.
+    """
+    try:
+        phone_id, token, _ = _get_org_wa_credentials(db, org_id)
+        if not phone_id or not token:
+            logger.warning(
+                "send_demo_reminder_template: no WA credentials for org %s — skipping",
+                org_id,
+            )
+            return
+
+        # Fetch org settings
+        org_res = (
+            db.table("organisations")
+            .select("name, showroom_address, demo_reminder_template")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_res.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else None
+        org_data = org_data or {}
+
+        template_name = (
+            org_data.get("demo_reminder_template") or "showroom_visit_reminder"
+        )
+        showroom_address = org_data.get("showroom_address") or ""
+        org_name = org_data.get("name") or ""
+
+        try:
+            dt = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+            date_str = dt.strftime("%A, %d %b %Y")
+            time_str = dt.strftime("%I:%M %p")
+        except Exception:
+            date_str = scheduled_at
+            time_str = ""
+
+        # Variables: {{2}}=time_context, {{3}}=date, {{4}}=time, {{5}}=address, {{6}}=rep, {{7}}=org
+        variables = [time_context, date_str, time_str, showroom_address, _first_name(rep_name), org_name]
+        components = _build_template_components(variables, recipient_name=lead_name)
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": "en"},
+            },
+        }
+        if components:
+            payload["template"]["components"] = components
+
+        try:
+            _call_meta_send(phone_id, payload, token=token)
+            logger.info(
+                "send_demo_reminder_template: sent '%s' (context=%s) to %s (org %s)",
+                template_name, time_context, phone_number, org_id,
+            )
+        except Exception as exc:
+            # Fallback: plain text
+            logger.warning(
+                "send_demo_reminder_template: template send failed (%s) — "
+                "falling back to plain text for org %s",
+                exc, org_id,
+            )
+            rep_label = _first_name(rep_name) if rep_name else "our team"
+            plain = (
+                f"Hi {_first_name(lead_name)}! 👋 Reminder — your appointment is "
+                f"{time_context} ({date_str} at {time_str})."
+                + (f"\n📍 {showroom_address}" if showroom_address else "")
+                + f"\n{rep_label} will be there. Reply if you need to reschedule."
+            )
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {"body": plain},
+            }, token=token)
+
+    except Exception as exc:
+        logger.warning(
+            "send_demo_reminder_template: failed for org %s — %s", org_id, exc
+        )
+
 def _normalise_data(result_data):
     """
     Pattern 9 — normalise list vs dict from .maybe_single().

@@ -249,6 +249,7 @@ def _process_demo(db, demo: dict, phone_id: str) -> dict:
         lead_name = lead_data.get("full_name") or "Lead"
         wa_number = lead_data.get("whatsapp") or lead_data.get("phone") or ""
         formatted = scheduled_at.strftime("%A, %d %b %Y at %I:%M %p")
+        rep_name  = _get_user_name(db, assigned_to) if assigned_to else ""
 
         # ── 1. Auto no-show ────────────────────────────────────────────────
         if (time_since >= timedelta(minutes=_NOSHOW_GRACE_MINUTES)
@@ -336,13 +337,21 @@ def _process_demo(db, demo: dict, phone_id: str) -> dict:
         if (timedelta(hours=23) <= time_until <= timedelta(hours=25)
                 and not demo.get("reminder_24h_sent")):
             if wa_number and phone_id:
-                _auto_send_wa(
-                    db, org_id, wa_number, phone_id,
-                    f"Hi {lead_name}! 👋 Just a reminder that your product demo "
-                    f"is scheduled for tomorrow, {formatted}. "
-                    f"We're excited to show you what we can do! See you then. 🎯",
-                    lead_id,
-                )
+                try:
+                    from app.services.whatsapp_service import send_demo_reminder_template
+                    send_demo_reminder_template(
+                        db=db,
+                        org_id=org_id,
+                        phone_number=wa_number,
+                        lead_name=lead_name,
+                        scheduled_at=scheduled_str,
+                        rep_name=rep_name,
+                        time_context="tomorrow",
+                    )
+                except Exception as _exc:
+                    logger.warning(
+                        "demo_reminder_worker: 24h template send failed — %s", _exc
+                    )
             if assigned_to:
                 _insert_notification(
                     db, org_id, assigned_to,
@@ -362,12 +371,21 @@ def _process_demo(db, demo: dict, phone_id: str) -> dict:
         elif (timedelta(0) < time_until <= timedelta(hours=2)
               and not demo.get("reminder_1h_sent")):
             if wa_number and phone_id:
-                _auto_send_wa(
-                    db, org_id, wa_number, phone_id,
-                    f"Hi {lead_name}! ⏰ Your demo starts in about 1 hour "
-                    f"({formatted}). We're looking forward to speaking with you! 🚀",
-                    lead_id,
-                )
+                try:
+                    from app.services.whatsapp_service import send_demo_reminder_template
+                    send_demo_reminder_template(
+                        db=db,
+                        org_id=org_id,
+                        phone_number=wa_number,
+                        lead_name=lead_name,
+                        scheduled_at=scheduled_str,
+                        rep_name=rep_name,
+                        time_context="in about an hour",
+                    )
+                except Exception as _exc:
+                    logger.warning(
+                        "demo_reminder_worker: 1h template send failed — %s", _exc
+                    )
             if assigned_to:
                 _insert_notification(
                     db, org_id, assigned_to,

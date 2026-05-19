@@ -390,3 +390,15 @@ export async function adminUpdateEmail(userId, newEmail) {
   const r = await api.patch(`/api/v1/admin/users/${userId}/email`, { new_email: newEmail })
   return r.data.data  // { updated, email }
 }
+
+// ── DEMO-TMPL ─────────────────────────────────────────────────────────────────
+
+export async function getDemoSettings() {
+  const r = await api.get('/api/v1/admin/demo-settings', _h())
+  return r.data.data
+}
+
+export async function updateDemoSettings(payload) {
+  const r = await api.patch('/api/v1/admin/demo-settings', payload, _h())
+  return r.data
+}

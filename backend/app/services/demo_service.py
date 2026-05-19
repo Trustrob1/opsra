@@ -605,15 +605,21 @@ def confirm_demo(
     formatted_dt = scheduled_dt.strftime("%A, %d %b %Y at %I:%M %p")
     medium_label = "Virtual (Online)" if medium == "virtual" else "In Person"
 
-    # Auto-send WA confirmation to lead
-    _auto_send_wa(
-        db, org_id, lead,
-        f"Hi {lead_name}! 🎉 Your demo has been confirmed.\n\n"
-        f"📅 *Date & Time:* {formatted_dt}\n"
-        f"📍 *Medium:* {medium_label}\n"
-        f"👤 *Your rep:* {rep_name or 'Our team'}\n\n"
-        f"We look forward to speaking with you! If anything changes, please let us know."
-    )
+    # Auto-send WA confirmation to lead via template (falls back to plain text)
+    to_number = (lead.get("whatsapp") or lead.get("phone") or "").strip()
+    if to_number:
+        try:
+            from app.services.whatsapp_service import send_demo_confirmation_template
+            send_demo_confirmation_template(
+                db=db,
+                org_id=org_id,
+                phone_number=to_number,
+                lead_name=lead_name,
+                scheduled_at=scheduled_at,
+                rep_name=rep_name,
+            )
+        except Exception as _exc:
+            logger.warning("demo_service: confirmation template send failed — %s", _exc)
     db.table("lead_demos").update(
         {"confirmation_sent": True, "confirmation_sent_at": _now_iso()}
     ).eq("id", demo_id).execute()
