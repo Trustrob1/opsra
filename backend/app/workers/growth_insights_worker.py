@@ -342,7 +342,7 @@ def run_generate_section_insights(self, org_id: str, date_from, date_to) -> dict
         "overview":         lambda: get_overview_metrics(db, org_id, df, dt),
         "team_performance": lambda: get_team_performance(db, org_id, df, dt),
         "funnel":           lambda: get_funnel_metrics(db, org_id, df, dt),
-        "sales_reps":       lambda: get_sales_rep_metrics(db, org_id, df, dt),
+        "sales_reps":       lambda: get_sales_rep_metrics(db, org_id, df, dt, requesting_user_id=None, requesting_user_role="owner"),
         "channels":         lambda: get_channel_metrics(db, org_id, df, dt),
         "velocity":         lambda: get_lead_velocity(db, org_id, df, dt),
         "pipeline_at_risk": lambda: get_pipeline_at_risk(db, org_id),

@@ -719,8 +719,8 @@ def get_sales_rep_metrics(
     org_id: str,
     date_from: Optional[date],
     date_to: Optional[date],
-    requesting_user_id: str,
-    requesting_user_role: str,
+    requesting_user_id: Optional[str] = None,
+    requesting_user_role: Optional[str] = None,
 ) -> list[dict]:
     """
     Per-rep performance.
@@ -750,8 +750,8 @@ def _compute_sales_rep_metrics(
     org_id: str,
     date_from: Optional[date],
     date_to: Optional[date],
-    requesting_user_id: str,
-    requesting_user_role: str,
+    requesting_user_id: Optional[str] = None,
+    requesting_user_role: Optional[str] = None,
 ) -> list[dict]:
     """
     Per-rep performance.
@@ -827,8 +827,8 @@ def _compute_sales_rep_metrics(
         rep_user_map[uid] = u.get("full_name") or uid
 
     # Role scoping — Pattern: sales_agent sees only own row
-    if requesting_user_role == "sales_agent":
-        all_rep_ids = {requesting_user_id}
+    if (requesting_user_role or "owner") == "sales_agent":
+        all_rep_ids = {requesting_user_id} if requesting_user_id else all_rep_ids
 
     results = []
     for rep_id in sorted(all_rep_ids):
