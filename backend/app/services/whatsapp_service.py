@@ -173,7 +173,7 @@ def _build_template_components(variables, recipient_name=None):
     """
     params = []
     if recipient_name is not None:
-        params.append({"type": "text", "text": _first_name(recipient_name)})
+        params.append({"type": "text", "parameter_name": "name", "text": _first_name(recipient_name)})
     for v in (variables or []):
         params.append({"type": "text", "text": str(v)})
     if not params:
