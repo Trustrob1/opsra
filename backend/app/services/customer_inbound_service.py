@@ -1910,9 +1910,47 @@ def handle_lead_post_handoff_inbound(
                     "handle_lead_post_handoff_inbound: list_reply intercept "
                     "failed for lead=%s: %s", lead_id, _lr_exc,
                 )
-            # Non-product interactive (e.g. button replies not caught above) —
-            # fall through to rep notification
-            return False
+            # Non-product interactive (e.g. triage menu tap on consultative org) —
+            # send forwarding message so lead is never left in silence
+            try:
+                _cfg_r = (
+                    db.table("organisations")
+                    .select("whatsapp_triage_config")
+                    .eq("id", org_id)
+                    .maybe_single()
+                    .execute()
+                )
+                _cfg_d = _cfg_r.data
+                if isinstance(_cfg_d, list):
+                    _cfg_d = _cfg_d[0] if _cfg_d else None
+                _triage_cfg = (_cfg_d or {}).get("whatsapp_triage_config") or {}
+                _post_handoff = (_triage_cfg.get("lead") or {}).get("post_handoff") or {}
+                forwarding_msg = (
+                    _post_handoff.get("forwarding_message")
+                    or (
+                        "Thanks for your message! 🙏 Our team has been notified and will "
+                        "get back to you shortly with a full response."
+                    )
+                )
+                _send_whatsapp_reply_to_lead(
+                    db=db, org_id=org_id, lead_id=lead_id,
+                    answer=forwarding_msg, now_ts=now_ts,
+                )
+                if assigned_to:
+                    _insert_notification(
+                        db=db, org_id=org_id, user_id=assigned_to,
+                        notif_type="lead_pre_contact_message",
+                        title=f"{lead_name} sent a message",
+                        body=content[:200] if content else "[interactive message]",
+                        resource_type="lead", resource_id=lead_id,
+                        now_ts=now_ts,
+                    )
+            except Exception as _fwd_exc:
+                logger.warning(
+                    "handle_lead_post_handoff_inbound: interactive forwarding failed "
+                    "lead=%s: %s", lead_id, _fwd_exc,
+                )
+            return True
 
         # Non-text messages — skip KB, let caller send standard notification
         if msg_type != "text" or not content:

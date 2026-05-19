@@ -1193,6 +1193,23 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             ai_is_paused = False
 
     if lead_id and not customer_id and not ai_is_paused:
+        # Check for active triage session first — lead may be mid-triage (triage_first
+        # path creates the lead on first message, option tap arrives as second message).
+        # If a triage session is active, route there before attempting qualification.
+        _lead_triage_session = triage_service.get_active_session(db, org_id, sender_phone)
+        if _lead_triage_session:
+            logger.info(
+                "[WH] known lead %s has active triage session — routing to triage handler",
+                lead_id,
+            )
+            triage_service.handle_session_message(
+                db=db, org_id=org_id, phone_number=sender_phone,
+                session=_lead_triage_session, msg_type=msg_type, content=content,
+                interactive_payload=interactive_payload, contact_name=contact_name,
+                now_ts=now_ts, section="unknown",
+            )
+            return
+
         # PRE-QUAL: Skip qualification bot if lead already has data from a Lead Ad form
         try:
             _any_qual = (
