@@ -728,6 +728,7 @@ def send_whatsapp_message(
         template_name_db = None
 
     # ── Call Meta Cloud API ────────────────────────────────────────────────
+    logger.info("DEBUG template send payload: %s", meta_payload)
     meta_response = _call_meta_send(phone_id, meta_payload, token=access_token)
     meta_messages = meta_response.get("messages")
     meta_message_id: Optional[str] = None
