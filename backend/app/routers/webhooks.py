@@ -369,7 +369,7 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str) -> Op
         file_resp.raise_for_status()
         file_bytes = file_resp.content
 
-        # Step 3 — determine extension from mime_type
+        # Step 3 — determine extension and storage folder from mime_type
         if "ogg" in mime_type:
             ext = "ogg"
         elif "mpeg" in mime_type or "mp3" in mime_type:
@@ -378,10 +378,27 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str) -> Op
             ext = "mp4"
         elif "aac" in mime_type:
             ext = "aac"
+        elif "jpeg" in mime_type or "jpg" in mime_type:
+            ext = "jpg"
+        elif "png" in mime_type:
+            ext = "png"
+        elif "gif" in mime_type:
+            ext = "gif"
+        elif "webp" in mime_type:
+            ext = "webp"
         else:
             ext = "ogg"  # WhatsApp default for voice notes
 
-        storage_path = f"{org_id}/audio/{media_id}.{ext}"
+        if mime_type.startswith("image/"):
+            folder = "images"
+        elif mime_type.startswith("audio/"):
+            folder = "audio"
+        elif mime_type.startswith("video/"):
+            folder = "video"
+        else:
+            folder = "documents"
+
+        storage_path = f"{org_id}/{folder}/{media_id}.{ext}"
 
         # Step 4 — upload to Supabase Storage (private bucket 'whatsapp-media')
         db.storage.from_("whatsapp-media").upload(
@@ -837,6 +854,8 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         content = (message.get("text") or {}).get("body")
     elif msg_type == "image":
         content = "[Image]"
+        _image_media_id = (message.get("image") or {}).get("id")
+        _image_mime     = (message.get("image") or {}).get("mime_type", "image/jpeg")
     elif msg_type == "video":
         content = "[Video]"
     elif msg_type == "audio":
@@ -1097,6 +1116,10 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     if msg_type == "audio" and locals().get("_audio_media_id") and org_id:
         _inbound_media_url = _fetch_and_store_media(
             db, org_id, _audio_media_id, _audio_mime
+        )
+    elif msg_type == "image" and locals().get("_image_media_id") and org_id:
+        _inbound_media_url = _fetch_and_store_media(
+            db, org_id, _image_media_id, _image_mime
         )
 
     row: dict = {
