@@ -939,7 +939,7 @@ async def convert_lead(
                             "language": {"code": "en"},
                             "components": [{
                                 "type": "body",
-                                "parameters": [{"type": "text", "text": _lead_name}],
+                                "parameters": [{"type": "text", "text": _lead_name, "parameter_name": "name"}],
                             }],
                         },
                     }, token=_token)
