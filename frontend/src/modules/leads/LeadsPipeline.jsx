@@ -323,6 +323,19 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   }, [])
   useEffect(() => { refreshAttentionMap() }, [])
   useEffect(() => { refreshAttentionMap() }, [leads])
+
+  // Auto-refresh badges every 30 s so unread message indicators appear without manual action
+  useEffect(() => {
+    const attId = setInterval(refreshAttentionMap, 30_000)
+    return () => clearInterval(attId)
+  }, [refreshAttentionMap])
+
+  // Auto-refresh lead list every 60 s so recently active leads bubble to the top
+  useEffect(() => {
+    const leadId = setInterval(refresh, 60_000)
+    return () => clearInterval(leadId)
+  }, [refresh])
+
   useEffect(() => {
     const handler = (e) => {
       const { leadId } = e.detail ?? {}
