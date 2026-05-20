@@ -539,9 +539,11 @@ def get_lead(db: Any, org_id: str, lead_id: str) -> dict:
         .eq("id", lead_id)
         .eq("org_id", org_id)
         .is_("deleted_at", "null")
-        .maybe_single()
+        .single()
         .execute()
     )
+    if result is None or not result.data:
+        return None
     data = result.data
     if isinstance(data, list):
         data = data[0] if data else None

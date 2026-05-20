@@ -724,6 +724,8 @@ async def get_lead(
     db=Depends(get_supabase),
 ):
     lead = lead_service.get_lead(db=db, org_id=_org_id(org), lead_id=lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
 
     # Phase 9B: scoped roles can only see their own leads
     if is_scoped_role(org) and lead.get("assigned_to") != _user_id(org):
