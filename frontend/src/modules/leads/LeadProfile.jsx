@@ -415,6 +415,7 @@ function TabContent({ tab, lead, leadId, pipelineStages, meetingLabel = 'Demo' }
 
 function ProfileTab({ lead, pipelineStages, dvProps = {} }) {
   const isMobile = useIsMobile()
+  const isManager = dvProps.isManager ?? false
   const groups = [
     { title: 'Contact Details', fields: [{ label: 'Phone', value: lead.phone }, { label: 'WhatsApp', value: lead.whatsapp }, { label: 'Email', value: lead.email }, { label: 'Assigned To', value: lead.assigned_user?.full_name ?? null }] },
     { title: 'Business Details', fields: [{ label: 'Business Name', value: lead.business_name }, { label: 'Business Type', value: lead.business_type }, { label: 'Location', value: lead.location }, { label: 'Branches', value: lead.branches }] },
