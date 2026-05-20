@@ -14,7 +14,7 @@
  * org_id never in payload — derived from JWT server-side (Pattern 12).
  */
 import { useState, useEffect, useCallback } from 'react'
-import { getWASalesMode, updateWASalesMode, getConversionTemplate, updateConversionTemplate } from '../../services/admin.service'
+import { getWASalesMode, updateWASalesMode } from '../../services/admin.service'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -67,138 +67,6 @@ function IconWarning() {
       <path strokeLinecap="round" strokeLinejoin="round"
         d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
     </svg>
-  )
-}
-
-// ─── Conversion template section ──────────────────────────────────────────────
-
-function ConversionTemplateSection({ isMobile, showToast }) {
-  const [templateName,      setTemplateName]      = useState('')
-  const [savedTemplateName, setSavedTemplateName] = useState('')
-  const [loading,           setLoading]           = useState(true)
-  const [saving,            setSaving]            = useState(false)
-
-  const isDirty = templateName !== savedTemplateName
-
-  useEffect(() => {
-    let cancelled = false
-    getConversionTemplate()
-      .then(data => {
-        if (cancelled) return
-        const name = data?.template_name ?? ''
-        setTemplateName(name)
-        setSavedTemplateName(name)
-      })
-      .catch(() => { if (!cancelled) showToast('Failed to load conversion template', 'error') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [showToast])
-
-  async function handleSave() {
-    if (!isDirty || saving) return
-    setSaving(true)
-    try {
-      await updateConversionTemplate(templateName.trim())
-      setSavedTemplateName(templateName.trim())
-      showToast('Conversion template saved')
-    } catch (err) {
-      setTemplateName(savedTemplateName)
-      const detail = err?.response?.data?.detail
-      const msg = (typeof detail === 'object' ? detail?.message : detail) ?? 'Failed to save. Please try again.'
-      showToast(msg, 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div style={{
-      marginTop: 32,
-      background: 'white',
-      border: '1px solid #e2e8f0',
-      borderRadius: 14,
-      padding: isMobile ? '18px 16px' : '24px',
-    }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-          background: '#f0fdf4', color: '#16a34a',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} style={{ width: 22, height: 22 }}>
-            <path strokeLinecap="round" strokeLinejoin="round"
-              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div>
-          <h3 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: isMobile ? 14 : 15, color: '#0f172a', margin: 0 }}>
-            Payment Confirmation Template
-          </h3>
-          <p style={{ fontSize: 12, color: '#64748b', margin: '3px 0 0' }}>
-            Auto-sent via WhatsApp when a lead is manually converted to customer
-          </p>
-        </div>
-      </div>
-
-      {/* Input */}
-      {loading ? (
-        <div style={{ height: 40, background: '#f1f5f9', borderRadius: 8, animation: 'pulse 1.5s infinite' }} />
-      ) : (
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
-            Meta Template Name
-          </label>
-          <input
-            type="text"
-            value={templateName}
-            onChange={e => setTemplateName(e.target.value)}
-            placeholder="e.g. payment_confirmation"
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              padding: '10px 14px', fontSize: 14,
-              border: `1.5px solid ${isDirty ? '#0e6c7e' : '#e2e8f0'}`,
-              borderRadius: 8, outline: 'none',
-              fontFamily: "'DM Sans', sans-serif", color: '#0f172a',
-              transition: 'border-color 0.15s',
-            }}
-          />
-          <p style={{ fontSize: 11, color: '#94a3b8', margin: '6px 0 0' }}>
-            Must match the approved template name exactly as it appears in Meta Business Manager.
-            Leave blank to disable auto-send.
-          </p>
-        </div>
-      )}
-
-      {/* Save row */}
-      {isDirty && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => setTemplateName(savedTemplateName)}
-            style={{
-              padding: '8px 16px', background: 'white',
-              border: '1.5px solid #e2e8f0', borderRadius: 8,
-              fontSize: 13, color: '#64748b', cursor: 'pointer',
-              fontFamily: "'DM Sans', sans-serif",
-            }}
-          >
-            Discard
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              padding: '8px 20px', background: '#0e6c7e', color: 'white',
-              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-              cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1,
-              fontFamily: "'Syne', sans-serif",
-            }}
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -573,9 +441,6 @@ export default function WASalesModeConfig() {
             'The AI agent handles the sales conversation end-to-end — discovering needs, matching products, and building the cart — escalating to a rep when it reaches its limit.'}
         </div>
       )}
-
-      {/* Conversion template config */}
-      <ConversionTemplateSection isMobile={isMobile} showToast={showToast} />
 
       {/* ── Save bar ─────────────────────────────────────────────────────── */}
       {isDirty && (

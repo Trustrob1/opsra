@@ -48,6 +48,7 @@ import LeadAssignmentConfig    from './LeadAssignmentConfig'
 import LeadFormConfig          from './LeadFormConfig'
 import GrowthDashboardConfig   from './GrowthDashboardConfig'
 import WASalesModeConfig       from './WASalesModeConfig'
+import AutomationConfig        from './AutomationConfig'
 import DemoSettings            from './DemoSettings'
 
 const TABS = [
@@ -77,6 +78,7 @@ const TABS = [
   { id: 'sales-log',        label: '💰 Sales Log' },
   { id: 'messaging-limits', label: '💬 Messaging Limits' },
   { id: 'demo-settings',    label: '📅 Demo Settings' },
+  { id: 'automation',       label: '⚡ Automation' },
 ]
 
 const SALES_SUB_TABS = [
@@ -213,6 +215,7 @@ export default function AdminModule({ user }) {
         <LazyTab active={tab === 'biz-types'}        visited={visited['biz-types']}>        <DripBusinessTypesConfig /></LazyTab>
         <LazyTab active={tab === 'messaging-limits'} visited={visited['messaging-limits']}> <MessagingLimitsConfig /></LazyTab>
         <LazyTab active={tab === 'demo-settings'}    visited={visited['demo-settings']}>    <DemoSettings /></LazyTab>
+        <LazyTab active={tab === 'automation'}       visited={visited['automation']}>        <AutomationConfig /></LazyTab>
 
         {/* SM-1: Sales System — sub-tabbed */}
         <LazyTab active={tab === 'sales-system'} visited={visited['sales-system']}>
