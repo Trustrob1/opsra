@@ -45,6 +45,7 @@ from app.models.common import ErrorCode, ok, err, paginated
 from app.models.leads import (
     LeadCreate,
     LeadUpdate,
+    DealValueUpdate,
     MarkLostRequest,
     MoveStageRequest,
 )
@@ -735,6 +736,32 @@ async def get_lead(
         )
 
     return ok(data=lead)
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/leads/{lead_id}/deal-value — managers only
+# ---------------------------------------------------------------------------
+
+@router.patch("/{lead_id}/deal-value")
+async def update_lead_deal_value(
+    lead_id: str,
+    payload: DealValueUpdate,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    role = (org.get("roles") or {}).get("template", "")
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Managers only"},
+        )
+    lead = lead_service.update_lead(
+        db=db,
+        org_id=_org_id(org),
+        lead_id=lead_id,
+        user_id=_user_id(org),
+        payload=LeadUpdate(deal_value=payload.deal_value),
+    )
+    return ok(data={"deal_value": lead.get("deal_value")}, message="Deal value updated")
 
 
 # ---------------------------------------------------------------------------

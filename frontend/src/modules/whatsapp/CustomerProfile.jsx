@@ -39,6 +39,7 @@ import {
   addCustomerContact,
   approveContact,
   removeContact,
+  updateDealValue,
 } from '../../services/customers.service'
 import useAuthStore from '../../store/authStore'
 import { listTasks } from '../../services/tasks.service'
@@ -107,6 +108,12 @@ export default function CustomerProfile({ customerId, onBack }) {
   const [saveErr, setSaveErr]   = useState(null)
   const [taskActionError, setTaskActionError] = useState(null)
   const [showCompletedTasks, setShowCompletedTasks] = useState(false)
+
+  // Deal value editing — managers only
+  const [dealValueEditing, setDealValueEditing] = useState(false)
+  const [dealValueInput,   setDealValueInput]   = useState('')
+  const [dealValueSaving,  setDealValueSaving]  = useState(false)
+  const [dealValueErr,     setDealValueErr]     = useState(null)
 
   // Contacts state (WH-0) — managers only
   const isManager = useAuthStore.getState().isManager()
@@ -264,6 +271,29 @@ export default function CustomerProfile({ customerId, onBack }) {
       setSaveErr(err.response?.data?.error?.message || 'Save failed.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleSaveDealValue() {
+    const val = parseFloat(dealValueInput)
+    if (isNaN(val) || val <= 0) {
+      setDealValueErr('Please enter a valid amount greater than 0')
+      return
+    }
+    if (!customer.lead_id) {
+      setDealValueErr('No linked lead found for this customer')
+      return
+    }
+    setDealValueSaving(true)
+    setDealValueErr(null)
+    try {
+      await updateDealValue(customer.lead_id, val)
+      setCustomer(prev => ({ ...prev, deal_value: val }))
+      setDealValueEditing(false)
+    } catch (e) {
+      setDealValueErr(e.response?.data?.error?.message || 'Failed to save. Try again.')
+    } finally {
+      setDealValueSaving(false)
     }
   }
 
@@ -516,6 +546,69 @@ export default function CustomerProfile({ customerId, onBack }) {
                 ↻ Refresh
               </button>
             </div>
+            {/* Deal Value — managers can edit, everyone can see */}
+            <div style={{
+              background: '#F5FAFB', borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+            }}>
+              <div style={{ fontSize: 11, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 500, marginBottom: 6 }}>
+                Deal Value
+              </div>
+              {dealValueEditing ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13.5, color: ds.dark, fontWeight: 500 }}>₦</span>
+                  <input
+                    type="number"
+                    value={dealValueInput}
+                    onChange={e => setDealValueInput(e.target.value)}
+                    min="0"
+                    step="0.01"
+                    style={{
+                      width: 140, padding: '4px 8px', fontSize: 13.5,
+                      border: `1px solid ${ds.border}`, borderRadius: 6,
+                      fontFamily: ds.fontDm, color: ds.dark,
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveDealValue}
+                    disabled={dealValueSaving}
+                    style={{ ...S.saveBtn, padding: '5px 14px', fontSize: 12, marginRight: 0, opacity: dealValueSaving ? 0.6 : 1, cursor: dealValueSaving ? 'not-allowed' : 'pointer' }}
+                  >
+                    {dealValueSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => { setDealValueEditing(false); setDealValueErr(null) }}
+                    style={{ ...S.cancelBtn, padding: '5px 12px', fontSize: 12 }}
+                  >
+                    Cancel
+                  </button>
+                  {dealValueErr && (
+                    <div style={{ width: '100%', fontSize: 11, color: '#C0392B', marginTop: 2 }}>{dealValueErr}</div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13.5, color: ds.dark, fontWeight: 500 }}>
+                    {customer.deal_value != null
+                      ? `₦${Number(customer.deal_value).toLocaleString()}`
+                      : '—'}
+                  </span>
+                  {isManager && (
+                    <button
+                      onClick={() => {
+                        setDealValueInput(customer.deal_value != null ? String(customer.deal_value) : '')
+                        setDealValueEditing(true)
+                        setDealValueErr(null)
+                      }}
+                      title="Edit deal value"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 13, padding: '0 2px', lineHeight: 1 }}
+                    >
+                      ✏️
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
             {customer.subscription ? (
               <div style={S.grid2}>
                 <ProfileField

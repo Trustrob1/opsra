@@ -208,6 +208,25 @@ def get_customer(
         )
         customer["window_open"] = False
 
+    # Deal value — fetched from originating lead via lead_id FK.
+    # S14: failure returns None — never blocks customer profile load.
+    try:
+        if customer.get("lead_id"):
+            lead_r = (
+                db.table("leads")
+                .select("deal_value")
+                .eq("id", str(customer["lead_id"]))
+                .eq("org_id", org["org_id"])
+                .maybe_single()
+                .execute()
+            )
+            customer["deal_value"] = (lead_r.data or {}).get("deal_value") if lead_r else None
+        else:
+            customer["deal_value"] = None
+    except Exception as _dv_exc:
+        logger.warning("deal_value fetch failed for customer %s: %s", customer_id, _dv_exc)
+        customer["deal_value"] = None
+
     # Feature 1 (Module 01 gaps): surface subscription + payment summary on Customer Profile.
     # Fetches the most recent non-cancelled subscription and its most recent payment.
     # S14: failure returns subscription=None — never blocks the customer profile load.

@@ -77,3 +77,14 @@ export async function removeContact(contactId) {
   const res = await api.delete(`/customers/contacts/${contactId}`)
   return res.data
 }
+
+// ── Deal Value — managers only ─────────────────────────────────────────────────
+
+/**
+ * PATCH /api/v1/leads/{leadId}/deal-value
+ * Updates the deal value on the originating lead. Restricted to owner + ops_manager.
+ */
+export async function updateDealValue(leadId, dealValue) {
+  const res = await api.patch(`/leads/${leadId}/deal-value`, { deal_value: dealValue })
+  return res.data
+}

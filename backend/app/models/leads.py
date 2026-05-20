@@ -136,6 +136,9 @@ class LeadUpdate(BaseModel):
     reengagement_date: Optional[date] = None
     updated_at: Optional[str]        = None  # C7: optimistic concurrency token
 
+class DealValueUpdate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    deal_value: float = Field(..., gt=0, description="Deal value in naira — must be positive")
 
 class MoveStageRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
