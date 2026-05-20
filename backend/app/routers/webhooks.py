@@ -1146,6 +1146,66 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         logger.error("Failed to save inbound WhatsApp message: %s", exc)
         return
 
+    # ── Post-save: last_activity_at + smart re-engagement notification ──────────
+    # Placed here — before any early returns — so bubbling and notifications
+    # are never skipped regardless of which handler path exits next.
+    if lead_id and org_id:
+        # 1. Bubble lead to top of pipeline list
+        try:
+            db.table("leads").update({"last_activity_at": now_ts}) \
+              .eq("id", lead_id).eq("org_id", org_id).execute()
+        except Exception as _act_exc:
+            logger.warning("last_activity_at update failed lead=%s: %s", lead_id, _act_exc)
+
+        # 2. Smart notification — only fire if 4+ hour gap since last inbound.
+        #    Keeps active conversations quiet; catches next-day re-engagement.
+        if assigned_to:
+            try:
+                _prev_r = (
+                    db.table("whatsapp_messages")
+                    .select("created_at")
+                    .eq("org_id", org_id)
+                    .eq("lead_id", lead_id)
+                    .eq("direction", "inbound")
+                    .neq("meta_message_id", msg_id)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                _prev_rows = _prev_r.data or []
+                _prev_row  = (_prev_rows[0] if isinstance(_prev_rows, list) and _prev_rows
+                              else _prev_rows if isinstance(_prev_rows, dict) else {})
+                _last_ts   = _prev_row.get("created_at") if _prev_row else None
+
+                _should_notify = True
+                if _last_ts:
+                    try:
+                        _gap_h = (
+                            datetime.now(timezone.utc)
+                            - datetime.fromisoformat(_last_ts.replace("Z", "+00:00"))
+                        ).total_seconds() / 3600
+                        _should_notify = _gap_h >= 4.0
+                    except Exception:
+                        _should_notify = True  # fail-open
+
+                if _should_notify:
+                    _display = contact_name or sender_phone
+                    db.table("notifications").insert({
+                        "org_id":        org_id,
+                        "user_id":       assigned_to,
+                        "title":         f"New WhatsApp message from {_display}",
+                        "body":          content or f"[{msg_type}]",
+                        "type":          "whatsapp_reply",
+                        "resource_type": "lead",
+                        "resource_id":   lead_id,
+                        "is_read":       False,
+                        "created_at":    now_ts,
+                    }).execute()
+            except Exception as _notif_exc:
+                logger.warning(
+                    "Smart re-engagement notification failed lead=%s: %s", lead_id, _notif_exc
+                )
+
     reengaged_from_nurture = False
     if lead_id and not customer_id:
         try:
@@ -1400,11 +1460,13 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         except Exception as exc:
             logger.warning("Lead stage signal check failed for lead %s — continuing: %s", lead_id, exc)
 
-    if not assigned_to:
+    # Lead notifications are handled earlier (smart re-engagement block above).
+    # This block handles customers only.
+    if not assigned_to or not customer_id:
         return
     try:
-        resource_id   = customer_id or lead_id
-        resource_type = "customer" if customer_id else "lead"
+        resource_id   = customer_id
+        resource_type = "customer"
         display_name  = contact_name or sender_phone
         try:
             name_table  = "customers" if customer_id else "leads"

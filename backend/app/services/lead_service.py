@@ -517,7 +517,11 @@ def list_leads(
         query = query.lte("created_at", to_date)
 
     offset = (page - 1) * page_size
-    query = query.range(offset, offset + page_size - 1).order("created_at", desc=True)
+    query = (
+        query.range(offset, offset + page_size - 1)
+        .order("last_activity_at", desc=True, nullsfirst=False)
+        .order("created_at", desc=True)
+    )
 
     result = query.execute()
     return {
@@ -606,6 +610,7 @@ def create_lead(
     data["org_id"] = org_id
     data["stage"] = "new"
     data["score"] = "unscored"
+    data["last_activity_at"] = _now_iso()
  
     # GPM-1A — UTM/team attribution. first_touch_team is write-once at creation.
     if utm_source:
