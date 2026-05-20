@@ -91,12 +91,6 @@ export default function LeadProfile({ leadId, onBack }) {
   const [showDealValueModal, setShowDealValueModal] = useState(false)
   const [dealValueLoading,   setDealValueLoading]   = useState(false)
 
-  // Inline deal value edit — managers only
-  const [dvEditing, setDvEditing] = useState(false)
-  const [dvInput,   setDvInput]   = useState('')
-  const [dvSaving,  setDvSaving]  = useState(false)
-  const [dvErr,     setDvErr]     = useState(null)
-
   const [pipelineStages,   setPipelineStages]   = useState(STAGES)
   const [movableStageKeys, setMovableStageKeys] = useState(_DEFAULT_MOVABLE)
   useEffect(() => {
@@ -163,18 +157,6 @@ export default function LeadProfile({ leadId, onBack }) {
     finally { setDealValueLoading(false) }
   }
   const handleDealValueSkip = async () => handleDealValueConfirm(null)
-
-  const handleSaveDv = async () => {
-    const val = parseFloat(dvInput.replace(/,/g, ''))
-    if (isNaN(val) || val <= 0) { setDvErr('Enter a valid amount greater than 0'); return }
-    setDvSaving(true); setDvErr(null)
-    try {
-      await updateLead(leadId, { deal_value: val })
-      setLead(prev => ({ ...prev, deal_value: val }))
-      setDvEditing(false)
-    } catch (e) { setDvErr(e.response?.data?.error?.message || 'Save failed. Try again.') }
-    finally { setDvSaving(false) }
-  }
 
   const handleReactivate = () => {
     if (!window.confirm(`Reactivate ${lead.full_name}?`)) return
@@ -390,17 +372,7 @@ export default function LeadProfile({ leadId, onBack }) {
 function TabContent({ tab, lead, leadId, pipelineStages, meetingLabel = 'Demo' }) {
   return (
     <>
-      {tab === 'profile'         && <ProfileTab lead={lead} pipelineStages={pipelineStages} dvProps={{
-        isManager,
-        editing:  dvEditing,
-        input:    dvInput,
-        setInput: setDvInput,
-        saving:   dvSaving,
-        err:      dvErr,
-        onEdit:   () => { setDvInput(lead.deal_value != null ? String(lead.deal_value) : ''); setDvEditing(true); setDvErr(null) },
-        onSave:   handleSaveDv,
-        onCancel: () => { setDvEditing(false); setDvErr(null) },
-      }} />}
+      {tab === 'profile'         && <ProfileTab lead={lead} pipelineStages={pipelineStages} />}
       {tab === 'messages'        && <LeadMessages leadId={leadId} leadName={lead.full_name} />}
       {tab === 'timeline'        && <LeadTimeline leadId={leadId} />}
       {tab === 'tasks'           && <LeadTasks    leadId={leadId} />}
@@ -413,14 +385,13 @@ function TabContent({ tab, lead, leadId, pipelineStages, meetingLabel = 'Demo' }
 
 // ── Profile fields tab ────────────────────────────────────────────────────────
 
-function ProfileTab({ lead, pipelineStages, dvProps = {} }) {
+function ProfileTab({ lead, pipelineStages }) {
   const isMobile = useIsMobile()
-  const isManager = dvProps.isManager ?? false
   const groups = [
     { title: 'Contact Details', fields: [{ label: 'Phone', value: lead.phone }, { label: 'WhatsApp', value: lead.whatsapp }, { label: 'Email', value: lead.email }, { label: 'Assigned To', value: lead.assigned_user?.full_name ?? null }] },
     { title: 'Business Details', fields: [{ label: 'Business Name', value: lead.business_name }, { label: 'Business Type', value: lead.business_type }, { label: 'Location', value: lead.location }, { label: 'Branches', value: lead.branches }] },
     { title: 'Source & Attribution', fields: [{ label: 'Source', value: SOURCE_LABELS[lead.source] ?? lead.source }, { label: 'Referrer', value: lead.referrer }, { label: 'UTM Source', value: lead.utm_source }, { label: 'UTM Campaign', value: lead.utm_campaign }, { label: 'Ad ID', value: lead.ad_id }, { label: 'Entry Path', value: lead.entry_path }, { label: 'Source Team', value: lead.source_team }] },
-    { title: 'Pipeline Status', fields: [{ label: 'Stage', value: pipelineStages.find(s => s.key === lead.stage)?.label ?? lead.stage?.replace(/_/g, ' ') }, { label: 'Lost Reason', value: LOST_REASON_LABELS[lead.lost_reason] ?? lead.lost_reason }, { label: 'Converted At', value: lead.converted_at ? fmtDate(lead.converted_at) : null }, { label: 'Last Activity', value: lead.last_activity_at ? fmtDate(lead.last_activity_at) : null }, { label: 'Created At', value: lead.created_at ? fmtDate(lead.created_at) : null }] },
+    { title: 'Pipeline Status', fields: [{ label: 'Stage', value: pipelineStages.find(s => s.key === lead.stage)?.label ?? lead.stage?.replace(/_/g, ' ') }, { label: 'Deal Value', value: lead.deal_value != null ? `₦${Number(lead.deal_value).toLocaleString()}` : null }, { label: 'Lost Reason', value: LOST_REASON_LABELS[lead.lost_reason] ?? lead.lost_reason }, { label: 'Converted At', value: lead.converted_at ? fmtDate(lead.converted_at) : null }, { label: 'Last Activity', value: lead.last_activity_at ? fmtDate(lead.last_activity_at) : null }, { label: 'Created At', value: lead.created_at ? fmtDate(lead.created_at) : null }] },
   ]
   return (
     <>
@@ -449,42 +420,6 @@ function ProfileTab({ lead, pipelineStages, dvProps = {} }) {
                 </div>
               ))}
             </div>
-            {g.title === 'Pipeline Status' && (dvProps.isManager || lead.deal_value != null) && (
-              <div style={{ marginTop: 8, background: ds.light, borderRadius: ds.radius.sm, padding: '10px 14px' }}>
-                <p style={{ fontSize: 11, color: ds.gray, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 6px' }}>Deal Value</p>
-                {dvProps.editing ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 13.5, color: ds.dark, fontWeight: 500 }}>₦</span>
-                    <input
-                      type="number" value={dvProps.input} onChange={e => dvProps.setInput(e.target.value)}
-                      min="0" step="0.01"
-                      style={{ width: 140, padding: '4px 8px', fontSize: 13.5, border: `1px solid ${ds.border}`, borderRadius: ds.radius.sm, fontFamily: ds.fontDm, color: ds.dark }}
-                    />
-                    <button onClick={dvProps.onSave} disabled={dvProps.saving}
-                      style={{ padding: '5px 14px', background: ds.teal, color: '#fff', border: 'none', borderRadius: ds.radius.sm, fontSize: 12, fontWeight: 600, fontFamily: ds.fontSyne, cursor: dvProps.saving ? 'not-allowed' : 'pointer', opacity: dvProps.saving ? 0.6 : 1 }}>
-                      {dvProps.saving ? 'Saving…' : 'Save'}
-                    </button>
-                    <button onClick={dvProps.onCancel}
-                      style={{ padding: '5px 12px', background: 'white', border: `1px solid ${ds.border}`, borderRadius: ds.radius.sm, fontSize: 12, color: ds.gray, fontFamily: ds.fontDm, cursor: 'pointer' }}>
-                      Cancel
-                    </button>
-                    {dvProps.err && <div style={{ width: '100%', fontSize: 11, color: '#C0392B', marginTop: 2 }}>{dvProps.err}</div>}
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <p style={{ fontSize: 13.5, color: ds.dark, fontWeight: 500, margin: 0 }}>
-                      {lead.deal_value != null ? `₦${Number(lead.deal_value).toLocaleString()}` : '—'}
-                    </p>
-                    {dvProps.isManager && (
-                      <button onClick={dvProps.onEdit} title="Edit deal value"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 13, padding: '0 2px', lineHeight: 1 }}>
-                        ✏️
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )
       })}
