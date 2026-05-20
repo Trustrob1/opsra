@@ -51,7 +51,16 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    Promise.all([
+      self.registration.showNotification(title, options),
+      self.clients
+        .matchAll({ type: 'window', includeUncontrolled: true })
+        .then(clients =>
+          clients.forEach(client =>
+            client.postMessage({ type: 'PLAY_NOTIFICATION_SOUND' })
+          )
+        ),
+    ])
   )
 })
 

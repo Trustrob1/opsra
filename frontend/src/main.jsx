@@ -96,6 +96,84 @@ window.opsraSubscribeToPush = async function subscribeToPush(apiToken) {
   }
 }
 
+// ── In-app notification sound ───────────────────────────────────────────────
+// Web Audio API generates a two-tone chime — no audio file required.
+// AudioContext is pre-warmed on first pointer interaction to satisfy iOS autoplay policy.
+// All failures are swallowed silently — sound is non-critical.
+
+let _audioCtx = null
+
+function _ensureAudioCtx() {
+  try {
+    if (!_audioCtx) {
+      const Ctor = window.AudioContext || window.webkitAudioContext
+      if (Ctor) _audioCtx = new Ctor()
+    }
+    if (_audioCtx?.state === 'suspended') _audioCtx.resume()
+  } catch (_) {}
+  return _audioCtx
+}
+
+// Warm up AudioContext on first tap/click — required by iOS autoplay policy
+document.addEventListener('pointerdown', () => { _ensureAudioCtx() }, { once: true })
+
+function playNotificationSound() {
+  try {
+    const ctx = _ensureAudioCtx()
+    if (!ctx) return
+    const now = ctx.currentTime
+    // Two-tone descending chime: 880 Hz → 660 Hz
+    ;[[0, 880], [0.18, 660]].forEach(([t, freq]) => {
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0, now + t)
+      gain.gain.linearRampToValueAtTime(0.25, now + t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + t + 0.28)
+      osc.start(now + t)
+      osc.stop(now + t + 0.3)
+    })
+  } catch (_) {}
+}
+
+// Listen for SW → client message (foreground push arrives, OS suppresses banner)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'PLAY_NOTIFICATION_SOUND') {
+      playNotificationSound()
+    }
+  })
+}
+
+// Poll for new unread notifications every 30 s — play sound when count rises.
+// Covers the case where push is not set up or the tab regains focus after being idle.
+let _lastUnreadCount = null
+
+async function _pollUnread() {
+  try {
+    const { default: useAuthStore } = await import('./store/authStore.js')
+    const token = useAuthStore.getState()?.token
+    if (!token) { _lastUnreadCount = null; return }
+
+    const res = await fetch(`${BASE}/api/v1/notifications?page=1&page_size=1`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return
+    const json = await res.json()
+    const current = json?.data?.unread_count ?? 0
+
+    if (_lastUnreadCount !== null && current > _lastUnreadCount) {
+      playNotificationSound()
+    }
+    _lastUnreadCount = current
+  } catch (_) {}
+}
+
+setInterval(_pollUnread, 30_000)
+
 // ── React root ──────────────────────────────────────────────────────────────
 createRoot(document.getElementById('root')).render(
   <StrictMode>
