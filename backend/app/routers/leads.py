@@ -909,6 +909,56 @@ async def convert_lead(
         lead_id=lead_id,
         user_id=_user_id(org),
     )
+
+    # S14: send conversion template — failure never blocks the conversion response
+    try:
+        _org_r = (
+            db.table("organisations")
+            .select("conversion_template_name")
+            .eq("id", _org_id(org))
+            .maybe_single()
+            .execute()
+        )
+        _tmpl_name = (_org_r.data or {}).get("conversion_template_name") if _org_r else None
+
+        if _tmpl_name:
+            _lead_phone = result.get("whatsapp") or result.get("phone")
+            _lead_name  = result.get("full_name") or ""
+            if _lead_phone:
+                from app.services.whatsapp_service import (
+                    _get_org_wa_credentials, _call_meta_send, _now_iso,
+                )
+                _phone_id, _token, _ = _get_org_wa_credentials(db, _org_id(org))
+                if _phone_id and _token:
+                    _call_meta_send(_phone_id, {
+                        "messaging_product": "whatsapp",
+                        "to":   _lead_phone,
+                        "type": "template",
+                        "template": {
+                            "name":     _tmpl_name,
+                            "language": {"code": "en"},
+                            "components": [{
+                                "type": "body",
+                                "parameters": [{"type": "text", "text": _lead_name}],
+                            }],
+                        },
+                    }, token=_token)
+                    # Store in whatsapp_messages for conversation history
+                    db.table("whatsapp_messages").insert({
+                        "org_id":       _org_id(org),
+                        "lead_id":      lead_id,
+                        "direction":    "outbound",
+                        "message_type": "text",
+                        "content":      f"[Template: {_tmpl_name}]",
+                        "status":       "sent",
+                        "sent_by":      None,
+                        "created_at":   _now_iso(),
+                    }).execute()
+    except Exception as _tmpl_exc:
+        logger.warning(
+            "conversion_template send failed lead=%s: %s", lead_id, _tmpl_exc
+        )
+
     return ok(data=result, message="Lead converted to customer")
 
 

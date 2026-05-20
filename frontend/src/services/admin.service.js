@@ -402,3 +402,11 @@ export async function updateDemoSettings(payload) {
   const r = await api.patch('/api/v1/admin/demo-settings', payload, _h())
   return r.data
 }
+
+// ── Conversion template config ────────────────────────────────────────────────
+
+export const getConversionTemplate = () =>
+  api.get('/api/v1/admin/conversion-template')
+
+export const updateConversionTemplate = (templateName) =>
+  api.patch('/api/v1/admin/conversion-template', { template_name: templateName || null })

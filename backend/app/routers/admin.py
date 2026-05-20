@@ -3419,6 +3419,44 @@ def update_whatsapp_sales_mode(
  
     return ok(data={"mode": payload.mode}, message="WhatsApp sales mode saved")
 
+# ---------------------------------------------------------------------------
+# GET/PATCH /api/v1/admin/conversion-template
+# ---------------------------------------------------------------------------
+
+@router.get("/conversion-template")
+def get_conversion_template(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    result = (
+        db.table("organisations")
+        .select("conversion_template_name")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data or {}
+    return ok(data={"template_name": data.get("conversion_template_name")})
+
+
+class ConversionTemplatePayload(BaseModel):
+    template_name: Optional[str] = Field(None, max_length=255)
+
+
+@router.patch("/conversion-template")
+def update_conversion_template(
+    payload: ConversionTemplatePayload,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    role = (org.get("roles") or {}).get("template", "")
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Managers only"})
+    db.table("organisations").update({
+        "conversion_template_name": payload.template_name or None,
+    }).eq("id", org["org_id"]).execute()
+    return ok(message="Conversion template updated")
+
 
 # ============================================================
 # AUTH-RESET-1 — Admin password reset + email update
