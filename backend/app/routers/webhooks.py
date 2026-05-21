@@ -1589,7 +1589,7 @@ def _handle_structured_qualification_turn(
     # This guard prevents double-send in the edge case where the Edit B
     # intercept fails and falls through to this function.
     _guard_stage = (session.get("stage") or "")
-    if _guard_stage in ("awaiting_pillow_upsell", "awaiting_post_qual_cta"):
+    if _guard_stage in ("awaiting_pillow_upsert", "awaiting_post_qual_cta"):
         raise ValueError(
             f"qualification session {session_id} is in post-qual stage "
             f"'{_guard_stage}' — must be handled by dedicated reply handler"
