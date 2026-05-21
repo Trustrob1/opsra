@@ -39,8 +39,21 @@ from app.services.subscription_service import (
     process_paystack_webhook,
     process_flutterwave_webhook,
 )
-from app.services.whatsapp_service import send_qualification_question, send_qualification_handoff_message
-from app.services.ai_service import generate_qualification_summary
+from app.services.whatsapp_service import (
+    send_qualification_question,
+    send_qualification_handoff_message,
+    send_recommendation_message,
+    send_outbound_image_url,
+    send_pillow_upsell_prompt,
+    send_pillow_recommendation_message,
+    send_pillow_not_found_message,
+    send_post_qual_cta,
+)
+from app.services.ai_service import (
+    generate_qualification_summary,
+    generate_product_recommendation,
+    generate_pillow_recommendation,
+)
 from app.services import shopify_service
 from app.utils.opt_out import handle_opt_keywords
 from app.services.monitoring_service import log_system_error
@@ -1318,6 +1331,52 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             )
             return
 
+        # QUAL-RECOMMEND: Intercept post-qualification CTA stages before
+        # running the standard qualification turn handler. These stages keep
+        # ai_active=True so the session is still found, but must be handled
+        # by dedicated reply handlers — not the qualification question loop.
+        try:
+            _pqs_result = (
+                db.table("lead_qualification_sessions")
+                .select("id, stage, answers")
+                .eq("lead_id", lead_id)
+                .eq("org_id", org_id)
+                .eq("ai_active", True)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            _pqs_rows = (
+                _pqs_result.data if isinstance(_pqs_result.data, list) else []
+            )
+            _pqs       = _pqs_rows[0] if _pqs_rows else None
+            _pqs_stage = (_pqs or {}).get("stage")
+
+            if _pqs_stage == "awaiting_pillow_upsell":
+                _handle_pillow_upsell_reply(
+                    db=db, org_id=org_id, lead_id=lead_id,
+                    assigned_to=assigned_to,
+                    interactive_payload=interactive_payload,
+                    session=_pqs, now_ts=now_ts,
+                )
+                return
+
+            if _pqs_stage == "awaiting_post_qual_cta":
+                _handle_post_qual_cta_reply(
+                    db=db, org_id=org_id, lead_id=lead_id,
+                    assigned_to=assigned_to,
+                    interactive_payload=interactive_payload,
+                    session=_pqs, now_ts=now_ts,
+                )
+                return
+
+        except Exception as _pqs_exc:
+            logger.warning(
+                "_handle_inbound_message: post-qual stage check failed "
+                "lead=%s — continuing to qualification turn: %s",
+                lead_id, _pqs_exc,
+            )
+
         try:
             _handle_structured_qualification_turn(
                 db=db, org_id=org_id, lead_id=lead_id,
@@ -1525,6 +1584,17 @@ def _handle_structured_qualification_turn(
     session = session_rows[0]
     session_id = session["id"]
 
+    # QUAL-RECOMMEND: Safety guard — post-qualification CTA stages must be
+    # handled by their dedicated reply handlers, never the question loop.
+    # This guard prevents double-send in the edge case where the Edit B
+    # intercept fails and falls through to this function.
+    _guard_stage = (session.get("stage") or "")
+    if _guard_stage in ("awaiting_pillow_upsell", "awaiting_post_qual_cta"):
+        raise ValueError(
+            f"qualification session {session_id} is in post-qual stage "
+            f"'{_guard_stage}' — must be handled by dedicated reply handler"
+        )
+
     org_result = (
         db.table("organisations")
         .select("id, name, qualification_flow, whatsapp_phone_id")
@@ -1663,10 +1733,36 @@ def _handle_structured_qualification_turn(
     summary = generate_qualification_summary(answers=existing_answers, lead=lead_data, org_name=org_name)
     lead_phone = _get_lead_phone(db, lead_id)
     send_qualification_handoff_message(db=db, org_id=org_id, phone_number=lead_phone, handoff_message=handoff_message)
-    db.table("lead_qualification_sessions").update({
-        "ai_active": False, "stage": "handed_off", "answers": existing_answers,
-        "handed_off_at": now_ts, "handoff_summary": summary, "last_message_at": now_ts,
-    }).eq("id", session_id).execute()
+
+    # QUAL-RECOMMEND: Launch AI recommendation flow.
+    # Returns True if products exist (flow sent), False if no products (skip).
+    # S14: failure inside the helper never reaches here — it returns False.
+    _rec_flow_launched = _launch_post_qual_recommendation_flow(
+        db=db, org_id=org_id, lead_id=lead_id,
+        lead_phone=lead_phone, answers=existing_answers, org_name=org_name,
+    )
+
+    if _rec_flow_launched:
+        # Keep session open — lead still needs to reply to pillow upsell + CTA.
+        # Fully closes to handed_off only after _handle_post_qual_cta_reply runs.
+        db.table("lead_qualification_sessions").update({
+            "ai_active":       True,
+            "stage":           "awaiting_pillow_upsell",
+            "answers":         existing_answers,
+            "handed_off_at":   now_ts,
+            "handoff_summary": summary,
+            "last_message_at": now_ts,
+        }).eq("id", session_id).execute()
+    else:
+        # No products configured for this org — original handed_off behaviour.
+        db.table("lead_qualification_sessions").update({
+            "ai_active":       False,
+            "stage":           "handed_off",
+            "answers":         existing_answers,
+            "handed_off_at":   now_ts,
+            "handoff_summary": summary,
+            "last_message_at": now_ts,
+        }).eq("id", session_id).execute()
 
     if assigned_to:
         try:
@@ -1730,6 +1826,360 @@ def _get_lead_basic(db, lead_id: str) -> dict:
     except Exception as exc:
         logger.warning("_get_lead_basic failed for lead %s: %s", lead_id, exc)
         return {}
+
+
+def _launch_post_qual_recommendation_flow(
+    db,
+    org_id: str,
+    lead_id: str,
+    lead_phone: str,
+    answers: dict,
+    org_name: str,
+) -> bool:
+    """
+    QUAL-RECOMMEND: Fetch products, generate AI recommendation, and send
+    recommendation text + product image + pillow upsell prompt to the lead.
+
+    Called immediately after the qualification handoff message.
+
+    Returns:
+        True  — products exist for this org; recommendation flow was launched.
+        False — no products in DB; caller should use original handed_off behaviour.
+
+    S14 — never raises.
+    """
+    try:
+        # Fetch all active products for this org
+        _prod_result = (
+            db.table("products")
+            .select("id, title, price, image_url")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        all_products = (
+            _prod_result.data if isinstance(_prod_result.data, list) else []
+        )
+
+        if not all_products:
+            # Org has no products configured — skip recommendation flow entirely
+            logger.info(
+                "_launch_post_qual_recommendation_flow: no products for org %s "
+                "— skipping recommendation flow",
+                org_id,
+            )
+            return False
+
+        # Filter mattresses only — exclude any product with "pillow" in the title
+        mattress_products = [
+            p for p in all_products
+            if "pillow" not in (p.get("title") or "").lower()
+        ]
+
+        if mattress_products:
+            # Generate AI recommendation
+            rec = generate_product_recommendation(
+                answers=answers,
+                mattress_products=mattress_products,
+                org_name=org_name,
+            )
+
+            # Send recommendation text
+            send_recommendation_message(
+                db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+                title=rec["title"], price=rec["price"], rationale=rec["rationale"],
+            )
+
+            # Send product image if available
+            if rec.get("image_url"):
+                send_outbound_image_url(
+                    db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+                    image_url=rec["image_url"], caption=rec["title"],
+                )
+        else:
+            logger.warning(
+                "_launch_post_qual_recommendation_flow: no mattress products "
+                "for org %s — skipping mattress recommendation",
+                org_id,
+            )
+
+        # Always send pillow upsell prompt if any products exist
+        send_pillow_upsell_prompt(
+            db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+        )
+
+        return True
+
+    except Exception as exc:
+        logger.warning(
+            "_launch_post_qual_recommendation_flow failed lead=%s org=%s: %s",
+            lead_id, org_id, exc,
+        )
+        return False
+
+
+def _handle_pillow_upsell_reply(
+    db,
+    org_id: str,
+    lead_id: str,
+    assigned_to,
+    interactive_payload,
+    session: dict,
+    now_ts: str,
+) -> None:
+    """
+    QUAL-RECOMMEND: Handle the lead's Yes/No response to the pillow upsell.
+    - "pillow_yes" → fetch pillow products → recommend + image → CTA
+    - Anything else (including "pillow_no" or free text) → CTA directly
+
+    Always advances session to "awaiting_post_qual_cta" on completion.
+    S14 — never raises.
+    """
+    try:
+        session_id = session["id"]
+        lead_phone = _get_lead_phone(db, lead_id)
+
+        button_reply = (interactive_payload or {}).get("button_reply") or {}
+        selected_id  = button_reply.get("id") or ""
+
+        if selected_id == "pillow_yes":
+            # Fetch pillow products
+            try:
+                _prod_r      = (
+                    db.table("products")
+                    .select("id, title, price, image_url")
+                    .eq("org_id", org_id)
+                    .eq("is_active", True)
+                    .execute()
+                )
+                _all          = _prod_r.data if isinstance(_prod_r.data, list) else []
+                pillow_products = [
+                    p for p in _all
+                    if "pillow" in (p.get("title") or "").lower()
+                ]
+            except Exception as _pp_exc:
+                logger.warning(
+                    "_handle_pillow_upsell_reply: pillow product fetch failed "
+                    "org=%s: %s", org_id, _pp_exc,
+                )
+                pillow_products = []
+
+            if pillow_products:
+                # Fetch org name for AI call
+                _org_name = ""
+                try:
+                    _org_r = (
+                        db.table("organisations")
+                        .select("name")
+                        .eq("id", org_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    _org_d = _org_r.data
+                    if isinstance(_org_d, list):
+                        _org_d = _org_d[0] if _org_d else None
+                    _org_name = (_org_d or {}).get("name") or ""
+                except Exception:
+                    pass
+
+                pillow_rec = generate_pillow_recommendation(
+                    pillow_products=pillow_products,
+                    org_name=_org_name,
+                )
+                send_pillow_recommendation_message(
+                    db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+                    title=pillow_rec["title"], price=pillow_rec["price"],
+                )
+                if pillow_rec.get("image_url"):
+                    send_outbound_image_url(
+                        db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+                        image_url=pillow_rec["image_url"], caption=pillow_rec["title"],
+                    )
+            else:
+                # No pillow products in DB — graceful in-store fallback
+                send_pillow_not_found_message(
+                    db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+                )
+
+        # Always send CTA regardless of pillow decision
+        send_post_qual_cta(
+            db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+        )
+
+        # Advance session
+        db.table("lead_qualification_sessions").update({
+            "stage":           "awaiting_post_qual_cta",
+            "last_message_at": now_ts,
+        }).eq("id", session_id).execute()
+
+    except Exception as exc:
+        logger.warning(
+            "_handle_pillow_upsell_reply failed lead=%s org=%s: %s",
+            lead_id, org_id, exc,
+        )
+
+
+def _handle_post_qual_cta_reply(
+    db,
+    org_id: str,
+    lead_id: str,
+    assigned_to,
+    interactive_payload,
+    session: dict,
+    now_ts: str,
+) -> None:
+    """
+    QUAL-RECOMMEND: Handle the lead's CTA selection (Visit Showroom or Get Invoice).
+    - Sends confirmation message to lead
+    - Creates a high-priority rep task (Pattern 79 — source_record_id)
+    - Closes the qualification session (ai_active=False, stage="handed_off")
+
+    S14 — never raises.
+    """
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    from app.services.whatsapp_service import (
+        _get_org_wa_credentials,
+        _call_meta_send,
+    )
+
+    try:
+        session_id  = session["id"]
+        lead_phone  = _get_lead_phone(db, lead_id)
+        lead_data   = _get_lead_basic(db, lead_id)
+        lead_name   = lead_data.get("full_name") or "Lead"
+
+        button_reply = (interactive_payload or {}).get("button_reply") or {}
+        selected_id  = button_reply.get("id") or ""
+
+        if selected_id == "showroom_visit":
+            confirmation = (
+                "Perfect! Our team will be in touch shortly to confirm "
+                "your showroom visit. We look forward to seeing you! 🏡"
+            )
+            task_title = f"Arrange showroom visit for {lead_name}"
+        elif selected_id == "get_invoice":
+            confirmation = (
+                "Great choice! Our team will send your invoice and "
+                "payment details shortly. 💳"
+            )
+            task_title = f"Send invoice to {lead_name}"
+        else:
+            # Unknown input (e.g. free-text reply) — generic fallback
+            confirmation = "Thanks! Our team will be in touch with you shortly. 😊"
+            task_title   = f"Follow up with {lead_name}"
+
+        # Send confirmation to lead
+        try:
+            _phone_id, _token, _ = _get_org_wa_credentials(db, org_id)
+            _phone_id = (_phone_id or "").strip()
+            if _phone_id and _token and lead_phone:
+                _call_meta_send(_phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to":   lead_phone,
+                    "type": "text",
+                    "text": {"body": confirmation},
+                }, token=_token)
+
+            # Store confirmation in whatsapp_messages — Pattern 81
+            try:
+                _win_exp = (
+                    _dt.now(_tz.utc) + _td(hours=24)
+                ).isoformat()
+                db.table("whatsapp_messages").insert({
+                    "org_id":            org_id,
+                    "lead_id":           lead_id,
+                    "direction":         "outbound",
+                    "message_type":      "text",
+                    "content":           confirmation,
+                    "status":            "sent",
+                    "window_open":       True,
+                    "window_expires_at": _win_exp,
+                    "sent_by":           None,
+                    "created_at":        now_ts,
+                }).execute()
+            except Exception as _db_exc:
+                logger.warning(
+                    "_handle_post_qual_cta_reply: message insert failed: %s", _db_exc
+                )
+        except Exception as _send_exc:
+            logger.warning(
+                "_handle_post_qual_cta_reply: confirmation send failed lead=%s: %s",
+                lead_id, _send_exc,
+            )
+
+        # Resolve rep for task — fall back to org manager if unassigned.
+        # users.role_id is a UUID FK to roles.id — two-step lookup required.
+        _task_rep = assigned_to
+        if not _task_rep:
+            try:
+                # Step 1: get role IDs for Owner and Operations Manager in this org
+                _role_r = (
+                    db.table("roles")
+                    .select("id")
+                    .eq("org_id", org_id)
+                    .in_("name", ["Owner", "Operations Manager"])
+                    .execute()
+                )
+                _role_rows = _role_r.data if isinstance(_role_r.data, list) else []
+                _mgr_role_ids = [r["id"] for r in _role_rows if r.get("id")]
+
+                # Step 2: find an active user with one of those role IDs
+                if _mgr_role_ids:
+                    _mgr_r = (
+                        db.table("users")
+                        .select("id")
+                        .eq("org_id", org_id)
+                        .in_("role_id", _mgr_role_ids)
+                        .eq("is_active", True)
+                        .limit(1)
+                        .execute()
+                    )
+                    _mgr_rows = _mgr_r.data if isinstance(_mgr_r.data, list) else []
+                    _task_rep = (_mgr_rows[0] if _mgr_rows else {}).get("id")
+            except Exception as _mgr_exc:
+                logger.warning(
+                    "_handle_post_qual_cta_reply: manager fallback failed org=%s: %s",
+                    org_id, _mgr_exc,
+                )
+
+        # Create rep task — Pattern 79: source_record_id not lead_id
+        if _task_rep:
+            try:
+                _due_at = (_dt.now(_tz.utc) + _td(hours=1)).isoformat()
+                db.table("tasks").insert({
+                    "org_id":           org_id,
+                    "title":            task_title,
+                    "task_type":        "system_event",
+                    "source_module":    "leads",
+                    "source_record_id": lead_id,
+                    "assigned_to":      _task_rep,
+                    "priority":         "high",
+                    "status":           "pending",
+                    "due_at":           _due_at,
+                    "created_at":       now_ts,
+                }).execute()
+                logger.info(
+                    "QUAL-RECOMMEND: task created '%s' assigned=%s lead=%s",
+                    task_title, _task_rep, lead_id,
+                )
+            except Exception as _task_exc:
+                logger.warning(
+                    "_handle_post_qual_cta_reply: task insert failed lead=%s: %s",
+                    lead_id, _task_exc,
+                )
+
+        # Close qualification session
+        db.table("lead_qualification_sessions").update({
+            "ai_active":       False,
+            "stage":           "handed_off",
+            "last_message_at": now_ts,
+        }).eq("id", session_id).execute()
+
+    except Exception as exc:
+        logger.warning(
+            "_handle_post_qual_cta_reply failed lead=%s org=%s: %s",
+            lead_id, org_id, exc,
+        )
 
 
 def _send_qualification_reply(db, org_id: str, lead_id: str, org_data: dict, reply: str, now_ts: str) -> None:

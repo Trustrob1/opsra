@@ -2448,6 +2448,406 @@ def send_qualification_handoff_message(
             org_id, phone_number, exc,
         )
 
+# ---------------------------------------------------------------------------
+# QUAL-RECOMMEND — Post-qualification recommendation + CTA messages
+# ---------------------------------------------------------------------------
+
+def send_recommendation_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_id: str,
+    title: str,
+    price: float,
+    rationale: str,
+) -> None:
+    """
+    QUAL-RECOMMEND: Send AI mattress recommendation text to the lead.
+    Includes product name, price, and AI rationale.
+    Stores message in whatsapp_messages for Conversations thread.
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_recommendation_message: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        price_formatted = f"₦{price:,.0f}" if price else ""
+        body = (
+            f"🛏️ Based on what you've shared with us, we recommend:\n\n"
+            f"*{title}*"
+            + (f" — {price_formatted}" if price_formatted else "")
+            + f"\n\n{rationale}"
+        )
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "text",
+            "text": {"body": body},
+        }, token=access_token)
+
+        # Store in whatsapp_messages — Pattern 81: message_type="text"
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           body,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_recommendation_message: whatsapp_messages insert failed: %s",
+                _db_exc,
+            )
+
+    except Exception as exc:
+        logger.warning(
+            "send_recommendation_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_outbound_image_url(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_id: str,
+    image_url: str,
+    caption: str = "",
+) -> None:
+    """
+    QUAL-RECOMMEND: Send a product image to a lead using a public URL
+    (e.g. Shopify CDN). Meta fetches the image directly — no Supabase
+    Storage upload required.
+    Stores message in whatsapp_messages so image appears in Conversations thread.
+    S14 — never raises.
+    """
+    try:
+        if not image_url:
+            logger.warning(
+                "send_outbound_image_url: no image_url provided for org %s", org_id
+            )
+            return
+
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_outbound_image_url: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        image_payload: dict = {"link": image_url}
+        if caption:
+            image_payload["caption"] = caption[:1024]  # Meta caption character limit
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":    phone_number,
+            "type":  "image",
+            "image": image_payload,
+        }, token=access_token)
+
+        # Store in whatsapp_messages
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "image",
+                "content":           caption or None,
+                "media_url":         image_url,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_outbound_image_url: whatsapp_messages insert failed: %s", _db_exc
+            )
+
+    except Exception as exc:
+        logger.warning(
+            "send_outbound_image_url failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_pillow_upsell_prompt(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_id: str,
+) -> None:
+    """
+    QUAL-RECOMMEND: Send a Yes/No prompt asking if the lead is interested
+    in pillows. Sent immediately after the mattress recommendation.
+    Button IDs: "pillow_yes" | "pillow_no"
+    Stores message in whatsapp_messages.
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_pillow_upsell_prompt: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        _body = (
+            "We also carry a premium range of pillows that pair perfectly "
+            "with your mattress. Would you like to see our pillow recommendations? 🛏️"
+        )
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": _body},
+                "action": {
+                    "buttons": [
+                        {"type": "reply", "reply": {"id": "pillow_yes", "title": "Yes, show me"}},
+                        {"type": "reply", "reply": {"id": "pillow_no",  "title": "No, thanks"}},
+                    ],
+                },
+            },
+        }, token=access_token)
+
+        # Store in whatsapp_messages — Pattern 81: message_type="text"
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           _body,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_pillow_upsell_prompt: whatsapp_messages insert failed: %s", _db_exc
+            )
+
+    except Exception as exc:
+        logger.warning(
+            "send_pillow_upsell_prompt failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_pillow_recommendation_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_id: str,
+    title: str,
+    price: float,
+) -> None:
+    """
+    QUAL-RECOMMEND: Send a pillow product recommendation text to the lead.
+    Stores message in whatsapp_messages.
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_pillow_recommendation_message: no whatsapp_phone_id for org %s",
+                org_id,
+            )
+            return
+
+        price_formatted = f"₦{price:,.0f}" if price else ""
+        body = (
+            f"Great choice! 🌟 Here's our pillow recommendation:\n\n"
+            f"*{title}*"
+            + (f" — {price_formatted}" if price_formatted else "")
+        )
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "text",
+            "text": {"body": body},
+        }, token=access_token)
+
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           body,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_pillow_recommendation_message: whatsapp_messages insert failed: %s",
+                _db_exc,
+            )
+
+    except Exception as exc:
+        logger.warning(
+            "send_pillow_recommendation_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_pillow_not_found_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_id: str,
+) -> None:
+    """
+    QUAL-RECOMMEND: Graceful fallback when no pillow products exist in the
+    products table (in-store only inventory).
+    Stores message in whatsapp_messages.
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_pillow_not_found_message: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        body = (
+            "Our pillow range isn't listed online yet, but we carry them in-store. "
+            "Our team will be happy to walk you through the options when you visit! 🛏️"
+        )
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "text",
+            "text": {"body": body},
+        }, token=access_token)
+
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           body,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_pillow_not_found_message: whatsapp_messages insert failed: %s",
+                _db_exc,
+            )
+
+    except Exception as exc:
+        logger.warning(
+            "send_pillow_not_found_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_post_qual_cta(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_id: str,
+) -> None:
+    """
+    QUAL-RECOMMEND: Send the post-qualification CTA button message.
+    Two options: Visit Showroom or Get Invoice.
+    Button IDs: "showroom_visit" | "get_invoice"
+    Stores message in whatsapp_messages.
+    S14 — never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning(
+                "send_post_qual_cta: no whatsapp_phone_id for org %s", org_id
+            )
+            return
+
+        _body = "What would you like to do next?"
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": _body},
+                "action": {
+                    "buttons": [
+                        {"type": "reply", "reply": {"id": "showroom_visit", "title": "🏪 Visit Showroom"}},
+                        {"type": "reply", "reply": {"id": "get_invoice",    "title": "💳 Get Invoice"}},
+                    ],
+                },
+            },
+        }, token=access_token)
+
+        # Store in whatsapp_messages — Pattern 81: message_type="text"
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           _body,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_post_qual_cta: whatsapp_messages insert failed: %s", _db_exc
+            )
+
+    except Exception as exc:
+        logger.warning(
+            "send_post_qual_cta failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
 def send_abandoned_cart_message(
     db,
     org_id: str,
