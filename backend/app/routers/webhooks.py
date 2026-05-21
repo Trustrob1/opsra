@@ -1281,17 +1281,20 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         # If a triage session is active, route there before attempting qualification.
         _lead_triage_session = triage_service.get_active_session(db, org_id, sender_phone)
         if _lead_triage_session:
-            logger.info(
-                "[WH] known lead %s has active triage session — routing to triage handler",
-                lead_id,
-            )
-            triage_service.handle_session_message(
-                db=db, org_id=org_id, phone_number=sender_phone,
-                session=_lead_triage_session, msg_type=msg_type, content=content,
-                interactive_payload=interactive_payload, contact_name=contact_name,
-                now_ts=now_ts, section="unknown",
-            )
-            return
+            _triage_state = _lead_triage_session.get("session_state", "")
+            if _triage_state in ("triage_sent", "awaiting_identifier"):
+                logger.info(
+                    "[WH] known lead %s has active triage session (state=%s) — routing to triage handler",
+                    lead_id, _triage_state,
+                )
+                triage_service.handle_session_message(
+                    db=db, org_id=org_id, phone_number=sender_phone,
+                    session=_lead_triage_session, msg_type=msg_type, content=content,
+                    interactive_payload=interactive_payload, contact_name=contact_name,
+                    now_ts=now_ts, section="unknown",
+                )
+                return
+            # Session exists but state is "active" or beyond — fall through to qualification handler
 
         # PRE-QUAL: Skip qualification bot if lead already has data from a Lead Ad form
         try:
