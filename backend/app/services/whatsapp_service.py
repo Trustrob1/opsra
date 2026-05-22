@@ -1300,6 +1300,7 @@ def get_lead_messages(
         .select("*", count="exact")
         .eq("org_id", org_id)
         .eq("lead_id", lead_id)
+        .neq("message_type", "nps")
         .order("created_at", desc=True)
         .range((page - 1) * page_size, page * page_size - 1)
         .execute()

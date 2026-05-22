@@ -152,26 +152,72 @@ def run_nps_scheduler(self):
                                 "quiet_hours_held": True,
                                 "created_at":       _now_iso(),
                             }).execute()
+                            # last_nps_sent_at updated so it isn't re-queued
+                            # today; the queue processor will send at send_after.
+                            db.table("customers").update(
+                                {"last_nps_sent_at": _now_iso()}
+                            ).eq("id", cust_id).execute()
+                            queued += 1
+
                         else:
+                            # Send directly via Meta Cloud API
+                            from app.services.whatsapp_service import (
+                                _get_org_wa_credentials,
+                                _call_meta_send,
+                            )
+                            _phone_id, _token, _ = _get_org_wa_credentials(db, org_id)
+                            _phone_id = (_phone_id or "").strip()
+
+                            _meta_msg_id  = None
+                            _send_success = False
+
+                            if _phone_id and _token:
+                                try:
+                                    _resp = _call_meta_send(_phone_id, {
+                                        "messaging_product": "whatsapp",
+                                        "to":   phone,
+                                        "type": "text",
+                                        "text": {"body": body},
+                                    }, token=_token)
+                                    _msgs = (_resp or {}).get("messages") or []
+                                    if _msgs:
+                                        _meta_msg_id = _msgs[0].get("id")
+                                    _send_success = True
+                                except Exception as _send_exc:
+                                    logger.warning(
+                                        "nps_worker: Meta send failed for customer %s — %s",
+                                        cust_id, _send_exc,
+                                    )
+                            else:
+                                logger.warning(
+                                    "nps_worker: no WA credentials for org %s — skipping customer %s",
+                                    org_id, cust_id,
+                                )
+
+                            _status = "sent" if _send_success else "failed"
                             db.table("whatsapp_messages").insert({
-                                "org_id":       org_id,
-                                "customer_id":  cust_id,
-                                "direction":    "outbound",
-                                "message_type": "nps",
-                                "content":      body,
-                                "status":       "queued",
-                                "created_at":   _now_iso(),
+                                "org_id":          org_id,
+                                "customer_id":     cust_id,
+                                "direction":       "outbound",
+                                "message_type":    "nps",
+                                "content":         body,
+                                "status":          _status,
+                                "meta_message_id": _meta_msg_id,
+                                "created_at":      _now_iso(),
                             }).execute()
 
-                        db.table("customers").update(
-                            {"last_nps_sent_at": _now_iso()}
-                        ).eq("id", cust_id).execute()
-
-                        queued += 1
+                            if _send_success:
+                                # Only stamp last_nps_sent_at on confirmed delivery
+                                db.table("customers").update(
+                                    {"last_nps_sent_at": _now_iso()}
+                                ).eq("id", cust_id).execute()
+                                queued += 1
+                            else:
+                                skipped += 1
 
                     except Exception as exc:
                         logger.warning(
-                            "nps_worker: failed to queue NPS for customer %s — %s",
+                            "nps_worker: failed to process NPS for customer %s — %s",
                             cust_id, exc,
                         )
 
