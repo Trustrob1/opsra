@@ -2816,11 +2816,18 @@ def send_post_qual_cta(
             )
             return
 
-        _cfg        = config or {}
-        _body       = _cfg.get("post_qual_cta_text") or "What would you like to do next?"
-        _showroom   = (_cfg.get("showroom_button_label") or "🏪 Visit Showroom")[:20]
-        _invoice    = (_cfg.get("invoice_button_label")  or "💳 Get Invoice")[:20]
-        _talk_sales = (_cfg.get("talk_to_sales_button_label") or "💬 Talk to Sales")[:20]
+        _cfg              = config or {}
+        _body             = _cfg.get("post_qual_cta_text") or "What would you like to do next?"
+        _showroom_enabled = _cfg.get("showroom_button_enabled", True) is not False
+        _showroom         = (_cfg.get("showroom_button_label") or "🏪 Visit Showroom")[:20]
+        _invoice          = (_cfg.get("invoice_button_label")  or "💳 Get Invoice")[:20]
+        _talk_sales       = (_cfg.get("talk_to_sales_button_label") or "💬 Talk to Sales")[:20]
+
+        _buttons = []
+        if _showroom_enabled:
+            _buttons.append({"type": "reply", "reply": {"id": "showroom_visit", "title": _showroom}})
+        _buttons.append({"type": "reply", "reply": {"id": "get_invoice",   "title": _invoice}})
+        _buttons.append({"type": "reply", "reply": {"id": "talk_to_sales", "title": _talk_sales}})
 
         _call_meta_send(phone_id, {
             "messaging_product": "whatsapp",
@@ -2829,13 +2836,7 @@ def send_post_qual_cta(
             "interactive": {
                 "type": "button",
                 "body": {"text": _body},
-                "action": {
-                    "buttons": [
-                        {"type": "reply", "reply": {"id": "showroom_visit", "title": _showroom}},
-                        {"type": "reply", "reply": {"id": "get_invoice",    "title": _invoice}},
-                        {"type": "reply", "reply": {"id": "talk_to_sales",  "title": _talk_sales}},
-                    ],
-                },
+                "action": {"buttons": _buttons},
             },
         }, token=access_token)
 

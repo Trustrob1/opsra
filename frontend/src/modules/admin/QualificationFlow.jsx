@@ -82,6 +82,7 @@ export default function QualificationFlow() {
   const [pillowNotFound, setPillowNotFound] = useState('')
   const [ctaText,        setCtaText]        = useState('')
   const [showroomLabel,  setShowroomLabel]  = useState('')
+  const [showroomEnabled, setShowroomEnabled] = useState(true)
   const [invoiceLabel,   setInvoiceLabel]   = useState('')
   const [talkSalesLabel, setTalkSalesLabel] = useState('')
   const [showroomConf,   setShowroomConf]   = useState('')
@@ -115,6 +116,7 @@ export default function QualificationFlow() {
         setPillowNotFound(flow.pillow_not_found_message     || '')
         setCtaText(flow.post_qual_cta_text                 || '')
         setShowroomLabel(flow.showroom_button_label         || '')
+        setShowroomEnabled(flow.showroom_button_enabled !== false)
         setInvoiceLabel(flow.invoice_button_label           || '')
         setTalkSalesLabel(flow.talk_to_sales_button_label   || '')
         setShowroomConf(flow.showroom_confirmation          || '')
@@ -195,6 +197,7 @@ export default function QualificationFlow() {
         pillow_not_found_message:    pillowNotFound.trim() || null,
         post_qual_cta_text:          ctaText.trim()        || null,
         showroom_button_label:       showroomLabel.trim()  || null,
+        showroom_button_enabled:     showroomEnabled,
         invoice_button_label:        invoiceLabel.trim()   || null,
         talk_to_sales_button_label:  talkSalesLabel.trim() || null,
         showroom_confirmation:       showroomConf.trim()   || null,
@@ -810,21 +813,35 @@ export default function QualificationFlow() {
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                     {[
-                      { key: 'showroom', label: '🏪 Showroom', val: showroomLabel, set: setShowroomLabel, def: REC_DEFAULTS.showroom_button_label },
+                      {/* Showroom enable toggle */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <input
+                          type="checkbox"
+                          id="showroom_enabled"
+                          checked={showroomEnabled}
+                          onChange={e => setShowroomEnabled(e.target.checked)}
+                          style={{ width: 15, height: 15, cursor: 'pointer', accentColor: ds.teal }}
+                        />
+                        <label htmlFor="showroom_enabled" style={{ fontSize: 12.5, color: ds.dark, cursor: 'pointer', userSelect: 'none' }}>
+                          Show &quot;Visit Showroom&quot; button
+                        </label>
+                      </div>
                       { key: 'invoice',  label: '💳 Invoice',  val: invoiceLabel,  set: setInvoiceLabel,  def: REC_DEFAULTS.invoice_button_label },
                       { key: 'sales',    label: '💬 Talk to Sales', val: talkSalesLabel, set: setTalkSalesLabel, def: REC_DEFAULTS.talk_to_sales_button_label },
-                    ].map(({ key, label, val, set, def }) => (
-                      <div key={key}>
+                    ].map(({ key, label, val, set, def, enabled }) => (
+                      <div key={key} style={{ opacity: enabled ? 1 : 0.4, transition: 'opacity 0.2s' }}>
                         <div style={{ fontSize: 11.5, color: ds.gray, marginBottom: 4 }}>{label}</div>
                         <input
                           style={{
                             ...S.input,
                             borderColor: val.length > 20 ? '#fc8181' : ds.border,
+                            cursor: enabled ? 'text' : 'not-allowed',
                           }}
                           maxLength={20}
                           placeholder={def}
                           value={val}
-                          onChange={e => set(e.target.value)}
+                          onChange={e => enabled && set(e.target.value)}
+                          disabled={!enabled}
                         />
                         <div style={S.charCount(val.length, 18)}>{val.length}/20</div>
                       </div>

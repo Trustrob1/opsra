@@ -134,6 +134,7 @@ class QualificationFlowUpdate(BaseModel):
     pillow_recommendation_intro: Optional[str] = Field(None, max_length=200)
     pillow_not_found_message:    Optional[str] = Field(None, max_length=500)
     post_qual_cta_text:          Optional[str] = Field(None, max_length=100)
+    showroom_button_enabled:     Optional[bool] = None
     showroom_button_label:       Optional[str] = Field(None, max_length=20)
     invoice_button_label:        Optional[str] = Field(None, max_length=20)
     talk_to_sales_button_label:  Optional[str] = Field(None, max_length=20)
@@ -468,9 +469,9 @@ async def update_qualification_flow(
     # Loops over new optional fields — only writes keys explicitly sent in payload.
     for _rec_field in (
         "recommendation_intro", "pillow_upsell_message", "pillow_recommendation_intro",
-        "pillow_not_found_message", "post_qual_cta_text", "showroom_button_label",
-        "invoice_button_label", "talk_to_sales_button_label", "showroom_confirmation",
-        "invoice_confirmation", "talk_to_sales_confirmation",
+        "pillow_not_found_message", "post_qual_cta_text", "showroom_button_enabled",
+        "showroom_button_label", "invoice_button_label", "talk_to_sales_button_label",
+        "showroom_confirmation", "invoice_confirmation", "talk_to_sales_confirmation",
     ):
         _rec_val = getattr(payload, _rec_field, None)
         if _rec_val is not None:
