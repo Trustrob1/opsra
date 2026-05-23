@@ -1,16 +1,15 @@
 /**
  * frontend/src/modules/admin/QualificationFlow.jsx
  * WH-1b — Structured WhatsApp Qualification Flow builder.
- *
- * Replaces QualificationBot.jsx as the rendered tab in AdminModule.
- * QualificationBot.jsx remains in the file structure but is no longer rendered.
+ * QUAL-RECOMMEND — Post-qualification recommendation message config added.
  *
  * Sections:
- *   1. Opening Message — textarea, max 500 chars, required
- *   2. Handoff Message — textarea, max 500 chars, required
- *   3. Question Builder — up to 5 questions, drag/reorder via up/down buttons
- *   4. WhatsApp Preview — live preview of how each question appears on WhatsApp
+ *   1. Opening Message      — textarea, max 500 chars, required
+ *   2. Handoff Message      — textarea, max 500 chars, required
+ *   3. Question Builder     — up to 5 questions, drag/reorder via up/down buttons
+ *   4. Post-Qual Messages   — NEW: configurable strings for recommendation flow
  *   5. Save button
+ *   6. WhatsApp Preview     — live preview panel (right column, unchanged)
  *
  * ds.teal for all accents.
  * Pattern 51: full rewrite required for any future edit — never sed.
@@ -20,6 +19,7 @@ import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
 
+// ── Constants — all unchanged ─────────────────────────────────────────────────
 const QUESTION_TYPES = [
   { value: 'multiple_choice', label: '🔘 Multiple Choice', desc: 'Up to 3 button options' },
   { value: 'list_select',     label: '📋 List Select',     desc: 'Up to 10 list options' },
@@ -47,7 +47,25 @@ const EMPTY_QUESTION = () => ({
 
 const MAX_QUESTIONS = 5
 
+// ── QUAL-RECOMMEND: default text shown as placeholders ────────────────────────
+// These match the hardcoded fallbacks in whatsapp_service.py exactly.
+// When a field is left blank, the backend uses these same values.
+const REC_DEFAULTS = {
+  recommendation_intro:        '🛏️ Based on what you\'ve shared with us, we recommend:',
+  pillow_upsell_message:       'We also carry a premium range of pillows that pair perfectly with your mattress. Would you like to see our pillow recommendations? 🛏️',
+  pillow_recommendation_intro: 'Great choice! 🌟 Here\'s our pillow recommendation:',
+  pillow_not_found_message:    'Our pillow range isn\'t listed online yet, but we carry them in-store. Our team will be happy to walk you through the options when you visit! 🛏️',
+  post_qual_cta_text:          'What would you like to do next?',
+  showroom_button_label:       '🏪 Visit Showroom',
+  invoice_button_label:        '💳 Get Invoice',
+  talk_to_sales_button_label:  '💬 Talk to Sales',
+  showroom_confirmation:       'Perfect! Our team will be in touch shortly to confirm your showroom visit. We look forward to seeing you! 🏡',
+  invoice_confirmation:        'Great choice! Our team will send your invoice and payment details shortly. 💳',
+  talk_to_sales_confirmation:  'Our team will be in touch with you shortly! 😊',
+}
+
 export default function QualificationFlow() {
+  // ── Existing state — all preserved exactly ───────────────────────────────
   const [opening, setOpening]     = useState('')
   const [handoff, setHandoff]     = useState('')
   const [questions, setQuestions] = useState([EMPTY_QUESTION()])
@@ -55,12 +73,31 @@ export default function QualificationFlow() {
   const [saving, setSaving]       = useState(false)
   const [saved, setSaved]         = useState(false)
   const [error, setError]         = useState(null)
-  const [preview, setPreview]     = useState(0)  // index of previewed question
+  const [preview, setPreview]     = useState(0)
 
+  // ── QUAL-RECOMMEND state — new, all optional ─────────────────────────────
+  const [recIntro,       setRecIntro]       = useState('')
+  const [pillowUpsell,   setPillowUpsell]   = useState('')
+  const [pillowRecIntro, setPillowRecIntro] = useState('')
+  const [pillowNotFound, setPillowNotFound] = useState('')
+  const [ctaText,        setCtaText]        = useState('')
+  const [showroomLabel,  setShowroomLabel]  = useState('')
+  const [invoiceLabel,   setInvoiceLabel]   = useState('')
+  const [talkSalesLabel, setTalkSalesLabel] = useState('')
+  const [showroomConf,   setShowroomConf]   = useState('')
+  const [invoiceConf,    setInvoiceConf]    = useState('')
+  const [talkSalesConf,  setTalkSalesConf]  = useState('')
+
+  // ── Collapsible for new section — collapsed by default unless values set ─
+  const [recOpen, setRecOpen] = useState(false)
+
+  // ── Load — existing logic preserved, new fields appended ─────────────────
   useEffect(() => {
     adminSvc.getQualificationFlow()
       .then(data => {
         const flow = (data || {}).qualification_flow || {}
+
+        // Existing fields — unchanged
         setOpening(flow.opening_message || '')
         setHandoff(flow.handoff_message || '')
         if (flow.questions && flow.questions.length > 0) {
@@ -70,12 +107,36 @@ export default function QualificationFlow() {
             options: q.options || [],
           })))
         }
+
+        // QUAL-RECOMMEND fields — new
+        setRecIntro(flow.recommendation_intro              || '')
+        setPillowUpsell(flow.pillow_upsell_message         || '')
+        setPillowRecIntro(flow.pillow_recommendation_intro  || '')
+        setPillowNotFound(flow.pillow_not_found_message     || '')
+        setCtaText(flow.post_qual_cta_text                 || '')
+        setShowroomLabel(flow.showroom_button_label         || '')
+        setInvoiceLabel(flow.invoice_button_label           || '')
+        setTalkSalesLabel(flow.talk_to_sales_button_label   || '')
+        setShowroomConf(flow.showroom_confirmation          || '')
+        setInvoiceConf(flow.invoice_confirmation            || '')
+        setTalkSalesConf(flow.talk_to_sales_confirmation    || '')
+
+        // Auto-expand if any rec fields are already saved
+        const hasRecConfig = [
+          flow.recommendation_intro, flow.pillow_upsell_message,
+          flow.pillow_recommendation_intro, flow.pillow_not_found_message,
+          flow.post_qual_cta_text, flow.showroom_button_label,
+          flow.invoice_button_label, flow.talk_to_sales_button_label,
+          flow.showroom_confirmation, flow.invoice_confirmation,
+          flow.talk_to_sales_confirmation,
+        ].some(v => v && v.trim())
+        if (hasRecConfig) setRecOpen(true)
       })
       .catch(() => setError('Failed to load qualification flow settings.'))
       .finally(() => setLoading(false))
   }, [])
 
-  // ── Validation ──────────────────────────────────────────────────────────
+  // ── Validation — existing rules preserved, button label max-20 added ─────
   const validate = () => {
     if (!opening.trim()) return 'Opening message is required.'
     if (opening.length > 500) return 'Opening message must be 500 characters or fewer.'
@@ -100,9 +161,14 @@ export default function QualificationFlow() {
         }
       }
     }
+    // QUAL-RECOMMEND: button label length — WhatsApp hard limit is 20 chars
+    if (showroomLabel.length  > 20) return 'Showroom button label must be 20 characters or fewer.'
+    if (invoiceLabel.length   > 20) return 'Invoice button label must be 20 characters or fewer.'
+    if (talkSalesLabel.length > 20) return 'Talk to Sales button label must be 20 characters or fewer.'
     return null
   }
 
+  // ── Save — existing payload preserved, new fields appended ───────────────
   const handleSave = async () => {
     const err = validate()
     if (err) { setError(err); return }
@@ -111,6 +177,7 @@ export default function QualificationFlow() {
     setSaved(false)
     try {
       await adminSvc.updateQualificationFlow({
+        // Existing fields — unchanged
         opening_message: opening,
         handoff_message: handoff,
         questions: questions.map((q, idx) => ({
@@ -121,6 +188,18 @@ export default function QualificationFlow() {
           map_to_lead_field: q.map_to_lead_field || null,
           options: q.type === 'free_text' ? null : q.options,
         })),
+        // QUAL-RECOMMEND fields — null when blank so backend uses hardcoded default
+        recommendation_intro:        recIntro.trim()       || null,
+        pillow_upsell_message:       pillowUpsell.trim()   || null,
+        pillow_recommendation_intro: pillowRecIntro.trim() || null,
+        pillow_not_found_message:    pillowNotFound.trim() || null,
+        post_qual_cta_text:          ctaText.trim()        || null,
+        showroom_button_label:       showroomLabel.trim()  || null,
+        invoice_button_label:        invoiceLabel.trim()   || null,
+        talk_to_sales_button_label:  talkSalesLabel.trim() || null,
+        showroom_confirmation:       showroomConf.trim()   || null,
+        invoice_confirmation:        invoiceConf.trim()    || null,
+        talk_to_sales_confirmation:  talkSalesConf.trim()  || null,
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
@@ -132,7 +211,7 @@ export default function QualificationFlow() {
     }
   }
 
-  // ── Question mutations ───────────────────────────────────────────────────
+  // ── Question mutations — all unchanged ────────────────────────────────────
   const addQuestion = () => {
     if (questions.length >= MAX_QUESTIONS) return
     setQuestions(prev => [...prev, EMPTY_QUESTION()])
@@ -200,7 +279,7 @@ export default function QualificationFlow() {
     updateQuestion(qIdx, updates)
   }
 
-  // ── Styles ───────────────────────────────────────────────────────────────
+  // ── Styles — all existing styles preserved, new ones appended ────────────
   const S = {
     section: {
       background: '#fff',
@@ -302,6 +381,64 @@ export default function QualificationFlow() {
       fontSize: 13,
       cursor: disabled ? 'not-allowed' : 'pointer',
     }),
+    // QUAL-RECOMMEND: new styles
+    subLabel: {
+      display: 'block',
+      fontSize: 12.5,
+      fontWeight: 600,
+      color: ds.dark,
+      marginBottom: 4,
+    },
+    subDesc: {
+      fontSize: 11.5,
+      color: ds.gray,
+      marginBottom: 8,
+      lineHeight: 1.4,
+    },
+    fieldGroup: {
+      marginBottom: 18,
+    },
+    divider: {
+      borderTop: `1px solid ${ds.border}`,
+      margin: '18px 0',
+    },
+    groupHeading: {
+      fontSize: 11.5,
+      fontWeight: 700,
+      color: ds.teal,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      marginBottom: 12,
+    },
+    charCount: (len, warn) => ({
+      fontSize: 11,
+      color: len > warn ? '#e53e3e' : ds.gray,
+      textAlign: 'right',
+      marginTop: 3,
+    }),
+    optionalBadge: {
+      display: 'inline-block',
+      fontSize: 10.5,
+      background: '#f0fafa',
+      color: ds.teal,
+      border: `1px solid ${ds.mint}`,
+      borderRadius: 4,
+      padding: '1px 6px',
+      marginLeft: 8,
+      fontWeight: 500,
+      verticalAlign: 'middle',
+    },
+    collapseHeader: {
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      padding: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      width: '100%',
+      textAlign: 'left',
+    },
   }
 
   if (loading) {
@@ -316,7 +453,7 @@ export default function QualificationFlow() {
 
   return (
     <div>
-      {/* Header */}
+      {/* Header — unchanged */}
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: ds.dark, margin: '0 0 4px' }}>
           📋 Qualification Flow
@@ -338,10 +475,10 @@ export default function QualificationFlow() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, alignItems: 'start' }}>
 
-        {/* Left column: config */}
+        {/* Left column */}
         <div>
 
-          {/* Opening Message */}
+          {/* ── 1. Opening Message — unchanged ────────────────────────────── */}
           <div style={S.section}>
             <div style={S.sectionTitle}>👋 Opening Message</div>
             <div style={S.sectionDesc}>
@@ -359,7 +496,7 @@ export default function QualificationFlow() {
             </div>
           </div>
 
-          {/* Handoff Message */}
+          {/* ── 2. Handoff Message — unchanged ────────────────────────────── */}
           <div style={S.section}>
             <div style={S.sectionTitle}>🙏 Handoff Message</div>
             <div style={S.sectionDesc}>
@@ -377,7 +514,7 @@ export default function QualificationFlow() {
             </div>
           </div>
 
-          {/* Question Builder */}
+          {/* ── 3. Question Builder — unchanged ───────────────────────────── */}
           <div style={S.section}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <div style={S.sectionTitle}>❓ Questions ({questions.length}/{MAX_QUESTIONS})</div>
@@ -415,17 +552,9 @@ export default function QualificationFlow() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{
-                      background: ds.teal,
-                      color: '#fff',
-                      borderRadius: '50%',
-                      width: 22,
-                      height: 22,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      flexShrink: 0,
+                      background: ds.teal, color: '#fff', borderRadius: '50%',
+                      width: 22, height: 22, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0,
                     }}>
                       {idx + 1}
                     </span>
@@ -500,7 +629,7 @@ export default function QualificationFlow() {
                   </select>
                 </div>
 
-                {/* Options editor — shown for non-free_text */}
+                {/* Options editor */}
                 {q.type !== 'free_text' && (
                   <div onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, marginTop: 10 }}>
@@ -546,7 +675,194 @@ export default function QualificationFlow() {
             ))}
           </div>
 
-          {/* Save */}
+          {/* ── 4. Post-Qualification Messages — NEW (QUAL-RECOMMEND) ──────── */}
+          <div style={S.section}>
+
+            {/* Collapsible header */}
+            <button style={S.collapseHeader} onClick={() => setRecOpen(o => !o)}>
+              <div>
+                <div style={{ ...S.sectionTitle, marginBottom: 0 }}>
+                  🎯 Post-Qualification Messages
+                  <span style={S.optionalBadge}>Optional</span>
+                </div>
+                {!recOpen && (
+                  <div style={{ fontSize: 12, color: ds.gray, marginTop: 4 }}>
+                    Customise recommendation text, pillow upsell, CTA buttons and confirmations.
+                    Defaults apply when left blank.
+                  </div>
+                )}
+              </div>
+              <span style={{
+                fontSize: 18,
+                color: ds.gray,
+                marginLeft: 12,
+                flexShrink: 0,
+                transition: 'transform 0.2s',
+                display: 'inline-block',
+                transform: recOpen ? 'rotate(180deg)' : 'none',
+              }}>
+                ▾
+              </span>
+            </button>
+
+            {/* Expanded content */}
+            {recOpen && (
+              <div style={{ marginTop: 20 }}>
+                <div style={S.sectionDesc}>
+                  These messages are sent after the lead completes all qualification questions —
+                  after the handoff message above. Leave any field blank to use the system default
+                  shown in the placeholder text.
+                </div>
+
+                {/* ── Mattress Recommendation ── */}
+                <div style={S.groupHeading}>Mattress Recommendation</div>
+
+                <div style={S.fieldGroup}>
+                  <label style={S.subLabel}>Recommendation Intro</label>
+                  <div style={S.subDesc}>
+                    Text sent before the recommended product name and price.
+                  </div>
+                  <textarea
+                    style={{ ...S.textarea, minHeight: 56 }}
+                    maxLength={200}
+                    placeholder={REC_DEFAULTS.recommendation_intro}
+                    value={recIntro}
+                    onChange={e => setRecIntro(e.target.value)}
+                  />
+                  <div style={S.charCount(recIntro.length, 190)}>{recIntro.length}/200</div>
+                </div>
+
+                <div style={S.divider} />
+
+                {/* ── Pillow Upsell ── */}
+                <div style={S.groupHeading}>Pillow Upsell</div>
+
+                <div style={S.fieldGroup}>
+                  <label style={S.subLabel}>Pillow Upsell Question</label>
+                  <div style={S.subDesc}>
+                    Sent after the mattress recommendation — asks if the lead wants to see pillows.
+                  </div>
+                  <textarea
+                    style={S.textarea}
+                    maxLength={500}
+                    placeholder={REC_DEFAULTS.pillow_upsell_message}
+                    value={pillowUpsell}
+                    onChange={e => setPillowUpsell(e.target.value)}
+                  />
+                  <div style={S.charCount(pillowUpsell.length, 480)}>{pillowUpsell.length}/500</div>
+                </div>
+
+                <div style={S.fieldGroup}>
+                  <label style={S.subLabel}>Pillow Recommendation Intro</label>
+                  <div style={S.subDesc}>
+                    Text sent before the recommended pillow name and price (when lead taps &quot;Yes, show me&quot;).
+                  </div>
+                  <textarea
+                    style={{ ...S.textarea, minHeight: 56 }}
+                    maxLength={200}
+                    placeholder={REC_DEFAULTS.pillow_recommendation_intro}
+                    value={pillowRecIntro}
+                    onChange={e => setPillowRecIntro(e.target.value)}
+                  />
+                  <div style={S.charCount(pillowRecIntro.length, 190)}>{pillowRecIntro.length}/200</div>
+                </div>
+
+                <div style={S.fieldGroup}>
+                  <label style={S.subLabel}>Pillow Not Found Message</label>
+                  <div style={S.subDesc}>
+                    Sent when no pillow products exist in your product list (e.g. in-store only inventory).
+                  </div>
+                  <textarea
+                    style={S.textarea}
+                    maxLength={500}
+                    placeholder={REC_DEFAULTS.pillow_not_found_message}
+                    value={pillowNotFound}
+                    onChange={e => setPillowNotFound(e.target.value)}
+                  />
+                  <div style={S.charCount(pillowNotFound.length, 480)}>{pillowNotFound.length}/500</div>
+                </div>
+
+                <div style={S.divider} />
+
+                {/* ── CTA Buttons ── */}
+                <div style={S.groupHeading}>Action Buttons</div>
+
+                <div style={S.fieldGroup}>
+                  <label style={S.subLabel}>CTA Body Text</label>
+                  <div style={S.subDesc}>
+                    Text displayed above the three action buttons.
+                  </div>
+                  <input
+                    style={S.input}
+                    maxLength={100}
+                    placeholder={REC_DEFAULTS.post_qual_cta_text}
+                    value={ctaText}
+                    onChange={e => setCtaText(e.target.value)}
+                  />
+                </div>
+
+                <div style={S.fieldGroup}>
+                  <label style={S.subLabel}>
+                    Button Labels
+                    <span style={{ fontWeight: 400, color: ds.gray, marginLeft: 4 }}>
+                      (max 20 chars — WhatsApp limit)
+                    </span>
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                    {[
+                      { key: 'showroom', label: '🏪 Showroom', val: showroomLabel, set: setShowroomLabel, def: REC_DEFAULTS.showroom_button_label },
+                      { key: 'invoice',  label: '💳 Invoice',  val: invoiceLabel,  set: setInvoiceLabel,  def: REC_DEFAULTS.invoice_button_label },
+                      { key: 'sales',    label: '💬 Talk to Sales', val: talkSalesLabel, set: setTalkSalesLabel, def: REC_DEFAULTS.talk_to_sales_button_label },
+                    ].map(({ key, label, val, set, def }) => (
+                      <div key={key}>
+                        <div style={{ fontSize: 11.5, color: ds.gray, marginBottom: 4 }}>{label}</div>
+                        <input
+                          style={{
+                            ...S.input,
+                            borderColor: val.length > 20 ? '#fc8181' : ds.border,
+                          }}
+                          maxLength={20}
+                          placeholder={def}
+                          value={val}
+                          onChange={e => set(e.target.value)}
+                        />
+                        <div style={S.charCount(val.length, 18)}>{val.length}/20</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={S.divider} />
+
+                {/* ── Confirmation Messages ── */}
+                <div style={S.groupHeading}>Confirmation Messages</div>
+                <div style={{ ...S.sectionDesc, marginBottom: 16 }}>
+                  Sent to the lead immediately after they tap one of the three action buttons.
+                </div>
+
+                {[
+                  { icon: '🏪', title: 'After "Visit Showroom"', val: showroomConf, set: setShowroomConf, def: REC_DEFAULTS.showroom_confirmation },
+                  { icon: '💳', title: 'After "Get Invoice"',    val: invoiceConf,  set: setInvoiceConf,  def: REC_DEFAULTS.invoice_confirmation },
+                  { icon: '💬', title: 'After "Talk to Sales"',  val: talkSalesConf, set: setTalkSalesConf, def: REC_DEFAULTS.talk_to_sales_confirmation },
+                ].map(({ icon, title, val, set, def }) => (
+                  <div style={S.fieldGroup} key={title}>
+                    <label style={S.subLabel}>{icon} {title}</label>
+                    <textarea
+                      style={{ ...S.textarea, minHeight: 64 }}
+                      maxLength={500}
+                      placeholder={def}
+                      value={val}
+                      onChange={e => set(e.target.value)}
+                    />
+                    <div style={S.charCount(val.length, 480)}>{val.length}/500</div>
+                  </div>
+                ))}
+
+              </div>
+            )}
+          </div>
+
+          {/* ── Save — unchanged ──────────────────────────────────────────── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button style={S.saveBtn(saving)} onClick={handleSave} disabled={saving}>
               {saving ? 'Saving…' : '💾 Save Flow'}
@@ -559,7 +875,7 @@ export default function QualificationFlow() {
           </div>
         </div>
 
-        {/* Right column: WhatsApp Preview */}
+        {/* ── Right column: WhatsApp Preview — completely unchanged ─────── */}
         <div style={{ position: 'sticky', top: 24 }}>
           <div style={{
             background: '#e5ddd5',
@@ -584,7 +900,6 @@ export default function QualificationFlow() {
             </div>
 
             <div style={{ padding: '10px 4px' }}>
-              {/* Preview selector tabs */}
               <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
                 {questions.map((_, i) => (
                   <button
@@ -606,7 +921,6 @@ export default function QualificationFlow() {
                 ))}
               </div>
 
-              {/* Opening message bubble — only on Q1 */}
               {preview === 0 && opening && (
                 <div style={{
                   background: '#fff',
@@ -626,7 +940,6 @@ export default function QualificationFlow() {
 
               {pq && (
                 <div>
-                  {/* Question bubble */}
                   <div style={{
                     background: '#fff',
                     borderRadius: pq.type !== 'free_text' ? '0 10px 0 10px' : '0 10px 10px 10px',
@@ -642,7 +955,6 @@ export default function QualificationFlow() {
                     {pq.text || <span style={{ color: '#aaa' }}>Question text appears here…</span>}
                   </div>
 
-                  {/* Button preview */}
                   {(pq.type === 'multiple_choice' || pq.type === 'yes_no') && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
                       {(pq.options || []).slice(0, 3).map((opt, i) => (
@@ -667,7 +979,6 @@ export default function QualificationFlow() {
                     </div>
                   )}
 
-                  {/* List preview */}
                   {pq.type === 'list_select' && (
                     <div>
                       <div style={{
@@ -707,7 +1018,6 @@ export default function QualificationFlow() {
                     </div>
                   )}
 
-                  {/* Free text input preview */}
                   {pq.type === 'free_text' && (
                     <div style={{
                       display: 'flex',
@@ -732,6 +1042,7 @@ export default function QualificationFlow() {
             Live WhatsApp preview — updates as you type
           </div>
         </div>
+
       </div>
     </div>
   )
