@@ -59,6 +59,7 @@ import HealthDashboard from "./modules/superadmin/HealthDashboard.jsx"
 import ConversationsModule from './modules/conversations/ConversationsModule'
 import TermsOfService from './pages/TermsOfService'
 import { _supabase } from './services/api'
+import PublicCatalogShell from './catalog/PublicCatalogShell'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -111,6 +112,7 @@ export default function App() {
     document.head.appendChild(style)
   }, [])
 
+  if (window.location.pathname.startsWith('/catalog/')) return <PublicCatalogShell />
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />
   if (window.location.pathname === '/terms') return <TermsOfService />
   if (window.location.pathname === '/auth/update-password') return <UpdatePasswordScreen />
