@@ -1740,6 +1740,7 @@ def _handle_structured_qualification_turn(
     _rec_flow_launched = _launch_post_qual_recommendation_flow(
         db=db, org_id=org_id, lead_id=lead_id,
         lead_phone=lead_phone, answers=existing_answers, org_name=org_name,
+        qual_flow=qualification_flow,
     )
 
     if _rec_flow_launched:
@@ -1835,21 +1836,17 @@ def _launch_post_qual_recommendation_flow(
     lead_phone: str,
     answers: dict,
     org_name: str,
+    qual_flow: dict = None,
 ) -> bool:
     """
     QUAL-RECOMMEND: Fetch products, generate AI recommendation, and send
     recommendation text + product image + pillow upsell prompt to the lead.
-
-    Called immediately after the qualification handoff message.
-
-    Returns:
-        True  — products exist for this org; recommendation flow was launched.
-        False — no products in DB; caller should use original handed_off behaviour.
-
+    qual_flow: the full qualification_flow dict from the organisations table.
+               Passed through to send functions for configurable copy.
+    Returns True if products exist and flow launched, False otherwise.
     S14 — never raises.
     """
     try:
-        # Fetch all active products for this org
         _prod_result = (
             db.table("products")
             .select("id, title, price, image_url")
@@ -1862,7 +1859,6 @@ def _launch_post_qual_recommendation_flow(
         )
 
         if not all_products:
-            # Org has no products configured — skip recommendation flow entirely
             logger.info(
                 "_launch_post_qual_recommendation_flow: no products for org %s "
                 "— skipping recommendation flow",
@@ -1870,27 +1866,22 @@ def _launch_post_qual_recommendation_flow(
             )
             return False
 
-        # Filter mattresses only — exclude any product with "pillow" in the title
         mattress_products = [
             p for p in all_products
             if "pillow" not in (p.get("title") or "").lower()
         ]
 
         if mattress_products:
-            # Generate AI recommendation
             rec = generate_product_recommendation(
                 answers=answers,
                 mattress_products=mattress_products,
                 org_name=org_name,
             )
-
-            # Send recommendation text
             send_recommendation_message(
                 db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
                 title=rec["title"], price=rec["price"], rationale=rec["rationale"],
+                config=qual_flow,
             )
-
-            # Send product image if available
             if rec.get("image_url"):
                 send_outbound_image_url(
                     db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
@@ -1903,11 +1894,10 @@ def _launch_post_qual_recommendation_flow(
                 org_id,
             )
 
-        # Always send pillow upsell prompt if any products exist
         send_pillow_upsell_prompt(
             db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+            config=qual_flow,
         )
-
         return True
 
     except Exception as exc:
@@ -1929,43 +1919,58 @@ def _handle_pillow_upsell_reply(
 ) -> None:
     """
     QUAL-RECOMMEND: Handle the lead's Yes/No response to the pillow upsell.
-    - "pillow_yes" → fetch pillow products → recommend + image → CTA
-    - Anything else (including "pillow_no" or free text) → CTA directly
-
-    Always advances session to "awaiting_post_qual_cta" on completion.
+    Fetches qual_flow from DB for configurable copy.
     S14 — never raises.
     """
     try:
         session_id = session["id"]
         lead_phone = _get_lead_phone(db, lead_id)
 
+        # Fetch qual_flow for configurable copy
+        qual_flow = {}
+        try:
+            _qf_r = (
+                db.table("organisations")
+                .select("qualification_flow")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            _qf_d = _qf_r.data
+            if isinstance(_qf_d, list):
+                _qf_d = _qf_d[0] if _qf_d else None
+            qual_flow = (_qf_d or {}).get("qualification_flow") or {}
+        except Exception as _qf_exc:
+            logger.warning(
+                "_handle_pillow_upsell_reply: qual_flow fetch failed org=%s: %s",
+                org_id, _qf_exc,
+            )
+
         button_reply = (interactive_payload or {}).get("button_reply") or {}
         selected_id  = button_reply.get("id") or ""
 
         if selected_id == "pillow_yes":
-            # Fetch pillow products
             try:
-                _prod_r      = (
+                _prod_r     = (
                     db.table("products")
                     .select("id, title, price, image_url")
                     .eq("org_id", org_id)
                     .eq("is_active", True)
                     .execute()
                 )
-                _all          = _prod_r.data if isinstance(_prod_r.data, list) else []
+                _all        = _prod_r.data if isinstance(_prod_r.data, list) else []
                 pillow_products = [
                     p for p in _all
                     if "pillow" in (p.get("title") or "").lower()
                 ]
             except Exception as _pp_exc:
                 logger.warning(
-                    "_handle_pillow_upsell_reply: pillow product fetch failed "
-                    "org=%s: %s", org_id, _pp_exc,
+                    "_handle_pillow_upsell_reply: pillow fetch failed org=%s: %s",
+                    org_id, _pp_exc,
                 )
                 pillow_products = []
 
             if pillow_products:
-                # Fetch org name for AI call
                 _org_name = ""
                 try:
                     _org_r = (
@@ -1989,6 +1994,7 @@ def _handle_pillow_upsell_reply(
                 send_pillow_recommendation_message(
                     db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
                     title=pillow_rec["title"], price=pillow_rec["price"],
+                    config=qual_flow,
                 )
                 if pillow_rec.get("image_url"):
                     send_outbound_image_url(
@@ -1996,17 +2002,16 @@ def _handle_pillow_upsell_reply(
                         image_url=pillow_rec["image_url"], caption=pillow_rec["title"],
                     )
             else:
-                # No pillow products in DB — graceful in-store fallback
                 send_pillow_not_found_message(
                     db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+                    config=qual_flow,
                 )
 
-        # Always send CTA regardless of pillow decision
         send_post_qual_cta(
             db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+            config=qual_flow,
         )
 
-        # Advance session
         db.table("lead_qualification_sessions").update({
             "stage":           "awaiting_post_qual_cta",
             "last_message_at": now_ts,
@@ -2029,11 +2034,10 @@ def _handle_post_qual_cta_reply(
     now_ts: str,
 ) -> None:
     """
-    QUAL-RECOMMEND: Handle the lead's CTA selection (Visit Showroom or Get Invoice).
-    - Sends confirmation message to lead
-    - Creates a high-priority rep task (Pattern 79 — source_record_id)
-    - Closes the qualification session (ai_active=False, stage="handed_off")
-
+    QUAL-RECOMMEND: Handle the lead's CTA selection.
+    Options: showroom_visit | get_invoice | talk_to_sales
+    Fetches qual_flow from DB for configurable confirmation copy.
+    Creates a rep task and closes the qualification session.
     S14 — never raises.
     """
     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
@@ -2043,30 +2047,64 @@ def _handle_post_qual_cta_reply(
     )
 
     try:
-        session_id  = session["id"]
-        lead_phone  = _get_lead_phone(db, lead_id)
-        lead_data   = _get_lead_basic(db, lead_id)
-        lead_name   = lead_data.get("full_name") or "Lead"
+        session_id = session["id"]
+        lead_phone = _get_lead_phone(db, lead_id)
+        lead_data  = _get_lead_basic(db, lead_id)
+        lead_name  = lead_data.get("full_name") or "Lead"
+
+        # Fetch qual_flow for configurable confirmation copy
+        qual_flow = {}
+        try:
+            _qf_r = (
+                db.table("organisations")
+                .select("qualification_flow")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            _qf_d = _qf_r.data
+            if isinstance(_qf_d, list):
+                _qf_d = _qf_d[0] if _qf_d else None
+            qual_flow = (_qf_d or {}).get("qualification_flow") or {}
+        except Exception as _qf_exc:
+            logger.warning(
+                "_handle_post_qual_cta_reply: qual_flow fetch failed org=%s: %s",
+                org_id, _qf_exc,
+            )
 
         button_reply = (interactive_payload or {}).get("button_reply") or {}
         selected_id  = button_reply.get("id") or ""
 
         if selected_id == "showroom_visit":
             confirmation = (
-                "Perfect! Our team will be in touch shortly to confirm "
-                "your showroom visit. We look forward to seeing you! 🏡"
+                qual_flow.get("showroom_confirmation")
+                or "Perfect! Our team will be in touch shortly to confirm "
+                   "your showroom visit. We look forward to seeing you! 🏡"
             )
             task_title = f"Arrange showroom visit for {lead_name}"
+
         elif selected_id == "get_invoice":
             confirmation = (
-                "Great choice! Our team will send your invoice and "
-                "payment details shortly. 💳"
+                qual_flow.get("invoice_confirmation")
+                or "Great choice! Our team will send your invoice and "
+                   "payment details shortly. 💳"
             )
             task_title = f"Send invoice to {lead_name}"
+
+        elif selected_id == "talk_to_sales":
+            confirmation = (
+                qual_flow.get("talk_to_sales_confirmation")
+                or "Our team will be in touch with you shortly! 😊"
+            )
+            task_title = f"Lead wants to speak with sales — {lead_name}"
+
         else:
-            # Unknown input (e.g. free-text reply) — generic fallback
-            confirmation = "Thanks! Our team will be in touch with you shortly. 😊"
-            task_title   = f"Follow up with {lead_name}"
+            # Unknown input — generic fallback
+            confirmation = (
+                qual_flow.get("talk_to_sales_confirmation")
+                or "Our team will be in touch with you shortly! 😊"
+            )
+            task_title = f"Follow up with {lead_name}"
 
         # Send confirmation to lead
         try:
@@ -2080,11 +2118,8 @@ def _handle_post_qual_cta_reply(
                     "text": {"body": confirmation},
                 }, token=_token)
 
-            # Store confirmation in whatsapp_messages — Pattern 81
             try:
-                _win_exp = (
-                    _dt.now(_tz.utc) + _td(hours=24)
-                ).isoformat()
+                _win_exp = (_dt.now(_tz.utc) + _td(hours=24)).isoformat()
                 db.table("whatsapp_messages").insert({
                     "org_id":            org_id,
                     "lead_id":           lead_id,
@@ -2107,12 +2142,10 @@ def _handle_post_qual_cta_reply(
                 lead_id, _send_exc,
             )
 
-        # Resolve rep for task — fall back to org manager if unassigned.
-        # users.role_id is a UUID FK to roles.id — two-step lookup required.
+        # Resolve rep — two-step lookup via roles table
         _task_rep = assigned_to
         if not _task_rep:
             try:
-                # Step 1: get role IDs for Owner and Operations Manager in this org
                 _role_r = (
                     db.table("roles")
                     .select("id")
@@ -2120,10 +2153,8 @@ def _handle_post_qual_cta_reply(
                     .in_("name", ["Owner", "Operations Manager"])
                     .execute()
                 )
-                _role_rows = _role_r.data if isinstance(_role_r.data, list) else []
+                _role_rows  = _role_r.data if isinstance(_role_r.data, list) else []
                 _mgr_role_ids = [r["id"] for r in _role_rows if r.get("id")]
-
-                # Step 2: find an active user with one of those role IDs
                 if _mgr_role_ids:
                     _mgr_r = (
                         db.table("users")
@@ -2180,7 +2211,6 @@ def _handle_post_qual_cta_reply(
             "_handle_post_qual_cta_reply failed lead=%s org=%s: %s",
             lead_id, org_id, exc,
         )
-
 
 def _send_qualification_reply(db, org_id: str, lead_id: str, org_data: dict, reply: str, now_ts: str) -> None:
     from app.services.whatsapp_service import _call_meta_send, _now_iso, _get_org_wa_credentials

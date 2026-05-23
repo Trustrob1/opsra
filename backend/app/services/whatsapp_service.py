@@ -2461,11 +2461,11 @@ def send_recommendation_message(
     title: str,
     price: float,
     rationale: str,
+    config: dict = None,
 ) -> None:
     """
     QUAL-RECOMMEND: Send AI mattress recommendation text to the lead.
-    Includes product name, price, and AI rationale.
-    Stores message in whatsapp_messages for Conversations thread.
+    config: qualification_flow dict — reads 'recommendation_intro' key.
     S14 — never raises.
     """
     try:
@@ -2477,9 +2477,13 @@ def send_recommendation_message(
             )
             return
 
+        intro = (
+            (config or {}).get("recommendation_intro")
+            or "🛏️ Based on what you've shared with us, we recommend:"
+        )
         price_formatted = f"₦{price:,.0f}" if price else ""
         body = (
-            f"🛏️ Based on what you've shared with us, we recommend:\n\n"
+            f"{intro}\n\n"
             f"*{title}*"
             + (f" — {price_formatted}" if price_formatted else "")
             + f"\n\n{rationale}"
@@ -2492,7 +2496,6 @@ def send_recommendation_message(
             "text": {"body": body},
         }, token=access_token)
 
-        # Store in whatsapp_messages — Pattern 81: message_type="text"
         try:
             _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
             db.table("whatsapp_messages").insert({
@@ -2529,10 +2532,8 @@ def send_outbound_image_url(
     caption: str = "",
 ) -> None:
     """
-    QUAL-RECOMMEND: Send a product image to a lead using a public URL
-    (e.g. Shopify CDN). Meta fetches the image directly — no Supabase
-    Storage upload required.
-    Stores message in whatsapp_messages so image appears in Conversations thread.
+    QUAL-RECOMMEND: Send a product image to a lead using a public URL.
+    Meta fetches the image directly — no Supabase Storage upload required.
     S14 — never raises.
     """
     try:
@@ -2552,7 +2553,7 @@ def send_outbound_image_url(
 
         image_payload: dict = {"link": image_url}
         if caption:
-            image_payload["caption"] = caption[:1024]  # Meta caption character limit
+            image_payload["caption"] = caption[:1024]
 
         _call_meta_send(phone_id, {
             "messaging_product": "whatsapp",
@@ -2561,7 +2562,6 @@ def send_outbound_image_url(
             "image": image_payload,
         }, token=access_token)
 
-        # Store in whatsapp_messages
         try:
             _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
             db.table("whatsapp_messages").insert({
@@ -2594,12 +2594,12 @@ def send_pillow_upsell_prompt(
     org_id: str,
     phone_number: str,
     lead_id: str,
+    config: dict = None,
 ) -> None:
     """
-    QUAL-RECOMMEND: Send a Yes/No prompt asking if the lead is interested
-    in pillows. Sent immediately after the mattress recommendation.
+    QUAL-RECOMMEND: Send a Yes/No prompt asking if the lead wants to see pillows.
+    config: qualification_flow dict — reads 'pillow_upsell_message' key.
     Button IDs: "pillow_yes" | "pillow_no"
-    Stores message in whatsapp_messages.
     S14 — never raises.
     """
     try:
@@ -2612,8 +2612,11 @@ def send_pillow_upsell_prompt(
             return
 
         _body = (
-            "We also carry a premium range of pillows that pair perfectly "
-            "with your mattress. Would you like to see our pillow recommendations? 🛏️"
+            (config or {}).get("pillow_upsell_message")
+            or (
+                "We also carry a premium range of pillows that pair perfectly "
+                "with your mattress. Would you like to see our pillow recommendations? 🛏️"
+            )
         )
 
         _call_meta_send(phone_id, {
@@ -2632,7 +2635,6 @@ def send_pillow_upsell_prompt(
             },
         }, token=access_token)
 
-        # Store in whatsapp_messages — Pattern 81: message_type="text"
         try:
             _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
             db.table("whatsapp_messages").insert({
@@ -2666,10 +2668,11 @@ def send_pillow_recommendation_message(
     lead_id: str,
     title: str,
     price: float,
+    config: dict = None,
 ) -> None:
     """
-    QUAL-RECOMMEND: Send a pillow product recommendation text to the lead.
-    Stores message in whatsapp_messages.
+    QUAL-RECOMMEND: Send pillow product recommendation text to lead.
+    config: qualification_flow dict — reads 'pillow_recommendation_intro' key.
     S14 — never raises.
     """
     try:
@@ -2682,9 +2685,13 @@ def send_pillow_recommendation_message(
             )
             return
 
+        intro = (
+            (config or {}).get("pillow_recommendation_intro")
+            or "Great choice! 🌟 Here's our pillow recommendation:"
+        )
         price_formatted = f"₦{price:,.0f}" if price else ""
         body = (
-            f"Great choice! 🌟 Here's our pillow recommendation:\n\n"
+            f"{intro}\n\n"
             f"*{title}*"
             + (f" — {price_formatted}" if price_formatted else "")
         )
@@ -2728,11 +2735,11 @@ def send_pillow_not_found_message(
     org_id: str,
     phone_number: str,
     lead_id: str,
+    config: dict = None,
 ) -> None:
     """
-    QUAL-RECOMMEND: Graceful fallback when no pillow products exist in the
-    products table (in-store only inventory).
-    Stores message in whatsapp_messages.
+    QUAL-RECOMMEND: Graceful fallback when no pillow products exist in DB.
+    config: qualification_flow dict — reads 'pillow_not_found_message' key.
     S14 — never raises.
     """
     try:
@@ -2745,8 +2752,11 @@ def send_pillow_not_found_message(
             return
 
         body = (
-            "Our pillow range isn't listed online yet, but we carry them in-store. "
-            "Our team will be happy to walk you through the options when you visit! 🛏️"
+            (config or {}).get("pillow_not_found_message")
+            or (
+                "Our pillow range isn't listed online yet, but we carry them in-store. "
+                "Our team will be happy to walk you through the options when you visit! 🛏️"
+            )
         )
 
         _call_meta_send(phone_id, {
@@ -2788,12 +2798,13 @@ def send_post_qual_cta(
     org_id: str,
     phone_number: str,
     lead_id: str,
+    config: dict = None,
 ) -> None:
     """
     QUAL-RECOMMEND: Send the post-qualification CTA button message.
-    Two options: Visit Showroom or Get Invoice.
-    Button IDs: "showroom_visit" | "get_invoice"
-    Stores message in whatsapp_messages.
+    Three options: Visit Showroom, Get Invoice, Talk to Sales.
+    Button IDs: "showroom_visit" | "get_invoice" | "talk_to_sales"
+    config: qualification_flow dict — reads label + body text keys.
     S14 — never raises.
     """
     try:
@@ -2805,7 +2816,11 @@ def send_post_qual_cta(
             )
             return
 
-        _body = "What would you like to do next?"
+        _cfg        = config or {}
+        _body       = _cfg.get("post_qual_cta_text") or "What would you like to do next?"
+        _showroom   = (_cfg.get("showroom_button_label") or "🏪 Visit Showroom")[:20]
+        _invoice    = (_cfg.get("invoice_button_label")  or "💳 Get Invoice")[:20]
+        _talk_sales = (_cfg.get("talk_to_sales_button_label") or "💬 Talk to Sales")[:20]
 
         _call_meta_send(phone_id, {
             "messaging_product": "whatsapp",
@@ -2816,14 +2831,14 @@ def send_post_qual_cta(
                 "body": {"text": _body},
                 "action": {
                     "buttons": [
-                        {"type": "reply", "reply": {"id": "showroom_visit", "title": "🏪 Visit Showroom"}},
-                        {"type": "reply", "reply": {"id": "get_invoice",    "title": "💳 Get Invoice"}},
+                        {"type": "reply", "reply": {"id": "showroom_visit", "title": _showroom}},
+                        {"type": "reply", "reply": {"id": "get_invoice",    "title": _invoice}},
+                        {"type": "reply", "reply": {"id": "talk_to_sales",  "title": _talk_sales}},
                     ],
                 },
             },
         }, token=access_token)
 
-        # Store in whatsapp_messages — Pattern 81: message_type="text"
         try:
             _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
             db.table("whatsapp_messages").insert({
@@ -2848,7 +2863,6 @@ def send_post_qual_cta(
             "send_post_qual_cta failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
-
 def send_abandoned_cart_message(
     db,
     org_id: str,
