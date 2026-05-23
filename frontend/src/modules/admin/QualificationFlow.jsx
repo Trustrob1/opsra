@@ -811,23 +811,25 @@ export default function QualificationFlow() {
                       (max 20 chars — WhatsApp limit)
                     </span>
                   </label>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <input
+                      type="checkbox"
+                      id="showroom_enabled"
+                      checked={showroomEnabled}
+                      onChange={e => setShowroomEnabled(e.target.checked)}
+                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: ds.teal }}
+                    />
+                    <label htmlFor="showroom_enabled" style={{ fontSize: 12.5, color: ds.dark, cursor: 'pointer', userSelect: 'none' }}>
+                      Show &quot;Visit Showroom&quot; button
+                    </label>
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                     {[
-                      {/* Showroom enable toggle */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                        <input
-                          type="checkbox"
-                          id="showroom_enabled"
-                          checked={showroomEnabled}
-                          onChange={e => setShowroomEnabled(e.target.checked)}
-                          style={{ width: 15, height: 15, cursor: 'pointer', accentColor: ds.teal }}
-                        />
-                        <label htmlFor="showroom_enabled" style={{ fontSize: 12.5, color: ds.dark, cursor: 'pointer', userSelect: 'none' }}>
-                          Show &quot;Visit Showroom&quot; button
-                        </label>
-                      </div>
-                      { key: 'invoice',  label: '💳 Invoice',  val: invoiceLabel,  set: setInvoiceLabel,  def: REC_DEFAULTS.invoice_button_label },
-                      { key: 'sales',    label: '💬 Talk to Sales', val: talkSalesLabel, set: setTalkSalesLabel, def: REC_DEFAULTS.talk_to_sales_button_label },
+                      { key: 'showroom', label: '🏪 Showroom',     val: showroomLabel,  set: setShowroomLabel,  def: REC_DEFAULTS.showroom_button_label,      enabled: showroomEnabled },
+                      { key: 'invoice',  label: '💳 Invoice',       val: invoiceLabel,   set: setInvoiceLabel,   def: REC_DEFAULTS.invoice_button_label,       enabled: true },
+                      { key: 'sales',    label: '💬 Talk to Sales', val: talkSalesLabel, set: setTalkSalesLabel, def: REC_DEFAULTS.talk_to_sales_button_label, enabled: true },
                     ].map(({ key, label, val, set, def, enabled }) => (
                       <div key={key} style={{ opacity: enabled ? 1 : 0.4, transition: 'opacity 0.2s' }}>
                         <div style={{ fontSize: 11.5, color: ds.gray, marginBottom: 4 }}>{label}</div>
