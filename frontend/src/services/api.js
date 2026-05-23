@@ -32,9 +32,9 @@ export const _supabase = createClient(
 const api = axios.create({ baseURL: BASE })
 
 // ── Request interceptor — inject current token ───────────────────────────────
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   // Lazy import to avoid circular dependency at module load time
-  const { default: useAuthStore } = require('../store/authStore')
+  const { default: useAuthStore } = await import('../store/authStore')
   const token = useAuthStore.getState().getToken()
   if (token) {
     config.headers = config.headers ?? {}
@@ -125,9 +125,13 @@ export default api
  * Prefer using `api` directly for new code — this is a bridge for existing files.
  */
 export function _h() {
-  const { default: useAuthStore } = require('../store/authStore')
-  const token = useAuthStore.getState().getToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  try {
+    const { default: useAuthStore } = require('../store/authStore')
+    const token = useAuthStore.getState().getToken()
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  } catch {
+    return {}
+  }
 }
 
 export { BASE }

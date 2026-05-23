@@ -180,6 +180,7 @@ async def get_current_org(
                     .execute()
                 )
                 rows = result.data or []
+                logger.warning("DEBUG get_current_org rows=%s for user_id=%s", rows, current_user.id)
                 if rows:
                     db_user = rows[0]
                     _user_cache[current_user.id] = db_user  # cache for 30s

@@ -36,6 +36,8 @@ def sync_all_orgs() -> dict:
     orgs_processed = 0
     total_synced = 0
     total_failed = 0
+    total_images_mirrored = 0
+    total_images_skipped = 0
 
     try:
         result = (
@@ -70,10 +72,14 @@ def sync_all_orgs() -> dict:
                 )
                 total_synced += counts.get("synced", 0)
                 total_failed += counts.get("failed", 0)
+                total_images_mirrored += counts.get("images_mirrored", 0)
+                total_images_skipped += counts.get("images_skipped", 0)
                 orgs_processed += 1
                 logger.info(
-                    "shopify_sync_worker: org=%s synced=%d failed=%d",
+                    "shopify_sync_worker: org=%s synced=%d failed=%d "
+                    "images_mirrored=%d images_skipped=%d",
                     org_id, counts.get("synced", 0), counts.get("failed", 0),
+                    counts.get("images_mirrored", 0), counts.get("images_skipped", 0),
                 )
             except Exception as exc:
                 logger.warning(
@@ -85,9 +91,11 @@ def sync_all_orgs() -> dict:
         logger.error("shopify_sync_worker: fatal error: %s", exc)
 
     summary = {
-        "orgs_processed": orgs_processed,
-        "total_synced":   total_synced,
-        "total_failed":   total_failed,
+        "orgs_processed":      orgs_processed,
+        "total_synced":        total_synced,
+        "total_failed":        total_failed,
+        "total_images_mirrored": total_images_mirrored,
+        "total_images_skipped":  total_images_skipped,
     }
     logger.info("shopify_sync_worker complete: %s", summary)
     write_worker_log(

@@ -50,6 +50,8 @@ import GrowthDashboardConfig   from './GrowthDashboardConfig'
 import WASalesModeConfig       from './WASalesModeConfig'
 import AutomationConfig        from './AutomationConfig'
 import DemoSettings            from './DemoSettings'
+import CatalogConfig           from './CatalogConfig'
+import CatalogItems            from './CatalogItems'
 
 const TABS = [
   { id: 'users',            label: '👥 Users' },
@@ -79,11 +81,17 @@ const TABS = [
   { id: 'messaging-limits', label: '💬 Messaging Limits' },
   { id: 'demo-settings',    label: '📅 Demo Settings' },
   { id: 'automation',       label: '⚡ Automation' },
+  { id: 'catalog',          label: '📦 Catalog' },
 ]
 
 const SALES_SUB_TABS = [
   { id: 'sales-mode',    label: 'Sales Mode' },
   { id: 'contact-menus', label: 'Contact Menus' },
+]
+
+const CATALOG_SUB_TABS = [
+  { id: 'catalog-config', label: '⚙️ Config' },
+  { id: 'catalog-items',  label: '📦 Items' },
 ]
 
 // ── Lazy mount helper ─────────────────────────────────────────────────────────
@@ -100,7 +108,8 @@ function LazyTab({ active, visited, children }) {
 
 export default function AdminModule({ user }) {
   const [tab, setTab]                 = useState('users')
-  const [salesSubTab, setSalesSubTab] = useState('sales-mode')
+  const [salesSubTab, setSalesSubTab]     = useState('sales-mode')
+  const [catalogSubTab, setCatalogSubTab] = useState('catalog-config')
   const [accessDenied, setAccessDenied] = useState(false)
   const [checking, setChecking]       = useState(true)
 
@@ -216,6 +225,30 @@ export default function AdminModule({ user }) {
         <LazyTab active={tab === 'messaging-limits'} visited={visited['messaging-limits']}> <MessagingLimitsConfig /></LazyTab>
         <LazyTab active={tab === 'demo-settings'}    visited={visited['demo-settings']}>    <DemoSettings /></LazyTab>
         <LazyTab active={tab === 'automation'}       visited={visited['automation']}>        <AutomationConfig /></LazyTab>
+
+        <LazyTab active={tab === 'catalog'} visited={visited['catalog']}>
+          <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
+            {CATALOG_SUB_TABS.map(st => (
+              <button
+                key={st.id}
+                onClick={() => setCatalogSubTab(st.id)}
+                style={{
+                  background: 'none', border: 'none',
+                  borderBottom: `2px solid ${catalogSubTab === st.id ? ds.teal : 'transparent'}`,
+                  padding: '9px 18px', cursor: 'pointer',
+                  fontFamily: ds.fontDm, fontSize: 13.5,
+                  fontWeight: catalogSubTab === st.id ? 600 : 400,
+                  color: catalogSubTab === st.id ? ds.teal : '#5a8a9f',
+                  marginBottom: -2, whiteSpace: 'nowrap',
+                }}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: catalogSubTab === 'catalog-config' ? 'block' : 'none' }}><CatalogConfig /></div>
+          <div style={{ display: catalogSubTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems /></div>
+        </LazyTab>
 
         {/* SM-1: Sales System — sub-tabbed */}
         <LazyTab active={tab === 'sales-system'} visited={visited['sales-system']}>

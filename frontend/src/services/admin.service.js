@@ -394,12 +394,12 @@ export async function adminUpdateEmail(userId, newEmail) {
 // ── DEMO-TMPL ─────────────────────────────────────────────────────────────────
 
 export async function getDemoSettings() {
-  const r = await api.get('/api/v1/admin/demo-settings', _h())
+  const r = await api.get('/api/v1/admin/demo-settings')
   return r.data.data
 }
 
 export async function updateDemoSettings(payload) {
-  const r = await api.patch('/api/v1/admin/demo-settings', payload, _h())
+  const r = await api.patch('/api/v1/admin/demo-settings', payload)
   return r.data
 }
 
@@ -410,3 +410,43 @@ export const getConversionTemplate = () =>
 
 export const updateConversionTemplate = (templateName) =>
   api.patch('/api/v1/admin/conversion-template', { template_name: templateName || null })
+
+// ── CATALOG-2B: Catalog Admin ─────────────────────────────────────────────────
+
+export const getCatalogConfig = () =>
+  api.get('/api/v1/catalog/config')
+    .then(r => r.data.catalog_config)
+
+export const updateCatalogConfig = (payload) =>
+  api.patch('/api/v1/catalog/config', payload)
+    .then(r => r.data.catalog_config)
+
+export const getCatalogItems = (params = {}) => {
+  const query = new URLSearchParams()
+  if (params.visible_only)   query.set('visible_only',   'true')
+  if (params.available_only) query.set('available_only', 'true')
+  if (params.search)         query.set('search', params.search)
+  const qs = query.toString()
+  return api.get(`/api/v1/catalog/items${qs ? '?' + qs : ''}`)
+    .then(r => r.data.items)
+}
+
+export const getCatalogItem = (itemId) =>
+  api.get(`/api/v1/catalog/items/${itemId}`)
+    .then(r => r.data.item)
+
+export const updateCatalogItem = (itemId, payload) =>
+  api.patch(`/api/v1/catalog/items/${itemId}`, payload)
+    .then(r => r.data.item)
+
+export const uploadCatalogImage = (itemId, formData) =>
+  api.post(`/api/v1/catalog/items/${itemId}/images`, formData)
+    .then(r => r.data)
+
+export const deleteCatalogImage = (itemId, imageIndex) =>
+  api.delete(`/api/v1/catalog/items/${itemId}/images/${imageIndex}`)
+    .then(r => r.data)
+
+export const createCatalogItem = (payload) =>
+  api.post('/api/v1/catalog/items', payload)
+    .then(r => r.data.item)

@@ -115,18 +115,106 @@ def verify_webhook(
 # Product sync
 # ---------------------------------------------------------------------------
 
+def _generate_slug_from_title(title: str) -> str:
+    """Generate a URL-safe slug from a product title."""
+    import re as _re
+    slug = _re.sub(r'[^a-zA-Z0-9]+', '-', title.strip().lower())
+    return slug.strip('-')
+
+
+def _mirror_shopify_images(
+    db,
+    org_id: str,
+    product_id: str,
+    shopify_images: list,
+    existing_images: list,
+) -> tuple:
+    """
+    Download all Shopify product images and upload to Supabase Storage catalog bucket.
+    Efficiency guard: skips images whose filename is already present in existing_images.
+    S14: single image failure never stops the loop.
+    Returns (catalog_image_urls: list, mirrored: int, skipped: int).
+    """
+    if not shopify_images:
+        return [], 0, 0
+
+    # Build set of already-stored filenames for quick lookup
+    stored_filenames = set()
+    for url in (existing_images or []):
+        if isinstance(url, str):
+            stored_filenames.add(url.split("/")[-1].split("?")[0])
+
+    urls = []
+    mirrored = 0
+    skipped = 0
+
+    for image in shopify_images:
+        try:
+            src = (image.get("src") or "").split("?")[0]
+            if not src:
+                continue
+
+            filename = src.split("/")[-1]
+            storage_path = f"{org_id}/{product_id}/{filename}"
+
+            # Efficiency guard: file already in storage, reuse public URL
+            if filename in stored_filenames and existing_images:
+                public_url = db.storage.from_("catalog").get_public_url(storage_path)
+                urls.append(public_url)
+                skipped += 1
+                continue
+
+            # Download image
+            with httpx.Client(timeout=20.0) as client:
+                img_resp = client.get(src)
+
+            if img_resp.status_code != 200:
+                logger.warning(
+                    "_mirror_shopify_images: download failed src=%s status=%d",
+                    src, img_resp.status_code,
+                )
+                continue  # S14: skip this image, continue loop
+
+            content_type = img_resp.headers.get("content-type", "image/jpeg")
+
+            # Upload to Supabase Storage (upsert=true overwrites if re-synced)
+            db.storage.from_("catalog").upload(
+                path=storage_path,
+                file=img_resp.content,
+                file_options={"content-type": content_type, "upsert": "true"},
+            )
+
+            public_url = db.storage.from_("catalog").get_public_url(storage_path)
+            urls.append(public_url)
+            mirrored += 1
+
+        except Exception as exc:
+            # S14: per-image failure never stops the loop
+            logger.warning(
+                "_mirror_shopify_images: image failed product=%s src=%s: %s",
+                product_id, image.get("src"), exc,
+            )
+
+    return urls, mirrored, skipped
+
+
 def sync_product(db, org_id: str, shopify_product: dict) -> dict:
     """
     Upsert a Shopify product into the products table.
     Uses (org_id, shopify_id) as the conflict target.
-    Returns the upserted product row.
+    CATALOG-1B: mirrors all images to Supabase Storage; writes available,
+    inventory_count, slug (first sync only), catalog_visible (first sync only).
+    NOTE: tags (catalog tags) are never written by sync — set by admin via UI.
+    Returns upserted row dict + {"images_mirrored": int, "images_skipped": int}.
     S14.
     """
+    images_mirrored = 0
+    images_skipped = 0
     try:
         shopify_id = shopify_product.get("id")
         now = datetime.now(timezone.utc).isoformat()
 
-        # Grab the first image URL if present
+        # First image URL kept for Meta catalog compatibility
         images = shopify_product.get("images") or []
         image_url = images[0].get("src") if images else None
 
@@ -140,9 +228,28 @@ def sync_product(db, org_id: str, shopify_product: dict) -> dict:
             price = _safe_decimal(variants[0].get("price"))
             compare_at_price = _safe_decimal(variants[0].get("compare_at_price"))
 
-        # Tags
-        raw_tags = shopify_product.get("tags") or ""
-        tags = [t.strip() for t in raw_tags.split(",") if t.strip()] if raw_tags else []
+        # Availability: Shopify status active AND at least 1 unit in inventory
+        total_inventory = sum(int(v.get("inventory_quantity") or 0) for v in variants)
+        is_available = (
+            (shopify_product.get("status") or "active") == "active"
+            and total_inventory > 0
+        )
+
+        # Check if product already exists to guard slug + catalog_visible (first sync only)
+        try:
+            existing_r = (
+                db.table("products")
+                .select("id, slug, catalog_visible, catalog_images")
+                .eq("org_id", org_id)
+                .eq("shopify_id", shopify_id)
+                .maybe_single()
+                .execute()
+            )
+            existing = existing_r.data
+            if isinstance(existing, list):
+                existing = existing[0] if existing else None
+        except Exception:
+            existing = None
 
         row = {
             "org_id":           org_id,
@@ -156,9 +263,17 @@ def sync_product(db, org_id: str, shopify_product: dict) -> dict:
             "status":           shopify_product.get("status") or "active",
             "is_active":        (shopify_product.get("status") or "active") != "archived",
             "variants":         variants,
-            "tags":             tags,
+            # tags intentionally excluded — catalog tags are set by admin, not Shopify
+            "available":        is_available,
+            "inventory_count":  total_inventory,
             "updated_at":       now,
         }
+
+        # First sync only: generate slug and set catalog_visible
+        # Never overwrite these — admin may have customised them
+        if not existing:
+            row["slug"] = _generate_slug_from_title(shopify_product.get("title") or "")
+            row["catalog_visible"] = True
 
         result = (
             db.table("products")
@@ -168,13 +283,41 @@ def sync_product(db, org_id: str, shopify_product: dict) -> dict:
         data = result.data
         if isinstance(data, list):
             data = data[0] if data else row
-        logger.info("sync_product: upserted shopify_id=%s for org=%s", shopify_id, org_id)
-        return data or row
+        data = data or row
+
+        # Mirror images to Supabase Storage catalog bucket
+        product_id = data.get("id") or (existing or {}).get("id")
+        if product_id and images:
+            try:
+                existing_catalog_images = (existing or {}).get("catalog_images") or []
+                catalog_urls, images_mirrored, images_skipped = _mirror_shopify_images(
+                    db, org_id, product_id, images, existing_catalog_images
+                )
+                if catalog_urls:
+                    db.table("products").update({
+                        "catalog_images": catalog_urls,
+                    }).eq("id", product_id).execute()
+                    data["catalog_images"] = catalog_urls
+            except Exception as img_exc:
+                logger.warning(
+                    "sync_product: image mirror failed product=%s: %s", product_id, img_exc
+                )
+
+        logger.info(
+            "sync_product: upserted shopify_id=%s org=%s available=%s "
+            "images_mirrored=%d images_skipped=%d",
+            shopify_id, org_id, is_available, images_mirrored, images_skipped,
+        )
+        data["images_mirrored"] = images_mirrored
+        data["images_skipped"] = images_skipped
+        return data
 
     except Exception as exc:
-        logger.warning("sync_product failed org=%s shopify_id=%s: %s",
-                       org_id, shopify_product.get("id"), exc)
-        return {}
+        logger.warning(
+            "sync_product failed org=%s shopify_id=%s: %s",
+            org_id, shopify_product.get("id"), exc,
+        )
+        return {"images_mirrored": 0, "images_skipped": 0}
 
 
 def handle_product_deleted(db, org_id: str, shopify_product_id: int) -> None:
@@ -225,6 +368,9 @@ def bulk_sync_products(
             "X-Shopify-Access-Token": access_token,
             "Content-Type": "application/json",
         }
+        images_mirrored = 0
+        images_skipped = 0
+
         while url:
             try:
                 with httpx.Client(timeout=30.0) as client:
@@ -234,8 +380,14 @@ def bulk_sync_products(
                 products = data.get("products") or []
                 for p in products:
                     try:
-                        sync_product(db, org_id, p)
-                        synced += 1
+                        result = sync_product(db, org_id, p)
+                        # sync_product is S14 — returns {} on failure, never raises
+                        if result.get("id") or result.get("shopify_id"):
+                            synced += 1
+                        else:
+                            failed += 1
+                        images_mirrored += result.get("images_mirrored", 0)
+                        images_skipped += result.get("images_skipped", 0)
                     except Exception as exc:
                         logger.warning("bulk_sync: product %s failed: %s", p.get("id"), exc)
                         failed += 1
@@ -255,11 +407,20 @@ def bulk_sync_products(
         except Exception:
             pass
 
-        logger.info("bulk_sync_products org=%s synced=%d failed=%d", org_id, synced, failed)
+        logger.info(
+            "bulk_sync_products org=%s synced=%d failed=%d "
+            "images_mirrored=%d images_skipped=%d",
+            org_id, synced, failed, images_mirrored, images_skipped,
+        )
     except Exception as exc:
         logger.warning("bulk_sync_products failed org=%s: %s", org_id, exc)
 
-    return {"synced": synced, "failed": failed}
+    return {
+        "synced":          synced,
+        "failed":          failed,
+        "images_mirrored": images_mirrored,
+        "images_skipped":  images_skipped,
+    }
 
 
 # ---------------------------------------------------------------------------

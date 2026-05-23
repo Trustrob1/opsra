@@ -177,6 +177,7 @@ from app.routers import growth_analytics as growth_analytics_router
 from app.routers import growth_config as growth_config_router
 from app.routers import growth_insights as growth_insights_router
 from app.routers import commerce as commerce_router
+from app.routers import catalog as catalog_router
 from app.routers import superadmin_health as superadmin_health_router
 from app.routers.push_notifications import router as push_notifications_router
 
@@ -200,6 +201,7 @@ app.include_router(growth_analytics_router.router, prefix="/api/v1",           t
 app.include_router(growth_config_router.router, prefix="/api/v1",              tags=["growth_config"])
 app.include_router(growth_insights_router.router,                              tags=["growth_insights"])
 app.include_router(commerce_router.router,      prefix="/api/v1/commerce",      tags=["commerce"])
+app.include_router(catalog_router.router,       prefix="/api/v1/catalog",       tags=["catalog"])
 app.include_router(superadmin_health_router.router, prefix="/api/v1",           tags=["superadmin_health"])
 app.include_router(push_notifications_router)
 
