@@ -2027,29 +2027,12 @@ def _action_browse_catalog(
         org_slug = (org_d or {}).get("slug") or ""
 
         # 3 — Build catalog URL
-        catalog_base = (os.getenv("CATALOG_BASE_URL") or "").rstrip("/")
-        if catalog_base and org_slug:
-            catalog_url = f"{catalog_base}/catalog/{org_slug}"
-        else:
-            # Fallback: try catalog_config.catalog_url
-            try:
-                cfg_r = (
-                    db.table("catalog_config")
-                    .select("catalog_url")
-                    .eq("org_id", org_id)
-                    .maybe_single()
-                    .execute()
-                )
-                cfg_d = cfg_r.data
-                if isinstance(cfg_d, list):
-                    cfg_d = cfg_d[0] if cfg_d else None
-                catalog_url = (cfg_d or {}).get("catalog_url") or ""
-            except Exception as _cfg_exc:
-                logger.warning(
-                    "_action_browse_catalog: catalog_config fallback failed "
-                    "org=%s: %s", org_id, _cfg_exc,
-                )
-                catalog_url = ""
+        # Primary: CATALOG_BASE_URL env var. Fallback: FRONTEND_URL (already set on Render).
+        catalog_base = (
+            (os.getenv("CATALOG_BASE_URL") or "").rstrip("/")
+            or (os.getenv("FRONTEND_URL") or "").rstrip("/")
+        )
+        catalog_url = f"{catalog_base}/catalog/{org_slug}" if catalog_base and org_slug else ""
 
         if not catalog_url:
             logger.warning(
