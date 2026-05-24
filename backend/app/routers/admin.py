@@ -1636,6 +1636,7 @@ class TriageConfigUpdate(BaseModel):
         "route_to_role",
         "free_form",
         "commerce_entry",  # COMM-1
+        "browse_catalog",  # CATALOG-5
         # Customer section actions
         "create_ticket",
         "kb_enquiry",
