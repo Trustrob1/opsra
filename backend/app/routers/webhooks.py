@@ -1367,6 +1367,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     assigned_to=assigned_to,
                     interactive_payload=interactive_payload,
                     session=_pqs, now_ts=now_ts,
+                    msg_type=msg_type, content=content or "",
                 )
                 return
 
@@ -1376,6 +1377,33 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 "lead=%s — continuing to qualification turn: %s",
                 lead_id, _pqs_exc,
             )
+
+        # CATALOG-5: Product-intent classifier — matches the Variant A CTA pre-fill
+        # pattern "Hi, I'm interested in the {title}" from the public catalog.
+        # Runs before qualification so returning catalog visitors are handled correctly.
+        if msg_type == "text" and content:
+            _intent_title = _is_catalog_product_intent(content)
+            if _intent_title:
+                logger.info(
+                    "[CATALOG-5] product intent detected title=%r lead=%s",
+                    _intent_title, lead_id,
+                )
+                # Option B: store product intent on lead, fall through to standard
+                # qualification but pre-fill problem_stated with the product title.
+                try:
+                    db.table("leads").update({
+                        "problem_stated": f"Interested in: {_intent_title}",
+                    }).eq("id", lead_id).eq("org_id", org_id).execute()
+                    logger.info(
+                        "[CATALOG-5] product intent stored on lead=%s title=%r",
+                        lead_id, _intent_title,
+                    )
+                except Exception as _pi_exc:
+                    logger.warning(
+                        "[CATALOG-5] product intent lead update failed lead=%s: %s",
+                        lead_id, _pi_exc,
+                    )
+                # Fall through to standard qualification below
 
         try:
             _handle_structured_qualification_turn(
@@ -1562,6 +1590,24 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         }).execute()
     except Exception as exc:
         logger.warning("Failed to insert reply notification for user %s: %s", assigned_to, exc)
+
+def _is_catalog_product_intent(content: str) -> Optional[str]:
+    """
+    CATALOG-5: Returns the product title if the message matches the Variant A
+    catalog CTA pre-fill pattern: "Hi, I'm interested in the {title}".
+    Case-insensitive prefix match. Returns None if no match.
+    S14: never raises.
+    """
+    try:
+        PREFIX = "hi, i'm interested in the "
+        normalised = (content or "").strip().lower()
+        if normalised.startswith(PREFIX):
+            title = content.strip()[len(PREFIX):].strip()
+            return title if title else None
+        return None
+    except Exception as exc:
+        logger.warning("_is_catalog_product_intent failed: %s", exc)
+        return None
 
 
 def _handle_structured_qualification_turn(
@@ -2178,12 +2224,16 @@ def _handle_post_qual_cta_reply(
     interactive_payload,
     session: dict,
     now_ts: str,
+    msg_type: str = "interactive",
+    content: str = "",
 ) -> None:
     """
     QUAL-RECOMMEND: Handle the lead's CTA selection.
     Options: showroom_visit | get_invoice | talk_to_sales
     Fetches qual_flow from DB for configurable confirmation copy.
     Creates a rep task and closes the qualification session.
+    CATALOG-5: Also accepts plain-text matches when msg_type == "text"
+    and content matches a cta_button.id from org catalog_config.
     S14 — never raises.
     """
     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
@@ -2220,6 +2270,37 @@ def _handle_post_qual_cta_reply(
 
         button_reply = (interactive_payload or {}).get("button_reply") or {}
         selected_id  = button_reply.get("id") or ""
+
+        # CATALOG-5: Plain text fallback — when a catalog page CTA button sends
+        # a pre-filled WhatsApp text (e.g. "showroom_visit"), match it against
+        # the org's cta_button IDs and treat it as if the button was tapped.
+        if not selected_id and msg_type == "text" and content:
+            try:
+                _cc_r = (
+                    db.table("catalog_config")
+                    .select("cta_buttons")
+                    .eq("org_id", org_id)
+                    .maybe_single()
+                    .execute()
+                )
+                _cc_d = _cc_r.data
+                if isinstance(_cc_d, list):
+                    _cc_d = _cc_d[0] if _cc_d else None
+                _cta_buttons = (_cc_d or {}).get("cta_buttons") or []
+                _stripped = content.strip()
+                for _btn in _cta_buttons:
+                    if (_btn.get("id") or "") == _stripped:
+                        selected_id = _stripped
+                        logger.info(
+                            "_handle_post_qual_cta_reply: plain text CTA match "
+                            "id=%r lead=%s", selected_id, lead_id,
+                        )
+                        break
+            except Exception as _pt_exc:
+                logger.warning(
+                    "_handle_post_qual_cta_reply: plain text CTA lookup failed "
+                    "org=%s: %s", org_id, _pt_exc,
+                )
 
         if selected_id == "showroom_visit":
             confirmation = (

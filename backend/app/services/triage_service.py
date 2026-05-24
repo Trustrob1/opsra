@@ -354,7 +354,20 @@ def handle_session_message(
                         now_ts=now_ts,
                     )
             else:
-                # Free text while menu is pending — re-send the correct menu
+                # Free text while menu is pending.
+                # CATALOG-5: if the contact says "help me choose" (or a variant),
+                # trigger qualification directly rather than re-sending the menu.
+                if msg_type == "text" and content and _is_help_me_choose(content):
+                    logger.info(
+                        "[TRIAGE] _is_help_me_choose matched for %s — routing to qualify",
+                        phone_number,
+                    )
+                    _action_qualify(
+                        db, org_id, phone_number, session["id"],
+                        contact_name, now_ts,
+                    )
+                    return
+                # Default: re-send the correct menu
                 from app.services.whatsapp_service import send_triage_menu
                 send_triage_menu(db=db, org_id=org_id,
                                  phone_number=phone_number, section=section,
@@ -589,6 +602,10 @@ def dispatch_triage_selection(
         elif action == "commerce_entry":
             # COMM-1: Contact selected a "shop / browse products" triage item.
             _action_commerce_entry(db, org_id, phone_number, session_id)
+
+        elif action == "browse_catalog":
+            # CATALOG-5: Contact selected the catalog browse option.
+            _action_browse_catalog(db, org_id, phone_number, session_id)
 
         else:
             # 'free_form' — also the fallback for unknown item_id
@@ -1932,6 +1949,200 @@ def send_known_customer_menu(
     except Exception as exc:
         logger.warning(
             "send_known_customer_menu failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+# ---------------------------------------------------------------------------
+# CATALOG-5 — Catalog Triage Helpers
+# ---------------------------------------------------------------------------
+
+def _is_help_me_choose(content: str) -> bool:
+    """
+    CATALOG-5: Returns True if the contact's free-text message is a variant of
+    "help me choose / decide / recommend something".
+    Case-insensitive. S14: never raises.
+    """
+    try:
+        normalised = (content or "").strip().lower()
+        VARIANTS = (
+            "help me choose",
+            "help me decide",
+            "i need help choosing",
+            "i need help deciding",
+            "recommend something",
+            "what do you suggest",
+            "what would you recommend",
+        )
+        return any(v in normalised for v in VARIANTS)
+    except Exception as exc:
+        logger.warning("_is_help_me_choose failed: %s", exc)
+        return False
+
+
+def _action_browse_catalog(
+    db,
+    org_id: str,
+    phone_number: str,
+    session_id: str,
+) -> None:
+    """
+    CATALOG-5: Called from dispatch_triage_selection when action == 'browse_catalog'.
+    Sends the public catalog URL to the contact via WhatsApp.
+
+    Behaviour:
+      - Fetches org slug and builds catalog URL from CATALOG_BASE_URL env var.
+      - Sends as CTA URL button; falls back to plain text if URL buttons fail.
+      - Stores the outbound message to whatsapp_messages (lead_id is nullable — OK).
+      - Does NOT create a lead_qualification_sessions row.
+      - Does NOT advance session state — lead stays in triage_sent so they can
+        tap a triage option or send "Help me choose" later.
+    S14 — never raises.
+    """
+    import os
+    from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+
+    try:
+        # 1 — Get org WA credentials
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id or not access_token:
+            logger.warning(
+                "_action_browse_catalog: no WA credentials for org=%s — aborting",
+                org_id,
+            )
+            return
+
+        # 2 — Fetch org slug
+        org_r = (
+            db.table("organisations")
+            .select("slug")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_d = org_r.data
+        if isinstance(org_d, list):
+            org_d = org_d[0] if org_d else None
+        org_slug = (org_d or {}).get("slug") or ""
+
+        # 3 — Build catalog URL
+        catalog_base = (os.getenv("CATALOG_BASE_URL") or "").rstrip("/")
+        if catalog_base and org_slug:
+            catalog_url = f"{catalog_base}/catalog/{org_slug}"
+        else:
+            # Fallback: try catalog_config.catalog_url
+            try:
+                cfg_r = (
+                    db.table("catalog_config")
+                    .select("catalog_url")
+                    .eq("org_id", org_id)
+                    .maybe_single()
+                    .execute()
+                )
+                cfg_d = cfg_r.data
+                if isinstance(cfg_d, list):
+                    cfg_d = cfg_d[0] if cfg_d else None
+                catalog_url = (cfg_d or {}).get("catalog_url") or ""
+            except Exception as _cfg_exc:
+                logger.warning(
+                    "_action_browse_catalog: catalog_config fallback failed "
+                    "org=%s: %s", org_id, _cfg_exc,
+                )
+                catalog_url = ""
+
+        if not catalog_url:
+            logger.warning(
+                "_action_browse_catalog: no catalog URL available for org=%s "
+                "— aborting", org_id,
+            )
+            return
+
+        # 4 — Build message body
+        body = (
+            "Here's our full catalog 📖\n"
+            "Browse at your own pace. "
+            "If you'd like a personal recommendation, just reply *Help me choose*."
+        )
+
+        # 5 — Attempt CTA URL button; fall back to plain text if it fails
+        sent_ok = False
+        try:
+            cta_payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "cta_url",
+                    "body": {"text": body},
+                    "action": {
+                        "name": "cta_url",
+                        "parameters": {
+                            "display_text": "Browse Catalog 🔗",
+                            "url": catalog_url,
+                        },
+                    },
+                },
+            }
+            _call_meta_send(phone_id, cta_payload, token=access_token)
+            sent_ok = True
+            logger.info(
+                "_action_browse_catalog: CTA URL button sent org=%s phone=%s url=%s",
+                org_id, phone_number, catalog_url,
+            )
+        except Exception as _cta_exc:
+            logger.warning(
+                "_action_browse_catalog: CTA URL button failed org=%s — "
+                "falling back to plain text: %s", org_id, _cta_exc,
+            )
+
+        if not sent_ok:
+            # Plain text fallback — append URL to body
+            plain_body = f"{body}\n\n{catalog_url}"
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {"body": plain_body},
+            }, token=access_token)
+            logger.info(
+                "_action_browse_catalog: plain text fallback sent org=%s phone=%s",
+                org_id, phone_number,
+            )
+
+        # 6 — Store to whatsapp_messages (lead_id nullable — omit it here)
+        try:
+            from datetime import datetime, timezone, timedelta
+            _now = datetime.now(timezone.utc).isoformat()
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            _stored_content = body if sent_ok else f"{body}\n\n{catalog_url}"
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "direction":         "outbound",
+                "message_type":      "interactive" if sent_ok else "text",
+                "content":           _stored_content,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now,
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "_action_browse_catalog: whatsapp_messages insert failed "
+                "org=%s: %s", org_id, _db_exc,
+            )
+
+        # 7 — Do NOT advance session state. Lead stays in triage_sent so they
+        #     can tap a menu option or send "Help me choose" to start qualification.
+        logger.info(
+            "_action_browse_catalog: complete org=%s phone=%s session_id=%s",
+            org_id, phone_number, session_id,
+        )
+
+    except Exception as exc:
+        logger.warning(
+            "_action_browse_catalog failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
 
