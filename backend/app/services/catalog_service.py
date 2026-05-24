@@ -388,3 +388,160 @@ def _generate_unique_slug(db, org_id: str, title: str) -> str:
             counter += 1
         except Exception:
             return slug  # Best-effort on DB error
+
+
+# ---------------------------------------------------------------------------
+# CATALOG-4 — Tag-based filtering for post-qualification recommendations
+# ---------------------------------------------------------------------------
+
+def _resolve_tag_filters_from_answers(qual_flow: dict, answers: dict) -> dict:
+    """
+    CATALOG-4: Build a tag filter dict from the lead's qualification answers.
+
+    Reads each question in qual_flow["questions"]. If a question has
+    map_to_catalog_tag set, finds the lead's answer for that question's
+    answer_key, matches it to the selected option, and extracts tag_value.
+
+    Returns a dict of {tag_dimension: tag_value}, e.g.:
+      {"firmness": "Medium Firm", "size": "6x6", "health_condition": "Back Pain"}
+
+    Questions without map_to_catalog_tag are ignored (backwards compatible).
+    S14: returns empty dict on any error — never raises.
+    """
+    try:
+        questions = (qual_flow or {}).get("questions") or []
+        tag_filters: dict = {}
+
+        for question in questions:
+            tag_dimension = question.get("map_to_catalog_tag")
+            if not tag_dimension:
+                continue
+
+            answer_key = question.get("answer_key")
+            if not answer_key:
+                continue
+
+            selected_label = answers.get(answer_key)
+            if not selected_label:
+                continue
+
+            options = question.get("options") or []
+            for opt in options:
+                # Answers are stored as the option label
+                if opt.get("label") == selected_label or opt.get("id") == selected_label:
+                    tag_value = opt.get("tag_value")
+                    if tag_value:
+                        tag_filters[str(tag_dimension).strip()] = str(tag_value).strip()
+                    break
+
+        logger.info(
+            "_resolve_tag_filters_from_answers: resolved tag_filters=%s from answers=%s",
+            tag_filters, list(answers.keys()),
+        )
+        return tag_filters
+
+    except Exception as exc:
+        logger.warning("_resolve_tag_filters_from_answers: failed — %s", exc)
+        return {}
+
+
+def filter_catalog_items_by_tags(
+    db,
+    org_id: str,
+    tag_filters: dict,
+    available_only: bool = True,
+) -> list:
+    """
+    CATALOG-4: Fetch active products for an org and filter by tag_filters.
+
+    Products tags column is a JSONB dict: {"firmness": "Medium Firm", "size": "6x6"}.
+    Filtering is done Python-side (Pattern 33).
+
+    Matching rules:
+      - For each tag_dimension: tag_value pair in tag_filters,
+        product.tags[tag_dimension] must equal tag_value (case-insensitive).
+      - A product matches if ALL tag_filters match (AND logic).
+
+    Progressive relaxation:
+      If no products match all filters, remove filters one at a time
+      (least specific first — shortest tag_value string) until at least
+      one product matches or all filters are exhausted.
+
+    Fallback:
+      If no products match even with all filters removed, return all
+      available products so the AI always has something to work with.
+
+    available_only=True: excludes products where available=False.
+    S14: returns empty list on DB error; caller handles this.
+    """
+    try:
+        query = (
+            db.table("products")
+            .select(_CATALOG_ITEM_COLS)
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+        )
+        if available_only:
+            query = query.eq("available", True)
+
+        result = query.execute()
+        all_products = result.data if isinstance(result.data, list) else []
+
+        if not all_products:
+            return []
+
+        # No tag filters configured — return all products unfiltered
+        if not tag_filters:
+            return all_products
+
+        def _matches(product: dict, filters: dict) -> bool:
+            raw_tags = product.get("tags")
+            # tags must be a dict (structured) — empty {} or list = no tags
+            if not raw_tags or not isinstance(raw_tags, dict):
+                return False
+            for dimension, value in filters.items():
+                product_value = raw_tags.get(dimension)
+                if product_value is None:
+                    return False
+                if str(product_value).strip().lower() != str(value).strip().lower():
+                    return False
+            return True
+
+        # Try full filter set first
+        matched = [p for p in all_products if _matches(p, tag_filters)]
+        if matched:
+            return matched
+
+        # Progressive relaxation — remove least specific filters first
+        # (shortest tag_value = least specific)
+        relaxation_order = sorted(
+            tag_filters.keys(),
+            key=lambda k: len(str(tag_filters[k])),
+        )
+        active_filters = dict(tag_filters)
+        for dimension_to_remove in relaxation_order:
+            del active_filters[dimension_to_remove]
+            if not active_filters:
+                break
+            matched = [p for p in all_products if _matches(p, active_filters)]
+            if matched:
+                logger.info(
+                    "filter_catalog_items_by_tags: relaxed filters to %s "
+                    "— %d products matched org=%s",
+                    list(active_filters.keys()), len(matched), org_id,
+                )
+                return matched
+
+        # Full fallback — return all available products
+        logger.info(
+            "filter_catalog_items_by_tags: no tag matches after full relaxation "
+            "— returning all %d products as fallback org=%s",
+            len(all_products), org_id,
+        )
+        return all_products
+
+    except Exception as exc:
+        logger.warning(
+            "filter_catalog_items_by_tags: DB error org=%s — %s", org_id, exc
+        )
+        return []

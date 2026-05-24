@@ -2462,10 +2462,16 @@ def send_recommendation_message(
     price: float,
     rationale: str,
     config: dict = None,
+    catalog_url: Optional[str] = None,
 ) -> None:
     """
-    QUAL-RECOMMEND: Send AI mattress recommendation text to the lead.
+    CATALOG-4: Send AI product recommendation text to the lead.
     config: qualification_flow dict — reads 'recommendation_intro' key.
+
+    If catalog_url is provided, attempts to send as a WhatsApp CTA URL
+    interactive message (button: "View Details 🔗").
+    Falls back to plain text with URL appended if CTA send fails.
+
     S14 — never raises.
     """
     try:
@@ -2479,7 +2485,7 @@ def send_recommendation_message(
 
         intro = (
             (config or {}).get("recommendation_intro")
-            or "🛏️ Based on what you've shared with us, we recommend:"
+            or "Based on what you've shared with us, we recommend:"
         )
         price_formatted = f"₦{price:,.0f}" if price else ""
         body = (
@@ -2489,13 +2495,49 @@ def send_recommendation_message(
             + f"\n\n{rationale}"
         )
 
-        _call_meta_send(phone_id, {
-            "messaging_product": "whatsapp",
-            "to":   phone_number,
-            "type": "text",
-            "text": {"body": body},
-        }, token=access_token)
+        sent_as_cta = False
+        if catalog_url:
+            # Attempt WhatsApp CTA URL button (interactive type: cta_url)
+            try:
+                _call_meta_send(phone_id, {
+                    "messaging_product": "whatsapp",
+                    "to":   phone_number,
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "cta_url",
+                        "body": {"text": body},
+                        "action": {
+                            "name": "cta_url",
+                            "parameters": {
+                                "display_text": "View Details 🔗",
+                                "url": catalog_url,
+                            },
+                        },
+                    },
+                }, token=access_token)
+                sent_as_cta = True
+                logger.info(
+                    "send_recommendation_message: sent as CTA URL button org=%s", org_id
+                )
+            except Exception as _cta_exc:
+                logger.warning(
+                    "send_recommendation_message: CTA URL button failed (%s) "
+                    "— falling back to plain text", _cta_exc,
+                )
 
+        if not sent_as_cta:
+            # Plain text fallback — append URL to body if available
+            plain_body = body
+            if catalog_url:
+                plain_body += f"\n\n🔗 View details: {catalog_url}"
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to":   phone_number,
+                "type": "text",
+                "text": {"body": plain_body},
+            }, token=access_token)
+
+        # Persist to whatsapp_messages — store body without URL for readability
         try:
             _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
             db.table("whatsapp_messages").insert({

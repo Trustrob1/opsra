@@ -1839,48 +1839,195 @@ def _launch_post_qual_recommendation_flow(
     qual_flow: dict = None,
 ) -> bool:
     """
-    QUAL-RECOMMEND: Fetch products, generate AI recommendation, and send
-    recommendation text + product image + pillow upsell prompt to the lead.
-    qual_flow: the full qualification_flow dict from the organisations table.
-               Passed through to send functions for configurable copy.
-    Returns True if products exist and flow launched, False otherwise.
+    CATALOG-4: Tag-filtered AI recommendation flow after qualification handoff.
+
+    Flow:
+      1. Fetch org slug + catalog config (for CATALOG_BASE_URL + org_slug).
+      2. Resolve tag filters from lead's answers via catalog_service.
+      3. Filter products by tags with progressive relaxation.
+      4. Three-tier out-of-stock handling:
+           Tier 1 — matched products in stock → AI picks best → send rec + image.
+           Tier 2 — best match out of stock but alternatives exist → AI picks
+                    best in-stock → send rec with alternative copy.
+           Tier 3 — ALL products out of stock → send no_products_message,
+                    create rep task, return False.
+      5. Send pillow upsell prompt (always, when Tier 1 or 2).
+
+    Returns True if recommendation flow launched, False if skipped (Tier 3
+    or no products at all).
     S14 — never raises.
     """
+    from app.services.catalog_service import (
+        _resolve_tag_filters_from_answers,
+        filter_catalog_items_by_tags,
+    )
+
     try:
-        _prod_result = (
-            db.table("products")
-            .select("id, title, price, image_url")
-            .eq("org_id", org_id)
-            .eq("is_active", True)
-            .execute()
-        )
-        all_products = (
-            _prod_result.data if isinstance(_prod_result.data, list) else []
-        )
-
-        if not all_products:
-            logger.info(
-                "_launch_post_qual_recommendation_flow: no products for org %s "
-                "— skipping recommendation flow",
-                org_id,
+        # ── Fetch org slug for catalog URL construction ───────────────────
+        org_slug: Optional[str] = None
+        try:
+            _org_r = (
+                db.table("organisations")
+                .select("slug")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
             )
-            return False
+            _org_d = _org_r.data
+            if isinstance(_org_d, list):
+                _org_d = _org_d[0] if _org_d else None
+            org_slug = (_org_d or {}).get("slug") or None
+        except Exception as _slug_exc:
+            logger.warning(
+                "_launch_post_qual_recommendation_flow: org slug fetch failed "
+                "org=%s: %s", org_id, _slug_exc,
+            )
 
-        mattress_products = [
-            p for p in all_products
+        # ── Resolve tag filters from lead's answers ───────────────────────
+        tag_filters = _resolve_tag_filters_from_answers(
+            qual_flow=qual_flow, answers=answers,
+        )
+
+        # ── Fetch all active products (available + unavailable) ───────────
+        # We fetch both so we can detect Tier 2 (best match out of stock).
+        all_active = filter_catalog_items_by_tags(
+            db=db, org_id=org_id, tag_filters=tag_filters, available_only=False,
+        )
+        in_stock = [p for p in all_active if p.get("available", False)]
+
+        # ── Tier 3: nothing in stock at all ──────────────────────────────
+        if not in_stock:
+            logger.info(
+                "_launch_post_qual_recommendation_flow: Tier 3 — no products "
+                "in stock for org %s", org_id,
+            )
+            _no_stock_msg = (
+                (qual_flow or {}).get("no_products_message")
+                or "Based on your answers, I have a specific recommendation for you. "
+                   "Our team will reach out shortly to confirm what's available and advise you."
+            )
+            try:
+                from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+                _ph_id, _tok, _ = _get_org_wa_credentials(db, org_id)
+                if _ph_id:
+                    _call_meta_send(_ph_id, {
+                        "messaging_product": "whatsapp",
+                        "to": lead_phone,
+                        "type": "text",
+                        "text": {"body": _no_stock_msg},
+                    }, token=_tok)
+            except Exception as _ns_exc:
+                logger.warning(
+                    "_launch_post_qual_recommendation_flow: Tier 3 message "
+                    "send failed lead=%s: %s", lead_id, _ns_exc,
+                )
+
+            # Create high-priority rep task
+            try:
+                from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                _lead_d = _get_lead_basic(db, lead_id)
+                _lead_name = _lead_d.get("full_name") or "Lead"
+                _top_title = (all_active[0].get("title") or "product") if all_active else "product"
+                _due = (_dt.now(_tz.utc) + _td(hours=2)).isoformat()
+                _now_t = _dt.now(_tz.utc).isoformat()
+
+                # Fetch assigned_to separately — _get_lead_basic does not select it
+                _assigned_to = None
+                try:
+                    _asgn_r = (
+                        db.table("leads")
+                        .select("assigned_to")
+                        .eq("id", lead_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    _asgn_d = _asgn_r.data
+                    if isinstance(_asgn_d, list):
+                        _asgn_d = _asgn_d[0] if _asgn_d else None
+                    _assigned_to = (_asgn_d or {}).get("assigned_to")
+                except Exception:
+                    pass
+
+                _task_row = {
+                    "org_id":           org_id,
+                    "title":            f"All products out of stock — recommend {_top_title} to {_lead_name} pending stock check",
+                    "task_type":        "system_event",
+                    "source_module":    "qualification",
+                    "source_record_id": lead_id,
+                    "status":           "pending",
+                    "priority":         "high",
+                    "due_at":           _due,
+                    "created_at":       _now_t,
+                }
+                if _assigned_to:
+                    _task_row["assigned_to"] = _assigned_to
+
+                db.table("tasks").insert(_task_row).execute()
+                logger.info(
+                    "_launch_post_qual_recommendation_flow: Tier 3 rep task "
+                    "created for lead=%s", lead_id,
+                )
+            except Exception as _task_exc:
+                logger.warning(
+                    "_launch_post_qual_recommendation_flow: Tier 3 task "
+                    "creation failed lead=%s: %s", lead_id, _task_exc,
+                )
+
+            return False  # ← outside the task try/except — always executes
+
+        # ── Split primary (non-pillow) products ───────────────────────────
+        primary_in_stock = [
+            p for p in in_stock
+            if "pillow" not in (p.get("title") or "").lower()
+        ]
+        primary_all = [
+            p for p in all_active
             if "pillow" not in (p.get("title") or "").lower()
         ]
 
-        if mattress_products:
+        if primary_in_stock:
+            # ── Tier 1: best match is in stock ────────────────────────────
+            # Cap at 5 candidates for AI to keep prompt concise.
+            ai_candidates = primary_in_stock[:5]
             rec = generate_product_recommendation(
                 answers=answers,
-                mattress_products=mattress_products,
+                mattress_products=ai_candidates,
                 org_name=org_name,
+                org_slug=org_slug,
             )
             send_recommendation_message(
                 db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
                 title=rec["title"], price=rec["price"], rationale=rec["rationale"],
-                config=qual_flow,
+                config=qual_flow, catalog_url=rec.get("catalog_url"),
+            )
+            if rec.get("image_url"):
+                send_outbound_image_url(
+                    db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+                    image_url=rec["image_url"], caption=rec["title"],
+                )
+
+        elif primary_all:
+            # ── Tier 2: best tag-match is out of stock ────────────────────
+            # Top result from full (including unavailable) list is the ideal.
+            # Pick best in-stock alternative from in_stock pool.
+            top_match_title = (primary_all[0].get("title") or "our top recommendation")
+            alt_candidates = in_stock[:5]  # in_stock already excludes pillows check skipped here intentionally — send whatever is available
+            rec = generate_product_recommendation(
+                answers=answers,
+                mattress_products=alt_candidates,
+                org_name=org_name,
+                org_slug=org_slug,
+            )
+            # Override rationale with Tier 2 copy
+            tier2_rationale = (
+                f"Based on your needs, *{top_match_title}* would be our top recommendation, "
+                f"but it's currently unavailable. *{rec['title']}* is the closest match "
+                f"in stock — {rec['rationale']}"
+            )
+            send_recommendation_message(
+                db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
+                title=rec["title"], price=rec["price"], rationale=tier2_rationale,
+                config=qual_flow, catalog_url=rec.get("catalog_url"),
             )
             if rec.get("image_url"):
                 send_outbound_image_url(
@@ -1889,8 +2036,8 @@ def _launch_post_qual_recommendation_flow(
                 )
         else:
             logger.warning(
-                "_launch_post_qual_recommendation_flow: no mattress products "
-                "for org %s — skipping mattress recommendation",
+                "_launch_post_qual_recommendation_flow: no primary products "
+                "for org %s — skipping primary recommendation",
                 org_id,
             )
 
@@ -1906,7 +2053,6 @@ def _launch_post_qual_recommendation_flow(
             lead_id, org_id, exc,
         )
         return False
-
 
 def _handle_pillow_upsell_reply(
     db,

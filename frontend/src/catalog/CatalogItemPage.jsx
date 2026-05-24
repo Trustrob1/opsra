@@ -185,8 +185,30 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
             )}
 
             {/* Description */}
+            {item.catalog_description && (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{
+                  fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: C.muted,
+                  margin: '0 0 6px',
+                }}>About this product</p>
+                <div style={{
+                  fontSize: 14, lineHeight: 1.7, color: C.text,
+                }}>
+                  {item.catalog_description}
+                </div>
+              </div>
+            )}
+
             {item.description && (
               <div style={{ marginBottom: 24 }}>
+                {item.catalog_description && (
+                  <p style={{
+                    fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
+                    textTransform: 'uppercase', color: C.muted,
+                    margin: '0 0 6px',
+                  }}>Product details</p>
+                )}
                 <div
                   style={{
                     fontSize: 14, lineHeight: 1.7,

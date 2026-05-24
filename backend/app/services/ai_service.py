@@ -660,6 +660,7 @@ def generate_product_recommendation(
     answers: dict,
     mattress_products: list,
     org_name: str,
+    org_slug: Optional[str] = None,
 ) -> dict:
     """
     QUAL-RECOMMEND: Select the best mattress product for a lead based on
@@ -693,12 +694,27 @@ def generate_product_recommendation(
     # Build fallback — first mattress alphabetically
     _sorted = sorted(mattress_products, key=lambda p: (p.get("title") or "").lower())
     _fb = _sorted[0] if _sorted else {}
+    def _build_catalog_url(product: dict) -> Optional[str]:
+        """Build catalog URL from CATALOG_BASE_URL env var + org_slug + product slug."""
+        try:
+            import os
+            base = (os.getenv("CATALOG_BASE_URL") or "").rstrip("/")
+            if not base or not org_slug:
+                return None
+            product_slug = (product.get("slug") or "").strip()
+            if not product_slug:
+                return None
+            return f"{base}/catalog/{org_slug}/{product_slug}"
+        except Exception:
+            return None
+
     _fallback = {
         "product_id": str(_fb.get("id") or ""),
         "title":      str(_fb.get("title") or ""),
         "price":      float(_fb.get("price") or 0),
         "image_url":  _fb.get("image_url"),
         "rationale":  "Based on your preferences, this is one of our most popular options.",
+        "catalog_url": _build_catalog_url(_fb),
     }
 
     if not mattress_products:
@@ -776,6 +792,7 @@ def generate_product_recommendation(
             "price":      float(matched.get("price") or 0),
             "image_url":  matched.get("image_url"),
             "rationale":  rationale or _fallback["rationale"],
+            "catalog_url": _build_catalog_url(matched),
         }
 
     except Exception as exc:
