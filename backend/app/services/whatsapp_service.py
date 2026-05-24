@@ -3547,9 +3547,10 @@ def get_conversations(
                 # Leads that tapped escape have ai_active=False — visible immediately.
                 # S14: on failure show all leads (safe default).
                 try:
+                    EXCLUDED_STAGES = {"qualifying", "awaiting_first_message"}
                     active_qual_result = (
                         db.table("lead_qualification_sessions")
-                        .select("lead_id")
+                        .select("lead_id, stage")
                         .in_("lead_id", lead_ids)
                         .eq("org_id", org_id)
                         .eq("ai_active", True)
@@ -3558,6 +3559,7 @@ def get_conversations(
                     active_qual_lead_ids = {
                         r["lead_id"]
                         for r in (active_qual_result.data or [])
+                        if r.get("stage") in EXCLUDED_STAGES
                     }
                     leads = [l for l in leads if l["id"] not in active_qual_lead_ids]
                     lead_ids = [l["id"] for l in leads]
