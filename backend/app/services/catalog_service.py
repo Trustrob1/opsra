@@ -29,9 +29,9 @@ class SlugConflictError(Exception):
 # ---------------------------------------------------------------------------
 
 _CATALOG_ITEM_COLS = (
-    "id, org_id, shopify_id, title, description, price, compare_at_price, "
+    "id, org_id, shopify_id, title, description, catalog_description, price, compare_at_price, "
     "image_url, handle, status, is_active, variants, tags, slug, "
-    "catalog_images, custom_fields, catalog_visible, available, "
+    "catalog_images, extra_catalog_images, custom_fields, catalog_visible, available, "
     "inventory_count, catalog_views, created_at, updated_at"
 )
 
@@ -195,8 +195,10 @@ def create_catalog_item(db, org_id: str, payload: dict) -> dict:
         "inventory_count": payload.get("inventory_count"),
         "tags":            payload.get("tags") or {},
         "custom_fields":   payload.get("custom_fields") or {},
-        "catalog_images":  [],
-        "catalog_views":   0,
+        "catalog_images":        [],
+        "extra_catalog_images":  [],
+        "catalog_description":   payload.get("catalog_description"),
+        "catalog_views":         0,
         "is_active":       True,
         "status":          "active",
         "created_at":      now,
@@ -283,6 +285,76 @@ def delete_catalog_image(db, org_id: str, item_id: str, image_index: int) -> Non
     except Exception as exc:
         logger.warning(
             "delete_catalog_image: Storage delete failed (DB already updated) path=%s: %s",
+            url_to_delete, exc,
+        )
+
+def upload_extra_catalog_image(
+    db,
+    org_id: str,
+    item_id: str,
+    file_bytes: bytes,
+    filename: str,
+    mime_type: str,
+) -> str:
+    """
+    Upload an extra catalog-only image to Supabase Storage.
+    Appends public URL to products.extra_catalog_images.
+    Never touched by Shopify sync.
+    Returns the new public URL.
+    Raises on failure.
+    """
+    safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+    storage_path = f"{org_id}/{item_id}/extra_{safe_name}"
+
+    db.storage.from_("catalog").upload(
+        path=storage_path,
+        file=file_bytes,
+        file_options={"content-type": mime_type, "upsert": "true"},
+    )
+
+    public_url = db.storage.from_("catalog").get_public_url(storage_path)
+
+    item = get_catalog_item(db, org_id, item_id)
+    current = list((item or {}).get("extra_catalog_images") or [])
+    updated = current + [public_url]
+
+    db.table("products").update({
+        "extra_catalog_images": updated,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("org_id", org_id).eq("id", item_id).execute()
+
+    return public_url
+
+
+def delete_extra_catalog_image(db, org_id: str, item_id: str, image_index: int) -> None:
+    """
+    Remove image at index from extra_catalog_images array.
+    Also deletes from Supabase Storage (best-effort).
+    Raises ValueError on invalid index or item not found.
+    """
+    item = get_catalog_item(db, org_id, item_id)
+    if not item:
+        raise ValueError("Item not found.")
+
+    images = list((item or {}).get("extra_catalog_images") or [])
+    if image_index < 0 or image_index >= len(images):
+        raise ValueError(f"Image index {image_index} is out of range (item has {len(images)} extra images).")
+
+    url_to_delete = images[image_index]
+    updated = [u for i, u in enumerate(images) if i != image_index]
+
+    db.table("products").update({
+        "extra_catalog_images": updated,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("org_id", org_id).eq("id", item_id).execute()
+
+    try:
+        if "/catalog/" in url_to_delete:
+            storage_path = url_to_delete.split("/catalog/", 1)[1].split("?")[0]
+            db.storage.from_("catalog").remove([storage_path])
+    except Exception as exc:
+        logger.warning(
+            "delete_extra_catalog_image: Storage delete failed (DB already updated) path=%s: %s",
             url_to_delete, exc,
         )
 

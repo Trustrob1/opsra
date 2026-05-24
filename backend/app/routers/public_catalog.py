@@ -108,14 +108,16 @@ def _public_item_fields(
     price_on_request: bool,
 ) -> dict:
     """Return only the public-safe fields for a catalog item."""
+    shopify_images = item.get("catalog_images") or []
+    extra_images   = item.get("extra_catalog_images") or []
     return {
         "id":                 item.get("id"),
         "title":              item.get("title"),
         "slug":               item.get("slug"),
-        "description":        item.get("description"),
+        "description":        item.get("catalog_description") or item.get("description"),
         "price":              item.get("price"),
         "price_label":        _format_price(item.get("price"), price_template, price_on_request),
-        "catalog_images":     item.get("catalog_images") or [],
+        "catalog_images":     shopify_images + extra_images,
         "tags":               item.get("tags") or {},
         "custom_fields":      item.get("custom_fields") or {},
         "available":          item.get("available", True),
@@ -157,8 +159,8 @@ def _fetch_visible_items(db, org_id: str) -> List[dict]:
     result = (
         db.table("products")
         .select(
-            "id, title, slug, description, price, catalog_images, "
-            "tags, custom_fields, available, catalog_views"
+            "id, title, slug, description, catalog_description, price, catalog_images, "
+            "extra_catalog_images, tags, custom_fields, available, catalog_views"
         )
         .eq("org_id", org_id)
         .eq("catalog_visible", True)
@@ -341,8 +343,8 @@ async def get_catalog_item(
     result = (
         db.table("products")
         .select(
-            "id, title, slug, description, price, catalog_images, "
-            "tags, custom_fields, available, catalog_views"
+            "id, title, slug, description, catalog_description, price, catalog_images, "
+            "extra_catalog_images, tags, custom_fields, available, catalog_views"
         )
         .eq("org_id", org_id)
         .eq("slug", item_slug)

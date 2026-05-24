@@ -19,12 +19,14 @@ from app.services.catalog_service import (
     SlugConflictError,
     create_catalog_item,
     delete_catalog_image,
+    delete_extra_catalog_image,
     get_catalog_config,
     get_catalog_item,
     get_catalog_items,
     update_catalog_config,
     update_catalog_item,
     upload_catalog_image,
+    upload_extra_catalog_image,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,13 +99,15 @@ class CatalogConfigUpdate(BaseModel):
 
 
 class CatalogItemUpdate(BaseModel):
-    tags:            Optional[Dict[str, Any]] = None
-    custom_fields:   Optional[Dict[str, Any]] = None
-    catalog_visible: Optional[bool]           = None
-    slug:            Optional[str]            = Field(None, max_length=200)
-    catalog_images:  Optional[List[str]]      = None
-    available:       Optional[bool]           = None   # non-Shopify only
-    inventory_count: Optional[int]            = None   # non-Shopify only
+    tags:                  Optional[Dict[str, Any]] = None
+    custom_fields:         Optional[Dict[str, Any]] = None
+    catalog_visible:       Optional[bool]           = None
+    slug:                  Optional[str]            = Field(None, max_length=200)
+    catalog_images:        Optional[List[str]]      = None
+    extra_catalog_images:  Optional[List[str]]      = None
+    catalog_description:   Optional[str]            = Field(None, max_length=20000)
+    available:             Optional[bool]           = None   # non-Shopify only
+    inventory_count:       Optional[int]            = None   # non-Shopify only
 
     @field_validator("slug")
     @classmethod
@@ -135,7 +139,7 @@ async def get_config(
     db=Depends(get_supabase),
 ):
     _require_catalog_role(current_org)
-    config = get_catalog_config(db, current_org["id"])
+    config = get_catalog_config(db, current_org["org_id"])
     return {"catalog_config": config}
 
 
@@ -149,10 +153,10 @@ async def patch_config(
     # model_dump() in Pydantic v2 serialises nested models to plain dicts
     updates = body.model_dump(exclude_none=True)
     try:
-        config = update_catalog_config(db, current_org["id"], updates)
+        config = update_catalog_config(db, current_org["org_id"], updates)
         return {"catalog_config": config}
     except Exception as exc:
-        logger.warning("patch_config failed org=%s: %s", current_org["id"], exc)
+        logger.warning("patch_config failed org=%s: %s", current_org["org_id"], exc)
         raise HTTPException(status_code=500, detail="Failed to update catalog config.")
 
 
@@ -168,7 +172,7 @@ async def list_items(
 ):
     _require_catalog_role(current_org)
     items = get_catalog_items(
-        db, current_org["id"],
+        db, current_org["org_id"],
         visible_only=visible_only,
         available_only=available_only,
         search=search,
@@ -184,7 +188,7 @@ async def create_item(
 ):
     """Create new catalog item — non-Shopify orgs only."""
     _require_catalog_role(current_org)
-    org_id = current_org["id"]
+    org_id = current_org["org_id"]
 
     config = get_catalog_config(db, org_id)
     if (config.get("external_sync") or "none") == "shopify":
@@ -209,7 +213,7 @@ async def get_item_stats(
     db=Depends(get_supabase),
 ):
     _require_catalog_role(current_org)
-    item = get_catalog_item(db, current_org["id"], item_id)
+    item = get_catalog_item(db, current_org["org_id"], item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found.")
     return {
@@ -228,7 +232,7 @@ async def upload_image(
 ):
     """Upload image to catalog item. Max 5 MB. Allowed: jpeg, png, webp."""
     _require_catalog_role(current_org)
-    org_id = current_org["id"]
+    org_id = current_org["org_id"]
 
     # S10: MIME validation
     if file.content_type not in _ALLOWED_MIME:
@@ -269,16 +273,72 @@ async def delete_image(
 ):
     _require_catalog_role(current_org)
     try:
-        delete_catalog_image(db, current_org["id"], item_id, image_index)
+        delete_catalog_image(db, current_org["org_id"], item_id, image_index)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.warning(
             "delete_image failed org=%s item=%s idx=%s: %s",
-            current_org["id"], item_id, image_index, exc,
+            current_org["org_id"], item_id, image_index, exc,
         )
         raise HTTPException(status_code=500, detail="Image deletion failed.")
 
+@router.post("/items/{item_id}/extra-images", status_code=201)
+async def upload_extra_image(
+    item_id: str,
+    file: UploadFile = File(...),
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """Upload extra catalog-only image. Never overwritten by Shopify sync."""
+    _require_catalog_role(current_org)
+    org_id = current_org["org_id"]
+
+    if file.content_type not in _ALLOWED_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{file.content_type}'. Allowed: image/jpeg, image/png, image/webp.",
+        )
+
+    file_bytes = await file.read()
+    if len(file_bytes) > _MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="File exceeds the 5 MB limit.")
+
+    item = get_catalog_item(db, org_id, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found.")
+
+    try:
+        public_url = upload_extra_catalog_image(
+            db, org_id, item_id,
+            file_bytes,
+            file.filename or "image.jpg",
+            file.content_type,
+        )
+        return {"url": public_url}
+    except Exception as exc:
+        logger.warning("upload_extra_image failed org=%s item=%s: %s", org_id, item_id, exc)
+        raise HTTPException(status_code=500, detail="Image upload failed.")
+
+
+@router.delete("/items/{item_id}/extra-images/{image_index}", status_code=204)
+async def delete_extra_image(
+    item_id:     str,
+    image_index: int,
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_catalog_role(current_org)
+    try:
+        delete_extra_catalog_image(db, current_org["org_id"], item_id, image_index)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.warning(
+            "delete_extra_image failed org=%s item=%s idx=%s: %s",
+            current_org["org_id"], item_id, image_index, exc,
+        )
+        raise HTTPException(status_code=500, detail="Extra image deletion failed.")
 
 # ── Items — fully parameterised (must come last) ─────────────────────────────
 
@@ -289,7 +349,7 @@ async def get_item(
     db=Depends(get_supabase),
 ):
     _require_catalog_role(current_org)
-    item = get_catalog_item(db, current_org["id"], item_id)
+    item = get_catalog_item(db, current_org["org_id"], item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found.")
     return {"item": item}
@@ -303,7 +363,7 @@ async def patch_item(
     db=Depends(get_supabase),
 ):
     _require_catalog_role(current_org)
-    org_id  = current_org["id"]
+    org_id  = current_org["org_id"]
     updates = body.model_dump(exclude_none=True)
 
     if not updates:
@@ -340,7 +400,7 @@ async def delete_item(
 ):
     """Soft delete — sets catalog_visible=False. Non-Shopify orgs only."""
     _require_catalog_role(current_org)
-    org_id = current_org["id"]
+    org_id = current_org["org_id"]
 
     config = get_catalog_config(db, org_id)
     if (config.get("external_sync") or "none") == "shopify":

@@ -68,6 +68,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
   const [toast, setToast]     = useState('')
   const [error, setError]     = useState('')
   const fileRef               = useRef()
+  const extraFileRef          = useRef()
 
   const isShopify = (config?.external_sync || 'none') === 'shopify'
   const orgSlug   = config?.org_slug || ''
@@ -75,16 +76,18 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
   useEffect(() => {
     if (!item) return
     setForm({
-      title:           item.title || '',
-      price:           item.price ?? '',
-      description:     item.description || '',
-      slug:            item.slug || '',
-      catalog_visible: item.catalog_visible !== false,
-      available:       item.available !== false,
-      inventory_count: item.inventory_count ?? '',
-      tags:            item.tags || {},
-      custom_fields:   item.custom_fields || {},
-      catalog_images:  item.catalog_images || [],
+      title:                item.title || '',
+      price:                item.price ?? '',
+      description:          item.description || '',
+      catalog_description:  item.catalog_description || '',
+      slug:                 item.slug || '',
+      catalog_visible:      item.catalog_visible !== false,
+      available:            item.available !== false,
+      inventory_count:      item.inventory_count ?? '',
+      tags:                 item.tags || {},
+      custom_fields:        item.custom_fields || {},
+      catalog_images:       item.catalog_images || [],
+      extra_catalog_images: item.extra_catalog_images || [],
     })
     setError('')
     setToast('')
@@ -98,11 +101,13 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
   async function save() {
     setError('')
     const payload = {
-      tags:            form.tags,
-      custom_fields:   form.custom_fields,
-      catalog_visible: form.catalog_visible,
-      slug:            form.slug,
-      catalog_images:  form.catalog_images,
+      tags:                 form.tags,
+      custom_fields:        form.custom_fields,
+      catalog_visible:      form.catalog_visible,
+      slug:                 form.slug,
+      catalog_images:       form.catalog_images,
+      extra_catalog_images: form.extra_catalog_images,
+      catalog_description:  form.catalog_description || null,
     }
     if (!isShopify) {
       payload.available       = form.available
@@ -137,6 +142,30 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
       flash('Image uploaded.')
     } catch { setError('Image upload failed.') }
     finally { setUpload(false); if (fileRef.current) fileRef.current.value = '' }
+  }
+
+  async function handleExtraImageUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { setError('Image must be under 5 MB.'); return }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setError('Only JPEG, PNG, or WebP images allowed.'); return }
+    const fd = new FormData()
+    fd.append('file', file)
+    setUpload(true)
+    setError('')
+    try {
+      const result = await adminSvc.uploadExtraCatalogImage(item.id, fd)
+      setField('extra_catalog_images', [...form.extra_catalog_images, result.url])
+      flash('Extra image uploaded.')
+    } catch { setError('Extra image upload failed.') }
+    finally { setUpload(false); if (extraFileRef.current) extraFileRef.current.value = '' }
+  }
+
+  async function removeExtraImage(idx) {
+    try {
+      await adminSvc.deleteExtraCatalogImage(item.id, idx)
+      setField('extra_catalog_images', form.extra_catalog_images.filter((_, i) => i !== idx))
+    } catch { setError('Failed to remove extra image.') }
   }
 
   async function removeImage(idx) {
@@ -224,6 +253,14 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
               value={form.description || ''} maxLength={5000}
               readOnly={isShopify}
               onChange={e => setField('description', e.target.value)} />
+            {isShopify && <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#7A9BAD', margin: '4px 0 0' }}>Managed via Shopify — read only.</p>}
+          </Field>
+
+          <Field label="Catalog Description (Opsra only — never overwritten by Shopify)">
+            <textarea style={{ ...INPUT, minHeight: 120, resize: 'vertical' }}
+              value={form.catalog_description || ''} maxLength={20000}
+              placeholder="Add richer product details here — specifications, sizing, care instructions, warranty, etc. This appears on the public catalog page instead of the Shopify description if filled in."
+              onChange={e => setField('catalog_description', e.target.value)} />
           </Field>
 
           {/* ── Section 2: Images ── */}
@@ -257,6 +294,34 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
           </div>
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
             style={{ display: 'none' }} onChange={handleImageUpload} />
+
+          {/* ── Extra Catalog Images (Opsra only — never overwritten by Shopify) ── */}
+          <h3 style={{ ...SECTION_TITLE, marginTop: 20 }}>Extra Catalog Images</h3>
+          <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', margin: '-10px 0 14px' }}>
+            These are managed in Opsra only and will never be overwritten by Shopify sync.
+            They appear after the Shopify images on the public catalog page.
+          </p>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+            {(form.extra_catalog_images || []).map((url, idx) => (
+              <div key={idx} style={{ position: 'relative', width: 90, height: 90 }}>
+                <img src={url} alt={`extra-${idx}`}
+                  style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '2px solid #E2EFF4' }} />
+                <button onClick={() => removeExtraImage(idx)} style={{
+                  position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.55)',
+                  border: 'none', borderRadius: '50%', width: 20, height: 20,
+                  color: 'white', cursor: 'pointer', fontSize: 11, lineHeight: '20px', textAlign: 'center', padding: 0,
+                }}>✕</button>
+              </div>
+            ))}
+            <button onClick={() => extraFileRef.current?.click()}
+              style={{ width: 90, height: 90, border: '2px dashed #D0E8F0', borderRadius: 8, background: '#f5fbfd', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+              <span style={{ fontSize: 20 }}>{uploading ? '⏳' : '+'}</span>
+              <span style={{ fontFamily: ds.fontDm, fontSize: 11, color: '#7A9BAD' }}>{uploading ? 'Uploading' : 'Add image'}</span>
+            </button>
+          </div>
+          <input ref={extraFileRef} type="file" accept="image/jpeg,image/png,image/webp"
+            style={{ display: 'none' }} onChange={handleExtraImageUpload} />
 
           {/* ── Section 3: Tags ── */}
           {(config?.tag_dimensions || []).length > 0 && (

@@ -450,3 +450,11 @@ export const deleteCatalogImage = (itemId, imageIndex) =>
 export const createCatalogItem = (payload) =>
   api.post('/api/v1/catalog/items', payload)
     .then(r => r.data.item)
+
+export const uploadExtraCatalogImage = (itemId, formData) =>
+  api.post(`/api/v1/catalog/items/${itemId}/extra-images`, formData)
+    .then(r => r.data)
+
+export const deleteExtraCatalogImage = (itemId, imageIndex) =>
+  api.delete(`/api/v1/catalog/items/${itemId}/extra-images/${imageIndex}`)
+    .then(r => r.data)

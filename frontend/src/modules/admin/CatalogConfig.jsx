@@ -106,11 +106,19 @@ export default function CatalogConfig() {
 
   useEffect(() => {
     adminSvc.getCatalogConfig()
-      .then(c => setConfig({ ...DEFAULT_CONFIG, ...c,
-        availability_labels: { ...DEFAULT_CONFIG.availability_labels, ...(c?.availability_labels || {}) },
-        cta_buttons:    c?.cta_buttons    || DEFAULT_CONFIG.cta_buttons,
-        tag_dimensions: c?.tag_dimensions || [],
-      }))
+      .then(async c => {
+        if (!c) {
+          // First time setup — seed defaults so org always has a config record
+          try { await adminSvc.updateCatalogConfig(DEFAULT_CONFIG) } catch (_) {}
+        }
+        setConfig({
+          ...DEFAULT_CONFIG, ...(c || {}),
+          availability_labels: { ...DEFAULT_CONFIG.availability_labels, ...(c?.availability_labels || {}) },
+          cta_buttons:    c?.cta_buttons    || DEFAULT_CONFIG.cta_buttons,
+          tag_dimensions: c?.tag_dimensions || [],
+          _isFirstSetup:  !c,
+        })
+      })
       .catch(() => setError('Failed to load catalog config.'))
   }, [])
 
@@ -237,6 +245,11 @@ export default function CatalogConfig() {
       {error && (
         <div style={{ background: '#fff2f2', border: '1px solid #e05c5c', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontFamily: ds.fontDm, fontSize: 13.5, color: '#c0392b' }}>
           ⚠️ {error}
+        </div>
+      )}
+      {config._isFirstSetup && (
+        <div style={{ background: '#f0f7ff', border: '1px solid #b3d4f0', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontFamily: ds.fontDm, fontSize: 13.5, color: '#1a4a6e' }}>
+          👋 First time setup — fill in your catalog settings below and click Save.
         </div>
       )}
 
