@@ -48,8 +48,15 @@ function AccordionSection({ label, defaultOpen = true, children }) {
         <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.04em', color: C.text }}>
           {label}
         </span>
-        <span style={{ fontSize: 13, color: C.muted, lineHeight: 1, userSelect: 'none' }}>
-          {open ? '▴' : '▾'}
+        <span style={{
+          fontSize: 11, fontWeight: 500,
+          padding: '3px 10px', borderRadius: 20,
+          background: open ? C.teal : C.tealLight,
+          color: open ? 'white' : C.teal,
+          userSelect: 'none', flexShrink: 0,
+          transition: 'background 0.15s, color 0.15s',
+        }}>
+          {open ? 'Hide ▴' : 'Show ▾'}
         </span>
       </button>
       {open && <div style={{ paddingBottom: 16 }}>{children}</div>}
@@ -268,7 +275,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
 
         {/* ── Description accordion (fixed label, collapsible, open by default) ── */}
         {hasDesc && (
-          <AccordionSection label="Description" defaultOpen>
+          <AccordionSection label="Description" defaultOpen={false}>
             {item.catalog_description && (
               <div style={{
                 fontSize: 14, lineHeight: 1.75, color: C.text,
@@ -288,7 +295,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
 
         {/* ── Gallery accordion (configurable label, open by default) ── */}
         {hasGallery && (
-          <AccordionSection label={`${galleryLabel} (${images.length})`} defaultOpen>
+          <AccordionSection label={`${galleryLabel} (${images.length})`} defaultOpen={false}>
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
