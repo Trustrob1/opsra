@@ -1,13 +1,15 @@
 /**
  * frontend/src/catalog/CatalogItemPage.jsx
  * CATALOG-3B: Individual public product page.
- * Option C accordion layout: Description (fixed label, always visible, no scroll),
- * Gallery and Specifications as collapsible sections with configurable labels.
- * Image captions: backwards compatible — supports legacy string[] and new {url,caption}[] formats.
- * Mobile-first: auto-width CTA buttons, responsive padding, no fixed-height scroll containers.
+ * Option C accordion layout: Description collapsible (defaultOpen), Gallery and
+ * Specifications collapsible with configurable labels.
+ * Sticky CTA bar: appears on scroll past title via IntersectionObserver.
+ * Shopify HTML description: CSS section dividers via :has(> strong/b:first-child).
+ * Image captions: backwards compatible — supports string[] and {url,caption}[].
+ * Mobile-first: auto-width buttons, responsive padding.
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 const C = {
   bg:        '#FAFAF8',
@@ -56,7 +58,21 @@ function AccordionSection({ label, defaultOpen = true, children }) {
 }
 
 export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item, onBack }) {
-  const [activeImg, setActiveImg] = useState(0)
+  const [activeImg, setActiveImg]   = useState(0)
+  const [showSticky, setShowSticky] = useState(false)
+  const titleRef = useRef(null)
+
+  // Show sticky bar only once title scrolls out of view
+  useEffect(() => {
+    const el = titleRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowSticky(!entry.isIntersecting),
+      { threshold: 0 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   if (!item) return null
 
@@ -74,13 +90,14 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
 
   const hasGallery = images.length > 1
   const hasSpecs   = Object.keys(customFields).length > 0
+  const hasDesc    = !!(item.catalog_description || item.description)
 
   // Variant A — cold visitor WhatsApp CTA
   const orderLink = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi, I'm interested in the ${item.title}`)}`
     : null
 
-  // Variant B — post-qual CTA buttons (button_id sent as pre-filled text)
+  // Variant B — post-qual CTA buttons
   const postQualLinks = waNumber
     ? ctaButtons.map(btn => ({
         ...btn,
@@ -94,10 +111,49 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
         .ci-header  { padding: 18px 32px; }
         .ci-content { padding: 32px 32px 64px; }
         .ci-btns    { display: flex; flex-wrap: wrap; gap: 10px; }
+
+        /* Shopify description HTML styling */
+        .ci-desc p  { margin: 0 0 6px; font-size: 14px; line-height: 1.75; color: #7A7269; }
+        .ci-desc strong, .ci-desc b { color: #1A1714; }
+        .ci-desc ul, .ci-desc ol    { padding-left: 20px; margin: 6px 0 10px; }
+        .ci-desc li { margin-bottom: 4px; font-size: 14px; line-height: 1.65; color: #7A7269; }
+        .ci-desc a  { color: #0B6E74; text-decoration: underline; }
+
+        /* Section dividers: paragraph starting with bold = new section */
+        .ci-desc p:not(:first-child):has(> strong:first-child),
+        .ci-desc p:not(:first-child):has(> b:first-child) {
+          margin-top: 16px;
+          padding-top: 14px;
+          border-top: 1px solid #E8E4DC;
+        }
+
+        /* Sticky CTA bar */
+        .ci-sticky {
+          position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+          background: #FFFFFF;
+          border-top: 1px solid #E8E4DC;
+          padding: 12px 32px;
+          display: flex; align-items: center;
+          justify-content: space-between; gap: 16px;
+          box-shadow: 0 -4px 16px rgba(26,23,20,0.07);
+          transition: transform 0.2s ease;
+        }
+        .ci-sticky-title {
+          font-size: 13px; font-weight: 600; color: #1A1714;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          flex: 1; min-width: 0;
+        }
+        .ci-sticky-price {
+          font-size: 13px; font-weight: 600; color: #0B6E74;
+          flex-shrink: 0;
+        }
+
         @media (max-width: 640px) {
           .ci-header  { padding: 12px 16px; }
-          .ci-content { padding: 20px 16px 48px; }
+          .ci-content { padding: 20px 16px 80px; }
           .ci-btns    { gap: 8px; }
+          .ci-sticky  { padding: 10px 16px; }
+          .ci-sticky-title { font-size: 12px; }
         }
       `}</style>
 
@@ -143,17 +199,16 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           )}
         </div>
 
-        {/* Active image caption (shows below main image when present) */}
+        {/* Active image caption */}
         {images[activeImg]?.caption
-          ? <p style={{
-              fontSize: 12, color: C.muted, margin: '0 0 20px',
-              fontStyle: 'italic', lineHeight: 1.5,
-            }}>{images[activeImg].caption}</p>
+          ? <p style={{ fontSize: 12, color: C.muted, margin: '0 0 20px', fontStyle: 'italic', lineHeight: 1.5 }}>
+              {images[activeImg].caption}
+            </p>
           : <div style={{ marginBottom: 20 }} />
         }
 
-        {/* ── Title + Price ── */}
-        <div style={{
+        {/* ── Title + Price (observed for sticky bar trigger) ── */}
+        <div ref={titleRef} style={{
           display: 'flex', justifyContent: 'space-between',
           alignItems: 'flex-start', gap: 16, flexWrap: 'wrap',
           marginBottom: 14,
@@ -211,28 +266,24 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           </div>
         )}
 
-        {/* ── Description (fixed label, always visible, no scroll container) ── */}
-        {(item.catalog_description || item.description) && (
-          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, paddingBottom: 16 }}>
-            <p style={{
-              fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
-              textTransform: 'uppercase', color: C.muted, margin: '0 0 10px',
-            }}>Description</p>
+        {/* ── Description accordion (fixed label, collapsible, open by default) ── */}
+        {hasDesc && (
+          <AccordionSection label="Description" defaultOpen>
             {item.catalog_description && (
               <div style={{
-                fontSize: 14, lineHeight: 1.7, color: C.text,
-                marginBottom: item.description ? 10 : 0,
+                fontSize: 14, lineHeight: 1.75, color: C.text,
+                marginBottom: item.description ? 12 : 0,
               }}>
                 {item.catalog_description}
               </div>
             )}
             {item.description && (
               <div
-                style={{ fontSize: 14, lineHeight: 1.7, color: C.muted }}
+                className="ci-desc"
                 dangerouslySetInnerHTML={{ __html: item.description }}
               />
             )}
-          </div>
+          </AccordionSection>
         )}
 
         {/* ── Gallery accordion (configurable label, open by default) ── */}
@@ -290,7 +341,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           </AccordionSection>
         )}
 
-        {/* ── CTAs ── */}
+        {/* ── CTAs (inline — always present in page flow) ── */}
         <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, marginTop: 8 }}>
 
           {/* Variant A: Cold visitor */}
@@ -364,6 +415,27 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           </button>
         </div>
       </div>
+
+      {/* ── Sticky CTA bar (appears when title scrolls out of view) ── */}
+      {orderLink && showSticky && (
+        <div className="ci-sticky">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p className="ci-sticky-title">{item.title}</p>
+            {item.price_label && (
+              <p className="ci-sticky-price">{item.price_label}</p>
+            )}
+          </div>
+          <a href={orderLink} target="_blank" rel="noopener noreferrer" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: '#25D366', color: 'white',
+            padding: '9px 16px', borderRadius: 8,
+            fontFamily: "'Jost', sans-serif", fontSize: 13, fontWeight: 600,
+            textDecoration: 'none', flexShrink: 0,
+          }}>
+            Order via WhatsApp
+          </a>
+        </div>
+      )}
     </div>
   )
 }
