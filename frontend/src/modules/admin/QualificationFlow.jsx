@@ -42,6 +42,7 @@ const EMPTY_QUESTION = () => ({
   type: 'free_text',
   answer_key: '',
   map_to_lead_field: '',
+  map_to_catalog_tag: '',
   options: [],
 })
 
@@ -105,7 +106,11 @@ export default function QualificationFlow() {
           setQuestions(flow.questions.map(q => ({
             ...q,
             map_to_lead_field: q.map_to_lead_field || '',
-            options: q.options || [],
+            map_to_catalog_tag: q.map_to_catalog_tag || '',
+            options: (q.options || []).map(opt => ({
+              ...opt,
+              tag_value: opt.tag_value || '',
+            })),
           })))
         }
 
@@ -188,7 +193,14 @@ export default function QualificationFlow() {
           type: q.type,
           answer_key: q.answer_key,
           map_to_lead_field: q.map_to_lead_field || null,
-          options: q.type === 'free_text' ? null : q.options,
+          map_to_catalog_tag: q.map_to_catalog_tag?.trim() || null,
+          options: q.type === 'free_text' ? null : (q.options || []).map(opt => ({
+            id: opt.id,
+            label: opt.label,
+            tag_value: (q.map_to_catalog_tag?.trim() && opt.tag_value?.trim())
+              ? opt.tag_value.trim()
+              : undefined,
+          })),
         })),
         // QUAL-RECOMMEND fields — null when blank so backend uses hardcoded default
         recommendation_intro:        recIntro.trim()       || null,
@@ -262,6 +274,12 @@ export default function QualificationFlow() {
   const updateOption = (qIdx, oIdx, label) => {
     const opts = [...(questions[qIdx].options || [])]
     opts[oIdx] = { ...opts[oIdx], label }
+    updateQuestion(qIdx, { options: opts })
+  }
+
+  const updateOptionTagValue = (qIdx, oIdx, tag_value) => {
+    const opts = [...(questions[qIdx].options || [])]
+    opts[oIdx] = { ...opts[oIdx], tag_value }
     updateQuestion(qIdx, { options: opts })
   }
 
@@ -618,18 +636,35 @@ export default function QualificationFlow() {
                   </div>
                 </div>
 
-                {/* Map to lead field */}
-                <div style={{ marginBottom: q.type !== 'free_text' ? 10 : 0 }} onClick={e => e.stopPropagation()}>
-                  <label style={S.label}>Map Answer to Lead Field <span style={{ fontWeight: 400, color: ds.gray }}>(optional)</span></label>
-                  <select
-                    style={S.select}
-                    value={q.map_to_lead_field || ''}
-                    onChange={e => updateQuestion(idx, { map_to_lead_field: e.target.value || '' })}
-                  >
-                    {LEAD_FIELD_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
+                {/* Map to lead field + catalog tag — two-column row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: q.type !== 'free_text' ? 10 : 0 }} onClick={e => e.stopPropagation()}>
+                  <div>
+                    <label style={S.label}>Map Answer to Lead Field <span style={{ fontWeight: 400, color: ds.gray }}>(optional)</span></label>
+                    <select
+                      style={S.select}
+                      value={q.map_to_lead_field || ''}
+                      onChange={e => updateQuestion(idx, { map_to_lead_field: e.target.value || '' })}
+                    >
+                      {LEAD_FIELD_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {q.type !== 'free_text' && q.type !== 'yes_no' && (
+                    <div>
+                      <label style={S.label}>
+                        Catalog Tag Dimension
+                        <span style={{ fontWeight: 400, color: ds.gray }}> (optional, e.g. firmness)</span>
+                      </label>
+                      <input
+                        style={S.input}
+                        maxLength={50}
+                        placeholder="e.g. firmness, size, health_condition"
+                        value={q.map_to_catalog_tag || ''}
+                        onChange={e => updateQuestion(idx, { map_to_catalog_tag: e.target.value.replace(/[^a-zA-Z0-9_]/g, '') })}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Options editor */}
@@ -653,23 +688,34 @@ export default function QualificationFlow() {
                       )}
                     </div>
                     {(q.options || []).map((opt, oIdx) => (
-                      <div key={opt.id || oIdx} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                        <input
-                          style={{ ...S.input, flex: 1 }}
-                          maxLength={q.type === 'list_select' ? 24 : 20}
-                          placeholder={`Option ${oIdx + 1} label`}
-                          value={opt.label}
-                          onChange={e => updateOption(idx, oIdx, e.target.value)}
-                          disabled={q.type === 'yes_no'}
-                        />
-                        {q.type !== 'yes_no' && (
-                          <button
-                            style={{ ...S.iconBtn, color: '#e53e3e', borderColor: '#fc8181', flexShrink: 0 }}
-                            onClick={() => removeOption(idx, oIdx)}
-                          >
-                            ✕
-                          </button>
-                        )}
+                      <div key={opt.id || oIdx} style={{ marginBottom: 6 }}>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            style={{ ...S.input, flex: 1 }}
+                            maxLength={q.type === 'list_select' ? 24 : 20}
+                            placeholder={`Option ${oIdx + 1} label`}
+                            value={opt.label}
+                            onChange={e => updateOption(idx, oIdx, e.target.value)}
+                            disabled={q.type === 'yes_no'}
+                          />
+                          {q.map_to_catalog_tag?.trim() && (
+                            <input
+                              style={{ ...S.input, flex: 1, borderColor: ds.mint }}
+                              maxLength={100}
+                              placeholder={`Tag value (e.g. ${q.map_to_catalog_tag})`}
+                              value={opt.tag_value || ''}
+                              onChange={e => updateOptionTagValue(idx, oIdx, e.target.value)}
+                            />
+                          )}
+                          {q.type !== 'yes_no' && (
+                            <button
+                              style={{ ...S.iconBtn, color: '#e53e3e', borderColor: '#fc8181', flexShrink: 0 }}
+                              onClick={() => removeOption(idx, oIdx)}
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

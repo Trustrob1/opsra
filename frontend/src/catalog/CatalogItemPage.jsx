@@ -1,20 +1,58 @@
 /**
  * frontend/src/catalog/CatalogItemPage.jsx
  * CATALOG-3B: Individual public product page.
- * Image gallery, description, tag badges, custom fields, dual CTA variants.
+ * Option C accordion layout: Description (fixed label, always visible, no scroll),
+ * Gallery and Specifications as collapsible sections with configurable labels.
+ * Image captions: backwards compatible — supports legacy string[] and new {url,caption}[] formats.
+ * Mobile-first: auto-width CTA buttons, responsive padding, no fixed-height scroll containers.
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState } from 'react'
 
 const C = {
-  bg:       '#FAFAF8',
-  surface:  '#FFFFFF',
-  border:   '#E8E4DC',
-  text:     '#1A1714',
-  muted:    '#7A7269',
-  teal:     '#0B6E74',
-  tealLight:'#E8F4F5',
-  accent:   '#C8A96E',
+  bg:        '#FAFAF8',
+  surface:   '#FFFFFF',
+  border:    '#E8E4DC',
+  text:      '#1A1714',
+  muted:     '#7A7269',
+  teal:      '#0B6E74',
+  tealLight: '#E8F4F5',
+  accent:    '#C8A96E',
+}
+
+/**
+ * Normalise catalog_images to {url, caption}[] format.
+ * Backwards compatible: plain string URLs → { url, caption: '' }
+ */
+function normaliseImages(raw) {
+  return (raw || []).map(img =>
+    typeof img === 'string' ? { url: img, caption: '' } : (img || {})
+  )
+}
+
+function AccordionSection({ label, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}` }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', background: 'none', border: 'none',
+          padding: '14px 0',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          cursor: 'pointer', fontFamily: "'Jost', sans-serif",
+        }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.04em', color: C.text }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 13, color: C.muted, lineHeight: 1, userSelect: 'none' }}>
+          {open ? '▴' : '▾'}
+        </span>
+      </button>
+      {open && <div style={{ paddingBottom: 16 }}>{children}</div>}
+    </div>
+  )
 }
 
 export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item, onBack }) {
@@ -22,15 +60,20 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
 
   if (!item) return null
 
-  const images        = item.catalog_images || []
+  const images        = normaliseImages(item.catalog_images)
   const itemLabel     = catalogConfig?.catalog_item_label        || 'Product'
   const itemLabelPlur = catalogConfig?.catalog_item_label_plural || 'Products'
-  const availLabel    = catalogConfig?.availability_labels?.available    || 'In Stock'
-  const unavailLabel  = catalogConfig?.availability_labels?.unavailable  || 'Out of Stock'
-  const ctaButtons    = catalogConfig?.cta_buttons || []
+  const availLabel    = catalogConfig?.availability_labels?.available   || 'In Stock'
+  const unavailLabel  = catalogConfig?.availability_labels?.unavailable || 'Out of Stock'
+  const ctaButtons    = catalogConfig?.cta_buttons    || []
   const tagDimensions = catalogConfig?.tag_dimensions || []
   const customFields  = item.custom_fields || {}
   const isAvailable   = item.available !== false
+  const galleryLabel  = catalogConfig?.gallery_section_label        || 'Gallery'
+  const specsLabel    = catalogConfig?.specifications_section_label || 'Specifications'
+
+  const hasGallery = images.length > 1
+  const hasSpecs   = Object.keys(customFields).length > 0
 
   // Variant A — cold visitor WhatsApp CTA
   const orderLink = waNumber
@@ -47,275 +90,278 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, fontFamily: "'Jost', sans-serif" }}>
+      <style>{`
+        .ci-header  { padding: 18px 32px; }
+        .ci-content { padding: 32px 32px 64px; }
+        .ci-btns    { display: flex; flex-wrap: wrap; gap: 10px; }
+        @media (max-width: 640px) {
+          .ci-header  { padding: 12px 16px; }
+          .ci-content { padding: 20px 16px 48px; }
+          .ci-btns    { gap: 8px; }
+        }
+      `}</style>
 
       {/* ── Header ── */}
-      <header style={{
-        borderBottom: `1px solid ${C.border}`,
-        background: C.surface,
-        padding: '20px 32px',
+      <header className="ci-header" style={{
+        borderBottom: `1px solid ${C.border}`, background: C.surface,
         position: 'sticky', top: 0, zIndex: 10,
         display: 'flex', alignItems: 'center', gap: 16,
       }}>
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none', border: `1px solid ${C.border}`,
-            borderRadius: 7, padding: '6px 14px',
-            fontFamily: "'Jost', sans-serif", fontSize: 13,
-            color: C.muted, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}
-        >← Browse all {itemLabelPlur}</button>
-        <span style={{
-          fontFamily: "'Cormorant Garamond', serif",
-          fontSize: 15, color: C.muted,
-        }}>{orgName}</span>
+        <button onClick={onBack} style={{
+          background: 'none', border: `1px solid ${C.border}`, borderRadius: 7,
+          padding: '6px 14px', fontFamily: "'Jost', sans-serif", fontSize: 13,
+          color: C.muted, cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}>
+          ← Browse all {itemLabelPlur}
+        </button>
+        <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 15, color: C.muted }}>
+          {orgName}
+        </span>
       </header>
 
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '40px 32px 64px' }}>
+      <div className="ci-content" style={{ maxWidth: 720, margin: '0 auto' }}>
+
+        {/* ── Main image ── */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-          gap: 48,
+          width: '100%', aspectRatio: '16/9',
+          background: '#F5F3EF', borderRadius: 12, overflow: 'hidden',
+          border: `1px solid ${C.border}`, marginBottom: 8,
         }}>
-
-          {/* ── Left: Image Gallery ── */}
-          <div>
-            {/* Main image */}
+          {images[activeImg]?.url ? (
+            <img
+              src={images[activeImg].url}
+              alt={item.title}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
             <div style={{
-              aspectRatio: '1/1',
-              background: '#F5F3EF',
-              borderRadius: 12,
-              overflow: 'hidden',
-              marginBottom: 12,
-              border: `1px solid ${C.border}`,
-            }}>
-              {images[activeImg] ? (
-                <img
-                  src={images[activeImg]}
-                  alt={item.title}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div style={{
-                  width: '100%', height: '100%',
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', color: '#C8C0B4', fontSize: 48,
-                }}>📦</div>
-              )}
-            </div>
+              width: '100%', height: '100%',
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'center', color: '#C8C0B4', fontSize: 48,
+            }}>📦</div>
+          )}
+        </div>
 
-            {/* Thumbnails */}
-            {images.length > 1 && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {images.map((img, i) => (
-                  <div
-                    key={i}
-                    onClick={() => setActiveImg(i)}
-                    style={{
-                      width: 64, height: 64,
-                      borderRadius: 8, overflow: 'hidden',
-                      border: `2px solid ${i === activeImg ? C.teal : C.border}`,
-                      cursor: 'pointer', flexShrink: 0,
-                    }}
-                  >
-                    <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        {/* Active image caption (shows below main image when present) */}
+        {images[activeImg]?.caption
+          ? <p style={{
+              fontSize: 12, color: C.muted, margin: '0 0 20px',
+              fontStyle: 'italic', lineHeight: 1.5,
+            }}>{images[activeImg].caption}</p>
+          : <div style={{ marginBottom: 20 }} />
+        }
 
-          {/* ── Right: Details ── */}
-          <div>
-            {/* Availability */}
+        {/* ── Title + Price ── */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'flex-start', gap: 16, flexWrap: 'wrap',
+          marginBottom: 14,
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               display: 'inline-block',
               background: isAvailable ? '#E8F5E9' : '#FFF3E0',
               color: isAvailable ? '#2E7D32' : '#E65100',
-              padding: '4px 12px', borderRadius: 20,
-              fontSize: 12, fontWeight: 600, marginBottom: 12,
+              padding: '3px 10px', borderRadius: 20,
+              fontSize: 11, fontWeight: 600, marginBottom: 8,
             }}>
               {isAvailable ? availLabel : unavailLabel}
             </div>
-
-            {/* Title */}
             <h1 style={{
               fontFamily: "'Cormorant Garamond', serif",
-              fontSize: 32, fontWeight: 700,
-              color: C.text, margin: '0 0 10px', lineHeight: 1.15,
+              fontSize: 28, fontWeight: 700,
+              color: C.text, margin: 0, lineHeight: 1.2,
             }}>{item.title}</h1>
+          </div>
+          {item.price_label && (
+            <div style={{
+              fontSize: 22, fontWeight: 600, color: C.teal,
+              flexShrink: 0, paddingTop: 30,
+            }}>{item.price_label}</div>
+          )}
+        </div>
 
-            {/* Price */}
-            {item.price_label && (
-              <p style={{
-                fontFamily: "'Jost', sans-serif",
-                fontSize: 22, fontWeight: 600,
-                color: C.teal, margin: '0 0 20px',
-              }}>{item.price_label}</p>
-            )}
-
-            {/* Tag badges */}
-            {tagDimensions.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                {tagDimensions.map(dim => {
-                  const val = (item.tags || {})[dim.key]
-                  if (!val) return null
-                  const vals = Array.isArray(val) ? val : [val]
-                  return (
-                    <div key={dim.key} style={{ marginBottom: 8 }}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
-                        textTransform: 'uppercase', color: C.muted,
-                        display: 'block', marginBottom: 4,
-                      }}>{dim.label}</span>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {vals.map(v => (
-                          <span key={v} style={{
-                            fontSize: 12, padding: '3px 10px',
-                            background: C.tealLight, color: C.teal,
-                            borderRadius: 12, fontWeight: 500,
-                          }}>{v}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* Description */}
-            {item.catalog_description && (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{
-                  fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
-                  textTransform: 'uppercase', color: C.muted,
-                  margin: '0 0 6px',
-                }}>About this product</p>
-                <div style={{
-                  fontSize: 14, lineHeight: 1.7, color: C.text,
-                }}>
-                  {item.catalog_description}
-                </div>
-              </div>
-            )}
-
-            {item.description && (
-              <div style={{ marginBottom: 24 }}>
-                {item.catalog_description && (
-                  <p style={{
+        {/* ── Tag badges ── */}
+        {tagDimensions.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            {tagDimensions.map(dim => {
+              const val = (item.tags || {})[dim.key]
+              if (!val) return null
+              const vals = Array.isArray(val) ? val : [val]
+              return (
+                <div key={dim.key} style={{ marginBottom: 8 }}>
+                  <span style={{
                     fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
                     textTransform: 'uppercase', color: C.muted,
-                    margin: '0 0 6px',
-                  }}>Product details</p>
-                )}
-                <div
-                  style={{
-                    fontSize: 14, lineHeight: 1.7,
-                    color: C.muted,
-                    maxHeight: 200, overflowY: 'auto',
-                  }}
-                  dangerouslySetInnerHTML={{ __html: item.description }}
-                />
-              </div>
-            )}
-
-            {/* Custom fields */}
-            {Object.keys(customFields).length > 0 && (
-              <div style={{
-                background: '#F5F3EF', borderRadius: 8,
-                padding: '14px 16px', marginBottom: 24,
-              }}>
-                {Object.entries(customFields).map(([k, v]) => (
-                  <div key={k} style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    padding: '5px 0',
-                    borderBottom: `1px solid ${C.border}`,
-                    fontSize: 13,
-                  }}>
-                    <span style={{ color: C.muted, textTransform: 'capitalize' }}>
-                      {k.replace(/_/g, ' ')}
-                    </span>
-                    <span style={{ color: C.text, fontWeight: 500 }}>{String(v)}</span>
+                    display: 'block', marginBottom: 4,
+                  }}>{dim.label}</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {vals.map(v => (
+                      <span key={v} style={{
+                        fontSize: 12, padding: '3px 10px',
+                        background: C.tealLight, color: C.teal,
+                        borderRadius: 12, fontWeight: 500,
+                      }}>{v}</span>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {/* ── Variant A: Cold visitor CTA ── */}
-            {orderLink && (
-              <div style={{
-                background: C.tealLight,
-                border: `1px solid ${C.teal}33`,
-                borderRadius: 10,
-                padding: '20px 20px',
-                marginBottom: 16,
-              }}>
-                <p style={{
-                  fontFamily: "'Cormorant Garamond', serif",
-                  fontSize: 17, fontWeight: 600,
-                  color: C.text, margin: '0 0 4px',
-                }}>
-                  Interested in this {itemLabel}? Chat with us on WhatsApp 💬
-                </p>
-                <p style={{ fontSize: 12, color: C.muted, margin: '0 0 14px' }}>
-                  Our team will answer any questions and help you order.
-                </p>
-                <a
-                  href={orderLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    background: '#25D366', color: 'white',
-                    padding: '12px 22px', borderRadius: 8,
-                    fontFamily: "'Jost', sans-serif", fontSize: 14, fontWeight: 600,
-                    textDecoration: 'none',
-                  }}
-                >
-                  Order via WhatsApp
-                </a>
-              </div>
-            )}
-
-            {/* ── Variant B: Post-qual CTA buttons ── */}
-            {postQualLinks.length > 0 && (
-              <div style={{
-                borderTop: `1px solid ${C.border}`,
-                paddingTop: 16,
-              }}>
-                <p style={{
-                  fontSize: 13, color: C.muted,
-                  fontStyle: 'italic', margin: '0 0 10px',
-                }}>
-                  Returning from a recommendation? Complete your request:
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {postQualLinks.map(btn => (
-                    <a
-                      key={btn.id}
-                      href={btn.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'block', textAlign: 'center',
-                        padding: '12px 20px', borderRadius: 8,
-                        border: `1.5px solid ${C.teal}`,
-                        color: C.teal, fontFamily: "'Jost', sans-serif",
-                        fontSize: 14, fontWeight: 600,
-                        textDecoration: 'none',
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = C.tealLight }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                    >
-                      {btn.label}
-                    </a>
-                  ))}
                 </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── Description (fixed label, always visible, no scroll container) ── */}
+        {(item.catalog_description || item.description) && (
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, paddingBottom: 16 }}>
+            <p style={{
+              fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
+              textTransform: 'uppercase', color: C.muted, margin: '0 0 10px',
+            }}>Description</p>
+            {item.catalog_description && (
+              <div style={{
+                fontSize: 14, lineHeight: 1.7, color: C.text,
+                marginBottom: item.description ? 10 : 0,
+              }}>
+                {item.catalog_description}
               </div>
+            )}
+            {item.description && (
+              <div
+                style={{ fontSize: 14, lineHeight: 1.7, color: C.muted }}
+                dangerouslySetInnerHTML={{ __html: item.description }}
+              />
             )}
           </div>
+        )}
+
+        {/* ── Gallery accordion (configurable label, open by default) ── */}
+        {hasGallery && (
+          <AccordionSection label={`${galleryLabel} (${images.length})`} defaultOpen>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+              gap: 10,
+            }}>
+              {images.map((img, i) => (
+                <div key={i} onClick={() => setActiveImg(i)} style={{ cursor: 'pointer' }}>
+                  <div style={{
+                    aspectRatio: '1/1', borderRadius: 8, overflow: 'hidden',
+                    border: `2px solid ${i === activeImg ? C.teal : C.border}`,
+                    marginBottom: img.caption ? 4 : 0,
+                    transition: 'border-color 0.15s',
+                  }}>
+                    {img.url
+                      ? <img src={img.url} alt={img.caption || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <div style={{ width: '100%', height: '100%', background: '#F5F3EF' }} />
+                    }
+                  </div>
+                  {img.caption && (
+                    <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.4 }}>
+                      {img.caption}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </AccordionSection>
+        )}
+
+        {/* ── Specifications accordion (configurable label, open by default) ── */}
+        {hasSpecs && (
+          <AccordionSection label={specsLabel} defaultOpen>
+            <div style={{ background: '#F5F3EF', borderRadius: 8, padding: '2px 16px' }}>
+              {Object.entries(customFields).map(([k, v], idx, arr) => (
+                <div key={k} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                  padding: '9px 0', gap: 12,
+                  borderBottom: idx < arr.length - 1 ? `1px solid ${C.border}` : 'none',
+                  fontSize: 13,
+                }}>
+                  <span style={{ color: C.muted, textTransform: 'capitalize', flexShrink: 0 }}>
+                    {k.replace(/_/g, ' ')}
+                  </span>
+                  <span style={{ color: C.text, fontWeight: 500, textAlign: 'right' }}>
+                    {String(v)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </AccordionSection>
+        )}
+
+        {/* ── CTAs ── */}
+        <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, marginTop: 8 }}>
+
+          {/* Variant A: Cold visitor */}
+          {orderLink && (
+            <div style={{
+              background: C.tealLight, border: `1px solid ${C.teal}33`,
+              borderRadius: 10, padding: '18px 20px', marginBottom: 16,
+            }}>
+              <p style={{
+                fontFamily: "'Cormorant Garamond', serif",
+                fontSize: 17, fontWeight: 600, color: C.text, margin: '0 0 4px',
+              }}>
+                Interested in this {itemLabel}? Chat with us on WhatsApp 💬
+              </p>
+              <p style={{ fontSize: 12, color: C.muted, margin: '0 0 14px' }}>
+                Our team will answer any questions and help you order.
+              </p>
+              <a href={orderLink} target="_blank" rel="noopener noreferrer" style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                background: '#25D366', color: 'white',
+                padding: '10px 20px', borderRadius: 8,
+                fontFamily: "'Jost', sans-serif", fontSize: 14, fontWeight: 600,
+                textDecoration: 'none',
+              }}>
+                Order via WhatsApp
+              </a>
+            </div>
+          )}
+
+          {/* Variant B: Post-qual */}
+          {postQualLinks.length > 0 && (
+            <div>
+              <p style={{ fontSize: 13, color: C.muted, fontStyle: 'italic', margin: '0 0 10px' }}>
+                Returning from a recommendation? Complete your request:
+              </p>
+              <div className="ci-btns">
+                {postQualLinks.map(btn => (
+                  <a
+                    key={btn.id}
+                    href={btn.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      padding: '10px 18px', borderRadius: 8,
+                      border: `1.5px solid ${C.teal}`,
+                      color: C.teal, fontFamily: "'Jost', sans-serif",
+                      fontSize: 13, fontWeight: 600,
+                      textDecoration: 'none', whiteSpace: 'nowrap',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = C.tealLight }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    {btn.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Back link (bottom) ── */}
+        <div style={{ marginTop: 32, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
+          <button onClick={onBack} style={{
+            background: 'none', border: 'none', padding: 0,
+            fontFamily: "'Jost', sans-serif", fontSize: 13,
+            color: C.muted, cursor: 'pointer',
+          }}>
+            ← Browse all {itemLabelPlur}
+          </button>
         </div>
       </div>
     </div>

@@ -90,8 +90,10 @@ const DEFAULT_CONFIG = {
   price_label_template:      '₦{price}',
   price_on_request:          false,
   availability_labels:       { available: 'In Stock', unavailable: 'Out of Stock' },
-  external_sync:             'none',
-  cta_buttons:               [
+  external_sync:                'none',
+  gallery_section_label:        'Gallery',
+  specifications_section_label: 'Specifications',
+  cta_buttons:                  [
     { id: 'cta_1', label: 'CTA Button 1' },
     { id: 'cta_2', label: 'CTA Button 2' },
   ],
@@ -293,6 +295,19 @@ export default function CatalogConfig() {
             <input style={INPUT} maxLength={50}
               value={config.availability_labels?.unavailable || ''}
               onChange={e => setConfig(p => ({ ...p, availability_labels: { ...p.availability_labels, unavailable: e.target.value } }))} />
+          </Field>
+        </FIELD_ROW>
+
+        <FIELD_ROW>
+          <Field label="Gallery Section Label">
+            <input style={INPUT} value={config.gallery_section_label || ''} maxLength={50}
+              placeholder="Gallery"
+              onChange={e => setConfig(p => ({ ...p, gallery_section_label: e.target.value }))} />
+          </Field>
+          <Field label="Specifications Section Label">
+            <input style={INPUT} value={config.specifications_section_label || ''} maxLength={50}
+              placeholder="Specifications"
+              onChange={e => setConfig(p => ({ ...p, specifications_section_label: e.target.value }))} />
           </Field>
         </FIELD_ROW>
 
