@@ -123,6 +123,7 @@ def _public_item_fields(
         "custom_fields":      item.get("custom_fields") or {},
         "available":          item.get("available", True),
         "catalog_views":      item.get("catalog_views", 0),
+        "variants":           item.get("variants") or [],
     }
 
 
@@ -136,8 +137,10 @@ def _public_config_fields(catalog_config: dict) -> dict:
         "availability_labels":       catalog_config.get("availability_labels", {
         "available": "In Stock", "unavailable": "Out of Stock",
         }),
-        "cta_buttons":               catalog_config.get("cta_buttons", []),
-        "tag_dimensions":            catalog_config.get("tag_dimensions", []),
+        "cta_buttons":                catalog_config.get("cta_buttons", []),
+        "tag_dimensions":             catalog_config.get("tag_dimensions", []),
+        "gallery_section_label":      catalog_config.get("gallery_section_label", "Gallery"),
+        "specifications_section_label": catalog_config.get("specifications_section_label", "Specifications"),
     }
 
 
@@ -345,7 +348,7 @@ async def get_catalog_item(
         db.table("products")
         .select(
             "id, title, slug, description, catalog_description, price, catalog_images, "
-            "extra_catalog_images, tags, custom_fields, available, catalog_views"
+            "extra_catalog_images, tags, custom_fields, available, catalog_views, variants"
         )
         .eq("org_id", org_id)
         .eq("slug", item_slug)
