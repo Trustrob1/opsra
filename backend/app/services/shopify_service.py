@@ -228,11 +228,15 @@ def sync_product(db, org_id: str, shopify_product: dict) -> dict:
             price = _safe_decimal(variants[0].get("price"))
             compare_at_price = _safe_decimal(variants[0].get("compare_at_price"))
 
-        # Availability: Shopify status active AND at least 1 unit in inventory
+        # Availability: Shopify status active AND (inventory > 0 OR tracking disabled OR policy=continue)
+        # inventory_management=null means Shopify isn't tracking stock — treat as always available.
+        # inventory_policy="continue" means Shopify allows selling when out of stock.
         total_inventory = sum(int(v.get("inventory_quantity") or 0) for v in variants)
+        untracked = any(v.get("inventory_management") is None for v in variants)
+        oversell  = any(v.get("inventory_policy") == "continue" for v in variants)
         is_available = (
             (shopify_product.get("status") or "active") == "active"
-            and total_inventory > 0
+            and (total_inventory > 0 or untracked or oversell)
         )
 
         # Check if product already exists to guard slug + catalog_visible (first sync only)
