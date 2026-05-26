@@ -1,12 +1,9 @@
 /**
  * frontend/src/catalog/CatalogItemPage.jsx
  * CATALOG-3B: Individual public product page.
- * Option C accordion layout: Description collapsible (defaultOpen), Gallery and
- * Specifications collapsible with configurable labels.
- * Sticky CTA bar: appears on scroll past title via IntersectionObserver.
- * Shopify HTML description: CSS section dividers via :has(> strong/b:first-child).
- * Image captions: backwards compatible — supports string[] and {url,caption}[].
- * Mobile-first: auto-width buttons, responsive padding.
+ * Hybrid variant selector: clickable size buttons + expandable price table.
+ * Non-Shopify products (no variants) fall back to item.price_label — backwards compatible.
+ * Option C accordion layout, sticky CTA bar, Shopify HTML section dividers.
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState, useRef, useEffect } from 'react'
@@ -22,14 +19,33 @@ const C = {
   accent:    '#C8A96E',
 }
 
-/**
- * Normalise catalog_images to {url, caption}[] format.
- * Backwards compatible: plain string URLs → { url, caption: '' }
- */
 function normaliseImages(raw) {
   return (raw || []).map(img =>
     typeof img === 'string' ? { url: img, caption: '' } : (img || {})
   )
+}
+
+/** Mirror of backend availability logic — must stay in sync with shopify_service.py */
+function isVariantAvailable(v) {
+  if (!v) return false
+  return (
+    v.inventory_management === null ||
+    v.inventory_management === undefined ||
+    v.inventory_policy === 'continue' ||
+    parseInt(v.inventory_quantity || 0) > 0
+  )
+}
+
+/** Format a numeric price using the org price_label_template. */
+function formatVariantPrice(price, template, priceOnRequest) {
+  if (priceOnRequest) return 'Price on Request'
+  if (price === null || price === undefined || price === '') return ''
+  const tmpl = template || '₦{price}'
+  const formatted = parseFloat(price).toLocaleString('en-NG', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })
+  return tmpl.replace('{price}', formatted)
 }
 
 function AccordionSection({ label, defaultOpen = true, children }) {
@@ -64,12 +80,31 @@ function AccordionSection({ label, defaultOpen = true, children }) {
   )
 }
 
+function preprocessDescription(html) {
+  if (!html) return ''
+  let pCount = 0
+  return html
+    .replace(/<(h[2-5])([^>]*)>/gi, '<p$2 class="ci-section-head">')
+    .replace(/<\/h[2-5]>/gi, '</p>')
+    .replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (match, attrs, content) => {
+      pCount++
+      if (pCount === 1) return match
+      const plain = content.replace(/<[^>]+>/g, '').trim()
+      if (plain.length > 0 && plain.length < 90) {
+        const already = /ci-section-head/.test(attrs)
+        return `<p${attrs}${already ? '' : ' class="ci-section-head"'}>${content}</p>`
+      }
+      return match
+    })
+}
+
 export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item, onBack }) {
-  const [activeImg, setActiveImg]   = useState(0)
-  const [showSticky, setShowSticky] = useState(false)
+  const [activeImg, setActiveImg]         = useState(0)
+  const [showSticky, setShowSticky]       = useState(false)
+  const [selectedVariant, setSelectedVariant] = useState(null)
+  const [showPriceTable, setShowPriceTable]   = useState(false)
   const titleRef = useRef(null)
 
-  // Show sticky bar only once title scrolls out of view
   useEffect(() => {
     const el = titleRef.current
     if (!el) return
@@ -94,17 +129,51 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
   const isAvailable   = item.available !== false
   const galleryLabel  = catalogConfig?.gallery_section_label        || 'Gallery'
   const specsLabel    = catalogConfig?.specifications_section_label || 'Specifications'
+  const priceTemplate = catalogConfig?.price_label_template || '₦{price}'
+  const priceOnReq    = catalogConfig?.price_on_request || false
 
-  const hasGallery = images.length > 1
-  const hasSpecs   = Object.keys(customFields).length > 0
-  const hasDesc    = !!(item.catalog_description || item.description)
+  // ── Variant selector data ─────────────────────────────────────────────────
+  // Filter out "Default Title" (single-variant Shopify products with no real options)
+  const shopifyVariants = (item.variants || []).filter(
+    v => v && v.title && v.title.toLowerCase() !== 'default title'
+  )
+  const hasVariants = shopifyVariants.length > 1
 
-  // Variant A — cold visitor WhatsApp CTA
+  // Compute price range from all variants for the unselected state
+  const variantPrices = shopifyVariants
+    .map(v => parseFloat(v.price || 0))
+    .filter(p => p > 0)
+  const priceMin = variantPrices.length ? Math.min(...variantPrices) : null
+  const priceMax = variantPrices.length ? Math.max(...variantPrices) : null
+  const showRange = hasVariants && priceMin !== null && priceMax !== null && priceMin !== priceMax
+
+  // Displayed price: selected variant > range > fallback item.price_label
+  let displayedPrice
+  if (priceOnReq) {
+    displayedPrice = 'Price on Request'
+  } else if (selectedVariant) {
+    displayedPrice = formatVariantPrice(selectedVariant.price, priceTemplate, false)
+  } else if (showRange) {
+    displayedPrice = `${formatVariantPrice(priceMin, priceTemplate, false)} – ${formatVariantPrice(priceMax, priceTemplate, false)}`
+  } else {
+    displayedPrice = item.price_label || null
+  }
+
+  const priceHint = selectedVariant
+    ? selectedVariant.title
+    : showRange
+      ? 'Select a size to see exact price'
+      : null
+
+  // ── WhatsApp CTA links ────────────────────────────────────────────────────
+  const waMessage = selectedVariant
+    ? `Hi, I'm interested in the ${selectedVariant.title} size ${item.title}`
+    : `Hi, I'm interested in the ${item.title}`
+
   const orderLink = waNumber
-    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi, I'm interested in the ${item.title}`)}`
+    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(waMessage)}`
     : null
 
-  // Variant B — post-qual CTA buttons
   const postQualLinks = waNumber
     ? ctaButtons.map(btn => ({
         ...btn,
@@ -112,47 +181,50 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
       }))
     : []
 
+  const hasGallery = images.length > 1
+  const hasSpecs   = Object.keys(customFields).length > 0
+  const hasDesc    = !!(item.catalog_description || item.description)
+
   return (
     <div style={{ minHeight: '100vh', background: C.bg, fontFamily: "'Jost', sans-serif" }}>
       <style>{`
         .ci-header  { padding: 18px 32px; }
-        .ci-content { padding: 32px 32px 64px; }
+        .ci-content { padding: 32px 32px 80px; }
         .ci-btns    { display: flex; flex-wrap: wrap; gap: 10px; }
 
-        /* Shopify description HTML styling */
         .ci-desc p  { margin: 0 0 6px; font-size: 14px; line-height: 1.75; color: #7A7269; }
         .ci-desc strong, .ci-desc b { color: #1A1714; }
         .ci-desc ul, .ci-desc ol    { padding-left: 20px; margin: 6px 0 10px; }
         .ci-desc li { margin-bottom: 4px; font-size: 14px; line-height: 1.65; color: #7A7269; }
         .ci-desc a  { color: #0B6E74; text-decoration: underline; }
-
-        /* Section dividers: paragraph starting with bold = new section */
+        .ci-desc p.ci-section-head,
         .ci-desc p:not(:first-child):has(> strong:first-child),
         .ci-desc p:not(:first-child):has(> b:first-child) {
-          margin-top: 16px;
-          padding-top: 14px;
+          margin-top: 16px; padding-top: 14px;
           border-top: 1px solid #E8E4DC;
+          font-weight: 500; color: #1A1714;
         }
+        .ci-desc > p:first-child { border-top: none !important; padding-top: 0 !important; margin-top: 0 !important; }
 
-        /* Sticky CTA bar */
+        .ci-size-btn {
+          padding: 8px 14px; border-radius: 8px;
+          border: 0.5px solid #C8C0B4;
+          background: #FFFFFF;
+          font-size: 13px; color: #1A1714;
+          cursor: pointer; font-family: 'Jost', sans-serif;
+          transition: border-color 0.15s, background 0.15s, color 0.15s;
+        }
+        .ci-size-btn:hover:not(:disabled) { border-color: #0B6E74; background: #E8F4F5; color: #0B6E74; }
+        .ci-size-btn.selected { border: 1.5px solid #0B6E74; background: #E8F4F5; color: #0B6E74; font-weight: 500; }
+        .ci-size-btn:disabled { opacity: 0.38; cursor: not-allowed; text-decoration: line-through; }
+
         .ci-sticky {
           position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
-          background: #FFFFFF;
-          border-top: 1px solid #E8E4DC;
+          background: #FFFFFF; border-top: 1px solid #E8E4DC;
           padding: 12px 32px;
           display: flex; align-items: center;
           justify-content: space-between; gap: 16px;
           box-shadow: 0 -4px 16px rgba(26,23,20,0.07);
-          transition: transform 0.2s ease;
-        }
-        .ci-sticky-title {
-          font-size: 13px; font-weight: 600; color: #1A1714;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-          flex: 1; min-width: 0;
-        }
-        .ci-sticky-price {
-          font-size: 13px; font-weight: 600; color: #0B6E74;
-          flex-shrink: 0;
         }
 
         @media (max-width: 640px) {
@@ -160,7 +232,6 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           .ci-content { padding: 20px 16px 80px; }
           .ci-btns    { gap: 8px; }
           .ci-sticky  { padding: 10px 16px; }
-          .ci-sticky-title { font-size: 12px; }
         }
       `}</style>
 
@@ -192,11 +263,8 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           border: `1px solid ${C.border}`, marginBottom: 8,
         }}>
           {images[activeImg]?.url ? (
-            <img
-              src={images[activeImg].url}
-              alt={item.title}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
+            <img src={images[activeImg].url} alt={item.title}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             <div style={{
               width: '100%', height: '100%',
@@ -206,7 +274,6 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           )}
         </div>
 
-        {/* Active image caption */}
         {images[activeImg]?.caption
           ? <p style={{ fontSize: 12, color: C.muted, margin: '0 0 20px', fontStyle: 'italic', lineHeight: 1.5 }}>
               {images[activeImg].caption}
@@ -214,35 +281,117 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           : <div style={{ marginBottom: 20 }} />
         }
 
-        {/* ── Title + Price (observed for sticky bar trigger) ── */}
-        <div ref={titleRef} style={{
-          display: 'flex', justifyContent: 'space-between',
-          alignItems: 'flex-start', gap: 16, flexWrap: 'wrap',
-          marginBottom: 14,
-        }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              display: 'inline-block',
-              background: isAvailable ? '#E8F5E9' : '#FFF3E0',
-              color: isAvailable ? '#2E7D32' : '#E65100',
-              padding: '3px 10px', borderRadius: 20,
-              fontSize: 11, fontWeight: 600, marginBottom: 8,
-            }}>
-              {isAvailable ? availLabel : unavailLabel}
-            </div>
-            <h1 style={{
-              fontFamily: "'Cormorant Garamond', serif",
-              fontSize: 28, fontWeight: 700,
-              color: C.text, margin: 0, lineHeight: 1.2,
-            }}>{item.title}</h1>
+        {/* ── Title + availability ── */}
+        <div ref={titleRef} style={{ marginBottom: 14 }}>
+          <div style={{
+            display: 'inline-block',
+            background: isAvailable ? '#E8F5E9' : '#FFF3E0',
+            color: isAvailable ? '#2E7D32' : '#E65100',
+            padding: '3px 10px', borderRadius: 20,
+            fontSize: 11, fontWeight: 600, marginBottom: 8,
+          }}>
+            {isAvailable ? availLabel : unavailLabel}
           </div>
-          {item.price_label && (
-            <div style={{
-              fontSize: 22, fontWeight: 600, color: C.teal,
-              flexShrink: 0, paddingTop: 30,
-            }}>{item.price_label}</div>
-          )}
+          <h1 style={{
+            fontFamily: "'Cormorant Garamond', serif",
+            fontSize: 28, fontWeight: 700,
+            color: C.text, margin: 0, lineHeight: 1.2,
+          }}>{item.title}</h1>
         </div>
+
+        {/* ── Price display ── */}
+        {displayedPrice && (
+          <div style={{ marginBottom: hasVariants ? 4 : 20 }}>
+            <div style={{ fontSize: 22, fontWeight: 600, color: C.teal }}>
+              {displayedPrice}
+            </div>
+            {priceHint && (
+              <p style={{ fontSize: 12, color: C.muted, margin: '3px 0 0' }}>{priceHint}</p>
+            )}
+          </div>
+        )}
+
+        {/* ── Variant size selector ── */}
+        {hasVariants && (
+          <div style={{ marginBottom: 20, marginTop: 16 }}>
+            <p style={{
+              fontSize: 11, fontWeight: 600, letterSpacing: '0.07em',
+              textTransform: 'uppercase', color: C.muted, margin: '0 0 10px',
+            }}>Select size</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              {shopifyVariants.map((v, i) => {
+                const avail = isVariantAvailable(v)
+                const sel   = selectedVariant?.title === v.title
+                return (
+                  <button
+                    key={i}
+                    disabled={!avail}
+                    onClick={() => setSelectedVariant(sel ? null : v)}
+                    className={`ci-size-btn${sel ? ' selected' : ''}`}
+                    title={!avail ? 'Out of stock' : ''}
+                  >
+                    {v.title}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* View all prices toggle */}
+            <button
+              onClick={() => setShowPriceTable(p => !p)}
+              style={{
+                background: 'none', border: 'none', padding: 0,
+                fontFamily: "'Jost', sans-serif", fontSize: 12,
+                color: C.teal, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              <span>{showPriceTable ? '▴ Hide prices' : '▾ View all prices'}</span>
+            </button>
+
+            {showPriceTable && (
+              <table style={{
+                width: '100%', borderCollapse: 'collapse',
+                marginTop: 10, fontSize: 13,
+              }}>
+                <tbody>
+                  {shopifyVariants.map((v, i) => {
+                    const avail = isVariantAvailable(v)
+                    const sel   = selectedVariant?.title === v.title
+                    return (
+                      <tr key={i} style={{
+                        borderBottom: i < shopifyVariants.length - 1
+                          ? `1px solid ${C.border}` : 'none',
+                        background: sel ? C.tealLight : 'transparent',
+                        cursor: avail ? 'pointer' : 'default',
+                      }} onClick={() => avail && setSelectedVariant(sel ? null : v)}>
+                        <td style={{
+                          padding: '8px 6px',
+                          color: sel ? C.teal : avail ? C.text : C.muted,
+                          textDecoration: avail ? 'none' : 'line-through',
+                          borderRadius: sel ? '6px 0 0 6px' : 0,
+                        }}>
+                          {v.title}
+                        </td>
+                        <td style={{
+                          padding: '8px 6px', textAlign: 'right',
+                          fontWeight: 500,
+                          color: sel ? C.teal : avail ? C.text : C.muted,
+                          borderRadius: sel ? '0 6px 6px 0' : 0,
+                        }}>
+                          {avail
+                            ? formatVariantPrice(v.price, priceTemplate, priceOnReq)
+                            : 'Out of stock'
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
 
         {/* ── Tag badges ── */}
         {tagDimensions.length > 0 && (
@@ -273,7 +422,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           </div>
         )}
 
-        {/* ── Description accordion (fixed label, collapsible, open by default) ── */}
+        {/* ── Description accordion ── */}
         {hasDesc && (
           <AccordionSection label="Description" defaultOpen={false}>
             {item.catalog_description && (
@@ -287,13 +436,13 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
             {item.description && (
               <div
                 className="ci-desc"
-                dangerouslySetInnerHTML={{ __html: item.description }}
+                dangerouslySetInnerHTML={{ __html: preprocessDescription(item.description) }}
               />
             )}
           </AccordionSection>
         )}
 
-        {/* ── Gallery accordion (configurable label, open by default) ── */}
+        {/* ── Gallery accordion ── */}
         {hasGallery && (
           <AccordionSection label={`${galleryLabel} (${images.length})`} defaultOpen={false}>
             <div style={{
@@ -325,7 +474,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           </AccordionSection>
         )}
 
-        {/* ── Specifications accordion (configurable label, open by default) ── */}
+        {/* ── Specifications accordion ── */}
         {hasSpecs && (
           <AccordionSection label={specsLabel} defaultOpen>
             <div style={{ background: '#F5F3EF', borderRadius: 8, padding: '2px 16px' }}>
@@ -348,10 +497,9 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           </AccordionSection>
         )}
 
-        {/* ── CTAs (inline — always present in page flow) ── */}
+        {/* ── Inline CTAs ── */}
         <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, marginTop: 8 }}>
 
-          {/* Variant A: Cold visitor */}
           {orderLink && (
             <div style={{
               background: C.tealLight, border: `1px solid ${C.teal}33`,
@@ -361,7 +509,10 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
                 fontFamily: "'Cormorant Garamond', serif",
                 fontSize: 17, fontWeight: 600, color: C.text, margin: '0 0 4px',
               }}>
-                Interested in this {itemLabel}? Chat with us on WhatsApp 💬
+                {selectedVariant
+                  ? `Interested in the ${selectedVariant.title}? Chat with us on WhatsApp 💬`
+                  : `Interested in this ${itemLabel}? Chat with us on WhatsApp 💬`
+                }
               </p>
               <p style={{ fontSize: 12, color: C.muted, margin: '0 0 14px' }}>
                 Our team will answer any questions and help you order.
@@ -373,12 +524,11 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
                 fontFamily: "'Jost', sans-serif", fontSize: 14, fontWeight: 600,
                 textDecoration: 'none',
               }}>
-                Order via WhatsApp
+                {selectedVariant ? `Order ${selectedVariant.title} via WhatsApp` : 'Order via WhatsApp'}
               </a>
             </div>
           )}
 
-          {/* Variant B: Post-qual */}
           {postQualLinks.length > 0 && (
             <div>
               <p style={{ fontSize: 13, color: C.muted, fontStyle: 'italic', margin: '0 0 10px' }}>
@@ -386,11 +536,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
               </p>
               <div className="ci-btns">
                 {postQualLinks.map(btn => (
-                  <a
-                    key={btn.id}
-                    href={btn.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <a key={btn.id} href={btn.href} target="_blank" rel="noopener noreferrer"
                     style={{
                       display: 'inline-flex', alignItems: 'center',
                       padding: '10px 18px', borderRadius: 8,
@@ -411,7 +557,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           )}
         </div>
 
-        {/* ── Back link (bottom) ── */}
+        {/* ── Back link ── */}
         <div style={{ marginTop: 32, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
           <button onClick={onBack} style={{
             background: 'none', border: 'none', padding: 0,
@@ -423,13 +569,20 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
         </div>
       </div>
 
-      {/* ── Sticky CTA bar (appears when title scrolls out of view) ── */}
+      {/* ── Sticky CTA bar ── */}
       {orderLink && showSticky && (
         <div className="ci-sticky">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p className="ci-sticky-title">{item.title}</p>
-            {item.price_label && (
-              <p className="ci-sticky-price">{item.price_label}</p>
+            <p style={{
+              margin: 0, fontSize: 13, fontWeight: 600, color: C.text,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {selectedVariant ? `${item.title} — ${selectedVariant.title}` : item.title}
+            </p>
+            {displayedPrice && (
+              <p style={{ margin: 0, fontSize: 13, color: C.teal, fontWeight: 600 }}>
+                {displayedPrice}
+              </p>
             )}
           </div>
           <a href={orderLink} target="_blank" rel="noopener noreferrer" style={{
@@ -439,7 +592,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
             fontFamily: "'Jost', sans-serif", fontSize: 13, fontWeight: 600,
             textDecoration: 'none', flexShrink: 0,
           }}>
-            Order via WhatsApp
+            {selectedVariant ? `Order ${selectedVariant.title}` : 'Order via WhatsApp'}
           </a>
         </div>
       )}
