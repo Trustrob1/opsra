@@ -198,7 +198,7 @@ def _mirror_shopify_images(
     return urls, mirrored, skipped
 
 
-def sync_product(db, org_id: str, shopify_product: dict) -> dict:
+def sync_product(db, org_id: str, shopify_product: dict, tag_dimensions: list = None) -> dict:
     """
     Upsert a Shopify product into the products table.
     Uses (org_id, shopify_id) as the conflict target.
@@ -295,8 +295,58 @@ def sync_product(db, org_id: str, shopify_product: dict) -> dict:
             data = data[0] if data else row
         data = data or row
 
-        # Mirror images to Supabase Storage catalog bucket
+        # Variant-to-tag merge: match variant titles against catalog tag dimension
+        # options and store matches in products.tags.
+        # Only overwrites dimensions that have at least one match — never removes
+        # manually set tags for unmatched dimensions. Skips "Default Title" (single-
+        # variant products with no meaningful variant name).
+        # S14: failure is non-blocking.
         product_id = data.get("id") or (existing or {}).get("id")
+        if product_id and tag_dimensions:
+            try:
+                variant_titles = [
+                    v.get("title") for v in variants
+                    if v.get("title") and v.get("title").lower() != "default title"
+                ]
+                variant_tags: dict = {}
+                for dim in tag_dimensions:
+                    key     = dim.get("key")
+                    options = set(dim.get("options") or [])
+                    if not key or not options:
+                        continue
+                    matched = [t for t in variant_titles if t in options]
+                    if matched:
+                        variant_tags[key] = matched
+                if variant_tags:
+                    existing_tags_r = (
+                        db.table("products")
+                        .select("tags")
+                        .eq("id", product_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    existing_tags_d = existing_tags_r.data
+                    if isinstance(existing_tags_d, list):
+                        existing_tags_d = existing_tags_d[0] if existing_tags_d else None
+                    existing_tags = (existing_tags_d or {}).get("tags") or {}
+                    if not isinstance(existing_tags, dict):
+                        existing_tags = {}
+                    merged_tags = {**existing_tags, **variant_tags}
+                    db.table("products").update(
+                        {"tags": merged_tags}
+                    ).eq("id", product_id).execute()
+                    data["tags"] = merged_tags
+                    logger.info(
+                        "sync_product: variant tags merged product=%s keys=%s",
+                        product_id, list(variant_tags.keys()),
+                    )
+            except Exception as _tags_exc:
+                logger.warning(
+                    "sync_product: variant tag merge failed product=%s: %s",
+                    product_id, _tags_exc,
+                )
+
+        # Mirror images to Supabase Storage catalog bucket
         if product_id and images:
             try:
                 existing_catalog_images = (existing or {}).get("catalog_images") or []
@@ -381,6 +431,27 @@ def bulk_sync_products(
         images_mirrored = 0
         images_skipped = 0
 
+        # Fetch tag_dimensions once — used to map variant titles to catalog tags.
+        # S14: failure → empty list → sync proceeds without tag mapping.
+        tag_dimensions: list = []
+        try:
+            _cfg_r = (
+                db.table("organisations")
+                .select("catalog_config")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            _cfg_d = _cfg_r.data
+            if isinstance(_cfg_d, list):
+                _cfg_d = _cfg_d[0] if _cfg_d else None
+            tag_dimensions = ((_cfg_d or {}).get("catalog_config") or {}).get("tag_dimensions") or []
+        except Exception as _cfg_exc:
+            logger.warning(
+                "bulk_sync_products: tag_dimensions fetch failed org=%s: %s",
+                org_id, _cfg_exc,
+            )
+
         while url:
             try:
                 with httpx.Client(timeout=30.0) as client:
@@ -390,7 +461,7 @@ def bulk_sync_products(
                 products = data.get("products") or []
                 for p in products:
                     try:
-                        result = sync_product(db, org_id, p)
+                        result = sync_product(db, org_id, p, tag_dimensions=tag_dimensions)
                         # sync_product is S14 — returns {} on failure, never raises
                         if result.get("id") or result.get("shopify_id"):
                             synced += 1
