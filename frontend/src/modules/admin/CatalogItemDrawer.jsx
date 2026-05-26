@@ -1,7 +1,8 @@
 /**
  * frontend/src/modules/admin/CatalogItemDrawer.jsx
  * CATALOG-2B: Slide-in panel for editing a catalog item.
- * Sections: Basic Info · Images · Tags · Custom Fields · Settings
+ * Sections: Basic Info · Variants (non-Shopify) · Images · Extra Images · Tags · Custom Fields · Settings
+ * Non-Shopify additions: title, description, price, variants all saved on PATCH.
  * Pattern 51: full rewrite only — never sed.
  */
 import { useState, useEffect, useRef } from 'react'
@@ -62,13 +63,13 @@ function Field({ label, children }) {
 }
 
 export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSaved }) {
-  const [form, setForm]       = useState({})
-  const [saving, setSaving]   = useState(false)
+  const [form, setForm]        = useState({})
+  const [saving, setSaving]    = useState(false)
   const [uploading, setUpload] = useState(false)
-  const [toast, setToast]     = useState('')
-  const [error, setError]     = useState('')
-  const fileRef               = useRef()
-  const extraFileRef          = useRef()
+  const [toast, setToast]      = useState('')
+  const [error, setError]      = useState('')
+  const fileRef                = useRef()
+  const extraFileRef           = useRef()
 
   const isShopify = (config?.external_sync || 'none') === 'shopify'
   const orgSlug   = config?.org_slug || ''
@@ -88,18 +89,47 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
       custom_fields:        item.custom_fields || {},
       catalog_images:       item.catalog_images || [],
       extra_catalog_images: item.extra_catalog_images || [],
+      // Variants: non-Shopify only. Normalise to {title, price, available}.
+      // Shopify variants are managed by sync — never editable in the drawer.
+      variants: isShopify ? [] : (item.variants || []).map(v => ({
+        title:     v.title     || '',
+        price:     v.price     !== undefined && v.price !== null ? String(v.price) : '',
+        available: v.available !== false,
+      })),
     })
     setError('')
     setToast('')
   }, [item])
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
   function setField(key, val) { setForm(p => ({ ...p, [key]: val })) }
   function setTag(key, val)   { setForm(p => ({ ...p, tags: { ...p.tags, [key]: val } })) }
 
+  // ── Variant helpers ────────────────────────────────────────────────────────
+  function addVariant() {
+    if ((form.variants || []).length >= 20) return
+    setField('variants', [...(form.variants || []), { title: '', price: '', available: true }])
+  }
+  function removeVariant(idx) {
+    setField('variants', (form.variants || []).filter((_, i) => i !== idx))
+  }
+  function updateVariant(idx, field, val) {
+    const updated = [...(form.variants || [])]
+    updated[idx] = { ...updated[idx], [field]: val }
+    setField('variants', updated)
+  }
+
   async function save() {
     setError('')
+
+    // Validate variants: each variant must have a title
+    for (const v of (form.variants || [])) {
+      if (v.title && !v.title.trim()) {
+        setError('All variants need a name.')
+        return
+      }
+    }
+
     const payload = {
       tags:                 form.tags,
       custom_fields:        form.custom_fields,
@@ -109,10 +139,26 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
       extra_catalog_images: form.extra_catalog_images,
       catalog_description:  form.catalog_description || null,
     }
+
     if (!isShopify) {
+      // Fields managed by Shopify sync are read-only for Shopify orgs
+      payload.title           = form.title || undefined
+      payload.description     = form.description || null
+      payload.price           = (form.price === '' || form.price === null || form.price === undefined)
+                                  ? null : Number(form.price)
       payload.available       = form.available
       payload.inventory_count = form.inventory_count === '' ? null : Number(form.inventory_count)
+      // Clean variants: filter blank-titled rows, parse prices
+      payload.variants = (form.variants || [])
+        .filter(v => v.title && v.title.trim())
+        .map(v => ({
+          title:     v.title.trim(),
+          price:     (v.price === '' || v.price === null || v.price === undefined)
+                       ? null : Number(v.price),
+          available: v.available !== false,
+        }))
     }
+
     setSaving(true)
     try {
       const updated = await adminSvc.updateCatalogItem(item.id, payload)
@@ -187,8 +233,8 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
     })
   }
   function setCFVal(key, val) { setForm(p => ({ ...p, custom_fields: { ...p.custom_fields, [key]: val } })) }
-  function addCF()             { setForm(p => ({ ...p, custom_fields: { ...p.custom_fields, '': '' } })) }
-  function removeCF(key)       { setForm(p => { const cf = { ...p.custom_fields }; delete cf[key]; return { ...p, custom_fields: cf } }) }
+  function addCF()            { setForm(p => ({ ...p, custom_fields: { ...p.custom_fields, '': '' } })) }
+  function removeCF(key)      { setForm(p => { const cf = { ...p.custom_fields }; delete cf[key]; return { ...p, custom_fields: cf } }) }
 
   if (!isOpen || !item) return null
 
@@ -235,10 +281,15 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
           </Field>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <Field label="Price">
+            <Field label="Base Price">
               <input style={{ ...INPUT, background: isShopify ? '#f5fbfd' : 'white' }}
                 value={form.price ?? ''} type="number" readOnly={isShopify}
                 onChange={e => setField('price', e.target.value)} />
+              {!isShopify && (
+                <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#7A9BAD', margin: '4px 0 0' }}>
+                  Shown when no variant is selected.
+                </p>
+              )}
             </Field>
             {!isShopify && (
               <Field label="Inventory Count">
@@ -263,7 +314,66 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
               onChange={e => setField('catalog_description', e.target.value)} />
           </Field>
 
-          {/* ── Section 2: Images ── */}
+          {/* ── Section 2: Variants (non-Shopify only) ── */}
+          {!isShopify && (
+            <>
+              <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>
+                Variants
+                <span style={{ fontSize: 12, fontWeight: 400, color: '#7A9BAD', marginLeft: 8 }}>
+                  Sizes &amp; Pricing
+                </span>
+              </h3>
+              <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', margin: '-10px 0 14px' }}>
+                Define size options with individual prices. These appear as clickable size buttons on the catalog page.
+                Leave empty to show a single base price.
+              </p>
+
+              {(form.variants || []).length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 80px 32px', gap: 8, marginBottom: 6 }}>
+                    <span style={{ ...LABEL, marginBottom: 0 }}>Size / Option Name</span>
+                    <span style={{ ...LABEL, marginBottom: 0 }}>Price</span>
+                    <span style={{ ...LABEL, marginBottom: 0 }}>In Stock</span>
+                    <span />
+                  </div>
+                  {(form.variants || []).map((v, i) => (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 80px 32px', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                      <input style={INPUT} value={v.title} maxLength={100}
+                        placeholder="e.g. Queen: 5/6 ft."
+                        onChange={e => updateVariant(i, 'title', e.target.value)} />
+                      <input style={INPUT} type="number" value={v.price} min={0}
+                        placeholder="0"
+                        onChange={e => updateVariant(i, 'price', e.target.value)} />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', justifyContent: 'center' }}>
+                        <input type="checkbox" checked={v.available !== false}
+                          onChange={e => updateVariant(i, 'available', e.target.checked)} />
+                      </label>
+                      <button
+                        style={{ background: 'none', border: 'none', color: '#e05c5c', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }}
+                        onClick={() => removeVariant(i)}
+                        title="Remove variant"
+                      >🗑</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(form.variants || []).length === 0 && (
+                <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#9CA3AF', marginBottom: 12 }}>
+                  No variants yet — product shows a single base price.
+                </p>
+              )}
+
+              {(form.variants || []).length < 20 && (
+                <button style={{ ...BTN_GHOST, fontSize: 12, padding: '6px 12px', marginBottom: 8 }}
+                  onClick={addVariant}>
+                  + Add Variant
+                </button>
+              )}
+            </>
+          )}
+
+          {/* ── Section 3: Images ── */}
           <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>Images</h3>
           <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', margin: '-10px 0 14px' }}>
             First image is the cover. Max 5 MB each. JPEG · PNG · WebP.
@@ -295,7 +405,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
             style={{ display: 'none' }} onChange={handleImageUpload} />
 
-          {/* ── Extra Catalog Images (Opsra only — never overwritten by Shopify) ── */}
+          {/* ── Section 4: Extra Catalog Images ── */}
           <h3 style={{ ...SECTION_TITLE, marginTop: 20 }}>Extra Catalog Images</h3>
           <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', margin: '-10px 0 14px' }}>
             These are managed in Opsra only and will never be overwritten by Shopify sync.
@@ -323,7 +433,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
           <input ref={extraFileRef} type="file" accept="image/jpeg,image/png,image/webp"
             style={{ display: 'none' }} onChange={handleExtraImageUpload} />
 
-          {/* ── Section 3: Tags ── */}
+          {/* ── Section 5: Tags ── */}
           {(config?.tag_dimensions || []).length > 0 && (
             <>
               <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>Tags</h3>
@@ -341,7 +451,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
                   ) : (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {(dim.options || []).map(opt => {
-                        const current = (form.tags || {})[dim.key] || []
+                        const current  = (form.tags || {})[dim.key] || []
                         const selected = Array.isArray(current) ? current.includes(opt) : false
                         return (
                           <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#0a1a24' }}>
@@ -361,7 +471,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
             </>
           )}
 
-          {/* ── Section 4: Custom Fields ── */}
+          {/* ── Section 6: Custom Fields ── */}
           <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>Custom Fields</h3>
           {cfEntries.length === 0 && (
             <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', marginBottom: 12 }}>No custom fields yet.</p>
@@ -378,7 +488,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
           ))}
           <button style={{ ...BTN_GHOST, fontSize: 12, padding: '6px 12px' }} onClick={addCF}>+ Add Field</button>
 
-          {/* ── Section 5: Settings ── */}
+          {/* ── Section 7: Settings ── */}
           <h3 style={{ ...SECTION_TITLE, marginTop: 20 }}>Settings</h3>
 
           <Field label="Slug">

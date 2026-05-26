@@ -99,15 +99,19 @@ class CatalogConfigUpdate(BaseModel):
 
 
 class CatalogItemUpdate(BaseModel):
-    tags:                  Optional[Dict[str, Any]] = None
-    custom_fields:         Optional[Dict[str, Any]] = None
-    catalog_visible:       Optional[bool]           = None
-    slug:                  Optional[str]            = Field(None, max_length=200)
-    catalog_images:        Optional[List[str]]      = None
-    extra_catalog_images:  Optional[List[str]]      = None
-    catalog_description:   Optional[str]            = Field(None, max_length=20000)
-    available:             Optional[bool]           = None   # non-Shopify only
-    inventory_count:       Optional[int]            = None   # non-Shopify only
+    tags:                  Optional[Dict[str, Any]]       = None
+    custom_fields:         Optional[Dict[str, Any]]       = None
+    catalog_visible:       Optional[bool]                 = None
+    slug:                  Optional[str]                  = Field(None, max_length=200)
+    catalog_images:        Optional[List[str]]            = None
+    extra_catalog_images:  Optional[List[str]]            = None
+    catalog_description:   Optional[str]                  = Field(None, max_length=20000)
+    available:             Optional[bool]                 = None                           # non-Shopify only
+    inventory_count:       Optional[int]                  = None                           # non-Shopify only
+    title:                 Optional[str]                  = Field(None, max_length=500)    # non-Shopify only
+    description:           Optional[str]                  = Field(None, max_length=5000)   # non-Shopify only
+    price:                 Optional[float]                = None                           # non-Shopify only
+    variants:              Optional[List[Dict[str, Any]]] = None                           # non-Shopify only
 
     @field_validator("slug")
     @classmethod
@@ -123,8 +127,9 @@ class CatalogItemCreate(BaseModel):
     description:     Optional[str]  = Field(None, max_length=5000)  # S4
     tags:            Optional[Dict[str, Any]] = None
     custom_fields:   Optional[Dict[str, Any]] = None
-    available:       bool           = True
-    inventory_count: Optional[int]  = None
+    available:       bool                           = True
+    inventory_count: Optional[int]                  = None
+    variants:        Optional[List[Dict[str, Any]]] = None   # non-Shopify only
 
 
 # ---------------------------------------------------------------------------
@@ -369,13 +374,14 @@ async def patch_item(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields provided to update.")
 
-    # Guard: Shopify orgs cannot manually override availability/inventory
-    if "available" in updates or "inventory_count" in updates:
+    # Guard: Shopify orgs cannot manually override fields managed by sync
+    _SHOPIFY_MANAGED = {"available", "inventory_count", "title", "description", "price", "variants"}
+    if updates.keys() & _SHOPIFY_MANAGED:
         config = get_catalog_config(db, org_id)
         if (config.get("external_sync") or "none") == "shopify":
             raise HTTPException(
                 status_code=403,
-                detail="Availability and inventory are managed by Shopify sync for this org.",
+                detail="Title, description, price, variants, availability and inventory are managed by Shopify sync for this org.",
             )
 
     item = get_catalog_item(db, org_id, item_id)

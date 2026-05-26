@@ -28,6 +28,9 @@ function normaliseImages(raw) {
 /** Mirror of backend availability logic — must stay in sync with shopify_service.py */
 function isVariantAvailable(v) {
   if (!v) return false
+  // Non-Shopify variants carry an explicit available boolean — use it directly
+  if (typeof v.available === 'boolean') return v.available
+  // Shopify variants — derive from inventory fields
   return (
     v.inventory_management === null ||
     v.inventory_management === undefined ||
