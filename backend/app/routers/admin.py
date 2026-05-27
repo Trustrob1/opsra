@@ -39,6 +39,7 @@ router = APIRouter()
 class QualificationFlowOption(BaseModel):
     id: str
     label: str  # validated per-question below (max 20 or 24 chars)
+    tag_value: Optional[str] = None  # catalog tag value for wizard filtering
  
  
 class QualificationFlowQuestion(BaseModel):
@@ -47,6 +48,7 @@ class QualificationFlowQuestion(BaseModel):
     type: str  # one of _VALID_QUESTION_TYPES
     answer_key: str  # max 50 chars, alphanumeric + underscore only
     map_to_lead_field: Optional[str] = None
+    map_to_catalog_tag: Optional[str] = None  # catalog tag dimension key for wizard filtering
     options: Optional[List[QualificationFlowOption]] = None
  
     @field_validator("text")
@@ -457,8 +459,13 @@ async def update_qualification_flow(
                 "type": q.type,
                 "answer_key": q.answer_key,
                 "map_to_lead_field": q.map_to_lead_field,
+                "map_to_catalog_tag": q.map_to_catalog_tag or None,
                 "options": [
-                    {"id": opt.id, "label": opt.label}
+                    {
+                        "id": opt.id,
+                        "label": opt.label,
+                        **({"tag_value": opt.tag_value} if opt.tag_value else {}),
+                    }
                     for opt in (q.options or [])
                 ] if q.options else None,
             }
