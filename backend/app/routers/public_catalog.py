@@ -144,11 +144,46 @@ def _public_config_fields(catalog_config: dict) -> dict:
     }
 
 
+def _extract_wizard_questions(qualification_flow: Optional[dict]) -> List[dict]:
+    """
+    Extract only the questions that have map_to_catalog_tag set.
+    These are the questions the public catalog wizard uses to filter products.
+    Safe to expose publicly — contains only question text and option labels,
+    no lead data, no credentials, no internal IDs.
+    Returns [] if no qualification_flow or no filterable questions configured.
+    """
+    if not qualification_flow:
+        return []
+    wizard = []
+    for q in (qualification_flow.get("questions") or []):
+        tag_key = q.get("map_to_catalog_tag")
+        if not tag_key:
+            continue
+        options = []
+        for opt in (q.get("options") or []):
+            tag_value = opt.get("tag_value")
+            if not tag_value:
+                continue
+            options.append({
+                "id":        opt.get("id"),
+                "label":     opt.get("label"),
+                "tag_value": tag_value,
+            })
+        if not options:
+            continue
+        wizard.append({
+            "text":               q.get("text") or "",
+            "map_to_catalog_tag": tag_key,
+            "options":            options,
+        })
+    return wizard
+
+
 def _fetch_org_by_slug(db, org_slug: str) -> dict:
     """Fetch org row by slug. Raises 404 if not found."""
     result = (
         db.table("organisations")
-        .select("id, name, slug, org_whatsapp_number, catalog_config")
+        .select("id, name, slug, org_whatsapp_number, catalog_config, qualification_flow")
         .eq("slug", org_slug)
         .execute()
     )
@@ -302,11 +337,12 @@ async def list_catalog(
             items = [i for i in items if _matches(i)]
 
     response = {
-        "org_name":       org.get("name"),
-        "catalog_config": pub_config,
-        "wa_number":     org.get("org_whatsapp_number"),
-        "items":          [_public_item_fields(i, price_template, price_on_request) for i in items],
-        "count":          len(items),
+        "org_name":        org.get("name"),
+        "catalog_config":  pub_config,
+        "wa_number":       org.get("org_whatsapp_number"),
+        "wizard_questions": _extract_wizard_questions(org.get("qualification_flow")),
+        "items":           [_public_item_fields(i, price_template, price_on_request) for i in items],
+        "count":           len(items),
     }
     _cache_set(_list_cache, cache_key, response)
     return response
