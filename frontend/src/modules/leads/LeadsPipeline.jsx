@@ -121,14 +121,22 @@ function DealValueModal({ leadName, onConfirm, onSkip, loading }) {
 
 // ── Mobile lead card (replaces table row on mobile list view) ─────────────────
 
-function MobileLeadCard({ lead, onOpenLead, pipelineStages }) {
+function MobileLeadCard({ lead, onOpenLead, pipelineStages, attention, demoEnabled }) {
   const scoreStyle = SCORE_STYLE[lead.score] ?? SCORE_STYLE.unscored
   const stage = pipelineStages.find(s => s.key === lead.stage)
+  const badges = []
+  if (attention) {
+    if ((attention.unread_messages ?? 0) > 0) badges.push({ key: 'msg', label: `💬 ${attention.unread_messages}`, bg: '#E53E3E', color: 'white', title: `${attention.unread_messages} unread` })
+    if (demoEnabled && (attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: '📅', bg: '#D97706', color: 'white', title: 'Visit awaiting confirmation' })
+    if ((attention.open_tickets ?? 0) > 0) badges.push({ key: 'ticket', label: `🎫 ${attention.open_tickets}`, bg: '#ED8936', color: 'white', title: `${attention.open_tickets} open tickets` })
+  }
   return (
     <div
       onClick={() => onOpenLead(lead.id)}
       style={{
-        background: 'white', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg,
+        background: 'white',
+        border: `1px solid ${badges.length > 0 ? '#FED7AA' : ds.border}`,
+        borderRadius: ds.radius.lg,
         padding: '14px 16px', marginBottom: 10, cursor: 'pointer',
         boxShadow: ds.cardShadow, transition: 'box-shadow 0.15s',
       }}
@@ -138,7 +146,14 @@ function MobileLeadCard({ lead, onOpenLead, pipelineStages }) {
           <div style={{ fontWeight: 700, fontSize: 14, color: ds.dark, marginBottom: 2 }}>{lead.full_name}</div>
           {lead.business_name && <div style={{ fontSize: 12, color: ds.gray }}>{lead.business_name}</div>}
         </div>
-        <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne, flexShrink: 0 }}>{scoreStyle.label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {badges.map(b => (
+            <span key={b.key} title={b.title} style={{ background: b.bg, color: b.color, borderRadius: 20, padding: '1px 6px', fontSize: 10, fontWeight: 700, lineHeight: '16px' }}>
+              {b.label}
+            </span>
+          ))}
+          <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>{scoreStyle.label}</span>
+        </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {stage && (
@@ -160,7 +175,7 @@ function MobileLeadCard({ lead, onOpenLead, pipelineStages }) {
 
 // ── List view ─────────────────────────────────────────────────────────────────
 
-function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pipelineStages, isMobile }) {
+function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pipelineStages, isMobile, attentionMap = {}, demoEnabled = false }) {
   const [filterStage, setFilterStage] = useState('')
   const [page,        setPage]        = useState(1)
   const [rawLeads,    setRawLeads]    = useState([])
@@ -235,7 +250,7 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pip
         ) : leads.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '32px', color: ds.gray, fontSize: 13 }}>No leads match the current filters.</div>
         ) : (
-          leads.map(lead => <MobileLeadCard key={lead.id} lead={lead} onOpenLead={onOpenLead} pipelineStages={pipelineStages} />)
+          leads.map(lead => <MobileLeadCard key={lead.id} lead={lead} onOpenLead={onOpenLead} pipelineStages={pipelineStages} attention={attentionMap[lead.id] ?? null} demoEnabled={demoEnabled} />)
         )}
         {!loading && <Pagination page={page} total={total} pageSize={LIST_PAGE_SIZE} onGoToPage={setPage} />}
       </div>
@@ -578,7 +593,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       {/* ── List view ─────────────────────────────────────────────── */}
       {(listMounted || isMobile) && (
         <div style={{ display: viewMode === 'list' ? 'block' : (isMobile ? 'block' : 'none') }}>
-          <LeadListView filterScore={filterScore} filterSource={filterSource} filterSearch={filterSearch} onOpenLead={onOpenLead} pipelineStages={pipelineStages} isMobile={isMobile} />
+          <LeadListView filterScore={filterScore} filterSource={filterSource} filterSearch={filterSearch} onOpenLead={onOpenLead} pipelineStages={pipelineStages} isMobile={isMobile} attentionMap={attentionMap} demoEnabled={demoEnabled} />
         </div>
       )}
 
