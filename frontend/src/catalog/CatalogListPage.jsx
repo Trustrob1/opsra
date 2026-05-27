@@ -2,6 +2,17 @@
  * frontend/src/catalog/CatalogListPage.jsx
  * CATALOG-3B: Public product grid with tag filters and help-me-choose strip.
  * No auth. Receives data from PublicCatalogShell via props.
+ *
+ * CATALOG-UX-1 update:
+ *   - Hybrid Option 1+3 layout:
+ *       Header: purpose headline + two-track CTAs (WhatsApp recommendation vs browse)
+ *       Wizard: step-by-step questions from org's qualification_flow (via wizardQuestions prop)
+ *               Only shows if wizardQuestions.length > 0 — falls back to plain filter chips
+ *       Cards:  raw tag badges removed, "View details →" CTA added
+ *       Help strip: updated copy, stays at bottom
+ *   - wizardQuestions prop: array of { text, map_to_catalog_tag, options[] }
+ *     Derived from org's qualification_flow.questions where map_to_catalog_tag is set.
+ *     If empty: plain filter chips shown instead (backwards compatible).
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState, useMemo } from 'react'
@@ -19,33 +30,48 @@ function injectFonts() {
 }
 
 const C = {
-  bg:       '#FAFAF8',
-  surface:  '#FFFFFF',
-  border:   '#E8E4DC',
-  text:     '#1A1714',
-  muted:    '#7A7269',
-  teal:     '#0B6E74',
-  tealLight:'#E8F4F5',
-  accent:   '#C8A96E',
-  danger:   '#B85C4A',
+  bg:        '#FAFAF8',
+  surface:   '#FFFFFF',
+  border:    '#E8E4DC',
+  text:      '#1A1714',
+  muted:     '#7A7269',
+  teal:      '#0B6E74',
+  tealLight: '#E8F4F5',
+  accent:    '#C8A96E',
+  danger:    '#B85C4A',
 }
 
-export default function CatalogListPage({ orgName, waNumber, catalogConfig, items, onSelectItem }) {
+export default function CatalogListPage({
+  orgName,
+  waNumber,
+  catalogConfig,
+  wizardQuestions = [],
+  items,
+  onSelectItem,
+}) {
   injectFonts()
 
   const [activeFilters, setActiveFilters] = useState({})
-  const [search, setSearch] = useState('')
+  const [search, setSearch]               = useState('')
+  const [wizardStep, setWizardStep]       = useState(0)       // current wizard step index
+  const [wizardDone, setWizardDone]       = useState(false)   // wizard completed
+  const [wizardSkipped, setWizardSkipped] = useState(false)   // user skipped wizard
+  const [showBrowse, setShowBrowse]       = useState(false)   // browse all clicked from header
 
-  const tagDimensions = (catalogConfig?.tag_dimensions || []).filter(d => d.filterable)
-  const itemLabel     = catalogConfig?.catalog_item_label_plural || 'Products'
-  const availLabel    = catalogConfig?.availability_labels?.available    || 'In Stock'
-  const unavailLabel  = catalogConfig?.availability_labels?.unavailable  || 'Out of Stock'
+  const tagDimensions  = (catalogConfig?.tag_dimensions || []).filter(d => d.filterable)
+  const itemLabel      = catalogConfig?.catalog_item_label_plural || 'Products'
+  const itemLabelSing  = catalogConfig?.catalog_item_label || 'product'
+  const availLabel     = catalogConfig?.availability_labels?.available   || 'In Stock'
+  const unavailLabel   = catalogConfig?.availability_labels?.unavailable || 'Out of Stock'
 
-  // Client-side filter (Pattern 33)
+  const useWizard = wizardQuestions.length > 0
+
+  // Show grid when: wizard done, skipped, no wizard configured, or browse clicked
+  const showGrid = !useWizard || wizardDone || wizardSkipped || showBrowse
+
+  // Client-side filter (Pattern 33) — unchanged from original
   const filtered = useMemo(() => {
     let result = items || []
-
-    // Text search
     if (search.trim()) {
       const q = search.toLowerCase()
       result = result.filter(i =>
@@ -53,8 +79,6 @@ export default function CatalogListPage({ orgName, waNumber, catalogConfig, item
         (i.description || '').toLowerCase().includes(q)
       )
     }
-
-    // Tag filters
     Object.entries(activeFilters).forEach(([key, val]) => {
       if (!val) return
       result = result.filter(item => {
@@ -64,26 +88,51 @@ export default function CatalogListPage({ orgName, waNumber, catalogConfig, item
         return String(tagVal).toLowerCase() === val.toLowerCase()
       })
     })
-
     return result
   }, [items, search, activeFilters])
 
   function toggleFilter(key, val) {
-    setActiveFilters(prev => ({
-      ...prev,
-      [key]: prev[key] === val ? '' : val,
-    }))
+    setActiveFilters(prev => ({ ...prev, [key]: prev[key] === val ? '' : val }))
   }
 
   function clearFilters() {
     setActiveFilters({})
     setSearch('')
+    setWizardStep(0)
+    setWizardDone(false)
+    setWizardSkipped(false)
+    setShowBrowse(false)
+  }
+
+  // Wizard: pick an option → set the tag filter and advance
+  function handleWizardAnswer(tagKey, tagValue) {
+    setActiveFilters(prev => ({ ...prev, [tagKey]: tagValue }))
+    const nextStep = wizardStep + 1
+    if (nextStep >= wizardQuestions.length) {
+      setWizardDone(true)
+    } else {
+      setWizardStep(nextStep)
+    }
+  }
+
+  function handleWizardBack() {
+    if (wizardStep === 0) return
+    const prevStep = wizardStep - 1
+    const prevTagKey = wizardQuestions[prevStep].map_to_catalog_tag
+    setActiveFilters(prev => ({ ...prev, [prevTagKey]: '' }))
+    setWizardStep(prevStep)
+    setWizardDone(false)
   }
 
   const hasFilters = search.trim() || Object.values(activeFilters).some(Boolean)
+  const activeFilterCount = Object.values(activeFilters).filter(Boolean).length
 
-  const waLink = waNumber
-    ? `https://wa.me/${waNumber}?text=${encodeURIComponent('I need help choosing')}`
+  const waHelpLink = waNumber
+    ? `https://wa.me/${waNumber.replace('+', '')}?text=${encodeURIComponent('I need help choosing')}`
+    : null
+
+  const waRecommendLink = waNumber
+    ? `https://wa.me/${waNumber.replace('+', '')}?text=${encodeURIComponent('I\'d like a personal recommendation')}`
     : null
 
   return (
@@ -105,121 +154,281 @@ export default function CatalogListPage({ orgName, waNumber, catalogConfig, item
           }}>{orgName}</p>
           <h1 style={{
             fontFamily: "'Cormorant Garamond', serif",
-            fontSize: 32, fontWeight: 700,
-            color: C.text, margin: 0, lineHeight: 1.1,
-          }}>{itemLabel}</h1>
+            fontSize: 30, fontWeight: 700,
+            color: C.text, margin: '0 0 8px', lineHeight: 1.15,
+          }}>
+            {useWizard && !showGrid
+              ? `Find your perfect ${itemLabelSing}`
+              : itemLabel}
+          </h1>
+          {/* Two-track CTAs — only shown on initial wizard entry or when grid visible */}
+          {useWizard && !showGrid && (
+            <p style={{ fontSize: 14, color: C.muted, margin: '0 0 16px', lineHeight: 1.5 }}>
+              Answer a few quick questions and we'll match you with the right {itemLabelSing.toLowerCase()} — or browse everything below.
+            </p>
+          )}
+          {useWizard && !showGrid && waRecommendLink && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              
+                href={waRecommendLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  background: '#25D366', color: 'white',
+                  padding: '10px 20px', borderRadius: 8,
+                  fontFamily: "'Jost', sans-serif", fontSize: 13, fontWeight: 600,
+                  textDecoration: 'none', whiteSpace: 'nowrap',
+                }}
+              >
+                💬 Get a personal recommendation
+              </a>
+              <button
+                onClick={() => setShowBrowse(true)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7,
+                  background: C.surface, color: C.teal,
+                  border: `1.5px solid ${C.teal}`,
+                  padding: '10px 20px', borderRadius: 8,
+                  fontFamily: "'Jost', sans-serif", fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                Browse all {itemLabel.toLowerCase()}
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 32px' }}>
 
-        {/* ── Search + Filters ── */}
-        <div style={{ padding: '24px 0 0' }}>
+        {/* ── Wizard ── shown when wizard configured and not yet done/skipped */}
+        {useWizard && !showGrid && (
+          <div style={{ padding: '28px 0' }}>
+            <div style={{
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              borderRadius: 12, padding: '24px 28px',
+            }}>
+              {/* Progress bar */}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                alignItems: 'center', marginBottom: 12,
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: C.text }}>
+                  Help me find the right one
+                </span>
+                <span style={{ fontSize: 12, color: C.muted }}>
+                  Step {wizardStep + 1} of {wizardQuestions.length}
+                </span>
+              </div>
+              <div style={{
+                height: 3, background: C.border, borderRadius: 2, marginBottom: 20,
+              }}>
+                <div style={{
+                  height: 3,
+                  width: `${((wizardStep) / wizardQuestions.length) * 100}%`,
+                  background: C.teal, borderRadius: 2,
+                  transition: 'width 0.3s ease',
+                }} />
+              </div>
 
-          {/* Search */}
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder={`Search ${itemLabel.toLowerCase()}…`}
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              padding: '12px 16px',
-              border: `1.5px solid ${C.border}`,
-              borderRadius: 8, background: C.surface,
-              fontFamily: "'Jost', sans-serif", fontSize: 14,
-              color: C.text, outline: 'none',
-              marginBottom: 16,
-            }}
-          />
+              {/* Question */}
+              <p style={{
+                fontFamily: "'Cormorant Garamond', serif",
+                fontSize: 20, fontWeight: 600,
+                color: C.text, margin: '0 0 16px', lineHeight: 1.3,
+              }}>
+                {wizardQuestions[wizardStep].text}
+              </p>
 
-          {/* Tag filter chips */}
-          {tagDimensions.length > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              {tagDimensions.map(dim => (
-                <div key={dim.key} style={{ marginBottom: 10 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
-                    textTransform: 'uppercase', color: C.muted,
-                    display: 'block', marginBottom: 6,
-                  }}>{dim.label}</span>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {(dim.options || []).map(opt => {
-                      const active = activeFilters[dim.key] === opt
-                      return (
-                        <button
-                          key={opt}
-                          onClick={() => toggleFilter(dim.key, opt)}
-                          style={{
-                            padding: '5px 14px', borderRadius: 20,
-                            border: `1.5px solid ${active ? C.teal : C.border}`,
-                            background: active ? C.teal : C.surface,
-                            color: active ? 'white' : C.text,
-                            fontFamily: "'Jost', sans-serif", fontSize: 13,
-                            cursor: 'pointer', fontWeight: active ? 600 : 400,
-                            transition: 'all 0.15s',
-                          }}
-                        >{opt}</button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
+              {/* Options */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                {wizardQuestions[wizardStep].options.map(opt => {
+                  const isSelected = activeFilters[wizardQuestions[wizardStep].map_to_catalog_tag] === opt.tag_value
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleWizardAnswer(
+                        wizardQuestions[wizardStep].map_to_catalog_tag,
+                        opt.tag_value
+                      )}
+                      style={{
+                        padding: '9px 20px', borderRadius: 24,
+                        border: `1.5px solid ${isSelected ? C.teal : C.border}`,
+                        background: isSelected ? C.teal : C.surface,
+                        color: isSelected ? 'white' : C.text,
+                        fontFamily: "'Jost', sans-serif", fontSize: 14,
+                        cursor: 'pointer', fontWeight: isSelected ? 600 : 400,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Nav */}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <button
+                  onClick={handleWizardBack}
+                  disabled={wizardStep === 0}
+                  style={{
+                    background: 'none', border: 'none',
+                    fontSize: 13, color: wizardStep === 0 ? C.border : C.muted,
+                    cursor: wizardStep === 0 ? 'default' : 'pointer',
+                    fontFamily: "'Jost', sans-serif", padding: 0,
+                  }}
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={() => setWizardSkipped(true)}
+                  style={{
+                    background: 'none', border: 'none',
+                    fontSize: 12, color: C.muted,
+                    cursor: 'pointer',
+                    fontFamily: "'Jost', sans-serif", padding: 0,
+                  }}
+                >
+                  Skip and show all {itemLabel.toLowerCase()}
+                </button>
+              </div>
             </div>
-          )}
-
-          {/* Results count + clear */}
-          <div style={{
-            display: 'flex', justifyContent: 'space-between',
-            alignItems: 'center', padding: '12px 0',
-            borderTop: `1px solid ${C.border}`,
-            marginBottom: 24,
-          }}>
-            <span style={{ fontSize: 13, color: C.muted }}>
-              {filtered.length} {filtered.length === 1
-                ? (catalogConfig?.catalog_item_label || 'product')
-                : itemLabel.toLowerCase()}
-            </span>
-            {hasFilters && (
-              <button onClick={clearFilters} style={{
-                background: 'none', border: 'none',
-                color: C.teal, fontSize: 13, cursor: 'pointer',
-                fontFamily: "'Jost', sans-serif", fontWeight: 500,
-              }}>Clear filters</button>
-            )}
-          </div>
-        </div>
-
-        {/* ── Product Grid ── */}
-        {filtered.length === 0 ? (
-          <div style={{
-            textAlign: 'center', padding: '64px 0',
-            color: C.muted, fontFamily: "'Cormorant Garamond', serif",
-            fontSize: 20,
-          }}>
-            No {itemLabel.toLowerCase()} match your filters.
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: 24,
-            paddingBottom: 48,
-          }}>
-            {filtered.map(item => (
-              <ProductCard
-                key={item.id}
-                item={item}
-                catalogConfig={catalogConfig}
-                availLabel={availLabel}
-                unavailLabel={unavailLabel}
-                onClick={() => onSelectItem(item)}
-              />
-            ))}
           </div>
         )}
 
-        {/* ── Help me choose strip ── */}
-        {waLink && (
+        {/* ── Grid section ── */}
+        {showGrid && (
+          <div style={{ padding: '24px 0 0' }}>
+
+            {/* Search — always shown */}
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={`Search ${itemLabel.toLowerCase()}…`}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '12px 16px',
+                border: `1.5px solid ${C.border}`,
+                borderRadius: 8, background: C.surface,
+                fontFamily: "'Jost', sans-serif", fontSize: 14,
+                color: C.text, outline: 'none', marginBottom: 16,
+              }}
+            />
+
+            {/* Plain filter chips — only shown when no wizard configured */}
+            {!useWizard && tagDimensions.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                {tagDimensions.map(dim => (
+                  <div key={dim.key} style={{ marginBottom: 10 }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
+                      textTransform: 'uppercase', color: C.muted,
+                      display: 'block', marginBottom: 6,
+                    }}>{dim.label}</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {(dim.options || []).map(opt => {
+                        const active = activeFilters[dim.key] === opt
+                        return (
+                          <button
+                            key={opt}
+                            onClick={() => toggleFilter(dim.key, opt)}
+                            style={{
+                              padding: '5px 14px', borderRadius: 20,
+                              border: `1.5px solid ${active ? C.teal : C.border}`,
+                              background: active ? C.teal : C.surface,
+                              color: active ? 'white' : C.text,
+                              fontFamily: "'Jost', sans-serif", fontSize: 13,
+                              cursor: 'pointer', fontWeight: active ? 600 : 400,
+                              transition: 'all 0.15s',
+                            }}
+                          >{opt}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Results bar */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', padding: '12px 0',
+              borderTop: `1px solid ${C.border}`, marginBottom: 24,
+            }}>
+              <span style={{ fontSize: 13, color: C.muted }}>
+                {wizardDone && activeFilterCount > 0
+                  ? <><strong style={{ color: C.text, fontWeight: 500 }}>{filtered.length} {filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}</strong> matched your answers</>
+                  : <>{filtered.length} {filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}</>
+                }
+              </span>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {wizardDone && (
+                  <button
+                    onClick={() => { setWizardStep(0); setWizardDone(false); setActiveFilters({}) }}
+                    style={{
+                      background: 'none', border: 'none',
+                      color: C.teal, fontSize: 13, cursor: 'pointer',
+                      fontFamily: "'Jost', sans-serif", fontWeight: 500,
+                    }}
+                  >Edit answers</button>
+                )}
+                {hasFilters && (
+                  <button onClick={clearFilters} style={{
+                    background: 'none', border: 'none',
+                    color: C.muted, fontSize: 13, cursor: 'pointer',
+                    fontFamily: "'Jost', sans-serif",
+                  }}>Clear all</button>
+                )}
+              </div>
+            </div>
+
+            {/* Product grid */}
+            {filtered.length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: '64px 0',
+                color: C.muted, fontFamily: "'Cormorant Garamond', serif", fontSize: 20,
+              }}>
+                No {itemLabel.toLowerCase()} match your answers.
+                <div style={{ marginTop: 16 }}>
+                  <button onClick={clearFilters} style={{
+                    background: 'none', border: `1px solid ${C.border}`,
+                    borderRadius: 8, padding: '9px 20px',
+                    color: C.teal, fontSize: 13, cursor: 'pointer',
+                    fontFamily: "'Jost', sans-serif",
+                  }}>Show all {itemLabel.toLowerCase()}</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                gap: 24, paddingBottom: 48,
+              }}>
+                {filtered.map(item => (
+                  <ProductCard
+                    key={item.id}
+                    item={item}
+                    catalogConfig={catalogConfig}
+                    availLabel={availLabel}
+                    unavailLabel={unavailLabel}
+                    itemLabelSing={itemLabelSing}
+                    onClick={() => onSelectItem(item)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Help me choose strip — always visible when grid is shown ── */}
+        {showGrid && waHelpLink && (
           <div style={{
             margin: '0 0 48px',
             padding: '28px 32px',
@@ -234,13 +443,13 @@ export default function CatalogListPage({ orgName, waNumber, catalogConfig, item
                 fontFamily: "'Cormorant Garamond', serif",
                 fontSize: 20, fontWeight: 600,
                 color: C.text, margin: '0 0 4px',
-              }}>Not sure which is right for you?</p>
+              }}>Not sure which {itemLabelSing.toLowerCase()} fits you?</p>
               <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>
-                Chat with us and we'll help you find the perfect match.
+                Chat with us and get a recommendation tailored to your needs.
               </p>
             </div>
-            <a
-              href={waLink}
+            
+              href={waHelpLink}
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -251,7 +460,7 @@ export default function CatalogListPage({ orgName, waNumber, catalogConfig, item
                 textDecoration: 'none', whiteSpace: 'nowrap',
               }}
             >
-              💬 Help me choose
+              💬 Chat with us
             </a>
           </div>
         )}
@@ -260,12 +469,20 @@ export default function CatalogListPage({ orgName, waNumber, catalogConfig, item
   )
 }
 
-function ProductCard({ item, catalogConfig, availLabel, unavailLabel, onClick }) {
+function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelSing, onClick }) {
   const cover = (item.catalog_images || [])[0] || null
   const priceLabel = item.price_label || ''
   const isAvailable = item.available !== false
 
+  // Only show feel and health-purpose tags on card — not age/weight
+  // Rule: show tags from dimensions whose key contains 'feel', 'firmness', 'health', 'purpose', 'type'
+  // Everything else is filtered by the wizard, not displayed on the card
   const tagDimensions = (catalogConfig?.tag_dimensions || []).filter(d => d.filterable)
+  const cardTags = tagDimensions.filter(d =>
+    ['feel', 'firmness', 'health', 'purpose', 'type', 'pillow'].some(k =>
+      d.key.toLowerCase().includes(k) || (d.label || '').toLowerCase().includes(k)
+    )
+  )
 
   return (
     <div
@@ -273,10 +490,10 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, onClick })
       style={{
         background: '#FFFFFF',
         border: `1px solid #E8E4DC`,
-        borderRadius: 12,
-        overflow: 'hidden',
+        borderRadius: 12, overflow: 'hidden',
         cursor: 'pointer',
         transition: 'box-shadow 0.2s, transform 0.2s',
+        display: 'flex', flexDirection: 'column',
       }}
       onMouseEnter={e => {
         e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.10)'
@@ -289,17 +506,12 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, onClick })
     >
       {/* Image */}
       <div style={{
-        aspectRatio: '4/3',
-        background: '#F5F3EF',
-        overflow: 'hidden',
-        position: 'relative',
+        aspectRatio: '4/3', background: '#F5F3EF',
+        overflow: 'hidden', position: 'relative',
       }}>
         {cover ? (
-          <img
-            src={cover}
-            alt={item.title}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
+          <img src={cover} alt={item.title}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
           <div style={{
             width: '100%', height: '100%',
@@ -307,7 +519,6 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, onClick })
             color: '#C8C0B4', fontSize: 32,
           }}>📦</div>
         )}
-        {/* Availability chip */}
         <div style={{
           position: 'absolute', top: 10, right: 10,
           background: isAvailable ? '#E8F5E9' : '#FFF3E0',
@@ -321,12 +532,11 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, onClick })
       </div>
 
       {/* Body */}
-      <div style={{ padding: '16px 18px' }}>
+      <div style={{ padding: '16px 18px', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <h3 style={{
           fontFamily: "'Cormorant Garamond', serif",
           fontSize: 18, fontWeight: 600,
-          color: '#1A1714', margin: '0 0 6px',
-          lineHeight: 1.2,
+          color: '#1A1714', margin: '0 0 6px', lineHeight: 1.2,
         }}>{item.title}</h3>
 
         {priceLabel && (
@@ -337,23 +547,36 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, onClick })
           }}>{priceLabel}</p>
         )}
 
-        {/* Tag badges for filterable dimensions */}
-        {tagDimensions.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {tagDimensions.map(dim => {
+        {/* Only show descriptive tags (feel, health) — not user-matching tags (age, weight) */}
+        {cardTags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+            {cardTags.map(dim => {
               const val = (item.tags || {})[dim.key]
               if (!val) return null
               const vals = Array.isArray(val) ? val : [val]
               return vals.slice(0, 2).map(v => (
                 <span key={`${dim.key}-${v}`} style={{
-                  fontSize: 11, padding: '2px 8px',
+                  fontSize: 11, padding: '3px 9px',
                   background: '#F0EDE8', borderRadius: 10,
-                  color: '#7A7269', fontFamily: "'Jost', sans-serif",
+                  color: '#5A5248',
+                  fontFamily: "'Jost', sans-serif",
                 }}>{v}</span>
               ))
             })}
           </div>
         )}
+
+        {/* View details CTA — spacer pushes it to bottom */}
+        <div style={{ flex: 1 }} />
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 6, paddingTop: 12,
+          borderTop: `1px solid #E8E4DC`,
+          color: '#0B6E74', fontSize: 13, fontWeight: 600,
+          fontFamily: "'Jost', sans-serif",
+        }}>
+          View details →
+        </div>
       </div>
     </div>
   )

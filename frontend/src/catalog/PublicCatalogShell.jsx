@@ -41,13 +41,14 @@ export default function PublicCatalogShell() {
     if (!orgSlug) { setError('not_found'); setLoading(false); return }
 
     getCatalogList(orgSlug)
-      .then(data => {
-        setCatalogData({
-          orgName:       data.org_name,
-          waNumber:      data.wa_number,
-          catalogConfig: data.catalog_config,
-          items:         data.items || [],
-        })
+        .then(data => {
+          setCatalogData({
+            orgName:         data.org_name,
+            waNumber:        data.wa_number,
+            catalogConfig:   data.catalog_config,
+            wizardQuestions: data.wizard_questions || [],
+            items:           data.items || [],
+          })
         setLoading(false)
       })
       .catch(err => {
@@ -192,6 +193,7 @@ export default function PublicCatalogShell() {
       orgName={catalogData.orgName}
       waNumber={catalogData.waNumber}
       catalogConfig={catalogData.catalogConfig}
+      wizardQuestions={catalogData.wizardQuestions || []}
       items={catalogData.items}
       onSelectItem={handleSelectItem}
     />
