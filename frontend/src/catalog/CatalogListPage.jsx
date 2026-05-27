@@ -8,7 +8,7 @@
  *       Header: purpose headline + two-track CTAs (WhatsApp recommendation vs browse)
  *       Wizard: step-by-step questions from org's qualification_flow (via wizardQuestions prop)
  *               Only shows if wizardQuestions.length > 0 — falls back to plain filter chips
- *       Cards:  raw tag badges removed, "View details →" CTA added
+ *       Cards:  raw tag badges removed, "View details" CTA added
  *       Help strip: updated copy, stays at bottom
  *   - wizardQuestions prop: array of { text, map_to_catalog_tag, options[] }
  *     Derived from org's qualification_flow.questions where map_to_catalog_tag is set.
@@ -53,10 +53,10 @@ export default function CatalogListPage({
 
   const [activeFilters, setActiveFilters] = useState({})
   const [search, setSearch]               = useState('')
-  const [wizardStep, setWizardStep]       = useState(0)       // current wizard step index
-  const [wizardDone, setWizardDone]       = useState(false)   // wizard completed
-  const [wizardSkipped, setWizardSkipped] = useState(false)   // user skipped wizard
-  const [showBrowse, setShowBrowse]       = useState(false)   // browse all clicked from header
+  const [wizardStep, setWizardStep]       = useState(0)
+  const [wizardDone, setWizardDone]       = useState(false)
+  const [wizardSkipped, setWizardSkipped] = useState(false)
+  const [showBrowse, setShowBrowse]       = useState(false)
 
   const tagDimensions  = (catalogConfig?.tag_dimensions || []).filter(d => d.filterable)
   const itemLabel      = catalogConfig?.catalog_item_label_plural || 'Products'
@@ -65,11 +65,8 @@ export default function CatalogListPage({
   const unavailLabel   = catalogConfig?.availability_labels?.unavailable || 'Out of Stock'
 
   const useWizard = wizardQuestions.length > 0
+  const showGrid  = !useWizard || wizardDone || wizardSkipped || showBrowse
 
-  // Show grid when: wizard done, skipped, no wizard configured, or browse clicked
-  const showGrid = !useWizard || wizardDone || wizardSkipped || showBrowse
-
-  // Client-side filter (Pattern 33) — unchanged from original
   const filtered = useMemo(() => {
     let result = items || []
     if (search.trim()) {
@@ -104,7 +101,6 @@ export default function CatalogListPage({
     setShowBrowse(false)
   }
 
-  // Wizard: pick an option → set the tag filter and advance
   function handleWizardAnswer(tagKey, tagValue) {
     setActiveFilters(prev => ({ ...prev, [tagKey]: tagValue }))
     const nextStep = wizardStep + 1
@@ -132,13 +128,13 @@ export default function CatalogListPage({
     : null
 
   const waRecommendLink = waNumber
-    ? `https://wa.me/${waNumber.replace('+', '')}?text=${encodeURIComponent('I\'d like a personal recommendation')}`
+    ? `https://wa.me/${waNumber.replace('+', '')}?text=${encodeURIComponent("I'd like a personal recommendation")}`
     : null
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, fontFamily: "'Jost', sans-serif" }}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <header style={{
         borderBottom: `1px solid ${C.border}`,
         background: C.surface,
@@ -161,15 +157,16 @@ export default function CatalogListPage({
               ? `Find your perfect ${itemLabelSing}`
               : itemLabel}
           </h1>
-          {/* Two-track CTAs — only shown on initial wizard entry or when grid visible */}
+
           {useWizard && !showGrid && (
             <p style={{ fontSize: 14, color: C.muted, margin: '0 0 16px', lineHeight: 1.5 }}>
-              Answer a few quick questions and we'll match you with the right {itemLabelSing.toLowerCase()} — or browse everything below.
+              Answer a few quick questions and we will match you with the right {itemLabelSing.toLowerCase()} — or browse everything below.
             </p>
           )}
+
           {useWizard && !showGrid && waRecommendLink && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              
+              <a
                 href={waRecommendLink}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -181,7 +178,7 @@ export default function CatalogListPage({
                   textDecoration: 'none', whiteSpace: 'nowrap',
                 }}
               >
-                💬 Get a personal recommendation
+                Get a personal recommendation
               </a>
               <button
                 onClick={() => setShowBrowse(true)}
@@ -203,7 +200,7 @@ export default function CatalogListPage({
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 32px' }}>
 
-        {/* ── Wizard ── shown when wizard configured and not yet done/skipped */}
+        {/* Wizard */}
         {useWizard && !showGrid && (
           <div style={{ padding: '28px 0' }}>
             <div style={{
@@ -211,7 +208,6 @@ export default function CatalogListPage({
               border: `1px solid ${C.border}`,
               borderRadius: 12, padding: '24px 28px',
             }}>
-              {/* Progress bar */}
               <div style={{
                 display: 'flex', justifyContent: 'space-between',
                 alignItems: 'center', marginBottom: 12,
@@ -223,18 +219,15 @@ export default function CatalogListPage({
                   Step {wizardStep + 1} of {wizardQuestions.length}
                 </span>
               </div>
-              <div style={{
-                height: 3, background: C.border, borderRadius: 2, marginBottom: 20,
-              }}>
+              <div style={{ height: 3, background: C.border, borderRadius: 2, marginBottom: 20 }}>
                 <div style={{
                   height: 3,
-                  width: `${((wizardStep) / wizardQuestions.length) * 100}%`,
+                  width: `${(wizardStep / wizardQuestions.length) * 100}%`,
                   background: C.teal, borderRadius: 2,
                   transition: 'width 0.3s ease',
                 }} />
               </div>
 
-              {/* Question */}
               <p style={{
                 fontFamily: "'Cormorant Garamond', serif",
                 fontSize: 20, fontWeight: 600,
@@ -243,7 +236,6 @@ export default function CatalogListPage({
                 {wizardQuestions[wizardStep].text}
               </p>
 
-              {/* Options */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
                 {wizardQuestions[wizardStep].options.map(opt => {
                   const isSelected = activeFilters[wizardQuestions[wizardStep].map_to_catalog_tag] === opt.tag_value
@@ -270,10 +262,7 @@ export default function CatalogListPage({
                 })}
               </div>
 
-              {/* Nav */}
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <button
                   onClick={handleWizardBack}
                   disabled={wizardStep === 0}
@@ -284,7 +273,7 @@ export default function CatalogListPage({
                     fontFamily: "'Jost', sans-serif", padding: 0,
                   }}
                 >
-                  ← Back
+                  Back
                 </button>
                 <button
                   onClick={() => setWizardSkipped(true)}
@@ -302,15 +291,14 @@ export default function CatalogListPage({
           </div>
         )}
 
-        {/* ── Grid section ── */}
+        {/* Grid section */}
         {showGrid && (
           <div style={{ padding: '24px 0 0' }}>
 
-            {/* Search — always shown */}
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={`Search ${itemLabel.toLowerCase()}…`}
+              placeholder={`Search ${itemLabel.toLowerCase()}...`}
               style={{
                 width: '100%', boxSizing: 'border-box',
                 padding: '12px 16px',
@@ -321,7 +309,7 @@ export default function CatalogListPage({
               }}
             />
 
-            {/* Plain filter chips — only shown when no wizard configured */}
+            {/* Plain filter chips — only when no wizard configured */}
             {!useWizard && tagDimensions.length > 0 && (
               <div style={{ marginBottom: 8 }}>
                 {tagDimensions.map(dim => (
@@ -363,11 +351,10 @@ export default function CatalogListPage({
               borderTop: `1px solid ${C.border}`, marginBottom: 24,
             }}>
               <span style={{ fontSize: 13, color: C.muted }}>
-                {wizardDone && activeFilterCount > 0 ? (
-                  <span><strong style={{ color: C.text, fontWeight: 500 }}>{filtered.length} {filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}</strong> matched your answers</span>
-                ) : (
-                  <span>{filtered.length} {filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}</span>
-                )}
+                {wizardDone && activeFilterCount > 0
+                  ? `${filtered.length} ${filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()} matched your answers`
+                  : `${filtered.length} ${filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}`
+                }
               </span>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 {wizardDone && (
@@ -428,7 +415,7 @@ export default function CatalogListPage({
           </div>
         )}
 
-        {/* ── Help me choose strip — always visible when grid is shown ── */}
+        {/* Help me choose strip */}
         {showGrid && waHelpLink && (
           <div style={{
             margin: '0 0 48px',
@@ -449,7 +436,7 @@ export default function CatalogListPage({
                 Chat with us and get a recommendation tailored to your needs.
               </p>
             </div>
-            
+            <a
               href={waHelpLink}
               target="_blank"
               rel="noopener noreferrer"
@@ -461,7 +448,7 @@ export default function CatalogListPage({
                 textDecoration: 'none', whiteSpace: 'nowrap',
               }}
             >
-              💬 Chat with us
+              Chat with us
             </a>
           </div>
         )}
@@ -475,9 +462,6 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelS
   const priceLabel = item.price_label || ''
   const isAvailable = item.available !== false
 
-  // Only show feel and health-purpose tags on card — not age/weight
-  // Rule: show tags from dimensions whose key contains 'feel', 'firmness', 'health', 'purpose', 'type'
-  // Everything else is filtered by the wizard, not displayed on the card
   const tagDimensions = (catalogConfig?.tag_dimensions || []).filter(d => d.filterable)
   const cardTags = tagDimensions.filter(d =>
     ['feel', 'firmness', 'health', 'purpose', 'type', 'pillow'].some(k =>
@@ -490,7 +474,7 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelS
       onClick={onClick}
       style={{
         background: '#FFFFFF',
-        border: `1px solid #E8E4DC`,
+        border: '1px solid #E8E4DC',
         borderRadius: 12, overflow: 'hidden',
         cursor: 'pointer',
         transition: 'box-shadow 0.2s, transform 0.2s',
@@ -505,7 +489,6 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelS
         e.currentTarget.style.transform = 'translateY(0)'
       }}
     >
-      {/* Image */}
       <div style={{
         aspectRatio: '4/3', background: '#F5F3EF',
         overflow: 'hidden', position: 'relative',
@@ -518,7 +501,7 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelS
             width: '100%', height: '100%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#C8C0B4', fontSize: 32,
-          }}>📦</div>
+          }}>No image</div>
         )}
         <div style={{
           position: 'absolute', top: 10, right: 10,
@@ -532,7 +515,6 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelS
         </div>
       </div>
 
-      {/* Body */}
       <div style={{ padding: '16px 18px', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <h3 style={{
           fontFamily: "'Cormorant Garamond', serif",
@@ -548,7 +530,6 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelS
           }}>{priceLabel}</p>
         )}
 
-        {/* Only show descriptive tags (feel, health) — not user-matching tags (age, weight) */}
         {cardTags.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
             {cardTags.map(dim => {
@@ -567,16 +548,15 @@ function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelS
           </div>
         )}
 
-        {/* View details CTA — spacer pushes it to bottom */}
         <div style={{ flex: 1 }} />
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           gap: 6, paddingTop: 12,
-          borderTop: `1px solid #E8E4DC`,
+          borderTop: '1px solid #E8E4DC',
           color: '#0B6E74', fontSize: 13, fontWeight: 600,
           fontFamily: "'Jost', sans-serif",
         }}>
-          View details →
+          View details
         </div>
       </div>
     </div>
