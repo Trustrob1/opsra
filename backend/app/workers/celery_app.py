@@ -130,6 +130,7 @@ celery_app = Celery(
         "app.workers.ai_resume_worker",    # ← AI-AUTO-RESUME
         "app.workers.instagram_worker",    # ← UNIFIED-INBOX-1A
         "app.workers.messenger_worker",    # ← UNIFIED-INBOX-1B
+        "app.workers.report_delivery_worker",  # ← RPT-1A
     ],
 )
 
@@ -440,5 +441,15 @@ celery_app.conf.beat_schedule = {
     "ai_auto_resume": {
         "task": "app.workers.ai_resume_worker.run_ai_auto_resume",
         "schedule": crontab(minute="*"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # run_report_delivery — Every 30 minutes  (RPT-1A)                    #
+    # Worker: report_delivery_worker.py                                    #
+    # Delivers scheduled management reports via email.                    #
+    # ------------------------------------------------------------------ #
+    "run-report-delivery": {
+        "task": "run_report_delivery",
+        "schedule": crontab(minute="*/30"),
     },
 }
