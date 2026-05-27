@@ -1245,6 +1245,96 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     "Smart re-engagement notification failed lead=%s: %s", lead_id, _notif_exc
                 )
 
+    # ── Post-save: customer bubbling + smart re-engagement notification ──────────
+    # Mirror of the lead block above — fires for every inbound message from a known
+    # customer. Updates last_activity_at so the customer bubbles to the top of the
+    # CustomerList, and notifies the assigned rep + all ops managers.
+    if customer_id and org_id:
+        # 1. Bubble customer to top of list
+        try:
+            db.table("customers").update({"last_activity_at": now_ts}) \
+              .eq("id", customer_id).eq("org_id", org_id).execute()
+        except Exception as _cact_exc:
+            logger.warning("last_activity_at update failed customer=%s: %s", customer_id, _cact_exc)
+
+        # 2. Smart notification — only fire if 4+ hour gap since last inbound.
+        if assigned_to:
+            try:
+                _cprev_r = (
+                    db.table("whatsapp_messages")
+                    .select("created_at")
+                    .eq("org_id", org_id)
+                    .eq("customer_id", customer_id)
+                    .eq("direction", "inbound")
+                    .neq("meta_message_id", msg_id)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                _cprev_rows = _cprev_r.data or []
+                _cprev_row  = (_cprev_rows[0] if isinstance(_cprev_rows, list) and _cprev_rows
+                               else _cprev_rows if isinstance(_cprev_rows, dict) else {})
+                _clast_ts   = _cprev_row.get("created_at") if _cprev_row else None
+
+                _cshould_notify = True
+                if _clast_ts:
+                    try:
+                        _cgap_h = (
+                            datetime.now(timezone.utc)
+                            - datetime.fromisoformat(_clast_ts.replace("Z", "+00:00"))
+                        ).total_seconds() / 3600
+                        _cshould_notify = _cgap_h >= 4.0
+                    except Exception:
+                        _cshould_notify = True  # fail-open
+
+                if _cshould_notify:
+                    _cdisplay = contact_name or sender_phone
+                    # Notify assigned rep
+                    db.table("notifications").insert({
+                        "org_id":        org_id,
+                        "user_id":       assigned_to,
+                        "title":         f"Customer messaged: {_cdisplay}",
+                        "body":          content or f"[{msg_type}]",
+                        "type":          "whatsapp_reply",
+                        "resource_type": "customer",
+                        "resource_id":   customer_id,
+                        "is_read":       False,
+                        "created_at":    now_ts,
+                    }).execute()
+                    # Also notify all ops managers (who may not be the assigned rep)
+                    try:
+                        _mgr_r = (
+                            db.table("users")
+                            .select("id, roles(template)")
+                            .eq("org_id", org_id)
+                            .eq("is_active", True)
+                            .execute()
+                        )
+                        for _mgr in (_mgr_r.data or []):
+                            _tmpl = ((_mgr.get("roles") or {}).get("template") or "").lower()
+                            if _tmpl in ("owner", "ops_manager") and _mgr["id"] != assigned_to:
+                                db.table("notifications").insert({
+                                    "org_id":        org_id,
+                                    "user_id":       _mgr["id"],
+                                    "title":         f"Customer messaged: {_cdisplay}",
+                                    "body":          content or f"[{msg_type}]",
+                                    "type":          "whatsapp_reply",
+                                    "resource_type": "customer",
+                                    "resource_id":   customer_id,
+                                    "is_read":       False,
+                                    "created_at":    now_ts,
+                                }).execute()
+                    except Exception as _mgr_exc:
+                        logger.warning(
+                            "Ops manager notification failed customer=%s: %s",
+                            customer_id, _mgr_exc,
+                        )
+            except Exception as _cnotif_exc:
+                logger.warning(
+                    "Customer re-engagement notification failed customer=%s: %s",
+                    customer_id, _cnotif_exc,
+                )
+
     reengaged_from_nurture = False
     if lead_id and not customer_id:
         try:

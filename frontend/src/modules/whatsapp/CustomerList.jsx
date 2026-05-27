@@ -109,8 +109,14 @@ export default function CustomerList({ onSelectCustomer }) {
   if (filterRisk)    builtFilters.churn_risk = filterRisk
   if (filterOnboard !== '') builtFilters.onboarding_complete = filterOnboard === 'true'
 
-  const { customers, total, page, pageSize, hasMore, loading, error, goToPage, applyFilters } =
+  const { customers, total, page, pageSize, hasMore, loading, error, goToPage, applyFilters, refresh } =
     useCustomers(builtFilters, 20)
+
+  // Auto-refresh every 60s — re-sorts list when customers message in
+  useEffect(() => {
+    const id = setInterval(() => refresh(), 60000)
+    return () => clearInterval(id)
+  }, [refresh])
 
   // M01-7a: attention summary replaces old unreadCounts
   // Shape: { customer_id: { has_attention, unread_messages, open_tickets, churn_risk, reasons } }

@@ -2172,6 +2172,7 @@ def list_outbox(
 
     result = (
         query
+        .order("last_activity_at", desc=True, nullsfirst=False)
         .order("created_at", desc=True)
         .range((page - 1) * page_size, page * page_size - 1)
         .execute()
