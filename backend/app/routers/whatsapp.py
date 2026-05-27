@@ -113,6 +113,68 @@ async def send_media_message(
     return ok(data=msg, message="Media message sent")
 
 
+@router.get("/messages/{message_id}/download-url")
+def get_media_download_url(
+    message_id: str,
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """
+    Returns a fresh 1-hour signed URL for a media message.
+    Used by the frontend download button — avoids the 1-hour expiry problem
+    by re-signing from the stored storage_path on demand.
+    S1: message verified to belong to this org before signing.
+    S14: returns 404 if message has no storage_path (old messages without it).
+    """
+    org_id = org["org_id"]
+
+    result = (
+        db.table("whatsapp_messages")
+        .select("id, storage_path, message_type, content")
+        .eq("id", message_id)
+        .eq("org_id", org_id)
+        .maybe_single()
+        .execute()
+    )
+    msg_data = result.data
+    if isinstance(msg_data, list):
+        msg_data = msg_data[0] if msg_data else None
+    if not msg_data:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    storage_path = (msg_data or {}).get("storage_path")
+    if not storage_path:
+        raise HTTPException(
+            status_code=404,
+            detail="No stored file for this message — it may predate file storage"
+        )
+
+    try:
+        signed = db.storage.from_("whatsapp-media").create_signed_url(
+            path=storage_path,
+            expires_in=3600,
+        )
+        if hasattr(signed, "data"):
+            d = signed.data or {}
+            signed_url = d.get("signedUrl") or d.get("signedURL")
+        elif isinstance(signed, dict):
+            signed_url = (
+                signed.get("signedUrl")
+                or signed.get("signedURL")
+                or (signed.get("data") or {}).get("signedUrl")
+            )
+        else:
+            signed_url = None
+    except Exception as exc:
+        logger.warning("get_media_download_url: re-sign failed msg=%s: %s", message_id, exc)
+        raise HTTPException(status_code=503, detail="Could not generate download URL")
+
+    if not signed_url:
+        raise HTTPException(status_code=503, detail="Could not generate download URL")
+
+    filename = (msg_data or {}).get("content") or "download"
+    return ok(data={"url": signed_url, "filename": filename})
+
 @router.get("/messages/unread-counts")
 def get_unread_counts(
     db=Depends(get_supabase),

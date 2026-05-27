@@ -4002,8 +4002,9 @@ def send_whatsapp_media_message(
         "org_id":           org_id,
         "direction":        "outbound",
         "message_type":     msg_type,
-        "content":          None,
+        "content":          safe_filename,     # CHANGE: was None — store filename for display
         "media_url":        media_url,
+        "storage_path":     storage_path,      # ADD THIS LINE
         "template_name":    None,
         "status":           "sent",
         "meta_message_id":  meta_message_id,

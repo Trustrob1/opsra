@@ -77,3 +77,12 @@ export const sendInstagramMessage = (leadId, message) =>
 
 export const sendMessengerMessage = (leadId, message) =>
   api.post('/api/v1/conversations/messenger/send', { lead_id: leadId, message })
+
+
+/**
+ * GET /api/v1/messages/{message_id}/download-url
+ * Returns a fresh signed URL for downloading a media message.
+ * Used instead of <a download> which fails on cross-origin URLs.
+ */
+export const getMediaDownloadUrl = (messageId) =>
+  api.get(`/api/v1/messages/${messageId}/download-url`)

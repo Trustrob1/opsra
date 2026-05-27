@@ -345,7 +345,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str) -> Optional[str]:
+def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filename: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     """
     Downloads a media file from Meta's media API and stores it in
     Supabase Storage bucket 'whatsapp-media'.
@@ -399,6 +399,8 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str) -> Op
             ext = "gif"
         elif "webp" in mime_type:
             ext = "webp"
+        elif "pdf" in mime_type:
+            ext = "pdf"
         else:
             ext = "ogg"  # WhatsApp default for voice notes
 
@@ -411,7 +413,11 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str) -> Op
         else:
             folder = "documents"
 
-        storage_path = f"{org_id}/{folder}/{media_id}.{ext}"
+        if filename:
+            safe_fn = filename.replace("/", "_").replace("\\", "_").replace("'", "").replace('"', "")
+            storage_path = f"{org_id}/{folder}/{media_id}_{safe_fn}"
+        else:
+            storage_path = f"{org_id}/{folder}/{media_id}.{ext}"
 
         # Step 4 — upload to Supabase Storage (private bucket 'whatsapp-media')
         db.storage.from_("whatsapp-media").upload(
@@ -436,14 +442,14 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str) -> Op
             )
         else:
             signed_url = None
-        return signed_url
+        return signed_url, storage_path
 
     except Exception as exc:
         logger.warning(
             "_fetch_and_store_media failed for media_id=%s org=%s: %s",
             media_id, org_id, exc,
         )
-        return None
+        return None, None
 
 
 def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
@@ -1125,15 +1131,27 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     # For inbound voice notes — download from Meta and store in Supabase Storage
     # so reps can play audio back in the Conversations thread.
     # S14: failure returns None, message is still saved without media_url.
+    # NEW — also handles document, and captures storage_path
     _inbound_media_url: Optional[str] = None
+    _inbound_storage_path: Optional[str] = None
     if msg_type == "audio" and locals().get("_audio_media_id") and org_id:
-        _inbound_media_url = _fetch_and_store_media(
+        _inbound_media_url, _inbound_storage_path = _fetch_and_store_media(
             db, org_id, _audio_media_id, _audio_mime
         )
     elif msg_type == "image" and locals().get("_image_media_id") and org_id:
-        _inbound_media_url = _fetch_and_store_media(
+        _inbound_media_url, _inbound_storage_path = _fetch_and_store_media(
             db, org_id, _image_media_id, _image_mime
         )
+    elif msg_type == "document" and org_id:
+        _doc_media_id = (message.get("document") or {}).get("id")
+        _doc_mime     = (message.get("document") or {}).get("mime_type", "application/pdf")
+        _doc_filename = (message.get("document") or {}).get("filename") or "document"
+        if _doc_media_id:
+            _inbound_media_url, _inbound_storage_path = _fetch_and_store_media(
+                db, org_id, _doc_media_id, _doc_mime, filename=_doc_filename
+            )
+            # Use the actual filename as content so the bubble can display it
+            content = _doc_filename
 
     row: dict = {
         "org_id":          org_id,
@@ -1141,6 +1159,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         "message_type":    msg_type,
         "content":         content,
         "media_url":       _inbound_media_url,
+        "storage_path":    _inbound_storage_path,
         "status":          "delivered",
         "meta_message_id": msg_id,
         "window_open":     True,

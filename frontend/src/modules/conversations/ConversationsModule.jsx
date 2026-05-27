@@ -44,6 +44,7 @@ import {
   sendMediaMessage,
   sendInstagramMessage,
   sendMessengerMessage,
+  getMediaDownloadUrl,
 } from '../../services/conversations.service'
 import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
 import { getCustomerMessages, sendMessage } from '../../services/whatsapp.service'
@@ -1114,11 +1115,63 @@ function SendButton({ canSend, sending, onClick }) {
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
 function Bubble({ msg, onRequestSuggestion }) {
-  const isOut = msg.direction === 'outbound'
-  const d     = msg.created_at ? new Date(msg.created_at) : null
-  const time  = d ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
-  const date  = d ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''
+  const isOut  = msg.direction === 'outbound'
+  const d      = msg.created_at ? new Date(msg.created_at) : null
+  const time   = d ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
+  const date   = d ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''
   const isMedia = msg.message_type && msg.message_type !== 'text'
+  const [downloading, setDownloading] = useState(false)
+
+  // WhatsApp-style download: fetch a fresh signed URL from the backend,
+  // then blob-download it so the file saves directly without opening a tab.
+  // Falls back to opening media_url in a new tab if msg has no storage_path
+  // (old messages before storage_path was saved).
+  const handleDownload = async () => {
+    if (downloading) return
+    setDownloading(true)
+    try {
+      const res = await getMediaDownloadUrl(msg.id)
+      const { url, filename } = res.data?.data ?? {}
+      if (!url) throw new Error('no url')
+      const fileRes = await fetch(url)
+      const blob = await fileRes.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = filename || 'download'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      // Fallback for old messages with no storage_path: open in new tab
+      if (msg.media_url) window.open(msg.media_url, '_blank')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const DownloadBtn = ({ style = {} }) => (
+    <button
+      onClick={handleDownload}
+      disabled={downloading}
+      title="Download"
+      style={{
+        background: 'rgba(0,0,0,0.35)',
+        border: 'none',
+        borderRadius: 6,
+        padding: '3px 8px',
+        color: '#fff',
+        fontSize: 12,
+        cursor: downloading ? 'wait' : 'pointer',
+        lineHeight: 1.4,
+        flexShrink: 0,
+        ...style,
+      }}
+    >
+      {downloading ? '…' : '⬇'}
+    </button>
+  )
 
   return (
     <div style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
@@ -1133,31 +1186,36 @@ function Bubble({ msg, onRequestSuggestion }) {
         {isMedia && msg.media_url ? (
           <div style={{ marginBottom: 4 }}>
             {msg.message_type === 'image' ? (
-              <img
-                src={msg.media_url}
-                alt="Image"
-                style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 8, display: 'block' }}
-              />
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <img
+                  src={msg.media_url}
+                  alt="Image"
+                  style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 8, display: 'block' }}
+                />
+                <DownloadBtn style={{ position: 'absolute', top: 6, right: 6 }} />
+              </div>
             ) : msg.message_type === 'audio' ? (
-              <audio
-                controls
-                src={msg.media_url}
-                style={{ maxWidth: '100%', borderRadius: 8, outline: 'none', height: 36 }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <audio
+                  controls
+                  src={msg.media_url}
+                  style={{ maxWidth: '100%', borderRadius: 8, outline: 'none', height: 36, flex: 1 }}
+                />
+                <DownloadBtn />
+              </div>
             ) : (
-              <a
-                href={msg.media_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: '8px 10px', textDecoration: 'none' }}
-              >
+              /* document or video */
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: '8px 10px' }}>
                 <span style={{ fontSize: 20 }}>
                   {msg.message_type === 'video' ? '🎥' : '📄'}
                 </span>
-                <span style={{ fontSize: 12, color: ds.dark, fontWeight: 500 }}>
-                  {msg.message_type === 'document' ? 'Document' : 'Video'}
+                <span style={{ fontSize: 12, color: ds.dark, fontWeight: 500, flex: 1, wordBreak: 'break-all' }}>
+                  {msg.message_type === 'document'
+                    ? (msg.content && msg.content !== '[Document]' ? msg.content : 'Document')
+                    : 'Video'}
                 </span>
-              </a>
+                <DownloadBtn />
+              </div>
             )}
           </div>
         ) : (
@@ -1178,7 +1236,6 @@ function Bubble({ msg, onRequestSuggestion }) {
           </button>
         )}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: isOut ? 'space-between' : 'flex-end', gap: 4, marginTop: 4 }}>
-          {/* Attribution tag — shows AI or rep name on every outbound message */}
           {isOut && (
             <span style={{
               fontSize:   9.5,
