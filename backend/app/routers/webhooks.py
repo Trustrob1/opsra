@@ -359,7 +359,7 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filen
         _, access_token, _ = _get_org_wa_credentials(db, org_id)
         if not access_token:
             logger.warning("_fetch_and_store_media: no access token for org %s", org_id)
-            return None
+            return None, None
 
         # Step 1 — resolve the download URL from Meta's media endpoint
         url_resp = httpx.get(
@@ -371,7 +371,7 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filen
         download_url = url_resp.json().get("url")
         if not download_url:
             logger.warning("_fetch_and_store_media: no url in Meta response for %s", media_id)
-            return None
+            return None, None
 
         # Step 2 — download the binary file
         file_resp = httpx.get(
@@ -401,8 +401,12 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filen
             ext = "webp"
         elif "pdf" in mime_type:
             ext = "pdf"
+        elif "msword" in mime_type or "wordprocessingml" in mime_type:
+            ext = "docx"
+        elif "spreadsheetml" in mime_type or "excel" in mime_type:
+            ext = "xlsx"
         else:
-            ext = "ogg"  # WhatsApp default for voice notes
+            ext = "bin"
 
         if mime_type.startswith("image/"):
             folder = "images"
@@ -882,7 +886,10 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         _audio_media_id = (message.get("audio") or {}).get("id")
         _audio_mime     = (message.get("audio") or {}).get("mime_type", "audio/ogg")
     elif msg_type == "document":
-        content = "[Document]"
+        _doc_filename   = (message.get("document") or {}).get("filename") or "document"
+        _doc_media_id   = (message.get("document") or {}).get("id")
+        _doc_mime       = (message.get("document") or {}).get("mime_type", "application/pdf")
+        content = _doc_filename
     elif msg_type == "interactive":
         interactive_type = (message.get("interactive") or {}).get("type")
         if interactive_type == "list_reply":
