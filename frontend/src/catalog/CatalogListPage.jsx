@@ -363,10 +363,11 @@ export default function CatalogListPage({
               borderTop: `1px solid ${C.border}`, marginBottom: 24,
             }}>
               <span style={{ fontSize: 13, color: C.muted }}>
-                {wizardDone && activeFilterCount > 0
-                  ? <><strong style={{ color: C.text, fontWeight: 500 }}>{filtered.length} {filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}</strong> matched your answers</>
-                  : <>{filtered.length} {filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}</>
-                }
+                {wizardDone && activeFilterCount > 0 ? (
+                  <span><strong style={{ color: C.text, fontWeight: 500 }}>{filtered.length} {filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}</strong> matched your answers</span>
+                ) : (
+                  <span>{filtered.length} {filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}</span>
+                )}
               </span>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 {wizardDone && (
