@@ -143,7 +143,16 @@ function playNotificationSound() {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data?.type === 'PLAY_NOTIFICATION_SOUND') {
-      playNotificationSound()
+      // If AudioContext exists but is suspended (common on desktop before
+      // any user interaction), resume it first then play.
+      // If it doesn't exist yet, _ensureAudioCtx() inside playNotificationSound
+      // will attempt creation — may silently fail on iOS without a gesture,
+      // but succeeds on desktop and Android PWA (push counts as interaction).
+      if (_audioCtx && _audioCtx.state === 'suspended') {
+        _audioCtx.resume().then(() => playNotificationSound()).catch(() => playNotificationSound())
+      } else {
+        playNotificationSound()
+      }
     }
   })
 }
@@ -172,7 +181,13 @@ async function _pollUnread() {
   } catch (_) {}
 }
 
-setInterval(_pollUnread, 30_000)
+// Seed _lastUnreadCount immediately so the first interval tick
+// doesn't false-trigger sound for pre-existing unread notifications.
+// 2s delay gives the Zustand auth store time to rehydrate from localStorage.
+setTimeout(async () => {
+  await _pollUnread()
+  setInterval(_pollUnread, 30_000)
+}, 2000)
 
 // ── React root ──────────────────────────────────────────────────────────────
 createRoot(document.getElementById('root')).render(
