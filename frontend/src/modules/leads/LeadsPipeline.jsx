@@ -185,6 +185,12 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pip
 
   useEffect(() => { setPage(1) }, [filterScore, filterSource, filterStage])
 
+  // Auto-refresh every 60s — re-sorts list when recently active leads bubble up
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
