@@ -40,6 +40,9 @@ async def list_notifications(
     Returns paginated notifications for the current user, newest first.
     Response data includes ``unread_count`` (total unread, all pages)
     so the topbar bell badge can be updated from a single API call.
+
+    Role-filtered: sales_agent sees only lead and message notifications.
+    All other roles see everything.
     """
     result = notifications_service.list_notifications(
         user_id=org["id"],
@@ -47,6 +50,7 @@ async def list_notifications(
         db=db,
         page=page,
         page_size=page_size,
+        role_template=org["roles"]["template"],   # Pattern 37
     )
     return ok(data=result)
 

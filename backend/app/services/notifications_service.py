@@ -39,17 +39,38 @@ def _one(data) -> Optional[dict]:
 # list_notifications
 # ============================================================
 
+# Notification types visible to sales reps only.
+# All other roles (owner, ops_manager, etc.) see every notification type.
+_SALES_AGENT_TYPES: frozenset = frozenset({
+    "whatsapp_reply",
+    "whatsapp_new_lead",
+    "new_lead",
+    "qualification_complete",
+    "new_hot_lead",
+})
+
+# Role templates considered "restricted" — only see sales-relevant notifications
+_RESTRICTED_ROLE_TEMPLATES: frozenset = frozenset({
+    "sales_agent",
+})
+
+
 def list_notifications(
     user_id: str,
     org_id: str,
     db,
     page: int = 1,
     page_size: int = 20,
+    role_template: Optional[str] = None,
 ) -> dict:
     """
     Returns a paginated list of notifications for ``user_id`` within ``org_id``.
     Newest first.  Includes ``unread_count`` — total unread across ALL pages,
     not just the current page — so the topbar bell badge stays accurate.
+
+    Role filtering (Pattern 33 — Python-side):
+      sales_agent — sees only lead and message notifications
+      all other roles — see all notification types
 
     Pagination is Python-side (Pattern 33).
     Ordering (created_at desc) is server-side — safe PostgREST sort.
@@ -63,6 +84,14 @@ def list_notifications(
         .execute()
     )
     all_items: list = result.data or []
+
+    # Filter by role — sales agents see only their relevant notification types
+    _tmpl = (role_template or "").lower()
+    if _tmpl in _RESTRICTED_ROLE_TEMPLATES:
+        all_items = [
+            n for n in all_items
+            if (n.get("type") or "") in _SALES_AGENT_TYPES
+        ]
 
     # Unread count across ALL items — not just current page
     unread_count = sum(1 for n in all_items if not n.get("is_read"))
