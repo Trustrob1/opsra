@@ -54,9 +54,10 @@ export default function CatalogListPage({
 
   const [activeFilters, setActiveFilters] = useState({})
   const [search, setSearch]               = useState('')
-  const [wizardStep, setWizardStep]       = useState(0)
-  const [wizardDone, setWizardDone]       = useState(false)
-  const [wizardSkipped, setWizardSkipped] = useState(false)
+  const [wizardStep, setWizardStep]         = useState(0)
+  const [wizardDone, setWizardDone]         = useState(false)
+  const [wizardSkipped, setWizardSkipped]   = useState(false)
+  const [wizardExpanded, setWizardExpanded] = useState(false)
 
   const tagDimensions = (catalogConfig?.tag_dimensions || []).filter(d => d.filterable)
   const itemLabel     = catalogConfig?.catalog_item_label_plural || 'Products'
@@ -98,6 +99,7 @@ export default function CatalogListPage({
     setWizardStep(0)
     setWizardDone(false)
     setWizardSkipped(false)
+    setWizardExpanded(false)
   }
 
   function handleWizardAnswer(tagKey, tagValue) {
@@ -123,6 +125,7 @@ export default function CatalogListPage({
     setWizardStep(0)
     setWizardDone(false)
     setWizardSkipped(false)
+    setWizardExpanded(false)
     setActiveFilters({})
   }
 
@@ -130,7 +133,7 @@ export default function CatalogListPage({
   const activeFilterCount = Object.values(activeFilters).filter(Boolean).length
 
   const waHelpLink = waNumber
-    ? `https://wa.me/${waNumber.replace('+', '')}?text=${encodeURIComponent('I need help choosing a mattress')}`
+    ? `https://wa.me/${waNumber.replace('+', '')}?text=${encodeURIComponent(`I need help choosing a ${itemLabelSing.toLowerCase()}`)}`
     : null
 
   return (
@@ -159,7 +162,7 @@ export default function CatalogListPage({
           </h1>
           <p style={{ fontSize: 14, color: C.muted, margin: 0 }}>
             {useWizard
-              ? `Browse our full range below, or use the finder to get a personalised match.`
+              ? `Not sure where to start? Use the finder above — or browse at your own pace below.`
               : `Browse our full range below.`}
           </p>
         </div>
@@ -167,36 +170,109 @@ export default function CatalogListPage({
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 32px' }}>
 
-        {/* Wizard banner — always shown when wizard configured and not skipped */}
+        {/* Wizard banner — Option A: collapsed strip, expands on tap */}
         {useWizard && !wizardSkipped && (
-          <div style={{
-            margin: '24px 0 0',
-            padding: '20px 28px',
-            background: C.tealLight,
-            border: `1px solid ${C.teal}`,
-            borderRadius: 12,
-          }}>
-            {/* Eyebrow */}
-            <p style={{
-              fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
-              textTransform: 'uppercase', color: C.tealMid,
-              margin: '0 0 4px',
-            }}>
-              Personalised finder
-            </p>
+          <div style={{ margin: '24px 0 0' }}>
 
-            {!wizardDone ? (
-              <>
-                <p style={{
-                  fontFamily: "'Cormorant Garamond', serif",
-                  fontSize: 18, fontWeight: 600,
-                  color: C.tealDark, margin: '0 0 2px',
-                }}>
-                  Not sure which {itemLabelSing.toLowerCase()} is right for you?
-                </p>
-                <p style={{ fontSize: 13, color: C.tealMid, margin: '0 0 16px' }}>
-                  Answer {wizardQuestions.length} quick questions and we will show you the best match from our range.
-                </p>
+            {/* Collapsed strip — always visible */}
+            {!wizardDone && (
+              <div style={{
+                background: C.teal,
+                borderRadius: wizardExpanded ? '12px 12px 0 0' : 12,
+                padding: '12px 20px',
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', gap: 12,
+                cursor: wizardExpanded ? 'default' : 'pointer',
+              }}
+                onClick={() => { if (!wizardExpanded) setWizardExpanded(true) }}
+              >
+                <div>
+                  <p style={{
+                    fontSize: 14, fontWeight: 600, color: 'white', margin: '0 0 1px',
+                    fontFamily: "'Jost', sans-serif",
+                  }}>
+                    Get a personalised recommendation
+                  </p>
+                  <p style={{ fontSize: 12, color: C.tealTrack, margin: 0 }}>
+                    {wizardQuestions.length} quick questions — takes under a minute
+                  </p>
+                </div>
+                {!wizardExpanded && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setWizardExpanded(true) }}
+                    style={{
+                      background: 'white', border: 'none',
+                      borderRadius: 20, padding: '6px 16px',
+                      fontFamily: "'Jost', sans-serif", fontSize: 13, fontWeight: 600,
+                      color: C.teal, cursor: 'pointer', flexShrink: 0,
+                    }}
+                  >
+                    Start
+                  </button>
+                )}
+                {wizardExpanded && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setWizardExpanded(false) }}
+                    style={{
+                      background: 'none', border: '1px solid rgba(255,255,255,0.4)',
+                      borderRadius: 20, padding: '4px 12px',
+                      fontFamily: "'Jost', sans-serif", fontSize: 12,
+                      color: 'white', cursor: 'pointer', flexShrink: 0,
+                    }}
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Wizard done — compact completion strip */}
+            {wizardDone && (
+              <div style={{
+                background: C.teal, borderRadius: 12,
+                padding: '12px 20px',
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', gap: 12,
+              }}>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: 'white', margin: '0 0 1px' }}>
+                    Based on your answers, {filtered.length === 1
+                      ? `1 ${itemLabelSing.toLowerCase()} is`
+                      : `${filtered.length} ${itemLabel.toLowerCase()} are`} your best fit.
+                  </p>
+                  <p style={{ fontSize: 12, color: C.tealTrack, margin: 0 }}>
+                    Scroll down to see your matched results.
+                  </p>
+                </div>
+                <button
+                  onClick={resetWizard}
+                  style={{
+                    background: 'none', border: '1px solid rgba(255,255,255,0.4)',
+                    borderRadius: 20, padding: '5px 14px',
+                    fontFamily: "'Jost', sans-serif", fontSize: 12, fontWeight: 600,
+                    color: 'white', cursor: 'pointer', flexShrink: 0,
+                  }}
+                >
+                  Edit answers
+                </button>
+              </div>
+            )}
+
+            {/* Expanded wizard panel */}
+            {wizardExpanded && !wizardDone && (
+              <div style={{
+                background: C.tealLight,
+                border: `1px solid ${C.teal}`,
+                borderTop: 'none',
+                borderRadius: '0 0 12px 12px',
+                padding: '20px 24px',
+              }}>
+                {/* Intro copy — only on step 0 */}
+                {wizardStep === 0 && (
+                  <p style={{ fontSize: 13, color: C.tealMid, margin: '0 0 16px', lineHeight: 1.5 }}>
+                    Every body is different. Answer {wizardQuestions.length} questions and we will match you to the right {itemLabelSing.toLowerCase()} from our range.
+                  </p>
+                )}
 
                 {/* Progress bar */}
                 <div style={{ marginBottom: 14 }}>
@@ -205,7 +281,7 @@ export default function CatalogListPage({
                     fontSize: 12, color: C.tealMid, marginBottom: 5,
                   }}>
                     <span>Step {wizardStep + 1} of {wizardQuestions.length}</span>
-                    <span>{Math.round(((wizardStep) / wizardQuestions.length) * 100)}%</span>
+                    <span>{Math.round((wizardStep / wizardQuestions.length) * 100)}%</span>
                   </div>
                   <div style={{ height: 3, background: C.tealTrack, borderRadius: 2 }}>
                     <div style={{
@@ -268,7 +344,7 @@ export default function CatalogListPage({
                     Back
                   </button>
                   <button
-                    onClick={() => setWizardSkipped(true)}
+                    onClick={() => { setWizardSkipped(true); setWizardExpanded(false) }}
                     style={{
                       background: 'none', border: 'none',
                       fontSize: 12, color: C.tealMid,
@@ -280,34 +356,6 @@ export default function CatalogListPage({
                     Skip finder and browse all
                   </button>
                 </div>
-              </>
-            ) : (
-              /* Wizard complete state */
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                <div>
-                  <p style={{
-                    fontFamily: "'Cormorant Garamond', serif",
-                    fontSize: 18, fontWeight: 600,
-                    color: C.tealDark, margin: '0 0 2px',
-                  }}>
-                    Here are your matched {itemLabel.toLowerCase()}
-                  </p>
-                  <p style={{ fontSize: 13, color: C.tealMid, margin: 0 }}>
-                    Showing {filtered.length} {filtered.length === 1 ? itemLabelSing.toLowerCase() : itemLabel.toLowerCase()} based on your answers.
-                  </p>
-                </div>
-                <button
-                  onClick={resetWizard}
-                  style={{
-                    padding: '8px 18px', borderRadius: 8,
-                    border: `1.5px solid ${C.teal}`,
-                    background: C.surface, color: C.teal,
-                    fontFamily: "'Jost', sans-serif", fontSize: 13, fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Edit answers
-                </button>
               </div>
             )}
           </div>
