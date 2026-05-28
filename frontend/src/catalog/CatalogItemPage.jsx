@@ -277,11 +277,44 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           )}
         </div>
 
+        {/* ── Thumbnail strip — always visible directly below main image ── */}
+        {images.length > 1 && (
+          <div style={{
+            display: 'flex', gap: 6, overflowX: 'auto',
+            padding: '6px 0 10px',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+          }}>
+            {images.map((img, i) => (
+              <div
+                key={i}
+                onClick={() => setActiveImg(i)}
+                style={{
+                  flexShrink: 0,
+                  width: 56, height: 56,
+                  borderRadius: 6, overflow: 'hidden',
+                  border: `2px solid ${i === activeImg ? C.teal : C.border}`,
+                  cursor: 'pointer',
+                  transition: 'border-color 0.15s',
+                  background: '#F5F3EF',
+                }}
+              >
+                {img.url
+                  ? <img src={img.url} alt={img.caption || `Image ${i + 1}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <div style={{ width: '100%', height: '100%', background: '#F0EDE8' }} />
+                }
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Caption for active image if present */}
         {images[activeImg]?.caption
-          ? <p style={{ fontSize: 12, color: C.muted, margin: '0 0 20px', fontStyle: 'italic', lineHeight: 1.5 }}>
+          ? <p style={{ fontSize: 12, color: C.muted, margin: '0 0 16px', fontStyle: 'italic', lineHeight: 1.5 }}>
               {images[activeImg].caption}
             </p>
-          : <div style={{ marginBottom: 20 }} />
+          : <div style={{ marginBottom: 16 }} />
         }
 
         {/* ── Title + availability ── */}
@@ -396,34 +429,51 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           </div>
         )}
 
-        {/* ── Tag badges ── */}
-        {tagDimensions.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            {tagDimensions.map(dim => {
+        {/* ── Tag spec table — descriptive dimensions only (T1) ── */}
+        {(() => {
+          const DESCRIPTIVE_KEYS = ['feel', 'firmness', 'health', 'purpose', 'type', 'pillow', 'size']
+          const descriptiveDims = tagDimensions.filter(d =>
+            DESCRIPTIVE_KEYS.some(k =>
+              d.key.toLowerCase().includes(k) || (d.label || '').toLowerCase().includes(k)
+            )
+          )
+          const rows = descriptiveDims
+            .map(dim => {
               const val = (item.tags || {})[dim.key]
               if (!val) return null
               const vals = Array.isArray(val) ? val : [val]
-              return (
-                <div key={dim.key} style={{ marginBottom: 8 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
-                    textTransform: 'uppercase', color: C.muted,
-                    display: 'block', marginBottom: 4,
-                  }}>{dim.label}</span>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {vals.map(v => (
-                      <span key={v} style={{
-                        fontSize: 12, padding: '3px 10px',
-                        background: C.tealLight, color: C.teal,
-                        borderRadius: 12, fontWeight: 500,
-                      }}>{v}</span>
-                    ))}
-                  </div>
+              if (!vals.length) return null
+              // For size dimensions with many values, show first 2 + count
+              const MAX_INLINE = 3
+              const display = vals.length > MAX_INLINE
+                ? vals.slice(0, MAX_INLINE).join(', ') + ` +${vals.length - MAX_INLINE} more`
+                : vals.join(', ')
+              return { label: dim.label, display }
+            })
+            .filter(Boolean)
+
+          if (!rows.length) return null
+          return (
+            <div style={{
+              background: '#F5F3EF', borderRadius: 8,
+              padding: '2px 14px', marginBottom: 16,
+            }}>
+              {rows.map((row, idx) => (
+                <div key={row.label} style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'baseline', gap: 12, padding: '8px 0',
+                  borderBottom: idx < rows.length - 1 ? `1px solid ${C.border}` : 'none',
+                  fontSize: 13,
+                }}>
+                  <span style={{ color: C.muted, flexShrink: 0 }}>{row.label}</span>
+                  <span style={{ color: C.text, fontWeight: 500, textAlign: 'right' }}>
+                    {row.display}
+                  </span>
                 </div>
-              )
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          )
+        })()}
 
         {/* ── Description accordion ── */}
         {hasDesc && (
@@ -445,37 +495,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
           </AccordionSection>
         )}
 
-        {/* ── Gallery accordion ── */}
-        {hasGallery && (
-          <AccordionSection label={`${galleryLabel} (${images.length})`} defaultOpen={false}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
-              gap: 10,
-            }}>
-              {images.map((img, i) => (
-                <div key={i} onClick={() => setActiveImg(i)} style={{ cursor: 'pointer' }}>
-                  <div style={{
-                    aspectRatio: '1/1', borderRadius: 8, overflow: 'hidden',
-                    border: `2px solid ${i === activeImg ? C.teal : C.border}`,
-                    marginBottom: img.caption ? 4 : 0,
-                    transition: 'border-color 0.15s',
-                  }}>
-                    {img.url
-                      ? <img src={img.url} alt={img.caption || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <div style={{ width: '100%', height: '100%', background: '#F5F3EF' }} />
-                    }
-                  </div>
-                  {img.caption && (
-                    <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.4 }}>
-                      {img.caption}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </AccordionSection>
-        )}
+        {/* Gallery accordion removed — thumbnails now shown directly below main image */}
 
         {/* ── Specifications accordion ── */}
         {hasSpecs && (
