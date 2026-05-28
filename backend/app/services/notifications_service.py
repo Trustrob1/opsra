@@ -160,20 +160,29 @@ def mark_read(
 # mark_all_read
 # ============================================================
 
-def mark_all_read(user_id: str, org_id: str, db) -> None:
+def mark_all_read(
+    user_id: str,
+    org_id: str,
+    db,
+    role_template: Optional[str] = None,
+) -> None:
     """
     Bulk-mark all unread notifications for ``user_id`` as read.
+    Sales agents only mark their visible notification types as read.
     No-ops silently if there are no unread notifications.
     Never raises — failures are logged and swallowed (non-critical operation).
     """
     try:
-        (
+        _tmpl = (role_template or "").lower()
+        query = (
             db.table("notifications")
             .update({"is_read": True})
             .eq("user_id", user_id)
             .eq("org_id", org_id)
             .eq("is_read", False)
-            .execute()
         )
+        if _tmpl in _RESTRICTED_ROLE_TEMPLATES:
+            query = query.in_("type", list(_SALES_AGENT_TYPES))
+        query.execute()
     except Exception as exc:  # pragma: no cover
         logger.error("mark_all_read failed for user %s: %s", user_id, exc)

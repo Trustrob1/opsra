@@ -70,6 +70,7 @@ async def mark_all_read(
         user_id=org["id"],
         org_id=org["org_id"],
         db=db,
+        role_template=org["roles"]["template"],   # Pattern 37
     )
     return ok(data={"message": "All notifications marked as read"})
 
@@ -82,12 +83,37 @@ async def clear_all_notifications(
     db=Depends(get_supabase),
 ):
     """
-    Permanently deletes all notifications for the current user.
+    Permanently deletes all notifications visible to the current user.
     Scoped to user_id + org_id from JWT — cannot clear another user's notifications.
+    Sales agents only delete their visible notification types — not management-level ones.
     """
-    db.table("notifications").delete().eq(
-        "user_id", org["id"]
-    ).eq("org_id", org["org_id"]).execute()
+    from app.services.notifications_service import (
+        _SALES_AGENT_TYPES,
+        _RESTRICTED_ROLE_TEMPLATES,
+    )
+    role_template = (org["roles"]["template"] or "").lower()   # Pattern 37
+
+    if role_template in _RESTRICTED_ROLE_TEMPLATES:
+        # Fetch only the IDs the user can see, then delete those specifically
+        visible = (
+            db.table("notifications")
+            .select("id")
+            .eq("user_id", org["id"])
+            .eq("org_id", org["org_id"])
+            .in_("type", list(_SALES_AGENT_TYPES))
+            .execute()
+        )
+        ids = [row["id"] for row in (visible.data or [])]
+        if ids:
+            db.table("notifications").delete().eq(
+                "user_id", org["id"]
+            ).eq("org_id", org["org_id"]).in_("id", ids).execute()
+    else:
+        # Owner, ops_manager, etc. — delete everything
+        db.table("notifications").delete().eq(
+            "user_id", org["id"]
+        ).eq("org_id", org["org_id"]).execute()
+
     return ok(data={"message": "All notifications cleared"})
 
 
