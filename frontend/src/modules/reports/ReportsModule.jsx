@@ -452,12 +452,16 @@ function SectionCard({ sKey, label, icon, data, collapsed, onToggle, compareOff 
       return (
         <SortableTable
           cols={[
-            { key: 'rep_name',       label: 'Rep' },
-            { key: 'leads_assigned', label: 'Leads',      align: 'right', fmt: fmtNum },
-            { key: 'close_rate',     label: 'Conv %',     align: 'right', fmt: v => fmtPct(v) },
-            { key: 'revenue_closed', label: 'Revenue',    align: 'right', fmt: fmtCur },
-            { key: 'tasks_completed',label: 'Tasks Done', align: 'right', fmt: fmtNum },
-            { key: 'ai_mode_pct',    label: 'AI Mode %',  align: 'right', fmt: v => fmtPct(v) },
+            { key: 'rep_name',          label: 'Rep' },
+            { key: 'leads_assigned',    label: 'Assigned',   align: 'right', fmt: fmtNum },
+            { key: 'leads_converted',   label: 'Converted',  align: 'right', fmt: fmtNum },
+            { key: 'leads_lost',        label: 'Lost',       align: 'right', fmt: fmtNum },
+            { key: 'leads_not_ready',   label: 'Not Ready',  align: 'right', fmt: fmtNum },
+            { key: 'leads_in_progress', label: 'In Progress',align: 'right', fmt: fmtNum },
+            { key: 'close_rate',        label: 'Conv %',     align: 'right', fmt: v => fmtPct(v) },
+            { key: 'revenue_closed',    label: 'Revenue',    align: 'right', fmt: fmtCur },
+            { key: 'tasks_completed',   label: 'Tasks Done', align: 'right', fmt: fmtNum },
+            { key: 'ai_mode_pct',       label: 'AI Mode %',  align: 'right', fmt: v => fmtPct(v) },
             {
               key: 'close_rate',
               label: 'Trend',

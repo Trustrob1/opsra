@@ -965,6 +965,37 @@ def get_rep_performance_report(
             requesting_user_id=rep_id, requesting_user_role="owner" if not rep_id else None,
         )
 
+        # Stage breakdown per rep — leads assigned in period grouped by outcome
+        def _stage_breakdown_by_rep(date_f: str, date_t: str) -> dict:
+            """
+            Returns dict of rep_id → stage counts for leads assigned in period.
+            Counts: leads_converted, leads_lost, leads_not_ready, leads_in_progress.
+            leads_in_progress = assigned - converted - lost - not_ready.
+            """
+            all_leads = _fetch_leads_in_period(db, org_id, date_f, date_t)
+            breakdown: dict = {}
+            for l in all_leads:
+                aid = l.get("assigned_to")
+                if not aid:
+                    continue
+                if aid not in breakdown:
+                    breakdown[aid] = {
+                        "leads_converted":   0,
+                        "leads_lost":        0,
+                        "leads_not_ready":   0,
+                    }
+                stage = (l.get("stage") or "").lower()
+                if stage == "converted":
+                    breakdown[aid]["leads_converted"] += 1
+                elif stage == "lost":
+                    breakdown[aid]["leads_lost"] += 1
+                elif stage == "not_ready":
+                    breakdown[aid]["leads_not_ready"] += 1
+            return breakdown
+
+        curr_stage_breakdown = _stage_breakdown_by_rep(date_from, date_to)
+        prev_stage_breakdown = _stage_breakdown_by_rep(compare_date_from, compare_date_to)
+
         # Response time per rep for current period
         rt_report = get_response_time_report(
             db=db, org_id=org_id,
@@ -1035,10 +1066,19 @@ def get_rep_performance_report(
             logger.warning("get_rep_performance_report: messages fetch failed: %s", exc)
 
         def _enrich(reps: list, is_current: bool) -> list:
+            stage_breakdown = curr_stage_breakdown if is_current else prev_stage_breakdown
             enriched = []
             for rep in reps:
                 rid = rep.get("rep_id")
                 rt  = rt_by_rep.get(rid, {}) if is_current else {}
+                sb  = stage_breakdown.get(rid, {})
+                leads_assigned   = int(rep.get("leads_assigned") or 0)
+                leads_converted  = sb.get("leads_converted",  0)
+                leads_lost       = sb.get("leads_lost",       0)
+                leads_not_ready  = sb.get("leads_not_ready",  0)
+                leads_in_progress = max(
+                    leads_assigned - leads_converted - leads_lost - leads_not_ready, 0
+                )
                 if is_current:
                     rep_leads        = rep_lead_ids.get(rid, set())
                     total_in_threads = sum(lead_msg_counts.get(l, {}).get("total", 0) for l in rep_leads)
@@ -1054,6 +1094,10 @@ def get_rep_performance_report(
                     human_mode_pct = 100.0
                 enriched.append({
                     **rep,
+                    "leads_converted":    leads_converted,
+                    "leads_lost":         leads_lost,
+                    "leads_not_ready":    leads_not_ready,
+                    "leads_in_progress":  leads_in_progress,
                     "avg_first_response_mins": rt.get("avg_first_response_mins"),
                     "sla_compliance_pct":      rt.get("sla_compliance_pct"),
                     "tasks_completed":  tasks_by_rep_completed.get(rid, 0) if is_current else None,
@@ -1754,8 +1798,8 @@ def get_lost_lead_report(
                 logger.warning("get_lost_lead_report: fetch failed: %s", exc)
                 return {"error": "section unavailable"}
 
-            # Filter by updated_at in period
-            lost = [l for l in all_lost if _in_range(l.get("updated_at"), date_f, date_t)]
+            # Filter by lost_at in period
+            lost = [l for l in all_lost if _in_range(l.get("lost_at"), date_f, date_t)]
 
             if rep_id:
                 lost = [l for l in lost if l.get("assigned_to") == rep_id]
