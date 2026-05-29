@@ -866,6 +866,8 @@ def get_response_time_report(
 
             per_rep_list = []
             for rid, mins_list in per_rep.items():
+                if rep_id and rid != rep_id:
+                    continue
                 rep_inbound_threads = sum(
                     1 for lid in period_lead_ids
                     if any(
