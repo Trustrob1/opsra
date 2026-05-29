@@ -404,11 +404,33 @@ def get_executive_summary(
         def _f(key: str, src: dict) -> float:
             return float(src.get(key) or 0)
 
+        # Revenue: use converted_at attribution (same as Revenue Summary section)
+        # to avoid inflating figures with leads created but not yet closed in the period.
+        # get_overview_metrics uses created_at which overstates revenue for short periods.
+        def _revenue(date_f: str, date_t: str) -> float:
+            leads  = _fetch_converted_leads_in_period(db, org_id, date_f, date_t)
+            direct = _fetch_direct_sales_in_period(db, org_id, date_f, date_t)
+            total  = 0.0
+            for l in leads:
+                try:
+                    total += float(l.get("deal_value") or 0)
+                except (TypeError, ValueError):
+                    pass
+            for ds in direct:
+                try:
+                    total += float(ds.get("amount") or 0)
+                except (TypeError, ValueError):
+                    pass
+            return round(total, 2)
+
+        curr_revenue = _revenue(date_from, date_to)
+        prev_revenue = _revenue(compare_date_from, compare_date_to)
+
         return {
             "period_label": _format_period_label(date_from, date_to),
             "comparison_period_label": _format_period_label(compare_date_from, compare_date_to),
             "metrics": {
-                "total_revenue":      _metric_block(_f("total_revenue", curr),           _f("total_revenue", prev)),
+                "total_revenue":      _metric_block(curr_revenue,                        prev_revenue),
                 "total_leads":        _metric_block(_f("total_leads", curr),             _f("total_leads", prev)),
                 "total_conversions":  _metric_block(_f("total_conversions", curr),       _f("total_conversions", prev)),
                 "conversion_rate":    _metric_block(_f("overall_conversion_rate", curr), _f("overall_conversion_rate", prev)),
