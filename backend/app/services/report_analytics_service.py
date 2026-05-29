@@ -436,6 +436,7 @@ def get_lead_pipeline_report(
     compare_date_from: str,
     compare_date_to: str,
     team: Optional[str] = None,
+    rep_id: Optional[str] = None,
 ) -> dict:
     """
     Leads received, by source, by score, funnel stage breakdown,
@@ -462,6 +463,9 @@ def get_lead_pipeline_report(
 
         curr_leads = _fetch_leads_in_period(db, org_id, date_from, date_to, team=team)
         prev_leads = _fetch_leads_in_period(db, org_id, compare_date_from, compare_date_to, team=team)
+        if rep_id:
+            curr_leads = [l for l in curr_leads if l.get("assigned_to") == rep_id]
+            prev_leads = [l for l in prev_leads if l.get("assigned_to") == rep_id]
 
         def _score_counts(leads: list) -> dict:
             counts: dict = {"hot": 0, "warm": 0, "cold": 0, "unscored": 0}
@@ -486,8 +490,12 @@ def get_lead_pipeline_report(
         prev_scores = _score_counts(prev_leads)
         curr_total  = len(curr_leads)
         prev_total  = len(prev_leads)
-        curr_lost   = int(curr_wl.get("lost") or 0)
-        prev_lost   = int(prev_wl.get("lost") or 0)
+        if rep_id:
+            curr_lost = sum(1 for l in curr_leads if (l.get("stage") or "") == "lost")
+            prev_lost = sum(1 for l in prev_leads if (l.get("stage") or "") == "lost")
+        else:
+            curr_lost = int(curr_wl.get("lost") or 0)
+            prev_lost = int(prev_wl.get("lost") or 0)
         curr_pval   = _pipeline_value(curr_leads)
         prev_pval   = _pipeline_value(prev_leads)
 
@@ -547,6 +555,7 @@ def get_revenue_report(
     compare_date_from: str,
     compare_date_to: str,
     team: Optional[str] = None,
+    rep_id: Optional[str] = None,
 ) -> dict:
     """
     Revenue by source (pipeline deals and direct_sales), by team,
@@ -560,6 +569,8 @@ def get_revenue_report(
     try:
         def _compute(date_f: str, date_t: str) -> dict:
             leads  = _fetch_converted_leads_in_period(db, org_id, date_f, date_t, team=team)
+            if rep_id:
+                leads = [l for l in leads if l.get("assigned_to") == rep_id]
             direct = _fetch_direct_sales_in_period(db, org_id, date_f, date_t)
 
             pipeline_rev = 0.0
@@ -958,12 +969,15 @@ def get_rep_performance_report(
 
         curr_reps = get_sales_rep_metrics(
             db=db, org_id=org_id, date_from=df, date_to=dt,
-            requesting_user_id=rep_id, requesting_user_role="owner" if not rep_id else None,
+            requesting_user_id=None, requesting_user_role="owner",
         )
         prev_reps = get_sales_rep_metrics(
             db=db, org_id=org_id, date_from=cdf, date_to=cdt,
-            requesting_user_id=rep_id, requesting_user_role="owner" if not rep_id else None,
+            requesting_user_id=None, requesting_user_role="owner",
         )
+        if rep_id:
+            curr_reps = [r for r in curr_reps if r.get("rep_id") == rep_id]
+            prev_reps = [r for r in prev_reps if r.get("rep_id") == rep_id]
 
         # Stage breakdown per rep — leads assigned in period grouped by outcome
         def _stage_breakdown_by_rep(date_f: str, date_t: str) -> dict:
@@ -1161,6 +1175,7 @@ def get_team_performance_report(
     date_to: str,
     compare_date_from: str,
     compare_date_to: str,
+    team: Optional[str] = None,
 ) -> dict:
     """
     Team breakdown. Calls get_team_performance() for both periods.
@@ -1175,6 +1190,9 @@ def get_team_performance_report(
 
         curr_teams = get_team_performance(db=db, org_id=org_id, date_from=df, date_to=dt)
         prev_teams = get_team_performance(db=db, org_id=org_id, date_from=cdf, date_to=cdt)
+        if team:
+            curr_teams = [t for t in curr_teams if t.get("team_name") == team]
+            prev_teams = [t for t in prev_teams if t.get("team_name") == team]
 
         # Mark best performer by revenue in current period
         max_rev = max(
@@ -2047,10 +2065,10 @@ def get_full_report(
         report["executive_summary"] = _run(get_executive_summary, team=team)
 
     if "lead_pipeline" in active_sections:
-        report["lead_pipeline"] = _run(get_lead_pipeline_report, team=team)
+        report["lead_pipeline"] = _run(get_lead_pipeline_report, team=team, rep_id=rep_id)
 
     if "revenue" in active_sections:
-        report["revenue"] = _run(get_revenue_report, team=team)
+        report["revenue"] = _run(get_revenue_report, team=team, rep_id=rep_id)
 
     if "response_time" in active_sections:
         report["response_time"] = _run(get_response_time_report, rep_id=rep_id)
@@ -2059,7 +2077,7 @@ def get_full_report(
         report["rep_performance"] = _run(get_rep_performance_report, rep_id=rep_id)
 
     if "team_performance" in active_sections:
-        report["team_performance"] = _run(get_team_performance_report)
+        report["team_performance"] = _run(get_team_performance_report, team=team)
 
     if "whatsapp" in active_sections:
         report["whatsapp"] = _run(get_whatsapp_report, rep_id=rep_id)
