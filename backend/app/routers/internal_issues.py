@@ -448,10 +448,11 @@ def _generate_internal_ops_pdf(report_data: dict) -> bytes:
     by_pri   = report_data.get("by_priority") or []
     pri_rows = ""
     for p in by_pri:
+        _p_pri = p.get("priority") or ""
         pri_rows += (
             f"<tr>"
-            f"<td style='color:{_pri_colour(p.get(\"priority\",\"\"))};font-weight:600'>"
-            f"{(p.get('priority') or '').title()}</td>"
+            f"<td style='color:{_pri_colour(_p_pri)};font-weight:600'>"
+            f"{_p_pri.title()}</td>"
             f"<td style='text-align:right'>{_fmt(p.get('total'))}</td>"
             f"<td style='text-align:right;color:{AMBER}'>{_fmt(p.get('open'))}</td>"
             f"<td style='text-align:right;color:{GREEN}'>{_fmt(p.get('resolved'))}</td>"
@@ -482,13 +483,14 @@ def _generate_internal_ops_pdf(report_data: dict) -> bytes:
                 days_open = str((now_utc - c).days)
             except Exception:
                 pass
+            _od_pri = iss.get("priority") or ""
             od_rows += (
                 f"<tr>"
                 f"<td style='color:{TEAL};font-weight:600'>{_fmt(iss.get('reference'))}</td>"
                 f"<td>{_fmt(iss.get('title'))}</td>"
                 f"<td>{_fmt(iss.get('team'))}</td>"
-                f"<td style='color:{_pri_colour(iss.get(\"priority\",\"\"))};font-weight:600'>"
-                f"{(iss.get('priority') or '').title()}</td>"
+                f"<td style='color:{_pri_colour(_od_pri)};font-weight:600'>"
+                f"{_od_pri.title()}</td>"
                 f"<td style='color:{RED};font-weight:600'>{days_open} days</td></tr>"
             )
         overdue_html = f"""
@@ -512,17 +514,20 @@ def _generate_internal_ops_pdf(report_data: dict) -> bytes:
     for iss in issues:
         reporter = (iss.get("reporter") or {}).get("full_name") or "—"
         assignee = (iss.get("assignee") or {}).get("full_name") or "—"
+        _iss_pri = iss.get("priority") or ""
+        _iss_sta = iss.get("status") or ""
+        _iss_cat = (iss.get("category") or "").replace("_", " ").title()
         issue_rows += (
             f"<tr>"
             f"<td style='color:{TEAL};font-weight:600;white-space:nowrap'>"
             f"{_fmt(iss.get('reference'))}</td>"
             f"<td style='max-width:180px'>{_fmt(iss.get('title'))}</td>"
             f"<td>{_fmt(iss.get('team'))}</td>"
-            f"<td>{(iss.get('category') or '').replace('_',' ').title()}</td>"
-            f"<td style='color:{_pri_colour(iss.get(\"priority\",\"\"))};font-weight:600'>"
-            f"{(iss.get('priority') or '').title()}</td>"
-            f"<td style='color:{_sta_colour(iss.get(\"status\",\"\"))};font-weight:600'>"
-            f"{(iss.get('status') or '').replace('_',' ').title()}</td>"
+            f"<td>{_iss_cat}</td>"
+            f"<td style='color:{_pri_colour(_iss_pri)};font-weight:600'>"
+            f"{_iss_pri.title()}</td>"
+            f"<td style='color:{_sta_colour(_iss_sta)};font-weight:600'>"
+            f"{_iss_sta.replace('_', ' ').title()}</td>"
             f"<td>{reporter}</td>"
             f"<td>{assignee}</td>"
             f"<td style='white-space:nowrap'>{_fmt_date(iss.get('created_at'))}</td>"
