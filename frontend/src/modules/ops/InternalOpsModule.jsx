@@ -20,6 +20,7 @@ import { ds } from '../../utils/ds'
 import {
   listIssues, createIssue, updateIssue, deleteIssue, getIssuesSummary,
   listActivityLogs, submitActivityLog, updateActivityLog, getActivityLogsSummary,
+  downloadInternalOpsReport,
 } from '../../services/internal_ops.service'
 import { getTeams, getInternalIssueCategories, listUsers } from '../../services/admin.service'
 
@@ -414,8 +415,15 @@ function IssuesTab({ user }) {
   const [error, setError]             = useState(null)
   const [filterTeam, setFilterTeam]   = useState('')
   const [filterStatus, setFilterStatus] = useState('')
-  const [showNew, setShowNew]         = useState(false)
-  const [selected, setSelected]       = useState(null)
+  const [showNew, setShowNew]           = useState(false)
+  const [selected, setSelected]         = useState(null)
+  const [showDownload, setShowDownload] = useState(false)
+  const [downloading, setDownloading]   = useState(false)
+  const [dlError, setDlError]           = useState(null)
+  const [dlFilters, setDlFilters]       = useState({
+    date_from: '', date_to: '', team: '', category: '',
+    status_filter: '', priority: '',
+  })
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -455,8 +463,136 @@ function IssuesTab({ user }) {
           <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Issues</h2>
           <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>{issues.length} issue{issues.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => setShowNew(true)} style={BTN_PRIMARY}>+ New Issue</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {isManager && (
+            <button onClick={() => { setDlError(null); setShowDownload(true) }}
+              style={{ ...BTN_OUTLINE, padding: '8px 16px', fontSize: 13 }}>
+              ⬇ Download Report
+            </button>
+          )}
+          <button onClick={() => setShowNew(true)} style={BTN_PRIMARY}>+ New Issue</button>
+        </div>
       </div>
+
+      {showDownload && (
+        <div style={OVERLAY} onClick={() => setShowDownload(false)}>
+          <div style={{ ...MODAL, maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', marginBottom: 20 }}>
+              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700,
+                fontSize: 17, color: '#0a1a24', margin: 0 }}>
+                Download Issues Report
+              </h3>
+              <button onClick={() => setShowDownload(false)}
+                style={{ background: 'none', border: 'none',
+                  fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={LBL}>Date From</label>
+                <input type='date' value={dlFilters.date_from}
+                  onChange={e => setDlFilters(f => ({ ...f, date_from: e.target.value }))}
+                  style={INP} />
+              </div>
+              <div>
+                <label style={LBL}>Date To</label>
+                <input type='date' value={dlFilters.date_to}
+                  onChange={e => setDlFilters(f => ({ ...f, date_to: e.target.value }))}
+                  style={INP} />
+              </div>
+            </div>
+
+            <label style={LBL}>Team</label>
+            <select value={dlFilters.team}
+              onChange={e => setDlFilters(f => ({ ...f, team: e.target.value }))}
+              style={INP}>
+              <option value=''>All Teams</option>
+              {teams.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+
+            <label style={LBL}>Category</label>
+            <select value={dlFilters.category}
+              onChange={e => setDlFilters(f => ({ ...f, category: e.target.value }))}
+              style={INP}>
+              <option value=''>All Categories</option>
+              {categories.filter(c => c.enabled !== false).map(c => (
+                <option key={c.key} value={c.key}>{c.label}</option>
+              ))}
+            </select>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={LBL}>Status</label>
+                <select value={dlFilters.status_filter}
+                  onChange={e => setDlFilters(f => ({ ...f, status_filter: e.target.value }))}
+                  style={INP}>
+                  <option value=''>All Statuses</option>
+                  {STATUSES.map(s => (
+                    <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={LBL}>Priority</label>
+                <select value={dlFilters.priority}
+                  onChange={e => setDlFilters(f => ({ ...f, priority: e.target.value }))}
+                  style={INP}>
+                  <option value=''>All Priorities</option>
+                  {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {dlError && (
+              <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>⚠ {dlError}</p>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end',
+              gap: 10, marginTop: 24 }}>
+              <button onClick={() => setShowDownload(false)} style={BTN_OUTLINE}>
+                Cancel
+              </button>
+              <button
+                disabled={downloading}
+                style={{ ...BTN_PRIMARY, background: downloading ? '#aaa' : ds.teal }}
+                onClick={async () => {
+                  setDownloading(true)
+                  setDlError(null)
+                  try {
+                    const params = {}
+                    if (dlFilters.date_from)     params.date_from     = dlFilters.date_from
+                    if (dlFilters.date_to)       params.date_to       = dlFilters.date_to
+                    if (dlFilters.team)          params.team          = dlFilters.team
+                    if (dlFilters.category)      params.category      = dlFilters.category
+                    if (dlFilters.status_filter) params.status_filter = dlFilters.status_filter
+                    if (dlFilters.priority)      params.priority      = dlFilters.priority
+                    const blob = await downloadInternalOpsReport(params)
+                    const url  = URL.createObjectURL(blob)
+                    const a    = document.createElement('a')
+                    const from = dlFilters.date_from || 'all'
+                    const to   = dlFilters.date_to   || 'today'
+                    a.href     = url
+                    a.download = `Internal_Ops_Report_${from}_to_${to}.pdf`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                    setShowDownload(false)
+                  } catch (e) {
+                    const msg = e?.response?.status === 429
+                      ? 'You can download up to 10 reports per hour.'
+                      : (e?.response?.data?.detail?.message ?? 'Download failed. Please try again.')
+                    setDlError(msg)
+                  } finally {
+                    setDownloading(false)
+                  }
+                }}
+              >
+                {downloading ? 'Generating PDF…' : '⬇ Download PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>

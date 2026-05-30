@@ -139,3 +139,19 @@ export async function updateActivityLog(id, payload) {
   })
   return res.data.data
 }
+
+/**
+ * Download Internal Ops Issues report as a PDF blob.
+ * Owner/ops_manager only. Rate limited to 10/hr per org.
+ * @param {object} params — date_from, date_to, team, category,
+ *                          status_filter, priority (all optional)
+ * @returns {Blob} PDF blob for browser download
+ */
+export async function downloadInternalOpsReport(params = {}) {
+  const res = await axios.get(`${BASE}/internal-issues/report/download`, {
+    headers: { ...authHeaders(), Accept: 'application/pdf' },
+    params,
+    responseType: 'blob',
+  })
+  return res.data
+}

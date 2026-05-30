@@ -34,7 +34,8 @@ import NurtureSettings         from './NurtureSettings'
 import CustomerMenuConfig      from './CustomerMenuConfig'
 import PipelineConfig          from './PipelineConfig'
 import TicketCategoriesConfig  from './TicketCategoriesConfig'
-import TeamsConfig             from './TeamsConfig'
+import TeamsConfig                    from './TeamsConfig'
+import InternalIssueCategoriesConfig  from './InternalIssueCategoriesConfig'
 import DripBusinessTypesConfig from './DripBusinessTypesConfig'
 import SLABusinessHoursConfig  from './SLABusinessHoursConfig'
 import SalesModeConfig         from './SalesModeConfig'
@@ -73,6 +74,7 @@ const TABS = [
   { id: 'pipeline',         label: '🗂️ Pipeline' },
   { id: 'categories',       label: '🏷️ Categories' },
   { id: 'teams',            label: '👥 Teams' },
+  { id: 'internal_cats',    label: '🏷️ Issue Categories' },
   { id: 'biz-types',        label: '🏢 Business Types' },
   { id: 'sales-system',     label: '🛒 Sales System' },
   { id: 'shopify',          label: '🛍️ Shopify' },
@@ -224,6 +226,7 @@ export default function AdminModule({ user }) {
         <LazyTab active={tab === 'pipeline'}         visited={visited['pipeline']}>         <PipelineConfig /></LazyTab>
         <LazyTab active={tab === 'categories'}       visited={visited['categories']}>       <TicketCategoriesConfig /></LazyTab>
         <LazyTab active={tab === 'teams'}            visited={visited['teams']}>            <TeamsConfig /></LazyTab>
+        <LazyTab active={tab === 'internal_cats'}    visited={visited['internal_cats']}>    <InternalIssueCategoriesConfig /></LazyTab>
         <LazyTab active={tab === 'biz-types'}        visited={visited['biz-types']}>        <DripBusinessTypesConfig /></LazyTab>
         <LazyTab active={tab === 'messaging-limits'} visited={visited['messaging-limits']}> <MessagingLimitsConfig /></LazyTab>
         <LazyTab active={tab === 'demo-settings'}    visited={visited['demo-settings']}>    <DemoSettings /></LazyTab>
