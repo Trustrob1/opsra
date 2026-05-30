@@ -199,6 +199,8 @@ from app.routers import catalog as catalog_router
 from app.routers import superadmin_health as superadmin_health_router
 from app.routers.push_notifications import router as push_notifications_router
 from app.routers import report_analytics as report_analytics_router
+from app.routers import internal_issues as internal_issues_router
+from app.routers import activity_logs as activity_logs_router
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -225,6 +227,8 @@ app.include_router(catalog_router.router,        prefix="/api/v1/catalog",      
 app.include_router(superadmin_health_router.router, prefix="/api/v1",           tags=["superadmin_health"])
 app.include_router(push_notifications_router)
 app.include_router(report_analytics_router.router, prefix="/api/v1", tags=["reports"])
+app.include_router(internal_issues_router.router,  prefix="/api/v1", tags=["internal-issues"])
+app.include_router(activity_logs_router.router,    prefix="/api/v1", tags=["activity-logs"])
 
 
 # ---------------------------------------------------------------------------
