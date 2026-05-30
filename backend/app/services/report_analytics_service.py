@@ -2154,6 +2154,7 @@ def generate_report_pdf(report_data: dict) -> bytes:
     meta       = report_data["report_meta"]
     org_name   = meta.get("org_name") or "Organisation"
     period     = meta.get("period_label") or ""
+    compare_mode = meta.get("compare_mode") or "previous_period"
     comp_period = meta.get("comparison_period_label") or ""
     gen_at     = meta.get("generated_at") or ""
 
@@ -2194,17 +2195,40 @@ def generate_report_pdf(report_data: dict) -> bytes:
             change_str = f"{arrow} {delta}"
             if m.get("delta_pct") is not None:
                 change_str += f" ({pct}%)"
-            rows += (
-                f"<tr>"
-                f"<td>{label}</td>"
-                f"<td style='text-align:right'>{curr}</td>"
-                f"<td style='text-align:right'>{prev}</td>"
-                f"<td style='text-align:right'>{change_str}</td>"
-                f"</tr>"
-            )
+            if compare_mode == "none":
+                rows += (
+                    f"<tr>"
+                    f"<td>{label}</td>"
+                    f"<td style='text-align:right'>{curr}</td>"
+                    f"</tr>"
+                )
+            else:
+                rows += (
+                    f"<tr>"
+                    f"<td>{label}</td>"
+                    f"<td style='text-align:right'>{curr}</td>"
+                    f"<td style='text-align:right'>{prev}</td>"
+                    f"<td style='text-align:right'>{change_str}</td>"
+                    f"</tr>"
+                )
         return rows
 
     def _section_table(title: str, rows_html: str) -> str:
+        if compare_mode == "none":
+            return f"""
+        <div class='section'>
+          <h2>{title}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>This Period</th>
+              </tr>
+            </thead>
+            <tbody>{rows_html}</tbody>
+          </table>
+        </div>
+        """
         return f"""
         <div class='section'>
           <h2>{title}</h2>
@@ -2242,12 +2266,19 @@ def generate_report_pdf(report_data: dict) -> bytes:
             prev  = _fmt((previous or {}).get(key))
             arrow = _arrow(val.get("direction"))
             d_pct = _fmt(val.get("delta_pct"))
-            rows += (
-                f"<tr><td>{label}</td>"
-                f"<td style='text-align:right'>{curr}</td>"
-                f"<td style='text-align:right'>{prev}</td>"
-                f"<td style='text-align:right'>{arrow} {d_pct}%</td></tr>"
-            )
+            if compare_mode == "none":
+                rows += (
+                    f"<tr><td>{label}</td>"
+                    f"<td style='text-align:right'>{curr}</td>"
+                    f"</tr>"
+                )
+            else:
+                rows += (
+                    f"<tr><td>{label}</td>"
+                    f"<td style='text-align:right'>{curr}</td>"
+                    f"<td style='text-align:right'>{prev}</td>"
+                    f"<td style='text-align:right'>{arrow} {d_pct}%</td></tr>"
+                )
         return _section_table(title, rows) if rows else ""
 
     for sec_key, sec_title in [
@@ -2273,17 +2304,49 @@ def generate_report_pdf(report_data: dict) -> bytes:
     if rt and not rt.get("error"):
         curr_rt = rt.get("current", {})
         prev_rt = rt.get("previous", {})
-        rt_rows = (
-            f"<tr><td>Avg First Response (mins)</td>"
-            f"<td style='text-align:right'>{_fmt(curr_rt.get('org_avg_first_response_mins'))}</td>"
-            f"<td style='text-align:right'>{_fmt(prev_rt.get('org_avg_first_response_mins'))}</td>"
-            f"<td style='text-align:right'>{_arrow(rt.get('direction'))} {_fmt(rt.get('delta_first_response_mins'))} mins</td></tr>"
-            f"<tr><td>SLA Compliance (%)</td>"
-            f"<td style='text-align:right'>{_fmt(curr_rt.get('sla_compliance_pct'))}</td>"
-            f"<td style='text-align:right'>{_fmt(prev_rt.get('sla_compliance_pct'))}</td>"
-            f"<td style='text-align:right'>—</td></tr>"
-        )
+        if compare_mode == "none":
+            rt_rows = (
+                f"<tr><td>Avg First Response (mins)</td>"
+                f"<td style='text-align:right'>{_fmt(curr_rt.get('org_avg_first_response_mins'))}</td></tr>"
+                f"<tr><td>SLA Compliance (%)</td>"
+                f"<td style='text-align:right'>{_fmt(curr_rt.get('sla_compliance_pct'))}</td></tr>"
+            )
+        else:
+            rt_rows = (
+                f"<tr><td>Avg First Response (mins)</td>"
+                f"<td style='text-align:right'>{_fmt(curr_rt.get('org_avg_first_response_mins'))}</td>"
+                f"<td style='text-align:right'>{_fmt(prev_rt.get('org_avg_first_response_mins'))}</td>"
+                f"<td style='text-align:right'>{_arrow(rt.get('direction'))} {_fmt(rt.get('delta_first_response_mins'))} mins</td></tr>"
+                f"<tr><td>SLA Compliance (%)</td>"
+                f"<td style='text-align:right'>{_fmt(curr_rt.get('sla_compliance_pct'))}</td>"
+                f"<td style='text-align:right'>{_fmt(prev_rt.get('sla_compliance_pct'))}</td>"
+                f"<td style='text-align:right'>—</td></tr>"
+            )
         sections_html += _section_table("Response Time Analysis", rt_rows)
+
+        per_rep_rt = curr_rt.get("per_rep") or []
+        if per_rep_rt:
+            rep_rt_rows = ""
+            for r in per_rep_rt:
+                rep_rt_rows += (
+                    f"<tr>"
+                    f"<td>{r.get('rep_name', '')}</td>"
+                    f"<td style='text-align:right'>{_fmt(r.get('threads_handled'))}</td>"
+                    f"<td style='text-align:right'>{_fmt(r.get('avg_first_response_mins'))} mins</td>"
+                    f"<td style='text-align:right'>{_fmt(r.get('sla_compliance_pct'))}%</td>"
+                    f"</tr>"
+                )
+            sections_html += f"""
+            <div class='section'>
+              <h2>Response Time — By Rep</h2>
+              <table>
+                <thead>
+                  <tr><th>Rep</th><th>Threads</th><th>Avg First Response</th><th>SLA Compliance</th></tr>
+                </thead>
+                <tbody>{rep_rt_rows}</tbody>
+              </table>
+            </div>
+            """
 
     # Rep performance section
     rp = report_data.get("rep_performance")
@@ -2386,8 +2449,7 @@ def generate_report_pdf(report_data: dict) -> bytes:
       .header-left h1 {{ margin: 0; font-size: 18px; color: {TEAL}; }}
       .header-left p  {{ margin: 2px 0; font-size: 10px; color: #6b7280; }}
       .header-right   {{ text-align: right; font-size: 10px; color: #6b7280; }}
-      .section {{ page-break-after: always; margin-bottom: 24px; }}
-      .section:last-child {{ page-break-after: avoid; }}
+      .section {{ page-break-inside: avoid; margin-bottom: 24px; border-bottom: 1px solid #e5e7eb; padding-bottom: 16px; }}
       h2 {{ font-size: 14px; color: {TEAL}; border-bottom: 1px solid #e5e7eb;
             padding-bottom: 4px; margin-bottom: 8px; }}
       table {{ width: 100%; border-collapse: collapse; margin-bottom: 12px; }}
@@ -2405,7 +2467,7 @@ def generate_report_pdf(report_data: dict) -> bytes:
           <p>Management Report — {period}</p>
         </div>
         <div class='header-right'>
-          Comparison period: {comp_period}<br>
+          {f'Comparison period: {comp_period}<br>' if compare_mode != 'none' else ''}
           Generated: {gen_at[:10] if gen_at else ''}
         </div>
       </div>
