@@ -451,6 +451,77 @@ def update_teams(
     return ok(data={"teams": payload.teams}, message="Teams saved")
 
 
+# ── Internal Issue Categories Config — OPS-1 ─────────────────────────────────
+
+_DEFAULT_INTERNAL_CATEGORIES = [
+    {"key": "process_issue",     "label": "Process Issue",      "enabled": True},
+    {"key": "tooling_system",    "label": "Tooling / System",   "enabled": True},
+    {"key": "communication_gap", "label": "Communication Gap",  "enabled": True},
+    {"key": "resource_blocker",  "label": "Resource Blocker",   "enabled": True},
+    {"key": "performance",       "label": "Performance",        "enabled": True},
+    {"key": "quality_issue",     "label": "Quality Issue",      "enabled": True},
+    {"key": "other",             "label": "Other",              "enabled": True},
+]
+
+
+class InternalCategoryItem(BaseModel):
+    key: str
+    label: str
+    enabled: bool = True
+
+
+class InternalCategoriesUpdate(BaseModel):
+    categories: List[InternalCategoryItem]
+
+
+@router.get("/internal-issue-categories")
+def get_internal_issue_categories(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """OPS-1: Return org internal issue categories config."""
+    result = (
+        db.table("organisations")
+        .select("internal_issue_categories")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    categories = (data or {}).get("internal_issue_categories") or _DEFAULT_INTERNAL_CATEGORIES
+    return ok(data={"categories": categories})
+
+
+@router.patch("/internal-issue-categories")
+def update_internal_issue_categories(
+    payload: InternalCategoriesUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """OPS-1: Save org internal issue categories config."""
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
+        )
+    cats_data = [c.model_dump() for c in payload.categories]
+    updates = {
+        "internal_issue_categories": cats_data,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    db.table("organisations").update(updates).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="internal_issue_categories.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"categories": cats_data},
+    )
+    return ok(data={"categories": cats_data}, message="Internal issue categories saved")
+
+
 @router.get("/qualification-flow")
 async def get_qualification_flow(
     org=Depends(get_current_org),

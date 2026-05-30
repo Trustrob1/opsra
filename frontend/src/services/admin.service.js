@@ -472,3 +472,11 @@ export const updateTeams = (teams) =>
 export const updateUserTeam = (userId, team) =>
   api.patch(`/api/v1/admin/users/${userId}`, { team })
     .then(r => r.data.data)
+
+export const getInternalIssueCategories = () =>
+  api.get('/api/v1/admin/internal-issue-categories')
+    .then(r => r.data.data)
+
+export const updateInternalIssueCategories = (payload) =>
+  api.patch('/api/v1/admin/internal-issue-categories', payload)
+    .then(r => r.data.data)

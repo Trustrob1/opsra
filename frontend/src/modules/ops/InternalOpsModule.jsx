@@ -21,7 +21,7 @@ import {
   listIssues, createIssue, updateIssue, deleteIssue, getIssuesSummary,
   listActivityLogs, submitActivityLog, updateActivityLog, getActivityLogsSummary,
 } from '../../services/internal_ops.service'
-import { getTeams, getTicketCategories, listUsers } from '../../services/admin.service'
+import { getTeams, getInternalIssueCategories, listUsers } from '../../services/admin.service'
 
 const PRIORITIES  = ['critical', 'high', 'medium', 'low']
 const STATUSES    = ['open', 'in_progress', 'resolved']
@@ -426,7 +426,7 @@ function IssuesTab({ user }) {
       const [issData, teamsData, catsData, usersData] = await Promise.all([
         listIssues(params),
         getTeams(),
-        getTicketCategories(),
+        getInternalIssueCategories(),
         listUsers(),
       ])
       setIssues(issData?.items ?? [])
