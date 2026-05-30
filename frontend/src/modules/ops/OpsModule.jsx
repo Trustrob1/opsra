@@ -24,14 +24,16 @@ import useOps from '../../hooks/useOps'
 import DashboardView  from './DashboardView'
 import AskDataView    from './AskDataView'
 import GrowthDashboard from './GrowthDashboard'
+import InternalOpsModule from './InternalOpsModule'
 
 // Growth tab visible to owner and ops_manager only
 const GROWTH_ROLES = ['owner', 'ops_manager']
 
 function buildTabs(role) {
   const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { id: 'ask',       label: 'Ask Data',  icon: '💬' },
+    { id: 'dashboard', label: 'Dashboard',    icon: '📊' },
+    { id: 'ask',       label: 'Ask Data',     icon: '💬' },
+    { id: 'internal',  label: 'Internal Ops', icon: '🏗️' },
   ]
   if (GROWTH_ROLES.includes(role)) {
     tabs.push({ id: 'growth', label: 'Growth', icon: '📈' })
@@ -145,6 +147,10 @@ export default function OpsModule({ user, setView, setActiveNav }) {
 
       <div style={{ display: activeTab === 'ask' ? 'block' : 'none' }}>
         <AskDataView onAsk={ask} />
+      </div>
+
+      <div style={{ display: activeTab === 'internal' ? 'block' : 'none' }}>
+        <InternalOpsModule user={user} />
       </div>
 
       {/* Growth tab — only rendered for owner/ops_manager (Pattern 26: still mounted) */}

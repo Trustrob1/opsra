@@ -390,6 +390,67 @@ def update_ticket_categories(
     return ok(data={"categories": cats_data}, message="Ticket categories saved")
 
 
+# ── Teams Config — OPS-1 ──────────────────────────────────────────────────────
+
+class TeamsUpdate(BaseModel):
+    teams: List[str]
+
+    @field_validator("teams")
+    @classmethod
+    def _validate_teams(cls, v: List[str]) -> List[str]:
+        cleaned = [t.strip() for t in v if t.strip()]
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("Team names must be unique")
+        return cleaned
+
+
+@router.get("/teams")
+def get_teams(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """OPS-1: Return org team names config."""
+    result = (
+        db.table("organisations")
+        .select("teams")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    teams = (data or {}).get("teams") or []
+    return ok(data={"teams": teams})
+
+
+@router.patch("/teams")
+def update_teams(
+    payload: TeamsUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """OPS-1: Save org team names config."""
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
+        )
+    updates = {
+        "teams": payload.teams,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    db.table("organisations").update(updates).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="teams.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"teams": payload.teams},
+    )
+    return ok(data={"teams": payload.teams}, message="Teams saved")
+
+
 @router.get("/qualification-flow")
 async def get_qualification_flow(
     org=Depends(get_current_org),
@@ -524,6 +585,7 @@ class UpdateUserRequest(BaseModel):
     is_out_of_office: Optional[bool] = None
     whatsapp_number: Optional[str] = None
     notification_prefs: Optional[dict] = None
+    team: Optional[str] = None
 
 
 class CreateRoleRequest(BaseModel):

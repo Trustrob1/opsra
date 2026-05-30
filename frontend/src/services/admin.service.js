@@ -458,3 +458,17 @@ export const uploadExtraCatalogImage = (itemId, formData) =>
 export const deleteExtraCatalogImage = (itemId, imageIndex) =>
   api.delete(`/api/v1/catalog/items/${itemId}/extra-images/${imageIndex}`)
     .then(r => r.data)
+
+// ── Teams Config — OPS-1 ─────────────────────────────────────────────────────
+
+export const getTeams = () =>
+  api.get('/api/v1/admin/teams')
+    .then(r => r.data.data)
+
+export const updateTeams = (teams) =>
+  api.patch('/api/v1/admin/teams', { teams })
+    .then(r => r.data.data)
+
+export const updateUserTeam = (userId, team) =>
+  api.patch(`/api/v1/admin/users/${userId}`, { team })
+    .then(r => r.data.data)

@@ -69,6 +69,7 @@ const GHOST_BTN = {
 export default function UserManagement() {
   const [users, setUsers]             = useState([])
   const [roles, setRoles]             = useState([])
+  const [teams, setTeams]             = useState([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
   const [showCreate, setShowCreate]   = useState(false)
@@ -81,9 +82,10 @@ export default function UserManagement() {
     setLoading(true)
     setError(null)
     try {
-      const [u, r] = await Promise.all([adminSvc.listUsers(), adminSvc.listRoles()])
+      const [u, r, t] = await Promise.all([adminSvc.listUsers(), adminSvc.listRoles(), adminSvc.getTeams()])
       setUsers(u ?? [])
       setRoles(r ?? [])
+      setTeams((t?.teams) ?? [])
     } catch {
       setError('Failed to load users.')
     } finally {
@@ -279,6 +281,7 @@ export default function UserManagement() {
           mode="edit"
           user={editingUser}
           roles={roles}
+          teams={teams}
           onSave={async (data) => { await adminSvc.updateUser(editingUser.id, data); setEditingUser(null); load() }}
           onClose={() => setEditingUser(null)}
         />
@@ -465,7 +468,7 @@ function UpdateEmailModal({ user, onSave, onClose }) {
 }
 
 
-function UserModal({ mode, user, roles, onSave, onClose }) {
+function UserModal({ mode, user, roles, teams = [], onSave, onClose }) {
   const isCreate = mode === 'create'
   const [form, setForm] = useState({
     email:            user?.email            ?? '',
@@ -474,6 +477,7 @@ function UserModal({ mode, user, roles, onSave, onClose }) {
     role_id:          user?.role_id          ?? roles[0]?.id ?? '',
     is_active:        user?.is_active        ?? true,
     is_out_of_office: user?.is_out_of_office ?? false,
+    team:             user?.team             ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [err, setErr]       = useState(null)
@@ -496,6 +500,7 @@ function UserModal({ mode, user, roles, onSave, onClose }) {
         if (form.role_id          !== user.role_id)          payload.role_id          = form.role_id
         if (form.is_active        !== user.is_active)        payload.is_active        = form.is_active
         if (form.is_out_of_office !== user.is_out_of_office) payload.is_out_of_office = form.is_out_of_office
+        if (form.team             !== (user.team ?? ''))     payload.team             = form.team || null
         if (Object.keys(payload).length === 0) { onClose(); return }
         await onSave(payload)
       }
@@ -531,6 +536,14 @@ function UserModal({ mode, user, roles, onSave, onClose }) {
         <select value={form.role_id} onChange={e => set('role_id', e.target.value)} style={INPUT}>
           {roles.map(r => (
             <option key={r.id} value={r.id}>{r.name} ({r.template})</option>
+          ))}
+        </select>
+
+        <label style={LABEL}>Team</label>
+        <select value={form.team} onChange={e => set('team', e.target.value)} style={INPUT}>
+          <option value="">— No team assigned —</option>
+          {teams.map(t => (
+            <option key={t} value={t}>{t}</option>
           ))}
         </select>
 
