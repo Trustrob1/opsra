@@ -86,7 +86,7 @@ def _get_redis():
 
 def _get_current_org(db, token: str):
     """Decode JWT Bearer token and return org dict. Raises 401 on failure."""
-    from app.database import get_current_org as _gco
+    from app.dependencies import get_current_org as _gco
     # Re-use existing dependency by calling it directly with the token
     # This is called manually in public routes where Depends() is not used.
     raise NotImplementedError("Use Depends(get_current_org) in JWT routes")
