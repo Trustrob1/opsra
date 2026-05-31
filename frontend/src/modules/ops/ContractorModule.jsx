@@ -1715,8 +1715,10 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
     setActualSaving(kpi.kpi_key)
     setActualMsg(null)
     try {
+      // Shorten to fit varchar(20) — e.g. "Month 1" extracted from "Month 1 (May 31 – Jun 29, 2026)"
+      const shortLabel = summary.month_label.split(' (')[0].trim().slice(0, 20)
       await logKpiActual(contractorId, {
-        month_label:  summary.month_label,
+        month_label:  shortLabel,
         month_start:  summary.month_start,
         kpi_key:      kpi.kpi_key,
         actual_value: kpi.running_total,

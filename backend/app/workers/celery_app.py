@@ -132,6 +132,7 @@ celery_app = Celery(
         "app.workers.messenger_worker",    # ← UNIFIED-INBOX-1B
         "app.workers.report_delivery_worker",           # ← RPT-1A
         "app.workers.performance_retention_worker",     # ← CPM-1B
+        "app.workers.performance_rollup_worker",        # ← CPM-1B Gap 1
     ],
 )
 
@@ -452,6 +453,17 @@ celery_app.conf.beat_schedule = {
     "run-report-delivery": {
         "task": "run_report_delivery",
         "schedule": crontab(minute="*/30"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # rollup_daily_performance_logs — Daily 01:00 UTC  (CPM-1B Gap 1)    #
+    # Worker: performance_rollup_worker.py                                #
+    # Auto-promotes daily log totals to monthly KPI actuals at month end. #
+    # Skips KPIs where an actual already exists (manager entry wins).     #
+    # ------------------------------------------------------------------ #
+    "rollup-daily-performance-logs": {
+        "task": "rollup_daily_performance_logs",
+        "schedule": crontab(hour=1, minute=0),
     },
 
     # ------------------------------------------------------------------ #

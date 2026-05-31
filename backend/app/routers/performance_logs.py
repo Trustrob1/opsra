@@ -272,13 +272,14 @@ def _compute_summary(contractor: dict, logs: list, ref_date: date) -> dict:
         )
         pace_st = _pace_status(progress_pct, days_elapsed, total_days)
 
-        # Weekly breakdown
+        # Weekly breakdown — relative to month_start (contract-relative, not calendar day)
         weekly: dict[int, dict] = {w: {"week": w, "total": 0.0, "days_logged": 0} for w in range(1, 5)}
         for log in kpi_logs:
             try:
                 ld = date.fromisoformat(log["log_date"])
-                # Week number within the month (1-4, day 1-7 = week 1, etc.)
-                week_num = min(((ld.day - 1) // 7) + 1, 4)
+                # Day number relative to contract month start (day 1 = first day of this contract month)
+                day_in_month = (ld - month_start).days + 1
+                week_num = min(((day_in_month - 1) // 7) + 1, 4)
                 weekly[week_num]["total"] += float(log["value"] or 0)
                 weekly[week_num]["days_logged"] += 1
             except Exception:
@@ -502,7 +503,7 @@ def get_public_log_form(token: str, db=Depends(get_supabase)):
 
     res = (
         db.table("contractors")
-        .select("id, full_name, role_title, kpi_targets, contract_start, log_token, log_pin, log_retention_months")
+        .select("id, full_name, role_title, kpi_targets, contract_start, contract_end, log_token, log_pin, log_retention_months")
         .eq("log_token", token)
         .is_("deleted_at", "null")
         .limit(1)
@@ -512,6 +513,21 @@ def get_public_log_form(token: str, db=Depends(get_supabase)):
         raise HTTPException(status_code=404, detail="Log link not found or expired")
 
     contractor = res.data[0]
+
+    # Gap 3: check contract_end — reject submissions after contract has ended
+    contract_end = contractor.get("contract_end")
+    if contract_end:
+        try:
+            from datetime import date as _date
+            if _date.today() > _date.fromisoformat(contract_end):
+                raise HTTPException(
+                    status_code=403,
+                    detail="This contract has ended. Log submissions are no longer accepted.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # fail open — never block on date parse error
 
     # Never return log_pin (hash) in any response
     return {
@@ -556,6 +572,22 @@ def submit_public_log(token: str, body: PublicLogSubmit, db=Depends(get_supabase
         raise HTTPException(status_code=404, detail="Log link not found or expired")
 
     contractor = res.data[0]
+
+    # Gap 3: check contract_end — reject submissions after contract has ended
+    contract_end_str = contractor.get("contract_end")
+    if contract_end_str:
+        try:
+            from datetime import date as _date
+            if _date.today() > _date.fromisoformat(contract_end_str):
+                raise HTTPException(
+                    status_code=403,
+                    detail="This contract has ended. Log submissions are no longer accepted.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # fail open
+
     pin_hash = contractor.get("log_pin") or ""
 
     if not pin_hash:
