@@ -356,7 +356,13 @@ function ContractorsTab({ user, onOpenCreate, refreshKey }) {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [refreshKey])
+  const [hasLoaded, setHasLoaded] = useState(false)
+
+  useEffect(() => {
+    // Re-load whenever refreshKey changes OR first time this renders visible
+    load()
+    setHasLoaded(true)
+  }, [refreshKey])
 
   const handleSelect = (c) => {
     setSelected(c)
@@ -942,7 +948,7 @@ function TasksPanel({ contractor, onUpdate }) {
 // TAB 3 — ALL TASKS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AllTasksTab({ refreshKey }) {
+function AllTasksTab({ refreshKey, isActive }) {
   const [contractors, setContractors] = useState([])
   const [taskMap, setTaskMap]         = useState({})
   const [loading, setLoading]         = useState(true)
@@ -966,7 +972,9 @@ function AllTasksTab({ refreshKey }) {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [refreshKey])
+  useEffect(() => {
+    if (isActive) load()
+  }, [refreshKey, isActive])
 
   const handleStatusChange = async (contractorId, task, newStatus) => {
     setSaving(task.id)
@@ -1537,7 +1545,7 @@ export default function ContractorModule({ user }) {
       </div>
 
       <div style={{ display: activeTab === 'tasks' ? 'block' : 'none' }}>
-        <AllTasksTab refreshKey={refreshKey} />
+        <AllTasksTab refreshKey={refreshKey} isActive={activeTab === 'tasks'} />
       </div>
 
       {showCreate && (
