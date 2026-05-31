@@ -23,6 +23,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { ds } from '../../utils/ds'
+import { generateLogToken, getPerformanceSummary, logDailyEntry } from '../../services/performance_logs.service'
 import {
   getContractorScorecard,
   listContractors,
@@ -579,6 +580,9 @@ function OverviewPanel({ contractor: c, onUpdate }) {
           </div>
         </Section>
       )}
+
+      {/* CPM-1B: Log Link Setup */}
+      <LogLinkSetup contractor={c} onRefresh={onUpdate} />
     </div>
   )
 }
@@ -834,6 +838,7 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
           </div>
         </div>
       )}
+    <DailyProgressSection contractorId={contractor.id} kpiTargets={contractor.kpi_targets || []} />
     </div>
   )
 }
@@ -1585,6 +1590,249 @@ function ContractorCreateModal({ onClose, onCreated }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT: ContractorModule
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── CPM-1B: Log Link Setup ────────────────────────────────────────────────────
+
+function LogLinkSetup({ contractor, onRefresh }) {
+  const [generating, setGenerating] = useState(false)
+  const [pin, setPin] = useState('')
+  const [retention, setRetention] = useState(contractor.log_retention_months || 6)
+  const [copied, setCopied] = useState(false)
+  const [err, setErr] = useState(null)
+  const [success, setSuccess] = useState(null)
+
+  const logUrl = contractor.log_token
+    ? `${window.location.origin}/log/${contractor.log_token}`
+    : null
+
+  async function handleGenerate() {
+    if (!pin || pin.length < 4) { setErr('PIN must be 4–6 digits'); return }
+    setErr(null); setGenerating(true)
+    try {
+      await generateLogToken(contractor.id, {
+        pin,
+        log_retention_months: retention,
+        regenerate_token: !contractor.log_token,
+      })
+      setSuccess('Log link generated!')
+      setPin('')
+      if (onRefresh) onRefresh()
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Failed to generate link')
+    } finally { setGenerating(false) }
+  }
+
+  async function handleReset() {
+    if (!pin || pin.length < 4) { setErr('Enter a new PIN to reset'); return }
+    setErr(null); setGenerating(true)
+    try {
+      await generateLogToken(contractor.id, {
+        pin,
+        log_retention_months: retention,
+        regenerate_token: true,
+      })
+      setSuccess('Link and PIN reset!')
+      setPin('')
+      if (onRefresh) onRefresh()
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Reset failed')
+    } finally { setGenerating(false) }
+  }
+
+  function copyUrl() {
+    navigator.clipboard.writeText(logUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div style={{ marginTop: 24, padding: '16px 18px', background: '#f6fafb', borderRadius: 10, border: '1px solid #dde4e8' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#4a6375', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
+        Daily Log Link
+      </div>
+      {err && <div style={{ fontSize: 12, color: '#c0392b', marginBottom: 10 }}>{err}</div>}
+      {success && <div style={{ fontSize: 12, color: '#1dc8a4', marginBottom: 10 }}>{success}</div>}
+
+      {logUrl ? (
+        <>
+          <div style={{ fontSize: 12, color: '#4a6375', marginBottom: 8, wordBreak: 'break-all' }}>{logUrl}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            <button onClick={copyUrl} style={{ padding: '6px 12px', fontSize: 12, background: copied ? '#1dc8a4' : '#e8f4f0', color: copied ? 'white' : '#1dc8a4', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
+              {copied ? '✓ Copied' : 'Copy Link'}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 12, color: '#6B8FA0', marginBottom: 12 }}>No log link yet. Generate one below.</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={pin}
+          onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
+          placeholder={logUrl ? 'New PIN to reset' : 'Set PIN (4–6 digits)'}
+          style={{ padding: '8px 10px', border: '1.5px solid #dde4e8', borderRadius: 7, fontSize: 13, width: 140, letterSpacing: 4 }}
+        />
+        <select
+          value={retention}
+          onChange={e => setRetention(Number(e.target.value))}
+          style={{ padding: '8px 10px', border: '1.5px solid #dde4e8', borderRadius: 7, fontSize: 13 }}
+        >
+          {[1,2,3,6,12].map(m => <option key={m} value={m}>{m} month{m > 1 ? 's' : ''}</option>)}
+        </select>
+        {logUrl ? (
+          <button onClick={handleReset} disabled={generating} style={{ padding: '8px 14px', fontSize: 12, background: '#e8f0f4', color: '#0a1f2e', border: 'none', borderRadius: 7, cursor: 'pointer', fontWeight: 600 }}>
+            {generating ? '…' : 'Reset PIN & Link'}
+          </button>
+        ) : (
+          <button onClick={handleGenerate} disabled={generating || pin.length < 4} style={{ padding: '8px 14px', fontSize: 12, background: ds.teal, color: 'white', border: 'none', borderRadius: 7, cursor: 'pointer', fontWeight: 600 }}>
+            {generating ? '…' : 'Generate Log Link'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── CPM-1B: Daily Progress Section ───────────────────────────────────────────
+
+function DailyProgressSection({ contractorId, kpiTargets }) {
+  const [expanded, setExpanded] = useState(false)
+  const [summary, setSummary] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [logForm, setLogForm] = useState(null) // kpi_key currently being logged
+  const [logValue, setLogValue] = useState('')
+  const [logSaving, setLogSaving] = useState(false)
+  const [logMsg, setLogMsg] = useState(null)
+
+  async function load() {
+    if (summary) return
+    setLoading(true)
+    try {
+      const data = await getPerformanceSummary(contractorId)
+      setSummary(data)
+    } catch { /* silent */ }
+    finally { setLoading(false) }
+  }
+
+  function handleExpand() {
+    const next = !expanded
+    setExpanded(next)
+    if (next) load()
+  }
+
+  async function handleLogToday(kpiKey, kpiLabel, kpiType) {
+    if (!logValue && logValue !== 0) return
+    setLogSaving(true)
+    setLogMsg(null)
+    try {
+      await logDailyEntry(contractorId, {
+        kpi_key: kpiKey,
+        kpi_label: kpiLabel,
+        log_date: new Date().toISOString().split('T')[0],
+        value: kpiType !== 'manual' ? parseFloat(logValue) : null,
+        label_value: kpiType === 'manual' ? logValue : null,
+      })
+      setLogMsg('Logged ✓')
+      setLogForm(null)
+      setLogValue('')
+      setSummary(null)
+      load()
+    } catch (e) {
+      setLogMsg(e?.response?.data?.detail || 'Failed to log')
+    } finally { setLogSaving(false) }
+  }
+
+  const paceColour = { on_track: '#1dc8a4', at_risk: '#f39c12', off_track: '#e74c3c', pending: '#6B8FA0' }
+  const paceIcon  = { on_track: '📈', at_risk: '⚠️', off_track: '🔴', pending: '⏳' }
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <button
+        onClick={handleExpand}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: '8px 0', fontSize: 13, fontWeight: 600, color: ds.teal }}
+      >
+        <span style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : 'none' }}>▶</span>
+        Daily Progress {summary ? `(${summary.month_label})` : ''}
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: 12 }}>
+          {loading && <div style={{ fontSize: 13, color: '#6B8FA0' }}>Loading…</div>}
+          {!loading && summary && summary.kpi_summaries.map(kpi => (
+            <div key={kpi.kpi_key} style={{ marginBottom: 20, padding: '14px 16px', background: '#f6fafb', borderRadius: 10, border: '1px solid #e8edf1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#0a1f2e' }}>{kpi.kpi_label}</span>
+                <span style={{ fontSize: 12, color: paceColour[kpi.pace_status] }}>
+                  {paceIcon[kpi.pace_status]} {kpi.pace_status.replace('_', ' ')}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div style={{ height: 8, background: '#dde4e8', borderRadius: 4, overflow: 'hidden', marginBottom: 6 }}>
+                <div style={{ height: '100%', width: `${Math.min(kpi.progress_pct, 100)}%`, background: paceColour[kpi.pace_status], borderRadius: 4, transition: 'width 0.4s' }} />
+              </div>
+
+              <div style={{ fontSize: 12, color: '#4a6375', marginBottom: 6 }}>
+                {kpi.running_total} / {kpi.target_value} — {kpi.progress_pct.toFixed(1)}%
+                {' · '}
+                {kpi.pace_status !== 'pending' && (
+                  <span>Projected: ~{Math.round(kpi.pace_projected)} by month end · </span>
+                )}
+                {summary.days_remaining} days remaining
+              </div>
+
+              {/* Weekly breakdown */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                {kpi.weekly_breakdown.map(w => (
+                  <div key={w.week} style={{ flex: 1, background: 'white', border: '1px solid #dde4e8', borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: '#6B8FA0' }}>Wk {w.week}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0a1f2e' }}>{w.total}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Log Today */}
+              {logForm === kpi.kpi_key ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type={kpi.kpi_type === 'manual' ? 'text' : 'number'}
+                    value={logValue}
+                    onChange={e => setLogValue(e.target.value)}
+                    placeholder="Today's value"
+                    style={{ flex: 1, padding: '7px 10px', border: '1.5px solid #dde4e8', borderRadius: 7, fontSize: 13 }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => handleLogToday(kpi.kpi_key, kpi.kpi_label, kpi.kpi_type)}
+                    disabled={logSaving}
+                    style={{ padding: '7px 14px', background: ds.teal, color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {logSaving ? '…' : 'Save'}
+                  </button>
+                  <button onClick={() => { setLogForm(null); setLogValue('') }} style={{ padding: '7px 10px', background: '#edf1f4', border: 'none', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => { setLogForm(kpi.kpi_key); setLogValue('') }}
+                    style={{ padding: '6px 12px', fontSize: 12, background: '#e8f4f0', color: ds.teal, border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    + Log Today
+                  </button>
+                </div>
+              )}
+              {logMsg && logForm === null && <div style={{ fontSize: 12, color: ds.teal, marginTop: 4 }}>{logMsg}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function ContractorModule({ user }) {
   const TABS = [

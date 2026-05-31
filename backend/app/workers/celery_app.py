@@ -130,7 +130,8 @@ celery_app = Celery(
         "app.workers.ai_resume_worker",    # ← AI-AUTO-RESUME
         "app.workers.instagram_worker",    # ← UNIFIED-INBOX-1A
         "app.workers.messenger_worker",    # ← UNIFIED-INBOX-1B
-        "app.workers.report_delivery_worker",  # ← RPT-1A
+        "app.workers.report_delivery_worker",           # ← RPT-1A
+        "app.workers.performance_retention_worker",     # ← CPM-1B
     ],
 )
 
@@ -451,5 +452,15 @@ celery_app.conf.beat_schedule = {
     "run-report-delivery": {
         "task": "run_report_delivery",
         "schedule": crontab(minute="*/30"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # archive_old_performance_logs — 1st of each month, 02:00 UTC (CPM-1B)#
+    # Worker: performance_retention_worker.py                              #
+    # Deletes daily logs older than each contractor's retention setting.  #
+    # ------------------------------------------------------------------ #
+    "archive-performance-logs-monthly": {
+        "task": "archive_old_performance_logs",
+        "schedule": crontab(day_of_month=1, hour=2, minute=0),
     },
 }

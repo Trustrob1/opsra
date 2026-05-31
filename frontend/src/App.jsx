@@ -118,6 +118,11 @@ export default function App() {
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />
   if (window.location.pathname === '/terms') return <TermsOfService />
   if (window.location.pathname === '/auth/update-password') return <UpdatePasswordScreen />
+  const _logMatch = window.location.pathname.match(/^\/log\/([a-f0-9]{64})$/)
+  if (_logMatch) {
+    const PublicLogPage = require('./pages/PublicLogPage').default
+    return <PublicLogPage token={_logMatch[1]} />
+  }
   if (!token) return <LoginScreen onAuth={setAuth} />
   return (
     <ErrorBoundary>
