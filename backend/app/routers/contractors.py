@@ -695,19 +695,20 @@ def log_kpi_actual(
     user_id = org["id"]
     _fetch_contractor(db, contractor_id, org_id)
 
-    # Check for existing row
-    existing = (
+    # Check for existing row — use limit(1) not maybe_single() (maybe_single raises on 0 rows)
+    existing_result = (
         db.table("contractor_kpi_actuals")
         .select("id")
         .eq("contractor_id", contractor_id)
         .eq("month_label", payload.month_label)
         .eq("kpi_key", payload.kpi_key)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
-    existing_data = existing.data
-    if isinstance(existing_data, list):
-        existing_data = existing_data[0] if existing_data else None
+    rows = existing_result.data or []
+    if isinstance(rows, dict):
+        rows = [rows]
+    existing_data = rows[0] if rows else None
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
