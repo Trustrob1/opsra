@@ -837,7 +837,107 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
     </div>
   )
 }
+
+
 // ── Tasks sub-panel ───────────────────────────────────────────────────────────
+
+function ExpandableTaskRow({ task, isOverdue, saving, onStatusChange, onSaveNotes, showPhase }) {
+  const [expanded, setExpanded]   = useState(false)
+  const [noteText, setNoteText]   = useState(task.notes || '')
+  const [noteSaving, setNoteSaving] = useState(false)
+
+  const sc = TASK_STATUS_OPTIONS.find(s => s.value === task.status) || TASK_STATUS_OPTIONS[0]
+
+  const handleSave = async () => {
+    setNoteSaving(true)
+    await onSaveNotes(noteText)
+    setNoteSaving(false)
+    setExpanded(false)
+  }
+
+  return (
+    <div style={{
+      background: isOverdue ? '#fff8f0' : 'white',
+      border: `1px solid ${isOverdue ? '#fde8c8' : expanded ? ds.teal : '#dde4e8'}`,
+      borderRadius: 8, overflow: 'hidden',
+      transition: 'border-color 0.15s',
+    }}>
+      {/* Main row */}
+      <div
+        onClick={() => { setExpanded(p => !p); setNoteText(task.notes || '') }}
+        style={{
+          padding: '10px 14px', display: 'flex',
+          alignItems: 'center', gap: 12, cursor: 'pointer',
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: ds.dark, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {task.task_description}
+            {task.notes && <span style={{ fontSize: 10, background: '#e8f0fe', color: '#1a56db', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>📝</span>}
+          </div>
+          <div style={{ fontSize: 11, color: ds.gray, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {showPhase && task.phase && <span>Phase: {task.phase}</span>}
+            {task.week_number && <span>Week {task.week_number}</span>}
+            {task.due_date && <span style={{ color: isOverdue ? '#c5221f' : ds.gray }}>Due: {task.due_date}{isOverdue ? ' ⚠' : ''}</span>}
+            {task.owner && <span>Owner: {task.owner}</span>}
+            {task.notes && !expanded && (
+              <span style={{ color: '#5f6368', fontStyle: 'italic' }}>"{task.notes}"</span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <select
+            value={task.status}
+            disabled={saving === task.id}
+            onClick={e => e.stopPropagation()}
+            onChange={e => onStatusChange(e.target.value)}
+            style={{
+              border: '1px solid #dde4e8', borderRadius: 6, padding: '4px 8px',
+              fontSize: 11, fontWeight: 600, color: sc.color,
+              fontFamily: ds.fontDm, background: 'white', cursor: 'pointer',
+            }}
+          >
+            {TASK_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <span style={{ fontSize: 11, color: ds.gray, transition: 'transform 0.15s', display: 'inline-block', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+        </div>
+      </div>
+
+      {/* Expanded notes section */}
+      {expanded && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            borderTop: '1px solid #f1f3f4', padding: '12px 14px',
+            background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 8,
+          }}
+        >
+          <label style={{ fontSize: 11, fontWeight: 700, color: ds.gray, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Notes / Reason {task.status === 'blocked' ? '(Blocked reason)' : ''}
+          </label>
+          <textarea
+            value={noteText}
+            onChange={e => setNoteText(e.target.value)}
+            placeholder={task.status === 'blocked' ? 'What is blocking this task?' : 'Add notes...'}
+            rows={3}
+            autoFocus
+            style={{
+              border: `1px solid ${ds.teal}`, borderRadius: 6, padding: '8px 10px',
+              fontSize: 12, fontFamily: ds.fontDm, resize: 'vertical',
+              outline: 'none', background: 'white', color: ds.dark,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn onClick={() => setExpanded(false)} variant="secondary" small>Cancel</Btn>
+            <Btn onClick={handleSave} small disabled={noteSaving}>
+              {noteSaving ? 'Saving…' : '✓ Save Note'}
+            </Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function TasksPanel({ contractor, onUpdate }) {
   const [tasks, setTasks]       = useState([])
@@ -880,6 +980,18 @@ function TasksPanel({ contractor, onUpdate }) {
     }
   }
 
+  const handleSaveNotes = async (task, notes) => {
+    setSaving(task.id)
+    try {
+      await updateContractorTask(contractor.id, task.id, { status: task.status, notes })
+      load()
+    } catch {
+      alert('Failed to save notes.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
   const today = new Date().toISOString().split('T')[0]
   const overdue = (task) => task.due_date && task.due_date < today && task.status !== 'done'
 
@@ -908,34 +1020,15 @@ function TasksPanel({ contractor, onUpdate }) {
             const isOverdue = overdue(task)
             const sc = TASK_STATUS_OPTIONS.find(s => s.value === task.status) || TASK_STATUS_OPTIONS[0]
             return (
-              <div key={task.id} style={{
-                background: isOverdue ? '#fff8f0' : 'white',
-                border: `1px solid ${isOverdue ? '#fde8c8' : '#dde4e8'}`,
-                borderRadius: 8, padding: '12px 14px',
-                display: 'flex', alignItems: 'flex-start', gap: 12,
-              }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>{task.task_description}</div>
-                  <div style={{ fontSize: 11, color: ds.gray, marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    {task.phase && <span>Phase: {task.phase}</span>}
-                    {task.week_number && <span>Week {task.week_number}</span>}
-                    {task.due_date && <span style={{ color: isOverdue ? '#c5221f' : ds.gray }}>Due: {task.due_date}{isOverdue ? ' ⚠' : ''}</span>}
-                    {task.owner && <span>Owner: {task.owner}</span>}
-                  </div>
-                </div>
-                <select
-                  value={task.status}
-                  disabled={saving === task.id}
-                  onChange={e => handleStatusChange(task, e.target.value)}
-                  style={{
-                    border: '1px solid #dde4e8', borderRadius: 6, padding: '4px 8px',
-                    fontSize: 11, fontWeight: 600, color: sc.color, fontFamily: ds.fontDm,
-                    background: 'white', cursor: 'pointer', flexShrink: 0,
-                  }}
-                >
-                  {TASK_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
+              <ExpandableTaskRow
+                        key={task.id}
+                        task={task}
+                        isOverdue={isOverdue}
+                        saving={saving}
+                        onStatusChange={newStatus => handleStatusChange(task, newStatus)}
+                        onSaveNotes={(notes) => handleSaveNotes(task, notes)}
+                        showPhase
+                      />
             )
           })}
         </div>
@@ -982,6 +1075,15 @@ function AllTasksTab({ refreshKey, isActive }) {
       await updateContractorTask(contractorId, task.id, { status: newStatus })
       load()
     } catch { alert('Failed to update task.') }
+    finally { setSaving(null) }
+  }
+
+  const handleSaveNotes = async (contractorId, task, notes) => {
+    setSaving(task.id)
+    try {
+      await updateContractorTask(contractorId, task.id, { status: task.status, notes })
+      load()
+    } catch { alert('Failed to save notes.') }
     finally { setSaving(null) }
   }
 
@@ -1036,32 +1138,14 @@ function AllTasksTab({ refreshKey, isActive }) {
                     const isOverdue = overdue(task)
                     const sc = TASK_STATUS_OPTIONS.find(s => s.value === task.status) || TASK_STATUS_OPTIONS[0]
                     return (
-                      <div key={task.id} style={{
-                        background: isOverdue ? '#fff8f0' : 'white',
-                        border: `1px solid ${isOverdue ? '#fde8c8' : '#dde4e8'}`,
-                        borderRadius: 8, padding: '10px 14px',
-                        display: 'flex', alignItems: 'center', gap: 12,
-                      }}>
-                        <div style={{ flex: 1 }}>
-                          <span style={{ fontSize: 13, color: ds.dark }}>{task.task_description}</span>
-                          <div style={{ fontSize: 11, color: ds.gray, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {task.week_number && <span>Week {task.week_number}</span>}
-                            {task.due_date && <span style={{ color: isOverdue ? '#c5221f' : ds.gray }}>Due: {task.due_date}{isOverdue ? ' ⚠' : ''}</span>}
-                          </div>
-                        </div>
-                        <select
-                          value={task.status}
-                          disabled={saving === task.id}
-                          onChange={e => handleStatusChange(c.id, task, e.target.value)}
-                          style={{
-                            border: '1px solid #dde4e8', borderRadius: 6, padding: '4px 8px',
-                            fontSize: 11, fontWeight: 600, color: sc.color,
-                            fontFamily: ds.fontDm, background: 'white', cursor: 'pointer',
-                          }}
-                        >
-                          {TASK_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      </div>
+                      <ExpandableTaskRow
+                        key={task.id}
+                        task={task}
+                        isOverdue={isOverdue}
+                        saving={saving}
+                        onStatusChange={newStatus => handleStatusChange(c.id, task, newStatus)}
+                        onSaveNotes={(notes) => handleSaveNotes(c.id, task, notes)}
+                      />
                     )
                   })}
                 </div>
