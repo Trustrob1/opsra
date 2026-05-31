@@ -93,7 +93,7 @@ def _get_current_org(db, token: str):
 
 
 # Import the standard org dependency used across the codebase
-from app.database import get_current_org
+from app.dependencies import get_current_org
 
 MANAGER_ROLES = {"owner", "ops_manager"}
 
