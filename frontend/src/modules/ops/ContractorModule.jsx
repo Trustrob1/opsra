@@ -606,13 +606,14 @@ function Field({ label, value, children, span }) {
 // ── KPI Tracker sub-panel ─────────────────────────────────────────────────────
 
 function KpiTrackerPanel({ contractor, onUpdate }) {
-  const [actuals, setActuals]       = useState([])
   const [saving, setSaving]         = useState(false)
-  const [editCell, setEditCell]     = useState(null) // { month_label, kpi_key }
+  const [showAddMonth, setShowAddMonth] = useState(false)
+  const [monthInput, setMonthInput] = useState({ label: '', start: '' })
+  const [monthValues, setMonthValues] = useState({}) // { kpi_key: value }
+  const [monthNotes, setMonthNotes]   = useState({}) // { kpi_key: notes }
+  const [editCell, setEditCell]     = useState(null) // { month_label, kpi_key } for existing table cells
   const [editValue, setEditValue]   = useState('')
   const [editNotes, setEditNotes]   = useState('')
-  const [monthInput, setMonthInput] = useState({ label: '', start: '' })
-  const [showAddMonth, setShowAddMonth] = useState(false)
 
   const targets = contractor.kpi_targets || []
   const months  = contractor.kpi_months  || {}
@@ -623,27 +624,56 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
     return n(a) - n(b)
   })
 
-  const getActualValue = (monthLabel, kpiKey) => {
-    const m = months[monthLabel] || {}
-    return m[kpiKey]?.actual_value ?? ''
+  // Save all KPI values for a new month in one go
+  const handleSaveNewMonth = async () => {
+    if (!monthInput.label.trim()) { alert('Enter a month label (e.g. Month 1)'); return }
+    if (!monthInput.start)        { alert('Enter a month start date'); return }
+
+    const hasAnyValue = targets.some(kpi => monthValues[kpi.key] !== undefined && monthValues[kpi.key] !== '')
+    if (!hasAnyValue) { alert('Enter at least one KPI value before saving.'); return }
+
+    setSaving(true)
+    try {
+      await Promise.all(
+        targets
+          .filter(kpi => monthValues[kpi.key] !== undefined && monthValues[kpi.key] !== '')
+          .map(kpi =>
+            logKpiActual(contractor.id, {
+              month_label:  monthInput.label.trim(),
+              month_start:  monthInput.start,
+              kpi_key:      kpi.key,
+              actual_value: parseFloat(monthValues[kpi.key]),
+              notes:        monthNotes[kpi.key] || null,
+            })
+          )
+      )
+      setShowAddMonth(false)
+      setMonthInput({ label: '', start: '' })
+      setMonthValues({})
+      setMonthNotes({})
+      onUpdate()
+    } catch {
+      alert('Failed to save KPI actuals.')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleSaveActual = async () => {
+  // Save edit to an existing cell in the table
+  const handleSaveEdit = async () => {
     if (!editCell) return
     setSaving(true)
     try {
-      const { month_label, kpi_key } = editCell
-      // Derive month_start from existing data or use today as fallback
       const existing = contractor.kpi_actuals_raw?.find(
-        a => a.month_label === month_label && a.kpi_key === kpi_key
+        a => a.month_label === editCell.month_label && a.kpi_key === editCell.kpi_key
       )
       const month_start = existing?.month_start || new Date().toISOString().split('T')[0]
       await logKpiActual(contractor.id, {
-        month_label,
+        month_label:  editCell.month_label,
         month_start,
-        kpi_key,
+        kpi_key:      editCell.kpi_key,
         actual_value: editValue === '' ? null : parseFloat(editValue),
-        notes: editNotes || null,
+        notes:        editNotes || null,
       })
       setEditCell(null)
       onUpdate()
@@ -660,7 +690,8 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Risk summary */}
+
+      {/* Risk summary banner */}
       {risk.at_termination_risk && (
         <div style={{ background: '#fce8e6', border: '1px solid #f5c6c2', borderRadius: 8, padding: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#c5221f' }}>
@@ -672,10 +703,8 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
         </div>
       )}
 
-      {/* KPI table */}
-      {monthLabels.length === 0 ? (
-        <EmptyState icon="📅" title="No actuals logged yet" sub="Add a month below to start logging KPI actuals" />
-      ) : (
+      {/* Existing months table */}
+      {monthLabels.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
@@ -704,19 +733,18 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
                               onChange={e => setEditValue(e.target.value)}
                               style={{ border: `1px solid ${ds.teal}`, borderRadius: 6, padding: '4px 6px', fontSize: 12, width: '100%' }}
                             />
-                            <input
-                              type="text" value={editNotes} placeholder="Notes (optional)"
-                              onChange={e => setEditNotes(e.target.value)}
-                              style={{ border: '1px solid #dde4e8', borderRadius: 6, padding: '4px 6px', fontSize: 11, width: '100%' }}
-                            />
                             <div style={{ display: 'flex', gap: 4 }}>
-                              <Btn onClick={handleSaveActual} small disabled={saving}>✓</Btn>
+                              <Btn onClick={handleSaveEdit} small disabled={saving}>✓</Btn>
                               <Btn onClick={() => setEditCell(null)} small variant="secondary">✕</Btn>
                             </div>
                           </div>
                         ) : (
                           <div
-                            onClick={() => { setEditCell({ month_label: ml, kpi_key: kpi.key }); setEditValue(md.actual_value ?? ''); setEditNotes('') }}
+                            onClick={() => {
+                              setEditCell({ month_label: ml, kpi_key: kpi.key })
+                              setEditValue(md.actual_value ?? '')
+                              setEditNotes('')
+                            }}
                             style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
                           >
                             {md.actual_value != null ? (
@@ -725,7 +753,7 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
                                 <KpiStatusBadge statusKey={md.status || 'pending'} />
                               </>
                             ) : (
-                              <span style={{ color: '#c0c7cc', fontSize: 11 }}>— click to log</span>
+                              <span style={{ color: '#c0c7cc', fontSize: 11 }}>— tap to edit</span>
                             )}
                           </div>
                         )}
@@ -739,40 +767,70 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
         </div>
       )}
 
-      {/* Add month */}
+      {/* Empty state when no months yet */}
+      {monthLabels.length === 0 && !showAddMonth && (
+        <EmptyState icon="📅" title="No actuals logged yet" sub="Click '+ Log New Month' below to start" />
+      )}
+
+      {/* Add new month — inline form, all KPIs in one go */}
       {!showAddMonth ? (
         <Btn onClick={() => setShowAddMonth(true)} variant="secondary" small>+ Log New Month</Btn>
       ) : (
-        <div style={{ background: '#f8fafc', border: '1px solid #dde4e8', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>Log actuals for a new month</div>
+        <div style={{ background: '#f8fafc', border: `1px solid ${ds.teal}`, borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: ds.dark }}>Log actuals for a new month</div>
+
+          {/* Month label + start date */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Input label="Month Label" value={monthInput.label} onChange={v => setMonthInput(p => ({ ...p, label: v }))} placeholder="e.g. Month 3" />
-            <Input label="Month Start Date" type="date" value={monthInput.start} onChange={v => setMonthInput(p => ({ ...p, start: v }))} />
+            <Input
+              label="Month Label"
+              value={monthInput.label}
+              onChange={v => setMonthInput(p => ({ ...p, label: v }))}
+              placeholder="e.g. Month 1"
+            />
+            <Input
+              label="Month Start Date"
+              type="date"
+              value={monthInput.start}
+              onChange={v => setMonthInput(p => ({ ...p, start: v }))}
+            />
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+
+          {/* One input per KPI */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {targets.map(kpi => (
-              <Btn
-                key={kpi.key}
-                small variant="secondary"
-                onClick={() => {
-                  if (!monthInput.label || !monthInput.start) { alert('Enter month label and start date first.'); return }
-                  setEditCell({ month_label: monthInput.label, kpi_key: kpi.key })
-                  setEditValue('')
-                  setEditNotes('')
-                  setShowAddMonth(false)
-                }}
-              >
-                Log {kpi.label}
-              </Btn>
+              <div key={kpi.key} style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 10, alignItems: 'end' }}>
+                <div style={{ fontSize: 12, color: ds.dark }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{kpi.label}</div>
+                  <div style={{ color: ds.gray, fontSize: 11 }}>Target: {kpi.target_label || kpi.target_value || '—'}</div>
+                </div>
+                <Input
+                  label="Actual"
+                  type={kpi.kpi_type === 'manual' ? 'text' : 'number'}
+                  value={monthValues[kpi.key] ?? ''}
+                  onChange={v => setMonthValues(p => ({ ...p, [kpi.key]: v }))}
+                  placeholder={kpi.kpi_type === 'manual' ? 'e.g. Delivered' : '0'}
+                />
+              </div>
             ))}
-            <Btn onClick={() => setShowAddMonth(false)} small variant="ghost">Cancel</Btn>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn
+              onClick={() => { setShowAddMonth(false); setMonthValues({}); setMonthNotes({}) }}
+              variant="secondary" small
+            >
+              Cancel
+            </Btn>
+            <Btn onClick={handleSaveNewMonth} small disabled={saving}>
+              {saving ? 'Saving…' : '✓ Save Month'}
+            </Btn>
           </div>
         </div>
       )}
     </div>
   )
 }
-
 // ── Tasks sub-panel ───────────────────────────────────────────────────────────
 
 function TasksPanel({ contractor, onUpdate }) {
