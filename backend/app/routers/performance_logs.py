@@ -426,7 +426,7 @@ def generate_log_token(
     db=Depends(get_supabase),
 ):
     _require_manager(org)
-    org_id = org["id"]
+    org_id = org["org_id"]
     contractor = _contractor_or_404(db, contractor_id, org_id)
 
     # Regenerate or keep existing token
@@ -586,7 +586,7 @@ def get_performance_summary(
     db=Depends(get_supabase),
 ):
     _require_manager(org)
-    org_id = org["id"]
+    org_id = org["org_id"]
     contractor = _contractor_or_404(db, contractor_id, org_id)
 
     if month:
@@ -632,7 +632,7 @@ def list_performance_logs(
     db=Depends(get_supabase),
 ):
     _require_manager(org)
-    org_id = org["id"]
+    org_id = org["org_id"]
     _contractor_or_404(db, contractor_id, org_id)
 
     query = (
@@ -666,7 +666,7 @@ def log_daily_entry(
     db=Depends(get_supabase),
 ):
     _require_manager(org)
-    org_id = org["id"]
+    org_id = org["org_id"]
     _contractor_or_404(db, contractor_id, org_id)
 
     row = _upsert_log(db, org_id, contractor_id, body.model_dump(), logged_via="direct")
@@ -688,7 +688,7 @@ def update_daily_log(
     db=Depends(get_supabase),
 ):
     _require_manager(org)
-    org_id = org["id"]
+    org_id = org["org_id"]
     _log_or_404(db, log_id, contractor_id, org_id)
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -719,7 +719,7 @@ def delete_daily_log(
     db=Depends(get_supabase),
 ):
     _require_manager(org)
-    org_id = org["id"]
+    org_id = org["org_id"]
     _log_or_404(db, log_id, contractor_id, org_id)
 
     db.table("performance_daily_logs").delete().eq("id", log_id).execute()
