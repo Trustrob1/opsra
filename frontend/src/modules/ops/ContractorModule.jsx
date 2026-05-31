@@ -1707,6 +1707,28 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
   const [logValue, setLogValue] = useState('')
   const [logSaving, setLogSaving] = useState(false)
   const [logMsg, setLogMsg] = useState(null)
+  const [actualSaving, setActualSaving] = useState(null) // kpi_key currently being saved as actual
+  const [actualMsg, setActualMsg] = useState(null)
+
+  async function handleUseAsActual(kpi) {
+    if (!summary || kpi.running_total === 0) return
+    setActualSaving(kpi.kpi_key)
+    setActualMsg(null)
+    try {
+      await logKpiActual(contractorId, {
+        month_label:  summary.month_label,
+        month_start:  summary.month_start,
+        kpi_key:      kpi.kpi_key,
+        actual_value: kpi.running_total,
+        notes:        `Auto-filled from daily logs (${kpi.running_total} logged)`,
+      })
+      setActualMsg({ key: kpi.kpi_key, text: '✓ Saved as month actual' })
+    } catch (e) {
+      setActualMsg({ key: kpi.kpi_key, text: e?.response?.data?.detail || 'Failed to save actual' })
+    } finally {
+      setActualSaving(null)
+    }
+  }
 
   async function load() {
     if (summary) return
@@ -1816,16 +1838,30 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                   <button onClick={() => { setLogForm(null); setLogValue('') }} style={{ padding: '7px 10px', background: '#edf1f4', border: 'none', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>✕</button>
                 </div>
               ) : (
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     onClick={() => { setLogForm(kpi.kpi_key); setLogValue('') }}
                     style={{ padding: '6px 12px', fontSize: 12, background: '#e8f4f0', color: ds.teal, border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
                   >
                     + Log Today
                   </button>
+                  {kpi.kpi_type !== 'manual' && kpi.running_total > 0 && (
+                    <button
+                      onClick={() => handleUseAsActual(kpi)}
+                      disabled={actualSaving === kpi.kpi_key}
+                      style={{ padding: '6px 12px', fontSize: 12, background: '#f1f3f4', color: '#0a1f2e', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600, opacity: actualSaving === kpi.kpi_key ? 0.5 : 1 }}
+                    >
+                      {actualSaving === kpi.kpi_key ? '…' : '→ Set as Month Actual'}
+                    </button>
+                  )}
                 </div>
               )}
               {logMsg && logForm === null && <div style={{ fontSize: 12, color: ds.teal, marginTop: 4 }}>{logMsg}</div>}
+              {actualMsg?.key === kpi.kpi_key && (
+                <div style={{ fontSize: 12, color: actualMsg.text.startsWith('✓') ? ds.teal : '#c5221f', marginTop: 4 }}>
+                  {actualMsg.text}
+                </div>
+              )}
             </div>
           ))}
         </div>
