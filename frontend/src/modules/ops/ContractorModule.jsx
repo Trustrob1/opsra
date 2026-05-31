@@ -23,7 +23,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { ds } from '../../utils/ds'
-import { generateLogToken, getPerformanceSummary, logDailyEntry } from '../../services/performance_logs.service'
+import { generateLogToken, getPerformanceSummary, logDailyEntry, getPerformanceLogs, updateDailyLog, deleteDailyLog } from '../../services/performance_logs.service'
 import {
   getContractorScorecard,
   listContractors,
@@ -1709,6 +1709,61 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
   const [logMsg, setLogMsg] = useState(null)
   const [actualSaving, setActualSaving] = useState(null) // kpi_key currently being saved as actual
   const [actualMsg, setActualMsg] = useState(null)
+  const [logsOpen, setLogsOpen] = useState(null) // kpi_key whose log history is open
+  const [logHistory, setLogHistory] = useState([]) // daily log rows for open kpi
+  const [logHistoryLoading, setLogHistoryLoading] = useState(false)
+  const [editLog, setEditLog] = useState(null) // { id, value, notes } being edited
+  const [editSaving, setEditSaving] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // log id awaiting delete confirm
+  const [deleteSaving, setDeleteSaving] = useState(false)
+
+  async function handleOpenLogs(kpiKey) {
+    if (logsOpen === kpiKey) { setLogsOpen(null); return }
+    setLogsOpen(kpiKey)
+    setLogHistoryLoading(true)
+    setLogHistory([])
+    try {
+      const data = await getPerformanceLogs(contractorId)
+      const filtered = (data.items || []).filter(l => l.kpi_key === kpiKey)
+      setLogHistory(filtered)
+    } catch { /* silent */ }
+    finally { setLogHistoryLoading(false) }
+  }
+
+  async function handleSaveEdit() {
+    if (!editLog) return
+    setEditSaving(true)
+    try {
+      await updateDailyLog(contractorId, editLog.id, {
+        value: editLog.value !== '' ? parseFloat(editLog.value) : null,
+        notes: editLog.notes || null,
+      })
+      setEditLog(null)
+      setSummary(null)
+      // Refresh log history
+      const data = await getPerformanceLogs(contractorId)
+      const filtered = (data.items || []).filter(l => l.kpi_key === logsOpen)
+      setLogHistory(filtered)
+      load()
+    } catch (e) {
+      alert(e?.response?.data?.detail || 'Failed to save edit')
+    } finally { setEditSaving(false) }
+  }
+
+  async function handleDeleteLog(logId) {
+    setDeleteSaving(true)
+    try {
+      await deleteDailyLog(contractorId, logId)
+      setDeleteConfirm(null)
+      setSummary(null)
+      const data = await getPerformanceLogs(contractorId)
+      const filtered = (data.items || []).filter(l => l.kpi_key === logsOpen)
+      setLogHistory(filtered)
+      load()
+    } catch (e) {
+      alert(e?.response?.data?.detail || 'Failed to delete')
+    } finally { setDeleteSaving(false) }
+  }
 
   async function handleUseAsActual(kpi) {
     if (!summary || kpi.running_total === 0) return
@@ -1864,6 +1919,93 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                   {actualMsg.text}
                 </div>
               )}
+
+              {/* View / Edit / Delete daily log entries */}
+              <div style={{ marginTop: 8 }}>
+                <button
+                  onClick={() => handleOpenLogs(kpi.kpi_key)}
+                  style={{ fontSize: 11, color: '#6B8FA0', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                >
+                  {logsOpen === kpi.kpi_key ? '▲ Hide log history' : `▼ View log history (${kpi.daily_entries?.length || 0})`}
+                </button>
+
+                {logsOpen === kpi.kpi_key && (
+                  <div style={{ marginTop: 10 }}>
+                    {logHistoryLoading && <div style={{ fontSize: 12, color: '#6B8FA0' }}>Loading…</div>}
+                    {!logHistoryLoading && logHistory.length === 0 && (
+                      <div style={{ fontSize: 12, color: '#6B8FA0', fontStyle: 'italic' }}>No entries yet.</div>
+                    )}
+                    {!logHistoryLoading && logHistory.map(log => (
+                      <div key={log.id} style={{ background: 'white', border: '1px solid #dde4e8', borderRadius: 7, padding: '8px 12px', marginBottom: 6 }}>
+                        {editLog?.id === log.id ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <span style={{ fontSize: 11, color: '#6B8FA0', minWidth: 70 }}>{log.log_date}</span>
+                              <input
+                                type="number"
+                                value={editLog.value}
+                                onChange={e => setEditLog(p => ({ ...p, value: e.target.value }))}
+                                style={{ width: 80, padding: '4px 8px', border: `1.5px solid ${ds.teal}`, borderRadius: 6, fontSize: 12 }}
+                                autoFocus
+                              />
+                            </div>
+                            <input
+                              type="text"
+                              value={editLog.notes || ''}
+                              onChange={e => setEditLog(p => ({ ...p, notes: e.target.value }))}
+                              placeholder="Notes (optional)"
+                              style={{ padding: '4px 8px', border: '1px solid #dde4e8', borderRadius: 6, fontSize: 12 }}
+                            />
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button onClick={handleSaveEdit} disabled={editSaving} style={{ padding: '4px 10px', background: ds.teal, color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                                {editSaving ? '…' : '✓ Save'}
+                              </button>
+                              <button onClick={() => setEditLog(null)} style={{ padding: '4px 10px', background: '#f1f3f4', color: ds.dark, border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : deleteConfirm === log.id ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 12, color: '#c5221f' }}>Delete this entry?</span>
+                            <button onClick={() => handleDeleteLog(log.id)} disabled={deleteSaving} style={{ padding: '3px 10px', background: '#fce8e6', color: '#c5221f', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                              {deleteSaving ? '…' : 'Yes, delete'}
+                            </button>
+                            <button onClick={() => setDeleteConfirm(null)} style={{ padding: '3px 8px', background: '#f1f3f4', border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                              <span style={{ fontSize: 11, color: '#6B8FA0', marginRight: 10 }}>{log.log_date}</span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: '#0a1f2e' }}>{log.value ?? log.label_value ?? '—'}</span>
+                              {log.notes && <span style={{ fontSize: 11, color: '#6B8FA0', marginLeft: 8, fontStyle: 'italic' }}>{log.notes}</span>}
+                              {log.logged_via === 'public_link' && (
+                                <span style={{ fontSize: 10, background: '#e8f0fe', color: '#1a56db', borderRadius: 4, padding: '1px 5px', marginLeft: 6, fontWeight: 600 }}>via link</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => setEditLog({ id: log.id, value: log.value ?? '', notes: log.notes || '' })}
+                                style={{ padding: '3px 8px', background: '#f1f3f4', border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}
+                              >
+                                ✏️ Edit
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirm(log.id)}
+                                style={{ padding: '3px 8px', background: '#fce8e6', border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#c5221f' }}
+                              >
+                                🗑
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
