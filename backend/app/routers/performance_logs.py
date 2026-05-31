@@ -207,14 +207,44 @@ def _pace_status(progress_pct: float, days_elapsed: int, total_days: int) -> str
 
 
 def _compute_summary(contractor: dict, logs: list, ref_date: date) -> dict:
-    """Compute running totals, pace, weekly breakdown for a given month."""
-    month_start = date(ref_date.year, ref_date.month, 1)
-    total_days = monthrange(ref_date.year, ref_date.month)[1]
-    month_end = date(ref_date.year, ref_date.month, total_days)
-    days_elapsed = min((ref_date - month_start).days + 1, total_days)
-    days_remaining = max(total_days - days_elapsed, 0)
+    """Compute running totals, pace, weekly breakdown for a given month.
+    Month boundaries are relative to contract_start, not calendar months.
+    e.g. if contract_start = 2026-04-15, Month 1 = Apr 15 – May 14,
+    Month 2 = May 15 – Jun 14, etc.
+    """
+    # Determine contract_start — fall back to calendar month if not set
+    contract_start_str = contractor.get("contract_start")
+    if contract_start_str:
+        try:
+            contract_start = date.fromisoformat(contract_start_str)
+        except ValueError:
+            contract_start = None
+    else:
+        contract_start = None
 
-    month_label = ref_date.strftime("%B %Y")
+    if contract_start:
+        # How many full 30-day periods have elapsed since contract_start?
+        days_since_start = (ref_date - contract_start).days
+        if days_since_start < 0:
+            # ref_date is before contract start — nothing to show
+            period_index = 0
+        else:
+            period_index = days_since_start // 30  # 0-based month index
+
+        month_start = contract_start + timedelta(days=period_index * 30)
+        month_end = contract_start + timedelta(days=(period_index + 1) * 30 - 1)
+        total_days = 30
+        days_elapsed = min((ref_date - month_start).days + 1, total_days)
+        days_remaining = max(total_days - days_elapsed, 0)
+        month_label = f"Month {period_index + 1} ({month_start.strftime('%b %d')} – {month_end.strftime('%b %d, %Y')})"
+    else:
+        # Fallback: calendar month
+        month_start = date(ref_date.year, ref_date.month, 1)
+        total_days = monthrange(ref_date.year, ref_date.month)[1]
+        month_end = date(ref_date.year, ref_date.month, total_days)
+        days_elapsed = min((ref_date - month_start).days + 1, total_days)
+        days_remaining = max(total_days - days_elapsed, 0)
+        month_label = ref_date.strftime("%B %Y")
 
     kpi_targets = contractor.get("kpi_targets") or []
 
@@ -597,10 +627,21 @@ def get_performance_summary(
     else:
         ref_date = date.today()
 
-    # Fetch logs for the month
-    month_start = date(ref_date.year, ref_date.month, 1)
-    total_days = monthrange(ref_date.year, ref_date.month)[1]
-    month_end = date(ref_date.year, ref_date.month, total_days)
+    # Compute contract-relative month boundaries for the log fetch
+    contract_start_str = contractor.get("contract_start")
+    if contract_start_str:
+        try:
+            contract_start = date.fromisoformat(contract_start_str)
+            days_since_start = (ref_date - contract_start).days
+            period_index = max(days_since_start, 0) // 30
+            month_start = contract_start + timedelta(days=period_index * 30)
+            month_end = contract_start + timedelta(days=(period_index + 1) * 30 - 1)
+        except ValueError:
+            month_start = date(ref_date.year, ref_date.month, 1)
+            month_end = date(ref_date.year, ref_date.month, monthrange(ref_date.year, ref_date.month)[1])
+    else:
+        month_start = date(ref_date.year, ref_date.month, 1)
+        month_end = date(ref_date.year, ref_date.month, monthrange(ref_date.year, ref_date.month)[1])
 
     logs_res = (
         db.table("performance_daily_logs")
