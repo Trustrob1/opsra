@@ -420,6 +420,7 @@ function IssuesTab({ user }) {
   const [showDownload, setShowDownload] = useState(false)
   const [downloading, setDownloading]   = useState(false)
   const [dlError, setDlError]           = useState(null)
+  const [dlPreset,  setDlPreset]        = useState('this_month')
   const [dlFilters, setDlFilters]       = useState({
     date_from: '', date_to: '', team: '', category: '',
     status_filter: '', priority: '',
@@ -475,7 +476,7 @@ function IssuesTab({ user }) {
       </div>
 
       {showDownload && (
-        <div style={OVERLAY} onClick={() => setShowDownload(false)}>
+        <div style={OVERLAY} onClick={() => { setShowDownload(false); setDlPreset('this_month') }}>
           <div style={{ ...MODAL, maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between',
               alignItems: 'center', marginBottom: 20 }}>
@@ -483,25 +484,82 @@ function IssuesTab({ user }) {
                 fontSize: 17, color: '#0a1a24', margin: 0 }}>
                 Download Issues Report
               </h3>
-              <button onClick={() => setShowDownload(false)}
+              <button onClick={() => { setShowDownload(false); setDlPreset('this_month') }}
                 style={{ background: 'none', border: 'none',
                   fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={LBL}>Date From</label>
-                <input type='date' value={dlFilters.date_from}
-                  onChange={e => setDlFilters(f => ({ ...f, date_from: e.target.value }))}
-                  style={INP} />
-              </div>
-              <div>
-                <label style={LBL}>Date To</label>
-                <input type='date' value={dlFilters.date_to}
-                  onChange={e => setDlFilters(f => ({ ...f, date_to: e.target.value }))}
-                  style={INP} />
-              </div>
+            {/* Period presets */}
+            <label style={LBL}>Period</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              {[
+                { id: 'this_month',  label: 'This Month'  },
+                { id: 'last_month',  label: 'Last Month'  },
+                { id: 'last_7d',     label: 'Last 7d'     },
+                { id: 'last_30d',    label: 'Last 30d'    },
+                { id: 'last_90d',    label: 'Last 90d'    },
+                { id: 'this_year',   label: 'This Year'   },
+                { id: 'custom',      label: 'Custom'      },
+              ].map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setDlPreset(p.id)
+                    if (p.id !== 'custom') {
+                      const today = new Date()
+                      const fmt   = d => d.toISOString().slice(0, 10)
+                      let from, to = fmt(today)
+                      if (p.id === 'this_month') {
+                        from = fmt(new Date(today.getFullYear(), today.getMonth(), 1))
+                      } else if (p.id === 'last_month') {
+                        const f = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+                        const t = new Date(today.getFullYear(), today.getMonth(), 0)
+                        from = fmt(f); to = fmt(t)
+                      } else if (p.id === 'last_7d') {
+                        const f = new Date(today); f.setDate(today.getDate() - 6)
+                        from = fmt(f)
+                      } else if (p.id === 'last_30d') {
+                        const f = new Date(today); f.setDate(today.getDate() - 29)
+                        from = fmt(f)
+                      } else if (p.id === 'last_90d') {
+                        const f = new Date(today); f.setDate(today.getDate() - 89)
+                        from = fmt(f)
+                      } else if (p.id === 'this_year') {
+                        from = fmt(new Date(today.getFullYear(), 0, 1))
+                      }
+                      setDlFilters(f => ({ ...f, date_from: from, date_to: to }))
+                    }
+                  }}
+                  style={{
+                    padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    fontFamily: ds.fontSyne, cursor: 'pointer', border: 'none',
+                    background: dlPreset === p.id ? ds.teal : '#E4EEF2',
+                    color:      dlPreset === p.id ? 'white'  : '#3A5A6A',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
+
+            {/* Custom date pickers — only shown when Custom is selected */}
+            {dlPreset === 'custom' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
+                <div>
+                  <label style={LBL}>Date From</label>
+                  <input type='date' value={dlFilters.date_from}
+                    onChange={e => setDlFilters(f => ({ ...f, date_from: e.target.value }))}
+                    style={INP} />
+                </div>
+                <div>
+                  <label style={LBL}>Date To</label>
+                  <input type='date' value={dlFilters.date_to}
+                    onChange={e => setDlFilters(f => ({ ...f, date_to: e.target.value }))}
+                    style={INP} />
+                </div>
+              </div>
+            )}
 
             <label style={LBL}>Team</label>
             <select value={dlFilters.team}
@@ -550,7 +608,7 @@ function IssuesTab({ user }) {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end',
               gap: 10, marginTop: 24 }}>
-              <button onClick={() => setShowDownload(false)} style={BTN_OUTLINE}>
+              <button onClick={() => { setShowDownload(false); setDlPreset('this_month') }} style={BTN_OUTLINE}>
                 Cancel
               </button>
               <button
@@ -577,6 +635,7 @@ function IssuesTab({ user }) {
                     a.click()
                     URL.revokeObjectURL(url)
                     setShowDownload(false)
+                    setDlPreset('this_month')
                   } catch (e) {
                     const msg = e?.response?.status === 429
                       ? 'You can download up to 10 reports per hour.'
