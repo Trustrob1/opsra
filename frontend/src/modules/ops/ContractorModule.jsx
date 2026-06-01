@@ -1789,7 +1789,7 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
   }
 
   async function load() {
-    if (summary) return
+    if (summary && tasks.length > 0) return
     setLoading(true)
     try {
       const [perfData, taskData] = await Promise.all([

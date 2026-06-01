@@ -532,16 +532,21 @@ def get_public_log_form(token: str, db=Depends(get_supabase)):
     # Never return log_pin (hash) in any response
     # Fetch current + overdue tasks for the contractor
     today_str = date.today().isoformat()
+    # Fetch all non-done tasks — filter current/overdue Python-side (Pattern 33)
     tasks_res = (
         db.table("contractor_tasks")
         .select("id, task_description, phase, week_number, due_date, status, owner, notes")
         .eq("contractor_id", contractor["id"])
         .neq("status", "done")
-        .or_(f"due_date.lte.{today_str},due_date.is.null")
         .order("due_date", desc=False)
         .execute()
     )
-    tasks = tasks_res.data or []
+    all_tasks = tasks_res.data or []
+    # Keep tasks that are due today or earlier, or have no due date yet
+    tasks = [
+        t for t in all_tasks
+        if not t.get("due_date") or t["due_date"] <= today_str
+    ]
 
     return {
         "status": "ok",
