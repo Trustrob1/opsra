@@ -338,3 +338,18 @@ export async function markLeadMessagesRead(leadId) {
   const res = await api.patch(`/api/v1/leads/${leadId}/messages/mark-read`, {})
   return res.data
 }
+
+/**
+ * POST /api/v1/leads/{id}/confirm-attribution
+ * Ops manager confirms attribution and finalises conversion.
+ * @param {string} leadId — lead UUID
+ * @param {{ attributed_to_primary: string, attributed_to_secondary: string|null, attribution_split_pct: number, attribution_note: string|null }} payload
+ */
+export async function confirmAttribution(leadId, payload) {
+  try {
+    const res = await api.post(`/api/v1/leads/${leadId}/confirm-attribution`, payload)
+    return { success: true, data: res.data?.data ?? res.data }
+  } catch (err) {
+    return { success: false, error: err?.response?.data?.error ?? 'Failed to confirm attribution' }
+  }
+}

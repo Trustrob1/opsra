@@ -73,6 +73,18 @@ class ReactivateFromNurtureRequest(BaseModel):
     """PATCH /{lead_id}/reactivate-from-nurture — GAP-1: pull nurture lead back to pipeline."""
     reason: Optional[str] = Field(None, max_length=500)
 
+class ConfirmAttributionRequest(BaseModel):
+    """
+    POST /api/v1/leads/{id}/confirm-attribution
+    Ops manager confirms which rep(s) get credit for a converted lead.
+    Only available when lead.pending_attribution is TRUE.
+    """
+    attributed_to_primary:   str            = Field(..., description="UUID of primary rep")
+    attributed_to_secondary: Optional[str]  = Field(None, description="UUID of secondary rep (optional)")
+    attribution_split_pct:   int            = Field(100, ge=1, le=100,
+                                               description="% credit to primary rep. Must be 1–99 if secondary is set.")
+    attribution_note:        Optional[str]  = Field(None, max_length=1000,
+                                               description="Optional note explaining the decision (S4: max 1000 chars)")
 
 class LeadCaptureRequest(BaseModel):
     """
@@ -910,7 +922,93 @@ async def convert_lead(
         user_id=_user_id(org),
     )
 
-    # S14: send conversion template — failure never blocks the conversion response
+    # ATTRIB-1: if conversion is pending attribution review, skip template send —
+    # the lead has not converted yet and the template must not fire prematurely.
+    if result.get("_attribution_status") != "pending_attribution":
+        # S14: send conversion template — failure never blocks the conversion response
+        try:
+            _org_r = (
+                db.table("organisations")
+                .select("conversion_template_name")
+                .eq("id", _org_id(org))
+                .maybe_single()
+                .execute()
+            )
+            _tmpl_name = (_org_r.data or {}).get("conversion_template_name") if _org_r else None
+            if _tmpl_name:
+                _lead_phone = result.get("whatsapp") or result.get("phone")
+                _lead_name  = result.get("full_name") or ""
+                if _lead_phone:
+                    from app.services.whatsapp_service import (
+                        _get_org_wa_credentials, _call_meta_send, _now_iso,
+                    )
+                    _phone_id, _token, _ = _get_org_wa_credentials(db, _org_id(org))
+                    if _phone_id and _token:
+                        _call_meta_send(_phone_id, {
+                            "messaging_product": "whatsapp",
+                            "to":   _lead_phone,
+                            "type": "template",
+                            "template": {
+                                "name":     _tmpl_name,
+                                "language": {"code": "en"},
+                                "components": [{
+                                    "type": "body",
+                                    "parameters": [{"type": "text", "text": _lead_name, "parameter_name": "name"}],
+                                }],
+                            },
+                        }, token=_token)
+                        # Store in whatsapp_messages for conversation history
+                        db.table("whatsapp_messages").insert({
+                            "org_id":       _org_id(org),
+                            "lead_id":      lead_id,
+                            "direction":    "outbound",
+                            "message_type": "text",
+                            "content":      f"[Template: {_tmpl_name}]",
+                            "status":       "sent",
+                            "sent_by":      None,
+                            "created_at":   _now_iso(),
+                        }).execute()
+        except Exception as _tmpl_exc:
+            logger.warning(
+                "conversion_template send failed lead=%s: %s", lead_id, _tmpl_exc
+            )
+
+    return ok(data=result, message="Lead converted to customer")
+    
+# ---------------------------------------------------------------------------
+# POST /api/v1/leads/{id}/confirm-attribution  (ATTRIB-1)
+# RBAC: ops_manager + owner only
+# ---------------------------------------------------------------------------
+ 
+@router.post("/{lead_id}/confirm-attribution")
+async def confirm_attribution(
+    lead_id: str,
+    payload: ConfirmAttributionRequest,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    template = get_role_template(org)
+    if template not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code":    ErrorCode.FORBIDDEN,
+                "message": "Only owners and ops managers can confirm lead attribution.",
+            },
+        )
+ 
+    result = lead_service.confirm_attribution(
+        db=db,
+        org_id=_org_id(org),
+        lead_id=lead_id,
+        confirming_user_id=_user_id(org),
+        attributed_to_primary=payload.attributed_to_primary,
+        attributed_to_secondary=payload.attributed_to_secondary,
+        attribution_split_pct=payload.attribution_split_pct,
+        attribution_note=payload.attribution_note,
+    )
+ 
+    # S14: send conversion template — failure never blocks the response
     try:
         _org_r = (
             db.table("organisations")
@@ -920,7 +1018,7 @@ async def convert_lead(
             .execute()
         )
         _tmpl_name = (_org_r.data or {}).get("conversion_template_name") if _org_r else None
-
+ 
         if _tmpl_name:
             _lead_phone = result.get("whatsapp") or result.get("phone")
             _lead_name  = result.get("full_name") or ""
@@ -943,7 +1041,6 @@ async def convert_lead(
                             }],
                         },
                     }, token=_token)
-                    # Store in whatsapp_messages for conversation history
                     db.table("whatsapp_messages").insert({
                         "org_id":       _org_id(org),
                         "lead_id":      lead_id,
@@ -956,10 +1053,10 @@ async def convert_lead(
                     }).execute()
     except Exception as _tmpl_exc:
         logger.warning(
-            "conversion_template send failed lead=%s: %s", lead_id, _tmpl_exc
+            "confirm_attribution: conversion_template send failed lead=%s: %s", lead_id, _tmpl_exc
         )
-
-    return ok(data=result, message="Lead converted to customer")
+ 
+    return ok(data=result, message="Attribution confirmed — lead converted to customer")
 
 
 # ---------------------------------------------------------------------------

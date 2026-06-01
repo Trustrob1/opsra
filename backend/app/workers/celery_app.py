@@ -133,6 +133,7 @@ celery_app = Celery(
         "app.workers.report_delivery_worker",           # ← RPT-1A
         "app.workers.performance_retention_worker",     # ← CPM-1B
         "app.workers.performance_rollup_worker",        # ← CPM-1B Gap 1
+        "app.workers.attribution_worker",               # ← ATTRIB-1 
     ],
 )
 
@@ -475,4 +476,16 @@ celery_app.conf.beat_schedule = {
         "task": "archive_old_performance_logs",
         "schedule": crontab(day_of_month=1, hour=2, minute=0),
     },
+
+    # ------------------------------------------------------------------ #
+    # attribution_auto_confirm — Every hour  (ATTRIB-1)                  #
+    # Worker: attribution_worker.py                                       #
+    # Auto-confirms attribution for leads where ops manager did not act   #
+    # within 24 hours of the attribution_review_needed notification.      #
+    # ------------------------------------------------------------------ #
+    "attribution-auto-confirm": {
+        "task": "app.workers.attribution_worker.run_attribution_auto_confirm",
+        "schedule": crontab(minute=0),  # every hour at :00
+    },
 }
+

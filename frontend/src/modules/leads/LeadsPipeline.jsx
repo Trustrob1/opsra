@@ -27,6 +27,12 @@
  *   - meetingLabel derived from pipelineStages (meeting_done stage label).
  *   - Queue button and mobile Demos button now use meetingLabel.
  *   - demoEnabled derived from meetingStage find (same logical result as before).
+ *
+ * ATTRIB-1 Session 2:
+ *   - handleDealValueConfirm: detects pending_attribution response from convertLead.
+ *     Refreshes board and shows an info banner directing manager to open the lead
+ *     for the full attribution review. Does NOT redirect or open the lead automatically
+ *     (kanban context — user may be managing multiple leads).
  */
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useLeads }       from '../../hooks/useLeads'
@@ -183,138 +189,105 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pip
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
 
-  useEffect(() => { setPage(1) }, [filterScore, filterSource, filterStage])
+  const fetchPage = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const params = { page, page_size: LIST_PAGE_SIZE }
+      if (filterStage)  params.stage  = filterStage
+      if (filterScore)  params.score  = filterScore
+      if (filterSource) params.source = filterSource
+      if (filterSearch) params.search = filterSearch
+      const res = await listLeads(params)
+      if (res.success) { setRawLeads(res.data?.items ?? []); setTotal(res.data?.total ?? 0) }
+      else setError(res.error ?? 'Failed to load leads')
+    } catch (err) { setError(err?.response?.data?.error ?? 'Failed to load leads') }
+    finally { setLoading(false) }
+  }, [page, filterStage, filterScore, filterSource, filterSearch])
 
-  // Auto-refresh every 60s — re-sorts list when recently active leads bubble up
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 60_000)
-    return () => clearInterval(id)
-  }, [])
+  useEffect(() => { fetchPage() }, [fetchPage])
+  useEffect(() => { setPage(1) }, [filterStage, filterScore, filterSource, filterSearch])
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    const params = { page, page_size: LIST_PAGE_SIZE }
-    if (filterScore)  params.score  = filterScore
-    if (filterSource) params.source = filterSource
-    if (filterStage)  params.stage  = filterStage
-    listLeads(params)
-      .then(res => {
-        if (cancelled) return
-        if (res.success) { setRawLeads(res.data.items ?? []); setTotal(res.data.total ?? 0) }
-        else setError(res.error ?? 'Failed to load leads')
-      })
-      .catch(err => {
-        if (cancelled) return
-        setError(err?.response?.data?.error ?? err?.response?.data?.message ?? 'Failed to load leads')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [filterScore, filterSource, filterStage, page])
-
-  const leads = useMemo(() => {
-    if (!filterSearch) return rawLeads
-    const q = filterSearch.toLowerCase()
-    return rawLeads.filter(l =>
-      [l.full_name, l.business_name, l.email, l.phone].filter(Boolean).some(v => v.toLowerCase().includes(q))
-    )
-  }, [rawLeads, filterSearch])
-
-  // ── Mobile: stage filter pills ────────────────────────────────────────────
-  const StagePills = () => (
-    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 12, WebkitOverflowScrolling: 'touch' }}>
-      {[{ key: '', label: 'All' }, ...pipelineStages].map(s => (
-        <button
-          key={s.key}
-          onClick={() => setFilterStage(s.key)}
-          style={{
-            flexShrink: 0, padding: '7px 14px', borderRadius: 20,
-            border: `1.5px solid ${filterStage === s.key ? ds.teal : ds.border}`,
-            background: filterStage === s.key ? ds.teal : 'white',
-            color: filterStage === s.key ? 'white' : ds.dark,
-            fontSize: 12, fontWeight: 600, fontFamily: ds.fontSyne,
-            cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 36,
-          }}
-        >
-          {s.label}
-        </button>
-      ))}
-    </div>
-  )
+  const stageOptions = pipelineStages.filter(s => !['converted','lost','not_ready'].includes(s.key))
 
   if (isMobile) {
     return (
       <div>
-        <StagePills />
-        <div style={{ fontSize: 12, color: ds.gray, marginBottom: 12 }}>
-          {loading ? 'Loading…' : `${total} lead${total !== 1 ? 's' : ''} total`}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
+          <button onClick={() => setFilterStage('')} style={{ padding: '6px 12px', borderRadius: 20, border: `1.5px solid ${!filterStage ? ds.teal : ds.border}`, background: !filterStage ? ds.mint : 'white', color: !filterStage ? ds.teal : ds.gray, fontSize: 11, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>All</button>
+          {stageOptions.map(s => (
+            <button key={s.key} onClick={() => setFilterStage(filterStage === s.key ? '' : s.key)} style={{ padding: '6px 12px', borderRadius: 20, border: `1.5px solid ${filterStage === s.key ? ds.teal : ds.border}`, background: filterStage === s.key ? ds.mint : 'white', color: filterStage === s.key ? ds.teal : ds.gray, fontSize: 11, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>{s.label}</button>
+          ))}
         </div>
-        {error && <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 14 }}>⚠ {error}</div>}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '32px', color: ds.gray, fontSize: 13 }}>Loading leads…</div>
-        ) : leads.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px', color: ds.gray, fontSize: 13 }}>No leads match the current filters.</div>
-        ) : (
-          leads.map(lead => <MobileLeadCard key={lead.id} lead={lead} onOpenLead={onOpenLead} pipelineStages={pipelineStages} attention={attentionMap[lead.id] ?? null} demoEnabled={demoEnabled} />)
-        )}
-        {!loading && <Pagination page={page} total={total} pageSize={LIST_PAGE_SIZE} onGoToPage={setPage} />}
+        {loading && <p style={{ textAlign: 'center', color: ds.gray, fontSize: 13, padding: '20px 0' }}>Loading…</p>}
+        {error   && <p style={{ color: ds.red, fontSize: 13 }}>⚠ {error}</p>}
+        {!loading && rawLeads.map(lead => (
+          <MobileLeadCard key={lead.id} lead={lead} onOpenLead={onOpenLead} pipelineStages={pipelineStages} attention={attentionMap[lead.id] ?? null} demoEnabled={demoEnabled} />
+        ))}
+        {!loading && rawLeads.length === 0 && <p style={{ textAlign: 'center', color: ds.gray, fontSize: 13, padding: '32px 0' }}>No leads found.</p>}
+        {total > LIST_PAGE_SIZE && <Pagination page={page} total={total} pageSize={LIST_PAGE_SIZE} onPageChange={setPage} />}
       </div>
     )
   }
 
-  // ── Desktop: table view ───────────────────────────────────────────────────
-  const thStyle = { padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#5b8a9a', textTransform: 'uppercase', letterSpacing: '0.7px', whiteSpace: 'nowrap', background: '#f5fbfc', borderBottom: `1px solid ${ds.border}` }
-  const tdStyle = { padding: '11px 14px', borderBottom: `1px solid ${ds.border}`, fontSize: 13, color: ds.dark, verticalAlign: 'middle' }
-
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={filterSelect}>
+      <div style={{ marginBottom: 12 }}>
+        <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={{ border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, padding: '7px 12px', fontSize: 13, color: ds.dark, fontFamily: ds.fontDm, background: 'white', cursor: 'pointer' }}>
           <option value="">All Stages</option>
           {pipelineStages.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
-        {filterStage && <button onClick={() => setFilterStage('')} style={{ fontSize: 12, color: ds.gray, background: 'none', border: 'none', cursor: 'pointer' }}>✕ Clear stage</button>}
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: ds.gray }}>{loading ? 'Loading…' : `${total} lead${total !== 1 ? 's' : ''} total`}</span>
       </div>
-      {error && <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 14 }}>⚠ {error}</div>}
-      <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: 12, overflow: 'hidden' }}>
+      {error && <p style={{ color: ds.red, fontSize: 13, marginBottom: 12 }}>⚠ {error}</p>}
+      <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
-            <tr>
-              {['Stage', 'Name', 'Score', 'Deal Value', 'Source', 'Phone', 'Assigned To', 'Created'].map(h => <th key={h} style={thStyle}>{h}</th>)}
+            <tr style={{ borderBottom: `2px solid ${ds.border}` }}>
+              {['Stage', 'Name', 'Score', 'Deal Value', 'Source', 'Phone', 'Assigned To', 'Created'].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 11, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              <tr><td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: ds.gray, padding: 40 }}>Loading leads…</td></tr>
-            ) : leads.length === 0 ? (
-              <tr><td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: ds.gray, padding: 40 }}>No leads match the current filters.</td></tr>
-            ) : leads.map(lead => (
-              <tr key={lead.id} onClick={() => onOpenLead(lead.id)} style={{ cursor: 'pointer', transition: 'background 0.12s' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f5fbfc'}
-                onMouseLeave={e => e.currentTarget.style.background = ''}>
-                <td style={tdStyle}><StageBadge stageKey={lead.stage} stages={pipelineStages} /></td>
-                <td style={tdStyle}>
-                  <div style={{ fontWeight: 600 }}>{lead.full_name}</div>
-                  {lead.business_name && <div style={{ fontSize: 11, color: ds.gray, marginTop: 2 }}>{lead.business_name}</div>}
-                </td>
-                <td style={tdStyle}><ScoreBadge score={lead.score} /></td>
-                <td style={{ ...tdStyle, fontSize: 12, color: lead.deal_value != null ? '#16a34a' : ds.gray, fontWeight: lead.deal_value != null ? 600 : 400 }}>
-                  {lead.deal_value != null ? `₦${Number(lead.deal_value).toLocaleString()}` : '—'}
-                </td>
-                <td style={{ ...tdStyle, fontSize: 12, color: ds.gray }}>{SOURCE_LABELS[lead.source] ?? lead.source ?? '—'}</td>
-                <td style={{ ...tdStyle, fontSize: 12 }}>{lead.phone ?? '—'}</td>
-                <td style={{ ...tdStyle, fontSize: 12, color: ds.gray }}>{lead.assigned_user?.full_name ?? '—'}</td>
-                <td style={{ ...tdStyle, fontSize: 12, color: ds.gray, whiteSpace: 'nowrap' }}>
-                  {lead.created_at ? new Date(lead.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                </td>
-              </tr>
-            ))}
+            {loading && (
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: ds.gray }}>Loading…</td></tr>
+            )}
+            {!loading && rawLeads.length === 0 && (
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: ds.gray }}>No leads found.</td></tr>
+            )}
+            {rawLeads.map(lead => {
+              const attn = attentionMap[lead.id] ?? {}
+              const hasBadge = (attn.unread_messages > 0) || (demoEnabled && attn.pending_demos > 0) || (attn.open_tickets > 0)
+              return (
+                <tr key={lead.id} onClick={() => onOpenLead(lead.id)} style={{ borderBottom: `1px solid ${ds.border}`, cursor: 'pointer', background: hasBadge ? '#FFFDF0' : 'white' }}
+                  onMouseEnter={e => e.currentTarget.style.background = ds.light}
+                  onMouseLeave={e => e.currentTarget.style.background = hasBadge ? '#FFFDF0' : 'white'}>
+                  <td style={{ padding: '10px 12px', fontWeight: 600, color: ds.dark, whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {lead.full_name}
+                      {(attn.unread_messages > 0) && <span style={{ background: '#E53E3E', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700 }}>💬 {attn.unread_messages}</span>}
+                      {demoEnabled && (attn.pending_demos > 0) && <span style={{ background: '#D97706', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700 }}>📅</span>}
+                      {(attn.open_tickets > 0) && <span style={{ background: '#ED8936', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700 }}>🎫</span>}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 12px', color: ds.gray }}>{lead.business_name || '—'}</td>
+                  <td style={{ padding: '10px 12px' }}><StageBadge stageKey={lead.stage} stages={pipelineStages} /></td>
+                  <td style={{ padding: '10px 12px' }}><ScoreBadge score={lead.score} /></td>
+                  <td style={{ padding: '10px 12px', color: ds.gray, fontSize: 12 }}>{SOURCE_LABELS[lead.source] ?? lead.source ?? '—'}</td>
+                  <td style={{ padding: '10px 12px', color: lead.deal_value != null ? '#16a34a' : ds.gray, fontWeight: lead.deal_value != null ? 600 : 400 }}>
+                    {lead.deal_value != null ? `₦${Number(lead.deal_value).toLocaleString()}` : '—'}
+                  </td>
+                  <td style={{ padding: '10px 12px', fontSize: 12 }}>{lead.phone ?? '—'}</td>
+                  <td style={{ padding: '10px 12px', color: ds.gray, fontSize: 12 }}>{lead.assigned_user?.full_name ?? '—'}</td>
+                  <td style={{ padding: '10px 12px', color: ds.gray, fontSize: 12, whiteSpace: 'nowrap' }}>
+                    {lead.created_at ? new Date(lead.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
-        {!loading && <div style={{ padding: '0 14px' }}><Pagination page={page} total={total} pageSize={LIST_PAGE_SIZE} onGoToPage={setPage} /></div>}
       </div>
+      {total > LIST_PAGE_SIZE && <div style={{ marginTop: 16 }}><Pagination page={page} total={total} pageSize={LIST_PAGE_SIZE} onPageChange={setPage} /></div>}
     </div>
   )
 }
@@ -345,13 +318,13 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   useEffect(() => { refreshAttentionMap() }, [])
   useEffect(() => { refreshAttentionMap() }, [leads])
 
-  // Auto-refresh badges every 30 s so unread message indicators appear without manual action
+  // Auto-refresh badges every 30s
   useEffect(() => {
     const attId = setInterval(refreshAttentionMap, 30_000)
     return () => clearInterval(attId)
   }, [refreshAttentionMap])
 
-  // Auto-refresh lead list every 60 s so recently active leads bubble to the top
+  // Auto-refresh lead list every 60s
   useEffect(() => {
     const leadId = setInterval(refresh, 60_000)
     return () => clearInterval(leadId)
@@ -375,6 +348,9 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   const [dragTarget, setDragTarget] = useState(null)
   const [movingId,   setMovingId]   = useState(null)
   const [moveError,  setMoveError]  = useState(null)
+
+  // ATTRIB-1: info message shown when attribution review is triggered from kanban
+  const [attributionInfo, setAttributionInfo] = useState(null)
 
   const [showCreate,   setShowCreate]   = useState(false)
   const [showImport,   setShowImport]   = useState(false)
@@ -424,9 +400,6 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   const pendingDemosTotal = useMemo(() =>
     Object.values(attentionMap).reduce((sum, a) => sum + (a.pending_demos || 0), 0), [attentionMap])
 
-  // meetingLabel: org-configured label for the meeting_done stage.
-  // pipelineStages here only contains enabled stages (filtered before setPipelineStages).
-  // If meeting_done is disabled it won't appear — demoEnabled is false — button not rendered.
   const meetingStage = pipelineStages.find(s => s.key === 'meeting_done')
   const meetingLabel = meetingStage?.label || 'Demo'
   const demoEnabled  = !!meetingStage
@@ -464,12 +437,30 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
 
   const handleDealValueConfirm = useCallback(async (dealValue) => {
     if (!dealValueCtx) return
-    const { id } = dealValueCtx
+    const { id, leadName } = dealValueCtx
     setDealValueCtx(null); setMovingId(id)
     try {
       const res = await convertLead(id)
-      if (!res.success) setMoveError(res.error ?? 'Conversion failed')
-      else {
+      if (!res.success) {
+        setMoveError(res.error ?? 'Conversion failed')
+      } else {
+        const data = res.data?.lead ?? res.data
+
+        // ATTRIB-1: backend returned pending_attribution — review needed before conversion finalises
+        if (data?._attribution_status === 'pending_attribution') {
+          if (dealValue != null) {
+            await updateLead(id, { deal_value: dealValue }).catch(() => {})
+          }
+          refresh()
+          setAttributionInfo({
+            leadName,
+            leadId: id,
+            message: `Attribution review needed for ${leadName}. Open the lead to confirm which rep gets credit.`,
+          })
+          return
+        }
+
+        // Normal single-window conversion
         if (dealValue != null) await updateLead(id, { deal_value: dealValue }).catch(() => {})
         refresh()
       }
@@ -565,8 +556,23 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       )}
 
       {/* ── Errors ───────────────────────────────────────────────── */}
-      {error    && <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 16 }}>⚠ {error}</div>}
+      {error     && <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 16 }}>⚠ {error}</div>}
       {moveError && <div style={{ background: '#FFF9E0', border: `1px solid #FFE066`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: '#8B6800', marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}><span>⚠ {moveError}</span><button onClick={() => setMoveError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray }}>✕</button></div>}
+
+      {/* ATTRIB-1: attribution info banner */}
+      {attributionInfo && (
+        <div style={{ background: '#FFF9E0', border: '1.5px solid #F59E0B', borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: '#92400E', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <span>⏳ {attributionInfo.message}</span>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={() => { setAttributionInfo(null); onOpenLead(attributionInfo.leadId) }}
+              style={{ background: '#F59E0B', color: 'white', border: 'none', borderRadius: ds.radius.sm, padding: '5px 12px', fontSize: 12, fontWeight: 700, fontFamily: ds.fontSyne, cursor: 'pointer' }}>
+              Open Lead
+            </button>
+            <button onClick={() => setAttributionInfo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 14 }}>✕</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Kanban (desktop only) ─────────────────────────────────── */}
       {!isMobile && (
@@ -647,6 +653,7 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
         <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>{scoreStyle.label}</span>
         {lead.source && <span style={{ background: ds.mint, color: ds.tealDark, padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{SOURCE_SHORT[lead.source] ?? lead.source}</span>}
         {lead.deal_value != null && <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>💰 {Number(lead.deal_value) >= 1000 ? `₦${(Number(lead.deal_value) / 1000).toFixed(0)}K` : `₦${Number(lead.deal_value).toLocaleString()}`}</span>}
+        {lead.pending_attribution && <span style={{ background: '#FFF9E0', color: '#92400E', padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>⏳</span>}
       </div>
     </div>
   )

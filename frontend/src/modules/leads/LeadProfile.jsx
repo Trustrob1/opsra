@@ -14,6 +14,13 @@
  *   - Demos tab fullLabel and DemoScheduler heading now use meetingLabel.
  *   - meetingLabel threaded via TabContent prop. Default 'Demo' if not found.
  *
+ * ATTRIB-1 Session 2:
+ *   - AttributionReviewPanel: shown when lead.pending_attribution === true
+ *     and user is ops_manager or owner.
+ *   - handleDealValueConfirm: detects pending_attribution response from
+ *     convertLead and opens AttributionReviewPanel instead of completing.
+ *   - confirmAttribution imported from leads.service.
+ *
  * Tabs:
  *   Tab 1 — Profile, Tab 2 — Messages, Tab 3 — Timeline,
  *   Tab 4 — Tasks,   Tab 5 — {meetingLabel}, Tab 6 — Interaction Log,
@@ -22,7 +29,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   getLead, moveStage, convertLead, reactivateLead, reactivateFromNurture,
-  updateLead, overrideLeadScore, getLeadAttentionSummary,
+  updateLead, overrideLeadScore, getLeadAttentionSummary, confirmAttribution,
 } from '../../services/leads.service'
 import useAuthStore   from '../../store/authStore'
 import UserSelect     from '../../shared/UserSelect'
@@ -74,6 +81,127 @@ function DealValueModal({ leadName, onConfirm, onSkip, loading }) {
   )
 }
 
+// ── Attribution Review Modal (ATTRIB-1) ────────────────────────────────────────
+
+function AttributionReviewModal({ lead, leadId, proposal, onConfirmed, onClose }) {
+  const [primaryId,   setPrimaryId]   = useState(proposal?.primary_user_id   ?? '')
+  const [secondaryId, setSecondaryId] = useState(proposal?.secondary_user_id ?? '')
+  const [splitPct,    setSplitPct]    = useState(100)
+  const [note,        setNote]        = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState(null)
+
+  const hasSecondary = secondaryId && secondaryId !== primaryId
+
+  async function handleConfirm() {
+    if (!primaryId) { setError('Primary rep is required.'); return }
+    if (hasSecondary && (splitPct < 1 || splitPct > 99)) {
+      setError('Split must be between 1 and 99 when a secondary rep is selected.')
+      return
+    }
+    setLoading(true); setError(null)
+    try {
+      const res = await confirmAttribution(leadId, {
+        attributed_to_primary:   primaryId,
+        attributed_to_secondary: hasSecondary ? secondaryId : null,
+        attribution_split_pct:   hasSecondary ? splitPct : 100,
+        attribution_note:        note.trim() || null,
+      })
+      if (!res?.success) { setError(res?.error ?? 'Confirmation failed'); return }
+      onConfirmed(res.data?.lead ?? res.data)
+    } catch (err) {
+      setError(err?.response?.data?.error ?? 'Confirmation failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const history = proposal?.assignment_history ?? []
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+      <div style={{ background: 'white', borderRadius: ds.radius.xl, padding: '28px 28px 24px', width: '100%', maxWidth: 520, boxShadow: '0 8px 32px rgba(0,0,0,0.22)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ fontSize: 28, marginBottom: 8, textAlign: 'center' }}>⚖️</div>
+        <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: ds.dark, margin: '0 0 4px', textAlign: 'center' }}>Attribution Review</h3>
+        <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 20px', lineHeight: 1.5, textAlign: 'center' }}>
+          <strong>{lead?.full_name}</strong> was reassigned during the sales process.<br />
+          Confirm which rep(s) should receive credit for this conversion.
+        </p>
+
+        {/* Assignment history */}
+        {history.length > 0 && (
+          <div style={{ background: ds.light, borderRadius: ds.radius.md, padding: '12px 14px', marginBottom: 20 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>Assignment History</p>
+            {history.map((h, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < history.length - 1 ? `1px solid ${ds.border}` : 'none' }}>
+                <span style={{ fontSize: 13, color: ds.dark, fontWeight: 500 }}>{h.user_name}</span>
+                <span style={{ fontSize: 12, color: ds.gray }}>{h.messages_sent} msg{h.messages_sent !== 1 ? 's' : ''} sent</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Primary rep */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>
+            Primary Rep <span style={{ color: ds.red }}>*</span>
+          </label>
+          <UserSelect value={primaryId} onChange={setPrimaryId} placeholder="Select primary rep" />
+          {proposal?.primary_name && (
+            <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '5px 0 0', fontFamily: ds.fontDm }}>
+              Suggested: {proposal.primary_name} ({proposal.assignment_history?.find(h => h.user_id === proposal.primary_user_id)?.messages_sent ?? 0} messages)
+            </p>
+          )}
+        </div>
+
+        {/* Secondary rep */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>
+            Secondary Rep (optional — split credit)
+          </label>
+          <UserSelect value={secondaryId} onChange={setSecondaryId} placeholder="— None —" />
+        </div>
+
+        {/* Split pct — only shown when secondary is selected */}
+        {hasSecondary && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>
+              Primary Rep Credit %
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="number" min={1} max={99} value={splitPct}
+                onChange={e => setSplitPct(Number(e.target.value))}
+                style={{ width: 80, border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, padding: '8px 10px', fontSize: 14, fontFamily: ds.fontDm, color: ds.dark }}
+              />
+              <span style={{ fontSize: 13, color: ds.gray }}>% primary · {100 - splitPct}% secondary</span>
+            </div>
+          </div>
+        )}
+
+        {/* Note */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>
+            Note (optional)
+          </label>
+          <textarea
+            value={note} onChange={e => setNote(e.target.value)}
+            maxLength={1000} rows={2} placeholder="Reason for this attribution decision…"
+            style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, padding: '9px 12px', fontSize: 13.5, fontFamily: ds.fontDm, color: ds.dark, resize: 'vertical' }}
+          />
+        </div>
+
+        {error && <p style={{ color: ds.red, fontSize: 13, marginBottom: 14 }}>⚠ {error}</p>}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <ActionBtn onClick={onClose} loading={false} color={ds.gray}>Cancel</ActionBtn>
+          <ActionBtn onClick={handleConfirm} loading={loading} color={ds.teal}>✓ Confirm Attribution</ActionBtn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function LeadProfile({ leadId, onBack }) {
@@ -91,17 +219,31 @@ export default function LeadProfile({ leadId, onBack }) {
   const [showDealValueModal, setShowDealValueModal] = useState(false)
   const [dealValueLoading,   setDealValueLoading]   = useState(false)
 
+  // ATTRIB-1: attribution review state
+  const [showAttributionModal, setShowAttributionModal] = useState(false)
+  const [attributionProposal,  setAttributionProposal]  = useState(null)
+  const [pendingDealValue,     setPendingDealValue]     = useState(null)
+
   const [pipelineStages,   setPipelineStages]   = useState(STAGES)
   const [movableStageKeys, setMovableStageKeys] = useState(_DEFAULT_MOVABLE)
+
+  const fetchLead = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const res = await getLead(leadId)
+      if (res.success) { setLead(res.data); setAssignedTo(res.data?.assigned_to ?? '') }
+      else setError(res.error ?? 'Failed to load lead')
+    } catch (err) { setError(err?.response?.data?.error ?? 'Failed to load lead') }
+    finally { setLoading(false) }
+  }, [leadId])
+
+  useEffect(() => { fetchLead() }, [fetchLead])
+
   useEffect(() => {
-    getPipelineStages().then(data => {
-      const cfg = data?.stages
-      if (Array.isArray(cfg) && cfg.length > 0) {
-        const DOT = { new: '#7A9BAD', contacted: '#3b82f6', meeting_done: '#8b5cf6', proposal_sent: '#f59e0b', converted: '#10b981', lost: '#ef4444', not_ready: '#6b7280' }
-        const mapped = cfg.map(s => ({ key: s.key, label: s.label, dot: DOT[s.key] || '#7A9BAD', enabled: s.enabled !== false }))
-        setPipelineStages(mapped)
-        const nonTerminal = new Set(['converted', 'lost', 'not_ready'])
-        setMovableStageKeys(cfg.filter(s => s.enabled !== false && !nonTerminal.has(s.key)).map(s => s.key))
+    getPipelineStages().then(res => {
+      if (res?.success && Array.isArray(res.data)) {
+        setPipelineStages(res.data)
+        setMovableStageKeys(res.data.filter(s => !['converted','lost','not_ready'].includes(s.key)).map(s => s.key))
       }
     }).catch(() => {})
   }, [])
@@ -111,52 +253,71 @@ export default function LeadProfile({ leadId, onBack }) {
   const [nurtureReason, setNurtureReason]                 = useState('')
   const [nurtureReactivating, setNurtureReactivating]     = useState(false)
 
-  const fetchLead = useCallback(async () => {
-    setLoading(true); setError(null)
-    try {
-      const res = await getLead(leadId)
-      if (res.success) { setLead(res.data); setAssignedTo(res.data?.assigned_to ?? '') }
-      else setError(res.error ?? 'Failed to load lead')
-    } catch (err) {
-      setError(err?.response?.data?.error ?? 'Failed to load lead')
-    } finally { setLoading(false) }
-  }, [leadId])
-
-  useEffect(() => { fetchLead() }, [fetchLead])
   useEffect(() => {
     if (!leadId) return
-    getLeadAttentionSummary().then(res => {
-      if (res.success) {
-        const signals = (res.data ?? {})[leadId] ?? {}
-        setAttention({ unread_messages: signals.unread_messages ?? 0, pending_demos: signals.pending_demos ?? 0, open_tickets: signals.open_tickets ?? 0, pending_tasks: signals.pending_tasks ?? 0 })
-      }
-    }).catch(() => {})
+    getLeadAttentionSummary(leadId).then(res => { if (res?.success) setAttention(res.data ?? {}) }).catch(() => {})
   }, [leadId])
 
-  const runAction = async (key, fn) => {
+  const runAction = useCallback(async (key, fn) => {
     setActionError(null); setActionLoading(key)
     try {
       const res = await fn()
       if (res?.success) setLead(res.data?.lead ?? res.data)
     } catch (err) { setActionError(err?.response?.data?.error ?? 'Action failed') }
     finally { setActionLoading(null) }
-  }
+  }, [])
 
   const handleMoveStage    = (newStage) => { if (!newStage || newStage === lead.stage) return; runAction('move', () => moveStage(leadId, newStage)) }
   const handleConvertClick = () => setShowDealValueModal(true)
+
+  const handleOverrideScore = async (score) => {
+    setOverrideLoading(true); setActionError(null)
+    try {
+      const res = await overrideLeadScore(leadId, score)
+      if (res?.success) setLead(prev => ({ ...prev, ...res.data }))
+      else setActionError(res?.error ?? 'Override failed')
+    } catch (err) { setActionError(err?.response?.data?.error ?? 'Override failed') }
+    finally { setOverrideLoading(false) }
+  }
 
   const handleDealValueConfirm = async (dealValue) => {
     setDealValueLoading(true); setActionError(null)
     try {
       const res = await convertLead(leadId)
       if (!res?.success) { setActionError(res?.error ?? 'Conversion failed'); setShowDealValueModal(false); return }
-      setLead(res.data?.lead ?? res.data)
+
+      const data = res.data?.lead ?? res.data
+
+      // ATTRIB-1: check if backend returned pending_attribution
+      if (data?._attribution_status === 'pending_attribution') {
+        setShowDealValueModal(false)
+        setPendingDealValue(dealValue)           // stash deal value to save after confirmation
+        setAttributionProposal(data?._proposal ?? null)
+        setLead(prev => ({ ...prev, pending_attribution: true }))
+        setShowAttributionModal(true)
+        return
+      }
+
+      // Normal single-window conversion path
+      setLead(data)
       if (dealValue != null) { await updateLead(leadId, { deal_value: dealValue }); setLead(prev => ({ ...prev, deal_value: dealValue })) }
       setShowDealValueModal(false)
     } catch (err) { setActionError(err?.response?.data?.error ?? 'Conversion failed'); setShowDealValueModal(false) }
     finally { setDealValueLoading(false) }
   }
   const handleDealValueSkip = async () => handleDealValueConfirm(null)
+
+  const handleAttributionConfirmed = async (updatedLead) => {
+    setShowAttributionModal(false)
+    setLead(updatedLead)
+    // Save the deal value that was entered before attribution modal appeared
+    if (pendingDealValue != null) {
+      await updateLead(leadId, { deal_value: pendingDealValue }).catch(() => {})
+      setLead(prev => ({ ...prev, deal_value: pendingDealValue }))
+    }
+    setPendingDealValue(null)
+    setAttributionProposal(null)
+  }
 
   const handleReactivate = () => {
     if (!window.confirm(`Reactivate ${lead.full_name}?`)) return
@@ -171,15 +332,6 @@ export default function LeadProfile({ leadId, onBack }) {
       else setActionError(res.error ?? 'Reactivation failed')
     } catch (err) { setActionError(err?.response?.data?.error ?? 'Reactivation failed') }
     finally { setNurtureReactivating(false) }
-  }
-
-  const handleOverrideScore = async (score) => {
-    setOverrideLoading(true); setActionError(null)
-    try {
-      const res = await overrideLeadScore(leadId, score)
-      if (res?.success) setLead(prev => ({ ...prev, ...res.data }))
-    } catch (err) { setActionError(err?.response?.data?.error ?? 'Score override failed') }
-    finally { setOverrideLoading(false) }
   }
 
   if (loading) return <ProfileSkeleton onBack={onBack} />
@@ -199,11 +351,10 @@ export default function LeadProfile({ leadId, onBack }) {
   const isNurture   = lead.nurture_track === true
   const isAffiliate = useAuthStore.getState().getRoleTemplate() === 'affiliate_partner'
   const isManager   = useAuthStore.getState().isManager()
+  const roleTemplate = useAuthStore.getState().getRoleTemplate()
+  const canReviewAttribution = roleTemplate === 'owner' || roleTemplate === 'ops_manager'
 
   const demoEnabled  = pipelineStages.some(s => s.key === 'meeting_done' && s.enabled !== false)
-  // meetingLabel: use the org-configured label for the meeting_done stage.
-  // pipelineStages includes all stages (enabled + disabled) with a .label field.
-  // Falls back to 'Demo' if meeting_done is not found (should not happen in practice).
   const meetingLabel = pipelineStages.find(s => s.key === 'meeting_done')?.label || 'Demo'
 
   const TABS = [
@@ -223,6 +374,21 @@ export default function LeadProfile({ leadId, onBack }) {
       {/* Back */}
       <BackButton onBack={onBack} />
 
+      {/* ATTRIB-1: pending attribution banner — shown to managers only */}
+      {lead.pending_attribution && canReviewAttribution && (
+        <div style={{ background: '#FFF9E0', border: '1.5px solid #F59E0B', borderRadius: ds.radius.md, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#92400E', margin: '0 0 2px', fontFamily: ds.fontSyne }}>⏳ Attribution Review Needed</p>
+            <p style={{ fontSize: 12.5, color: '#78350F', margin: 0 }}>This lead was reassigned. Please confirm which rep gets credit before it converts.</p>
+          </div>
+          <button
+            onClick={() => { setAttributionProposal(null); setShowAttributionModal(true) }}
+            style={{ background: '#F59E0B', color: 'white', border: 'none', borderRadius: ds.radius.md, padding: '8px 16px', fontSize: 12.5, fontWeight: 700, fontFamily: ds.fontSyne, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 44 }}>
+            Review Now
+          </button>
+        </div>
+      )}
+
       {/* ── Profile header ──────────────────────────────────── */}
       <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: ds.radius.xl, padding: isMobile ? '16px' : '22px 24px', marginBottom: 16, boxShadow: ds.cardShadow }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
@@ -236,6 +402,7 @@ export default function LeadProfile({ leadId, onBack }) {
               <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '2px 9px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>{scoreStyle.label}</span>
               <span style={{ background: stageStyle.bg, color: stageStyle.color, padding: '2px 9px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>{stageLabel}</span>
               {lead.deal_value != null && <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 9px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>💰 ₦{Number(lead.deal_value).toLocaleString()}</span>}
+              {lead.pending_attribution && <span style={{ background: '#FFF9E0', color: '#92400E', padding: '2px 9px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>⏳ Attribution Pending</span>}
             </div>
           </div>
         </div>
@@ -260,7 +427,10 @@ export default function LeadProfile({ leadId, onBack }) {
                 ))}
               </div>
             )}
-            {!isTerminal && lead.stage === 'proposal_sent' && <ActionBtn onClick={handleConvertClick} loading={actionLoading === 'convert'} color={ds.teal}>✓ Convert</ActionBtn>}
+            {/* ATTRIB-1: hide Convert button when attribution review is pending */}
+            {!isTerminal && lead.stage === 'proposal_sent' && !lead.pending_attribution && (
+              <ActionBtn onClick={handleConvertClick} loading={actionLoading === 'convert'} color={ds.teal}>✓ Convert</ActionBtn>
+            )}
             {!isTerminal && <ActionBtn onClick={() => setShowMarkLost(true)} loading={false} color={ds.red}>✗ Lost</ActionBtn>}
             {isLostStage && <ActionBtn onClick={handleReactivate} loading={actionLoading === 'reactivate'} color={ds.teal}>↺ Reactivate</ActionBtn>}
             {isNurture && <ActionBtn onClick={() => setShowNurtureReactivate(true)} loading={false} color="#7C3AED">↺ From Nurture</ActionBtn>}
@@ -363,6 +533,17 @@ export default function LeadProfile({ leadId, onBack }) {
 
       {showMarkLost && <MarkLostModal leadId={leadId} leadName={lead.full_name} onClose={() => setShowMarkLost(false)} onMarked={(updated) => { setLead(updated); setShowMarkLost(false) }} />}
       {showDealValueModal && <DealValueModal leadName={lead.full_name} onConfirm={handleDealValueConfirm} onSkip={handleDealValueSkip} loading={dealValueLoading} />}
+
+      {/* ATTRIB-1: attribution review modal */}
+      {showAttributionModal && (
+        <AttributionReviewModal
+          lead={lead}
+          leadId={leadId}
+          proposal={attributionProposal}
+          onConfirmed={handleAttributionConfirmed}
+          onClose={() => setShowAttributionModal(false)}
+        />
+      )}
     </div>
   )
 }

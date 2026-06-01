@@ -1267,22 +1267,203 @@ def reactivate_from_nurture(
 
     return updated
 
+# ---------------------------------------------------------------------------
+# ATTRIB-1 Session 2 — _propose_attribution + _notify_attribution_review
+# ---------------------------------------------------------------------------
+ 
+def _propose_attribution(db, org_id: str, lead_id: str) -> dict:
+    """
+    Build an attribution proposal for a lead that had multiple assignment windows.
+ 
+    Algorithm:
+      1. Fetch all lead_assignments rows for the lead (oldest first).
+      2. Fetch all outbound whatsapp_messages for the lead where sent_by IS NOT NULL
+         (rep-sent only — excludes bot/automated messages).
+      3. For each assignment window, count messages where created_at falls within
+         [assigned_at, unassigned_at] (or now() if window still open).
+      4. Primary   = rep with most messages sent across their windows.
+      5. Secondary = rep with second-most messages (only if messages_sent > 0).
+      6. Split defaults to 100/0 — ops manager adjusts in the review panel.
+ 
+    Returns dict with primary_user_id, primary_name, primary_pct,
+    secondary_user_id, secondary_name, secondary_pct, assignment_history.
+ 
+    S14: never raises — returns empty proposal on any error.
+    """
+    empty = {
+        "primary_user_id":    None,
+        "primary_name":       "Unknown",
+        "primary_pct":        100,
+        "secondary_user_id":  None,
+        "secondary_name":     None,
+        "secondary_pct":      0,
+        "assignment_history": [],
+    }
+    try:
+        # 1. Fetch assignment windows
+        asgn_res = (
+            db.table("lead_assignments")
+            .select("id, user_id, assigned_at, unassigned_at, assigned_by")
+            .eq("lead_id", lead_id)
+            .order("assigned_at", desc=False)
+            .execute()
+        )
+        assignments: list = asgn_res.data or []
+        if not assignments:
+            return empty
+ 
+        # 2. Lookup names for all reps in one query
+        user_ids = list({a["user_id"] for a in assignments if a.get("user_id")})
+        if not user_ids:
+            return empty
+ 
+        users_res = (
+            db.table("users")
+            .select("id, full_name")
+            .in_("id", user_ids)
+            .execute()
+        )
+        name_map: dict = {
+            u["id"]: u.get("full_name") or u["id"]
+            for u in (users_res.data or [])
+        }
+ 
+        # 3. Fetch all outbound rep messages for this lead (sent_by NOT NULL = rep-sent only)
+        msgs_res = (
+            db.table("whatsapp_messages")
+            .select("id, sent_by, created_at")
+            .eq("lead_id", lead_id)
+            .eq("org_id", org_id)
+            .eq("direction", "outbound")
+            .not_.is_("sent_by", "null")
+            .execute()
+        )
+        all_messages: list = msgs_res.data or []
+ 
+        now_iso = _now_iso()
+ 
+        # 4. Count messages per user within their assignment window(s) — Python-side (Pattern 33)
+        msg_count: dict = {}
+        for asgn in assignments:
+            uid = asgn.get("user_id")
+            if not uid:
+                continue
+            window_start = asgn.get("assigned_at") or ""
+            window_end   = asgn.get("unassigned_at") or now_iso
+            count = sum(
+                1 for m in all_messages
+                if m.get("sent_by") == uid
+                and (m.get("created_at") or "") >= window_start
+                and (m.get("created_at") or "") <= window_end
+            )
+            msg_count[uid] = msg_count.get(uid, 0) + count
+ 
+        # 5. Rank reps by message count
+        ranked = sorted(msg_count.items(), key=lambda x: x[1], reverse=True)
+        primary_uid   = ranked[0][0] if ranked else None
+        secondary_uid = (
+            ranked[1][0]
+            if len(ranked) > 1 and ranked[1][1] > 0
+            else None
+        )
+ 
+        # 6. Build history list for frontend display
+        history = [
+            {
+                "user_id":       a["user_id"],
+                "user_name":     name_map.get(a["user_id"], a["user_id"]),
+                "assigned_at":   a.get("assigned_at"),
+                "unassigned_at": a.get("unassigned_at"),
+                "messages_sent": msg_count.get(a["user_id"], 0),
+            }
+            for a in assignments
+        ]
+ 
+        return {
+            "primary_user_id":    primary_uid,
+            "primary_name":       name_map.get(primary_uid, "Unknown") if primary_uid else "Unknown",
+            "primary_pct":        100,
+            "secondary_user_id":  secondary_uid,
+            "secondary_name":     name_map.get(secondary_uid) if secondary_uid else None,
+            "secondary_pct":      0,
+            "assignment_history": history,
+        }
+ 
+    except Exception as exc:
+        logger.warning("_propose_attribution failed for lead %s (non-fatal): %s", lead_id, exc)
+        return empty
+ 
+ 
+def _notify_attribution_review(db, org_id: str, lead_id: str, lead_name: str) -> None:
+    """
+    Notify all active owner + ops_manager users that attribution review is needed.
+    In-app notification only (no WhatsApp — internal ops workflow).
+    notification type: attribution_review_needed
+    S14: never raises.
+    """
+    try:
+        users_res = (
+            db.table("users")
+            .select("id, roles(template)")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        all_users: list = users_res.data or []
+        if isinstance(all_users, dict):
+            all_users = [all_users]
+ 
+        title = f"Attribution review needed — {lead_name}"
+        body  = (
+            f"'{lead_name}' was reassigned during the sales process. "
+            "Review and confirm which rep(s) should receive credit for this conversion."
+        )
+ 
+        for u in all_users:
+            uid = u.get("id")
+            if not uid:
+                continue
+            roles = u.get("roles") or {}
+            if isinstance(roles, list):
+                roles = roles[0] if roles else {}
+            template = (roles.get("template") or "").lower()
+            if template not in ("owner", "ops_manager"):
+                continue
+            try:
+                db.table("notifications").insert({
+                    "org_id":        org_id,
+                    "user_id":       uid,
+                    "title":         title,
+                    "body":          body,
+                    "type":          "attribution_review_needed",
+                    "resource_type": "lead",
+                    "resource_id":   lead_id,
+                }).execute()
+            except Exception as _exc:
+                logger.warning(
+                    "_notify_attribution_review: insert failed for user %s: %s", uid, _exc
+                )
+    except Exception as exc:
+        logger.warning("_notify_attribution_review failed entirely (non-fatal): %s", exc)
+
+
 def convert_lead(
-    db: Any,
+    db,
     org_id: str,
     lead_id: str,
     user_id: str,
 ) -> dict:
     """
     Convert a lead to a customer.
-    - Lead must be in 'proposal_sent' stage
-    - Sets converted_at on lead, moves to 'converted'
-    - Creates customer record stub (Section 3.3)
-    - Creates subscription stub (Section 3.5)
+    - Lead must be in 'proposal_sent' stage.
+    - ATTRIB-1: if lead had >1 assignment window, sets pending_attribution = TRUE
+      and returns a proposal dict — conversion is NOT finalised yet.
+    - Single-window leads convert immediately (no change to existing behaviour).
+    - Sets converted_at, creates customer stub (Section 3.3) and subscription stub (Section 3.5).
     """
     lead = _lead_or_404(db, org_id, lead_id)
     current_stage = lead["stage"]
-
+ 
     if current_stage != "proposal_sent":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1294,47 +1475,81 @@ def convert_lead(
                 ),
             },
         )
-
+ 
+    # ── ATTRIB-1: multi-window check ──────────────────────────────────────
+    window_count = _count_assignment_windows(db, lead_id)
+    if window_count > 1:
+        proposal = _propose_attribution(db, org_id, lead_id)
+ 
+        db.table("leads").update({
+            "pending_attribution": True,
+            "updated_at":          _now_iso(),
+        }).eq("id", lead_id).eq("org_id", org_id).execute()
+ 
+        lead_name = lead.get("full_name", "Unknown")
+        _notify_attribution_review(db, org_id, lead_id, lead_name)
+ 
+        write_timeline_event(
+            db, org_id, lead_id,
+            event_type="attribution_pending",
+            actor_id=user_id,
+            description="Conversion paused — attribution review required",
+            metadata={"proposal": proposal},
+        )
+        write_audit_log(
+            db, org_id, user_id,
+            action="lead.attribution_pending",
+            resource_type="lead",
+            resource_id=lead_id,
+            old_value={"stage": current_stage},
+            new_value={"pending_attribution": True},
+        )
+ 
+        return {
+            **lead,
+            "pending_attribution":   True,
+            "_attribution_status":   "pending_attribution",
+            "_proposal":             proposal,
+        }
+ 
+    # ── Single-window path — existing flow, unchanged ─────────────────────
     converted_at = _now_iso()
-
-    # Update lead
+ 
     db.table("leads").update(
         {
-            "stage": "converted",
-            "converted_at": converted_at,
-            "updated_at": converted_at,
+            "stage":            "converted",
+            "converted_at":     converted_at,
+            "updated_at":       converted_at,
             "last_activity_at": converted_at,
         }
     ).eq("id", lead_id).eq("org_id", org_id).execute()
-
+ 
     # Create customer stub — Section 3.3
     customer_data: dict = {
-        "org_id": org_id,
-        "lead_id": lead_id,
-        "full_name": lead.get("full_name", ""),
-        "phone": lead.get("phone"),
-        "whatsapp": lead.get("whatsapp") or lead.get("phone") or "",
-        "email": lead.get("email"),
-        "business_name": lead.get("business_name", ""),
-        "business_type": lead.get("business_type"),
-        "location": lead.get("location"),
-        "branches": lead.get("branches"),
-        "assigned_to": lead.get("assigned_to"),
-        "whatsapp_opt_in": True,
+        "org_id":              org_id,
+        "lead_id":             lead_id,
+        "full_name":           lead.get("full_name", ""),
+        "phone":               lead.get("phone"),
+        "whatsapp":            lead.get("whatsapp") or lead.get("phone") or "",
+        "email":               lead.get("email"),
+        "business_name":       lead.get("business_name", ""),
+        "business_type":       lead.get("business_type"),
+        "location":            lead.get("location"),
+        "branches":            lead.get("branches"),
+        "assigned_to":         lead.get("assigned_to"),
+        "whatsapp_opt_in":     True,
         "onboarding_complete": False,
-        "churn_risk": "low",
+        "churn_risk":          "low",
     }
-    # Remove None values
     customer_data = {k: v for k, v in customer_data.items() if v is not None}
-
+ 
     customer_result = db.table("customers").insert(customer_data).execute()
     print(f"[DEBUG] customer insert result: data={customer_result.data}")
     customer = customer_result.data[0] if customer_result.data else customer_data
     customer_id = customer.get("id", "")
     print(f"[DEBUG] customer_id resolved to: '{customer_id}'")
-
-    # Gap 4 — re-link any tasks created against this lead to the new customer record
-    # so they surface correctly on the customer profile Tasks tab.
+ 
+    # Gap 4 — re-link tasks to new customer record
     if customer_id:
         try:
             _now_relink = datetime.now(timezone.utc).isoformat()
@@ -1347,25 +1562,23 @@ def convert_lead(
             _log.getLogger(__name__).warning(
                 "convert_lead: task re-linking failed — %s", exc
             )
-
+ 
     # Create subscription stub — Section 3.5
-    # TEMP-3 resolved: subscriptions table created in Phase 5A.
     subscription_data: dict = {
-        "org_id": org_id,
-        "customer_id": customer_id,
-        "plan_name": "Starter Plan",
-        "plan_tier": "starter",
-        "amount": 0,
-        "currency": "NGN",
-        "billing_cycle": "monthly",
-        "status": "trial",
+        "org_id":               org_id,
+        "customer_id":          customer_id,
+        "plan_name":            "Starter Plan",
+        "plan_tier":            "starter",
+        "amount":               0,
+        "currency":             "NGN",
+        "billing_cycle":        "monthly",
+        "status":               "trial",
         "current_period_start": datetime.now(timezone.utc).date().isoformat(),
-        "current_period_end": datetime.now(timezone.utc).date().isoformat(),
+        "current_period_end":   datetime.now(timezone.utc).date().isoformat(),
     }
     db.table("subscriptions").insert(subscription_data).execute()
-
+ 
     # Phase 9C: auto-create commission row if this lead had an assigned rep
-    # S14: never fail the core conversion due to commission creation
     if lead.get("assigned_to") and customer_id:
         try:
             from app.services.commissions_service import auto_create_commission
@@ -1382,14 +1595,15 @@ def convert_lead(
             _log.getLogger(__name__).warning(
                 "convert_lead: commission creation failed — %s", _ce
             )
+ 
     write_timeline_event(
         db, org_id, lead_id,
         event_type="stage_changed",
         actor_id=user_id,
         description="Lead converted to customer",
         metadata={
-            "from_stage": "proposal_sent",
-            "to_stage": "converted",
+            "from_stage":  "proposal_sent",
+            "to_stage":    "converted",
             "customer_id": customer_id,
         },
     )
@@ -1401,8 +1615,189 @@ def convert_lead(
         old_value={"stage": "proposal_sent"},
         new_value={"stage": "converted", "customer_id": customer_id},
     )
-
+ 
     return {**lead, "stage": "converted", "converted_at": converted_at, "customer_id": customer_id}
+
+
+def confirm_attribution(
+    db,
+    org_id: str,
+    lead_id: str,
+    confirming_user_id: str,
+    attributed_to_primary: str,
+    attributed_to_secondary,
+    attribution_split_pct: int,
+    attribution_note,
+) -> dict:
+    """
+    ATTRIB-1: Ops manager confirms attribution and finalises conversion.
+ 
+    Validates:
+      - Lead is in 'proposal_sent' stage
+      - pending_attribution is TRUE
+      - If secondary rep provided: split_pct must be 1–99
+    Then:
+      - Writes all attribution columns + converts lead (stage = converted)
+      - Creates customer stub, subscription stub, commission (primary rep)
+      - Writes timeline event + audit log
+    Called from POST /api/v1/leads/{id}/confirm-attribution.
+    """
+    lead = _lead_or_404(db, org_id, lead_id)
+ 
+    if lead.get("stage") != "proposal_sent":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code":    ErrorCode.INVALID_TRANSITION,
+                "message": "Lead must be in 'proposal_sent' stage to confirm attribution.",
+            },
+        )
+    if not lead.get("pending_attribution"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code":    ErrorCode.VALIDATION_ERROR,
+                "message": "This lead does not have a pending attribution review.",
+            },
+        )
+ 
+    # Validate split
+    if attributed_to_secondary:
+        if not (1 <= attribution_split_pct <= 99):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code":    ErrorCode.VALIDATION_ERROR,
+                    "message": "attribution_split_pct must be 1–99 when a secondary rep is provided.",
+                    "field":   "attribution_split_pct",
+                },
+            )
+    else:
+        # Normalise — no secondary means full credit to primary
+        attribution_split_pct = 100
+ 
+    converted_at = _now_iso()
+ 
+    # Write attribution columns + convert in one update
+    db.table("leads").update({
+        "stage":                    "converted",
+        "converted_at":             converted_at,
+        "updated_at":               converted_at,
+        "last_activity_at":         converted_at,
+        "pending_attribution":      False,
+        "attributed_to":            attributed_to_primary,
+        "attributed_to_secondary":  attributed_to_secondary,
+        "attribution_split_pct":    attribution_split_pct,
+        "attribution_confirmed_by": confirming_user_id,
+        "attribution_confirmed_at": converted_at,
+        "attribution_note":         attribution_note,
+    }).eq("id", lead_id).eq("org_id", org_id).execute()
+ 
+    # Customer stub — Section 3.3
+    customer_data: dict = {
+        "org_id":              org_id,
+        "lead_id":             lead_id,
+        "full_name":           lead.get("full_name", ""),
+        "phone":               lead.get("phone"),
+        "whatsapp":            lead.get("whatsapp") or lead.get("phone") or "",
+        "email":               lead.get("email"),
+        "business_name":       lead.get("business_name", ""),
+        "business_type":       lead.get("business_type"),
+        "location":            lead.get("location"),
+        "branches":            lead.get("branches"),
+        "assigned_to":         lead.get("assigned_to"),
+        "whatsapp_opt_in":     True,
+        "onboarding_complete": False,
+        "churn_risk":          "low",
+    }
+    customer_data = {k: v for k, v in customer_data.items() if v is not None}
+ 
+    customer_result = db.table("customers").insert(customer_data).execute()
+    customer = customer_result.data[0] if customer_result.data else customer_data
+    customer_id = customer.get("id", "")
+ 
+    # Gap 4 — re-link tasks
+    if customer_id:
+        try:
+            db.table("tasks").update({
+                "source_record_id": customer_id,
+                "updated_at":       converted_at,
+            }).eq("source_record_id", lead_id).eq("org_id", org_id).execute()
+        except Exception as exc:
+            logger.warning("confirm_attribution: task re-linking failed — %s", exc)
+ 
+    # Subscription stub — Section 3.5
+    subscription_data: dict = {
+        "org_id":               org_id,
+        "customer_id":          customer_id,
+        "plan_name":            "Starter Plan",
+        "plan_tier":            "starter",
+        "amount":               0,
+        "currency":             "NGN",
+        "billing_cycle":        "monthly",
+        "status":               "trial",
+        "current_period_start": datetime.now(timezone.utc).date().isoformat(),
+        "current_period_end":   datetime.now(timezone.utc).date().isoformat(),
+    }
+    db.table("subscriptions").insert(subscription_data).execute()
+ 
+    # Commission — credited to primary (confirmed) rep
+    if customer_id:
+        try:
+            from app.services.commissions_service import auto_create_commission
+            auto_create_commission(
+                db=db,
+                org_id=org_id,
+                affiliate_user_id=attributed_to_primary,
+                event_type="lead_converted",
+                lead_id=lead_id,
+                customer_id=customer_id,
+            )
+        except Exception as _ce:
+            logger.warning("confirm_attribution: commission creation failed — %s", _ce)
+ 
+    write_timeline_event(
+        db, org_id, lead_id,
+        event_type="stage_changed",
+        actor_id=confirming_user_id,
+        description="Lead converted to customer — attribution confirmed",
+        metadata={
+            "from_stage":              "proposal_sent",
+            "to_stage":                "converted",
+            "customer_id":             customer_id,
+            "attributed_to":           attributed_to_primary,
+            "attributed_to_secondary": attributed_to_secondary,
+            "attribution_split_pct":   attribution_split_pct,
+        },
+    )
+    write_audit_log(
+        db, org_id, confirming_user_id,
+        action="lead.attribution_confirmed",
+        resource_type="lead",
+        resource_id=lead_id,
+        old_value={"stage": "proposal_sent", "pending_attribution": True},
+        new_value={
+            "stage":                   "converted",
+            "customer_id":             customer_id,
+            "attributed_to":           attributed_to_primary,
+            "attributed_to_secondary": attributed_to_secondary,
+            "attribution_split_pct":   attribution_split_pct,
+        },
+    )
+ 
+    return {
+        **lead,
+        "stage":                    "converted",
+        "converted_at":             converted_at,
+        "customer_id":              customer_id,
+        "attributed_to":            attributed_to_primary,
+        "attributed_to_secondary":  attributed_to_secondary,
+        "attribution_split_pct":    attribution_split_pct,
+        "attribution_confirmed_by": confirming_user_id,
+        "attribution_confirmed_at": converted_at,
+        "attribution_note":         attribution_note,
+        "pending_attribution":      False,
+    }
 
 
 # ---------------------------------------------------------------------------
