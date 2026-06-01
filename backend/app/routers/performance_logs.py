@@ -542,10 +542,12 @@ def get_public_log_form(token: str, db=Depends(get_supabase)):
         .execute()
     )
     all_tasks = tasks_res.data or []
-    # Keep tasks that are due today or earlier, or have no due date yet
+    # Keep tasks due within the next 7 days, overdue, or with no due date
+    from datetime import timedelta
+    lookahead_str = (date.today() + timedelta(days=7)).isoformat()
     tasks = [
         t for t in all_tasks
-        if not t.get("due_date") or t["due_date"] <= today_str
+        if not t.get("due_date") or t["due_date"] <= lookahead_str
     ]
 
     return {
