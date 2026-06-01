@@ -837,13 +837,22 @@ function ActivityLogTab({ user }) {
 }
 
 // ── Main Module ───────────────────────────────────────────────────────────────
-const TABS = [
+const ALL_TABS = [
   { id: 'issues',   label: 'Issues',       icon: '🏗️' },
   { id: 'activity', label: 'Activity Log', icon: '📅' },
 ]
 
 export default function InternalOpsModule({ user }) {
-  const [activeTab, setActiveTab] = useState('issues')
+  const role = user?.roles?.template || ''
+  const isSalesAgent = role === 'sales_agent'
+
+  // Sales agents see Activity Log only — Issues tab hidden
+  const TABS = isSalesAgent
+    ? ALL_TABS.filter(t => t.id === 'activity')
+    : ALL_TABS
+
+  // Sales agents land on activity; everyone else on issues
+  const [activeTab, setActiveTab] = useState(isSalesAgent ? 'activity' : 'issues')
 
   return (
     <div>

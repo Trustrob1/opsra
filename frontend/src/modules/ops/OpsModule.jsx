@@ -27,19 +27,28 @@ import GrowthDashboard from './GrowthDashboard'
 import InternalOpsModule from './InternalOpsModule'
 import ContractorModule  from './ContractorModule'
 
-// Growth tab visible to owner and ops_manager only
-const GROWTH_ROLES = ['owner', 'ops_manager']
+// Role groups
+const MANAGER_ROLES    = ['owner', 'ops_manager']
+const SALES_AGENT_ROLE = 'sales_agent'
+const SUPPORT_ROLE     = 'support_agent'
 
 function buildTabs(role) {
-  const tabs = [
-    { id: 'dashboard', label: 'Dashboard',    icon: '📊' },
-    { id: 'ask',       label: 'Ask Data',     icon: '💬' },
-    { id: 'internal',     label: 'Internal Ops', icon: '🏗️' },
-    { id: 'contractors',  label: 'Contractors',  icon: '🤝' },
-  ]
-  if (GROWTH_ROLES.includes(role)) {
-    tabs.push({ id: 'growth', label: 'Growth', icon: '📈' })
+  // Support agents see nothing in this module
+  if (role === SUPPORT_ROLE) return []
+
+  // Sales agents see only Internal Ops (Activity Log — Issues hidden inside InternalOpsModule)
+  if (role === SALES_AGENT_ROLE) {
+    return [{ id: 'internal', label: 'Internal Ops', icon: '🏗️' }]
   }
+
+  // Owner + ops_manager see everything
+  const tabs = [
+    { id: 'dashboard',   label: 'Dashboard',    icon: '📊' },
+    { id: 'ask',         label: 'Ask Data',      icon: '💬' },
+    { id: 'internal',    label: 'Internal Ops',  icon: '🏗️' },
+    { id: 'contractors', label: 'Contractors',   icon: '🤝' },
+    { id: 'growth',      label: 'Growth',        icon: '📈' },
+  ]
   return tabs
 }
 
@@ -129,7 +138,9 @@ export default function OpsModule({ user, setView, setActiveNav }) {
   const role    = user?.roles?.template || ''
   const tabs    = buildTabs(role)
 
-  const [activeTab, setActiveTab] = useState('dashboard')
+  // Sales agents land on internal tab; all others land on dashboard
+  const defaultTab = role === SALES_AGENT_ROLE ? 'internal' : 'dashboard'
+  const [activeTab, setActiveTab] = useState(defaultTab)
   const { metrics, loading, error, refresh, ask } = useOps()
 
   return (
@@ -138,32 +149,40 @@ export default function OpsModule({ user, setView, setActiveNav }) {
       <TabBar active={activeTab} onChange={setActiveTab} tabs={tabs} />
 
       {/* Pattern 26: mount-and-hide — all panels stay in the DOM */}
+      {/* Dashboard — manager only */}
       <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
-        <DashboardView
-          metrics={metrics}
-          loading={loading}
-          error={error}
-          onRefresh={refresh}
-        />
+        {MANAGER_ROLES.includes(role) && (
+          <DashboardView
+            metrics={metrics}
+            loading={loading}
+            error={error}
+            onRefresh={refresh}
+          />
+        )}
       </div>
 
+      {/* Ask Data — manager only */}
       <div style={{ display: activeTab === 'ask' ? 'block' : 'none' }}>
-        <AskDataView onAsk={ask} />
+        {MANAGER_ROLES.includes(role) && (
+          <AskDataView onAsk={ask} />
+        )}
       </div>
 
+      {/* Internal Ops — managers + sales_agent (sales_agent sees activity log only — enforced inside InternalOpsModule) */}
       <div style={{ display: activeTab === 'internal' ? 'block' : 'none' }}>
         <InternalOpsModule user={user} />
       </div>
 
+      {/* Contractors — manager only */}
       <div style={{ display: activeTab === 'contractors' ? 'block' : 'none' }}>
-        {GROWTH_ROLES.includes(role) && (
+        {MANAGER_ROLES.includes(role) && (
           <ContractorModule user={user} />
         )}
       </div>
 
-      {/* Growth tab — only rendered for owner/ops_manager (Pattern 26: still mounted) */}
+      {/* Growth — manager only */}
       <div style={{ display: activeTab === 'growth' ? 'block' : 'none' }}>
-        {GROWTH_ROLES.includes(role) && (
+        {MANAGER_ROLES.includes(role) && (
           <GrowthDashboard user={user} setView={setView} />
         )}
       </div>
