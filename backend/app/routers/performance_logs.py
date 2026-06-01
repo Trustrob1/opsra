@@ -530,6 +530,19 @@ def get_public_log_form(token: str, db=Depends(get_supabase)):
             pass  # fail open — never block on date parse error
 
     # Never return log_pin (hash) in any response
+    # Fetch current + overdue tasks for the contractor
+    today_str = date.today().isoformat()
+    tasks_res = (
+        db.table("contractor_tasks")
+        .select("id, task_description, phase, week_number, due_date, status, owner, notes")
+        .eq("contractor_id", contractor["id"])
+        .neq("status", "done")
+        .or_(f"due_date.lte.{today_str},due_date.is.null")
+        .order("due_date", desc=False)
+        .execute()
+    )
+    tasks = tasks_res.data or []
+
     return {
         "status": "ok",
         "data": {
@@ -537,6 +550,7 @@ def get_public_log_form(token: str, db=Depends(get_supabase)):
             "full_name": contractor["full_name"],
             "role_title": contractor["role_title"],
             "kpi_targets": contractor.get("kpi_targets") or [],
+            "tasks": tasks,
         },
     }
 

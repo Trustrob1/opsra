@@ -1703,6 +1703,7 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
   const [expanded, setExpanded] = useState(false)
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [tasks, setTasks] = useState([])
   const [logForm, setLogForm] = useState(null) // kpi_key currently being logged
   const [logValue, setLogValue] = useState('')
   const [logSaving, setLogSaving] = useState(false)
@@ -1791,8 +1792,12 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
     if (summary) return
     setLoading(true)
     try {
-      const data = await getPerformanceSummary(contractorId)
-      setSummary(data)
+      const [perfData, taskData] = await Promise.all([
+        getPerformanceSummary(contractorId),
+        getContractorTasks(contractorId).catch(() => ({ items: [] })),
+      ])
+      setSummary(perfData)
+      setTasks(taskData.items || [])
     } catch { /* silent */ }
     finally { setLoading(false) }
   }
@@ -1849,6 +1854,23 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                   {paceIcon[kpi.pace_status]} {kpi.pace_status.replace('_', ' ')}
                 </span>
               </div>
+
+              {/* Task summary line */}
+              {(() => {
+                const today = new Date().toISOString().split('T')[0]
+                const total    = tasks.length
+                const done     = tasks.filter(t => t.status === 'done').length
+                const blocked  = tasks.filter(t => t.status === 'blocked').length
+                const overdue  = tasks.filter(t => t.due_date && t.due_date < today && t.status !== 'done').length
+                if (total === 0) return null
+                return (
+                  <div style={{ fontSize: 11, color: '#6B8FA0', marginBottom: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <span>📋 Tasks: <strong style={{ color: '#0a1f2e' }}>{done}/{total} done</strong></span>
+                    {blocked > 0 && <span style={{ color: '#c5221f', fontWeight: 600 }}>🔴 {blocked} blocked</span>}
+                    {overdue > 0 && <span style={{ color: '#b45309', fontWeight: 600 }}>⚠️ {overdue} overdue</span>}
+                  </div>
+                )
+              })()}
 
               {/* Progress bar */}
               <div style={{ height: 8, background: '#dde4e8', borderRadius: 4, overflow: 'hidden', marginBottom: 6 }}>

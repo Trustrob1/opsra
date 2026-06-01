@@ -191,6 +191,75 @@ def stamp_first_contacted(db: Any, org_id: str, lead_id: str) -> None:
     }).eq("id", lead_id).eq("org_id", org_id).execute()
 
 
+# ---------------------------------------------------------------------------
+# ATTRIB-1: Assignment history helpers
+# ---------------------------------------------------------------------------
+
+def _open_assignment(db: Any, org_id: str, lead_id: str, user_id: str, assigned_by: Optional[str] = None) -> None:
+    """
+    Open a new lead_assignments row when a lead is assigned to a rep.
+    S14: never raises — failure is logged and swallowed.
+    """
+    try:
+        now = _now_iso()
+        db.table("lead_assignments").insert({
+            "org_id":      org_id,
+            "lead_id":     lead_id,
+            "user_id":     user_id,
+            "assigned_at": now,
+            "assigned_by": assigned_by,
+            "created_at":  now,
+        }).execute()
+    except Exception as exc:
+        logger.warning("_open_assignment: failed for lead %s user %s — %s", lead_id, user_id, exc)
+
+
+def _close_assignment(db: Any, lead_id: str, user_id: str) -> None:
+    """
+    Close the current open lead_assignments row for a rep on a lead.
+    Finds the most recent row where unassigned_at IS NULL for this lead+user.
+    S14: never raises — failure is logged and swallowed.
+    """
+    try:
+        res = (
+            db.table("lead_assignments")
+            .select("id")
+            .eq("lead_id", lead_id)
+            .eq("user_id", user_id)
+            .is_("unassigned_at", "null")
+            .order("assigned_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        if not rows:
+            return
+        row_id = rows[0]["id"]
+        db.table("lead_assignments").update({
+            "unassigned_at": _now_iso(),
+        }).eq("id", row_id).execute()
+    except Exception as exc:
+        logger.warning("_close_assignment: failed for lead %s user %s — %s", lead_id, user_id, exc)
+
+
+def _count_assignment_windows(db: Any, lead_id: str) -> int:
+    """
+    Returns the number of distinct assignment windows for a lead.
+    Used by Session 2 to decide whether attribution review is needed.
+    S14: returns 0 on any error.
+    """
+    try:
+        res = (
+            db.table("lead_assignments")
+            .select("id")
+            .eq("lead_id", lead_id)
+            .execute()
+        )
+        return len(res.data or [])
+    except Exception:
+        return 0
+
+
 def _lead_or_404(db: Any, org_id: str, lead_id: str) -> dict:
     """Fetch a non-deleted lead by id scoped to org, or raise 404."""
     result = (
@@ -722,6 +791,11 @@ def create_lead(
     except Exception as _assign_exc:
         logger.warning("create_lead: auto_assign_lead failed — %s", _assign_exc)
 
+    # ATTRIB-1: open first assignment history window
+    assigned_to = lead.get("assigned_to") or data.get("assigned_to")
+    if assigned_to and lead_id:
+        _open_assignment(db, org_id, lead_id, assigned_to, assigned_by=user_id)
+
     return lead
 
 
@@ -742,6 +816,18 @@ def update_lead(
     updates = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
     if not updates:
         return _lead_or_404(db, org_id, lead_id)
+
+    # ATTRIB-1: if assigned_to is changing, close old window and open new one
+    new_assigned_to = updates.get("assigned_to")
+    if new_assigned_to:
+        existing_lead = _lead_or_404(db, org_id, lead_id)
+        old_assigned_to = existing_lead.get("assigned_to")
+        if old_assigned_to and old_assigned_to != new_assigned_to:
+            _close_assignment(db, lead_id, old_assigned_to)
+            _open_assignment(db, org_id, lead_id, new_assigned_to, assigned_by=user_id)
+        elif not old_assigned_to:
+            # Lead had no assignment before — just open
+            _open_assignment(db, org_id, lead_id, new_assigned_to, assigned_by=user_id)
 
     updates["updated_at"] = _now_iso()
     updates["last_activity_at"] = _now_iso()

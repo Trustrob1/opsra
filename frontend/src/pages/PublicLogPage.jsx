@@ -232,6 +232,87 @@ function PinGate({ onVerified, contractorName, error, loading }) {
   )
 }
 
+function TasksSection({ tasks }) {
+  if (!tasks || tasks.length === 0) return null
+
+  const today = new Date().toISOString().split('T')[0]
+
+  // Group by phase
+  const grouped = {}
+  tasks.forEach(t => {
+    const phase = t.phase || 'General'
+    if (!grouped[phase]) grouped[phase] = []
+    grouped[phase].push(t)
+  })
+
+  const statusIcon = { not_started: '⬜', in_progress: '🔄', blocked: '🔴', done: '✅' }
+  const statusLabel = { not_started: 'Not Started', in_progress: 'In Progress', blocked: 'Blocked', done: 'Done' }
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={S.divider} />
+      <div style={S.sectionTitle}>Your Tasks</div>
+      <div style={{ fontSize: 12, color: '#6B8FA0', marginBottom: 14 }}>
+        Showing current and overdue tasks
+      </div>
+      {Object.entries(grouped).map(([phase, phaseTasks]) => (
+        <div key={phase} style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#4a6375', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+            {phase}
+          </div>
+          {phaseTasks.map(task => {
+            const isOverdue = task.due_date && task.due_date < today && task.status !== 'done'
+            const isBlocked = task.status === 'blocked'
+            return (
+              <div key={task.id} style={{
+                background: isBlocked ? '#fff0f0' : isOverdue ? '#fff8f0' : '#f8fafc',
+                border: `1px solid ${isBlocked ? '#ffc0c0' : isOverdue ? '#fde8c8' : '#dde4e8'}`,
+                borderRadius: 8,
+                padding: '10px 14px',
+                marginBottom: 8,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0a1f2e', marginBottom: 4 }}>
+                      {statusIcon[task.status] || '⬜'} {task.task_description}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      {task.due_date && (
+                        <span style={{ fontSize: 11, color: isOverdue ? '#c0392b' : '#6B8FA0', fontWeight: isOverdue ? 600 : 400 }}>
+                          {isOverdue ? '⚠ Overdue: ' : 'Due: '}{task.due_date}
+                        </span>
+                      )}
+                      {task.week_number && (
+                        <span style={{ fontSize: 11, color: '#6B8FA0' }}>Week {task.week_number}</span>
+                      )}
+                      {task.owner && (
+                        <span style={{ fontSize: 11, color: '#6B8FA0' }}>Owner: {task.owner}</span>
+                      )}
+                    </div>
+                    {task.notes && (
+                      <div style={{ fontSize: 11, color: '#6B8FA0', marginTop: 4, fontStyle: 'italic' }}>
+                        "{task.notes}"
+                      </div>
+                    )}
+                  </div>
+                  <div style={{
+                    fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                    color: isBlocked ? '#c0392b' : isOverdue ? '#b45309' : '#6B8FA0',
+                    background: isBlocked ? '#fce8e6' : isOverdue ? '#fef3e2' : '#f1f3f4',
+                    padding: '3px 8px', borderRadius: 5,
+                  }}>
+                    {statusLabel[task.status] || task.status}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function LogForm({ contractor, token, pin, onSuccess }) {
   const kpis = contractor.kpi_targets || []
   const [logDate, setLogDate] = useState(todayISO())
@@ -333,6 +414,8 @@ function LogForm({ contractor, token, pin, onSuccess }) {
       >
         {submitting ? 'Submitting…' : '✓ Submit Log'}
       </button>
+
+      <TasksSection tasks={contractor.tasks || []} />
     </div>
   )
 }
