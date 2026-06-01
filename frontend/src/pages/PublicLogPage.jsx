@@ -233,11 +233,21 @@ function PinGate({ onVerified, contractorName, error, loading }) {
 }
 
 function TasksSection({ tasks }) {
+  const [expanded, setExpanded] = useState(false)
   if (!tasks || tasks.length === 0) return null
 
   const today = new Date().toISOString().split('T')[0]
+  const blocked = tasks.filter(t => t.status === 'blocked').length
+  const overdue  = tasks.filter(t => t.due_date && t.due_date < today).length
+  const total    = tasks.length
 
-  // Group by phase
+  // Summary pill colors
+  const hasAlert = blocked > 0 || overdue > 0
+  const summaryBg = blocked > 0 ? '#fff0f0' : overdue > 0 ? '#fff8f0' : '#f0f9f6'
+  const summaryBorder = blocked > 0 ? '#ffc0c0' : overdue > 0 ? '#fde8c8' : '#b2e8d8'
+  const summaryColor = blocked > 0 ? '#c0392b' : overdue > 0 ? '#b45309' : '#1dc8a4'
+
+  // Group by phase for expanded view
   const grouped = {}
   tasks.forEach(t => {
     const phase = t.phase || 'General'
@@ -249,66 +259,93 @@ function TasksSection({ tasks }) {
   const statusLabel = { not_started: 'Not Started', in_progress: 'In Progress', blocked: 'Blocked', done: 'Done' }
 
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={S.divider} />
-      <div style={S.sectionTitle}>Your Tasks</div>
-      <div style={{ fontSize: 12, color: '#6B8FA0', marginBottom: 14 }}>
-        Showing current and overdue tasks
-      </div>
-      {Object.entries(grouped).map(([phase, phaseTasks]) => (
-        <div key={phase} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#4a6375', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
-            {phase}
-          </div>
-          {phaseTasks.map(task => {
-            const isOverdue = task.due_date && task.due_date < today && task.status !== 'done'
-            const isBlocked = task.status === 'blocked'
-            return (
-              <div key={task.id} style={{
-                background: isBlocked ? '#fff0f0' : isOverdue ? '#fff8f0' : '#f8fafc',
-                border: `1px solid ${isBlocked ? '#ffc0c0' : isOverdue ? '#fde8c8' : '#dde4e8'}`,
-                borderRadius: 8,
-                padding: '10px 14px',
-                marginBottom: 8,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0a1f2e', marginBottom: 4 }}>
-                      {statusIcon[task.status] || '⬜'} {task.task_description}
-                    </div>
-                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                      {task.due_date && (
-                        <span style={{ fontSize: 11, color: isOverdue ? '#c0392b' : '#6B8FA0', fontWeight: isOverdue ? 600 : 400 }}>
-                          {isOverdue ? '⚠ Overdue: ' : 'Due: '}{task.due_date}
-                        </span>
-                      )}
-                      {task.week_number && (
-                        <span style={{ fontSize: 11, color: '#6B8FA0' }}>Week {task.week_number}</span>
-                      )}
-                      {task.owner && (
-                        <span style={{ fontSize: 11, color: '#6B8FA0' }}>Owner: {task.owner}</span>
-                      )}
-                    </div>
-                    {task.notes && (
-                      <div style={{ fontSize: 11, color: '#6B8FA0', marginTop: 4, fontStyle: 'italic' }}>
-                        "{task.notes}"
-                      </div>
-                    )}
-                  </div>
-                  <div style={{
-                    fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-                    color: isBlocked ? '#c0392b' : isOverdue ? '#b45309' : '#6B8FA0',
-                    background: isBlocked ? '#fce8e6' : isOverdue ? '#fef3e2' : '#f1f3f4',
-                    padding: '3px 8px', borderRadius: 5,
-                  }}>
-                    {statusLabel[task.status] || task.status}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+    <div style={{ marginBottom: 20 }}>
+      {/* Collapsed summary pill — always visible at top */}
+      <button
+        onClick={() => setExpanded(p => !p)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: summaryBg,
+          border: `1px solid ${summaryBorder}`,
+          borderRadius: 10,
+          padding: '10px 14px',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: summaryColor }}>
+            ✅ Tasks this week: {total}
+          </span>
+          {blocked > 0 && (
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#c0392b', background: '#fce8e6', padding: '2px 8px', borderRadius: 5 }}>
+              🔴 {blocked} blocked
+            </span>
+          )}
+          {overdue > 0 && (
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#b45309', background: '#fef3e2', padding: '2px 8px', borderRadius: 5 }}>
+              ⚠️ {overdue} overdue
+            </span>
+          )}
         </div>
-      ))}
+        <span style={{ fontSize: 12, color: '#6B8FA0', flexShrink: 0, marginLeft: 8 }}>
+          {expanded ? '▲ Hide' : '▼ View'}
+        </span>
+      </button>
+
+      {/* Expanded task list */}
+      {expanded && (
+        <div style={{ marginTop: 8, border: '1px solid #dde4e8', borderRadius: 10, overflow: 'hidden' }}>
+          {Object.entries(grouped).map(([phase, phaseTasks]) => (
+            <div key={phase}>
+              <div style={{ padding: '8px 14px', background: '#f8fafc', borderBottom: '1px solid #edf1f4', fontSize: 11, fontWeight: 700, color: '#4a6375', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {phase}
+              </div>
+              {phaseTasks.map((task, i) => {
+                const isOverdue = task.due_date && task.due_date < today
+                const isBlocked = task.status === 'blocked'
+                return (
+                  <div key={task.id} style={{
+                    padding: '10px 14px',
+                    background: isBlocked ? '#fff8f8' : isOverdue ? '#fffbf5' : 'white',
+                    borderBottom: i < phaseTasks.length - 1 ? '1px solid #f1f3f4' : 'none',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8,
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0a1f2e', marginBottom: 3 }}>
+                        {statusIcon[task.status] || '⬜'} {task.task_description}
+                      </div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {task.due_date && (
+                          <span style={{ fontSize: 11, color: isOverdue ? '#c0392b' : '#6B8FA0', fontWeight: isOverdue ? 600 : 400 }}>
+                            {isOverdue ? '⚠ Overdue: ' : 'Due: '}{task.due_date}
+                          </span>
+                        )}
+                        {task.week_number && <span style={{ fontSize: 11, color: '#6B8FA0' }}>Week {task.week_number}</span>}
+                        {task.owner && <span style={{ fontSize: 11, color: '#6B8FA0' }}>Owner: {task.owner}</span>}
+                      </div>
+                      {task.notes && (
+                        <div style={{ fontSize: 11, color: '#6B8FA0', marginTop: 3, fontStyle: 'italic' }}>"{task.notes}"</div>
+                      )}
+                    </div>
+                    <div style={{
+                      fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                      color: isBlocked ? '#c0392b' : isOverdue ? '#b45309' : '#6B8FA0',
+                      background: isBlocked ? '#fce8e6' : isOverdue ? '#fef3e2' : '#f1f3f4',
+                      padding: '3px 8px', borderRadius: 5,
+                    }}>
+                      {statusLabel[task.status] || task.status}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -360,6 +397,8 @@ function LogForm({ contractor, token, pin, onSuccess }) {
     <div style={S.card}>
       <p style={S.name}>{contractor.full_name}</p>
       <p style={S.role}>{contractor.role_title}</p>
+
+      <TasksSection tasks={contractor.tasks || []} />
 
       <div style={S.fieldGroup}>
         <label style={S.label}>Log Date</label>
@@ -415,8 +454,7 @@ function LogForm({ contractor, token, pin, onSuccess }) {
         {submitting ? 'Submitting…' : '✓ Submit Log'}
       </button>
 
-      <TasksSection tasks={contractor.tasks || []} />
-    </div>
+      </div>
   )
 }
 
