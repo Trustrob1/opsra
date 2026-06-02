@@ -159,13 +159,31 @@ class PublicCatalogCORSMiddleware(BaseHTTPMiddleware):
     """
     Allow cross-origin requests on /api/v1/public/ routes only.
     Authenticated routes are unchanged (still locked to _origins).
+    Owner dashboard routes (/public/owner-dashboard/) also need
+    Authorization header for PIN session token.
     """
     async def dispatch(self, request: Request, call_next):
+        # Handle preflight OPTIONS requests directly — must return before call_next
+        if request.method == "OPTIONS" and request.url.path.startswith("/api/v1/public/"):
+            from starlette.responses import Response
+            is_owner_dash = "/owner-dashboard/" in request.url.path
+            resp = Response(status_code=200)
+            resp.headers["Access-Control-Allow-Origin"]  = "*"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = (
+                "Content-Type, Authorization" if is_owner_dash else "Content-Type"
+            )
+            resp.headers["Access-Control-Max-Age"] = "600"
+            return resp
+
         response = await call_next(request)
         if request.url.path.startswith("/api/v1/public/"):
+            is_owner_dash = "/owner-dashboard/" in request.url.path
             response.headers["Access-Control-Allow-Origin"]  = "*"
-            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = (
+                "Content-Type, Authorization" if is_owner_dash else "Content-Type"
+            )
         return response
 
 
