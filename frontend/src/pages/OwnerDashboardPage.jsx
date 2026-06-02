@@ -12,7 +12,19 @@ import OwnerDashboardContent from './OwnerDashboardContent'
 
 const SESSION_KEY = 'owner_dash_session'
 
+function useTablerIcons() {
+  useEffect(() => {
+    if (document.querySelector('link[data-tabler-icons]')) return
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css'
+    link.setAttribute('data-tabler-icons', 'true')
+    document.head.appendChild(link)
+  }, [])
+}
+
 export default function OwnerDashboardPage() {
+  useTablerIcons()
   // Extract token from URL path: /owner-dashboard/:token
   const token = window.location.pathname.split('/owner-dashboard/')[1]?.split('/')[0] || ''
 
