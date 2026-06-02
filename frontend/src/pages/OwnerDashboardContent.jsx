@@ -37,19 +37,19 @@ const pill = (v, size = 10) => ({
 })
 
 const CARD = {
-  background: 'var(--color-background-primary)',
-  border: '0.5px solid var(--color-border-tertiary)',
+  background: 'white',
+  border: '1px solid #e5e7eb',
   borderRadius: 10, overflow: 'hidden',
 }
 const CH = {
   display: 'flex', alignItems: 'center', gap: 8,
   padding: '10px 12px',
-  borderBottom: '0.5px solid var(--color-border-tertiary)',
+  borderBottom: '1px solid #f3f4f6',
 }
 const CB = { padding: '10px 12px' }
 const SROW = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  padding: '5px 0', borderBottom: '0.5px solid var(--color-border-tertiary)',
+  padding: '5px 0', borderBottom: '1px solid #f3f4f6',
   fontSize: 12,
 }
 
@@ -179,7 +179,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
   const ringBorder = hv === 'green' ? '#10b981' : hv === 'amber' ? '#F59E0B' : '#E24B4A'
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* ── Top bar (mobile fallback) ── */}
       <div style={{
@@ -252,7 +252,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
           )}
 
           {/* Quick info */}
-          <div style={{ ...CARD, padding: '10px 12px' }}>
+          <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px' }}>
             <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
                 <i className="ti ti-clock" style={{ fontSize: 12 }} aria-hidden="true" />
@@ -295,7 +295,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
                     { label: 'At risk',  val: panels.panel_staff.at_risk,   v: 'amber', icon: 'alert-triangle' },
                     { label: 'Off track',val: panels.panel_staff.off_track, v: 'red',   icon: 'circle-x' },
                   ].map(s => (
-                    <div key={s.label} style={{ background: 'var(--color-background-secondary)', borderRadius: 8, padding: '10px 6px', textAlign: 'center' }}>
+                    <div key={s.label} style={{ background: '#f9fafb', borderRadius: 8, padding: '10px 6px', textAlign: 'center' }}>
                       <i className={`ti ti-${s.icon}`} style={{ fontSize: 16, color: C[s.v].color, display: 'block', marginBottom: 4 }} aria-hidden="true" />
                       <div style={{ fontSize: 22, fontWeight: 500, color: C[s.v].color, lineHeight: 1 }}>{s.val}</div>
                       <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginTop: 3 }}>{s.label}</div>
@@ -350,7 +350,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
                   <span style={{ fontWeight: 500, color: (panels.panel_tasks.overdue?.length || 0) > 0 ? C.red.color : 'var(--color-text-primary)' }}>{panels.panel_tasks.overdue?.length || 0}</span>
                 </div>
                 {panels.panel_tasks.overdue?.slice(0, 3).length > 0 && (
-                  <div style={{ background: 'var(--color-background-secondary)', borderRadius: 7, padding: '8px 10px', marginTop: 10 }}>
+                  <div style={{ background: '#f9fafb', borderRadius: 7, padding: '8px 10px', marginTop: 10 }}>
                     <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 5, display: 'flex', alignItems: 'center', gap: 5 }}>
                       <i className="ti ti-list" style={{ fontSize: 12 }} aria-hidden="true" />Top overdue
                     </div>
