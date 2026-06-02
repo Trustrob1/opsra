@@ -225,7 +225,8 @@ def _fetch_leads_in_period(
             .select(
                 "id, stage, score, created_at, converted_at, lost_at, "
                 "utm_source, entry_path, deal_value, first_touch_team, "
-                "lost_reason, assigned_to, updated_at"
+                "lost_reason, assigned_to, updated_at, "
+                "attributed_to, attributed_to_secondary"
             )
             .eq("org_id", org_id)
             .is_("deleted_at", None)
@@ -259,7 +260,8 @@ def _fetch_converted_leads_in_period(
         result = (
             db.table("leads")
             .select(
-                "id, stage, deal_value, converted_at, first_touch_team, assigned_to"
+                "id, stage, deal_value, converted_at, first_touch_team, assigned_to, "
+                "attributed_to, attributed_to_secondary, attribution_split_pct"
             )
             .eq("org_id", org_id)
             .eq("stage", "converted")
@@ -589,17 +591,47 @@ def get_revenue_report(
     S14: returns error dict on any failure — never raises.
     """
     try:
+        def _rep_revenue_share(lead: dict, filter_rep_id: Optional[str]) -> float:
+            """
+            Return the portion of deal_value attributable to filter_rep_id.
+            If no attribution data, full value goes to assigned_to (backwards compat).
+            If no filter_rep_id, returns full deal_value (org-wide totals unchanged).
+            """
+            val = float(lead.get("deal_value") or 0)
+            if not filter_rep_id:
+                return val
+            primary   = lead.get("attributed_to")
+            secondary = lead.get("attributed_to_secondary")
+            split_pct = lead.get("attribution_split_pct")
+            # No attribution confirmed — fall back to assigned_to
+            if not primary:
+                return val if lead.get("assigned_to") == filter_rep_id else 0.0
+            try:
+                pct = int(split_pct) if split_pct is not None else 100
+            except (TypeError, ValueError):
+                pct = 100
+            if filter_rep_id == primary:
+                return round(val * pct / 100, 2)
+            if secondary and filter_rep_id == secondary:
+                return round(val * (100 - pct) / 100, 2)
+            return 0.0
+
         def _compute(date_f: str, date_t: str) -> dict:
             leads  = _fetch_converted_leads_in_period(db, org_id, date_f, date_t, team=team)
             if rep_id:
-                leads = [l for l in leads if l.get("assigned_to") == rep_id]
+                leads = [
+                    l for l in leads
+                    if l.get("attributed_to") == rep_id
+                    or (not l.get("attributed_to") and l.get("assigned_to") == rep_id)
+                    or l.get("attributed_to_secondary") == rep_id
+                ]
             direct = _fetch_direct_sales_in_period(db, org_id, date_f, date_t)
 
             pipeline_rev = 0.0
             deal_values: list = []
             for l in leads:
                 try:
-                    val = float(l.get("deal_value") or 0)
+                    val = _rep_revenue_share(l, rep_id) if rep_id else float(l.get("deal_value") or 0)
                     pipeline_rev += val
                     if val > 0:
                         deal_values.append(val)
@@ -1007,26 +1039,46 @@ def get_rep_performance_report(
             Returns dict of rep_id → stage counts for leads assigned in period.
             Counts: leads_converted, leads_lost, leads_not_ready, leads_in_progress.
             leads_in_progress = assigned - converted - lost - not_ready.
+
+            For converted leads: credit goes to attributed_to (primary) if confirmed,
+            with a secondary credit also recorded for attributed_to_secondary.
+            Falls back to assigned_to for un-attributed conversions.
+            For lost/not_ready: still uses assigned_to (attribution is conversion-only).
             """
             all_leads = _fetch_leads_in_period(db, org_id, date_f, date_t)
             breakdown: dict = {}
-            for l in all_leads:
-                aid = l.get("assigned_to")
-                if not aid:
-                    continue
-                if aid not in breakdown:
-                    breakdown[aid] = {
-                        "leads_converted":   0,
-                        "leads_lost":        0,
-                        "leads_not_ready":   0,
+
+            def _ensure(rep: str) -> None:
+                if rep not in breakdown:
+                    breakdown[rep] = {
+                        "leads_converted":  0,
+                        "leads_lost":       0,
+                        "leads_not_ready":  0,
                     }
+
+            for l in all_leads:
+                aid   = l.get("assigned_to")
                 stage = (l.get("stage") or "").lower()
+
                 if stage == "converted":
-                    breakdown[aid]["leads_converted"] += 1
-                elif stage == "lost":
-                    breakdown[aid]["leads_lost"] += 1
-                elif stage == "not_ready":
-                    breakdown[aid]["leads_not_ready"] += 1
+                    primary   = l.get("attributed_to")
+                    secondary = l.get("attributed_to_secondary")
+                    if primary:
+                        _ensure(primary)
+                        breakdown[primary]["leads_converted"] += 1
+                        if secondary:
+                            _ensure(secondary)
+                            breakdown[secondary]["leads_converted"] += 1
+                    elif aid:
+                        _ensure(aid)
+                        breakdown[aid]["leads_converted"] += 1
+                elif aid:
+                    _ensure(aid)
+                    if stage == "lost":
+                        breakdown[aid]["leads_lost"] += 1
+                    elif stage == "not_ready":
+                        breakdown[aid]["leads_not_ready"] += 1
+
             return breakdown
 
         curr_stage_breakdown = _stage_breakdown_by_rep(date_from, date_to)
