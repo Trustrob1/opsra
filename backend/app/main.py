@@ -203,6 +203,8 @@ from app.routers import internal_issues as internal_issues_router
 from app.routers import activity_logs as activity_logs_router
 from app.routers import contractors as contractors_router
 from app.routers import performance_logs as performance_logs_router
+from app.routers import performance_hub as performance_hub_router
+from app.routers import public_performance as public_performance_router
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -231,8 +233,10 @@ app.include_router(push_notifications_router)
 app.include_router(report_analytics_router.router, prefix="/api/v1", tags=["reports"])
 app.include_router(internal_issues_router.router,  prefix="/api/v1", tags=["internal-issues"])
 app.include_router(activity_logs_router.router,    prefix="/api/v1", tags=["activity-logs"])
-app.include_router(contractors_router.router,      prefix="/api/v1", tags=["contractors"])
-app.include_router(performance_logs_router.router, prefix="/api/v1", tags=["performance-logs"])
+app.include_router(contractors_router.router,          prefix="/api/v1", tags=["contractors"])
+app.include_router(performance_logs_router.router,     prefix="/api/v1", tags=["performance-logs"])
+app.include_router(performance_hub_router.router,      prefix="/api/v1", tags=["performance-hub"])
+app.include_router(public_performance_router.router,   prefix="/api/v1", tags=["public-performance"])
 
 
 # ---------------------------------------------------------------------------

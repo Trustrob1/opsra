@@ -133,7 +133,8 @@ celery_app = Celery(
         "app.workers.report_delivery_worker",           # ← RPT-1A
         "app.workers.performance_retention_worker",     # ← CPM-1B
         "app.workers.performance_rollup_worker",        # ← CPM-1B Gap 1
-        "app.workers.attribution_worker",               # ← ATTRIB-1 
+        "app.workers.attribution_worker",               # ← ATTRIB-1
+        "app.workers.health_score_worker",              # ← PERF-1C (registered now, worker built in PERF-1C)
     ],
 )
 
@@ -486,6 +487,17 @@ celery_app.conf.beat_schedule = {
     "attribution-auto-confirm": {
         "task": "app.workers.attribution_worker.run_attribution_auto_confirm",
         "schedule": crontab(minute=0),  # every hour at :00
+    },
+
+    # ------------------------------------------------------------------ #
+    # health_score_recalc — Every 30 minutes  (PERF-1C)                  #
+    # Worker: health_score_worker.py                                      #
+    # Recalculates + caches org health scores for all active orgs.       #
+    # Built in PERF-1C session — registered here now so beat is ready.  #
+    # ------------------------------------------------------------------ #
+    "health-score-recalc": {
+        "task": "app.workers.health_score_worker.run_health_score_recalc",
+        "schedule": crontab(minute="*/30"),
     },
 }
 
