@@ -113,6 +113,7 @@ export default function App() {
       @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
       @keyframes pulse-badge { 0%,100% { transform: scale(1); } 50% { transform: scale(1.2); } }
       @keyframes slideInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+      @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
     `
     document.head.appendChild(style)
   }, [])
