@@ -388,11 +388,16 @@ async def _async_fetch(db, table: str, select: str, filters: list[tuple]) -> lis
         q = db.table(table).select(select)
         for col, op, val in filters:
             if op == "eq":
-                q = q.eq(col, val)
+                if val is None:
+                    q = q.is_(col, "null")
+                else:
+                    q = q.eq(col, val)
             elif op == "gte":
                 q = q.gte(col, val)
             elif op == "lte":
                 q = q.lte(col, val)
+            elif op == "is_null":
+                q = q.is_(col, "null")
         return q.execute().data or []
 
     return await loop.run_in_executor(None, _run)
