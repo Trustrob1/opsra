@@ -517,7 +517,7 @@ async def get_scorecard(db, org_id: str, month: str) -> list[dict]:
                      [("org_id", "eq", org_id), ("log_date", "gte", str(month_date))]),
         # Contractors (for cross-entity view)
         _async_fetch(db, "contractors",
-                     "id, name, contract_type",
+                     "id, full_name, contract_type",
                      [("org_id", "eq", org_id)]),
         # Last 3 months of targets for sparkline (E2)
         _async_fetch(db, "staff_kpi_targets",
@@ -638,7 +638,7 @@ async def get_scorecard(db, org_id: str, month: str) -> list[dict]:
         rows.append({
             "entity_type": "contractor",
             "entity_id": cid,
-            "name": c.get("name", ""),
+            "name": c.get("full_name", ""),
             "role": c.get("contract_type", "contractor"),
             "score_pct": None,  # populated from contractor KPI actuals if needed
             "score_colour": "gray",
