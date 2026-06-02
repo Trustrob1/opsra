@@ -62,6 +62,7 @@ import { _supabase } from './services/api'
 import PublicCatalogShell from './catalog/PublicCatalogShell'
 import ReportsModule from './modules/reports/ReportsModule'
 import PerformanceModule from './modules/performance/PerformanceModule'
+import OwnerDashboardPage from './pages/OwnerDashboardPage'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -118,6 +119,7 @@ export default function App() {
 
   if (window.location.pathname.startsWith('/catalog/')) return <PublicCatalogShell />
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />
+  if (window.location.pathname.startsWith('/owner-dashboard/')) return <OwnerDashboardPage />
   if (window.location.pathname === '/terms') return <TermsOfService />
   if (window.location.pathname === '/auth/update-password') return <UpdatePasswordScreen />
   const _logMatch = window.location.pathname.match(/^\/log\/([a-f0-9]{64})$/)

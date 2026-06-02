@@ -29,7 +29,7 @@ import secrets
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-import bcrypt as _bcrypt_lib
+from passlib.hash import bcrypt as passlib_bcrypt
 
 logger = logging.getLogger(__name__)
 
@@ -515,7 +515,7 @@ async def get_scorecard(db, org_id: str, month: str) -> list[dict]:
         _async_fetch(db, "performance_daily_logs",
                      "entity_id, entity_type, log_date, kpi_key, value, attendance_status",
                      [("org_id", "eq", org_id), ("log_date", "gte", str(month_date))]),
-        # Contractors (for cross-entity view)
+        # Contractors (for cross-entity view) — confirmed columns: full_name, role_title
         _async_fetch(db, "contractors",
                      "id, full_name, role_title",
                      [("org_id", "eq", org_id)]),
@@ -631,7 +631,7 @@ async def get_scorecard(db, org_id: str, month: str) -> list[dict]:
             "sparkline": _build_sparkline(uid),
         })
 
-    # Contractor rows (cross-entity view — data from contractors table)
+    # Contractor rows (cross-entity view — confirmed columns: full_name, role_title)
     for c in contractors_res:
         cid = c["id"]
         last_date = _last_log_date(cid)
@@ -681,12 +681,15 @@ async def get_health_score(db, org_id: str) -> dict:
         _async_fetch(db, "staff_kpi_targets",
                      "target_value, actual_value, month_start",
                      [("org_id", "eq", org_id), ("month_start", "eq", month_start_str)]),
+        # tasks: confirmed column is due_at (timestamptz), not due_date
         _async_fetch(db, "tasks",
-                     "id, status, due_date",
-                     [("org_id", "eq", org_id), ("due_date", "gte", month_start_str)]),
+                     "id, status, due_at",
+                     [("org_id", "eq", org_id), ("due_at", "gte", month_start_str),
+                      ("deleted_at", "eq", None)]),
+        # tickets: use sla_breached + sla_resolution_due_at for overdue logic
         _async_fetch(db, "tickets",
-                     "id, status, created_at",
-                     [("org_id", "eq", org_id)]),
+                     "id, status, resolved_at, sla_breached, sla_resolution_due_at, created_at",
+                     [("org_id", "eq", org_id), ("deleted_at", "eq", None)]),
         _async_fetch(db, "leads",
                      "id, deal_value, stage, created_at",
                      [("org_id", "eq", org_id), ("created_at", "gte", month_start_str)]),
@@ -708,9 +711,12 @@ async def get_health_score(db, org_id: str) -> dict:
     }
 
     # --- Sales score ---
+    # monthly_revenue_target added in PERF-1C migration; graceful fallback if null
     revenue_target = float(org.get("monthly_revenue_target") or 0)
-    revenue_actual = sum(float(l.get("deal_value") or 0) for l in leads_res
-                         if l.get("stage") == "converted")
+    revenue_actual = sum(
+        float(l.get("deal_value") or 0) for l in leads_res
+        if l.get("stage") == "converted" and not l.get("deleted_at")
+    )
     if revenue_target > 0:
         pace = revenue_target * (days_elapsed / days_in_month)
         sales_score = min(100.0, (revenue_actual / pace * 100) if pace > 0 else 0.0)
@@ -725,18 +731,15 @@ async def get_health_score(db, org_id: str) -> dict:
     else:
         staff_score = 100.0
 
-    # --- Tasks score ---
+    # --- Tasks score --- (confirmed: tasks.due_at is timestamptz; status in 'completed','cancelled')
     total_tasks = len(tasks_res)
     completed_tasks = sum(1 for t in tasks_res if t.get("status") == "completed")
     tasks_score = round((completed_tasks / total_tasks) * 100, 1) if total_tasks > 0 else 100.0
 
-    # --- Support score ---
+    # --- Support score --- (confirmed: sla_breached boolean + resolved_at for resolution status)
     total_tickets = len(tickets_res)
-    resolved_tickets = sum(1 for t in tickets_res if t.get("status") == "resolved")
-    overdue_tickets = sum(
-        1 for t in tickets_res
-        if t.get("status") not in ("resolved", "closed")
-    )
+    resolved_tickets = sum(1 for t in tickets_res if t.get("resolved_at") is not None)
+    overdue_tickets  = sum(1 for t in tickets_res if t.get("sla_breached") is True)
     if total_tickets > 0:
         support_score = max(0.0, round((resolved_tickets / total_tickets) * 100 - overdue_tickets * 5, 1))
     else:
@@ -788,7 +791,7 @@ def get_or_create_owner_dashboard_token(db, org_id: str) -> dict:
 
 def set_owner_dashboard_pin(db, org_id: str, pin: str) -> bool:
     """Hash and store owner dashboard PIN."""
-    hashed = _bcrypt_lib.hashpw(pin.encode(), _bcrypt_lib.gensalt()).decode()
+    hashed = passlib_bcrypt.hash(pin)
     db.table("organisations").update({"owner_dashboard_pin": hashed}).eq("id", org_id).execute()
     return True
 
@@ -808,7 +811,7 @@ def verify_owner_dashboard_pin(db, token: str, pin: str) -> dict | None:
     if not stored_hash:
         return None
     try:
-        valid = _bcrypt_lib.checkpw(pin.encode(), stored_hash.encode())
+        valid = passlib_bcrypt.verify(pin, stored_hash)
     except Exception:
         valid = False
     if not valid:
@@ -871,15 +874,17 @@ async def get_owner_dashboard_panels(db, org_id: str) -> dict:
         _async_fetch(db, "performance_daily_logs",
                      "id, entity_id, entity_type, kpi_key, kpi_label, value, attendance_status, approved_by_owner, created_at",
                      [("org_id", "eq", org_id), ("log_date", "eq", today_str)]),
+        # tasks: confirmed column is due_at (timestamptz), not due_date
         _async_fetch(db, "tasks",
-                     "id, title, status, due_date, assigned_to",
-                     [("org_id", "eq", org_id), ("due_date", "eq", today_str)]),
+                     "id, title, status, due_at, assigned_to",
+                     [("org_id", "eq", org_id), ("deleted_at", "eq", None)]),
+        # tickets: use resolved_at and sla_breached — confirmed columns
         _async_fetch(db, "tickets",
-                     "id, status, created_at",
-                     [("org_id", "eq", org_id)]),
+                     "id, status, resolved_at, sla_breached, created_at",
+                     [("org_id", "eq", org_id), ("deleted_at", "eq", None)]),
         _async_fetch(db, "internal_issues",
                      "id, title, priority, status",
-                     [("org_id", "eq", org_id)]),
+                     [("org_id", "eq", org_id), ("deleted_at", "eq", None)]),
         _async_fetch(db, "users",
                      "id, full_name, roles(template)",
                      [("org_id", "eq", org_id)]),
@@ -919,18 +924,26 @@ async def get_owner_dashboard_panels(db, org_id: str) -> dict:
         if s["user_id"] not in last_log_by_entity
     ]
 
-    # Panel 3 — tasks
-    completed_today = sum(1 for t in tasks_res if t.get("status") == "completed")
-    pending_today   = sum(1 for t in tasks_res if t.get("status") != "completed")
+    # Panel 3 — tasks (due_at is timestamptz; compare as string prefix for date portion)
+    today_iso = today_str + "T23:59:59"
+    completed_today = sum(1 for t in tasks_res
+                          if t.get("status") == "completed"
+                          and (t.get("due_at") or "") >= today_str
+                          and (t.get("due_at") or "") <= today_iso)
+    pending_today   = sum(1 for t in tasks_res
+                          if t.get("status") not in ("completed", "cancelled")
+                          and (t.get("due_at") or "") >= today_str
+                          and (t.get("due_at") or "") <= today_iso)
     overdue_tasks = [
         {"id": t["id"], "title": t["title"], "assigned_to": t.get("assigned_to")}
-        for t in tasks_res if t.get("status") not in ("completed", "cancelled")
-        and (t.get("due_date") or "") < today_str
+        for t in tasks_res
+        if t.get("status") not in ("completed", "cancelled")
+        and (t.get("due_at") or "") < today_str
     ]
 
-    # Panel 4 — support
-    open_tickets = sum(1 for t in tickets_res if t.get("status") not in ("resolved", "closed"))
-    overdue_tickets = open_tickets  # simplified: all open tickets from this month
+    # Panel 4 — support (confirmed: resolved_at for resolution, sla_breached for overdue)
+    open_tickets     = sum(1 for t in tickets_res if t.get("resolved_at") is None)
+    overdue_tickets  = sum(1 for t in tickets_res if t.get("sla_breached") is True)
     high_priority_issues = [
         {"id": i["id"], "title": i["title"]}
         for i in issues_res
@@ -1012,5 +1025,167 @@ def flag_log(db, org_id: str, log_id: str, note: str, notif_user_ids: list[str])
         except Exception as exc:
             logger.warning("Failed to insert performance_flag notification uid=%s: %s", uid, exc)
 
+    _cache_delete(f"perf:owner_dash:{org_id}")
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Business Goals (PERF-1C)
+# ---------------------------------------------------------------------------
+
+_TTL_GOALS = 300  # 5 min
+
+
+def _goals_cache_key(org_id: str, period_start: str) -> str:
+    return f"perf:goals:{org_id}:{period_start}"
+
+
+def get_business_goals(db, org_id: str, period_start: str) -> list[dict]:
+    """
+    Fetch active business goals for a period and compute live progress.
+    E3: Redis cache 5 min.
+    Progress is always computed live — never stored.
+    """
+    cache_key = _goals_cache_key(org_id, period_start)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    goals_res = (
+        db.table("business_goals")
+        .select("id, goal_name, goal_category, target_value, unit, period_type, period_start, notes")
+        .eq("org_id", org_id)
+        .eq("is_active", True)
+        .eq("period_start", period_start)
+        .order("goal_category")
+        .execute()
+    )
+    goals = goals_res.data or []
+
+    today = date.today()
+    period_date   = date.fromisoformat(period_start)
+    days_elapsed  = (today - period_date).days + 1
+    days_in_period = _days_in_month(period_date)
+
+    # E2: one fetch per source table, group in Python
+    leads_res = (
+        db.table("leads")
+        .select("stage, deal_value, deleted_at")
+        .eq("org_id", org_id)
+        .gte("created_at", period_start)
+        .execute()
+    ).data or []
+
+    tickets_res = (
+        db.table("tickets")
+        .select("resolved_at, deleted_at")
+        .eq("org_id", org_id)
+        .gte("created_at", period_start)
+        .execute()
+    ).data or []
+
+    tasks_res = (
+        db.table("tasks")
+        .select("status, deleted_at")
+        .eq("org_id", org_id)
+        .gte("due_at", period_start)
+        .execute()
+    ).data or []
+
+    perf_logs_res = (
+        db.table("performance_daily_logs")
+        .select("kpi_key, value")
+        .eq("org_id", org_id)
+        .gte("log_date", period_start)
+        .execute()
+    ).data or []
+
+    # Pre-aggregate by category
+    _revenue_actual     = sum(float(l.get("deal_value") or 0) for l in leads_res
+                              if l.get("stage") == "converted" and not l.get("deleted_at"))
+    _leads_contacted    = sum(float(l.get("value") or 0) for l in perf_logs_res
+                              if l.get("kpi_key") == "Leads Contacted")
+    _tickets_resolved   = sum(1 for t in tickets_res
+                              if t.get("resolved_at") and not t.get("deleted_at"))
+    _tasks_completed    = sum(1 for t in tasks_res
+                              if t.get("status") == "completed" and not t.get("deleted_at"))
+    _posts_published    = sum(float(l.get("value") or 0) for l in perf_logs_res
+                              if l.get("kpi_key") == "Posts Published")
+    _campaigns_launched = sum(float(l.get("value") or 0) for l in perf_logs_res
+                              if l.get("kpi_key") == "Campaigns Launched")
+
+    _CATEGORY_CURRENT = {
+        "sales":     _revenue_actual,
+        "leads":     _leads_contacted,
+        "support":   float(_tickets_resolved),
+        "tasks":     float(_tasks_completed),
+        "content":   _posts_published,
+        "campaigns": _campaigns_launched,
+    }
+
+    result = []
+    for g in goals:
+        target   = float(g.get("target_value") or 0)
+        category = g.get("goal_category", "custom")
+        current  = _CATEGORY_CURRENT.get(category, 0.0)
+        pct      = _kpi_achievement_pct(current, target)
+        result.append({
+            **g,
+            "current_value":    round(current, 2),
+            "achievement_pct":  pct,
+            "pace":             _pace_status(current, target, days_elapsed, days_in_period),
+            "colour":           _score_colour(pct),
+            "days_elapsed":     days_elapsed,
+            "days_in_period":   days_in_period,
+        })
+
+    _cache_set(cache_key, result, _TTL_GOALS)
+    return result
+
+
+def upsert_business_goal(db, org_id: str, goal_data: dict, created_by: str) -> dict:
+    """Create or update a business goal. Invalidates cache on write."""
+    existing = (
+        db.table("business_goals")
+        .select("id")
+        .eq("org_id", org_id)
+        .eq("goal_name", goal_data["goal_name"])
+        .eq("period_start", goal_data["period_start"])
+        .limit(1)
+        .execute()
+    )
+    payload = {
+        "org_id": org_id,
+        "goal_name":     goal_data["goal_name"],
+        "goal_category": goal_data["goal_category"],
+        "target_value":  goal_data["target_value"],
+        "unit":          goal_data.get("unit", "count"),
+        "period_type":   goal_data.get("period_type", "monthly"),
+        "period_start":  goal_data["period_start"],
+        "notes":         goal_data.get("notes"),
+        "created_by":    created_by,
+        "updated_at":    datetime.utcnow().isoformat(),
+    }
+    if existing.data:
+        row = (
+            db.table("business_goals")
+            .update(payload)
+            .eq("id", existing.data[0]["id"])
+            .execute()
+        )
+    else:
+        row = db.table("business_goals").insert(payload).execute()
+
+    _cache_delete(_goals_cache_key(org_id, goal_data["period_start"]))
+    _cache_delete(f"perf:owner_dash:{org_id}")
+    return row.data[0] if row.data else {}
+
+
+def delete_business_goal(db, org_id: str, goal_id: str, period_start: str) -> bool:
+    """Soft-delete a business goal."""
+    db.table("business_goals").update(
+        {"is_active": False, "updated_at": datetime.utcnow().isoformat()}
+    ).eq("id", goal_id).eq("org_id", org_id).execute()
+    _cache_delete(_goals_cache_key(org_id, period_start))
     _cache_delete(f"perf:owner_dash:{org_id}")
     return True

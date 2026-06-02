@@ -17,6 +17,7 @@ import ScorecardView     from './ScorecardView'
 import StaffProfileView  from './StaffProfileView'
 import MyPerformanceView from './MyPerformanceView'
 import KpiTemplateManager from './KpiTemplateManager'
+import BusinessGoalsTab   from './BusinessGoalsTab'
 
 const _MANAGER_ROLES = ['owner', 'ops_manager']
 
@@ -74,6 +75,7 @@ export default function PerformanceModule({ user }) {
           <button style={TAB_STYLE(subView === 'scorecard')}    onClick={() => setSubView('scorecard')}>Scorecard</button>
           <button style={TAB_STYLE(subView === 'my-performance')} onClick={() => setSubView('my-performance')}>My Performance</button>
           <button style={TAB_STYLE(subView === 'templates')}    onClick={() => setSubView('templates')}>KPI Templates</button>
+          <button style={TAB_STYLE(subView === 'goals')}        onClick={() => setSubView('goals')}>Business Goals</button>
         </div>
       )}
 
@@ -97,6 +99,10 @@ export default function PerformanceModule({ user }) {
 
       <div style={{ display: subView === 'templates' && isManager ? 'block' : 'none' }}>
         <KpiTemplateManager />
+      </div>
+
+      <div style={{ display: subView === 'goals' && isManager ? 'block' : 'none' }}>
+        <BusinessGoalsTab />
       </div>
     </div>
   )

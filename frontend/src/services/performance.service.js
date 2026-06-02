@@ -136,3 +136,24 @@ export async function flagOwnerLog(token, logId, note, sessionToken) {
   )
   return r.data
 }
+
+// Public owner dashboard — business goals
+export async function getBusinessGoals(tokenOrPeriod, sessionTokenOrUndefined, periodStart) {
+  // Called two ways:
+  // In-app (authenticated): getBusinessGoals(periodStart)
+  // Public dashboard: getBusinessGoals(dashToken, sessionToken, periodStart)
+  if (periodStart !== undefined) {
+    // Public dashboard call
+    const token = tokenOrPeriod
+    const sessionToken = sessionTokenOrUndefined
+    const r = await axios.get(
+      `${BASE}/api/v1/public/owner-dashboard/${token}/goals`,
+      { headers: { Authorization: `Bearer ${sessionToken}` }, params: { period_start: periodStart } }
+    )
+    return r.data
+  }
+  // In-app authenticated call
+  const r = await axios.get(`${BASE}/api/v1/performance/business-goals`,
+    { headers: _h(), params: { period_start: tokenOrPeriod } })
+  return r.data.data
+}

@@ -206,3 +206,21 @@ async def get_owner_dashboard(
         "health_score": health,
         "panels": panels,
     }
+
+@router.get("/public/owner-dashboard/{token}/goals")
+async def get_owner_dashboard_goals(
+    token: str,
+    period_start: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    db=Depends(get_supabase),
+):
+    org = db.table("organisations").select("id").eq("owner_dashboard_token", token).limit(1).execute()
+    row = (org.data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    _verify_session_token(token, row["id"], token, authorization)
+    from datetime import date
+    if not period_start:
+        d = date.today()
+        period_start = str(date(d.year, d.month, 1))
+    return {"data": perf_svc.get_business_goals(db, row["id"], period_start)}

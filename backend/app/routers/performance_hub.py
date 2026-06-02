@@ -108,6 +108,16 @@ class OwnerDashboardPinSet(BaseModel):
     pin: str = Field(..., min_length=4, max_length=6, pattern=r"^\d{4,6}$")
 
 
+class BusinessGoalUpsert(BaseModel):
+    goal_name:     str     = Field(..., max_length=150)
+    goal_category: str     = Field(..., max_length=50)
+    target_value:  float   = Field(..., ge=0)
+    unit:          str     = Field("count", max_length=30)
+    period_type:   str     = Field("monthly", max_length=20)
+    period_start:  str     = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    notes:         Optional[str] = Field(None, max_length=1000)
+
+
 # ---------------------------------------------------------------------------
 # Routes — STATIC before PARAMETERISED (Pattern 53)
 # ---------------------------------------------------------------------------
@@ -290,3 +300,42 @@ def acknowledge_targets(
 ):
     user_id = org["id"]  # Pattern 61 — self only
     return {"data": {"ok": perf_svc.acknowledge_targets(db, org["org_id"], user_id, month)}}
+
+# GET /performance/business-goals
+@router.get("/performance/business-goals")
+def get_business_goals(
+    period_start: Optional[str] = None,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_manager(org)
+    from datetime import date
+    if not period_start:
+        d = date.today()
+        period_start = str(date(d.year, d.month, 1))
+    return {"data": perf_svc.get_business_goals(db, org["org_id"], period_start)}
+ 
+ 
+# POST /performance/business-goals
+@router.post("/performance/business-goals", status_code=201)
+def upsert_business_goal(
+    payload: BusinessGoalUpsert,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_manager(org)
+    return {"data": perf_svc.upsert_business_goal(
+        db, org["org_id"], payload.model_dump(), org["id"]
+    )}
+ 
+ 
+# DELETE /performance/business-goals/{goal_id}
+@router.delete("/performance/business-goals/{goal_id}")
+def delete_business_goal(
+    goal_id: str,
+    period_start: str,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_manager(org)
+    return {"data": {"ok": perf_svc.delete_business_goal(db, org["org_id"], goal_id, period_start)}}
