@@ -820,31 +820,42 @@ def verify_owner_dashboard_pin(db, token: str, pin: str) -> dict | None:
 
 
 def generate_owner_session_token(org_id: str, token: str) -> str:
-    """Short-lived session token: HMAC of org_id+dashboard_token+timestamp (24h)."""
+    """Short-lived session token stored as base64-encoded JSON payload + HMAC sig."""
     import hmac
+    import base64
     secret = os.environ.get("SECRET_KEY", "opsra-perf-secret")
     expires = int((datetime.utcnow() + timedelta(hours=24)).timestamp())
-    msg = f"{org_id}:{token}:{expires}"
-    sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
-    return f"{msg}:{sig}"
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"org_id": org_id, "token": token, "expires": expires}).encode()
+    ).decode().rstrip("=")
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
 
 
 def verify_owner_session_token(raw_token: str, org_id: str, dashboard_token: str) -> bool:
     """Verify a session token produced by generate_owner_session_token."""
     import hmac as hmac_lib
+    import base64
     try:
-        parts = raw_token.split(":")
-        if len(parts) != 4:
+        parts = raw_token.rsplit(".", 1)
+        if len(parts) != 2:
             return False
-        o_id, d_token, expires_str, sig = parts
-        if o_id != org_id or d_token != dashboard_token:
-            return False
-        if int(expires_str) < int(datetime.utcnow().timestamp()):
-            return False
+        payload_b64, sig = parts
         secret = os.environ.get("SECRET_KEY", "opsra-perf-secret")
-        msg = f"{o_id}:{d_token}:{expires_str}"
-        expected = hmac_lib.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
-        return hmac_lib.compare_digest(sig, expected)
+        expected = hmac_lib.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+        if not hmac_lib.compare_digest(sig, expected):
+            return False
+        # Decode payload
+        padding = 4 - len(payload_b64) % 4
+        padded = payload_b64 + ("=" * (padding % 4))
+        data = json.loads(base64.urlsafe_b64decode(padded).decode())
+        if data.get("org_id") != org_id:
+            return False
+        if data.get("token") != dashboard_token:
+            return False
+        if int(data.get("expires", 0)) < int(datetime.utcnow().timestamp()):
+            return False
+        return True
     except Exception:
         return False
 

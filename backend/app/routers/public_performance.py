@@ -14,12 +14,14 @@ import logging
 import os
 from datetime import datetime, timedelta
 
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.database import get_supabase
 import app.services.performance_service as perf_svc
+
 
 logger = logging.getLogger(__name__)
 
@@ -199,8 +201,10 @@ async def get_owner_dashboard(
         raise HTTPException(status_code=404, detail="Dashboard not found")
     _verify_session_token(token, row["id"], token, authorization)
 
-    panels = await perf_svc.get_owner_dashboard_panels(db, row["id"])
-    health = await perf_svc.get_health_score(db, row["id"])
+    panels, health = await asyncio.gather(
+        perf_svc.get_owner_dashboard_panels(db, row["id"]),
+        perf_svc.get_health_score(db, row["id"]),
+    )
     return {
         "org_name": row.get("name", ""),
         "health_score": health,

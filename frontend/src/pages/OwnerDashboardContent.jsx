@@ -10,7 +10,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getOwnerDashboardPanels,
-  getHealthScore,
   approveOwnerLog,
   flagOwnerLog,
   getOwnerDashboardGoals,
@@ -94,13 +93,12 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
 
   const fetchAll = useCallback(async () => {
     try {
-      const [panelsData, healthData, goalsData] = await Promise.all([
+      const [panelsData, goalsData] = await Promise.all([
         getOwnerDashboardPanels(token, sessionToken),
-        getHealthScore().catch(() => null),
         getOwnerDashboardGoals(token, sessionToken, periodStart).catch(() => []),
       ])
       setPanels(panelsData.panels || panelsData)
-      setHealth(healthData?.data || healthData)
+      setHealth(panelsData.health_score || null)
       setGoals(goalsData?.data || goalsData || [])
       setLastRefresh(new Date())
       setError(null)
