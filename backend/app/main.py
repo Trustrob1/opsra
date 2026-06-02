@@ -155,21 +155,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 
-class PublicCatalogCORSMiddleware(BaseHTTPMiddleware):
-    """
-    Allow cross-origin requests on /api/v1/public/ routes only.
-    Authenticated routes are unchanged (still locked to _origins).
-    """
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        if request.url.path.startswith("/api/v1/public/"):
-            response.headers["Access-Control-Allow-Origin"]  = "*"
-            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        return response
-
-
-app.add_middleware(PublicCatalogCORSMiddleware)
 
 # ---------------------------------------------------------------------------
 # Router registration
