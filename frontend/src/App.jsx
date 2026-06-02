@@ -61,6 +61,7 @@ import TermsOfService from './pages/TermsOfService'
 import { _supabase } from './services/api'
 import PublicCatalogShell from './catalog/PublicCatalogShell'
 import ReportsModule from './modules/reports/ReportsModule'
+import PerformanceModule from './modules/performance/PerformanceModule'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -83,6 +84,7 @@ const NAV = [
   { id: 'conversations', label: 'Conversations',      icon: '📨', module: '—',  active: true  },
   { id: 'commissions', label: 'Commissions',        icon: '💼', module: '—',  active: true  },
   { id: 'reports',     label: 'Management Reports', icon: '📋', module: '—',  active: true  },
+  { id: 'performance', label: 'Performance Hub',    icon: '📊', module: '—',  active: true  },
 ]
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -542,6 +544,7 @@ function AppShell() {
   const visibleNav = NAV.filter(item => {
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
     if (item.id === 'reports' && !['owner', 'ops_manager'].includes(_userTemplate)) return false
+    // Performance Hub: visible to all roles (each role sees their own scoped view)
     if (item.id === 'renewal' && _userTemplate === 'affiliate_partner') return false
     if (item.id === 'commissions') {
       return ['owner', 'ops_manager', 'sales_agent', 'affiliate_partner'].includes(_userTemplate)
@@ -915,13 +918,16 @@ function AppShell() {
         {view === 'reports' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><ReportsModule user={user} /></div>
         )}
+        {view === 'performance' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><PerformanceModule user={user} /></div>
+        )}
         {view === 'superadmin_create_org' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><CreateOrg /></div>
         )}
         {view === 'superadmin_health' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><HealthDashboard /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>
