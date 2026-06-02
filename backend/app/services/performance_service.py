@@ -29,7 +29,7 @@ import secrets
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-from passlib.hash import bcrypt as passlib_bcrypt
+import bcrypt as _bcrypt_lib
 
 logger = logging.getLogger(__name__)
 
@@ -791,7 +791,7 @@ def get_or_create_owner_dashboard_token(db, org_id: str) -> dict:
 
 def set_owner_dashboard_pin(db, org_id: str, pin: str) -> bool:
     """Hash and store owner dashboard PIN."""
-    hashed = passlib_bcrypt.hash(pin)
+    hashed = _bcrypt_lib.hashpw(pin.encode(), _bcrypt_lib.gensalt()).decode()
     db.table("organisations").update({"owner_dashboard_pin": hashed}).eq("id", org_id).execute()
     return True
 
@@ -811,7 +811,7 @@ def verify_owner_dashboard_pin(db, token: str, pin: str) -> dict | None:
     if not stored_hash:
         return None
     try:
-        valid = passlib_bcrypt.verify(pin, stored_hash)
+        valid = _bcrypt_lib.checkpw(pin.encode(), stored_hash.encode())
     except Exception:
         valid = False
     if not valid:
