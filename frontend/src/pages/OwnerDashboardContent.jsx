@@ -13,7 +13,7 @@ import {
   getHealthScore,
   approveOwnerLog,
   flagOwnerLog,
-  getBusinessGoals,
+  getOwnerDashboardGoals,
 } from '../services/performance.service'
 
 const REFRESH_MS = 2 * 60 * 1000  // 2 minutes
@@ -97,7 +97,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
       const [panelsData, healthData, goalsData] = await Promise.all([
         getOwnerDashboardPanels(token, sessionToken),
         getHealthScore().catch(() => null),
-        getBusinessGoals(token, sessionToken, periodStart).catch(() => []),
+        getOwnerDashboardGoals(token, sessionToken, periodStart).catch(() => []),
       ])
       setPanels(panelsData.panels || panelsData)
       setHealth(healthData?.data || healthData)

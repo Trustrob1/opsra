@@ -137,6 +137,36 @@ export async function flagOwnerLog(token, logId, note, sessionToken) {
   return r.data
 }
 
+// ── Business Goals ─────────────────────────────────────────────────────────
+
+export async function getBusinessGoals(periodStart) {
+  const r = await axios.get(`${BASE}/api/v1/performance/business-goals`,
+    { headers: _h(), params: { period_start: periodStart } })
+  return r.data.data
+}
+
+export async function upsertBusinessGoal(payload) {
+  const r = await axios.post(`${BASE}/api/v1/performance/business-goals`,
+    payload, { headers: _h() })
+  return r.data.data
+}
+
+export async function deleteBusinessGoal(goalId, periodStart) {
+  const r = await axios.delete(
+    `${BASE}/api/v1/performance/business-goals/${goalId}`,
+    { headers: _h(), params: { period_start: periodStart } }
+  )
+  return r.data.data
+}
+
+export async function getOwnerDashboardGoals(token, sessionToken, periodStart) {
+  const r = await axios.get(
+    `${BASE}/api/v1/public/owner-dashboard/${token}/goals`,
+    { headers: { Authorization: `Bearer ${sessionToken}` }, params: { period_start: periodStart } }
+  )
+  return r.data.data
+}
+
 // Public owner dashboard — business goals
 export async function getBusinessGoals(tokenOrPeriod, sessionTokenOrUndefined, periodStart) {
   // Called two ways:
