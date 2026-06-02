@@ -15,7 +15,9 @@ import os
 from datetime import datetime, timedelta
 
 import asyncio
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -123,6 +125,12 @@ class FlagLogRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 # POST /public/owner-dashboard/{token}/verify
+_CORS_HEADERS = {
+    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+}
+
 @router.post("/public/owner-dashboard/{token}/verify")
 def verify_pin(
     token: str,
@@ -136,12 +144,12 @@ def verify_pin(
         raise HTTPException(status_code=401, detail="Invalid PIN")
     _clear_lockout(token)
     session_token = perf_svc.generate_owner_session_token(org["id"], token)
-    return {
+    return JSONResponse(content={
         "session_token": session_token,
         "org_id": org["id"],
         "org_name": org.get("name", ""),
         "expires_in_seconds": 86400,
-    }
+    }, headers=_CORS_HEADERS)
 
 
 # POST /public/owner-dashboard/{token}/approve
@@ -205,11 +213,15 @@ async def get_owner_dashboard(
         perf_svc.get_owner_dashboard_panels(db, row["id"]),
         perf_svc.get_health_score(db, row["id"]),
     )
-    return {
+    content = {
         "org_name": row.get("name", ""),
         "health_score": health,
         "panels": panels,
     }
+    return JSONResponse(content=content, headers={
+        "Access-Control-Allow-Origin":  "*",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    })
 
 @router.get("/public/owner-dashboard/{token}/goals")
 async def get_owner_dashboard_goals(
@@ -227,4 +239,7 @@ async def get_owner_dashboard_goals(
     if not period_start:
         d = date.today()
         period_start = str(date(d.year, d.month, 1))
-    return {"data": perf_svc.get_business_goals(db, row["id"], period_start)}
+    return JSONResponse(
+        content={"data": perf_svc.get_business_goals(db, row["id"], period_start)},
+        headers=_CORS_HEADERS,
+    )
