@@ -167,3 +167,24 @@ export async function getOwnerDashboardGoals(token, sessionToken, periodStart) {
   return r.data.data
 }
 
+
+// ── Daily Executive Brief (public) ────────────────────────────────────────
+
+export async function getOwnerBrief(token, sessionToken) {
+  const r = await axios.get(
+    `${BASE}/api/v1/public/owner-dashboard/${token}/brief`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } }
+  )
+  return r.data
+}
+
+// ── Toggle owner attention on an issue (authenticated) ────────────────────
+
+export async function toggleOwnerAttention(issueId, flagged) {
+  const r = await axios.patch(
+    `${BASE}/api/v1/performance/issues/${issueId}/owner-attention`,
+    {},
+    { headers: _h(), params: { flagged } }
+  )
+  return r.data.data
+}

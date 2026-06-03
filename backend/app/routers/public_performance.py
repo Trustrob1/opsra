@@ -243,3 +243,25 @@ async def get_owner_dashboard_goals(
         content={"data": perf_svc.get_business_goals(db, row["id"], period_start)},
         headers=_CORS_HEADERS,
     )
+
+# GET /public/owner-dashboard/{token}/brief
+@router.get("/public/owner-dashboard/{token}/brief")
+async def get_owner_brief(
+    token: str,
+    authorization: Optional[str] = Header(None),
+    db=Depends(get_supabase),
+):
+    org = db.table("organisations").select("id, name").eq(
+        "owner_dashboard_token", token
+    ).limit(1).execute()
+    row = (org.data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    _verify_session_token(token, row["id"], token, authorization)
+
+    brief = await perf_svc.get_daily_brief(db, row["id"])
+    health = await perf_svc.get_health_score(db, row["id"])
+    return JSONResponse(
+        content={"org_name": row.get("name", ""), "health": health, "brief": brief},
+        headers=_CORS_HEADERS,
+    )

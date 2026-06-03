@@ -1205,3 +1205,290 @@ def delete_business_goal(db, org_id: str, goal_id: str, period_start: str) -> bo
     _cache_delete(_goals_cache_key(org_id, period_start))
     _cache_delete(f"perf:owner_dash:{org_id}")
     return True
+
+# ---------------------------------------------------------------------------
+# Daily Executive Brief (PERF-1D)
+# ---------------------------------------------------------------------------
+
+_TTL_BRIEF = 120  # 2 min cache
+
+
+async def get_daily_brief(db, org_id: str) -> dict:
+    """
+    Assembles the owner daily executive brief.
+    Sections:
+      1. Revenue snapshot  — leads.deal_value where stage=converted, this month
+      2. Sales pipeline    — leads by stage + value
+      3. Sales team        — per-rep revenue, leads, conversion rate
+      4. Business goals    — live progress vs targets
+      5. Contractor activities — KPI actuals + blocked/in-progress tasks
+      6. Issues needing owner attention — internal_issues where needs_owner_attention=true
+
+    Confirmed columns:
+      leads: org_id, stage, deal_value, assigned_to, converted_at, created_at, deleted_at
+      contractor_tasks: org_id, contractor_id, task_description, due_date, owner, status
+      contractor_kpi_actuals: org_id, contractor_id, month_label, month_start,
+                               kpi_key, actual_value, actual_label
+      internal_issues: org_id, reference, title, priority, status,
+                       needs_owner_attention, deleted_at, created_at
+      contractors: id, full_name, role_title, org_id
+      users: id, full_name, org_id, roles(template)
+    """
+    cache_key = f"perf:brief:{org_id}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    today           = date.today()
+    month_start_str = str(date(today.year, today.month, 1))
+    days_in_month_n = _days_in_month(date(today.year, today.month, 1))
+    days_elapsed    = today.day
+    days_remaining  = days_in_month_n - today.day
+
+    # E1 — all parallel
+    (
+        leads_res,
+        contractor_tasks_res,
+        contractor_kpi_res,
+        contractors_res,
+        issues_res,
+        users_res,
+        goals_res,
+        org_res,
+        perf_logs_leads,
+        perf_logs_posts,
+    ) = await asyncio.gather(
+        _async_fetch(
+            db, "leads",
+            "stage, deal_value, assigned_to, created_at, deleted_at",
+            [("org_id", "eq", org_id), ("created_at", "gte", month_start_str)],
+        ),
+        _async_fetch(
+            db, "contractor_tasks",
+            "contractor_id, task_description, due_date, owner, status",
+            [("org_id", "eq", org_id)],
+        ),
+        _async_fetch(
+            db, "contractor_kpi_actuals",
+            "contractor_id, month_label, kpi_key, actual_value, actual_label",
+            [("org_id", "eq", org_id), ("month_start", "gte", month_start_str)],
+        ),
+        _async_fetch(
+            db, "contractors",
+            "id, full_name, role_title",
+            [("org_id", "eq", org_id)],
+        ),
+        _async_fetch(
+            db, "internal_issues",
+            "id, reference, title, priority, status, needs_owner_attention, created_at",
+            [("org_id", "eq", org_id), ("needs_owner_attention", "eq", True)],
+        ),
+        _async_fetch(
+            db, "users",
+            "id, full_name, roles(template)",
+            [("org_id", "eq", org_id)],
+        ),
+        _async_fetch(
+            db, "business_goals",
+            "id, goal_name, goal_category, target_value, unit, period_start, notes",
+            [("org_id", "eq", org_id), ("is_active", "eq", True),
+             ("period_start", "eq", month_start_str)],
+        ),
+        _async_fetch(
+            db, "organisations",
+            "id, monthly_revenue_target",
+            [("id", "eq", org_id)],
+        ),
+        _async_fetch(
+            db, "performance_daily_logs",
+            "kpi_key, value",
+            [("org_id", "eq", org_id), ("log_date", "gte", month_start_str),
+             ("kpi_key", "eq", "Leads Contacted")],
+        ),
+        _async_fetch(
+            db, "performance_daily_logs",
+            "kpi_key, value",
+            [("org_id", "eq", org_id), ("log_date", "gte", month_start_str),
+             ("kpi_key", "eq", "Posts Published")],
+        ),
+    )
+
+    # ── 1. Revenue snapshot ────────────────────────────────────────────────
+    active_leads    = [l for l in leads_res if not l.get("deleted_at")]
+    converted       = [l for l in active_leads if l.get("stage") == "converted"]
+    revenue_mtd     = sum(float(l.get("deal_value") or 0) for l in converted)
+
+    org             = org_res[0] if org_res else {}
+    rev_target      = float(org.get("monthly_revenue_target") or 0)
+    rev_pct         = round(revenue_mtd / rev_target * 100, 1) if rev_target > 0 else None
+    rev_pace        = _pace_status(revenue_mtd, rev_target, days_elapsed, days_in_month_n) if rev_target > 0 else None
+
+    total_leads_cnt = len(active_leads)
+    total_conv      = len(converted)
+    conv_rate       = round(total_conv / total_leads_cnt * 100, 1) if total_leads_cnt > 0 else 0.0
+
+    revenue_snapshot = {
+        "revenue_mtd":     revenue_mtd,
+        "revenue_target":  rev_target,
+        "revenue_pct":     rev_pct,
+        "revenue_pace":    rev_pace,
+        "days_remaining":  days_remaining,
+        "total_leads":     total_leads_cnt,
+        "total_converted": total_conv,
+        "conversion_rate": conv_rate,
+    }
+
+    # ── 2. Sales pipeline ──────────────────────────────────────────────────
+    pipeline_by_stage: dict[str, dict] = {}
+    for lead in active_leads:
+        s = lead.get("stage") or "unknown"
+        if s not in pipeline_by_stage:
+            pipeline_by_stage[s] = {"count": 0, "value": 0.0}
+        pipeline_by_stage[s]["count"] += 1
+        pipeline_by_stage[s]["value"] += float(lead.get("deal_value") or 0)
+    pipeline = [
+        {"stage": s, "count": v["count"], "value": round(v["value"], 2)}
+        for s, v in sorted(pipeline_by_stage.items())
+    ]
+    total_pipeline_value = sum(p["value"] for p in pipeline)
+
+    # ── 3. Sales team ──────────────────────────────────────────────────────
+    rep_leads_cnt:  dict[str, int]   = {}
+    rep_conv_cnt:   dict[str, int]   = {}
+    rep_revenue_m:  dict[str, float] = {}
+    for lead in active_leads:
+        uid = lead.get("assigned_to") or "unassigned"
+        if uid == "unassigned":
+            continue
+        rep_leads_cnt[uid] = rep_leads_cnt.get(uid, 0) + 1
+        if lead.get("stage") == "converted":
+            rep_conv_cnt[uid]  = rep_conv_cnt.get(uid, 0) + 1
+            rep_revenue_m[uid] = rep_revenue_m.get(uid, 0.0) + float(lead.get("deal_value") or 0)
+
+    users_by_id = {u["id"]: u for u in users_res}
+    sales_team  = []
+    for uid in set(rep_leads_cnt) | set(rep_revenue_m):
+        user    = users_by_id.get(uid, {})
+        lc      = rep_leads_cnt.get(uid, 0)
+        cc      = rep_conv_cnt.get(uid, 0)
+        rv      = rep_revenue_m.get(uid, 0.0)
+        cr      = round(cc / lc * 100, 1) if lc > 0 else 0.0
+        sales_team.append({
+            "user_id":         uid,
+            "name":            user.get("full_name", "Unknown"),
+            "leads":           lc,
+            "converted":       cc,
+            "conversion_rate": cr,
+            "revenue":         round(rv, 2),
+        })
+    sales_team.sort(key=lambda x: x["revenue"], reverse=True)
+    top_performer = sales_team[0] if sales_team else None
+
+    # ── 4. Business goals progress ─────────────────────────────────────────
+    leads_contacted_actual = sum(float(l.get("value") or 0) for l in perf_logs_leads)
+    posts_published_actual = sum(float(l.get("value") or 0) for l in perf_logs_posts)
+    _CATEGORY_ACTUAL: dict[str, float] = {
+        "sales":     revenue_mtd,
+        "leads":     leads_contacted_actual,
+        "support":   0.0,
+        "tasks":     0.0,
+        "content":   posts_published_actual,
+        "campaigns": 0.0,
+    }
+    goals_progress = []
+    for g in goals_res:
+        target  = float(g.get("target_value") or 0)
+        current = _CATEGORY_ACTUAL.get(g.get("goal_category", "custom"), 0.0)
+        pct     = _kpi_achievement_pct(current, target)
+        goals_progress.append({
+            **g,
+            "current_value":   round(current, 2),
+            "achievement_pct": pct,
+            "pace":            _pace_status(current, target, days_elapsed, days_in_month_n),
+            "colour":          _score_colour(pct),
+            "days_remaining":  days_remaining,
+        })
+
+    # ── 5. Contractor activities ───────────────────────────────────────────
+    contractors_by_id = {c["id"]: c for c in contractors_res}
+    tasks_by_c:  dict[str, list] = {}
+    kpis_by_c:   dict[str, list] = {}
+    for t in contractor_tasks_res:
+        tasks_by_c.setdefault(t.get("contractor_id", ""), []).append(t)
+    for k in contractor_kpi_res:
+        kpis_by_c.setdefault(k.get("contractor_id", ""), []).append(k)
+
+    contractor_summaries = []
+    for cid, c in contractors_by_id.items():
+        tasks    = tasks_by_c.get(cid, [])
+        kpis     = kpis_by_c.get(cid, [])
+        blocked  = [t for t in tasks if t.get("status") == "blocked"]
+        in_prog  = [t for t in tasks if t.get("status") == "in_progress"]
+        done     = [t for t in tasks if t.get("status") == "done"]
+        # Needs company action: blocked AND owner contains "Company"
+        needs_action = [
+            t for t in blocked
+            if "company" in (t.get("owner") or "").lower()
+        ]
+        contractor_summaries.append({
+            "contractor_id":       cid,
+            "name":                c.get("full_name", ""),
+            "role":                c.get("role_title", ""),
+            "tasks_total":         len(tasks),
+            "tasks_done":          len(done),
+            "tasks_in_progress":   len(in_prog),
+            "tasks_blocked":       len(blocked),
+            "needs_company_action": [
+                {"task": t.get("task_description", ""), "due": str(t.get("due_date") or ""), "owner": t.get("owner", "")}
+                for t in needs_action
+            ],
+            "in_progress_tasks": [
+                {"task": t.get("task_description", ""), "due": str(t.get("due_date") or "")}
+                for t in in_prog[:3]
+            ],
+            "kpi_actuals": [
+                {"kpi_key": k.get("kpi_key", ""), "actual_value": float(k.get("actual_value") or 0),
+                 "actual_label": k.get("actual_label", ""), "month_label": k.get("month_label", "")}
+                for k in kpis
+            ],
+        })
+    contractor_summaries.sort(key=lambda x: len(x["needs_company_action"]), reverse=True)
+
+    # ── 6. Issues needing attention ────────────────────────────────────────
+    attention_issues = [
+        {"id": i["id"], "reference": i.get("reference", ""), "title": i.get("title", ""),
+         "priority": i.get("priority", ""), "status": i.get("status", ""),
+         "created_at": str(i.get("created_at", ""))}
+        for i in issues_res
+        if i.get("status") != "resolved"
+    ]
+
+    result = {
+        "generated_at":          datetime.utcnow().isoformat(),
+        "period":                f"{month_start_str} — {today}",
+        "days_elapsed":          days_elapsed,
+        "days_remaining":        days_remaining,
+        "revenue_snapshot":      revenue_snapshot,
+        "pipeline":              pipeline,
+        "total_pipeline_value":  round(total_pipeline_value, 2),
+        "sales_team":            sales_team,
+        "top_performer":         top_performer,
+        "goals":                 goals_progress,
+        "contractors":           contractor_summaries,
+        "attention_issues":      attention_issues,
+    }
+    _cache_set(cache_key, result, _TTL_BRIEF)
+    return result
+
+
+def toggle_owner_attention(db, org_id: str, issue_id: str, value: bool) -> dict:
+    """Toggle needs_owner_attention on an internal issue. Manager/owner only."""
+    row = (
+        db.table("internal_issues")
+        .update({"needs_owner_attention": value, "updated_at": datetime.utcnow().isoformat()})
+        .eq("id", issue_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    _cache_delete(f"perf:brief:{org_id}")
+    return row.data[0] if row.data else {}

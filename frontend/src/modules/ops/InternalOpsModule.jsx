@@ -22,6 +22,7 @@ import {
   listActivityLogs, submitActivityLog, updateActivityLog, getActivityLogsSummary,
   downloadInternalOpsReport,
 } from '../../services/internal_ops.service'
+import { toggleOwnerAttention } from '../../services/performance.service'
 import { getTeams, getInternalIssueCategories, listUsers } from '../../services/admin.service'
 
 const PRIORITIES  = ['critical', 'high', 'medium', 'low']
@@ -680,7 +681,7 @@ function IssuesTab({ user }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#F5F9FA' }}>
-                {['Ref', 'Title', 'Team', 'Priority', 'Status', 'Assigned To', 'Reported'].map(h => (
+                {['Ref', 'Title', 'Team', 'Priority', 'Status', 'Assigned To', 'Reported', ''].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.7px', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -703,6 +704,28 @@ function IssuesTab({ user }) {
                   <td style={{ padding: '12px 14px' }}><Badge text={iss.status} colours={STATUS_COLOURS[iss.status]} /></td>
                   <td style={{ padding: '12px 14px', fontSize: 13, color: '#4a7a8a' }}>{iss.assignee?.full_name || '—'}</td>
                   <td style={{ padding: '12px 14px', fontSize: 12, color: '#7A9BAD' }}>{fmtDate(iss.created_at)}</td>
+                  <td style={{ padding: '12px 14px' }} onClick={e => e.stopPropagation()}>
+                    {isManager && (
+                      <button
+                        title={iss.needs_owner_attention ? 'Remove owner flag' : 'Flag for owner attention'}
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          await toggleOwnerAttention(iss.id, !iss.needs_owner_attention)
+                          load()
+                        }}
+                        style={{
+                          background: iss.needs_owner_attention ? '#FCEBEB' : '#f9fafb',
+                          border: `1px solid ${iss.needs_owner_attention ? '#fca5a5' : '#e5e7eb'}`,
+                          borderRadius: 6, padding: '4px 8px', cursor: 'pointer',
+                          fontSize: 11, fontWeight: 500,
+                          color: iss.needs_owner_attention ? '#A32D2D' : '#9ca3af',
+                          display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+                        }}
+                      >
+                        🚩 {iss.needs_owner_attention ? 'Flagged' : 'Flag'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -339,3 +339,14 @@ def delete_business_goal(
 ):
     _require_manager(org)
     return {"data": {"ok": perf_svc.delete_business_goal(db, org["org_id"], goal_id, period_start)}}
+
+# PATCH /performance/issues/{issue_id}/owner-attention
+@router.patch("/performance/issues/{issue_id}/owner-attention")
+def toggle_owner_attention(
+    issue_id: str,
+    flagged: bool,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_manager(org)
+    return {"data": perf_svc.toggle_owner_attention(db, org["org_id"], issue_id, flagged)}
