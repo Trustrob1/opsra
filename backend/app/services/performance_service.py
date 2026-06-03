@@ -678,25 +678,20 @@ async def get_health_score(db, org_id: str) -> dict:
     days_in_month = _days_in_month(date(today.year, today.month, 1))
     days_elapsed = today.day
 
-    # E1: fire all in parallel
-    org_res, targets_res, tasks_res, tickets_res, leads_res = await asyncio.gather(
+    # E1: fire all in parallel — tasks removed, leads used for both sales + leads conversion
+    org_res, targets_res, tickets_res, leads_res = await asyncio.gather(
         _async_fetch(db, "organisations",
                      "id, health_score_weights, monthly_revenue_target",
                      [("id", "eq", org_id)]),
         _async_fetch(db, "staff_kpi_targets",
                      "target_value, actual_value, month_start",
                      [("org_id", "eq", org_id), ("month_start", "eq", month_start_str)]),
-        # tasks: confirmed column is due_at (timestamptz), not due_date
-        _async_fetch(db, "tasks",
-                     "id, status, due_at",
-                     [("org_id", "eq", org_id), ("due_at", "gte", month_start_str),
-                      ("deleted_at", "eq", None)]),
-        # tickets: use sla_breached + sla_resolution_due_at for overdue logic
+        # tickets: use sla_breached + resolved_at for overdue logic
         _async_fetch(db, "tickets",
-                     "id, status, resolved_at, sla_breached, sla_resolution_due_at, created_at",
+                     "id, status, resolved_at, sla_breached, created_at",
                      [("org_id", "eq", org_id), ("deleted_at", "eq", None)]),
         _async_fetch(db, "leads",
-                     "id, deal_value, stage, created_at",
+                     "id, deal_value, stage, created_at, deleted_at",
                      [("org_id", "eq", org_id), ("created_at", "gte", month_start_str)]),
     )
 
@@ -708,25 +703,26 @@ async def get_health_score(db, org_id: str) -> dict:
             raw_weights = json.loads(raw_weights)
         except Exception:
             raw_weights = {}
+    # Weights: tasks replaced with leads (conversion rate component)
     weights = {
-        "sales": int(raw_weights.get("sales", 35)),
-        "staff": int(raw_weights.get("staff", 25)),
-        "tasks": int(raw_weights.get("tasks", 20)),
+        "revenue": int(raw_weights.get("revenue", raw_weights.get("sales", 35))),
+        "staff":   int(raw_weights.get("staff", 25)),
+        "leads":   int(raw_weights.get("leads",  raw_weights.get("tasks", 20))),
         "support": int(raw_weights.get("support", 20)),
     }
 
-    # --- Sales score ---
-    # monthly_revenue_target added in PERF-1C migration; graceful fallback if null
-    revenue_target = float(org.get("monthly_revenue_target") or 0)
-    revenue_actual = sum(
-        float(l.get("deal_value") or 0) for l in leads_res
-        if l.get("stage") == "converted" and not l.get("deleted_at")
+    # --- Revenue score ---
+    active_leads_hs = [l for l in leads_res if not l.get("deleted_at")]
+    revenue_target  = float(org.get("monthly_revenue_target") or 0)
+    revenue_actual  = sum(
+        float(l.get("deal_value") or 0) for l in active_leads_hs
+        if l.get("stage") == "converted"
     )
     if revenue_target > 0:
         pace = revenue_target * (days_elapsed / days_in_month)
-        sales_score = min(100.0, (revenue_actual / pace * 100) if pace > 0 else 0.0)
+        revenue_score = min(100.0, (revenue_actual / pace * 100) if pace > 0 else 0.0)
     else:
-        sales_score = 100.0  # no target set → no penalty
+        revenue_score = 100.0  # no target set → no penalty
 
     # --- Staff score ---
     if targets_res:
@@ -735,14 +731,19 @@ async def get_health_score(db, org_id: str) -> dict:
         staff_score = round(total_pct / len(targets_res), 1)
     else:
         staff_score = 100.0
+    staff_on_track = sum(1 for t in targets_res
+                         if _kpi_achievement_pct(t.get("actual_value"), float(t.get("target_value") or 0)) >= 75)
+    staff_total    = len(set(t.get("user_id", "") for t in targets_res)) if targets_res else 0
 
-    # --- Tasks score --- (confirmed: tasks.due_at is timestamptz; status in 'completed','cancelled')
-    total_tasks = len(tasks_res)
-    completed_tasks = sum(1 for t in tasks_res if t.get("status") == "completed")
-    tasks_score = round((completed_tasks / total_tasks) * 100, 1) if total_tasks > 0 else 100.0
+    # --- Leads conversion score ---
+    total_leads_hs = len(active_leads_hs)
+    converted_hs   = sum(1 for l in active_leads_hs if l.get("stage") == "converted")
+    conv_rate_hs   = round(converted_hs / total_leads_hs * 100, 1) if total_leads_hs > 0 else 0.0
+    # Score: conversion rate relative to a 20% benchmark (20% CR = 100 score)
+    leads_score = min(100.0, round(conv_rate_hs / 20 * 100, 1)) if total_leads_hs > 0 else 100.0
 
-    # --- Support score --- (confirmed: sla_breached boolean + resolved_at for resolution status)
-    total_tickets = len(tickets_res)
+    # --- Support score ---
+    total_tickets    = len(tickets_res)
     resolved_tickets = sum(1 for t in tickets_res if t.get("resolved_at") is not None)
     overdue_tickets  = sum(1 for t in tickets_res if t.get("sla_breached") is True)
     if total_tickets > 0:
@@ -752,9 +753,9 @@ async def get_health_score(db, org_id: str) -> dict:
 
     # --- Weighted health score ---
     health = (
-        sales_score   * weights["sales"]   / 100 +
+        revenue_score * weights["revenue"] / 100 +
         staff_score   * weights["staff"]   / 100 +
-        tasks_score   * weights["tasks"]   / 100 +
+        leads_score   * weights["leads"]   / 100 +
         support_score * weights["support"] / 100
     )
     health = round(health, 1)
@@ -763,10 +764,34 @@ async def get_health_score(db, org_id: str) -> dict:
         "health_score": health,
         "colour": _score_colour(health),
         "components": {
-            "sales":   {"score": round(sales_score, 1),   "weight": weights["sales"]},
-            "staff":   {"score": round(staff_score, 1),   "weight": weights["staff"]},
-            "tasks":   {"score": round(tasks_score, 1),   "weight": weights["tasks"]},
-            "support": {"score": round(support_score, 1), "weight": weights["support"]},
+            "revenue": {
+                "score":  round(revenue_score, 1),
+                "weight": weights["revenue"],
+                "actual": round(revenue_actual, 0),
+                "target": revenue_target,
+                "label":  f"₦{int(revenue_actual):,} of ₦{int(revenue_target):,}" if revenue_target > 0 else f"₦{int(revenue_actual):,}",
+            },
+            "staff": {
+                "score":  round(staff_score, 1),
+                "weight": weights["staff"],
+                "actual": staff_on_track,
+                "target": staff_total,
+                "label":  f"{staff_on_track} of {staff_total} on track" if staff_total > 0 else "No targets set",
+            },
+            "leads": {
+                "score":  round(leads_score, 1),
+                "weight": weights["leads"],
+                "actual": conv_rate_hs,
+                "target": 20,
+                "label":  f"{conv_rate_hs}% conversion rate",
+            },
+            "support": {
+                "score":  round(support_score, 1),
+                "weight": weights["support"],
+                "actual": total_tickets - resolved_tickets,
+                "target": total_tickets,
+                "label":  f"{total_tickets - resolved_tickets} open ticket{'s' if (total_tickets - resolved_tickets) != 1 else ''}",
+            },
         },
         "weights": weights,
     }

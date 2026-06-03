@@ -141,6 +141,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
             </div>
             <div>
               <div style={{ fontWeight: 500, fontSize: 14, color: '#0f2535' }}>{orgName || 'Daily Brief'}</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>Daily Brief</div>
               <div style={{ fontSize: 10, color: '#9ca3af' }}>
                 {refresh ? refresh.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '…'}
                 {brief?.days_remaining !== undefined && ` · ${brief.days_remaining} days left this month`}
@@ -209,13 +210,22 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 5 }}>Organisation health</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '3px 16px' }}>
-                {health.components && Object.entries(health.components).map(([k, v]) => (
-                  <div key={k} style={{ fontSize: 11, color: '#6b7280' }}>
-                    <i className={`ti ti-${k === 'sales' ? 'currency-naira' : k === 'staff' ? 'users' : k === 'tasks' ? 'checkbox' : 'ticket'}`} style={{ fontSize: 11, marginRight: 3 }} aria-hidden="true" />
-                    {k} <strong style={{ color: '#0f2535', fontWeight: 500 }}>{Math.round(v.score)}%</strong>
-                  </div>
-                ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '5px 16px' }}>
+                {health.components && Object.entries(health.components).map(([k, v]) => {
+                  const iconMap = { revenue: 'currency-naira', staff: 'users', leads: 'git-merge', support: 'ticket' }
+                  const cv = health.colour === 'green' ? 'green' : health.colour === 'amber' ? 'amber' : 'red'
+                  const compV = v.score >= 75 ? 'green' : v.score >= 50 ? 'amber' : 'red'
+                  return (
+                    <div key={k} style={{ fontSize: 11 }}>
+                      <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 1 }}>
+                        <i className={`ti ti-${iconMap[k] || 'chart-bar'}`} style={{ fontSize: 11 }} aria-hidden="true" />
+                        <span style={{ textTransform: 'capitalize' }}>{k}</span>
+                        <strong style={{ color: T[compV].color, fontWeight: 600, marginLeft: 2 }}>{Math.round(v.score)}%</strong>
+                      </div>
+                      {v.label && <div style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 15 }}>{v.label}</div>}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -224,6 +234,19 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
         {/* 2-column grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 0 }}>
           <div style={{ paddingRight: 6 }}>
+
+            {/* Goals — above Revenue */}
+            {brief?.goals?.length > 0 && (
+              <Section title="Business goals" icon="target" accent="#993C1D">
+                {brief.goals.map(g => (
+                  <ProgressBar key={g.id}
+                    current={g.current_value} target={g.target_value}
+                    colour={g.colour} label={g.goal_name} unit={g.unit}
+                    pct={g.achievement_pct} pace={g.pace} daysLeft={g.days_remaining}
+                  />
+                ))}
+              </Section>
+            )}
 
             {/* Revenue */}
             {brief?.revenue_snapshot && (
@@ -264,19 +287,6 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
                       <span style={{ fontWeight: 500, color: '#0f2535' }}>{fmtN(p.value)}</span>
                     </div>
                   </div>
-                ))}
-              </Section>
-            )}
-
-            {/* Goals */}
-            {brief?.goals?.length > 0 && (
-              <Section title="Business goals" icon="target" accent="#993C1D">
-                {brief.goals.map(g => (
-                  <ProgressBar key={g.id}
-                    current={g.current_value} target={g.target_value}
-                    colour={g.colour} label={g.goal_name} unit={g.unit}
-                    pct={g.achievement_pct} pace={g.pace} daysLeft={g.days_remaining}
-                  />
                 ))}
               </Section>
             )}
