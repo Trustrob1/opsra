@@ -359,6 +359,23 @@ class PublicLogSubmit(BaseModel):
     log_date: str = Field(..., max_length=10)
     entries: List[DailyLogEntry]
 
+class ActivityEntry(BaseModel):
+    activity_description: str = Field(..., max_length=1000)
+    activity_type:        str = Field("General", max_length=100)
+    duration_minutes:     Optional[int] = Field(None, ge=0, le=1440)
+    has_blocker:          bool = False
+    blocker_note:         Optional[str] = Field(None, max_length=500)
+
+
+class PublicActivitySubmit(BaseModel):
+    pin:        str = Field(..., min_length=4, max_length=6)
+    log_date:   str = Field(..., max_length=10)
+    activities: List[ActivityEntry] = Field(..., min_items=1)
+
+
+class FlagActivityRequest(BaseModel):
+    needs_management_attention: bool
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -818,3 +835,165 @@ def delete_daily_log(
 
     db.table("performance_daily_logs").delete().eq("id", log_id).execute()
     return {"status": "ok", "data": {"deleted": True}}
+
+
+# ── 9. POST /performance-logs/public/{token}/activities ──────────────────────
+# Public route — contractor submits daily activity entries via log link.
+# Each entry saves as a separate performance_daily_logs row.
+# kpi_key = 'daily_activity' distinguishes these from KPI log entries.
+
+@router.post(
+    "/performance-logs/public/{token}/activities",
+    status_code=status.HTTP_201_CREATED,
+    tags=["performance-logs"],
+)
+def submit_public_activities(token: str, body: PublicActivitySubmit, db=Depends(get_supabase)):
+    if len(token) != 64:
+        raise HTTPException(status_code=404, detail="Invalid log link")
+
+    if _is_pin_locked(token):
+        raise HTTPException(status_code=429, detail="Too many incorrect PIN attempts. Try again in 15 minutes.")
+
+    res = (
+        db.table("contractors")
+        .select("id, org_id, full_name, log_token, log_pin")
+        .eq("log_token", token)
+        .is_("deleted_at", "null")
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Log link not found or expired")
+
+    contractor = res.data[0]
+    pin_hash = contractor.get("log_pin") or ""
+
+    if not pin_hash:
+        raise HTTPException(status_code=403, detail="Log link not configured — contact your manager")
+
+    if not _verify_pin(body.pin, pin_hash):
+        remaining = _check_and_record_pin_failure(token)
+        if remaining == 0:
+            raise HTTPException(status_code=429, detail="Too many incorrect PIN attempts. Try again in 15 minutes.")
+        msg = "Incorrect PIN."
+        if remaining > 0:
+            msg += f" {remaining} attempt{'s' if remaining != 1 else ''} remaining."
+        raise HTTPException(status_code=403, detail=msg)
+
+    _clear_pin_attempts(token)
+
+    org_id = contractor["org_id"]
+    contractor_id = contractor["id"]
+    now = datetime.utcnow().isoformat()
+    saved = []
+
+    for act in body.activities:
+        try:
+            payload = {
+                "org_id":           org_id,
+                "entity_type":      "contractor",
+                "entity_id":        contractor_id,
+                "kpi_key":          "daily_activity",
+                "kpi_label":        act.activity_type,
+                "log_date":         body.log_date,
+                "value":            float(act.duration_minutes) if act.duration_minutes is not None else None,
+                "notes":            act.activity_description,
+                "activity_outcome": act.activity_type,
+                "duration_minutes": act.duration_minutes,
+                "blocker_note":     act.blocker_note if act.has_blocker else None,
+                "logged_via":       "public_link",
+                "logged_by_token":  token,
+                "created_at":       now,
+                "updated_at":       now,
+            }
+            # Activity logs always insert — no upsert (multiple entries per day allowed)
+            res_row = db.table("performance_daily_logs").insert(payload).execute()
+            if res_row.data:
+                saved.append(res_row.data[0]["id"])
+        except Exception as exc:
+            logger.error("Failed to save activity entry: %s", exc)
+
+    return {
+        "status": "ok",
+        "data": {
+            "saved": len(saved),
+            "contractor_name": contractor["full_name"],
+            "log_date": body.log_date,
+        },
+    }
+
+
+# ── 10. GET /performance-logs/{contractor_id}/activities ─────────────────────
+# Manager: list daily activity entries for a contractor.
+
+@router.get(
+    "/performance-logs/{contractor_id}/activities",
+    status_code=status.HTTP_200_OK,
+    tags=["performance-logs"],
+)
+def list_activity_logs(
+    contractor_id: str,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_manager(org)
+    org_id = org["org_id"]
+    _contractor_or_404(db, contractor_id, org_id)
+
+    query = (
+        db.table("performance_daily_logs")
+        .select("id, log_date, kpi_label, notes, activity_outcome, duration_minutes, "
+                "blocker_note, needs_management_attention, logged_via, created_at")
+        .eq("entity_id", contractor_id)
+        .eq("org_id", org_id)
+        .eq("kpi_key", "daily_activity")
+        .order("log_date", desc=True)
+        .order("created_at", desc=True)
+    )
+    if date_from:
+        query = query.gte("log_date", date_from)
+    if date_to:
+        query = query.lte("log_date", date_to)
+
+    res = query.execute()
+    items = res.data or []
+    return {"status": "ok", "data": {"items": items, "total": len(items)}}
+
+
+# ── 11. PATCH /performance-logs/{contractor_id}/activities/{log_id}/flag ─────
+# Manager: flag an activity entry as needing management attention.
+# Pattern 53: this static sub-path must be declared before
+#             PATCH /{contractor_id}/{log_id} — already satisfied since
+#             the existing PATCH uses a 2-segment path and this uses 3.
+
+@router.patch(
+    "/performance-logs/{contractor_id}/activities/{log_id}/flag",
+    status_code=status.HTTP_200_OK,
+    tags=["performance-logs"],
+)
+def flag_activity_log(
+    contractor_id: str,
+    log_id:        str,
+    body:          FlagActivityRequest,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_manager(org)
+    org_id = org["org_id"]
+    _log_or_404(db, log_id, contractor_id, org_id)
+
+    res = (
+        db.table("performance_daily_logs")
+        .update({
+            "needs_management_attention": body.needs_management_attention,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+        .eq("id", log_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Update failed")
+    return {"status": "ok", "data": res.data[0]}

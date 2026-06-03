@@ -343,6 +343,23 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
                           ))}
                         </div>
                       )}
+                      {c.todays_activity_summary?.length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px', display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <i className="ti ti-pencil" style={{ fontSize: 10 }} aria-hidden="true" />
+                            Today's activities
+                          </div>
+                          {c.todays_activity_summary.map((a, i) => (
+                            <div key={i} style={{ fontSize: 11, color: '#374151', marginBottom: 3, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                              <i className={`ti ti-${a.blocker ? 'lock' : 'circle-check'}`} style={{ fontSize: 11, color: a.blocker ? '#E24B4A' : '#F59E0B', flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+                              <span style={{ lineHeight: 1.4 }}>{a.type && <strong>{a.type}: </strong>}{a.notes}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {!c.todays_activity_summary?.length && c.activities_today === 0 && (
+                        <div style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', marginBottom: 6 }}>No activity logged today</div>
+                      )}
                       {c.in_progress_tasks?.length > 0 && (
                         <div>
                           <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>In progress</div>

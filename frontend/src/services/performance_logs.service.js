@@ -135,3 +135,27 @@ export async function submitPublicLog(token, payload) {
   )
   return res.data.data
 }
+
+// ── Contractor daily activity logs ────────────────────────────────────────
+
+export async function submitPublicActivities(token, payload) {
+  // payload: { pin, log_date, activities: [{activity_description, activity_type, duration_minutes, has_blocker, blocker_note}] }
+  const r = await axios.post(`${BASE}/performance-logs/public/${token}/activities`, payload)
+  return r.data
+}
+
+export async function listActivityLogs(contractorId, params = {}) {
+  const r = await axios.get(`${BASE}/performance-logs/${contractorId}/activities`, {
+    headers: authHeaders(), params,
+  })
+  return r.data.data
+}
+
+export async function flagActivityLog(contractorId, logId, flagged) {
+  const r = await axios.patch(
+    `${BASE}/performance-logs/${contractorId}/activities/${logId}/flag`,
+    { needs_management_attention: flagged },
+    { headers: authHeaders() }
+  )
+  return r.data.data
+}

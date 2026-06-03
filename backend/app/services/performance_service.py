@@ -1282,6 +1282,7 @@ async def get_daily_brief(db, org_id: str) -> dict:
         org_res,
         perf_logs_leads,
         perf_logs_posts,
+        activity_logs_today,
     ) = await asyncio.gather(
         _async_fetch(
             db, "leads",
@@ -1335,6 +1336,13 @@ async def get_daily_brief(db, org_id: str) -> dict:
             "kpi_key, value",
             [("org_id", "eq", org_id), ("log_date", "gte", month_start_str),
              ("kpi_key", "eq", "Posts Published")],
+        ),
+        # Contractor daily activity logs — today only for brief
+        _async_fetch(
+            db, "performance_daily_logs",
+            "entity_id, log_date, kpi_label, notes, blocker_note, needs_management_attention, created_at",
+            [("org_id", "eq", org_id), ("kpi_key", "eq", "daily_activity"),
+             ("log_date", "eq", str(today))],
         ),
     )
 
@@ -1455,6 +1463,14 @@ async def get_daily_brief(db, org_id: str) -> dict:
             t for t in blocked
             if "company" in (t.get("owner") or "").lower()
         ]
+        # Today's activity logs for this contractor
+        todays_activities = [
+            a for a in activity_logs_today
+            if a.get("entity_id") == cid
+        ]
+        has_blocker_today = any(a.get("blocker_note") for a in todays_activities)
+        flagged_activities = [a for a in todays_activities if a.get("needs_management_attention")]
+
         contractor_summaries.append({
             "contractor_id":       cid,
             "name":                c.get("full_name", ""),
@@ -1463,6 +1479,14 @@ async def get_daily_brief(db, org_id: str) -> dict:
             "tasks_done":          len(done),
             "tasks_in_progress":   len(in_prog),
             "tasks_blocked":       len(blocked),
+            "activities_today":    len(todays_activities),
+            "has_blocker_today":   has_blocker_today,
+            "flagged_activities":  len(flagged_activities),
+            "todays_activity_summary": [
+                {"type": a.get("kpi_label", ""), "notes": (a.get("notes") or "")[:100],
+                 "blocker": a.get("blocker_note"), "flagged": a.get("needs_management_attention", False)}
+                for a in todays_activities[:3]
+            ],
             "needs_company_action": [
                 {"task": t.get("task_description", ""), "due": str(t.get("due_date") or ""), "owner": t.get("owner", "")}
                 for t in needs_action

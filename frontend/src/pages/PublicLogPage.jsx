@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { getPublicLogForm, submitPublicLog } from '../services/performance_logs.service'
+import { getPublicLogForm, submitPublicLog, submitPublicActivities } from '../services/performance_logs.service'
 
 // ── Minimal inline styles (no Tailwind — standalone page outside AppShell) ───
 const S = {
@@ -458,6 +458,144 @@ function LogForm({ contractor, token, pin, onSuccess }) {
   )
 }
 
+const ACTIVITY_TYPES = [
+  'Content Creation', 'Research', 'Client Communication',
+  'Design', 'Development', 'Strategy', 'Admin', 'Meeting', 'Other',
+]
+
+function ActivityLogForm({ contractor, token, pin, onSuccess }) {
+  const today = new Date().toISOString().split('T')[0]
+  const [logDate, setLogDate] = useState(today)
+  const [entries, setEntries] = useState([
+    { activity_description: '', activity_type: 'General', duration_minutes: '', has_blocker: false, blocker_note: '' }
+  ])
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const addEntry = () => setEntries(prev => [
+    ...prev,
+    { activity_description: '', activity_type: 'General', duration_minutes: '', has_blocker: false, blocker_note: '' }
+  ])
+
+  const removeEntry = (i) => setEntries(prev => prev.filter((_, idx) => idx !== i))
+
+  const updateEntry = (i, field, val) => setEntries(prev => {
+    const next = [...prev]
+    next[i] = { ...next[i], [field]: val }
+    return next
+  })
+
+  async function handleSubmit() {
+    const valid = entries.filter(e => e.activity_description.trim())
+    if (valid.length === 0) { setError('Add at least one activity description.'); return }
+    setSubmitting(true); setError(null)
+    try {
+      await submitPublicActivities(token, {
+        pin,
+        log_date: logDate,
+        activities: valid.map(e => ({
+          activity_description: e.activity_description.trim(),
+          activity_type:        e.activity_type || 'General',
+          duration_minutes:     e.duration_minutes ? parseInt(e.duration_minutes) : null,
+          has_blocker:          e.has_blocker,
+          blocker_note:         e.has_blocker ? (e.blocker_note.trim() || null) : null,
+        })),
+      })
+      onSuccess(logDate, contractor.full_name)
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Submission failed. Please try again.')
+    } finally { setSubmitting(false) }
+  }
+
+  return (
+    <div style={S.card}>
+      <p style={S.name}>{contractor.full_name}</p>
+      <p style={S.role}>{contractor.role_title}</p>
+
+      <div style={S.fieldGroup}>
+        <label style={S.label}>Log Date</label>
+        <input type="date" value={logDate} max={today}
+          onChange={e => setLogDate(e.target.value)} style={S.input} />
+      </div>
+
+      <div style={{ borderTop: '1px solid #edf1f4', margin: '16px 0' }} />
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#4a6375', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 16 }}>
+        Activities
+      </div>
+
+      {error && <div style={S.error}>{error}</div>}
+
+      {entries.map((entry, i) => (
+        <div key={i} style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #dde4e8', padding: '14px 16px', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#4a6375' }}>Activity {i + 1}</span>
+            {entries.length > 1 && (
+              <button onClick={() => removeEntry(i)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#c0392b', padding: 0 }}>✕</button>
+            )}
+          </div>
+
+          <label style={S.label}>What did you work on? *</label>
+          <textarea
+            value={entry.activity_description}
+            onChange={e => updateEntry(i, 'activity_description', e.target.value)}
+            placeholder="Describe what you worked on…"
+            rows={3}
+            style={{ ...S.input, resize: 'vertical', marginBottom: 10 }}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={S.label}>Activity type</label>
+              <select value={entry.activity_type} onChange={e => updateEntry(i, 'activity_type', e.target.value)}
+                style={{ ...S.input, background: 'white' }}>
+                {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={S.label}>Hours worked</label>
+              <input type="number" min="0" max="24" step="0.5"
+                value={entry.duration_minutes}
+                onChange={e => updateEntry(i, 'duration_minutes', e.target.value)}
+                placeholder="e.g. 2"
+                style={S.input} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: entry.has_blocker ? 10 : 0 }}>
+            <input type="checkbox" id={`blocker-${i}`} checked={entry.has_blocker}
+              onChange={e => updateEntry(i, 'has_blocker', e.target.checked)}
+              style={{ accentColor: '#c0392b', width: 16, height: 16 }} />
+            <label htmlFor={`blocker-${i}`} style={{ fontSize: 13, color: entry.has_blocker ? '#c0392b' : '#4a6375', fontWeight: entry.has_blocker ? 600 : 400, cursor: 'pointer' }}>
+              🔴 This activity has a blocker
+            </label>
+          </div>
+
+          {entry.has_blocker && (
+            <textarea
+              value={entry.blocker_note}
+              onChange={e => updateEntry(i, 'blocker_note', e.target.value)}
+              placeholder="Describe the blocker — what is preventing progress?"
+              rows={2}
+              style={{ ...S.input, resize: 'vertical', borderColor: '#ffc0c0', marginTop: 8 }}
+            />
+          )}
+        </div>
+      ))}
+
+      <button onClick={addEntry}
+        style={{ width: '100%', padding: '10px', background: 'none', border: '1.5px dashed #dde4e8', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: '#6B8FA0', fontWeight: 600 }}>
+        + Add another activity
+      </button>
+
+      <button onClick={handleSubmit} disabled={submitting}
+        style={{ ...S.btn, ...(submitting ? S.btnDisabled : {}) }}>
+        {submitting ? 'Submitting…' : '✓ Submit Activities'}
+      </button>
+    </div>
+  )
+}
+
 function SuccessState({ logDate, contractorName, onLogAnother }) {
   return (
     <div style={S.card}>
@@ -488,6 +626,7 @@ export default function PublicLogPage({ token }) {
   const [successDate, setSuccessDate] = useState(null)
   const [errorMsg, setErrorMsg] = useState(null)
   const [pinLoading, setPinLoading] = useState(false)
+  const [formTab, setFormTab] = useState('kpi')
 
   useEffect(() => {
     async function load() {
@@ -567,12 +706,28 @@ export default function PublicLogPage({ token }) {
       )}
 
       {pageState === 'form' && contractor && (
-        <LogForm
-          contractor={contractor}
-          token={token}
-          pin={verifiedPin}
-          onSuccess={handleSuccess}
-        />
+        <div style={{ width: '100%', maxWidth: 520, margin: '0 16px' }}>
+          {/* Tab switcher */}
+          <div style={{ display: 'flex', background: 'white', borderRadius: '12px 12px 0 0', border: '1px solid #dde4e8', borderBottom: 'none', overflow: 'hidden' }}>
+            <button
+              onClick={() => setFormTab('kpi')}
+              style={{ flex: 1, padding: '12px 0', background: formTab === 'kpi' ? '#0a1f2e' : 'white', color: formTab === 'kpi' ? 'white' : '#6B8FA0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+              📊 KPI Log
+            </button>
+            <button
+              onClick={() => setFormTab('activity')}
+              style={{ flex: 1, padding: '12px 0', background: formTab === 'activity' ? '#0a1f2e' : 'white', color: formTab === 'activity' ? 'white' : '#6B8FA0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, borderLeft: '1px solid #dde4e8' }}>
+              📝 Daily Activity
+            </button>
+          </div>
+          <div style={{ marginTop: 0 }}>
+            {formTab === 'kpi' ? (
+              <LogForm contractor={contractor} token={token} pin={verifiedPin} onSuccess={handleSuccess} />
+            ) : (
+              <ActivityLogForm contractor={contractor} token={token} pin={verifiedPin} onSuccess={handleSuccess} />
+            )}
+          </div>
+        </div>
       )}
 
       {pageState === 'success' && contractor && (

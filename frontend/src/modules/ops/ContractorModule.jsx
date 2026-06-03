@@ -21,9 +21,9 @@
  *   user — current user object from Zustand auth store
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { ds } from '../../utils/ds'
-import { generateLogToken, getPerformanceSummary, logDailyEntry, getPerformanceLogs, updateDailyLog, deleteDailyLog } from '../../services/performance_logs.service'
+import { generateLogToken, getPerformanceSummary, logDailyEntry, getPerformanceLogs, updateDailyLog, deleteDailyLog, listActivityLogs, flagActivityLog } from '../../services/performance_logs.service'
 import {
   getContractorScorecard,
   listContractors,
@@ -468,9 +468,10 @@ function ContractorDetailPanel({ contractorId, user, onClose }) {
   const handleUpdate = () => { setDidUpdate(true); load() }
 
   const detailTabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'kpis',     label: 'KPI Tracker' },
-    { id: 'tasks',    label: 'Tasks' },
+    { id: 'overview',  label: 'Overview' },
+    { id: 'kpis',      label: 'KPI Tracker' },
+    { id: 'tasks',     label: 'Tasks' },
+    { id: 'activity',  label: 'Activity Log' },
   ]
 
   return (
@@ -519,6 +520,9 @@ function ContractorDetailPanel({ contractorId, user, onClose }) {
             </div>
             <div style={{ display: activeTab === 'tasks' ? 'block' : 'none' }}>
               <TasksPanel contractor={contractor} onUpdate={handleUpdate} />
+            </div>
+            <div style={{ display: activeTab === 'activity' ? 'block' : 'none' }}>
+              <ContractorActivityLogPanel contractorId={contractor.id} isManager />
             </div>
           </>
         )}
@@ -1158,6 +1162,104 @@ function AllTasksTab({ refreshKey, isActive }) {
             )
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Contractor Activity Log Panel ─────────────────────────────────────────────
+import { listActivityLogs, flagActivityLog } from '../../services/performance_logs.service'
+
+function ContractorActivityLogPanel({ contractorId }) {
+  const [logs,    setLogs]    = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+  const [expanded, setExpanded] = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const data = await listActivityLogs(contractorId)
+      setLogs(data?.items ?? [])
+    } catch { setError('Failed to load activity logs.') }
+    finally { setLoading(false) }
+  }, [contractorId])
+
+  useEffect(() => { load() }, [load])
+
+  const handleFlag = async (log) => {
+    try {
+      await flagActivityLog(contractorId, log.id, !log.needs_management_attention)
+      load()
+    } catch {}
+  }
+
+  if (loading) return <Spinner />
+  if (error)   return <div style={{ color: '#c5221f', fontSize: 13, padding: 16 }}>{error}</div>
+
+  // Group by date
+  const byDate = {}
+  logs.forEach(l => {
+    const d = l.log_date || '—'
+    if (!byDate[d]) byDate[d] = []
+    byDate[d].push(l)
+  })
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <SectionHeader title="Daily Activity Log" />
+      {logs.length === 0 ? (
+        <EmptyState icon="📝" title="No activity logs yet" sub="Contractor hasn't submitted daily activity logs yet" />
+      ) : (
+        Object.entries(byDate).map(([date, dayLogs]) => (
+          <div key={date}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: ds.gray, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{date}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {dayLogs.map(log => (
+                <div key={log.id} style={{
+                  background: log.needs_management_attention ? '#fff8f0' : 'white',
+                  border: `1px solid ${log.needs_management_attention ? '#fde8c8' : '#dde4e8'}`,
+                  borderRadius: 8, padding: '10px 12px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, background: '#f1f3f4', color: ds.dark, borderRadius: 4, padding: '1px 6px' }}>
+                          {log.kpi_label || 'General'}
+                        </span>
+                        {log.duration_minutes && (
+                          <span style={{ fontSize: 11, color: ds.gray }}>{log.duration_minutes}h</span>
+                        )}
+                        {log.blocker_note && (
+                          <span style={{ fontSize: 11, fontWeight: 600, background: '#fce8e6', color: '#c5221f', borderRadius: 4, padding: '1px 6px' }}>🔴 Blocked</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: ds.dark, lineHeight: 1.5 }}>{log.notes}</div>
+                      {log.blocker_note && (
+                        <div style={{ fontSize: 11, color: '#c5221f', marginTop: 4, background: '#fff0f0', borderRadius: 4, padding: '4px 8px' }}>
+                          Blocker: {log.blocker_note}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleFlag(log)}
+                      title={log.needs_management_attention ? 'Remove attention flag' : 'Flag for management attention'}
+                      style={{
+                        flexShrink: 0,
+                        background: log.needs_management_attention ? '#fef3e2' : '#f1f3f4',
+                        border: `1px solid ${log.needs_management_attention ? '#fde8c8' : '#dde4e8'}`,
+                        borderRadius: 6, padding: '4px 8px', cursor: 'pointer',
+                        fontSize: 11, fontWeight: 500,
+                        color: log.needs_management_attention ? '#b45309' : ds.gray,
+                      }}>
+                      🚩 {log.needs_management_attention ? 'Flagged' : 'Flag'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
       )}
     </div>
   )
