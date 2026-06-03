@@ -1168,7 +1168,6 @@ function AllTasksTab({ refreshKey, isActive }) {
 }
 
 // ── Contractor Activity Log Panel ─────────────────────────────────────────────
-import { listActivityLogs, flagActivityLog } from '../../services/performance_logs.service'
 
 function ContractorActivityLogPanel({ contractorId }) {
   const [logs,    setLogs]    = useState([])
