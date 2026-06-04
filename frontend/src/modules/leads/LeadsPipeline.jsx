@@ -477,7 +477,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ width: isMobile ? 36 : 44, height: isMobile ? 36 : 44, background: ds.teal, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 800, fontSize: isMobile ? 13 : 15, color: 'white' }}>01</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: isMobile ? 18 : 22, color: ds.dark, margin: 0 }}>Lead Command Center</h1>
+          <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: isMobile ? 18 : 22, color: ds.dark, margin: 0 }}>Lead Center</h1>
           <p style={{ fontSize: 12, color: ds.gray, margin: 0 }}>{loading ? 'Loading…' : `${total} leads · ${filtered.length} shown`}</p>
         </div>
 
