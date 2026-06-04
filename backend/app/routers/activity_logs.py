@@ -23,7 +23,11 @@ from pydantic import BaseModel
 from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok
+from app.routers.internal_issues import _generate_reference
 from datetime import datetime, timezone, timedelta, date
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -311,6 +315,50 @@ def submit_activity_log_bulk(
         "entries":    entries_json,
         "updated_at": now,
     }
+
+    # Auto-create issues for any blocker entries — S14: one failure never stops the loop
+    def _maybe_create_blocker_issues(entries_json: list) -> list:
+        """
+        For each entry with has_blocker=True and no existing blocker_issue_id,
+        create an internal issue and store the issue id back on the entry.
+        Returns the updated entries list.
+        """
+        updated = []
+        for entry in entries_json:
+            if entry.get("has_blocker") and not entry.get("blocker_issue_id"):
+                try:
+                    ref = _generate_reference(db, org_id)
+                    blocker_title = f"Blocker: {entry['activity_description'][:80]}"
+                    blocker_desc  = entry.get("blocker_note") or "No details provided."
+                    issue_row = {
+                        "org_id":      org_id,
+                        "reference":   ref,
+                        "title":       blocker_title,
+                        "description": blocker_desc,
+                        "team":        user_team or "General",
+                        "category":    "resource_blocker",
+                        "priority":    "high",
+                        "status":      "open",
+                        "reported_by": user_id,
+                        "assigned_to": None,
+                        "created_at":  now,
+                        "updated_at":  now,
+                    }
+                    issue_result = db.table("internal_issues").insert(issue_row).execute()
+                    issue_data = issue_result.data
+                    if isinstance(issue_data, list):
+                        issue_data = issue_data[0] if issue_data else {}
+                    issue_id = (issue_data or {}).get("id")
+                    if issue_id:
+                        entry = {**entry, "blocker_issue_id": issue_id}
+                except Exception as exc:
+                    logger.warning("_maybe_create_blocker_issues: failed for entry — %s", exc)
+            updated.append(entry)
+        return updated
+
+    entries_json = _maybe_create_blocker_issues(entries_json)
+    # Rebuild update_fields with potentially enriched entries
+    update_fields["entries"] = entries_json
 
     if existing_data:
         result = (

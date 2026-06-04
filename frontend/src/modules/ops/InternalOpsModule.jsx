@@ -1068,9 +1068,16 @@ function ActivityLogTab({ user }) {
                                 border: '1px solid #FECACA', borderRadius: 7,
                                 padding: '8px 12px',
                               }}>
-                                <span style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                  🚧 Blocker
-                                </span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    🚧 Blocker
+                                  </span>
+                                  {entry.blocker_issue_id && (
+                                    <span style={{ fontSize: 11, fontWeight: 600, color: '#7A9BAD' }}>
+                                      → Logged as issue in Issues tab
+                                    </span>
+                                  )}
+                                </div>
                                 {entry.blocker_note && (
                                   <p style={{ fontSize: 13, color: '#991B1B', margin: '4px 0 0', lineHeight: 1.5 }}>
                                     {entry.blocker_note}
