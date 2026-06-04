@@ -843,6 +843,40 @@ def update_issue(
     if isinstance(data, list):
         data = data[0] if data else update_data
 
+    # If status changed, reflect it on any linked activity log blocker entry
+    # S14: failure here never blocks the issue update response
+    if new_status:
+        try:
+            logs_result = (
+                db.table("activity_logs")
+                .select("id, entries")
+                .eq("org_id", org_id)
+                .execute()
+            )
+            logs = logs_result.data or []
+            if isinstance(logs, dict):
+                logs = [logs]
+            for log in logs:
+                entries = log.get("entries") or []
+                if not isinstance(entries, list):
+                    continue
+                updated = False
+                new_entries = []
+                for entry in entries:
+                    if entry.get("blocker_issue_id") == issue_id:
+                        entry = {**entry, "blocker_issue_status": new_status}
+                        updated = True
+                    new_entries.append(entry)
+                if updated:
+                    db.table("activity_logs") \
+                        .update({"entries": new_entries,
+                                 "updated_at": datetime.now(timezone.utc).isoformat()}) \
+                        .eq("id", log["id"]) \
+                        .eq("org_id", org_id) \
+                        .execute()
+        except Exception as exc:
+            logger.warning("blocker status sync failed for issue %s: %s", issue_id, exc)
+
     return ok(data=data, message="Issue updated")
 
 

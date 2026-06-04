@@ -1064,22 +1064,31 @@ function ActivityLogTab({ user }) {
                             {/* Blocker */}
                             {entry.has_blocker && (
                               <div style={{
-                                marginTop: 10, background: '#FEF2F2',
-                                border: '1px solid #FECACA', borderRadius: 7,
+                                marginTop: 10,
+                                background: entry.blocker_issue_status === 'resolved' ? '#F0FDF4' : '#FEF2F2',
+                                border: `1px solid ${entry.blocker_issue_status === 'resolved' ? '#BBF7D0' : '#FECACA'}`,
+                                borderRadius: 7,
                                 padding: '8px 12px',
                               }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    🚧 Blocker
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: entry.blocker_issue_status === 'resolved' ? '#065F46' : '#DC2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    {entry.blocker_issue_status === 'resolved' ? '✅ Blocker Resolved' : '🚧 Blocker'}
                                   </span>
                                   {entry.blocker_issue_id && (
-                                    <span style={{ fontSize: 11, fontWeight: 600, color: '#7A9BAD' }}>
-                                      → Logged as issue in Issues tab
+                                    <span style={{
+                                      fontSize: 11, fontWeight: 600,
+                                      color: entry.blocker_issue_status === 'resolved' ? '#065F46' : '#7A9BAD',
+                                    }}>
+                                      {entry.blocker_issue_status === 'in_progress'
+                                        ? '→ Being resolved in Issues tab'
+                                        : entry.blocker_issue_status === 'resolved'
+                                        ? '→ Resolved in Issues tab'
+                                        : '→ Logged as issue in Issues tab'}
                                     </span>
                                   )}
                                 </div>
                                 {entry.blocker_note && (
-                                  <p style={{ fontSize: 13, color: '#991B1B', margin: '4px 0 0', lineHeight: 1.5 }}>
+                                  <p style={{ fontSize: 13, color: entry.blocker_issue_status === 'resolved' ? '#065F46' : '#991B1B', margin: '4px 0 0', lineHeight: 1.5 }}>
                                     {entry.blocker_note}
                                   </p>
                                 )}
