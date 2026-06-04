@@ -1010,13 +1010,11 @@ function ActivityLogTab({ user }) {
                       </span>
                       <Badge text={log.team || '—'} colours={{ bg: '#F0F9FF', text: '#0369A1' }} />
                       <Badge text={log.log_type} colours={{ bg: '#F5F3FF', text: '#6D28D9' }} />
-                      {log.blockers && (() => {
-                        const blockerEntries = (log.entries || []).filter(e => e.has_blocker)
-                        const allResolved = blockerEntries.length > 0 && blockerEntries.every(e => e.blocker_issue_status === 'resolved')
-                        return allResolved
+                      {log.blockers && (
+                        (log.entries || []).filter(e => e.has_blocker).length > 0 &&
+                        (log.entries || []).filter(e => e.has_blocker).every(e => e.blocker_issue_status === 'resolved')
                           ? <span style={{ fontSize: 11, background: '#D1FAE5', color: '#065F46', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>✅ Blocker Resolved</span>
                           : <span style={{ fontSize: 11, background: '#FEE2E2', color: '#991B1B', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>🚧 Blocker</span>
-                      })()}
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: '#7A9BAD', marginTop: 3 }}>
