@@ -948,7 +948,7 @@ def list_activity_logs(
                 "blocker_note, needs_management_attention, logged_via, created_at")
         .eq("entity_id", contractor_id)
         .eq("org_id", org_id)
-        .like("kpi_key", "daily_activity%")
+        .eq("kpi_key", "daily_activity")
         .order("log_date", desc=True)
         .order("created_at", desc=True)
     )
