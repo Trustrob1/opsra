@@ -398,6 +398,8 @@ async def _async_fetch(db, table: str, select: str, filters: list[tuple]) -> lis
                 q = q.lte(col, val)
             elif op == "is_null":
                 q = q.is_(col, "null")
+            elif op == "like":
+                q = q.like(col, val)
         return q.execute().data or []
 
     return await loop.run_in_executor(None, _run)
