@@ -877,16 +877,24 @@ function ActivityLogTab({ user }) {
   // logModal: null | { logType: 'daily'|'weekly', existingLog: obj|null }
   const [logModal, setLogModal]       = useState(null)
 
-  const today = new Date().toISOString().split('T')[0]
+  // Local date — avoids UTC-offset mismatch (e.g. WAT = UTC+1)
+  const today = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  })()
   const getMonday = () => {
     const d = new Date(); const day = d.getDay()
     const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-    return new Date(new Date().setDate(diff)).toISOString().split('T')[0]
+    const m = new Date(d.setDate(diff))
+    return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`
   }
 
   // Date-aware: only true if current user has a daily log for TODAY specifically
   const todayLog = logs.find(
     l => l.user_id === user?.id && l.log_type === 'daily' && l.log_date === today
+  )
+  const weekLog = logs.find(
+    l => l.user_id === user?.id && l.log_type === 'weekly' && l.log_date === getMonday()
   )
 
   const load = useCallback(async () => {
@@ -923,29 +931,6 @@ function ActivityLogTab({ user }) {
     setLogModal({ logType: log.log_type, existingLog: log })
   }
 
-  // Add Entry: seed existing entries + one blank appended
-  const openAddEntry = (log, e) => {
-    e.stopPropagation()
-    const existingEntries = log.entries?.length
-      ? log.entries
-      : [{
-          activity_description: log.activities || '',
-          activity_type:        'General',
-          duration_minutes:     null,
-          has_blocker:          !!(log.blockers),
-          blocker_note:         log.blockers || '',
-          plan:                 log.plan || '',
-        }]
-    const syntheticLog = {
-      ...log,
-      entries: [
-        ...existingEntries,
-        { activity_description: '', activity_type: 'General',
-          duration_minutes: '', has_blocker: false, blocker_note: '', plan: '' },
-      ],
-    }
-    setLogModal({ logType: log.log_type, existingLog: syntheticLog })
-  }
 
   if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading activity logs…</div>
   if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}>⚠ {error} <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
@@ -953,11 +938,21 @@ function ActivityLogTab({ user }) {
   return (
     <div style={{ padding: 28 }}>
 
-      {/* Header — log buttons removed; logging is now done from the row cards */}
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Activity Log</h2>
           <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>Record what you worked on each day or week</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setLogModal({ logType: 'daily', existingLog: todayLog ?? null })}
+            style={{ ...BTN_OUTLINE, padding: '8px 16px', fontSize: 13 }}>
+            + Log Today
+          </button>
+          <button onClick={() => setLogModal({ logType: 'weekly', existingLog: weekLog ?? null })}
+            style={{ ...BTN_PRIMARY, padding: '8px 16px', fontSize: 13 }}>
+            + Log This Week
+          </button>
         </div>
       </div>
 
@@ -978,29 +973,7 @@ function ActivityLogTab({ user }) {
         </div>
       )}
 
-      {/*
-        Date-aware "Log Today" prompt — only shown to the current user,
-        only when they have no daily log for today's date.
-        Disappears after they submit (list reload sets todayLog, banner hides).
-        New day resets automatically — today's ISO date changes, todayLog goes falsy.
-      */}
-      {!todayLog && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: '#F0F9FF', border: '1.5px dashed #BAE6FD',
-          borderRadius: 10, padding: '12px 18px', marginBottom: 20,
-        }}>
-          <span style={{ fontSize: 13, color: '#0369A1', fontWeight: 500 }}>
-            📋 No activity logged yet today
-          </span>
-          <button
-            onClick={() => setLogModal({ logType: 'daily', existingLog: null })}
-            style={{ ...BTN_PRIMARY, padding: '7px 16px', fontSize: 12 }}
-          >
-            + Log Today
-          </button>
-        </div>
-      )}
+      {/* intentionally empty — logging via header buttons above */}
 
       {/* Log list */}
       {logs.length === 0 ? (
@@ -1040,16 +1013,9 @@ function ActivityLogTab({ user }) {
                     </div>
                   </div>
 
-                  {/* Edit / Add Entry — own logs only, clicks do not toggle expand */}
+                  {/* Edit — own logs only */}
                   {isOwnLog && (
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={e => openAddEntry(log, e)}
-                        title="Add another activity entry to this log"
-                        style={{ ...BTN_OUTLINE, padding: '5px 11px', fontSize: 11, fontWeight: 600, color: ds.teal, borderColor: ds.teal }}
-                      >
-                        + Add Entry
-                      </button>
+                    <div style={{ flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                       <button
                         onClick={e => openEdit(log, e)}
                         title="Edit this log"
