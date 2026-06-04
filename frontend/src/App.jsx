@@ -77,15 +77,15 @@ const IDLE_MS = 12 * 60 * 60 * 1000  // 12 hours
 // ─── Sidebar navigation definition ───────────────────────────────────────────
 const NAV = [
   { id: 'leads',    label: 'Lead Center', icon: '🎯', module: '01', active: true  },
-  { id: 'conversations', label: 'Conversations',      icon: '📨', module: '—',  active: true  },
-  { id: 'whatsapp', label: 'WhatsApp Engine',      icon: '💬', module: '02', active: true },
-  { id: 'support',  label: 'Support Tickets',      icon: '🎫', module: '03', active: true },
-  { id: 'renewal',  label: 'Client Subscription',     icon: '🔄', module: '04', active: true  },
-  { id: 'ops',      label: 'Operations Hub',     icon: '📊', module: '05', active: true  },
-  { id: 'performance', label: 'Performance Hub',    icon: '📊', module: '06',  active: true  },
-  { id: 'tasks',    label: 'Tasks Board',            icon: '✅', module: '07',  active: true  },
-  { id: 'commissions', label: 'Commissions',        icon: '💼', module: '08',  active: true  },
-  { id: 'reports',     label: 'Reports', icon: '📋', module: '09',  active: true  },
+  { id: 'conversations', label: 'Conversations',      icon: '📨', module: '02',  active: true  },
+  { id: 'whatsapp', label: 'WhatsApp Engine',      icon: '💬', module: '03', active: true },
+  { id: 'support',  label: 'Support Tickets',      icon: '🎫', module: '04', active: true },
+  { id: 'renewal',  label: 'Client Subscription',     icon: '🔄', module: '05', active: true  },
+  { id: 'ops',      label: 'Operations Hub',     icon: '📊', module: '06', active: true  },
+  { id: 'performance', label: 'Performance Hub',    icon: '📊', module: '07',  active: true  },
+  { id: 'tasks',    label: 'Tasks Board',            icon: '✅', module: '08',  active: true  },
+  { id: 'commissions', label: 'Commissions',        icon: '💼', module: '09',  active: true  },
+  { id: 'reports',     label: 'Reports', icon: '📋', module: '10',  active: true  },
   
 ]
 
