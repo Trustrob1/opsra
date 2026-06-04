@@ -945,11 +945,11 @@ function ActivityLogTab({ user }) {
           <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>Record what you worked on each day or week</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setLogModal({ logType: 'daily', existingLog: todayLog ?? null })}
+          <button onClick={() => setLogModal({ logType: 'daily', existingLog: null })}
             style={{ ...BTN_OUTLINE, padding: '8px 16px', fontSize: 13 }}>
             + Log Today
           </button>
-          <button onClick={() => setLogModal({ logType: 'weekly', existingLog: weekLog ?? null })}
+          <button onClick={() => setLogModal({ logType: 'weekly', existingLog: null })}
             style={{ ...BTN_PRIMARY, padding: '8px 16px', fontSize: 13 }}>
             + Log This Week
           </button>
