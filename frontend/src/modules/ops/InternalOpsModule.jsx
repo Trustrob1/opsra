@@ -19,7 +19,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
 import {
   listIssues, createIssue, updateIssue, deleteIssue, getIssuesSummary,
-  listActivityLogs, submitActivityLog, updateActivityLog, getActivityLogsSummary,
+  listActivityLogs, submitActivityLog, submitActivityLogBulk, updateActivityLog, getActivityLogsSummary,
   downloadInternalOpsReport,
 } from '../../services/internal_ops.service'
 import { toggleOwnerAttention } from '../../services/performance.service'
@@ -323,7 +323,204 @@ function NewIssueModal({ teams, categories, teamMembers, onCreate, onClose }) {
 }
 
 // ── Log Activity Modal ────────────────────────────────────────────────────────
+const STAFF_ACTIVITY_TYPES = [
+  'General', 'Content Creation', 'Research', 'Client Communication',
+  'Design', 'Development', 'Strategy', 'Admin', 'Meeting', 'Sales', 'Other',
+]
+
 function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
+  const today = new Date().toISOString().split('T')[0]
+  const getMonday = () => {
+    const d = new Date(); const day = d.getDay()
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+    return new Date(d.setDate(diff)).toISOString().split('T')[0]
+  }
+
+  const isUpdate = !!existingLog
+
+  // Seed entries from existing log if updating
+  const seedEntries = () => {
+    if (!isUpdate) return [{ activity_description: '', activity_type: 'General', duration_minutes: '', has_blocker: false, blocker_note: '', plan: '' }]
+    // If existing log has structured entries, restore them
+    if (existingLog.entries?.length) {
+      return existingLog.entries.map(e => ({
+        activity_description: e.activity_description || '',
+        activity_type:        e.activity_type || 'General',
+        duration_minutes:     e.duration_minutes || '',
+        has_blocker:          e.has_blocker || false,
+        blocker_note:         e.blocker_note || '',
+        plan:                 e.plan || '',
+      }))
+    }
+    // Legacy single-entry format
+    return [{ activity_description: existingLog.activities || '', activity_type: 'General', duration_minutes: '', has_blocker: !!(existingLog.blockers), blocker_note: existingLog.blockers || '', plan: existingLog.plan || '' }]
+  }
+
+  const [entries, setEntries] = useState(seedEntries)
+  const [saving,  setSaving]  = useState(false)
+  const [err,     setErr]     = useState(null)
+
+  const addEntry    = () => setEntries(p => [...p, { activity_description: '', activity_type: 'General', duration_minutes: '', has_blocker: false, blocker_note: '', plan: '' }])
+  const removeEntry = (i) => setEntries(p => p.filter((_, idx) => idx !== i))
+  const updateEntry = (i, field, val) => setEntries(p => { const n = [...p]; n[i] = { ...n[i], [field]: val }; return n })
+
+  const validEntries = entries.filter(e => e.activity_description.trim())
+
+  const handleSubmit = async () => {
+    if (validEntries.length === 0) { setErr('At least one activity description is required.'); return }
+    setSaving(true); setErr(null)
+    try {
+      const logDate = logType === 'weekly' ? getMonday() : today
+      if (isUpdate) {
+        // Update uses the existing single-entry update route
+        const e = validEntries[0]
+        await onSubmit(existingLog.id, {
+          activities: e.activity_description.trim(),
+          blockers:   e.has_blocker ? (e.blocker_note.trim() || null) : null,
+          plan:       e.plan.trim() || null,
+        }, true)
+      } else {
+        // New log — use bulk endpoint
+        await submitActivityLogBulk({
+          log_date: logDate,
+          log_type: logType,
+          entries:  validEntries.map(e => ({
+            activity_description: e.activity_description.trim(),
+            activity_type:        e.activity_type || 'General',
+            duration_minutes:     e.duration_minutes ? parseInt(e.duration_minutes) : null,
+            has_blocker:          e.has_blocker,
+            blocker_note:         e.has_blocker ? (e.blocker_note.trim() || null) : null,
+            plan:                 e.plan.trim() || null,
+          })),
+        })
+        onSubmit(null, null, false) // trigger list reload without submitting again
+      }
+      onClose()
+    } catch (e) {
+      setErr(e?.response?.data?.detail?.message ?? 'Failed to save log.')
+      setSaving(false)
+    }
+  }
+
+  const planLabel = logType === 'weekly' ? 'Plan for next week' : 'Plan for tomorrow'
+  const title = isUpdate
+    ? (logType === 'weekly' ? "Update Weekly Log" : "Update Today's Log")
+    : (logType === 'weekly' ? 'Log This Week'     : 'Log Today')
+
+  return (
+    <div style={OVERLAY} onClick={onClose}>
+      <div style={{ ...MODAL, maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>{title}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+        </div>
+
+        {/* Entry count indicator */}
+        {!isUpdate && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0 }}>
+              {validEntries.length > 0
+                ? `${validEntries.length} activit${validEntries.length > 1 ? 'ies' : 'y'} to log`
+                : 'Add your activities for today'}
+            </p>
+            <button onClick={addEntry}
+              style={{ ...BTN_OUTLINE, padding: '6px 14px', fontSize: 12, color: ds.teal, borderColor: ds.teal }}>
+              + Add activity
+            </button>
+          </div>
+        )}
+
+        {err && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}>⚠ {err}</p>}
+
+        {/* Entry cards */}
+        {entries.map((entry, i) => (
+          <div key={i} style={{ background: '#f8fafc', border: '1.5px solid #D4E6EC', borderRadius: 10, padding: '14px 16px', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#4a7a8a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Activity {i + 1}
+              </span>
+              {entries.length > 1 && (
+                <button onClick={() => removeEntry(i)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#DC2626', padding: 0 }}>✕</button>
+              )}
+            </div>
+
+            <label style={LBL}>{logType === 'weekly' ? 'What I did this week *' : 'What I did today *'}</label>
+            <textarea
+              value={entry.activity_description}
+              onChange={e => updateEntry(i, 'activity_description', e.target.value)}
+              placeholder="Describe what you worked on…"
+              rows={3}
+              style={{ ...INP, resize: 'vertical', marginBottom: 10 }}
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <div>
+                <label style={LBL}>Activity type</label>
+                <select value={entry.activity_type} onChange={e => updateEntry(i, 'activity_type', e.target.value)}
+                  style={{ ...INP, background: 'white' }}>
+                  {STAFF_ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={LBL}>Hours worked</label>
+                <input type="number" min="0" max="24" step="0.5"
+                  value={entry.duration_minutes}
+                  onChange={e => updateEntry(i, 'duration_minutes', e.target.value)}
+                  placeholder="e.g. 2"
+                  style={INP} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: entry.has_blocker ? 8 : 0 }}>
+              <input type="checkbox" id={`blocker-staff-${i}`} checked={entry.has_blocker}
+                onChange={e => updateEntry(i, 'has_blocker', e.target.checked)}
+                style={{ accentColor: '#DC2626', width: 15, height: 15 }} />
+              <label htmlFor={`blocker-staff-${i}`}
+                style={{ fontSize: 13, color: entry.has_blocker ? '#DC2626' : '#4a7a8a', fontWeight: entry.has_blocker ? 600 : 400, cursor: 'pointer' }}>
+                🔴 This activity has a blocker
+              </label>
+            </div>
+
+            {entry.has_blocker && (
+              <textarea
+                value={entry.blocker_note}
+                onChange={e => updateEntry(i, 'blocker_note', e.target.value)}
+                placeholder="Describe the blocker…"
+                rows={2}
+                style={{ ...INP, resize: 'vertical', borderColor: '#FECACA', marginTop: 8 }}
+              />
+            )}
+
+            {/* Plan on last entry only */}
+            {i === entries.length - 1 && (
+              <>
+                <label style={LBL}>{planLabel}</label>
+                <textarea
+                  value={entry.plan}
+                  onChange={e => updateEntry(i, 'plan', e.target.value)}
+                  placeholder="What are you planning next? (optional)"
+                  rows={2}
+                  style={{ ...INP, resize: 'vertical' }}
+                />
+              </>
+            )}
+          </div>
+        ))}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+          <button onClick={onClose} style={BTN_OUTLINE}>Cancel</button>
+          <button onClick={handleSubmit} disabled={saving || validEntries.length === 0}
+            style={{ ...BTN_PRIMARY, background: saving || validEntries.length === 0 ? '#aaa' : ds.teal }}>
+            {saving ? 'Saving…' : isUpdate ? 'Update Log' : `Submit ${validEntries.length > 1 ? `${validEntries.length} Activities` : 'Log'}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
   const today = new Date().toISOString().split('T')[0]
   // For weekly logs use Monday of current week
   const getMonday = () => {
@@ -802,9 +999,11 @@ function ActivityLogTab({ user }) {
   const handleSubmit = async (payloadOrId, updatePayload, isUpdate) => {
     if (isUpdate) {
       await updateActivityLog(payloadOrId, updatePayload)
-    } else {
+    } else if (payloadOrId !== null) {
+      // Legacy single-entry submit (kept for backwards compatibility)
       await submitActivityLog(payloadOrId)
     }
+    // null payloadOrId = bulk submit already handled in modal — just reload
     load()
   }
 

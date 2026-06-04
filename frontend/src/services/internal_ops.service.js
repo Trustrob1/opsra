@@ -117,6 +117,17 @@ export async function submitActivityLog(payload) {
 }
 
 /**
+ * Submit multiple activity entries for a single day/week.
+ * @param {object} payload — { log_date, log_type, entries: [...] }
+ */
+export async function submitActivityLogBulk(payload) {
+  const res = await axios.post(`${BASE}/activity-logs/bulk`, payload, {
+    headers: authHeaders(),
+  })
+  return res.data.data
+}
+
+/**
  * List activity logs.
  * @param {object} params — user_id_filter, team, log_type, date_from, date_to
  */

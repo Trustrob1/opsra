@@ -44,6 +44,20 @@ class ActivityLogUpdate(BaseModel):
     plan: Optional[str] = None
 
 
+class ActivityEntry(BaseModel):
+    activity_description: str
+    activity_type:        str = "General"
+    duration_minutes:     Optional[int] = None
+    has_blocker:          bool = False
+    blocker_note:         Optional[str] = None
+    plan:                 Optional[str] = None
+
+
+class ActivityLogBulkCreate(BaseModel):
+    log_date:  str
+    log_type:  str = "daily"
+    entries:   list[ActivityEntry]
+
 # ── Helper ────────────────────────────────────────────────────────────────────
 
 def _is_manager(org: dict) -> bool:
@@ -183,6 +197,117 @@ def submit_activity_log(
         "activities": payload.activities.strip(),
         "blockers":   payload.blockers or None,
         "plan":       payload.plan or None,
+        "updated_at": now,
+    }
+
+    if existing_data:
+        result = (
+            db.table("activity_logs")
+            .update(update_fields)
+            .eq("id", existing_data["id"])
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else update_fields
+        return ok(data=data, message="Activity log updated")
+    else:
+        row = {
+            "org_id":     org_id,
+            "user_id":    user_id,
+            "log_date":   log_date,
+            "log_type":   payload.log_type,
+            "team":       user_team,
+            "created_at": now,
+            **update_fields,
+        }
+        result = db.table("activity_logs").insert(row).execute()
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else row
+        return ok(data=data, message="Activity log submitted")
+
+@router.post("/activity-logs/bulk")
+def submit_activity_log_bulk(
+    payload: ActivityLogBulkCreate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    OPS-1: Submit multiple activity entries for a single day/week.
+    Upserts on (org_id, user_id, log_date, log_type).
+    Stores structured entries in the `entries` JSONB column.
+    Generates a plain-text summary in `activities` for backwards compatibility.
+    """
+    org_id    = org["org_id"]
+    user_id   = org["id"]
+    user_team = org.get("team") or ""
+
+    if not payload.entries:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "VALIDATION_ERROR", "message": "At least one activity entry is required"},
+        )
+
+    valid_entries = [e for e in payload.entries if e.activity_description.strip()]
+    if not valid_entries:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "VALIDATION_ERROR", "message": "At least one activity description is required"},
+        )
+
+    log_date = payload.log_date
+    if payload.log_type == "weekly":
+        log_date = _week_start(log_date)
+
+    # Build plain-text summary for backwards compatibility
+    activities_text = "\n".join(
+        f"[{e.activity_type}] {e.activity_description.strip()}"
+        + (f" ({e.duration_minutes}h)" if e.duration_minutes else "")
+        for e in valid_entries
+    )
+    blockers_text = "\n".join(
+        e.blocker_note for e in valid_entries
+        if e.has_blocker and e.blocker_note
+    ) or None
+    plan_text = next(
+        (e.plan for e in reversed(valid_entries) if e.plan and e.plan.strip()),
+        None
+    )
+
+    entries_json = [
+        {
+            "activity_description": e.activity_description.strip(),
+            "activity_type":        e.activity_type,
+            "duration_minutes":     e.duration_minutes,
+            "has_blocker":          e.has_blocker,
+            "blocker_note":         e.blocker_note if e.has_blocker else None,
+            "plan":                 e.plan or None,
+        }
+        for e in valid_entries
+    ]
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    existing = (
+        db.table("activity_logs")
+        .select("id")
+        .eq("org_id", org_id)
+        .eq("user_id", user_id)
+        .eq("log_date", log_date)
+        .eq("log_type", payload.log_type)
+        .maybe_single()
+        .execute()
+    )
+    existing_data = existing.data
+    if isinstance(existing_data, list):
+        existing_data = existing_data[0] if existing_data else None
+
+    update_fields = {
+        "activities": activities_text,
+        "blockers":   blockers_text,
+        "plan":       plan_text,
+        "entries":    entries_json,
         "updated_at": now,
     }
 
