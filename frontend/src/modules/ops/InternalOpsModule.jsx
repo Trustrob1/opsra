@@ -916,6 +916,14 @@ function ActivityLogTab({ user }) {
 
   useEffect(() => { load() }, [load])
 
+  // Re-fetch when tab becomes visible — Pattern 26 keeps component mounted,
+  // so switching back to this tab won't trigger a mount re-fetch without this.
+  useEffect(() => {
+    const handleVisibility = () => { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [load])
+
   const handleSubmit = async (payloadOrId, updatePayload, isUpdate) => {
     if (isUpdate) {
       await updateActivityLog(payloadOrId, updatePayload)
