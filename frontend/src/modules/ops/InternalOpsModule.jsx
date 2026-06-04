@@ -1031,22 +1031,90 @@ function ActivityLogTab({ user }) {
 
                 {isOpen && (
                   <div style={{ padding: '4px 18px 18px', background: '#F8FAFC', borderTop: '1px solid #F0F7FA' }}>
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ ...LBL, marginTop: 12 }}>Activities</div>
-                      <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.activities}</p>
-                    </div>
-                    {log.blockers && (
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={LBL}>Blockers</div>
-                        <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.blockers}</p>
+
+                    {/* Structured entries — rendered as cards when entries JSONB exists */}
+                    {log.entries?.length > 0 ? (
+                      <div style={{ marginTop: 14 }}>
+                        {log.entries.map((entry, ei) => (
+                          <div key={ei} style={{
+                            background: '#fff', border: '1.5px solid #E4EEF2',
+                            borderRadius: 10, padding: '12px 16px', marginBottom: 10,
+                          }}>
+                            {/* Type badge + hours */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, background: '#EEF8FA',
+                                color: '#0D9488', borderRadius: 20, padding: '3px 10px',
+                                textTransform: 'uppercase', letterSpacing: '0.5px',
+                              }}>
+                                {entry.activity_type || 'General'}
+                              </span>
+                              {entry.duration_minutes && (
+                                <span style={{ fontSize: 12, color: '#7A9BAD', fontWeight: 600 }}>
+                                  ⏱ {entry.duration_minutes}h
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Description */}
+                            <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>
+                              {entry.activity_description}
+                            </p>
+
+                            {/* Blocker */}
+                            {entry.has_blocker && (
+                              <div style={{
+                                marginTop: 10, background: '#FEF2F2',
+                                border: '1px solid #FECACA', borderRadius: 7,
+                                padding: '8px 12px',
+                              }}>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  🚧 Blocker
+                                </span>
+                                {entry.blocker_note && (
+                                  <p style={{ fontSize: 13, color: '#991B1B', margin: '4px 0 0', lineHeight: 1.5 }}>
+                                    {entry.blocker_note}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Plan — last entry only */}
+                            {entry.plan && (
+                              <div style={{ marginTop: 10 }}>
+                                <div style={{ ...LBL, marginTop: 0 }}>
+                                  {log.log_type === 'weekly' ? 'Plan for next week' : 'Plan for tomorrow'}
+                                </div>
+                                <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0, lineHeight: 1.5 }}>
+                                  {entry.plan}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    )}
-                    {log.plan && (
+                    ) : (
+                      /* Legacy fallback — plain text blob for old logs without entries JSONB */
                       <div>
-                        <div style={LBL}>Plan</div>
-                        <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.plan}</p>
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ ...LBL, marginTop: 12 }}>Activities</div>
+                          <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.activities}</p>
+                        </div>
+                        {log.blockers && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={LBL}>Blockers</div>
+                            <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.blockers}</p>
+                          </div>
+                        )}
+                        {log.plan && (
+                          <div>
+                            <div style={LBL}>Plan</div>
+                            <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.plan}</p>
+                          </div>
+                        )}
                       </div>
                     )}
+
                   </div>
                 )}
               </div>

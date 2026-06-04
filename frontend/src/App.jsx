@@ -82,10 +82,10 @@ const NAV = [
   { id: 'support',  label: 'Support Tickets',      icon: '🎫', module: '03', active: true },
   { id: 'renewal',  label: 'Client Subscription',     icon: '🔄', module: '04', active: true  },
   { id: 'ops',      label: 'Operations Hub',     icon: '📊', module: '05', active: true  },
-  { id: 'performance', label: 'Performance Hub',    icon: '📊', module: '—',  active: true  },
-  { id: 'tasks',    label: 'Tasks Board',            icon: '✅', module: '—',  active: true  },
-  { id: 'commissions', label: 'Commissions',        icon: '💼', module: '—',  active: true  },
-  { id: 'reports',     label: 'Reports', icon: '📋', module: '—',  active: true  },
+  { id: 'performance', label: 'Performance Hub',    icon: '📊', module: '06',  active: true  },
+  { id: 'tasks',    label: 'Tasks Board',            icon: '✅', module: '07',  active: true  },
+  { id: 'commissions', label: 'Commissions',        icon: '💼', module: '08',  active: true  },
+  { id: 'reports',     label: 'Reports', icon: '📋', module: '09',  active: true  },
   
 ]
 
