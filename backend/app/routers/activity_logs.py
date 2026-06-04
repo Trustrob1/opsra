@@ -296,12 +296,13 @@ def submit_activity_log_bulk(
         .eq("user_id", user_id)
         .eq("log_date", log_date)
         .eq("log_type", payload.log_type)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
-    existing_data = existing.data
-    if isinstance(existing_data, list):
-        existing_data = existing_data[0] if existing_data else None
+    rows = existing.data or []
+    if isinstance(rows, dict):
+        rows = [rows]
+    existing_data = rows[0] if rows else None
 
     update_fields = {
         "activities": activities_text,
