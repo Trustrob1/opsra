@@ -371,30 +371,20 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
     setSaving(true); setErr(null)
     try {
       const logDate = logType === 'weekly' ? getMonday() : today
-      if (isUpdate) {
-        // Update uses the existing single-entry update route
-        const e = validEntries[0]
-        await onSubmit(existingLog.id, {
-          activities: e.activity_description.trim(),
-          blockers:   e.has_blocker ? (e.blocker_note.trim() || null) : null,
-          plan:       e.plan.trim() || null,
-        }, true)
-      } else {
-        // New log — use bulk endpoint
-        await submitActivityLogBulk({
-          log_date: logDate,
-          log_type: logType,
-          entries:  validEntries.map(e => ({
-            activity_description: e.activity_description.trim(),
-            activity_type:        e.activity_type || 'General',
-            duration_minutes:     e.duration_minutes ? parseInt(e.duration_minutes) : null,
-            has_blocker:          e.has_blocker,
-            blocker_note:         e.has_blocker ? (e.blocker_note.trim() || null) : null,
-            plan:                 e.plan.trim() || null,
-          })),
-        })
-        onSubmit(null, null, false) // trigger list reload without submitting again
-      }
+      // Both new and update use bulk endpoint — upsert handles the rest
+      await submitActivityLogBulk({
+        log_date: logDate,
+        log_type: logType,
+        entries:  validEntries.map(e => ({
+          activity_description: e.activity_description.trim(),
+          activity_type:        e.activity_type || 'General',
+          duration_minutes:     e.duration_minutes ? parseInt(e.duration_minutes) : null,
+          has_blocker:          e.has_blocker,
+          blocker_note:         e.has_blocker ? (e.blocker_note.trim() || null) : null,
+          plan:                 e.plan.trim() || null,
+        })),
+      })
+      onSubmit(null, null, false) // trigger list reload
       onClose()
     } catch (e) {
       setErr(e?.response?.data?.detail?.message ?? 'Failed to save log.')
@@ -418,19 +408,17 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
         </div>
 
         {/* Entry count indicator */}
-        {!isUpdate && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0 }}>
-              {validEntries.length > 0
-                ? `${validEntries.length} activit${validEntries.length > 1 ? 'ies' : 'y'} to log`
-                : 'Add your activities for today'}
-            </p>
-            <button onClick={addEntry}
-              style={{ ...BTN_OUTLINE, padding: '6px 14px', fontSize: 12, color: ds.teal, borderColor: ds.teal }}>
-              + Add activity
-            </button>
-          </div>
-        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0 }}>
+            {validEntries.length > 0
+              ? `${validEntries.length} activit${validEntries.length > 1 ? 'ies' : 'y'} to log`
+              : 'Add your activities for today'}
+          </p>
+          <button onClick={addEntry}
+            style={{ ...BTN_OUTLINE, padding: '6px 14px', fontSize: 12, color: ds.teal, borderColor: ds.teal }}>
+            + Add activity
+          </button>
+        </div>
 
         {err && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}>⚠ {err}</p>}
 
