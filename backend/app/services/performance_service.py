@@ -124,8 +124,15 @@ _DEFAULT_TEMPLATES: list[dict] = [
     {"role_template": "content_creator","kpi_name": "Campaigns Launched",       "kpi_unit": "count",    "sort_order": 1},
     {"role_template": "website_manager","kpi_name": "Pages Updated",            "kpi_unit": "count",    "sort_order": 0},
     {"role_template": "website_manager","kpi_name": "Bugs Fixed",               "kpi_unit": "count",    "sort_order": 1},
-    {"role_template": "general_staff",  "kpi_name": "Tasks Completed",          "kpi_unit": "count",    "sort_order": 0},
-    {"role_template": "general_staff",  "kpi_name": "Attendance Days",          "kpi_unit": "count",    "sort_order": 1},
+    {"role_template": "general_staff",  "kpi_name": "Tasks Completed",          "kpi_unit": "count",      "sort_order": 0},
+    {"role_template": "general_staff",  "kpi_name": "Attendance Days",          "kpi_unit": "count",      "sort_order": 1},
+    {"role_template": "ops_manager",     "kpi_name": "Team Revenue vs Target",   "kpi_unit": "percentage", "sort_order": 0},
+    {"role_template": "ops_manager",     "kpi_name": "Team Conversion Rate",     "kpi_unit": "percentage", "sort_order": 1},
+    {"role_template": "ops_manager",     "kpi_name": "Pipeline Value",           "kpi_unit": "currency",   "sort_order": 2},
+    {"role_template": "ops_manager",     "kpi_name": "Rep Activity Compliance",  "kpi_unit": "percentage", "sort_order": 3},
+    {"role_template": "ops_manager",     "kpi_name": "Lead Distribution Rate",   "kpi_unit": "count",      "sort_order": 4},
+    {"role_template": "ops_manager",     "kpi_name": "Time to Close",            "kpi_unit": "days",       "sort_order": 5},
+    {"role_template": "ops_manager",     "kpi_name": "Win / Loss Ratio",         "kpi_unit": "percentage", "sort_order": 6},
 ]
 
 
@@ -452,13 +459,25 @@ async def get_staff_profile(db, org_id: str, user_id: str, month: str) -> dict:
         if key:
             running_totals[key] = running_totals.get(key, 0) + float(log.get("value", 0) or 0)
 
+    # Auto-compute ops_manager KPIs when acting as sales lead
+    ops_manager_actuals: dict[str, float | None] = {}
+    if role == "ops_manager":
+        try:
+            ops_manager_actuals = _compute_sales_lead_kpis(db, org_id, month)
+        except Exception as exc:
+            logger.warning("ops_manager sales lead KPI auto-compute failed: %s", exc)
+
     kpi_summary = []
     total_pct = 0.0
     for t in targets:
         actual = t.get("actual_value")
         if actual is None:
-            # Fall back to running daily total if no manual actual set
-            actual = running_totals.get(t["kpi_name"], None)
+            # Use auto-computed value if available for ops_manager sales lead KPIs
+            if role == "ops_manager" and t["kpi_name"] in ops_manager_actuals:
+                actual = ops_manager_actuals.get(t["kpi_name"])
+            else:
+                # Fall back to running daily total if no manual actual set
+                actual = running_totals.get(t["kpi_name"], None)
         target_val = float(t.get("target_value") or 0)
         pct = _kpi_achievement_pct(actual, target_val)
         total_pct += pct
@@ -1530,6 +1549,153 @@ async def get_daily_brief(db, org_id: str) -> dict:
     }
     _cache_set(cache_key, result, _TTL_BRIEF)
     return result
+
+
+def _compute_sales_lead_kpis(db, org_id: str, month_str: str) -> dict:
+    """
+    Auto-compute all 7 sales_lead KPIs for a given org + month.
+    Called from get_staff_profile when the user's role_template is 'sales_lead'.
+    S14: every fetch is wrapped — failure returns None for that KPI, never crashes.
+    """
+    today       = date.today()
+    m_start     = _month_start(month_str)
+    m_start_str = m_start.isoformat()
+    days_in_m   = _days_in_month(m_start)
+
+    # ── Fetch leads for this month ────────────────────────────────────────────
+    try:
+        leads_res = (
+            db.table("leads")
+            .select("id, stage, deal_value, assigned_to, created_at, converted_at")
+            .eq("org_id", org_id)
+            .gte("created_at", f"{m_start_str}T00:00:00+00:00")
+            .is_("deleted_at", None)
+            .execute()
+        )
+        leads = leads_res.data or []
+        if isinstance(leads, dict):
+            leads = [leads]
+    except Exception as exc:
+        logger.warning("_compute_sales_lead_kpis leads fetch failed: %s", exc)
+        leads = []
+
+    # ── Fetch active sales_agent users ────────────────────────────────────────
+    try:
+        users_res = (
+            db.table("users")
+            .select("id")
+            .eq("org_id", org_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        # Filter to sales_agents via roles join — fetch roles separately (Pattern 33)
+        all_users = users_res.data or []
+        if isinstance(all_users, dict):
+            all_users = [all_users]
+        user_ids = [u["id"] for u in all_users]
+
+        roles_res = (
+            db.table("roles")
+            .select("user_id, template")
+            .in_("user_id", user_ids)
+            .eq("template", "sales_agent")
+            .execute()
+        ) if user_ids else type("R", (), {"data": []})()
+        sales_agent_ids = {r["user_id"] for r in (roles_res.data or [])}
+        total_agents = len(sales_agent_ids)
+    except Exception as exc:
+        logger.warning("_compute_sales_lead_kpis users fetch failed: %s", exc)
+        sales_agent_ids = set()
+        total_agents = 0
+
+    # ── Fetch today's activity logs for sales agents ──────────────────────────
+    try:
+        today_str = today.isoformat()
+        activity_res = (
+            db.table("activity_logs")
+            .select("user_id")
+            .eq("org_id", org_id)
+            .eq("log_date", today_str)
+            .eq("log_type", "daily")
+            .execute()
+        )
+        activity_logs = activity_res.data or []
+        if isinstance(activity_logs, dict):
+            activity_logs = [activity_logs]
+        logged_today = {a["user_id"] for a in activity_logs if a["user_id"] in sales_agent_ids}
+        compliance = round(len(logged_today) / total_agents * 100, 1) if total_agents > 0 else None
+    except Exception as exc:
+        logger.warning("_compute_sales_lead_kpis activity fetch failed: %s", exc)
+        compliance = None
+
+    # ── Fetch org revenue target ──────────────────────────────────────────────
+    try:
+        org_res = (
+            db.table("organisations")
+            .select("monthly_revenue_target")
+            .eq("id", org_id)
+            .limit(1)
+            .execute()
+        )
+        org_data = org_res.data or []
+        if isinstance(org_data, dict):
+            org_data = [org_data]
+        rev_target = float((org_data[0] if org_data else {}).get("monthly_revenue_target") or 0)
+    except Exception as exc:
+        logger.warning("_compute_sales_lead_kpis org fetch failed: %s", exc)
+        rev_target = 0.0
+
+    # ── Compute KPIs from leads data ──────────────────────────────────────────
+    converted   = [l for l in leads if l.get("stage") == "converted"]
+    lost        = [l for l in leads if l.get("stage") == "lost"]
+    active      = [l for l in leads if l.get("stage") not in ("converted", "lost")]
+
+    # Team Revenue vs Target
+    revenue_mtd = sum(float(l.get("deal_value") or 0) for l in converted)
+    team_revenue_pct = round(revenue_mtd / rev_target * 100, 1) if rev_target > 0 else None
+
+    # Team Conversion Rate
+    total_leads = len(leads)
+    team_conv_rate = round(len(converted) / total_leads * 100, 1) if total_leads > 0 else None
+
+    # Pipeline Value — sum of deal_value on non-closed, non-lost leads
+    pipeline_value = round(sum(float(l.get("deal_value") or 0) for l in active), 2)
+
+    # Lead Distribution Rate — leads per active assigned rep this month
+    rep_lead_counts: dict[str, int] = {}
+    for lead in leads:
+        uid = lead.get("assigned_to")
+        if uid:
+            rep_lead_counts[uid] = rep_lead_counts.get(uid, 0) + 1
+    lead_distribution = round(
+        sum(rep_lead_counts.values()) / len(rep_lead_counts), 1
+    ) if rep_lead_counts else None
+
+    # Time to Close — avg days from created_at to converted_at for closed deals
+    close_times = []
+    for lead in converted:
+        try:
+            created = datetime.fromisoformat(str(lead["created_at"]).replace("Z", "+00:00"))
+            closed  = datetime.fromisoformat(str(lead["converted_at"]).replace("Z", "+00:00"))
+            close_times.append((closed - created).days)
+        except Exception:
+            pass
+    time_to_close = round(sum(close_times) / len(close_times), 1) if close_times else None
+
+    # Win / Loss Ratio
+    won_count  = len(converted)
+    lost_count = len(lost)
+    win_loss   = round(won_count / (won_count + lost_count) * 100, 1) if (won_count + lost_count) > 0 else None
+
+    return {
+        "Team Revenue vs Target":  team_revenue_pct,
+        "Team Conversion Rate":    team_conv_rate,
+        "Pipeline Value":          pipeline_value,
+        "Rep Activity Compliance": compliance,
+        "Lead Distribution Rate":  lead_distribution,
+        "Time to Close":           time_to_close,
+        "Win / Loss Ratio":        win_loss,
+    }
 
 
 def toggle_owner_attention(db, org_id: str, issue_id: str, value: bool) -> dict:
