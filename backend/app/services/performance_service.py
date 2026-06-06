@@ -1374,7 +1374,7 @@ async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) ->
         # Contractor daily activity logs — scoped to brief_date
         _async_fetch(
             db, "performance_daily_logs",
-            "entity_id, log_date, kpi_label, notes, blocker_note, needs_management_attention, created_at",
+            "id, entity_id, log_date, kpi_label, notes, blocker_note, needs_management_attention, resolved_at, created_at",
             [("org_id", "eq", org_id), ("kpi_key", "eq", "daily_activity"),
              ("log_date", "eq", str(today))],
         ),
@@ -1538,13 +1538,35 @@ async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) ->
     contractor_summaries.sort(key=lambda x: len(x["needs_company_action"]), reverse=True)
 
     # ── 6. Issues needing attention ────────────────────────────────────────
+    # Source 1: internal_issues with needs_owner_attention=true
     attention_issues = [
         {"id": i["id"], "reference": i.get("reference", ""), "title": i.get("title", ""),
          "priority": i.get("priority", ""), "status": i.get("status", ""),
-         "created_at": str(i.get("created_at", ""))}
+         "created_at": str(i.get("created_at", "")),
+         "source": "issue"}
         for i in issues_res
         if i.get("status") != "resolved"
     ]
+    # Source 2: contractor activity logs flagged needs_management_attention=true
+    # (not yet resolved — resolved_at is null)
+    for a in activity_logs_today:
+        if a.get("needs_management_attention") and not a.get("resolved_at"):
+            contractor = contractors_by_id.get(a.get("entity_id", ""), {})
+            attention_issues.append({
+                "id":              a.get("id", ""),
+                "source":          "activity_log",
+                "contractor_id":   a.get("entity_id", ""),
+                "contractor_name": contractor.get("full_name", "Unknown"),
+                "activity_type":   a.get("kpi_label", ""),
+                "notes":           (a.get("notes") or "")[:200],
+                "blocker_note":    a.get("blocker_note", ""),
+                "log_date":        str(a.get("log_date", "")),
+                "created_at":      str(a.get("created_at", "")),
+                "reference":       f"ACT-{a.get('id', '')[:8].upper()}",
+                "title":           f"{contractor.get('full_name', 'Contractor')} — {a.get('kpi_label', 'Activity')} flagged",
+                "priority":        "high" if a.get("blocker_note") else "medium",
+                "status":          "open",
+            })
 
     result = {
         "generated_at":          datetime.utcnow().isoformat(),

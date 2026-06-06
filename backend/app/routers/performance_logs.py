@@ -377,6 +377,10 @@ class FlagActivityRequest(BaseModel):
     needs_management_attention: bool
 
 
+class ResolveActivityRequest(BaseModel):
+    resolution_note: str = Field(..., min_length=1, max_length=1000)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -816,6 +820,46 @@ def update_daily_log(
     return {"status": "ok", "data": res.data[0]}
 
 
+# ── 12. PATCH /performance-logs/{contractor_id}/activities/{log_id}/resolve ──
+# Manager/owner: formally resolve a flagged activity log entry.
+# Clears needs_management_attention, records resolver + note + timestamp.
+# Pattern 53: 3-segment path — sits alongside /flag, no routing conflict.
+
+@router.patch(
+    "/performance-logs/{contractor_id}/activities/{log_id}/resolve",
+    status_code=status.HTTP_200_OK,
+    tags=["performance-logs"],
+)
+def resolve_activity_log(
+    contractor_id: str,
+    log_id:        str,
+    body:          ResolveActivityRequest,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_manager(org)
+    org_id  = org["org_id"]
+    user_id = org["id"]  # Pattern 61
+    _log_or_404(db, log_id, contractor_id, org_id)
+
+    res = (
+        db.table("performance_daily_logs")
+        .update({
+            "needs_management_attention": False,
+            "resolved_at":               datetime.utcnow().isoformat(),
+            "resolution_note":           body.resolution_note[:1000],
+            "resolved_by":               user_id,
+            "updated_at":                datetime.utcnow().isoformat(),
+        })
+        .eq("id", log_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Resolve failed")
+    return {"status": "ok", "data": res.data[0]}
+
+
 # ── 8. DELETE /performance-logs/{contractor_id}/{log_id} ─────────────────────
 
 @router.delete(
@@ -945,7 +989,7 @@ def list_activity_logs(
     query = (
         db.table("performance_daily_logs")
         .select("id, log_date, kpi_label, notes, activity_outcome, duration_minutes, "
-                "blocker_note, needs_management_attention, logged_via, created_at")
+                "blocker_note, needs_management_attention, resolved_at, resolution_note, logged_via, created_at")
         .eq("entity_id", contractor_id)
         .eq("org_id", org_id)
         .eq("kpi_key", "daily_activity")

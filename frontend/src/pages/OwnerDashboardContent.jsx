@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getOwnerBrief } from '../services/performance.service'
+import { resolveActivityLog } from '../services/performance_logs.service'
 
 const REFRESH_MS = 2 * 60 * 1000
 
@@ -109,6 +110,72 @@ function Avatar({ name, size = 28 }) {
   )
 }
 
+function AttentionIssueCard({ iss, onResolved }) {
+  const [resolving, setResolving] = useState(false)
+  const [showResolve, setShowResolve] = useState(false)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const isActivityLog = iss.source === 'activity_log'
+
+  const handleResolve = async () => {
+    if (!note.trim()) { setErr('Resolution note is required'); return }
+    setSaving(true); setErr(null)
+    try {
+      await resolveActivityLog(iss.contractor_id, iss.id, note.trim())
+      setShowResolve(false)
+      onResolved()
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Failed to resolve')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: 8, marginBottom: 6, border: '1px solid #fca5a5', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '8px 10px' }}>
+        <i className={`ti ti-${isActivityLog ? 'flag-2' : 'flag'}`} style={{ fontSize: 14, color: '#A32D2D', flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: '#A32D2D' }}>{iss.reference} — {iss.title}</div>
+          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>
+            {iss.priority} priority · {iss.status?.replace(/_/g, ' ')}
+            {isActivityLog && iss.blocker_note && (
+              <span style={{ marginLeft: 6, color: '#A32D2D' }}>· Blocker: {iss.blocker_note}</span>
+            )}
+          </div>
+        </div>
+        {isActivityLog && !showResolve && (
+          <button
+            onClick={() => setShowResolve(true)}
+            style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, padding: '3px 8px', background: '#fff', border: '1px solid #fca5a5', borderRadius: 5, cursor: 'pointer', color: '#A32D2D' }}
+          >
+            Resolve
+          </button>
+        )}
+      </div>
+      {showResolve && (
+        <div style={{ borderTop: '1px solid #fca5a5', padding: '10px 10px 10px 33px', background: '#fff8f8' }}>
+          {err && <div style={{ fontSize: 11, color: '#A32D2D', marginBottom: 6 }}>{err}</div>}
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="Describe how this was resolved…"
+            rows={2}
+            autoFocus
+            style={{ width: '100%', border: '1px solid #fca5a5', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
+            <button onClick={() => { setShowResolve(false); setNote(''); setErr(null) }} style={{ padding: '4px 10px', fontSize: 11, background: '#f3f4f6', border: 'none', borderRadius: 5, cursor: 'pointer' }}>Cancel</button>
+            <button onClick={handleResolve} disabled={saving} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: '#01919E', color: 'white', border: 'none', borderRadius: 5, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Saving…' : '✓ Mark Resolved'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function OwnerDashboardContent({ token, sessionToken, orgName, onSessionExpired }) {
   const [data,         setData]         = useState(null)
   const [loading,      setLoading]      = useState(true)
@@ -181,6 +248,8 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
 
   const contractorActions = (brief?.contractors || []).reduce((a, c) => a + (c.needs_company_action?.length || 0), 0)
   const totalActions = (brief?.attention_issues?.length || 0) + contractorActions
+  // attention_issues now includes both internal_issues (source:'issue') and
+  // flagged activity logs (source:'activity_log') — totalActions is already correct
 
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -253,13 +322,11 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
               {totalActions} item{totalActions > 1 ? 's' : ''} need your attention
             </div>
             {brief?.attention_issues?.map(iss => (
-              <div key={iss.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '8px 10px', background: 'rgba(255,255,255,0.6)', borderRadius: 8, marginBottom: 6, border: '1px solid #fca5a5' }}>
-                <i className="ti ti-flag" style={{ fontSize: 14, color: '#A32D2D', flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: '#A32D2D' }}>{iss.reference} — {iss.title}</div>
-                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{iss.priority} priority · {iss.status?.replace(/_/g, ' ')}</div>
-                </div>
-              </div>
+              <AttentionIssueCard
+                key={iss.id}
+                iss={iss}
+                onResolved={() => fetchBrief(selectedDate)}
+              />
             ))}
             {brief?.contractors?.flatMap(c =>
               (c.needs_company_action || []).map((t, i) => (

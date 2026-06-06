@@ -159,3 +159,12 @@ export async function flagActivityLog(contractorId, logId, flagged) {
   )
   return r.data.data
 }
+
+export async function resolveActivityLog(contractorId, logId, resolutionNote) {
+  const r = await axios.patch(
+    `${BASE}/performance-logs/${contractorId}/activities/${logId}/resolve`,
+    { resolution_note: resolutionNote },
+    { headers: authHeaders() }
+  )
+  return r.data.data
+}

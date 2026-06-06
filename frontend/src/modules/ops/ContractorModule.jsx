@@ -1240,19 +1240,26 @@ function ContractorActivityLogPanel({ contractorId }) {
                         </div>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleFlag(log)}
-                      title={log.needs_management_attention ? 'Remove attention flag' : 'Flag for management attention'}
-                      style={{
-                        flexShrink: 0,
-                        background: log.needs_management_attention ? '#fef3e2' : '#f1f3f4',
-                        border: `1px solid ${log.needs_management_attention ? '#fde8c8' : '#dde4e8'}`,
-                        borderRadius: 6, padding: '4px 8px', cursor: 'pointer',
-                        fontSize: 11, fontWeight: 500,
-                        color: log.needs_management_attention ? '#b45309' : ds.gray,
-                      }}>
-                      🚩 {log.needs_management_attention ? 'Flagged' : 'Flag'}
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                      {log.resolved_at ? (
+                        <span style={{ fontSize: 10, fontWeight: 600, background: '#e6f4ea', color: '#1e7e34', borderRadius: 4, padding: '2px 7px' }}>
+                          ✓ Resolved
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleFlag(log)}
+                          title={log.needs_management_attention ? 'Remove attention flag' : 'Flag for management attention'}
+                          style={{
+                            background: log.needs_management_attention ? '#fef3e2' : '#f1f3f4',
+                            border: `1px solid ${log.needs_management_attention ? '#fde8c8' : '#dde4e8'}`,
+                            borderRadius: 6, padding: '4px 8px', cursor: 'pointer',
+                            fontSize: 11, fontWeight: 500,
+                            color: log.needs_management_attention ? '#b45309' : ds.gray,
+                          }}>
+                          🚩 {log.needs_management_attention ? 'Flagged' : 'Flag'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
