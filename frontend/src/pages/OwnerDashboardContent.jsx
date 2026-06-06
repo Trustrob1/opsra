@@ -110,7 +110,7 @@ function Avatar({ name, size = 28 }) {
   )
 }
 
-function AttentionIssueCard({ iss, onResolved }) {
+function AttentionIssueCard({ iss, onResolved, sessionToken }) {
   const [resolving, setResolving] = useState(false)
   const [showResolve, setShowResolve] = useState(false)
   const [note, setNote] = useState('')
@@ -123,11 +123,12 @@ function AttentionIssueCard({ iss, onResolved }) {
     if (!note.trim()) { setErr('Resolution note is required'); return }
     setSaving(true); setErr(null)
     try {
-      await resolveActivityLog(iss.contractor_id, iss.id, note.trim())
+      await resolveActivityLog(iss.contractor_id, iss.id, note.trim(), sessionToken)
       setShowResolve(false)
       onResolved()
     } catch (e) {
-      setErr(e?.response?.data?.detail || 'Failed to resolve')
+      const detail = e?.response?.data?.detail
+      setErr(typeof detail === 'string' ? detail : 'Failed to resolve')
     } finally { setSaving(false) }
   }
 
@@ -325,6 +326,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
               <AttentionIssueCard
                 key={iss.id}
                 iss={iss}
+                sessionToken={sessionToken}
                 onResolved={() => fetchBrief(selectedDate)}
               />
             ))}

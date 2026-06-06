@@ -33,7 +33,8 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from app.database import get_supabase
@@ -820,7 +821,72 @@ def update_daily_log(
     return {"status": "ok", "data": res.data[0]}
 
 
-# ── 12. PATCH /performance-logs/{contractor_id}/activities/{log_id}/resolve ──
+# ── 12. POST /performance-logs/public/activities/{log_id}/resolve ─────────
+# Public route — owner resolves a flagged activity log via PIN dashboard.
+# Uses Authorization: Bearer <session_token> same as approve/flag routes.
+
+@router.patch(
+    "/performance-logs/public/activities/{log_id}/resolve",
+    status_code=status.HTTP_200_OK,
+    tags=["performance-logs"],
+)
+def resolve_activity_log_public(
+    log_id:        str,
+    body:          ResolveActivityRequest,
+    authorization: Optional[str] = Header(None),
+    db=Depends(get_supabase),
+):
+    from fastapi import Header as _Header
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="PIN session required")
+    session_token = authorization.removeprefix("Bearer ").strip()
+
+    # Find the log row and resolve org_id from it
+    log_res = (
+        db.table("performance_daily_logs")
+        .select("id, org_id, entity_id, needs_management_attention")
+        .eq("id", log_id)
+        .limit(1)
+        .execute()
+    )
+    log_row = (log_res.data or [None])[0]
+    if not log_row:
+        raise HTTPException(status_code=404, detail="Log entry not found")
+
+    org_id = log_row["org_id"]
+
+    # Verify the PIN session token is valid for this org
+    from app.services.performance_service import verify_owner_session_token
+    org_res = (
+        db.table("organisations")
+        .select("owner_dashboard_token")
+        .eq("id", org_id)
+        .limit(1)
+        .execute()
+    )
+    org_row = (org_res.data or [None])[0]
+    if not org_row:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+
+    dashboard_token = org_row["owner_dashboard_token"]
+    if not verify_owner_session_token(session_token, org_id, dashboard_token):
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
+    res = (
+        db.table("performance_daily_logs")
+        .update({
+            "needs_management_attention": False,
+            "resolved_at":               datetime.utcnow().isoformat(),
+            "resolution_note":           body.resolution_note[:1000],
+            "updated_at":                datetime.utcnow().isoformat(),
+        })
+        .eq("id", log_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Resolve failed")
+    return {"status": "ok", "data": res.data[0]}
 # Manager/owner: formally resolve a flagged activity log entry.
 # Clears needs_management_attention, records resolver + note + timestamp.
 # Pattern 53: 3-segment path — sits alongside /flag, no routing conflict.

@@ -160,11 +160,16 @@ export async function flagActivityLog(contractorId, logId, flagged) {
   return r.data.data
 }
 
-export async function resolveActivityLog(contractorId, logId, resolutionNote) {
+export async function resolveActivityLog(contractorId, logId, resolutionNote, sessionToken = null) {
+  const headers = sessionToken
+    ? { Authorization: `Bearer ${sessionToken}` }
+    : authHeaders()
   const r = await axios.patch(
-    `${BASE}/performance-logs/${contractorId}/activities/${logId}/resolve`,
+    sessionToken
+      ? `${BASE}/performance-logs/public/activities/${logId}/resolve`
+      : `${BASE}/performance-logs/${contractorId}/activities/${logId}/resolve`,
     { resolution_note: resolutionNote },
-    { headers: authHeaders() }
+    { headers }
   )
   return r.data.data
 }
