@@ -248,6 +248,7 @@ async def get_owner_dashboard_goals(
 @router.get("/public/owner-dashboard/{token}/brief")
 async def get_owner_brief(
     token: str,
+    date: Optional[str] = None,
     authorization: Optional[str] = Header(None),
     db=Depends(get_supabase),
 ):
@@ -259,7 +260,21 @@ async def get_owner_brief(
         raise HTTPException(status_code=404, detail="Dashboard not found")
     _verify_session_token(token, row["id"], token, authorization)
 
-    brief = await perf_svc.get_daily_brief(db, row["id"])
+    # Resolve brief_date — default to yesterday so the morning view is always populated
+    from datetime import date as _date
+    brief_date = None
+    if date:
+        try:
+            brief_date = _date.fromisoformat(date)
+            # Clamp to today — never allow future dates
+            if brief_date > _date.today():
+                brief_date = _date.today()
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD.")
+    else:
+        brief_date = _date.today() - timedelta(days=1)
+
+    brief = await perf_svc.get_daily_brief(db, row["id"], brief_date=brief_date)
     health = await perf_svc.get_health_score(db, row["id"])
     return JSONResponse(
         content={"org_name": row.get("name", ""), "health": health, "brief": brief},

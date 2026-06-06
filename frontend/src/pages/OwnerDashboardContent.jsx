@@ -12,6 +12,28 @@ import { getOwnerBrief } from '../services/performance.service'
 
 const REFRESH_MS = 2 * 60 * 1000
 
+// ---------------------------------------------------------------------------
+// Date helpers
+// ---------------------------------------------------------------------------
+function toISODate(d) {
+  return d.toISOString().slice(0, 10)
+}
+function yesterday() {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d
+}
+function isToday(d) {
+  return toISODate(d) === toISODate(new Date())
+}
+function fmtDateLabel(d) {
+  const today = new Date()
+  const yest  = yesterday()
+  if (toISODate(d) === toISODate(today)) return 'Today'
+  if (toISODate(d) === toISODate(yest))  return 'Yesterday'
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 const T = {
   green:  { bg: '#EAF3DE', color: '#3B6D11', bar: '#10b981' },
   amber:  { bg: '#FAEEDA', color: '#854F0B', bar: '#F59E0B' },
@@ -88,15 +110,18 @@ function Avatar({ name, size = 28 }) {
 }
 
 export default function OwnerDashboardContent({ token, sessionToken, orgName, onSessionExpired }) {
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(null)
-  const [refresh, setRefresh] = useState(null)
+  const [data,         setData]         = useState(null)
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState(null)
+  const [refresh,      setRefresh]      = useState(null)
+  // Default to yesterday so the morning view is always populated
+  const [selectedDate, setSelectedDate] = useState(yesterday)
   const timerRef = useRef(null)
 
-  const fetchBrief = useCallback(async () => {
+  const fetchBrief = useCallback(async (dateOverride) => {
+    const d = dateOverride !== undefined ? dateOverride : selectedDate
     try {
-      const res = await getOwnerBrief(token, sessionToken)
+      const res = await getOwnerBrief(token, sessionToken, toISODate(d))
       setData(res)
       setRefresh(new Date())
       setError(null)
@@ -104,13 +129,41 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
       if (e?.response?.status === 401) onSessionExpired()
       else setError('Failed to load. Retrying in 2 minutes.')
     } finally { setLoading(false) }
-  }, [token, sessionToken, onSessionExpired])
+  }, [token, sessionToken, onSessionExpired, selectedDate])
+
+  // On date change: refetch immediately and restart the auto-refresh timer
+  const changeDate = useCallback((newDate) => {
+    setSelectedDate(newDate)
+    setLoading(true)
+    clearInterval(timerRef.current)
+    fetchBrief(newDate)
+    // Only auto-refresh when viewing today (past dates won't change)
+    if (isToday(newDate)) {
+      timerRef.current = setInterval(() => fetchBrief(newDate), REFRESH_MS)
+    }
+  }, [fetchBrief])
+
+  const goBack = () => {
+    const d = new Date(selectedDate)
+    d.setDate(d.getDate() - 1)
+    changeDate(d)
+  }
+  const goForward = () => {
+    if (isToday(selectedDate)) return
+    const d = new Date(selectedDate)
+    d.setDate(d.getDate() + 1)
+    changeDate(d)
+  }
 
   useEffect(() => {
-    fetchBrief()
-    timerRef.current = setInterval(fetchBrief, REFRESH_MS)
+    fetchBrief(selectedDate)
+    // Only auto-refresh today; past dates are static
+    if (isToday(selectedDate)) {
+      timerRef.current = setInterval(() => fetchBrief(selectedDate), REFRESH_MS)
+    }
     return () => clearInterval(timerRef.current)
-  }, [fetchBrief])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif' }}>
@@ -141,9 +194,29 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
             </div>
             <div>
               <div style={{ fontWeight: 500, fontSize: 14, color: '#0f2535' }}>{orgName || 'Daily Brief'}</div>
-              <div style={{ fontSize: 11, color: '#6b7280' }}>Daily Brief</div>
+              {/* Date navigation */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                <button
+                  onClick={goBack}
+                  aria-label="Previous day"
+                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280', fontSize: 11, padding: 0 }}
+                >
+                  <i className="ti ti-chevron-left" aria-hidden="true" />
+                </button>
+                <span style={{ fontSize: 11, color: isToday(selectedDate) ? '#01919E' : '#6b7280', fontWeight: isToday(selectedDate) ? 600 : 400, minWidth: 100, textAlign: 'center' }}>
+                  {fmtDateLabel(selectedDate)}
+                </span>
+                <button
+                  onClick={goForward}
+                  disabled={isToday(selectedDate)}
+                  aria-label="Next day"
+                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid #e5e7eb', background: isToday(selectedDate) ? '#f3f4f6' : '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isToday(selectedDate) ? 'not-allowed' : 'pointer', color: isToday(selectedDate) ? '#d1d5db' : '#6b7280', fontSize: 11, padding: 0 }}
+                >
+                  <i className="ti ti-chevron-right" aria-hidden="true" />
+                </button>
+              </div>
               <div style={{ fontSize: 10, color: '#9ca3af' }}>
-                {refresh ? refresh.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '…'}
+                {refresh ? `Updated ${refresh.toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : '…'}
                 {brief?.days_remaining !== undefined && ` · ${brief.days_remaining} days left this month`}
               </div>
             </div>
@@ -155,7 +228,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
                 {totalActions} action{totalActions > 1 ? 's' : ''}
               </span>
             )}
-            <button onClick={fetchBrief} aria-label="Refresh" style={{ width: 32, height: 32, borderRadius: 8, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, cursor: 'pointer', color: '#6b7280' }}>
+            <button onClick={() => fetchBrief(selectedDate)} aria-label="Refresh" style={{ width: 32, height: 32, borderRadius: 8, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, cursor: 'pointer', color: '#6b7280' }}>
               <i className="ti ti-refresh" aria-hidden="true" />
             </button>
             <button onClick={() => window.print()} aria-label="Print" style={{ width: 32, height: 32, borderRadius: 8, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, cursor: 'pointer', color: '#6b7280' }}>
@@ -347,7 +420,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
                         <div style={{ marginBottom: 8 }}>
                           <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px', display: 'flex', alignItems: 'center', gap: 5 }}>
                             <i className="ti ti-pencil" style={{ fontSize: 10 }} aria-hidden="true" />
-                            Today's activities
+                            {isToday(selectedDate) ? "Today's activities" : `${fmtDateLabel(selectedDate)} activities`}
                           </div>
                           {c.todays_activity_summary.map((a, i) => (
                             <div key={i} style={{ fontSize: 11, color: '#374151', marginBottom: 3, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
@@ -358,7 +431,7 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
                         </div>
                       )}
                       {!c.todays_activity_summary?.length && c.activities_today === 0 && (
-                        <div style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', marginBottom: 6 }}>No activity logged today</div>
+                        <div style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', marginBottom: 6 }}>No activity logged {isToday(selectedDate) ? 'today' : fmtDateLabel(selectedDate).toLowerCase()}</div>
                       )}
                       {c.in_progress_tasks?.length > 0 && (
                         <div>

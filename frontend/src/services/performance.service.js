@@ -170,10 +170,11 @@ export async function getOwnerDashboardGoals(token, sessionToken, periodStart) {
 
 // ── Daily Executive Brief (public) ────────────────────────────────────────
 
-export async function getOwnerBrief(token, sessionToken) {
+export async function getOwnerBrief(token, sessionToken, date = null) {
+  const params = date ? { date } : {}
   const r = await axios.get(
     `${BASE}/api/v1/public/owner-dashboard/${token}/brief`,
-    { headers: { Authorization: `Bearer ${sessionToken}` } }
+    { headers: { Authorization: `Bearer ${sessionToken}` }, params }
   )
   return r.data
 }

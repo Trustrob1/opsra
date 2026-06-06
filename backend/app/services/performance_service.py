@@ -1259,9 +1259,16 @@ def delete_business_goal(db, org_id: str, goal_id: str, period_start: str) -> bo
 _TTL_BRIEF = 120  # 2 min cache
 
 
-async def get_daily_brief(db, org_id: str) -> dict:
+async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) -> dict:
     """
     Assembles the owner daily executive brief.
+
+    brief_date: the date to generate the brief for. Defaults to today.
+      Passing a past date lets the owner review a previous day's snapshot.
+      Revenue / pipeline figures are always month-to-date for the month
+      that contains brief_date. Contractor activity logs and the cache key
+      are scoped to brief_date so past days are independently cached.
+
     Sections:
       1. Revenue snapshot  — leads.deal_value where stage=converted, this month
       2. Sales pipeline    — leads by stage + value
@@ -1280,12 +1287,18 @@ async def get_daily_brief(db, org_id: str) -> dict:
       contractors: id, full_name, role_title, org_id
       users: id, full_name, org_id, roles(template)
     """
-    cache_key = f"perf:brief:{org_id}"
+    # brief_date defaults to today; past dates are accepted for historical review
+    today = brief_date if brief_date is not None else date.today()
+
+    # Past-date briefs get a longer cache TTL (data won't change); today gets 2 min
+    is_past = today < date.today()
+    ttl = 3600 if is_past else _TTL_BRIEF  # 1 hour for past, 2 min for today
+
+    cache_key = f"perf:brief:{org_id}:{today}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
 
-    today           = date.today()
     month_start_str = str(date(today.year, today.month, 1))
     days_in_month_n = _days_in_month(date(today.year, today.month, 1))
     days_elapsed    = today.day
@@ -1358,7 +1371,7 @@ async def get_daily_brief(db, org_id: str) -> dict:
             [("org_id", "eq", org_id), ("log_date", "gte", month_start_str),
              ("kpi_key", "eq", "Posts Published")],
         ),
-        # Contractor daily activity logs — today only for brief
+        # Contractor daily activity logs — scoped to brief_date
         _async_fetch(
             db, "performance_daily_logs",
             "entity_id, log_date, kpi_label, notes, blocker_note, needs_management_attention, created_at",
@@ -1536,6 +1549,7 @@ async def get_daily_brief(db, org_id: str) -> dict:
     result = {
         "generated_at":          datetime.utcnow().isoformat(),
         "period":                f"{month_start_str} — {today}",
+        "brief_date":            str(today),
         "days_elapsed":          days_elapsed,
         "days_remaining":        days_remaining,
         "revenue_snapshot":      revenue_snapshot,
@@ -1547,7 +1561,7 @@ async def get_daily_brief(db, org_id: str) -> dict:
         "contractors":           contractor_summaries,
         "attention_issues":      attention_issues,
     }
-    _cache_set(cache_key, result, _TTL_BRIEF)
+    _cache_set(cache_key, result, ttl)
     return result
 
 
