@@ -885,6 +885,13 @@ def resolve_activity_log_public(
     )
     if not res.data:
         raise HTTPException(status_code=500, detail="Resolve failed")
+    # Invalidate the owner brief cache so the resolved item disappears immediately
+    try:
+        from app.services.performance_service import _cache_delete
+        from datetime import date as _date
+        _cache_delete(f"perf:brief:{org_id}:{_date.today()}")
+    except Exception:
+        pass  # fail open — cache will expire naturally within 2 min
     return {"status": "ok", "data": res.data[0]}
 # Manager/owner: formally resolve a flagged activity log entry.
 # Clears needs_management_attention, records resolver + note + timestamp.
