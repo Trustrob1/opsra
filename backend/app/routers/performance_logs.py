@@ -836,7 +836,6 @@ def resolve_activity_log_public(
     authorization: Optional[str] = Header(None),
     db=Depends(get_supabase),
 ):
-    from fastapi import Header as _Header
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="PIN session required")
     session_token = authorization.removeprefix("Bearer ").strip()
