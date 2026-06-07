@@ -1152,6 +1152,10 @@ def get_rep_performance_report(
                 .select("sent_by, created_at, lead_id")
                 .eq("org_id", org_id)
                 .eq("direction", "outbound")
+                .gte("created_at", date_from)
+                .lte("created_at", date_to + "T23:59:59")
+                .order("created_at", desc=False)
+                .limit(5000)
                 .execute()
             )
             for m in (msg_r.data or []):
@@ -1371,6 +1375,10 @@ def get_whatsapp_report(
                         "status, window_open"
                     )
                     .eq("org_id", org_id)
+                    .gte("created_at", date_f)
+                    .lte("created_at", date_t + "T23:59:59")
+                    .order("created_at", desc=False)
+                    .limit(5000)
                     .execute()
                 )
                 all_msgs = result.data or []
