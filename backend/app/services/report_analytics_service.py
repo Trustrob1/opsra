@@ -732,10 +732,22 @@ def get_response_time_report(
         def _compute_rt(date_f: str, date_t: str) -> dict:
             # Fetch all messages for the org in the period
             try:
+                # Fetch messages within the period plus a 24h lookback window so we
+                # can find human replies that came after an inbound that started the
+                # thread just before the period boundary.
+                # Using gte on created_at avoids the 1000-row default page cap that
+                # would silently exclude recent messages when total volume is high.
+                from datetime import timedelta
+                lookback_date = (
+                    date.fromisoformat(date_f) - timedelta(days=1)
+                ).isoformat()
                 msg_result = (
                     db.table("whatsapp_messages")
                     .select("id, lead_id, direction, sent_by, created_at")
                     .eq("org_id", org_id)
+                    .gte("created_at", lookback_date)
+                    .order("created_at", desc=False)
+                    .limit(5000)
                     .execute()
                 )
                 all_msgs = msg_result.data or []
