@@ -784,7 +784,12 @@ def get_response_time_report(
 
             def _to_dt(ts: str) -> Optional[datetime]:
                 try:
-                    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    # Normalise timezone suffix: +00 → +00:00, Z → +00:00
+                    normalized = ts.replace("Z", "+00:00")
+                    # Handle +00 and -00 shorthand (Python fromisoformat requires HH:MM)
+                    import re
+                    normalized = re.sub(r'([+-]\d{2})$', r'\1:00', normalized)
+                    return datetime.fromisoformat(normalized)
                 except Exception:
                     return None
 
