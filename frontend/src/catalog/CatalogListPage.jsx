@@ -389,10 +389,41 @@ export default function CatalogListPage({
             }}
           />
 
+          {/* Size filter chips — always visible for share/compare flow */}
+          {tagDimensions.filter(d => d.key === 'sizes').map(dim => (
+            <div key={dim.key} style={{ marginBottom: 10 }}>
+              <span style={{
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
+                textTransform: 'uppercase', color: C.muted,
+                display: 'block', marginBottom: 6,
+              }}>{dim.label}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {(dim.options || []).map(opt => {
+                  const active = activeFilters[dim.key] === opt
+                  return (
+                    <button
+                      key={opt}
+                      onClick={() => toggleFilter(dim.key, opt)}
+                      style={{
+                        padding: '5px 14px', borderRadius: 20,
+                        border: `1.5px solid ${active ? C.teal : C.border}`,
+                        background: active ? C.teal : C.surface,
+                        color: active ? 'white' : C.text,
+                        fontFamily: "'Jost', sans-serif", fontSize: 13,
+                        cursor: 'pointer', fontWeight: active ? 600 : 400,
+                        transition: 'all 0.15s',
+                      }}
+                    >{opt}</button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+
           {/* Plain filter chips — only when no wizard configured */}
-          {!useWizard && tagDimensions.length > 0 && (
+          {!useWizard && tagDimensions.filter(d => d.key !== 'sizes').length > 0 && (
             <div style={{ marginBottom: 8 }}>
-              {tagDimensions.map(dim => (
+              {tagDimensions.filter(d => d.key !== 'sizes').map(dim => (
                 <div key={dim.key} style={{ marginBottom: 10 }}>
                   <span style={{
                     fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
