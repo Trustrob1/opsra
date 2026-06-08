@@ -107,7 +107,8 @@ export default function PublicCatalogShell() {
 
   function handleSelectItem(item) {
     setItemSlug(item.slug)
-    // Update URL without page reload (pushState)
+    setCompareMode(false)
+    setSizeValue(null)
     window.history.pushState({}, '', `/catalog/${orgSlug}/${item.slug}`)
     window.scrollTo(0, 0)
   }
