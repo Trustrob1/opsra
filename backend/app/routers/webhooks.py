@@ -2152,7 +2152,7 @@ def _launch_post_qual_recommendation_flow(
             # Cap at 5 candidates for AI to keep prompt concise.
             ai_candidates = primary_in_stock[:5]
             rec = generate_product_recommendation(
-                answers=answers,
+                answers=tag_filters,
                 mattress_products=ai_candidates,
                 org_name=org_name,
                 org_slug=org_slug,
@@ -2175,7 +2175,7 @@ def _launch_post_qual_recommendation_flow(
             top_match_title = (primary_all[0].get("title") or "our top recommendation")
             alt_candidates = in_stock[:5]  # in_stock already excludes pillows check skipped here intentionally — send whatever is available
             rec = generate_product_recommendation(
-                answers=answers,
+                answers=tag_filters,
                 mattress_products=alt_candidates,
                 org_name=org_name,
                 org_slug=org_slug,
