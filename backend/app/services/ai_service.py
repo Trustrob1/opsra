@@ -675,13 +675,6 @@ def _is_variant_available_for_rec(v: dict) -> bool:
 
 
 def _resolve_recommended_variant(product: dict, tag_filters: dict) -> Optional[dict]:
-    """
-    CATALOG-4: Identify the specific variant to pre-select on the catalog page.
-
-    Tries to match the 'size' or 'weight_category' tag filter value against
-    variant titles (case-insensitive). Falls back to the first available variant.
-    Returns None if the product has no meaningful variants.
-    """
     variants = [
         v for v in (product.get("variants") or [])
         if v and (v.get("title") or "").lower() not in ("", "default title")
@@ -689,11 +682,27 @@ def _resolve_recommended_variant(product: dict, tag_filters: dict) -> Optional[d
     if not variants:
         return None
 
-    size_value = (tag_filters.get("sizes") or tag_filters.get("size") or tag_filters.get("weight_category") or "").strip()
-    if size_value:
+    candidate_values = [
+        tag_filters.get("sizes") or "",
+        tag_filters.get("size") or "",
+        tag_filters.get("weight_category") or "",
+        tag_filters.get("age_group") or "",
+        tag_filters.get("health_purpose") or "",
+    ]
+
+    logger.info(
+        "_resolve_recommended_variant: candidates=%s variant_titles=%s",
+        candidate_values,
+        [v.get("title") for v in variants],
+    )
+
+    for candidate in candidate_values:
+        candidate = candidate.strip()
+        if not candidate:
+            continue
         for v in variants:
             if (
-                str(v.get("title") or "").strip().lower() == size_value.lower()
+                str(v.get("title") or "").strip().lower() == candidate.lower()
                 and _is_variant_available_for_rec(v)
             ):
                 return v
