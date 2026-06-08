@@ -127,7 +127,7 @@ export default function CatalogSizeComparePage({
   }).length
 
   function copyLink() {
-    const BACKEND = import.meta.env.VITE_API_URL || 'https://opsra.onrender.com'
+    const BACKEND = 'https://opsra.onrender.com'
     const parts   = window.location.pathname.split('/').filter(Boolean)
     const orgSlug = parts[1] || ''
     const ogUrl   = `${BACKEND}/og/catalog/${orgSlug}/compare?size=${encodeURIComponent(sizeValue)}`
