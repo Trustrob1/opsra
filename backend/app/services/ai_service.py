@@ -689,11 +689,11 @@ def _resolve_recommended_variant(product: dict, tag_filters: dict) -> Optional[d
     if not variants:
         return None
 
-    size_value = tag_filters.get("size") or tag_filters.get("weight_category") or ""
+    size_value = (tag_filters.get("sizes") or tag_filters.get("size") or tag_filters.get("weight_category") or "").strip()
     if size_value:
         for v in variants:
             if (
-                str(v.get("title") or "").strip().lower() == size_value.strip().lower()
+                str(v.get("title") or "").strip().lower() == size_value.lower()
                 and _is_variant_available_for_rec(v)
             ):
                 return v
