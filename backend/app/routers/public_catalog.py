@@ -199,7 +199,7 @@ def _fetch_visible_items(db, org_id: str) -> List[dict]:
         db.table("products")
         .select(
             "id, title, slug, description, catalog_description, price, catalog_images, "
-            "extra_catalog_images, tags, custom_fields, available, catalog_views"
+            "extra_catalog_images, tags, custom_fields, available, catalog_views, variants"
         )
         .eq("org_id", org_id)
         .eq("catalog_visible", True)
