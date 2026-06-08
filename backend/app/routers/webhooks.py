@@ -2052,10 +2052,16 @@ def _launch_post_qual_recommendation_flow(
 
         # ── Fetch all active products (available + unavailable) ───────────
         # We fetch both so we can detect Tier 2 (best match out of stock).
-        all_active = filter_catalog_items_by_tags(
+        all_active, applied_filters = filter_catalog_items_by_tags(
             db=db, org_id=org_id, tag_filters=tag_filters, available_only=False,
         )
         in_stock = [p for p in all_active if p.get("available", False)]
+
+        # Detect which preferences were relaxed away
+        relaxed_away = {
+            k: v for k, v in tag_filters.items()
+            if k not in applied_filters
+        }
 
         # ── Tier 3: nothing in stock at all ──────────────────────────────
         if not in_stock:
@@ -2158,7 +2164,7 @@ def _launch_post_qual_recommendation_flow(
                 org_slug=org_slug,
             )
 
-            # ── Option 3: detect requested size unavailable on recommended product ──
+            # ── Option 3: detect requested size or preference unavailable ──
             requested_size = tag_filters.get("sizes") or tag_filters.get("size") or ""
             rec_variant_title = rec.get("variant_title") or ""
             size_mismatch = (
@@ -2166,13 +2172,37 @@ def _launch_post_qual_recommendation_flow(
                 and rec_variant_title
                 and rec_variant_title.strip().lower() != requested_size.strip().lower()
             )
-            if size_mismatch:
+
+            # Build relaxation notice for any non-size preferences that were dropped
+            relaxation_notices = []
+            feel_relaxed = "mattress_feel" in relaxed_away
+            if feel_relaxed:
+                relaxation_notices.append(
+                    f"a *{relaxed_away['mattress_feel']}* feel preference"
+                )
+
+            if size_mismatch and relaxation_notices:
+                size_rationale = (
+                    f"The *{requested_size}* size isn't currently available in your "
+                    f"ideal mattress. We also couldn't find an exact match for "
+                    f"{', '.join(relaxation_notices)}. We recommend the *{rec['title']}* "
+                    f"in *{rec_variant_title}* as the closest match in stock — "
+                    f"{rec['rationale']} Our team can advise on availability."
+                )
+            elif size_mismatch:
                 size_rationale = (
                     f"The *{requested_size}* size isn't currently available in your "
                     f"ideal mattress. We recommend the *{rec['title']}* in "
                     f"*{rec_variant_title}* as the closest match in stock — "
                     f"{rec['rationale']} Our team can advise on {requested_size} "
                     f"availability."
+                )
+            elif relaxation_notices:
+                size_rationale = (
+                    f"We couldn't find an exact match for "
+                    f"{', '.join(relaxation_notices)} — this is the closest "
+                    f"available option. {rec['rationale']} Our team can advise "
+                    f"on alternatives."
                 )
             else:
                 size_rationale = rec["rationale"]

@@ -489,11 +489,11 @@ def filter_catalog_items_by_tags(
         all_products = result.data if isinstance(result.data, list) else []
 
         if not all_products:
-            return []
+            return [], tag_filters
 
         # No tag filters configured — return all products unfiltered
         if not tag_filters:
-            return all_products
+            return all_products, tag_filters
 
         def _is_variant_in_stock(product: dict, size_value: str) -> bool:
             """Check if the product has the requested size variant in stock."""
@@ -534,7 +534,7 @@ def filter_catalog_items_by_tags(
         # Try full filter set first
         matched = [p for p in all_products if _matches(p, tag_filters)]
         if matched:
-            return matched
+            return matched, tag_filters
 
         # Progressive relaxation — remove least specific filters first
         # (shortest tag_value = least specific)
@@ -554,7 +554,7 @@ def filter_catalog_items_by_tags(
                     "— %d products matched org=%s",
                     list(active_filters.keys()), len(matched), org_id,
                 )
-                return matched
+                return matched, active_filters
 
         # Full fallback — return all available products
         logger.info(
@@ -562,7 +562,7 @@ def filter_catalog_items_by_tags(
             "— returning all %d products as fallback org=%s",
             len(all_products), org_id,
         )
-        return all_products
+        return all_products, {}
 
     except Exception as exc:
         logger.warning(
