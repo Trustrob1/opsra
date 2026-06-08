@@ -516,8 +516,33 @@ export default function CatalogListPage({
 
 function ProductCard({ item, catalogConfig, availLabel, unavailLabel, itemLabelSing, onClick }) {
   const cover       = (item.catalog_images || [])[0] || null
-  const priceLabel  = item.price_label || ''
   const isAvailable = item.available !== false
+  const priceTemplate = catalogConfig?.price_label_template || '₦{price}'
+  const priceOnReq    = catalogConfig?.price_on_request || false
+
+  // Compute price range from variants — mirrors CatalogItemPage logic
+  const shopifyVariants = (item.variants || []).filter(
+    v => v && v.title && v.title.toLowerCase() !== 'default title'
+  )
+  const variantPrices = shopifyVariants
+    .map(v => parseFloat(v.price || 0))
+    .filter(p => p > 0)
+  const priceMin = variantPrices.length ? Math.min(...variantPrices) : null
+  const priceMax = variantPrices.length ? Math.max(...variantPrices) : null
+  const showRange = priceMin !== null && priceMax !== null && priceMin !== priceMax
+
+  function formatPrice(p) {
+    const formatted = p.toLocaleString('en-NG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    return priceTemplate.replace('{price}', formatted)
+  }
+
+  const priceLabel = priceOnReq
+    ? 'Price on Request'
+    : showRange
+      ? `${formatPrice(priceMin)} – ${formatPrice(priceMax)}`
+      : priceMin !== null
+        ? formatPrice(priceMin)
+        : item.price_label || ''
 
   const tagDimensions = (catalogConfig?.tag_dimensions || []).filter(d => d.filterable)
   const cardTags = tagDimensions.filter(d =>
