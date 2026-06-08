@@ -2157,9 +2157,29 @@ def _launch_post_qual_recommendation_flow(
                 org_name=org_name,
                 org_slug=org_slug,
             )
+
+            # ── Option 3: detect requested size unavailable on recommended product ──
+            requested_size = tag_filters.get("sizes") or tag_filters.get("size") or ""
+            rec_variant_title = rec.get("variant_title") or ""
+            size_mismatch = (
+                requested_size
+                and rec_variant_title
+                and rec_variant_title.strip().lower() != requested_size.strip().lower()
+            )
+            if size_mismatch:
+                size_rationale = (
+                    f"The *{requested_size}* size isn't currently available in your "
+                    f"ideal mattress. We recommend the *{rec['title']}* in "
+                    f"*{rec_variant_title}* as the closest match in stock — "
+                    f"{rec['rationale']} Our team can advise on {requested_size} "
+                    f"availability."
+                )
+            else:
+                size_rationale = rec["rationale"]
+
             send_recommendation_message(
                 db=db, org_id=org_id, phone_number=lead_phone, lead_id=lead_id,
-                title=rec["title"], price=rec["price"], rationale=rec["rationale"],
+                title=rec["title"], price=rec["price"], rationale=size_rationale,
                 config=qual_flow, catalog_url=rec.get("catalog_url"),
             )
             if rec.get("image_url"):

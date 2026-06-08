@@ -495,6 +495,18 @@ def filter_catalog_items_by_tags(
         if not tag_filters:
             return all_products
 
+        def _is_variant_in_stock(product: dict, size_value: str) -> bool:
+            """Check if the product has the requested size variant in stock."""
+            for v in (product.get("variants") or []):
+                if str(v.get("title") or "").strip().lower() != size_value.strip().lower():
+                    continue
+                inv_mgmt   = v.get("inventory_management")
+                inv_policy = v.get("inventory_policy")
+                inv_qty    = int(v.get("inventory_quantity") or 0)
+                if inv_mgmt is None or inv_policy == "continue" or inv_qty > 0:
+                    return True
+            return False
+
         def _matches(product: dict, filters: dict) -> bool:
             raw_tags = product.get("tags")
             # tags must be a dict (structured) — empty {} or list = no tags
@@ -512,6 +524,11 @@ def filter_catalog_items_by_tags(
                 else:
                     if str(product_value).strip().lower() != norm_value:
                         return False
+            # If a size filter is present, verify the specific size variant is in stock
+            size_value = filters.get("sizes") or filters.get("size") or ""
+            if size_value and product.get("variants"):
+                if not _is_variant_in_stock(product, size_value):
+                    return False
             return True
 
         # Try full filter set first
