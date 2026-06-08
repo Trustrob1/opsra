@@ -127,8 +127,11 @@ export default function CatalogSizeComparePage({
   }).length
 
   function copyLink() {
-    const url = window.location.href
-    navigator.clipboard?.writeText(url).then(() => {
+    const BACKEND = import.meta.env.VITE_API_URL || 'https://opsra.onrender.com'
+    const parts   = window.location.pathname.split('/').filter(Boolean)
+    const orgSlug = parts[1] || ''
+    const ogUrl   = `${BACKEND}/og/catalog/${orgSlug}/compare?size=${encodeURIComponent(sizeValue)}`
+    navigator.clipboard?.writeText(ogUrl).then(() => {
       setLinkCopied(true)
       setTimeout(() => setLinkCopied(false), 2000)
     })

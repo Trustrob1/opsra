@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 
 from app.database import get_supabase
 
@@ -239,7 +239,112 @@ async def _increment_catalog_views(org_id: str, item_id: str) -> None:
 # /api/v1/public/catalog/{org_slug}/{item_slug} ← fully parameterised
 # ---------------------------------------------------------------------------
 
-@router.get("/public/catalog/{org_slug}/search")
+@router.get("/og/catalog/{org_slug}/compare", response_class=HTMLResponse)
+async def og_catalog_compare(
+    org_slug: str,
+    request:  Request,
+    size:     str = Query(..., min_length=1, max_length=200),
+):
+    """
+    OG meta tag endpoint for WhatsApp/social link previews of the size comparison page.
+
+    WhatsApp's crawler (facebookexternalua) fetches this URL server-side and reads
+    the OG tags. Browsers are immediately redirected to the frontend compare page.
+
+    URL format: /og/catalog/{org_slug}/compare?size={size_value}
+    Frontend URL: /catalog/{org_slug}/compare?size={size_value}
+    """
+    _check_rate_limit(request)
+
+    frontend_url = (
+        str(request.base_url).rstrip("/").replace(
+            "opsra.onrender.com", "opsra-frontend.onrender.com"
+        )
+    )
+    # Allow FRONTEND_URL env override
+    import os
+    frontend_base = os.getenv("FRONTEND_URL", "").rstrip("/") or frontend_url.rstrip("/")
+    compare_url = f"{frontend_base}/catalog/{org_slug}/compare?size={size}"
+
+    try:
+        db = get_supabase()
+        org = _fetch_org_by_slug(db, org_slug)
+        org_id = org["id"]
+        catalog_config = org.get("catalog_config") or {}
+        pub_config = _public_config_fields(catalog_config)
+        price_template   = pub_config["price_label_template"]
+        price_on_request = pub_config["price_on_request"]
+
+        # Fetch items matching this size
+        all_items = _fetch_visible_items(db, org_id)
+
+        # Filter to items that have this size in their tags
+        size_lower = size.strip().lower()
+        matched = [
+            i for i in all_items
+            if size_lower in [
+                str(v).strip().lower()
+                for v in (
+                    ((i.get("tags") or {}).get("sizes") or [])
+                    if isinstance((i.get("tags") or {}).get("sizes"), list)
+                    else [((i.get("tags") or {}).get("sizes") or "")]
+                )
+            ]
+        ]
+
+        # Pick image from first available matched item
+        og_image = ""
+        og_title = f"{size} — {org.get('name', '')} Catalog"
+        og_desc  = f"{len(matched)} mattress option{'s' if len(matched) != 1 else ''} available in {size}."
+
+        for item in matched:
+            if item.get("available") is False:
+                continue
+            images = item.get("catalog_images") or []
+            if images:
+                raw = images[0]
+                og_image = raw if isinstance(raw, str) else (raw.get("url") or "")
+                if og_image:
+                    break
+
+        org_name = org.get("name", "")
+
+    except HTTPException:
+        # Org not found — still render redirect, just no OG data
+        og_image = ""
+        og_title = f"{size} — Catalog"
+        og_desc  = f"View mattresses available in {size}."
+        org_name = ""
+
+    except Exception as exc:
+        logger.warning("og_catalog_compare: failed org=%s size=%s: %s", org_slug, size, exc)
+        og_image = ""
+        og_title = f"{size} — Catalog"
+        og_desc  = f"View mattresses available in {size}."
+        org_name = ""
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{og_title}</title>
+  <meta property="og:title"       content="{og_title}">
+  <meta property="og:description" content="{og_desc}">
+  <meta property="og:image"       content="{og_image}">
+  <meta property="og:url"         content="{compare_url}">
+  <meta property="og:type"        content="website">
+  <meta name="twitter:card"       content="summary_large_image">
+  <meta name="twitter:title"      content="{og_title}">
+  <meta name="twitter:image"      content="{og_image}">
+  <meta http-equiv="refresh"      content="0;url={compare_url}">
+</head>
+<body>
+  <p>Redirecting… <a href="{compare_url}">Click here if not redirected</a></p>
+  <script>window.location.replace("{compare_url}");</script>
+</body>
+</html>"""
+
+    return HTMLResponse(content=html, status_code=200)
 async def search_catalog(
     org_slug: str,
     request:  Request,
