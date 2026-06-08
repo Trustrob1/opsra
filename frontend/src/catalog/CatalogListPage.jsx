@@ -15,7 +15,7 @@
  *   - ProductCard: descriptive tags only (feel/health), "View details" CTA
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 
 const FONTS = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Jost:wght@300;400;500;600&display=swap');
