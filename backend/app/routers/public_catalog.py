@@ -304,6 +304,7 @@ async def og_catalog_compare(
             if images:
                 raw = images[0]
                 og_image = raw if isinstance(raw, str) else (raw.get("url") or "")
+                og_image = og_image.rstrip("?").strip()
                 if og_image:
                     break
 
@@ -330,7 +331,7 @@ async def og_catalog_compare(
   <title>{og_title}</title>
   <meta property="og:title"       content="{og_title}">
   <meta property="og:description" content="{og_desc}">
-  <meta property="og:image"       content="{og_image}">
+  <meta property="og:image"       content="{og_image.rstrip('?')}">
   <meta property="og:url"         content="{compare_url}">
   <meta property="og:type"        content="website">
   <meta name="twitter:card"       content="summary_large_image">
