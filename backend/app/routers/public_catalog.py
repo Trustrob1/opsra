@@ -282,21 +282,37 @@ async def og_catalog_compare(
 
         # Filter to items that have this size in their tags
         import urllib.parse
-        size_decoded = urllib.parse.unquote_plus(size).strip()
+        size_decoded = urllib.parse.unquote_plus(
+            urllib.parse.unquote_plus(size)
+        ).strip()
         size_lower = size_decoded.lower()
         logger.info("og_catalog_compare: size_raw=%r size_decoded=%r", size, size_decoded)
+
+        def _tag_values(item, key):
+            val = (item.get("tags") or {}).get(key)
+            if val is None:
+                return []
+            return val if isinstance(val, list) else [val]
+
         matched = [
             i for i in all_items
-            if size_lower in [
-                str(v).strip().lower()
-                for v in (
-                    ((i.get("tags") or {}).get("sizes") or [])
-                    if isinstance((i.get("tags") or {}).get("sizes"), list)
-                    else [((i.get("tags") or {}).get("sizes") or "")]
+            if any(
+                str(v).strip().lower() == size_lower
+                for v in _tag_values(i, "sizes")
+            )
+        ]
+        # If still 0, try partial match (handles minor encoding differences)
+        if not matched:
+            matched = [
+                i for i in all_items
+                if any(
+                    size_lower in str(v).strip().lower() or
+                    str(v).strip().lower() in size_lower
+                    for v in _tag_values(i, "sizes")
                 )
             ]
-        ]
-        logger.info("og_catalog_compare: matched=%d from %d products", len(matched), len(all_items))
+        logger.info("og_catalog_compare: matched=%d from %d products size_decoded=%r",
+                    len(matched), len(all_items), size_decoded)
 
         # Pick image from first available matched item
         og_image = ""
