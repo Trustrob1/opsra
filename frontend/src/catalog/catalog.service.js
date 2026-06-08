@@ -28,3 +28,6 @@ export const getCatalogItem = (orgSlug, itemSlug) =>
 
 export const searchCatalog = (orgSlug, q) =>
   _get(`/api/v1/public/catalog/${orgSlug}/search?q=${encodeURIComponent(q)}`)
+
+export const getCatalogCompare = (orgSlug, sizeValue) =>
+  _get(`/api/v1/public/catalog/${orgSlug}?sizes=${encodeURIComponent(sizeValue)}`)

@@ -7,9 +7,10 @@
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState, useEffect } from 'react'
-import { getCatalogList, getCatalogItem } from './catalog.service'
+import { getCatalogList, getCatalogItem, getCatalogCompare } from './catalog.service'
 import CatalogListPage from './CatalogListPage'
 import CatalogItemPage from './CatalogItemPage'
+import CatalogSizeComparePage from './CatalogSizeComparePage'
 
 const C = {
   bg:   '#FAFAF8',
@@ -23,18 +24,27 @@ function _parsePath() {
   const parts = window.location.pathname.split('/').filter(Boolean)
   // parts[0] === 'catalog'
   const orgSlug  = parts[1] || null
-  const itemSlug = parts[2] || null
-  return { orgSlug, itemSlug }
+  const segment  = parts[2] || null
+  // /catalog/{org_slug}/compare?size=... is the compare route
+  const isCompare = segment === 'compare'
+  const itemSlug  = isCompare ? null : segment
+  const sizeValue = isCompare
+    ? new URLSearchParams(window.location.search).get('size') || null
+    : null
+  return { orgSlug, itemSlug, isCompare, sizeValue }
 }
 
 export default function PublicCatalogShell() {
-  const { orgSlug, itemSlug: initialItemSlug } = _parsePath()
+  const { orgSlug, itemSlug: initialItemSlug, isCompare: initialIsCompare, sizeValue: initialSizeValue } = _parsePath()
 
-  const [catalogData, setCatalogData] = useState(null)  // { orgName, waNumber, catalogConfig, items }
-  const [currentItem, setCurrentItem] = useState(null)  // full item object when on item page
-  const [itemSlug, setItemSlug]       = useState(initialItemSlug)
-  const [loading, setLoading]         = useState(true)
-  const [error, setError]             = useState(null)  // null | 'not_found' | 'error'
+  const [catalogData, setCatalogData]   = useState(null)
+  const [currentItem, setCurrentItem]   = useState(null)
+  const [itemSlug, setItemSlug]         = useState(initialItemSlug)
+  const [compareMode, setCompareMode]   = useState(initialIsCompare)
+  const [sizeValue, setSizeValue]       = useState(initialSizeValue)
+  const [compareItems, setCompareItems] = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState(null)
 
   // Load list data on mount
   useEffect(() => {
@@ -78,6 +88,14 @@ export default function PublicCatalogShell() {
       })
   }, [itemSlug, orgSlug])
 
+  // Load compare items when in compare mode
+  useEffect(() => {
+    if (!compareMode || !sizeValue || !orgSlug) return
+    getCatalogCompare(orgSlug, sizeValue)
+      .then(data => setCompareItems(data.items || []))
+      .catch(() => setCompareItems([]))
+  }, [compareMode, sizeValue, orgSlug])
+
   // Update page title
   useEffect(() => {
     if (catalogData?.orgName) {
@@ -97,7 +115,18 @@ export default function PublicCatalogShell() {
   function handleBack() {
     setItemSlug(null)
     setCurrentItem(null)
+    setCompareMode(false)
+    setSizeValue(null)
     window.history.pushState({}, '', `/catalog/${orgSlug}`)
+    window.scrollTo(0, 0)
+  }
+
+  function handleShowCompare(size) {
+    setCompareMode(true)
+    setSizeValue(size)
+    setItemSlug(null)
+    setCurrentItem(null)
+    window.history.pushState({}, '', `/catalog/${orgSlug}/compare?size=${encodeURIComponent(size)}`)
     window.scrollTo(0, 0)
   }
 
@@ -174,6 +203,21 @@ export default function PublicCatalogShell() {
     )
   }
 
+  // ── Compare page ──
+  if (compareMode && sizeValue) {
+    return (
+      <CatalogSizeComparePage
+        orgName={catalogData.orgName}
+        waNumber={catalogData.waNumber}
+        catalogConfig={catalogData.catalogConfig}
+        items={compareItems}
+        sizeValue={sizeValue}
+        onBack={handleBack}
+        onSelectItem={handleSelectItem}
+      />
+    )
+  }
+
   // ── Item page ──
   if (itemSlug && currentItem) {
     return (
@@ -196,6 +240,7 @@ export default function PublicCatalogShell() {
       wizardQuestions={catalogData.wizardQuestions || []}
       items={catalogData.items}
       onSelectItem={handleSelectItem}
+      onShowCompare={handleShowCompare}
     />
   )
 }

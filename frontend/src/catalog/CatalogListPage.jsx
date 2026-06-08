@@ -49,6 +49,7 @@ export default function CatalogListPage({
   wizardQuestions = [],
   items,
   onSelectItem,
+  onShowCompare,
 }) {
   injectFonts()
 
@@ -58,6 +59,17 @@ export default function CatalogListPage({
   const [wizardDone, setWizardDone]         = useState(false)
   const [wizardSkipped, setWizardSkipped]   = useState(false)
   const [wizardExpanded, setWizardExpanded] = useState(false)
+
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  // Pre-apply size filter from URL query param (?sizes=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sizeParam = params.get('sizes')
+    if (sizeParam) {
+      setActiveFilters(prev => ({ ...prev, sizes: sizeParam }))
+    }
+  }, [])
 
   const tagDimensions = (catalogConfig?.tag_dimensions || []).filter(d => d.filterable)
   const itemLabel     = catalogConfig?.catalog_item_label_plural || 'Products'
@@ -417,6 +429,7 @@ export default function CatalogListPage({
             display: 'flex', justifyContent: 'space-between',
             alignItems: 'center', padding: '12px 0',
             borderTop: `1px solid ${C.border}`, marginBottom: 24,
+            flexWrap: 'wrap', gap: 8,
           }}>
             <span style={{ fontSize: 13, color: C.muted }}>
               {wizardDone && activeFilterCount > 0
@@ -424,7 +437,31 @@ export default function CatalogListPage({
                 : `${filtered.length} ${filtered.length === 1 ? itemLabelSing : itemLabel.toLowerCase()}`
               }
             </span>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {activeFilters.sizes && onShowCompare && (
+                <button
+                  onClick={() => {
+                    if (onShowCompare) {
+                      onShowCompare(activeFilters.sizes)
+                    } else {
+                      const url = `${window.location.origin}/catalog/${window.location.pathname.split('/')[2]}/compare?size=${encodeURIComponent(activeFilters.sizes)}`
+                      navigator.clipboard?.writeText(url).then(() => {
+                        setLinkCopied(true)
+                        setTimeout(() => setLinkCopied(false), 2000)
+                      })
+                    }
+                  }}
+                  style={{
+                    background: C.teal, color: 'white',
+                    border: 'none', borderRadius: 8,
+                    padding: '6px 14px', fontSize: 12,
+                    fontFamily: "'Jost', sans-serif", cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  {linkCopied ? '✓ Link copied' : `Share ${activeFilters.sizes} list`}
+                </button>
+              )}
               {hasFilters && (
                 <button onClick={clearFilters} style={{
                   background: 'none', border: 'none',
