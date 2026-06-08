@@ -108,6 +108,20 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
   const [showPriceTable, setShowPriceTable]   = useState(false)
   const titleRef = useRef(null)
 
+  // Pre-select variant from ?variant= query param (recommendation deep link)
+  useEffect(() => {
+    if (!item?.variants?.length) return
+    const params = new URLSearchParams(window.location.search)
+    const variantId = params.get('variant')
+    if (!variantId) return
+    const match = (item.variants || []).find(
+      v => String(v.id || '') === variantId || String(v.shopify_id || '') === variantId
+    )
+    if (match && match.title?.toLowerCase() !== 'default title') {
+      setSelectedVariant(match)
+    }
+  }, [item])
+
   useEffect(() => {
     const el = titleRef.current
     if (!el) return
