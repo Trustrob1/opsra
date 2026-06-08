@@ -264,7 +264,9 @@ async def og_catalog_compare(
     # Allow FRONTEND_URL env override
     import os
     frontend_base = os.getenv("FRONTEND_URL", "").rstrip("/") or frontend_url.rstrip("/")
-    compare_url = f"{frontend_base}/catalog/{org_slug}/compare?size={size}"
+    import urllib.parse as _urllib_parse
+    size_decoded_early = _urllib_parse.unquote_plus(size).strip()
+    compare_url = f"{frontend_base}/catalog/{org_slug}/compare?size={_urllib_parse.quote(size_decoded_early)}"
 
     try:
         db = get_supabase()
@@ -279,7 +281,10 @@ async def og_catalog_compare(
         all_items = _fetch_visible_items(db, org_id)
 
         # Filter to items that have this size in their tags
-        size_lower = size.strip().lower()
+        import urllib.parse
+        size_decoded = urllib.parse.unquote_plus(size).strip()
+        size_lower = size_decoded.lower()
+        logger.info("og_catalog_compare: size_raw=%r size_decoded=%r", size, size_decoded)
         matched = [
             i for i in all_items
             if size_lower in [
@@ -291,11 +296,12 @@ async def og_catalog_compare(
                 )
             ]
         ]
+        logger.info("og_catalog_compare: matched=%d from %d products", len(matched), len(all_items))
 
         # Pick image from first available matched item
         og_image = ""
-        og_title = f"{size} — {org.get('name', '')} Catalog"
-        og_desc  = f"{len(matched)} mattress option{'s' if len(matched) != 1 else ''} available in {size}."
+        og_title = f"{size_decoded} — {org.get('name', '')} Catalog"
+        og_desc  = f"{len(matched)} mattress option{'s' if len(matched) != 1 else ''} available in {size_decoded}."
 
         for item in matched:
             if item.get("available") is False:
