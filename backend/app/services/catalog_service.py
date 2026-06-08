@@ -504,8 +504,14 @@ def filter_catalog_items_by_tags(
                 product_value = raw_tags.get(dimension)
                 if product_value is None:
                     return False
-                if str(product_value).strip().lower() != str(value).strip().lower():
-                    return False
+                # product_value may be a list (multi-value tag) or a scalar string
+                norm_value = str(value).strip().lower()
+                if isinstance(product_value, list):
+                    if not any(str(v).strip().lower() == norm_value for v in product_value):
+                        return False
+                else:
+                    if str(product_value).strip().lower() != norm_value:
+                        return False
             return True
 
         # Try full filter set first
