@@ -63,7 +63,7 @@ def _check_rate_limit(request: Request) -> None:
 # ---------------------------------------------------------------------------
 _list_cache:  dict[str, tuple[float, Any]] = {}  # org_slug → (ts, data)
 _item_cache:  dict[str, tuple[float, Any]] = {}  # "org_slug/item_slug" → (ts, data)
-_LIST_TTL = 300.0  # 5 minutes
+_LIST_TTL = 30.0  # 30 seconds — short TTL prevents stale filter results across workers
 _ITEM_TTL = 120.0  # 2 minutes
 
 
@@ -80,7 +80,10 @@ def _cache_set(store: dict, key: str, value: Any) -> None:
 
 def _cache_invalidate_org(org_slug: str) -> None:
     """Called on product update — clears list cache and all item caches for org."""
-    _list_cache.pop(org_slug, None)
+    # Clear all list cache entries for this org (including filtered variants)
+    stale_list = [k for k in _list_cache if k.startswith(f"{org_slug}:")]
+    for k in stale_list:
+        _list_cache.pop(k, None)
     stale = [k for k in _item_cache if k.startswith(f"{org_slug}/")]
     for k in stale:
         _item_cache.pop(k, None)
