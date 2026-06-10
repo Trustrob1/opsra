@@ -280,6 +280,11 @@ def get_targets_for_user_month(db, org_id: str, user_id: str, month: str) -> lis
         .execute()
     )
     data = result.data or []
+
+    # Seed-on-demand: if no targets exist for this user+month, auto-seed from templates
+    if not data:
+        data = _seed_targets_for_user(db, org_id, user_id, month)
+
     _cache_set(cache_key, data, _TTL_STAFF)
     return data
 
@@ -340,9 +345,67 @@ def acknowledge_targets(db, org_id: str, user_id: str, month: str) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
-# Staff daily log
-# ---------------------------------------------------------------------------
+def _seed_targets_for_user(db, org_id: str, user_id: str, month: str, created_by: str | None = None) -> list[dict]:
+    """
+    Seed staff_kpi_targets for a user+month from kpi_templates.
+    Called automatically when get_targets_for_user_month returns empty.
+    """
+    month_date = str(_month_start(month))
+
+    try:
+        user_res = db.table("users").select("roles(template)").eq("id", user_id).eq("org_id", org_id).limit(1).execute()
+        user_row = (user_res.data or [{}])[0]
+        role_template = (user_row.get("roles") or {}).get("template", "")
+    except Exception as exc:
+        logger.warning("_seed_targets_for_user: failed to fetch role for user %s: %s", user_id, exc)
+        return []
+
+    if not role_template:
+        logger.info("_seed_targets_for_user: no role_template found for user %s, skipping", user_id)
+        return []
+
+    _seed_kpi_templates(db, org_id)
+
+    try:
+        tmpl_res = (
+            db.table("kpi_templates")
+            .select("kpi_name, kpi_unit, sort_order")
+            .eq("org_id", org_id)
+            .eq("role_template", role_template)
+            .eq("is_active", True)
+            .order("sort_order")
+            .execute()
+        )
+        templates = tmpl_res.data or []
+    except Exception as exc:
+        logger.warning("_seed_targets_for_user: failed to fetch templates for role %s: %s", role_template, exc)
+        return []
+
+    if not templates:
+        logger.info("_seed_targets_for_user: no active templates for role %s in org %s", role_template, org_id)
+        return []
+
+    inserted = []
+    for t in templates:
+        try:
+            row = db.table("staff_kpi_targets").insert({
+                "org_id": org_id,
+                "user_id": user_id,
+                "kpi_name": t["kpi_name"],
+                "kpi_unit": t.get("kpi_unit"),
+                "target_value": 0,
+                "actual_value": None,
+                "month_start": month_date,
+                "created_by": created_by,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).execute()
+            if row.data:
+                inserted.append(row.data[0])
+        except Exception as exc:
+            logger.warning("_seed_targets_for_user: insert failed for kpi %s: %s", t["kpi_name"], exc)
+
+    logger.info("_seed_targets_for_user: seeded %d KPIs for user %s month %s", len(inserted), user_id, month)
+    return inserted
 
 def create_staff_log(db, org_id: str, user_id: str, payload: dict) -> dict:
     """Staff self-log. entity_type='staff', entity_id=user_id."""
@@ -459,13 +522,18 @@ async def get_staff_profile(db, org_id: str, user_id: str, month: str) -> dict:
         if key:
             running_totals[key] = running_totals.get(key, 0) + float(log.get("value", 0) or 0)
 
-    # Auto-compute ops_manager KPIs when acting as sales lead
-    ops_manager_actuals: dict[str, float | None] = {}
+    # Auto-compute KPIs from source data (on-demand, not persisted)
+    auto_actuals: dict[str, float | None] = {}
     if role == "ops_manager":
         try:
-            ops_manager_actuals = _compute_sales_lead_kpis(db, org_id, month)
+            auto_actuals = _compute_sales_lead_kpis(db, org_id, month)
         except Exception as exc:
-            logger.warning("ops_manager sales lead KPI auto-compute failed: %s", exc)
+            logger.warning("ops_manager KPI auto-compute failed: %s", exc)
+    elif role == "sales_agent":
+        try:
+            auto_actuals = _compute_sales_agent_kpis(db, org_id, user_id, month)
+        except Exception as exc:
+            logger.warning("sales_agent KPI auto-compute failed: %s", exc)
 
     kpi_summary = []
     total_pct = 0.0
@@ -473,8 +541,8 @@ async def get_staff_profile(db, org_id: str, user_id: str, month: str) -> dict:
         actual = t.get("actual_value")
         if actual is None:
             # Use auto-computed value if available for ops_manager sales lead KPIs
-            if role == "ops_manager" and t["kpi_name"] in ops_manager_actuals:
-                actual = ops_manager_actuals.get(t["kpi_name"])
+            if t["kpi_name"] in auto_actuals:
+                actual = auto_actuals.get(t["kpi_name"])
             else:
                 # Fall back to running daily total if no manual actual set
                 actual = running_totals.get(t["kpi_name"], None)
@@ -1587,7 +1655,142 @@ async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) ->
     return result
 
 
-def _compute_sales_lead_kpis(db, org_id: str, month_str: str) -> dict:
+def _compute_sales_agent_kpis(db, org_id: str, user_id: str, month_str: str) -> dict:
+    """
+    Auto-compute sales_agent KPIs for a specific agent + month.
+    Reads from leads, lead_assignments, direct_sales, performance_daily_logs.
+    S14: every fetch wrapped — failure returns None for that KPI, never crashes.
+    """
+    m_start     = _month_start(month_str)
+    m_start_str = m_start.isoformat()
+    m_end_str   = date(m_start.year + (m_start.month // 12),
+                       (m_start.month % 12) + 1, 1).isoformat() if m_start.month < 12 \
+                  else date(m_start.year + 1, 1, 1).isoformat()
+
+    # ── Leads assigned to this agent this month ───────────────────────────────
+    try:
+        leads_res = (
+            db.table("leads")
+            .select("id, stage, deal_value, created_at, converted_at, response_time_minutes, first_contacted_at, assigned_to")
+            .eq("org_id", org_id)
+            .eq("assigned_to", user_id)
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        leads = leads_res.data or []
+        if isinstance(leads, dict):
+            leads = [leads]
+    except Exception as exc:
+        logger.warning("_compute_sales_agent_kpis leads fetch failed: %s", exc)
+        leads = []
+
+    # ── Lead assignments for this agent this month (Leads Contacted) ──────────
+    try:
+        assign_res = (
+            db.table("lead_assignments")
+            .select("lead_id, assigned_at")
+            .eq("org_id", org_id)
+            .eq("user_id", user_id)
+            .gte("assigned_at", f"{m_start_str}T00:00:00+00:00")
+            .lt("assigned_at", f"{m_end_str}T00:00:00+00:00")
+            .execute()
+        )
+        assignments = assign_res.data or []
+        if isinstance(assignments, dict):
+            assignments = [assignments]
+    except Exception as exc:
+        logger.warning("_compute_sales_agent_kpis assignments fetch failed: %s", exc)
+        assignments = []
+
+    # ── Direct sales recorded by this agent this month (Upsell Rate) ─────────
+    try:
+        sales_res = (
+            db.table("direct_sales")
+            .select("id, sale_date, amount")
+            .eq("org_id", org_id)
+            .eq("recorded_by", user_id)
+            .gte("sale_date", m_start_str)
+            .lt("sale_date", m_end_str)
+            .execute()
+        )
+        direct_sales = sales_res.data or []
+        if isinstance(direct_sales, dict):
+            direct_sales = [direct_sales]
+    except Exception as exc:
+        logger.warning("_compute_sales_agent_kpis direct_sales fetch failed: %s", exc)
+        direct_sales = []
+
+    # ── Attendance days from performance_daily_logs ───────────────────────────
+    try:
+        att_res = (
+            db.table("performance_daily_logs")
+            .select("log_date, attendance_status")
+            .eq("org_id", org_id)
+            .eq("entity_id", user_id)
+            .eq("entity_type", "staff")
+            .gte("log_date", m_start_str)
+            .lt("log_date", m_end_str)
+            .execute()
+        )
+        att_logs = att_res.data or []
+        if isinstance(att_logs, dict):
+            att_logs = [att_logs]
+    except Exception as exc:
+        logger.warning("_compute_sales_agent_kpis attendance fetch failed: %s", exc)
+        att_logs = []
+
+    # ── Compute KPIs ──────────────────────────────────────────────────────────
+
+    # Leads Contacted — distinct leads assigned this month
+    leads_contacted = len({a["lead_id"] for a in assignments})
+
+    # Response Time — avg response_time_minutes on leads with first_contacted_at this month
+    try:
+        resp_times = [
+            float(l["response_time_minutes"])
+            for l in leads
+            if l.get("response_time_minutes") is not None
+            and l.get("first_contacted_at", "") >= f"{m_start_str}T00:00:00+00:00"
+        ]
+        response_time = round(sum(resp_times) / len(resp_times), 1) if resp_times else None
+    except Exception:
+        response_time = None
+
+    # Deals Closed — leads converted this month
+    converted = [
+        l for l in leads
+        if l.get("stage") == "converted"
+        and l.get("converted_at", "") >= f"{m_start_str}T00:00:00+00:00"
+    ]
+    deals_closed = len(converted)
+
+    # Conversion Rate — converted / total assigned × 100
+    total_assigned = len(leads)
+    conversion_rate = round(deals_closed / total_assigned * 100, 1) if total_assigned > 0 else None
+
+    # Revenue Generated — sum of deal_value on converted leads this month
+    revenue_generated = round(
+        sum(float(l.get("deal_value") or 0) for l in converted), 2
+    )
+
+    # Upsell Rate — count of direct sales recorded by this agent this month
+    upsell_rate = len(direct_sales)
+
+    # Attendance Days — distinct dates with attendance_status = 'Present'
+    attendance_days = len({
+        l["log_date"] for l in att_logs
+        if (l.get("attendance_status") or "").lower() == "present"
+    })
+
+    return {
+        "Leads Contacted":   leads_contacted,
+        "Response Time":     response_time,
+        "Deals Closed":      deals_closed,
+        "Conversion Rate":   conversion_rate,
+        "Revenue Generated": revenue_generated,
+        "Upsell Rate":       upsell_rate,
+        "Attendance Days":   attendance_days,
+    }
     """
     Auto-compute all 7 sales_lead KPIs for a given org + month.
     Called from get_staff_profile when the user's role_template is 'sales_lead'.
