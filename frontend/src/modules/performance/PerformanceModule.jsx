@@ -329,7 +329,7 @@ export default function PerformanceModule({ user }) {
     <div style={{ padding: '24px 28px', minHeight: '100vh', background: ds.light }}>
 
       {/* ── Header ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 4px' }}>
             📊 Performance Hub
@@ -339,24 +339,40 @@ export default function PerformanceModule({ user }) {
           </p>
         </div>
 
-        {/* Owner-only: dashboard link button */}
+        {/* Owner-only buttons */}
         {isOwner && (
-          <button
-            onClick={() => setDrawerOpen(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'white', border: '1px solid #e5e7eb',
-              borderRadius: 9, padding: '8px 14px', fontSize: 13,
-              fontWeight: 500, cursor: 'pointer', color: '#374151',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-              transition: 'all 0.15s',
-              flexShrink: 0, marginLeft: 16,
-            }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = ds.teal}
-            onMouseLeave={e => e.currentTarget.style.borderColor = '#e5e7eb'}
-          >
-            🔗 Owner Dashboard
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => window.open('/ads-dashboard.html', '_blank')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'white', border: '1px solid #e5e7eb',
+                borderRadius: 9, padding: '8px 14px', fontSize: 13,
+                fontWeight: 500, cursor: 'pointer', color: '#374151',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = ds.teal}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#e5e7eb'}
+            >
+              📈 Ads Dashboard
+            </button>
+            <button
+              onClick={() => setDrawerOpen(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'white', border: '1px solid #e5e7eb',
+                borderRadius: 9, padding: '8px 14px', fontSize: 13,
+                fontWeight: 500, cursor: 'pointer', color: '#374151',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = ds.teal}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#e5e7eb'}
+            >
+              🔗 Owner Dashboard
+            </button>
+          </div>
         )}
       </div>
 
