@@ -80,17 +80,28 @@ export default function MyPerformanceView({ user }) {
   // Build active KPIs for log form from profile targets
   const activeKpis = profile?.kpis ?? []
 
+  // KPIs that are now auto-computed from Opsra data — hide input fields for these
+  const AUTO_COMPUTED_KPIS = new Set([
+    // Sales Agent
+    'Leads Contacted', 'Response Time', 'Deals Closed',
+    'Conversion Rate', 'Revenue Generated', 'Attendance Days',
+    // Ops Manager
+    'Issues Resolved', 'Team Conversion Rate', 'Team Revenue vs Target',
+    'Lead Distribution Rate', 'Rep Activity Compliance', 'Tasks Completed',
+    'Time to Close', 'Win / Loss Ratio', 'Pipeline Value',
+  ])
+
+  // Only show input fields for KPIs that are still manually entered
+  const manualKpis = activeKpis.filter(k => !AUTO_COMPUTED_KPIS.has(k.kpi_name))
+
   const handleLogSubmit = async () => {
     if (loggedToday) return
     setSubmitting(true)
     setSubmitError(null)
     try {
       // Submit one log entry per KPI that has a value entered
-      const entries = activeKpis.filter(k => logValues[k.kpi_name] !== undefined && logValues[k.kpi_name] !== '')
-      if (entries.length === 0) {
-        setSubmitError('Enter at least one KPI value before submitting.')
-        return
-      }
+      const entries = manualKpis.filter(k => logValues[k.kpi_name] !== undefined && logValues[k.kpi_name] !== '')
+      // Allow submission even with no manual KPI values — attendance alone is valid
       for (const kpi of entries) {
         await createStaffLog({
           log_date: today,
@@ -175,12 +186,12 @@ export default function MyPerformanceView({ user }) {
           </div>
         )}
 
-        {/* KPI entries */}
-        {activeKpis.length > 0 && (
+        {/* KPI entries — manual only (auto-computed KPIs are hidden here, shown in progress below) */}
+        {manualKpis.length > 0 && (
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>KPI values</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
-              {activeKpis.map(kpi => (
+              {manualKpis.map(kpi => (
                 <div key={kpi.kpi_name}>
                   <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 }}>
                     {kpi.kpi_name} ({kpi.kpi_unit || 'count'})
