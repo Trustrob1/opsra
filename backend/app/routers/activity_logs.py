@@ -144,7 +144,10 @@ def _generate_activity_log_pdf(report_data: dict) -> bytes:
         summary   = report_data.get("summary") or {}
         per_staff = report_data.get("per_staff") or []
         log_rows  = report_data.get("log_rows") or []
-        blocker_rows = report_data.get("blocker_rows") or []
+        blocker_rows      = report_data.get("blocker_rows") or []
+        contractor_rows   = report_data.get("contractor_rows") or []
+        contractor_blockers = report_data.get("contractor_blocker_rows") or []
+        include_contractors = report_data.get("include_contractors", False)
         is_manager = report_data.get("is_manager", True)
 
         # ── Section 1: KPI strip ───────────────────────────────────────────────
@@ -152,28 +155,39 @@ def _generate_activity_log_pdf(report_data: dict) -> bytes:
         total_hours      = summary.get("total_hours", 0)
         total_blockers   = summary.get("total_blockers", 0)
         staff_active     = summary.get("staff_active", 0)
+        contractor_count = summary.get("contractor_count", 0)
+
+        # Build KPI boxes — add contractor box when included
+        kpi_boxes = (
+            f"<td class='kpi-box'>"
+            f"<div class='kpi-num'>{total_activities}</div>"
+            f"<div class='kpi-lbl'>Activities logged</div>"
+            f"</td>"
+            f"<td class='kpi-box'>"
+            f"<div class='kpi-num'>{total_hours}h</div>"
+            f"<div class='kpi-lbl'>Total hours</div>"
+            f"</td>"
+            f"<td class='kpi-box'>"
+            f"<div class='kpi-num' style='color:{RED if total_blockers > 0 else \"#111827\"}'>{total_blockers}</div>"
+            f"<div class='kpi-lbl'>Blockers raised</div>"
+            f"</td>"
+            f"<td class='kpi-box'>"
+            f"<div class='kpi-num'>{staff_active}</div>"
+            f"<div class='kpi-lbl'>Staff active</div>"
+            f"</td>"
+        )
+        if include_contractors and contractor_count > 0:
+            kpi_boxes += (
+                f"<td class='kpi-box'>"
+                f"<div class='kpi-num' style='color:#7c3aed'>{contractor_count}</div>"
+                f"<div class='kpi-lbl'>Contractors active</div>"
+                f"</td>"
+            )
 
         kpi_html = f"""
         <div class='section'>
           <table class='kpi-table'>
-            <tr>
-              <td class='kpi-box'>
-                <div class='kpi-num'>{total_activities}</div>
-                <div class='kpi-lbl'>Activities logged</div>
-              </td>
-              <td class='kpi-box'>
-                <div class='kpi-num'>{total_hours}h</div>
-                <div class='kpi-lbl'>Total hours</div>
-              </td>
-              <td class='kpi-box'>
-                <div class='kpi-num' style='color:{RED if total_blockers > 0 else "#111827"}'>{total_blockers}</div>
-                <div class='kpi-lbl'>Blockers raised</div>
-              </td>
-              <td class='kpi-box'>
-                <div class='kpi-num'>{staff_active}</div>
-                <div class='kpi-lbl'>Staff active</div>
-              </td>
-            </tr>
+            <tr>{kpi_boxes}</tr>
           </table>
         </div>
         """
@@ -317,6 +331,121 @@ def _generate_activity_log_pdf(report_data: dict) -> bytes:
 
         sections_html = kpi_html + staff_html + detail_html + blockers_html
 
+        # ── Section 5: Contractor daily activities ─────────────────────────────
+        contractor_html = ""
+        if include_contractors and contractor_rows:
+            contr_detail_rows = ""
+            current_contractor = None
+            for row in contractor_rows:
+                _cname = row.get("contractor_name") or "—"
+                if _cname != current_contractor:
+                    current_contractor = _cname
+                    _role = row.get("contractor_role") or ""
+                    contr_detail_rows += (
+                        f"<tr class='staff-heading'>"
+                        f"<td colspan='4' style='background:#fdf4ff;color:#7c3aed;"
+                        f"font-weight:700;font-size:10px;padding:7px 7px 5px'>"
+                        f"{_cname}"
+                        f"<span style='font-weight:400;color:#6b7280;margin-left:8px'>"
+                        f"{_role}</span>"
+                        f"</td></tr>"
+                    )
+
+                _date_str     = _fmt_date(row.get("log_date"))
+                _act_type     = (row.get("activity_type") or "General").strip()
+                _desc         = (row.get("activity_description") or "").strip()
+                _hrs_raw      = row.get("duration_minutes")
+                _hrs          = f"{_hrs_raw}h" if _hrs_raw else "—"
+                _has_blocker  = row.get("has_blocker", False)
+                _blocker_note = (row.get("blocker_note") or "").strip()
+                _resolved     = bool(row.get("resolved_at"))
+
+                act_cell = f"<div style='font-weight:600;font-size:9px;margin-bottom:3px'>{_desc}</div>"
+                if _has_blocker and _blocker_note:
+                    _bl_bg    = "#f0fdf4" if _resolved else "#fef2f2"
+                    _bl_bord  = "#16a34a" if _resolved else RED
+                    _bl_col   = "#16a34a" if _resolved else RED
+                    _bl_label = "&#10003; Blocker resolved" if _resolved else "&#9888; Blocker"
+                    act_cell += (
+                        f"<div style='margin-top:4px;padding:4px 6px;"
+                        f"background:{_bl_bg};border-left:2px solid {_bl_bord};"
+                        f"font-size:8.5px;color:{_bl_col};line-height:1.4'>"
+                        f"{_bl_label}: {_blocker_note}</div>"
+                    )
+                elif _has_blocker:
+                    _bl_bg   = "#f0fdf4" if _resolved else "#fef2f2"
+                    _bl_bord = "#16a34a" if _resolved else RED
+                    _bl_col  = "#16a34a" if _resolved else RED
+                    _bl_label = "&#10003; Blocker resolved" if _resolved else "&#9888; Blocker"
+                    act_cell += (
+                        f"<div style='margin-top:4px;padding:4px 6px;"
+                        f"background:{_bl_bg};border-left:2px solid {_bl_bord};"
+                        f"font-size:8.5px;color:{_bl_col}'>"
+                        f"{_bl_label} (no details provided)</div>"
+                    )
+
+                _row_bg = "background:#fff8f8;" if (_has_blocker and not _resolved) else ""
+                contr_detail_rows += (
+                    f"<tr style='{_row_bg}'>"
+                    f"<td style='white-space:nowrap;color:#374151;font-size:9px'>{_date_str}</td>"
+                    f"<td><span style='background:#f3e8ff;color:#7c3aed;border-radius:10px;"
+                    f"padding:2px 7px;font-size:8px;font-weight:600;white-space:nowrap'>"
+                    f"{_act_type}</span></td>"
+                    f"<td>{act_cell}</td>"
+                    f"<td style='text-align:right;font-weight:600;font-size:9px;"
+                    f"white-space:nowrap;color:#374151'>{_hrs}</td>"
+                    f"</tr>"
+                )
+
+            # Contractor blocker summary
+            contr_blocker_html = ""
+            if is_manager and contractor_blockers:
+                cb_rows = ""
+                for b in contractor_blockers:
+                    _resolved_str = (
+                        f"<span style='color:#16a34a;font-weight:600'>&#10003; Resolved</span>"
+                        if b.get("resolved_at")
+                        else f"<span style='color:{RED}'>Open</span>"
+                    )
+                    cb_rows += (
+                        f"<tr>"
+                        f"<td style='font-weight:600'>{_fmt(b.get('contractor_name'))}</td>"
+                        f"<td style='white-space:nowrap;font-size:9px'>{_fmt_date(b.get('log_date'))}</td>"
+                        f"<td style='color:{RED}'>{_fmt(b.get('blocker_note'))}</td>"
+                        f"<td>{_resolved_str}</td>"
+                        f"</tr>"
+                    )
+                contr_blocker_html = f"""
+                <div class='section' style='margin-top:12px'>
+                  <h2 style='color:{RED}'>&#9888; Contractor blockers ({len(contractor_blockers)})</h2>
+                  <table>
+                    <thead><tr>
+                      <th>Contractor</th><th>Date</th>
+                      <th>Blocker description</th><th>Status</th>
+                    </tr></thead>
+                    <tbody>{cb_rows}</tbody>
+                  </table>
+                </div>
+                """
+
+            contractor_html = f"""
+            <div class='section'>
+              <h2 style='color:#7c3aed'>Contractor daily activities</h2>
+              <table>
+                <thead><tr>
+                  <th style='width:12%'>Date</th>
+                  <th style='width:13%'>Type</th>
+                  <th style='width:65%'>Activity &amp; notes</th>
+                  <th style='width:10%;text-align:right'>Hrs</th>
+                </tr></thead>
+                <tbody>{contr_detail_rows}</tbody>
+              </table>
+            </div>
+            {contr_blocker_html}
+            """
+
+        sections_html = kpi_html + staff_html + detail_html + blockers_html + contractor_html
+
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -392,10 +521,11 @@ def _generate_activity_log_pdf(report_data: dict) -> bytes:
 
 @router.get("/activity-logs/report/download")
 def download_activity_log_report(
-    date_from:    Optional[str] = None,
-    date_to:      Optional[str] = None,
-    user_id_filter: Optional[str] = None,
-    team:         Optional[str] = None,
+    date_from:           Optional[str] = None,
+    date_to:             Optional[str] = None,
+    user_id_filter:      Optional[str] = None,
+    team:                Optional[str] = None,
+    include_contractors: bool = True,
     org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
@@ -603,6 +733,95 @@ def download_activity_log_report(
     total_blockers   = sum(s["blockers"]   for s in staff_map.values())
     staff_active     = len(staff_map)
 
+    # ── Contractor activity logs (Pattern 33) ─────────────────────────────────
+    contractor_rows        = []
+    contractor_blocker_rows = []
+    contractor_count       = 0
+
+    if is_manager and include_contractors:
+        # Fetch all active contractors for org
+        contractors_result = (
+            db.table("contractors")
+            .select("id, full_name, role_title")
+            .eq("org_id", org_id)
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        contractors_list = contractors_result.data or []
+        if isinstance(contractors_list, dict):
+            contractors_list = [contractors_list]
+
+        # Build id→name/role lookup
+        contractor_lookup = {
+            c["id"]: {"name": c.get("full_name") or "Unknown", "role": c.get("role_title") or ""}
+            for c in contractors_list
+        }
+
+        if contractor_lookup:
+            # Fetch contractor activity logs in date range
+            contr_logs_result = (
+                db.table("performance_daily_logs")
+                .select(
+                    "id, entity_id, log_date, kpi_label, notes, duration_minutes, "
+                    "needs_management_attention, blocker_note, resolved_at, created_at"
+                )
+                .eq("org_id", org_id)
+                .eq("kpi_key", "daily_activity")
+                .gte("log_date", date_from)
+                .lte("log_date", date_to)
+                .order("log_date", desc=True)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            contr_logs = contr_logs_result.data or []
+            if isinstance(contr_logs, dict):
+                contr_logs = [contr_logs]
+
+            active_contractor_ids = set()
+            for log in contr_logs:
+                cid   = log.get("entity_id") or ""
+                cinfo = contractor_lookup.get(cid, {})
+                cname = cinfo.get("name") or "Unknown"
+                crole = cinfo.get("role") or ""
+                _has_blocker  = bool(log.get("needs_management_attention"))
+                _blocker_note = (log.get("blocker_note") or "").strip()
+                _resolved_at  = log.get("resolved_at")
+
+                contractor_rows.append({
+                    "contractor_name": cname,
+                    "contractor_role": crole,
+                    "log_date":        log.get("log_date") or "",
+                    "activity_type":   (log.get("kpi_label") or "General").strip(),
+                    "activity_description": (log.get("notes") or "").strip(),
+                    "duration_minutes": log.get("duration_minutes"),
+                    "has_blocker":      _has_blocker,
+                    "blocker_note":     _blocker_note,
+                    "resolved_at":      _resolved_at,
+                })
+                active_contractor_ids.add(cid)
+
+                if _has_blocker:
+                    contractor_blocker_rows.append({
+                        "contractor_name": cname,
+                        "log_date":        log.get("log_date") or "",
+                        "blocker_note":    _blocker_note or "No details provided",
+                        "resolved_at":     _resolved_at,
+                    })
+
+            # Sort contractor rows: by name asc, then date desc within each
+            from itertools import groupby as _igroupby
+            sorted_by_name = sorted(contractor_rows, key=lambda r: r.get("contractor_name") or "")
+            grouped_contr  = []
+            for _cn, _entries in _igroupby(sorted_by_name, key=lambda r: r.get("contractor_name") or ""):
+                grouped_contr.extend(
+                    sorted(list(_entries), key=lambda r: r.get("log_date") or "", reverse=True)
+                )
+            contractor_rows = grouped_contr
+
+            # Blocker rows sorted date desc
+            contractor_blocker_rows.sort(key=lambda r: r.get("log_date") or "", reverse=True)
+            contractor_count = len(active_contractor_ids)
+
     report_data = {
         "meta": {
             "org_name":     org_name,
@@ -617,11 +836,15 @@ def download_activity_log_report(
             "total_hours":      total_hours,
             "total_blockers":   total_blockers,
             "staff_active":     staff_active,
+            "contractor_count": contractor_count,
         },
-        "per_staff":    per_staff,
-        "log_rows":     log_rows,
-        "blocker_rows": blocker_rows,
-        "is_manager":   is_manager,
+        "per_staff":             per_staff,
+        "log_rows":              log_rows,
+        "blocker_rows":          blocker_rows,
+        "contractor_rows":       contractor_rows,
+        "contractor_blocker_rows": contractor_blocker_rows,
+        "include_contractors":   is_manager and include_contractors,
+        "is_manager":            is_manager,
     }
 
     pdf_bytes = _generate_activity_log_pdf(report_data)

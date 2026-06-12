@@ -883,7 +883,7 @@ function ActivityLogTab({ user }) {
   const [dlError, setDlError]           = useState(null)
   const [dlPreset, setDlPreset]         = useState('this_month')
   const [dlFilters, setDlFilters]       = useState({
-    date_from: '', date_to: '', user_id_filter: '', team: '',
+    date_from: '', date_to: '', user_id_filter: '', team: '', include_contractors: true,
   })
 
   // Local date — avoids UTC-offset mismatch (e.g. WAT = UTC+1)
@@ -987,10 +987,11 @@ function ActivityLogTab({ user }) {
         ? resolveDlPreset(dlPreset)
         : { date_from: dlFilters.date_from, date_to: dlFilters.date_to }
       const params = {}
-      if (date_from)               params.date_from       = date_from
-      if (date_to)                 params.date_to         = date_to
-      if (dlFilters.user_id_filter) params.user_id_filter = dlFilters.user_id_filter
-      if (dlFilters.team)          params.team            = dlFilters.team
+      if (date_from)               params.date_from            = date_from
+      if (date_to)                 params.date_to              = date_to
+      if (dlFilters.user_id_filter) params.user_id_filter      = dlFilters.user_id_filter
+      if (dlFilters.team)          params.team                 = dlFilters.team
+      params.include_contractors = dlFilters.include_contractors ? 'true' : 'false'
       const blob = await downloadActivityLogReport(params)
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
@@ -1120,6 +1121,26 @@ function ActivityLogTab({ user }) {
                 Team filter disabled when a specific staff member is selected.
               </p>
             )}
+
+            {/* Include contractors toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16,
+              padding: '10px 14px', background: '#fdf4ff', borderRadius: 9,
+              border: '1.5px solid #e9d5ff' }}>
+              <input
+                type='checkbox'
+                id='include-contractors-toggle'
+                checked={dlFilters.include_contractors}
+                onChange={e => setDlFilters(f => ({ ...f, include_contractors: e.target.checked }))}
+                style={{ accentColor: '#7c3aed', width: 15, height: 15, cursor: 'pointer' }}
+              />
+              <label htmlFor='include-contractors-toggle'
+                style={{ fontSize: 13, color: '#7c3aed', fontWeight: 600, cursor: 'pointer' }}>
+                Include contractor daily activities
+              </label>
+              <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>
+                Appended as Part 2
+              </span>
+            </div>
 
             {dlError && (
               <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>⚠ {dlError}</p>
