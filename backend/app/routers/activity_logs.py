@@ -158,6 +158,7 @@ def _generate_activity_log_pdf(report_data: dict) -> bytes:
         contractor_count = summary.get("contractor_count", 0)
 
         # Build KPI boxes — add contractor box when included
+        _blocker_colour = RED if total_blockers > 0 else "#111827"
         kpi_boxes = (
             f"<td class='kpi-box'>"
             f"<div class='kpi-num'>{total_activities}</div>"
@@ -168,7 +169,7 @@ def _generate_activity_log_pdf(report_data: dict) -> bytes:
             f"<div class='kpi-lbl'>Total hours</div>"
             f"</td>"
             f"<td class='kpi-box'>"
-            f"<div class='kpi-num' style='color:{RED if total_blockers > 0 else \"#111827\"}'>{total_blockers}</div>"
+            f"<div class='kpi-num' style='color:{_blocker_colour}'>{total_blockers}</div>"
             f"<div class='kpi-lbl'>Blockers raised</div>"
             f"</td>"
             f"<td class='kpi-box'>"
