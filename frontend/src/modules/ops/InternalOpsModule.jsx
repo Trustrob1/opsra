@@ -20,7 +20,7 @@ import { ds } from '../../utils/ds'
 import {
   listIssues, createIssue, updateIssue, deleteIssue, getIssuesSummary,
   listActivityLogs, submitActivityLog, submitActivityLogBulk, updateActivityLog, getActivityLogsSummary,
-  downloadInternalOpsReport,
+  downloadInternalOpsReport, downloadActivityLogReport,
 } from '../../services/internal_ops.service'
 import { toggleOwnerAttention } from '../../services/performance.service'
 import { getTeams, getInternalIssueCategories, listUsers } from '../../services/admin.service'
@@ -877,6 +877,15 @@ function ActivityLogTab({ user }) {
   // logModal: null | { logType: 'daily'|'weekly', existingLog: obj|null }
   const [logModal, setLogModal]       = useState(null)
 
+  // Download report state
+  const [showDlModal, setShowDlModal]   = useState(false)
+  const [dlDownloading, setDlDownloading] = useState(false)
+  const [dlError, setDlError]           = useState(null)
+  const [dlPreset, setDlPreset]         = useState('this_month')
+  const [dlFilters, setDlFilters]       = useState({
+    date_from: '', date_to: '', user_id_filter: '', team: '',
+  })
+
   // Local date — avoids UTC-offset mismatch (e.g. WAT = UTC+1)
   const today = (() => {
     const d = new Date()
@@ -939,6 +948,68 @@ function ActivityLogTab({ user }) {
     setLogModal({ logType: log.log_type, existingLog: log })
   }
 
+  // Resolve preset → date_from / date_to
+  const resolveDlPreset = (preset) => {
+    const today = new Date()
+    const pad   = n => String(n).padStart(2, '0')
+    const fmt   = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+    if (preset === 'this_week') {
+      const mon = new Date(today); mon.setDate(today.getDate() - today.getDay() + (today.getDay()===0?-6:1))
+      return { date_from: fmt(mon), date_to: fmt(today) }
+    }
+    if (preset === 'this_month') {
+      return { date_from: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), date_to: fmt(today) }
+    }
+    if (preset === 'last_month') {
+      const first = new Date(today.getFullYear(), today.getMonth()-1, 1)
+      const last  = new Date(today.getFullYear(), today.getMonth(), 0)
+      return { date_from: fmt(first), date_to: fmt(last) }
+    }
+    if (preset === 'last_3_months') {
+      const from = new Date(today); from.setMonth(today.getMonth()-3)
+      return { date_from: fmt(from), date_to: fmt(today) }
+    }
+    return { date_from: dlFilters.date_from, date_to: dlFilters.date_to }
+  }
+
+  const handleDlPreset = (preset) => {
+    setDlPreset(preset)
+    if (preset !== 'custom') {
+      const { date_from, date_to } = resolveDlPreset(preset)
+      setDlFilters(f => ({ ...f, date_from, date_to }))
+    }
+  }
+
+  const handleDlDownload = async () => {
+    setDlDownloading(true); setDlError(null)
+    try {
+      const { date_from, date_to } = dlPreset !== 'custom'
+        ? resolveDlPreset(dlPreset)
+        : { date_from: dlFilters.date_from, date_to: dlFilters.date_to }
+      const params = {}
+      if (date_from)               params.date_from       = date_from
+      if (date_to)                 params.date_to         = date_to
+      if (dlFilters.user_id_filter) params.user_id_filter = dlFilters.user_id_filter
+      if (dlFilters.team)          params.team            = dlFilters.team
+      const blob = await downloadActivityLogReport(params)
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      const from = date_from || 'all'
+      const to   = date_to   || 'today'
+      a.href     = url
+      a.download = `Activity_Log_${from}_to_${to}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      setShowDlModal(false)
+      setDlPreset('this_month')
+    } catch (e) {
+      const msg = e?.response?.status === 429
+        ? 'Download limit reached (10/hr). Try again later.'
+        : (e?.response?.data?.detail?.message ?? 'Download failed. Please try again.')
+      setDlError(msg)
+    } finally { setDlDownloading(false) }
+  }
+
 
   if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading activity logs…</div>
   if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}>⚠ {error} <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
@@ -953,6 +1024,12 @@ function ActivityLogTab({ user }) {
           <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>Record what you worked on each day or week</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {isManager && (
+            <button onClick={() => { setShowDlModal(true); handleDlPreset('this_month') }}
+              style={{ ...BTN_OUTLINE, padding: '8px 16px', fontSize: 13 }}>
+              ⬇ Download Report
+            </button>
+          )}
           <button onClick={() => setLogModal({ logType: 'daily', existingLog: null })}
             style={{ ...BTN_OUTLINE, padding: '8px 16px', fontSize: 13 }}>
             + Log Today
@@ -963,6 +1040,105 @@ function ActivityLogTab({ user }) {
           </button>
         </div>
       </div>
+
+      {/* Activity Log Download Modal */}
+      {showDlModal && (
+        <div style={OVERLAY} onClick={() => { setShowDlModal(false); setDlPreset('this_month') }}>
+          <div style={{ ...MODAL, maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+                Download Activity Log Report
+              </h3>
+              <button onClick={() => { setShowDlModal(false); setDlPreset('this_month') }}
+                style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+            </div>
+
+            {/* Period presets */}
+            <label style={LBL}>Period</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              {[
+                { value: 'this_week',     label: 'This Week'     },
+                { value: 'this_month',    label: 'This Month'    },
+                { value: 'last_month',    label: 'Last Month'    },
+                { value: 'last_3_months', label: 'Last 3 Months' },
+                { value: 'custom',        label: 'Custom'        },
+              ].map(p => (
+                <button key={p.value}
+                  onClick={() => handleDlPreset(p.value)}
+                  style={{
+                    padding: '5px 12px', fontSize: 12, borderRadius: 7, cursor: 'pointer',
+                    border: `1.5px solid ${dlPreset === p.value ? ds.teal : '#D4E6EC'}`,
+                    background: dlPreset === p.value ? '#EEF8FA' : '#fff',
+                    color: dlPreset === p.value ? ds.teal : '#4a7a8a',
+                    fontWeight: dlPreset === p.value ? 600 : 400,
+                    fontFamily: 'inherit',
+                  }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {dlPreset === 'custom' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                <div>
+                  <label style={LBL}>From</label>
+                  <input type='date' value={dlFilters.date_from}
+                    onChange={e => setDlFilters(f => ({ ...f, date_from: e.target.value }))}
+                    style={INP} />
+                </div>
+                <div>
+                  <label style={LBL}>To</label>
+                  <input type='date' value={dlFilters.date_to}
+                    onChange={e => setDlFilters(f => ({ ...f, date_to: e.target.value }))}
+                    style={INP} />
+                </div>
+              </div>
+            )}
+
+            {/* Staff filter — manager only */}
+            <label style={LBL}>Staff</label>
+            <select value={dlFilters.user_id_filter}
+              onChange={e => setDlFilters(f => ({ ...f, user_id_filter: e.target.value }))}
+              style={INP}>
+              <option value=''>All staff</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+            </select>
+
+            {/* Team filter */}
+            <label style={LBL}>Team</label>
+            <select value={dlFilters.team}
+              onChange={e => setDlFilters(f => ({ ...f, team: e.target.value }))}
+              style={INP}
+              disabled={!!dlFilters.user_id_filter}>
+              <option value=''>All teams</option>
+              {[...new Set(users.map(u => u.team).filter(Boolean))].map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            {dlFilters.user_id_filter && (
+              <p style={{ fontSize: 11, color: '#7A9BAD', marginTop: 4 }}>
+                Team filter disabled when a specific staff member is selected.
+              </p>
+            )}
+
+            {dlError && (
+              <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>⚠ {dlError}</p>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
+              <button onClick={() => { setShowDlModal(false); setDlPreset('this_month') }} style={BTN_OUTLINE}>
+                Cancel
+              </button>
+              <button
+                disabled={dlDownloading}
+                onClick={handleDlDownload}
+                style={{ ...BTN_PRIMARY, background: dlDownloading ? '#aaa' : ds.teal }}>
+                {dlDownloading ? 'Generating PDF…' : '⬇ Download PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Manager filters */}
       {isManager && (

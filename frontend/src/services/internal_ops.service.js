@@ -166,3 +166,20 @@ export async function downloadInternalOpsReport(params = {}) {
   })
   return res.data
 }
+
+/**
+ * Download Staff Activity Log report as a PDF blob.
+ * owner/ops_manager: can download for any user or all staff.
+ * sales_agent: always scoped to own logs server-side (Pattern 12).
+ * Rate limited to 10/hr per org.
+ * @param {object} params — date_from, date_to, user_id_filter, team (all optional)
+ * @returns {Blob} PDF blob for browser download
+ */
+export async function downloadActivityLogReport(params = {}) {
+  const res = await axios.get(`${BASE}/activity-logs/report/download`, {
+    headers: { ...authHeaders(), Accept: 'application/pdf' },
+    params,
+    responseType: 'blob',
+  })
+  return res.data
+}
