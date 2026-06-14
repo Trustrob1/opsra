@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Opsra — One platform. Every part of your business.</title>
+  <meta name="description" content="Opsra gives business owners, sales teams, and operations managers one place to manage leads, track performance, handle support, and see what's actually happening." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --teal:        #1D9E75;
+      --teal-light:  #E1F5EE;
+      --teal-mid:    #9FE1CB;
+      --teal-dark:   #0F6E56;
+      --teal-deeper: #085041;
+      --surface:     #F8F7F4;
+      --border:      rgba(0,0,0,0.09);
+      --border-mid:  rgba(0,0,0,0.14);
+      --text:        #111110;
+      --text-2:      #555552;
+      --text-3:      #888884;
+      --white:       #ffffff;
+      --red-light:   #FCEBEB;
+      --red:         #E24B4A;
+      --red-dark:    #A32D2D;
+      --amber-light: #FAEEDA;
+      --amber:       #BA7517;
+      --blue-light:  #E6F1FB;
+      --blue:        #185FA5;
+      --purple-light:#EEEDFE;
+      --purple:      #3C3489;
+      --green-light: #EAF3DE;
+      --green:       #3B6D11;
+      --r-sm:  6px;
+      --r-md:  10px;
+      --r-lg:  14px;
+      --r-xl:  20px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      color: var(--text);
+      background: var(--white);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .display { font-family: 'Syne', sans-serif; }
+
+    img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+    a { text-decoration: none; color: inherit; }
+
+    button { cursor: pointer; font-family: inherit; }
+
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 32px; }
+
+    .divider { height: 1px; background: var(--border); }
+
+    /* ── NAV ── */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255,255,255,0.95);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 62px;
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+    .nav-logo {
+      font-family: 'Syne', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+    .nav-logo span { color: var(--teal); }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+    .nav-links a {
+      font-size: 13px;
+      color: var(--text-2);
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-actions { display: flex; gap: 10px; align-items: center; }
+    .btn-ghost {
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: var(--r-md);
+      border: 1px solid var(--border-mid);
+      background: transparent;
+      color: var(--text);
+      transition: background 0.15s;
+    }
+    .btn-ghost:hover { background: var(--surface); }
+    .btn-primary {
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: var(--r-md);
+      border: none;
+      background: var(--teal);
+      color: #fff;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover { background: var(--teal-dark); }
+    .btn-primary-lg {
+      font-size: 14px;
+      padding: 12px 28px;
+      border-radius: var(--r-md);
+      border: none;
+      background: var(--teal);
+      color: #fff;
+      transition: background 0.15s;
+    }
+    .btn-primary-lg:hover { background: var(--teal-dark); }
+    .btn-secondary-lg {
+      font-size: 14px;
+      padding: 12px 28px;
+      border-radius: var(--r-md);
+      border: 1px solid var(--border-mid);
+      background: transparent;
+      color: var(--text);
+      transition: background 0.15s;
+    }
+    .btn-secondary-lg:hover { background: var(--surface); }
+
+    /* ── HERO ── */
+    .hero {
+      padding: 80px 0 0;
+      background: var(--white);
+      overflow: hidden;
+    }
+    .hero-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 56px;
+      align-items: center;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 18px;
+    }
+    .hero-eyebrow::before {
+      content: '';
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: var(--teal);
+      border-radius: 2px;
+    }
+    .hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 44px;
+      font-weight: 600;
+      line-height: 1.12;
+      letter-spacing: -1px;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--teal);
+    }
+    .hero-sub {
+      font-size: 16px;
+      color: var(--text-2);
+      line-height: 1.75;
+      margin-bottom: 32px;
+      max-width: 460px;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .hero-trust {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .hero-trust-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-3);
+    }
+    .hero-trust-item i { font-size: 14px; color: var(--teal); }
+    .hero-industries {
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+    }
+    .hero-industries p {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      font-weight: 500;
+    }
+    .industry-pills {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    .industry-pill {
+      font-size: 12px;
+      padding: 4px 13px;
+      border-radius: 20px;
+      border: 1px solid var(--border-mid);
+      color: var(--text-2);
+      background: var(--white);
+    }
+    .hero-image {
+      border-radius: var(--r-xl);
+      overflow: hidden;
+      height: 520px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .img-placeholder-label {
+      font-size: 12px;
+      color: var(--text-3);
+      text-align: center;
+      max-width: 240px;
+      line-height: 1.5;
+    }
+    .img-placeholder-label strong {
+      display: block;
+      font-weight: 500;
+      color: var(--text-2);
+      margin-bottom: 4px;
+    }
+
+    /* ── STATS STRIP ── */
+    .stats-strip {
+      padding: 60px 0;
+      background: var(--white);
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+    }
+    .stat-item {
+      background: var(--white);
+      padding: 36px 32px;
+      text-align: center;
+    }
+    .stat-number {
+      font-family: 'Syne', sans-serif;
+      font-size: 36px;
+      font-weight: 600;
+      color: var(--teal);
+      margin-bottom: 6px;
+    }
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+    .stat-sub {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 4px;
+    }
+
+    /* ── SECTION BASE ── */
+    .section {
+      padding: 80px 0;
+    }
+    .section.bg { background: var(--surface); }
+    .section-tag {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--teal);
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      margin-bottom: 10px;
+    }
+    .section-heading {
+      font-family: 'Syne', sans-serif;
+      font-size: 30px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.2;
+      letter-spacing: -0.5px;
+      margin-bottom: 14px;
+    }
+    .section-sub {
+      font-size: 15px;
+      color: var(--text-2);
+      line-height: 1.75;
+      max-width: 500px;
+      margin-bottom: 40px;
+    }
+
+    /* ── DASHBOARD PREVIEW SECTION ── */
+    .dashboard-section {
+      padding: 80px 0;
+      background: var(--white);
+    }
+    .dashboard-layout {
+      display: grid;
+      grid-template-columns: 1fr 1.3fr;
+      gap: 56px;
+      align-items: center;
+    }
+    .check-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .check-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+    .check-list li i { font-size: 15px; color: var(--teal); flex-shrink: 0; margin-top: 2px; }
+
+    /* ── UI MOCKUP ── */
+    .ui-window {
+      background: var(--white);
+      border: 1px solid var(--border-mid);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+    }
+    .ui-titlebar {
+      background: var(--surface);
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .ui-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .ui-url {
+      margin-left: 8px;
+      font-size: 11px;
+      color: var(--text-3);
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 3px 10px;
+      flex: 1;
+    }
+    .ui-body { padding: 16px; }
+    .ui-greeting {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+    .ui-kpis {
+      display: grid;
+      grid-template-columns: repeat(4,1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .ui-kpi {
+      background: var(--surface);
+      border-radius: var(--r-sm);
+      padding: 10px;
+      text-align: center;
+    }
+    .ui-kpi-num { font-size: 18px; font-weight: 600; color: var(--text); }
+    .ui-kpi-lbl { font-size: 9px; color: var(--text-3); margin-top: 2px; }
+    .ui-digest {
+      background: var(--teal-light);
+      border-radius: var(--r-sm);
+      padding: 10px 12px;
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .ui-digest i { font-size: 14px; color: var(--teal-dark); flex-shrink: 0; margin-top: 1px; }
+    .ui-digest-text { font-size: 11px; color: var(--teal-deeper); line-height: 1.5; }
+    .ui-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 5px;
+      height: 44px;
+    }
+    .ui-bar { border-radius: 3px 3px 0 0; flex: 1; }
+    .ui-bar-label { font-size: 9px; color: var(--text-3); margin-top: 5px; }
+
+    /* ── KPI TRACKER MOCKUP ── */
+    .ui-table-wrap { padding: 14px; }
+    .ui-table-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+    .ui-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ui-table th {
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-3);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .ui-table td {
+      padding: 9px 10px;
+      color: var(--text-2);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .ui-table td:first-child { color: var(--text); font-weight: 500; }
+    .status-pill {
+      font-size: 10px;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .status-on  { background: var(--teal-light); color: var(--teal-dark); }
+    .status-risk { background: var(--red-light); color: var(--red-dark); }
+    .status-watch { background: var(--amber-light); color: var(--amber); }
+    .ui-blocker {
+      margin: 12px 14px;
+      background: var(--red-light);
+      border-radius: var(--r-sm);
+      padding: 10px 12px;
+      display: flex;
+      gap: 8px;
+    }
+    .ui-blocker i { font-size: 13px; color: var(--red); flex-shrink: 0; margin-top: 1px; }
+    .ui-blocker-text { font-size: 11px; color: var(--red-dark); line-height: 1.5; }
+
+    /* ── BEFORE/AFTER ── */
+    .ba-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border: 1px solid var(--border-mid);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+    }
+    .ba-col { }
+    .ba-header {
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
+    }
+    .ba-header i { font-size: 14px; }
+    .ba-body { padding: 16px 20px; }
+    .ba-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.45;
+    }
+    .ba-item:last-child { border-bottom: none; }
+    .ba-item i { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+    .ba-col:first-child { border-right: 1px solid var(--border-mid); }
+    .ba-green {
+      margin-top: 14px;
+      background: var(--teal-light);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
+    }
+    .ba-green p:first-child {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--teal-dark);
+      margin-bottom: 5px;
+    }
+    .ba-green p:last-child {
+      font-size: 12px;
+      color: var(--teal-dark);
+      line-height: 1.6;
+    }
+
+    /* ── MODULE GRID ── */
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .module-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 22px;
+      transition: border-color 0.15s;
+    }
+    .module-card:hover { border-color: var(--border-mid); }
+    .module-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: var(--r-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .module-icon i { font-size: 19px; }
+    .module-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .module-desc {
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
+
+    /* ── STEPS ── */
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .step-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 24px;
+    }
+    .step-number {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--teal-light);
+      color: var(--teal-dark);
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .step-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 7px;
+    }
+    .step-desc {
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.65;
+    }
+
+    /* ── PROOF ── */
+    .proof-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+    .proof-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 24px;
+    }
+    .proof-quote {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.7;
+      margin-bottom: 18px;
+      font-style: italic;
+    }
+    .proof-attr { display: flex; align-items: center; gap: 12px; }
+    .proof-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    .proof-name { font-size: 13px; font-weight: 500; color: var(--text); }
+    .proof-role { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+
+    /* ── WHO USES ── */
+    .audience-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    .audience-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 18px;
+    }
+    .audience-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--r-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+    .audience-icon i { font-size: 18px; }
+    .audience-who { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+    .audience-pain { font-size: 12px; color: var(--text-2); line-height: 1.55; }
+
+    /* ── CTA BAND ── */
+    .cta-band {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 80px 0;
+      text-align: center;
+    }
+    .cta-band .section-tag { margin-bottom: 12px; }
+    .cta-heading {
+      font-family: 'Syne', sans-serif;
+      font-size: 34px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.5px;
+      margin-bottom: 14px;
+    }
+    .cta-sub {
+      font-size: 15px;
+      color: var(--text-2);
+      line-height: 1.75;
+      max-width: 440px;
+      margin: 0 auto 30px;
+    }
+    .cta-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 18px; }
+    .cta-footnote { font-size: 12px; color: var(--text-3); }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      background: var(--white);
+    }
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+    .footer-logo {
+      font-family: 'Syne', sans-serif;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .footer-logo span { color: var(--teal); }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: 13px; color: var(--text-3); transition: color 0.15s; }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy { font-size: 12px; color: var(--text-3); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      .hero-inner { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 32px; }
+      .hero-image { height: 300px; }
+      .dashboard-layout { grid-template-columns: 1fr; }
+      .module-grid { grid-template-columns: repeat(2, 1fr); }
+      .steps-grid { grid-template-columns: 1fr; }
+      .proof-grid { grid-template-columns: 1fr; }
+      .audience-grid { grid-template-columns: repeat(2, 1fr); }
+      .ba-grid { grid-template-columns: 1fr; }
+      .ba-col:first-child { border-right: none; border-bottom: 1px solid var(--border-mid); }
+      .stats-grid { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .section-heading { font-size: 24px; }
+      .cta-heading { font-size: 26px; }
+    }
+
+    @media (max-width: 600px) {
+      .container { padding: 0 20px; }
+      .hero { padding: 48px 0 0; }
+      .section { padding: 56px 0; }
+      .module-grid { grid-template-columns: 1fr; }
+      .audience-grid { grid-template-columns: 1fr; }
+      .ui-kpis { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">Op<span>sra</span></a>
+      <div class="nav-links" role="list">
+        <a href="#features">Features</a>
+        <a href="#solutions">Solutions</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="#case-studies">Case studies</a>
+      </div>
+      <div class="nav-actions">
+        <button class="btn-ghost">Sign in</button>
+        <button class="btn-primary">Book a demo</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero" aria-labelledby="hero-heading">
+    <div class="hero-inner">
+      <div>
+        <p class="hero-eyebrow">One platform. Every part of your business.</p>
+        <h1 id="hero-heading" class="display">
+          Your business is growing.<br>
+          Your systems <em>haven't kept up.</em>
+        </h1>
+        <p class="hero-sub">
+          Opsra gives business owners, sales teams, and operations managers one place to manage leads, track performance, handle support, and see what's actually happening — without chasing updates across spreadsheets and group chats.
+        </p>
+        <div class="hero-actions">
+          <button class="btn-primary-lg">Book a free demo</button>
+          <button class="btn-secondary-lg">See how it works</button>
+        </div>
+        <div class="hero-trust">
+          <span class="hero-trust-item">
+            <i class="ti ti-shield-check" aria-hidden="true"></i>No credit card required
+          </span>
+          <span class="hero-trust-item">
+            <i class="ti ti-clock" aria-hidden="true"></i>Live in under 5 days
+          </span>
+          <span class="hero-trust-item">
+            <i class="ti ti-lock" aria-hidden="true"></i>Your data stays yours
+          </span>
+        </div>
+        <div class="hero-industries">
+          <p>Trusted by businesses in</p>
+          <div class="industry-pills">
+            <span class="industry-pill">SaaS</span>
+            <span class="industry-pill">Real estate</span>
+            <span class="industry-pill">Healthcare</span>
+            <span class="industry-pill">Insurance</span>
+            <span class="industry-pill">Schools</span>
+            <span class="industry-pill">Retail</span>
+            <span class="industry-pill">Professional services</span>
+          </div>
+        </div>
+      </div>
+      <div class="hero-image" role="img" aria-label="Business owner reviewing Opsra dashboard on laptop">
+        <!--
+          PHOTO PLACEHOLDER
+          Replace this div with:
+          <img src="images/hero.jpg" alt="Business owner reviewing Opsra dashboard on laptop" />
+
+          Photo brief:
+          A business owner (30s-50s) at a desk reviewing a laptop screen.
+          Confident, relaxed, professional. Natural light. Nigerian office setting.
+          Warm and approachable — not corporate stock photo energy.
+          Suggested aspect ratio: 3:4 portrait or square.
+          Min resolution: 1200 x 1600px.
+        -->
+        <i class="ti ti-photo" style="font-size:36px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-placeholder-label">
+          <strong>Hero photo</strong>
+          Business owner at desk, reviewing laptop. Confident, natural light, Nigerian office environment.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS STRIP -->
+  <section class="stats-strip" aria-labelledby="stats-heading">
+    <div class="container">
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-number">Zero</div>
+          <div class="stat-label">leads lost to missed follow-ups</div>
+          <div class="stat-sub">Every enquiry tracked and assigned</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number">Live</div>
+          <div class="stat-label">KPI visibility for every team member</div>
+          <div class="stat-sub">No more end-of-month surprises</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number">7am</div>
+          <div class="stat-label">Monday digest before your first meeting</div>
+          <div class="stat-sub">AI-generated — no chasing for updates</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- DASHBOARD PREVIEW -->
+  <section class="dashboard-section" id="features" aria-labelledby="dash-heading">
+    <div class="container">
+      <div class="dashboard-layout">
+        <div>
+          <p class="section-tag">The Monday morning digest</p>
+          <h2 id="dash-heading" class="section-heading display">
+            Know what's happening before you open a single group chat
+          </h2>
+          <p style="font-size:15px;color:var(--text-2);line-height:1.75;margin-bottom:28px;">
+            Every Monday at 7am, Opsra sends you a single briefing — new leads, team performance, open support tickets, churn risks, and anything that needs your attention. Written by AI. Ready before your first meeting.
+          </p>
+          <ul class="check-list">
+            <li><i class="ti ti-check" aria-hidden="true"></i>No chasing people for updates</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Flags what needs your attention first</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Covers leads, customers, team, and contractors</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>One screen. The whole business.</li>
+          </ul>
+        </div>
+        <div class="ui-window" role="img" aria-label="Opsra operations dashboard showing Monday morning digest">
+          <div class="ui-titlebar">
+            <div class="ui-dot" style="background:#E24B4A;"></div>
+            <div class="ui-dot" style="background:#FAC775;"></div>
+            <div class="ui-dot" style="background:#1D9E75;"></div>
+            <span class="ui-url">opsra.io — Operations dashboard</span>
+          </div>
+          <div class="ui-body">
+            <p class="ui-greeting">Good morning, Tunde. Here is your week ahead.</p>
+            <div class="ui-kpis">
+              <div class="ui-kpi">
+                <div class="ui-kpi-num">24</div>
+                <div class="ui-kpi-lbl">New leads</div>
+              </div>
+              <div class="ui-kpi">
+                <div class="ui-kpi-num" style="color:var(--amber);">3</div>
+                <div class="ui-kpi-lbl">At churn risk</div>
+              </div>
+              <div class="ui-kpi">
+                <div class="ui-kpi-num" style="color:var(--teal);">91%</div>
+                <div class="ui-kpi-lbl">KPIs on track</div>
+              </div>
+              <div class="ui-kpi">
+                <div class="ui-kpi-num" style="color:var(--red);">8</div>
+                <div class="ui-kpi-lbl">Open tickets</div>
+              </div>
+            </div>
+            <div class="ui-digest">
+              <i class="ti ti-robot" aria-hidden="true"></i>
+              <p class="ui-digest-text">
+                <strong style="font-weight:500;">AI digest:</strong> Lead volume is up 18% this week. 2 contractor blockers flagged on Friday — both still open. Renewal for Brightfield Ltd is due in 6 days with no outreach logged yet. Recommend actioning these before 10am.
+              </p>
+            </div>
+            <div>
+              <p style="font-size:10px;color:var(--text-3);margin-bottom:8px;">Leads converted — last 7 weeks</p>
+              <div class="ui-bars">
+                <div class="ui-bar" style="height:28%;background:#D3D1C7;"></div>
+                <div class="ui-bar" style="height:40%;background:#D3D1C7;"></div>
+                <div class="ui-bar" style="height:35%;background:#D3D1C7;"></div>
+                <div class="ui-bar" style="height:58%;background:#9FE1CB;"></div>
+                <div class="ui-bar" style="height:72%;background:#5DCAA5;"></div>
+                <div class="ui-bar" style="height:86%;background:#1D9E75;"></div>
+                <div class="ui-bar" style="height:100%;background:#0F6E56;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- BEFORE / AFTER -->
+  <section class="section bg" aria-labelledby="ba-heading">
+    <div class="container">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;">
+        <div class="hero-image" style="height:380px;" role="img" aria-label="Sales team collaborating in an office">
+          <!--
+            PHOTO PLACEHOLDER
+            Replace with:
+            <img src="images/team.jpg" alt="Sales team collaborating in an office" />
+
+            Photo brief:
+            Sales or operations team gathered around a table or screen — actively
+            working, collaborative energy. Mix of ages, professional but relaxed.
+            Could be reviewing a screen or in a light discussion.
+            Warm, human, not stiff corporate stock photography.
+            Min resolution: 1200 x 900px.
+          -->
+          <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+          <p class="img-placeholder-label">
+            <strong>Team photo</strong>
+            Sales team collaborating around a screen. Warm, relaxed, professional.
+          </p>
+        </div>
+        <div>
+          <p class="section-tag">Before and after</p>
+          <h2 id="ba-heading" class="section-heading display">
+            Most growing businesses run on memory and group chats.
+          </h2>
+          <p style="font-size:14px;color:var(--text-2);margin-bottom:22px;line-height:1.7;">Here is what that costs.</p>
+          <div class="ba-grid">
+            <div class="ba-col">
+              <div class="ba-header" style="background:var(--red-light);color:var(--red-dark);">
+                <i class="ti ti-x" aria-hidden="true"></i> Without Opsra
+              </div>
+              <div class="ba-body">
+                <div class="ba-item"><i class="ti ti-x" style="color:var(--red);" aria-hidden="true"></i>Leads fall through because nobody followed up</div>
+                <div class="ba-item"><i class="ti ti-x" style="color:var(--red);" aria-hidden="true"></i>KPIs sit in a Word doc nobody opens</div>
+                <div class="ba-item"><i class="ti ti-x" style="color:var(--red);" aria-hidden="true"></i>Customers leave before you notice</div>
+                <div class="ba-item"><i class="ti ti-x" style="color:var(--red);" aria-hidden="true"></i>Support issues lost in chat threads</div>
+                <div class="ba-item"><i class="ti ti-x" style="color:var(--red);" aria-hidden="true"></i>Monday morning means chasing 6 people</div>
+              </div>
+            </div>
+            <div class="ba-col">
+              <div class="ba-header" style="background:var(--teal-light);color:var(--teal-dark);">
+                <i class="ti ti-check" aria-hidden="true"></i> With Opsra
+              </div>
+              <div class="ba-body">
+                <div class="ba-item"><i class="ti ti-check" style="color:var(--teal);" aria-hidden="true"></i>Every lead tracked, assigned, and followed up</div>
+                <div class="ba-item"><i class="ti ti-check" style="color:var(--teal);" aria-hidden="true"></i>KPIs live — both sides see the same numbers</div>
+                <div class="ba-item"><i class="ti ti-check" style="color:var(--teal);" aria-hidden="true"></i>Churn signals flagged weeks before it happens</div>
+                <div class="ba-item"><i class="ti ti-check" style="color:var(--teal);" aria-hidden="true"></i>Every ticket assigned, tracked, and closed</div>
+                <div class="ba-item"><i class="ti ti-check" style="color:var(--teal);" aria-hidden="true"></i>AI digest lands at 7am before you even ask</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- MODULES -->
+  <section class="section" id="solutions" aria-labelledby="modules-heading">
+    <div class="container">
+      <p class="section-tag">Everything you need</p>
+      <h2 id="modules-heading" class="section-heading display">One system. Every part of your business.</h2>
+      <p class="section-sub">Opsra brings together everything a growing business needs to operate clearly — in one place your whole team can use from day one.</p>
+      <div class="module-grid">
+        <div class="module-card">
+          <div class="module-icon" style="background:var(--teal-light);">
+            <i class="ti ti-target" style="color:var(--teal-dark);" aria-hidden="true"></i>
+          </div>
+          <div class="module-name">Lead management</div>
+          <div class="module-desc">Capture every enquiry, score it automatically, track it through your pipeline, and never lose a lead to a missed follow-up again.</div>
+        </div>
+        <div class="module-card">
+          <div class="module-icon" style="background:var(--blue-light);">
+            <i class="ti ti-message-circle" style="color:var(--blue);" aria-hidden="true"></i>
+          </div>
+          <div class="module-name">Customer communication</div>
+          <div class="module-desc">Manage all outbound and inbound customer conversations in one tracked inbox — templates, broadcasts, and full message history.</div>
+        </div>
+        <div class="module-card">
+          <div class="module-icon" style="background:var(--purple-light);">
+            <i class="ti ti-users" style="color:var(--purple);" aria-hidden="true"></i>
+          </div>
+          <div class="module-name">Team & contractor KPIs</div>
+          <div class="module-desc">Live performance tracking for staff and contractors. KPIs agreed upfront, logged daily, visible to both sides — no more end-of-month disputes.</div>
+        </div>
+        <div class="module-card">
+          <div class="module-icon" style="background:#FAECE7;">
+            <i class="ti ti-headset" style="color:#993C1D;" aria-hidden="true"></i>
+          </div>
+          <div class="module-name">Support ticketing</div>
+          <div class="module-desc">Every customer issue becomes a tracked ticket — assigned, prioritised, resolved, and closed. Nothing gets lost in a chat thread again.</div>
+        </div>
+        <div class="module-card">
+          <div class="module-icon" style="background:var(--green-light);">
+            <i class="ti ti-refresh" style="color:var(--green);" aria-hidden="true"></i>
+          </div>
+          <div class="module-name">Renewals & retention</div>
+          <div class="module-desc">Spot churn signals early, trigger the right outreach before a customer cancels, and track win-back campaigns — all in one place.</div>
+        </div>
+        <div class="module-card">
+          <div class="module-icon" style="background:var(--amber-light);">
+            <i class="ti ti-chart-bar" style="color:var(--amber);" aria-hidden="true"></i>
+          </div>
+          <div class="module-name">Operations intelligence</div>
+          <div class="module-desc">An AI-powered executive dashboard that tells you what's happening, what's at risk, and what needs your attention — before you even ask.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- KPI TRACKER -->
+  <section class="section bg" aria-labelledby="kpi-heading">
+    <div class="container">
+      <div class="dashboard-layout">
+        <div>
+          <p class="section-tag">Live KPI tracking</p>
+          <h2 id="kpi-heading" class="section-heading display">
+            Your KPIs should never live in a document nobody opens
+          </h2>
+          <p style="font-size:15px;color:var(--text-2);line-height:1.75;margin-bottom:28px;">
+            With Opsra, contractor and staff KPIs are agreed at the start, logged daily, and visible to both sides in real time. Performance conversations become factual, fast, and fair — not emotional.
+          </p>
+          <ul class="check-list">
+            <li><i class="ti ti-check" aria-hidden="true"></i>No more end-of-month surprises</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Blockers flagged immediately, not at review time</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Works for in-house staff and external contractors</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Both sides see the same numbers — fair and clear</li>
+          </ul>
+        </div>
+        <div class="ui-window" role="img" aria-label="Opsra contractor performance tracking dashboard">
+          <div class="ui-titlebar">
+            <div class="ui-dot" style="background:#E24B4A;"></div>
+            <div class="ui-dot" style="background:#FAC775;"></div>
+            <div class="ui-dot" style="background:#1D9E75;"></div>
+            <span class="ui-url">opsra.io — Contractor performance</span>
+          </div>
+          <div class="ui-table-wrap">
+            <p class="ui-table-title">Week of 9 Jun 2026</p>
+            <table class="ui-table">
+              <thead>
+                <tr>
+                  <th>Contractor</th>
+                  <th>Target</th>
+                  <th>Actual</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Amaka Osei</td>
+                  <td>20 calls</td>
+                  <td>22 calls</td>
+                  <td><span class="status-pill status-on">On track</span></td>
+                </tr>
+                <tr>
+                  <td>Seun Adeyemi</td>
+                  <td>15 demos</td>
+                  <td>11 demos</td>
+                  <td><span class="status-pill status-risk">At risk</span></td>
+                </tr>
+                <tr>
+                  <td>Kola Benson</td>
+                  <td>₦500k rev</td>
+                  <td>₦480k rev</td>
+                  <td><span class="status-pill status-watch">Watch</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="ui-blocker">
+            <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+            <p class="ui-blocker-text">Seun flagged a blocker on Thursday: "Client scheduling tool is down — unable to book demos." Needs management attention.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- HOW IT WORKS -->
+  <section class="section" aria-labelledby="how-heading">
+    <div class="container">
+      <p class="section-tag">How it works</p>
+      <h2 id="how-heading" class="section-heading display">Up and running in three steps. No IT team required.</h2>
+      <p class="section-sub">Most businesses are live within 5 days. You don't need a technical team — we handle everything.</p>
+      <div class="steps-grid" style="margin-bottom:44px;">
+        <div class="step-card">
+          <div class="step-number">1</div>
+          <div class="step-title">We set it up for you</div>
+          <div class="step-desc">We configure Opsra around how your business already works — your team structure, your pipeline stages, your KPI targets. You don't touch a single settings page.</div>
+        </div>
+        <div class="step-card">
+          <div class="step-number">2</div>
+          <div class="step-title">Your team gets onboarded</div>
+          <div class="step-desc">We run a short training session. Each person sees only what's relevant to their role. Sales reps, support agents, and managers all have a separate, simple view.</div>
+        </div>
+        <div class="step-card">
+          <div class="step-number">3</div>
+          <div class="step-title">You get full visibility from day one</div>
+          <div class="step-desc">From the first Monday after go-live, your AI digest is ready. One screen. The whole business. Before your first meeting of the week.</div>
+        </div>
+      </div>
+      <div class="hero-image" style="height:260px;max-width:100%;" role="img" aria-label="Team onboarding session with Opsra">
+        <!--
+          PHOTO PLACEHOLDER
+          Replace with:
+          <img src="images/onboarding.jpg" alt="Team onboarding session with Opsra" />
+
+          Photo brief:
+          A relaxed onboarding or training moment — one or two people at laptops
+          being guided through a tool, or a small group around a screen together.
+          Warm, approachable energy. Not a formal training room. Could be a cafe,
+          a casual meeting room, or an open office.
+          Min resolution: 1600 x 700px landscape.
+        -->
+        <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-placeholder-label">
+          <strong>Onboarding photo</strong>
+          Relaxed training moment — one or two people at laptops being guided. Warm, approachable, not corporate.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- WHO USES OPSRA -->
+  <section class="section bg" id="solutions" aria-labelledby="audience-heading">
+    <div class="container">
+      <p class="section-tag">Who uses Opsra</p>
+      <h2 id="audience-heading" class="section-heading display">Built for the people who run growing businesses</h2>
+      <p class="section-sub">Whether you lead a sales team, manage contractors, or just need to know what's happening — Opsra gives you the view you need.</p>
+      <div class="audience-grid">
+        <div class="audience-card">
+          <div class="audience-icon" style="background:var(--teal-light);">
+            <i class="ti ti-building" style="color:var(--teal-dark);" aria-hidden="true"></i>
+          </div>
+          <div class="audience-who">Business owners & CEOs</div>
+          <div class="audience-pain">Need visibility across the whole business without chasing their team for daily updates</div>
+        </div>
+        <div class="audience-card">
+          <div class="audience-icon" style="background:var(--blue-light);">
+            <i class="ti ti-chart-line" style="color:var(--blue);" aria-hidden="true"></i>
+          </div>
+          <div class="audience-who">Heads of sales</div>
+          <div class="audience-pain">Need a pipeline they can trust and a team they can hold accountable with real data</div>
+        </div>
+        <div class="audience-card">
+          <div class="audience-icon" style="background:var(--purple-light);">
+            <i class="ti ti-settings" style="color:var(--purple);" aria-hidden="true"></i>
+          </div>
+          <div class="audience-who">Operations managers</div>
+          <div class="audience-pain">Need to manage contractors, track KPIs, and surface blockers before they become expensive problems</div>
+        </div>
+        <div class="audience-card">
+          <div class="audience-icon" style="background:#FAECE7;">
+            <i class="ti ti-headset" style="color:#993C1D;" aria-hidden="true"></i>
+          </div>
+          <div class="audience-who">Support teams</div>
+          <div class="audience-pain">Need a structured system so every customer issue is handled and nothing disappears in a chat</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- TESTIMONIALS -->
+  <section class="section" id="case-studies" aria-labelledby="proof-heading">
+    <div class="container">
+      <p class="section-tag">What our clients say</p>
+      <h2 id="proof-heading" class="section-heading display">Real businesses. Real results.</h2>
+      <div class="proof-grid">
+        <div class="proof-card">
+          <p class="proof-quote">"Before Opsra, I had no idea which leads my team had followed up and which ones had gone cold. Now I check one screen and I know everything."</p>
+          <div class="proof-attr">
+            <div class="proof-avatar" style="background:var(--teal-light);color:var(--teal-dark);">AO</div>
+            <div>
+              <div class="proof-name">Adebayo O.</div>
+              <div class="proof-role">CEO — real estate firm, Lagos</div>
+            </div>
+          </div>
+        </div>
+        <div class="proof-card">
+          <p class="proof-quote">"Our contractors used to argue about their KPIs at review time. Now we both look at the same numbers. The conversations are shorter and fairer."</p>
+          <div class="proof-attr">
+            <div class="proof-avatar" style="background:var(--purple-light);color:var(--purple);">FK</div>
+            <div>
+              <div class="proof-name">Funmi K.</div>
+              <div class="proof-role">Operations manager — SaaS company, Abuja</div>
+            </div>
+          </div>
+        </div>
+        <div class="proof-card">
+          <p class="proof-quote">"I used to spend Monday mornings chasing updates from five different people. Now Opsra sends me everything at 7am and I spend the time actually making decisions."</p>
+          <div class="proof-attr">
+            <div class="proof-avatar" style="background:var(--blue-light);color:var(--blue);">BI</div>
+            <div>
+              <div class="proof-name">Bola I.</div>
+              <div class="proof-role">Founder — insurance brokerage, Port Harcourt</div>
+            </div>
+          </div>
+        </div>
+        <div class="proof-card">
+          <p class="proof-quote">"We were losing customers silently. Opsra flagged three accounts at churn risk before we would have ever noticed. We saved all three of them."</p>
+          <div class="proof-attr">
+            <div class="proof-avatar" style="background:var(--amber-light);color:var(--amber);">TM</div>
+            <div>
+              <div class="proof-name">Temi M.</div>
+              <div class="proof-role">Head of customer success — healthcare platform, Lagos</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- CTA BAND -->
+  <section class="cta-band" aria-labelledby="cta-heading">
+    <div class="container">
+      <p class="section-tag">Get started</p>
+      <h2 id="cta-heading" class="cta-heading display">See what Opsra does for your business</h2>
+      <p class="cta-sub">30-minute demo. No pressure. We will show you exactly what it looks like for your industry and tell you honestly which plan makes sense.</p>
+      <div class="cta-actions">
+        <button class="btn-primary-lg">Book a free demo</button>
+        <button class="btn-secondary-lg">Talk to us first</button>
+      </div>
+      <p class="cta-footnote">No credit card required &nbsp;·&nbsp; Setup included &nbsp;·&nbsp; Live in under 5 days</p>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-inner">
+      <span class="footer-logo">Op<span>sra</span></span>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="#features">Features</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="#case-studies">Case studies</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <span class="footer-copy">© 2026 Opsra. All rights reserved.</span>
+    </div>
+  </footer>
+
+</body>
+</html>
