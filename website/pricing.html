@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Pricing — Opsra</title>
+  <meta name="description" content="Simple, transparent pricing for Opsra. Three plans — Visibility, Growth, and Operations. Monthly or annual billing. Setup from ₦75,000."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+  <link rel="stylesheet" href="_base.css"/>
+  <style>
+    .pricing-hero{padding:72px 0 48px;background:var(--white);}
+    .billing-toggle{display:flex;align-items:center;gap:12px;margin-bottom:32px;flex-wrap:wrap;}
+    .toggle-track{width:44px;height:24px;border-radius:12px;position:relative;cursor:pointer;flex-shrink:0;transition:background 0.2s;background:var(--teal);}
+    .toggle-thumb{width:18px;height:18px;background:white;border-radius:50%;position:absolute;top:3px;transition:left 0.2s;left:23px;}
+    .toggle-lbl{font-size:13px;color:var(--text-2);}
+    .toggle-lbl.active{font-weight:500;color:var(--text);}
+    .plans-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
+    .plan-name{font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:5px;}
+    .plan-desc{font-size:13px;color:var(--text-2);margin-bottom:16px;line-height:1.5;}
+    .plan-price{font-size:28px;font-weight:600;font-family:'Syne',sans-serif;color:var(--text);}
+    .plan-per{font-size:13px;font-weight:400;color:var(--text-3);}
+    .plan-billing{font-size:11px;color:var(--text-3);margin:4px 0 16px;min-height:18px;}
+    .plan-billing s{color:var(--border-mid);}
+    .managed-card{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:20px 24px;margin-bottom:32px;}
+    .compare-table{width:100%;border-collapse:collapse;border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--border);}
+    .compare-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:500;color:var(--text-2);background:var(--surface);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:0.05em;}
+    .compare-table th:nth-child(2),.compare-table th:nth-child(3){text-align:center;}
+    .compare-table td{padding:10px 14px;font-size:13px;color:var(--text-2);border-bottom:1px solid var(--border);vertical-align:middle;}
+    .compare-table td:nth-child(2){text-align:center;color:var(--red-dark);}
+    .compare-table td:nth-child(3){text-align:center;color:var(--teal-dark);}
+    .compare-table tr:last-child td{border-bottom:none;}
+    .compare-table tr:nth-child(even) td{background:var(--surface);}
+    .faq-item{border-bottom:1px solid var(--border);padding:18px 0;}
+    .faq-item:last-child{border-bottom:none;}
+    .faq-q{font-size:15px;font-weight:500;color:var(--text);margin-bottom:8px;display:flex;align-items:flex-start;gap:10px;}
+    .faq-q i{font-size:16px;color:var(--teal);flex-shrink:0;margin-top:2px;}
+    .faq-a{font-size:14px;color:var(--text-2);line-height:1.7;padding-left:26px;}
+    @media(max-width:900px){.plans-grid{grid-template-columns:1fr;}.managed-card{flex-direction:column;align-items:flex-start;}}
+  </style>
+</head>
+<body>
+
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">Op<span>sra</span></a>
+    <div class="nav-links">
+      <a href="features.html">Features</a>
+      <a href="solutions.html">Solutions</a>
+      <a href="pricing.html" class="active">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+    </div>
+    <div class="nav-actions">
+      <button class="btn-ghost">Sign in</button>
+      <button class="btn-primary">Book a demo</button>
+    </div>
+  </div>
+</nav>
+
+<section class="pricing-hero">
+  <div class="container">
+    <p class="section-tag">Pricing</p>
+    <h1 class="section-heading display" style="max-width:560px;">What does it cost you not to have this?</h1>
+    <p style="font-size:16px;color:var(--text-2);line-height:1.75;max-width:540px;margin-bottom:8px;">Every untracked lead, unresolved ticket, and missed KPI has a real cost. Opsra pays for itself when it recovers one customer you would otherwise have lost.</p>
+    <p style="font-size:13px;color:var(--text-3);margin-bottom:32px;">All plans include onboarding support · cancel anytime · one-time setup fee from ₦75,000</p>
+
+    <div class="billing-toggle">
+      <span class="toggle-lbl" id="lbl-m">Monthly</span>
+      <div class="toggle-track" id="toggle" onclick="switchBilling()">
+        <div class="toggle-thumb" id="thumb"></div>
+      </div>
+      <span class="toggle-lbl active" id="lbl-a">Annual</span>
+      <span class="pill" style="background:var(--teal-light);color:var(--teal-dark);">2 months free</span>
+      <span id="billing-note" style="font-size:12px;color:var(--text-3);">Billed annually · switch to monthly anytime</span>
+    </div>
+
+    <div class="plans-grid">
+      <div class="card">
+        <p class="plan-name">Visibility</p>
+        <p class="plan-desc">For founders who need to see what's happening across their business</p>
+        <div><span class="plan-price" id="pv">₦67k</span><span class="plan-per">/month</span></div>
+        <p class="plan-billing" id="bv">Billed as ₦800k/year <s>₦960k</s></p>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Lead capture &amp; pipeline</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Staff activity logging</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Executive dashboard</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Monday morning AI digest</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Up to 5 users</div>
+        <button class="btn-secondary-lg" style="width:100%;margin-top:20px;">Get started</button>
+      </div>
+      <div class="card featured">
+        <span class="pill" style="background:var(--teal-light);color:var(--teal-dark);margin-bottom:12px;display:inline-block;">Most popular</span>
+        <p class="plan-name">Growth</p>
+        <p class="plan-desc">For sales-driven businesses that need to convert more leads and retain more customers</p>
+        <div><span class="plan-price" id="pg">₦167k</span><span class="plan-per">/month</span></div>
+        <p class="plan-billing" id="bg">Billed as ₦2m/year <s>₦2.4m</s></p>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Everything in Visibility</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Customer communication</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Support ticketing</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Renewals &amp; churn prevention</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Product catalog</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Up to 10 users</div>
+        <button class="btn-primary-lg" style="width:100%;margin-top:20px;">Get started</button>
+      </div>
+      <div class="card">
+        <p class="plan-name">Operations</p>
+        <p class="plan-desc">For businesses managing teams, contractors, and customers at scale</p>
+        <div><span class="plan-price" id="po">₦333k</span><span class="plan-per">/month</span></div>
+        <p class="plan-billing" id="bo">Billed as ₦4m/year <s>₦4.8m</s></p>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Everything in Growth</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Contractor KPI tracking</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>AI insights engine</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Anomaly detection</div>
+        <div class="feat-row"><i class="ti ti-check" aria-hidden="true"></i>Unlimited users</div>
+        <button class="btn-secondary-lg" style="width:100%;margin-top:20px;">Get started</button>
+      </div>
+    </div>
+
+    <div class="card managed-card">
+      <div>
+        <p style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:5px;">Prefer us to run it for you?</p>
+        <p style="font-size:13px;color:var(--text-2);line-height:1.6;">Our managed service tier includes full platform operation, weekly reporting, and a dedicated Opsra manager. You focus on the business — we handle the system. Starting from ₦300k/month.</p>
+      </div>
+      <button class="btn-secondary-lg" style="white-space:nowrap;">Talk to us</button>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="section bg">
+  <div class="container">
+    <p class="section-tag">Why it's worth it</p>
+    <h2 class="section-heading display">Opsra vs doing this without a system</h2>
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Without Opsra</th>
+          <th>With Opsra</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Lead follow-up tracking</td><td><i class="ti ti-x" aria-hidden="true"></i> Relies on memory</td><td><i class="ti ti-check" aria-hidden="true"></i> Tracked &amp; assigned</td></tr>
+        <tr><td>KPI visibility</td><td><i class="ti ti-x" aria-hidden="true"></i> End-of-month guesses</td><td><i class="ti ti-check" aria-hidden="true"></i> Live, every day</td></tr>
+        <tr><td>Contractor performance</td><td><i class="ti ti-x" aria-hidden="true"></i> Word doc no one opens</td><td><i class="ti ti-check" aria-hidden="true"></i> Live tracking, both sides</td></tr>
+        <tr><td>Customer churn signals</td><td><i class="ti ti-x" aria-hidden="true"></i> Noticed after they leave</td><td><i class="ti ti-check" aria-hidden="true"></i> Flagged weeks early</td></tr>
+        <tr><td>Support ticket tracking</td><td><i class="ti ti-x" aria-hidden="true"></i> Lost in WhatsApp threads</td><td><i class="ti ti-check" aria-hidden="true"></i> Assigned, tracked, resolved</td></tr>
+        <tr><td>Monday morning briefing</td><td><i class="ti ti-x" aria-hidden="true"></i> Chase 6 people for updates</td><td><i class="ti ti-check" aria-hidden="true"></i> AI digest at 7am</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="section">
+  <div class="container" style="max-width:720px;">
+    <p class="section-tag">Common questions</p>
+    <h2 class="section-heading display">Everything you need to know</h2>
+    <div class="faq-item">
+      <div class="faq-q"><i class="ti ti-help-circle" aria-hidden="true"></i>Is Opsra only for businesses that sell on WhatsApp?</div>
+      <div class="faq-a">No. Opsra works for SaaS companies, real estate firms, healthcare providers, insurance companies, schools, and any business that manages leads, customers, teams, or contractors. The customer communication module supports WhatsApp, email, and broadcast messaging — you use what fits your business.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q"><i class="ti ti-help-circle" aria-hidden="true"></i>Can I start with one module and add more later?</div>
+      <div class="faq-a">Yes. Every plan is modular. Start with what your business needs most urgently and expand as your team grows. We will recommend where to start based on your biggest pain point.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q"><i class="ti ti-help-circle" aria-hidden="true"></i>What does the setup fee cover?</div>
+      <div class="faq-a">Full configuration of your organisation, onboarding your team, importing existing data, and a structured training session. One-time cost from ₦75,000 depending on complexity. This is how we make sure Opsra is actually working for your business from day one — not just installed.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q"><i class="ti ti-help-circle" aria-hidden="true"></i>What if my team doesn't adopt it?</div>
+      <div class="faq-a">Adoption is the most common concern and it is why the setup session exists. We configure Opsra around how your team already works, not the other way around. Most teams are logging daily and using the pipeline within the first two weeks.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q"><i class="ti ti-help-circle" aria-hidden="true"></i>Can I switch between monthly and annual billing?</div>
+      <div class="faq-a">Yes. You can start monthly and move to annual at any point to unlock the 2-month saving. Annual billing is invoiced upfront and saves you the equivalent of two months per year.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q"><i class="ti ti-help-circle" aria-hidden="true"></i>Not sure which plan is right for you?</div>
+      <div class="faq-a">Book a 30-minute demo. We will walk through your specific business, show you exactly what Opsra looks like for your industry, and tell you honestly which plan makes sense. No pressure, no sales script.</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="cta-band">
+  <div class="container">
+    <p class="section-tag">Get started</p>
+    <h2 class="cta-heading display">Not sure where to start? Talk to us first.</h2>
+    <p class="cta-sub">30-minute demo. We will show you exactly what Opsra looks like for your industry and recommend the right plan — no pressure, no commitment required.</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;">
+      <button class="btn-primary-lg">Book a free demo</button>
+      <button class="btn-secondary-lg">Talk to us first</button>
+    </div>
+    <p class="cta-footnote">No credit card required &nbsp;·&nbsp; Setup included &nbsp;·&nbsp; Live in under 5 days</p>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <a href="index.html" class="footer-logo">Op<span>sra</span></a>
+    <nav class="footer-links" aria-label="Footer navigation">
+      <a href="features.html">Features</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+    <span class="footer-copy">© 2026 Opsra. All rights reserved.</span>
+  </div>
+</footer>
+
+<script>
+var isAnnual=true;
+var mp={v:'₦80k',g:'₦200k',o:'₦400k'};
+var ap={v:'₦67k',g:'₦167k',o:'₦333k'};
+var an={v:'Billed as ₦800k/year <s>₦960k</s>',g:'Billed as ₦2m/year <s>₦2.4m</s>',o:'Billed as ₦4m/year <s>₦4.8m</s>'};
+function switchBilling(){
+  isAnnual=!isAnnual;
+  var t=document.getElementById('thumb');
+  var tr=document.getElementById('toggle');
+  var la=document.getElementById('lbl-a');
+  var lm=document.getElementById('lbl-m');
+  var bn=document.getElementById('billing-note');
+  if(isAnnual){
+    t.style.left='23px'; tr.style.background='var(--teal)';
+    la.classList.add('active'); lm.classList.remove('active');
+    bn.textContent='Billed annually · switch to monthly anytime';
+    document.getElementById('pv').textContent=ap.v;
+    document.getElementById('pg').textContent=ap.g;
+    document.getElementById('po').textContent=ap.o;
+    document.getElementById('bv').innerHTML=an.v;
+    document.getElementById('bg').innerHTML=an.g;
+    document.getElementById('bo').innerHTML=an.o;
+  } else {
+    t.style.left='3px'; tr.style.background='var(--border-mid)';
+    lm.classList.add('active'); la.classList.remove('active');
+    bn.textContent='Billed month-to-month · no long-term commitment';
+    document.getElementById('pv').textContent=mp.v;
+    document.getElementById('pg').textContent=mp.g;
+    document.getElementById('po').textContent=mp.o;
+    document.getElementById('bv').innerHTML='&nbsp;';
+    document.getElementById('bg').innerHTML='&nbsp;';
+    document.getElementById('bo').innerHTML='&nbsp;';
+  }
+}
+</script>
+</body>
+</html>
