@@ -19,6 +19,7 @@ import hmac
 import json
 import logging
 import os
+import re
 from typing import Optional
 
 import httpx
@@ -66,6 +67,29 @@ logger = logging.getLogger(__name__)
 
 GRAPH_API_BASE = "https://graph.facebook.com/v18.0"
 
+
+def _parse_and_strip_ref_tag(text: str) -> tuple[str, dict]:
+    """
+    Extracts [ref:source·campaign·ad] from inbound message text.
+    Returns (clean_text, attribution_dict).
+    S14: never raises — returns original text and empty dict on any failure.
+    """
+    try:
+        pattern = r'\[ref:([^\]]+)\]'
+        match = re.search(pattern, text or '')
+        if not match:
+            return (text or '', {})
+        ref_value = match.group(1)
+        clean     = re.sub(pattern, '', text).strip()
+        parts     = ref_value.split('·')
+        attr = {}
+        if len(parts) >= 1 and parts[0]: attr['utm_source']   = parts[0]
+        if len(parts) >= 2 and parts[1]: attr['utm_campaign'] = parts[1]
+        if len(parts) >= 3 and parts[2]: attr['utm_ad']       = parts[2]
+        return (clean, attr)
+    except Exception as exc:
+        logger.warning('_parse_and_strip_ref_tag failed: %s', exc)
+        return (text or '', {})
 
 # ---------------------------------------------------------------------------
 # SA-2A — webhook_request_log helper
@@ -872,9 +896,13 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     msg_type     = message.get("type", "text")
     content: Optional[str] = None
+    _ref_attribution: dict = {}
 
     if msg_type == "text":
         content = (message.get("text") or {}).get("body")
+        _ref_attribution: dict = {}
+        if msg_type == "text" and content:
+            content, _ref_attribution = _parse_and_strip_ref_tag(content)
     elif msg_type == "image":
         content = "[Image]"
         _image_media_id = (message.get("image") or {}).get("id")
@@ -1045,13 +1073,18 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             provisional_name = (contact_name or "").strip() or sender_phone
             try:
                 _referral = message.get("referral") or {}
-                _wa_utm_source = None
+                _wa_utm_source  = None
                 _wa_campaign_id = None
-                _wa_utm_ad = None
+                _wa_utm_ad      = None
                 if _referral:
-                    _wa_utm_source = "facebook"
+                    _wa_utm_source  = "facebook"
                     _wa_campaign_id = _referral.get("ctwa_clid") or _referral.get("ref")
-                    _wa_utm_ad = _referral.get("headline") or None
+                    _wa_utm_ad      = _referral.get("headline") or None
+                # [ref:] tag overrides only if no Meta referral object present
+                if not _referral and _ref_attribution:
+                    _wa_utm_source  = _ref_attribution.get("utm_source")
+                    _wa_campaign_id = _ref_attribution.get("utm_campaign")
+                    _wa_utm_ad      = _ref_attribution.get("utm_ad")
                 new_lead_payload = LeadCreate(
                     full_name=provisional_name, phone=sender_phone, whatsapp=sender_phone,
                     source=LeadSource.whatsapp_inbound.value,
@@ -1084,10 +1117,15 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             # The triage action handlers (_action_qualify, _action_route_to_role) will
             # handle the lead record when the contact taps a menu option.
             try:
-                _referral = message.get("referral") or {}
-                _wa_utm_source = "facebook" if _referral else None
-                _wa_campaign_id = _referral.get("ctwa_clid") or _referral.get("ref") if _referral else None
-                _wa_utm_ad = _referral.get("headline") or None if _referral else None
+                _referral       = message.get("referral") or {}
+                _wa_utm_source  = "facebook" if _referral else None
+                _wa_campaign_id = (_referral.get("ctwa_clid") or _referral.get("ref")) if _referral else None
+                _wa_utm_ad      = (_referral.get("headline") or None) if _referral else None
+                # [ref:] tag overrides only if no Meta referral object present
+                if not _referral and _ref_attribution:
+                    _wa_utm_source  = _ref_attribution.get("utm_source")
+                    _wa_campaign_id = _ref_attribution.get("utm_campaign")
+                    _wa_utm_ad      = _ref_attribution.get("utm_ad")
                 _triage_lead_payload = LeadCreate(
                     full_name=(contact_name or "").strip() or sender_phone,
                     phone=sender_phone,
