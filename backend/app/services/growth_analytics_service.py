@@ -899,6 +899,109 @@ def get_channel_metrics(
     _growth_cache_set(cache_key, result, _GROWTH_CACHE_TTL)
     return result
 
+# ---------------------------------------------------------------------------
+# CAMP-1. get_campaign_metrics
+# ---------------------------------------------------------------------------
+
+def get_campaign_metrics(
+    db: Any,
+    org_id: str,
+    date_from: Optional[date],
+    date_to: Optional[date],
+) -> list[dict]:
+    """
+    Per-campaign (utm_campaign) performance breakdown.
+    Groups leads by utm_campaign + utm_source.
+    Campaigns with no utm_campaign are grouped as 'Unattributed'.
+    Pattern 33: Python-side grouping.
+    S14: never raises.
+    """
+    cache_key = f"growth:campaigns:{org_id}:{date_from}:{date_to}"
+    cached = _growth_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    result = _compute_campaign_metrics(db, org_id, date_from, date_to)
+    _growth_cache_set(cache_key, result, _GROWTH_CACHE_TTL)
+    return result
+
+
+def _compute_campaign_metrics(
+    db: Any,
+    org_id: str,
+    date_from: Optional[date],
+    date_to: Optional[date],
+) -> list[dict]:
+    """
+    Groups leads by (utm_campaign, utm_source).
+    Returns list of campaign rows with leads list embedded.
+    S14: returns [] on any failure.
+    """
+    try:
+        # Fetch leads with name + phone for the lead list drawer
+        result = (
+            db.table("leads")
+            .select(
+                "id, full_name, phone, stage, utm_campaign, utm_source, "
+                "utm_ad, entry_path, created_at, converted_at, deal_value, "
+                "deleted_at"
+            )
+            .eq("org_id", org_id)
+            .is_("deleted_at", None)
+            .execute()
+        )
+        all_leads = result.data or []
+        if isinstance(all_leads, dict):
+            all_leads = [all_leads]
+
+        period_leads = [
+            l for l in all_leads
+            if _in_range(l.get("created_at"), date_from, date_to)
+        ]
+
+        # Group by (utm_campaign, utm_source) — Pattern 33
+        groups: dict[tuple, list] = {}
+        for lead in period_leads:
+            campaign = (lead.get("utm_campaign") or "").strip() or "Unattributed"
+            source   = (lead.get("utm_source")   or "").strip() or _get_lead_channel(lead)
+            key      = (campaign, source)
+            groups.setdefault(key, []).append(lead)
+
+        results = []
+        for (campaign, source), leads_in_group in groups.items():
+            closed  = [l for l in leads_in_group if _is_closed(l)]
+            revenue = sum(_get_revenue(l, db, org_id) for l in closed)
+
+            # Build lead list for drawer — id, name, phone, stage, converted
+            lead_list = [
+                {
+                    "id":        l.get("id"),
+                    "full_name": l.get("full_name") or "Unknown",
+                    "phone":     l.get("phone") or "",
+                    "stage":     l.get("stage") or "new",
+                    "converted": _is_closed(l),
+                    "utm_ad":    (l.get("utm_ad") or "").strip() or None,
+                }
+                for l in leads_in_group
+            ]
+
+            results.append({
+                "utm_campaign":    campaign,
+                "utm_source":      source,
+                "total_leads":     len(leads_in_group),
+                "conversions":     len(closed),
+                "conversion_rate": _safe_pct(len(closed), len(leads_in_group)),
+                "revenue":         round(revenue, 2),
+                "leads":           lead_list,
+            })
+
+        # Sort by total_leads DESC then campaign name
+        results.sort(key=lambda x: (-x["total_leads"], x["utm_campaign"]))
+        return results
+
+    except Exception as exc:
+        logger.warning("_compute_campaign_metrics failed: %s", exc)
+        return []
+
 
 def _get_lead_channel(lead: dict) -> str:
     """

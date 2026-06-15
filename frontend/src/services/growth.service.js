@@ -246,3 +246,8 @@ export async function clearInsightCache() {
   const r = await axios.delete(`${BASE}/api/v1/analytics/growth/insights/sections/cache`, _h())
   return r.data
 }
+
+export async function getCampaignMetrics(params = {}) {
+  const r = await axios.get(`${BASE}/api/v1/analytics/growth/campaigns`, { ..._h(), params: _params(params) })
+  return r.data.data
+}

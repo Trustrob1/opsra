@@ -269,6 +269,27 @@ def get_win_loss(
     )
     return _success(data)
 
+# ---------------------------------------------------------------------------
+# GET /analytics/growth/campaigns
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/growth/campaigns")
+def get_campaigns(
+    date_from: Optional[str] = Query(None),
+    date_to:   Optional[str] = Query(None),
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    _require_growth_access(org)
+    df, dt = _parse_dates(date_from, date_to)
+    data = growth_analytics_service.get_campaign_metrics(
+        db=db,
+        org_id=org["org_id"],
+        date_from=df,
+        date_to=dt,
+    )
+    return _success(data)
+
 @router.get("/analytics/growth/debug")
 def debug_fetch(
     db=Depends(get_supabase),

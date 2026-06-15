@@ -25,6 +25,7 @@ import {
   getFunnelMetrics,
   getSalesRepMetrics,
   getChannelMetrics,
+  getCampaignMetrics,
   getLeadVelocity,
   getPipelineAtRisk,
   getWinLoss,
@@ -881,6 +882,111 @@ function WinLossSection({ data, loading }) {
   )
 }
 
+// ─── 9. Campaign Performance ──────────────────────────────────────────────────
+
+function CampaignSection({ data, loading }) {
+  const [expandedCampaign, setExpandedCampaign] = useState(null)
+
+  if (loading) return <Skeleton height={140} />
+  if (!data || !data.length) return (
+    <div style={{ color: '#6b8fa0', fontSize: 13, fontFamily: ds.fontDm }}>
+      No campaign data for this period. Tag your WhatsApp links with [ref:source·campaign] to start tracking.
+    </div>
+  )
+
+  const sourceIcon = (source) => {
+    const s = (source || '').toLowerCase()
+    if (s === 'email')     return '📧 '
+    if (s === 'instagram') return '📸 '
+    if (s === 'facebook')  return '🔵 '
+    if (s === 'whatsapp')  return '💬 '
+    if (s === 'sms')       return '📱 '
+    if (s === 'tiktok')    return '🎵 '
+    return '📣 '
+  }
+
+  const stageColour = (stage) => {
+    if (stage === 'converted')     return { background: '#d1fae5', color: '#065f46' }
+    if (stage === 'lost')          return { background: '#fee2e2', color: '#991b1b' }
+    if (stage === 'proposal_sent') return { background: '#dbeafe', color: '#1e40af' }
+    if (stage === 'meeting_done')  return { background: '#ede9fe', color: '#5b21b6' }
+    if (stage === 'contacted')     return { background: '#fef3c7', color: '#92400e' }
+    return { background: '#f1f5f9', color: '#475569' }
+  }
+
+  const selected = expandedCampaign
+    ? data.find(r => r.utm_campaign + '|' + r.utm_source === expandedCampaign)
+    : null
+
+  return (
+    <div>
+      <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+        <table style={tableStyle}>
+          <thead>
+            <tr>{['Campaign', 'Source', 'Leads', 'Converted', 'Conv Rate', 'Revenue', ''].map(h => (
+              <th key={h} style={th}>{h}</th>
+            ))}</tr>
+          </thead>
+          <tbody>
+            {data.map(row => {
+              const key = row.utm_campaign + '|' + row.utm_source
+              const isOpen = expandedCampaign === key
+              return (
+                <tr key={key} style={{ cursor: 'pointer', background: isOpen ? '#f0fdf4' : 'inherit' }}
+                  onClick={() => setExpandedCampaign(isOpen ? null : key)}>
+                  <td style={{ ...td, fontWeight: 600, color: ds.dark }}>{row.utm_campaign}</td>
+                  <td style={td}>
+                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, background: '#f0f9ff', color: '#0369a1', fontSize: 11.5, fontWeight: 600 }}>
+                      {sourceIcon(row.utm_source)}{row.utm_source}
+                    </span>
+                  </td>
+                  <td style={td}>{row.total_leads}</td>
+                  <td style={{ ...td, color: row.conversions > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>{row.conversions}</td>
+                  <td style={{ ...td, color: row.conversion_rate > 0 ? ds.dark : '#94a3b8' }}>{pct(row.conversion_rate)}</td>
+                  <td style={{ ...td, color: ds.teal, fontWeight: 600 }}>{fmt(row.revenue)}</td>
+                  <td style={{ ...td, color: '#94a3b8', fontSize: 11 }}>{isOpen ? '▲ Hide' : '▼ Leads'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Lead list drawer — expands inline below the table */}
+      {selected && (
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 20px', marginTop: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontFamily: ds.fontDm, fontWeight: 600, fontSize: 13, color: ds.dark }}>
+              {sourceIcon(selected.utm_source)}{selected.utm_campaign} · {selected.total_leads} lead{selected.total_leads !== 1 ? 's' : ''}
+            </span>
+            <button onClick={() => setExpandedCampaign(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 18 }}>×</button>
+          </div>
+          <table style={{ ...tableStyle, marginBottom: 0 }}>
+            <thead>
+              <tr>{['Name', 'Phone', 'Stage', 'Ad'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {(selected.leads || []).map(l => (
+                <tr key={l.id}>
+                  <td style={{ ...td, fontWeight: 500 }}>{l.full_name}</td>
+                  <td style={{ ...td, color: '#6b8fa0', fontFamily: 'monospace', fontSize: 12 }}>{l.phone}</td>
+                  <td style={td}>
+                    <span style={{ ...stageColour(l.stage), padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600 }}>
+                      {l.stage}
+                    </span>
+                  </td>
+                  <td style={{ ...td, color: '#94a3b8', fontSize: 12 }}>{l.utm_ad || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
 function Section({ title, children, action, insight, insightLoading }) {
@@ -910,7 +1016,8 @@ export default function GrowthDashboard({ user, setView }) {
   const [teams,     setTeams]     = useState(null)
   const [funnel,    setFunnel]    = useState(null)
   const [reps,      setReps]      = useState(null)
-  const [channels,  setChannels]  = useState(null)
+  const [channels,   setChannels]   = useState(null)
+  const [campaigns,  setCampaigns]  = useState(null)
   const [velocity,  setVelocity]  = useState(null)
   const [atRisk,    setAtRisk]    = useState(null)
   const [winLoss,   setWinLoss]   = useState(null)
@@ -940,7 +1047,8 @@ export default function GrowthDashboard({ user, setView }) {
       { key: 'overview', fn: () => getGrowthOverview(p).then(setOverview) },
       { key: 'teams',    fn: () => getTeamPerformance(p).then(setTeams) },
       { key: 'funnel',   fn: () => getFunnelMetrics({ ...p, ...(fp || funnelParams) }).then(setFunnel) },
-      { key: 'channels', fn: () => getChannelMetrics(p).then(setChannels) },
+      { key: 'channels',   fn: () => getChannelMetrics(p).then(setChannels)   },
+      { key: 'campaigns',  fn: () => getCampaignMetrics(p).then(setCampaigns)  },
       { key: 'velocity', fn: () => getLeadVelocity(p).then(setVelocity) },
       { key: 'atRisk',   fn: () => getPipelineAtRisk().then(setAtRisk) },
       { key: 'winLoss',  fn: () => getWinLoss(p).then(setWinLoss) },
@@ -1138,6 +1246,13 @@ export default function GrowthDashboard({ user, setView }) {
       {isSectionVisible('channels') && (
         <Section title="📡 Channel Performance" insight={insights.channels} insightLoading={insightsLoading}>
           <ChannelSection data={channels} loading={loadingMap.channels} />
+        </Section>
+      )}
+
+      {/* Section 9 — Campaign Performance */}
+      {isSectionVisible('campaigns') && (
+        <Section title="🎯 Campaign Performance" insight={insights.campaigns} insightLoading={insightsLoading}>
+          <CampaignSection data={campaigns} loading={loadingMap.campaigns} />
         </Section>
       )}
 
