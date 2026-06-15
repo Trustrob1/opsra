@@ -566,32 +566,7 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
             </div>
           )}
 
-          {postQualLinks.length > 0 && (
-            <div>
-              <p style={{ fontSize: 13, color: C.muted, fontStyle: 'italic', margin: '0 0 10px' }}>
-                Returning from a recommendation? Complete your request:
-              </p>
-              <div className="ci-btns">
-                {postQualLinks.map(btn => (
-                  <a key={btn.id} href={btn.href} target="_blank" rel="noopener noreferrer"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      padding: '10px 18px', borderRadius: 8,
-                      border: `1.5px solid ${C.teal}`,
-                      color: C.teal, fontFamily: "'Jost', sans-serif",
-                      fontSize: 13, fontWeight: 600,
-                      textDecoration: 'none', whiteSpace: 'nowrap',
-                      transition: 'background 0.15s',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = C.tealLight }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                  >
-                    {btn.label}
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Variant B post-qual CTA buttons removed — catalog visitors use Order via WhatsApp only */}
         </div>
 
         {/* ── Back link ── */}
