@@ -1540,30 +1540,116 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
         # CATALOG-5: Product-intent classifier — matches the Variant A CTA pre-fill
         # pattern "Hi, I'm interested in the {title}" from the public catalog.
-        # Runs before qualification so returning catalog visitors are handled correctly.
+        # The lead has already chosen a specific product, so qualification is skipped.
+        # Behaviour mirrors "I know what I want" → route_to_role (speak to sales rep).
         if msg_type == "text" and content:
             _intent_title = _is_catalog_product_intent(content)
             if _intent_title:
                 logger.info(
-                    "[CATALOG-5] product intent detected title=%r lead=%s",
+                    "[CATALOG-5] product intent detected title=%r lead=%s — skipping qualification",
                     _intent_title, lead_id,
                 )
-                # Option B: store product intent on lead, fall through to standard
-                # qualification but pre-fill problem_stated with the product title.
+                # 1. Store product intent on the lead record
                 try:
                     db.table("leads").update({
                         "problem_stated": f"Interested in: {_intent_title}",
                     }).eq("id", lead_id).eq("org_id", org_id).execute()
-                    logger.info(
-                        "[CATALOG-5] product intent stored on lead=%s title=%r",
-                        lead_id, _intent_title,
-                    )
                 except Exception as _pi_exc:
                     logger.warning(
                         "[CATALOG-5] product intent lead update failed lead=%s: %s",
                         lead_id, _pi_exc,
                     )
-                # Fall through to standard qualification below
+
+                # 2. Send confirmation to the lead
+                _lead_name_d = None  # initialised here so step 3 can safely reference it
+                try:
+                    from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+                    from datetime import datetime, timezone, timedelta
+                    _phone_id, _token, _ = _get_org_wa_credentials(db, org_id)
+                    _phone_id = (_phone_id or "").strip()
+                    _lead_name_r = db.table("leads").select("full_name").eq("id", lead_id).maybe_single().execute()
+                    _lead_name_d = _lead_name_r.data
+                    if isinstance(_lead_name_d, list):
+                        _lead_name_d = _lead_name_d[0] if _lead_name_d else None
+                    _lead_first = (((_lead_name_d or {}).get("full_name") or contact_name or "").split() or [""])[0]
+                    _catalog_confirmation = (
+                        f"Hi {_lead_first}! 👋 Thanks for your interest in the *{_intent_title}*. "
+                        "One of our team will be in touch with you shortly."
+                        if _lead_first else
+                        f"Thanks for your interest in the *{_intent_title}*! 👋 "
+                        "One of our team will be in touch with you shortly."
+                    )
+                    if _phone_id and _token:
+                        _call_meta_send(_phone_id, {
+                            "messaging_product": "whatsapp",
+                            "to": sender_phone,
+                            "type": "text",
+                            "text": {"body": _catalog_confirmation},
+                        }, token=_token)
+                        try:
+                            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+                            db.table("whatsapp_messages").insert({
+                                "org_id":            org_id,
+                                "lead_id":           lead_id,
+                                "direction":         "outbound",
+                                "message_type":      "text",
+                                "content":           _catalog_confirmation,
+                                "status":            "sent",
+                                "window_open":       True,
+                                "window_expires_at": _win_exp,
+                                "sent_by":           None,
+                                "created_at":        now_ts,
+                            }).execute()
+                        except Exception as _msg_save_exc:
+                            logger.warning("[CATALOG-5] confirmation message save failed: %s", _msg_save_exc)
+                except Exception as _conf_exc:
+                    logger.warning("[CATALOG-5] confirmation send failed lead=%s: %s", lead_id, _conf_exc)
+
+                # 3. Notify the assigned rep (or owner fallback)
+                try:
+                    _notify_uid = assigned_to
+                    if not _notify_uid:
+                        _users_r = db.table("users").select("id, roles(template)").eq("org_id", org_id).execute()
+                        for _u in (_users_r.data or []):
+                            if (_u.get("roles") or {}).get("template", "").lower() == "owner":
+                                _notify_uid = _u["id"]
+                                break
+                    if _notify_uid:
+                        _notif_lead_name = ((_lead_name_d or {}).get("full_name") or contact_name or sender_phone)
+                        db.table("notifications").insert({
+                            "org_id":        org_id,
+                            "user_id":       _notify_uid,
+                            "type":          "new_lead",
+                            "title":         f"Lead wants to buy: {_notif_lead_name}",
+                            "body":          f"Interested in: {_intent_title}. Came from the product catalog — no qualification needed.",
+                            "resource_type": "lead",
+                            "resource_id":   lead_id,
+                            "is_read":       False,
+                            "created_at":    now_ts,
+                        }).execute()
+                except Exception as _notif_exc:
+                    logger.warning("[CATALOG-5] rep notification failed lead=%s: %s", lead_id, _notif_exc)
+
+                # 4. Mark a qualification session as handed_off so qualification
+                #    bot never fires on subsequent messages from this lead.
+                try:
+                    db.table("lead_qualification_sessions").insert({
+                        "org_id":                 org_id,
+                        "lead_id":                lead_id,
+                        "ai_active":              False,
+                        "stage":                  "handed_off",
+                        "current_question_index": 0,
+                        "answers":                {"catalog_product_intent": _intent_title},
+                        "created_at":             now_ts,
+                        "last_message_at":        now_ts,
+                        "handed_off_at":          now_ts,
+                        "handoff_summary":        f"Lead came from catalog page and chose: {_intent_title}. Qualification bot skipped.",
+                    }).execute()
+                except Exception as _sess_exc:
+                    logger.warning("[CATALOG-5] qual session mark failed lead=%s: %s", lead_id, _sess_exc)
+
+                logger.info("[CATALOG-5] catalog intent handled — routed to rep, qual skipped lead=%s", lead_id)
+                return  # Do NOT fall through to qualification
 
         try:
             _handle_structured_qualification_turn(
@@ -2482,21 +2568,22 @@ def _handle_post_qual_cta_reply(
         selected_id  = button_reply.get("id") or ""
 
         # CATALOG-5: Plain text fallback — when a catalog page CTA button sends
-        # a pre-filled WhatsApp text (e.g. "showroom_visit"), match it against
+        # a pre-filled WhatsApp text (e.g. "get_invoice"), match it against
         # the org's cta_button IDs and treat it as if the button was tapped.
+        # NOTE: catalog_config is a JSONB column on organisations, not a separate table.
         if not selected_id and msg_type == "text" and content:
             try:
                 _cc_r = (
-                    db.table("catalog_config")
-                    .select("cta_buttons")
-                    .eq("org_id", org_id)
+                    db.table("organisations")
+                    .select("catalog_config")
+                    .eq("id", org_id)
                     .maybe_single()
                     .execute()
                 )
                 _cc_d = _cc_r.data
                 if isinstance(_cc_d, list):
                     _cc_d = _cc_d[0] if _cc_d else None
-                _cta_buttons = (_cc_d or {}).get("cta_buttons") or []
+                _cta_buttons = ((_cc_d or {}).get("catalog_config") or {}).get("cta_buttons") or []
                 _stripped = content.strip()
                 for _btn in _cta_buttons:
                     if (_btn.get("id") or "") == _stripped:
@@ -2506,6 +2593,12 @@ def _handle_post_qual_cta_reply(
                             "id=%r lead=%s", selected_id, lead_id,
                         )
                         break
+                if not selected_id:
+                    logger.info(
+                        "_handle_post_qual_cta_reply: no plain text CTA match for %r "
+                        "— available ids=%r lead=%s",
+                        _stripped, [b.get("id") for b in _cta_buttons], lead_id,
+                    )
             except Exception as _pt_exc:
                 logger.warning(
                     "_handle_post_qual_cta_reply: plain text CTA lookup failed "
