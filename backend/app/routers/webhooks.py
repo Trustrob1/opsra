@@ -81,7 +81,7 @@ def _parse_and_strip_ref_tag(text: str) -> tuple[str, dict]:
             return (text or '', {})
         ref_value = match.group(1)
         clean     = re.sub(pattern, '', text).strip()
-        parts     = ref_value.split('·')
+        parts     = ref_value.split('\u00b7')
         attr = {}
         if len(parts) >= 1 and parts[0]: attr['utm_source']   = parts[0]
         if len(parts) >= 2 and parts[1]: attr['utm_campaign'] = parts[1]
