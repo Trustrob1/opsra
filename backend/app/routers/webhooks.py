@@ -1081,10 +1081,13 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     _wa_campaign_id = _referral.get("ctwa_clid") or _referral.get("ref")
                     _wa_utm_ad      = _referral.get("headline") or None
                 # [ref:] tag overrides only if no Meta referral object present
-                if not _referral and _ref_attribution:
-                    _wa_utm_source  = _ref_attribution.get("utm_source")
-                    _wa_campaign_id = _ref_attribution.get("utm_campaign")
-                    _wa_utm_ad      = _ref_attribution.get("utm_ad")
+                if _ref_attribution:
+                    if not _wa_utm_source:
+                        _wa_utm_source  = _ref_attribution.get("utm_source")
+                    if not _wa_campaign_id:
+                        _wa_campaign_id = _ref_attribution.get("utm_campaign")
+                    if not _wa_utm_ad:
+                        _wa_utm_ad      = _ref_attribution.get("utm_ad")
                 new_lead_payload = LeadCreate(
                     full_name=provisional_name, phone=sender_phone, whatsapp=sender_phone,
                     source=LeadSource.whatsapp_inbound.value,
@@ -1122,10 +1125,13 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 _wa_campaign_id = (_referral.get("ctwa_clid") or _referral.get("ref")) if _referral else None
                 _wa_utm_ad      = (_referral.get("headline") or None) if _referral else None
                 # [ref:] tag overrides only if no Meta referral object present
-                if not _referral and _ref_attribution:
-                    _wa_utm_source  = _ref_attribution.get("utm_source")
-                    _wa_campaign_id = _ref_attribution.get("utm_campaign")
-                    _wa_utm_ad      = _ref_attribution.get("utm_ad")
+                if _ref_attribution:
+                    if not _wa_utm_source:
+                        _wa_utm_source  = _ref_attribution.get("utm_source")
+                    if not _wa_campaign_id:
+                        _wa_campaign_id = _ref_attribution.get("utm_campaign")
+                    if not _wa_utm_ad:
+                        _wa_utm_ad      = _ref_attribution.get("utm_ad")
                 _triage_lead_payload = LeadCreate(
                     full_name=(contact_name or "").strip() or sender_phone,
                     phone=sender_phone,
