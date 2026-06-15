@@ -1156,6 +1156,108 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 else:
                     logger.warning("[WH] triage_first: lead creation failed for %s: %s", sender_phone, _lead_exc)
 
+            # CATALOG-5: If the first message is a catalog product intent,
+            # skip the triage menu entirely and route straight to the rep.
+            if msg_type == "text" and content:
+                _triage_intent_title = _is_catalog_product_intent(content)
+                if _triage_intent_title:
+                    _triage_lead_id = locals().get("_triage_lead", {}).get("id") if "_triage_lead" in locals() else None
+                    logger.info(
+                        "[CATALOG-5] product intent on first message title=%r lead=%s — skipping triage menu",
+                        _triage_intent_title, _triage_lead_id,
+                    )
+                    _now_triage = _now_iso()
+                    # Store product intent on lead
+                    if _triage_lead_id:
+                        try:
+                            db.table("leads").update({
+                                "problem_stated": f"Interested in: {_triage_intent_title}",
+                            }).eq("id", _triage_lead_id).eq("org_id", org_id).execute()
+                        except Exception as _pi_exc:
+                            logger.warning("[CATALOG-5] triage: lead update failed: %s", _pi_exc)
+                        # Send confirmation
+                        try:
+                            from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+                            from datetime import datetime, timezone, timedelta
+                            _ti_phone_id, _ti_token, _ = _get_org_wa_credentials(db, org_id)
+                            _ti_phone_id = (_ti_phone_id or "").strip()
+                            _ti_first = ((contact_name or "").split() or [""])[0]
+                            _ti_msg = (
+                                f"Hi {_ti_first}! 👋 Thanks for your interest in the *{_triage_intent_title}*. "
+                                "One of our team will be in touch with you shortly."
+                                if _ti_first else
+                                f"Thanks for your interest in the *{_triage_intent_title}*! 👋 "
+                                "One of our team will be in touch with you shortly."
+                            )
+                            if _ti_phone_id and _ti_token:
+                                _call_meta_send(_ti_phone_id, {
+                                    "messaging_product": "whatsapp",
+                                    "to": sender_phone,
+                                    "type": "text",
+                                    "text": {"body": _ti_msg},
+                                }, token=_ti_token)
+                                try:
+                                    _ti_win = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+                                    db.table("whatsapp_messages").insert({
+                                        "org_id":            org_id,
+                                        "lead_id":           _triage_lead_id,
+                                        "direction":         "outbound",
+                                        "message_type":      "text",
+                                        "content":           _ti_msg,
+                                        "status":            "sent",
+                                        "window_open":       True,
+                                        "window_expires_at": _ti_win,
+                                        "sent_by":           None,
+                                        "created_at":        _now_triage,
+                                    }).execute()
+                                except Exception as _ti_save_exc:
+                                    logger.warning("[CATALOG-5] triage: msg save failed: %s", _ti_save_exc)
+                        except Exception as _ti_conf_exc:
+                            logger.warning("[CATALOG-5] triage: confirmation failed: %s", _ti_conf_exc)
+                        # Notify rep
+                        try:
+                            _ti_assigned = (_triage_lead or {}).get("assigned_to")
+                            if not _ti_assigned:
+                                _ti_ur = db.table("users").select("id, roles(template)").eq("org_id", org_id).execute()
+                                for _ti_u in (_ti_ur.data or []):
+                                    if (_ti_u.get("roles") or {}).get("template", "").lower() == "owner":
+                                        _ti_assigned = _ti_u["id"]
+                                        break
+                            if _ti_assigned:
+                                db.table("notifications").insert({
+                                    "org_id":        org_id,
+                                    "user_id":       _ti_assigned,
+                                    "type":          "new_lead",
+                                    "title":         f"Lead wants to buy: {contact_name or sender_phone}",
+                                    "body":          f"Interested in: {_triage_intent_title}. Came from the product catalog — no qualification needed.",
+                                    "resource_type": "lead",
+                                    "resource_id":   _triage_lead_id,
+                                    "is_read":       False,
+                                    "created_at":    _now_triage,
+                                }).execute()
+                        except Exception as _ti_notif_exc:
+                            logger.warning("[CATALOG-5] triage: notification failed: %s", _ti_notif_exc)
+                        # Mark qual session as handed_off
+                        try:
+                            db.table("lead_qualification_sessions").insert({
+                                "org_id":                 org_id,
+                                "lead_id":                _triage_lead_id,
+                                "ai_active":              False,
+                                "stage":                  "handed_off",
+                                "current_question_index": 0,
+                                "answers":                {"catalog_product_intent": _triage_intent_title},
+                                "created_at":             _now_triage,
+                                "last_message_at":        _now_triage,
+                                "handed_off_at":          _now_triage,
+                                "handoff_summary":        f"Lead came from catalog page and chose: {_triage_intent_title}. Qualification bot skipped.",
+                            }).execute()
+                        except Exception as _ti_sess_exc:
+                            logger.warning("[CATALOG-5] triage: qual session mark failed: %s", _ti_sess_exc)
+                    logger.info("[CATALOG-5] triage: catalog intent handled lead=%s", _triage_lead_id)
+                    if _triage_lead_id:
+                        return
+                    # _triage_lead_id is None (duplicate lead) — fall through to triage menu
+
             from app.services.whatsapp_service import send_triage_menu
             try:
                 send_triage_menu(db=db, org_id=org_id, phone_number=sender_phone, section="unknown", contact_name=contact_name)
