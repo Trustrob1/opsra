@@ -1156,9 +1156,101 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 else:
                     logger.warning("[WH] triage_first: lead creation failed for %s: %s", sender_phone, _lead_exc)
 
-            # CATALOG-5: If the first message is a catalog product intent,
-            # skip the triage menu entirely and route straight to the rep.
+            # CATALOG-5 / AD-INQUIRY: If the first message is a catalog product
+            # intent or ad inquiry, skip the triage menu and route to the rep.
             if msg_type == "text" and content:
+                _triage_ad_inquiry = _is_ad_inquiry_intent(content)
+                if _triage_ad_inquiry:
+                    _triage_lead_id = locals().get("_triage_lead", {}).get("id") if "_triage_lead" in locals() else None
+                    logger.info("[AD-INQUIRY] ad inquiry on first message lead=%s — skipping triage menu", _triage_lead_id)
+                    _now_triage_ad = _now_iso()
+                    if _triage_lead_id:
+                        try:
+                            db.table("leads").update({
+                                "problem_stated": "Saw an ad and wants to learn more",
+                            }).eq("id", _triage_lead_id).eq("org_id", org_id).execute()
+                        except Exception as _ad_pi_exc:
+                            logger.warning("[AD-INQUIRY] triage: lead update failed: %s", _ad_pi_exc)
+                        try:
+                            from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+                            from datetime import datetime, timezone, timedelta
+                            _ad_phone_id, _ad_token, _ = _get_org_wa_credentials(db, org_id)
+                            _ad_phone_id = (_ad_phone_id or "").strip()
+                            _ad_first = ((contact_name or "").split() or [""])[0]
+                            _ad_msg = (
+                                f"Hi {_ad_first}! 👋 Thanks for reaching out. "
+                                "One of our team will be in touch with you shortly to help."
+                                if _ad_first else
+                                "Hi there! 👋 Thanks for reaching out. "
+                                "One of our team will be in touch with you shortly to help."
+                            )
+                            if _ad_phone_id and _ad_token:
+                                _call_meta_send(_ad_phone_id, {
+                                    "messaging_product": "whatsapp",
+                                    "to": sender_phone,
+                                    "type": "text",
+                                    "text": {"body": _ad_msg},
+                                }, token=_ad_token)
+                                try:
+                                    _ad_win = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+                                    db.table("whatsapp_messages").insert({
+                                        "org_id":            org_id,
+                                        "lead_id":           _triage_lead_id,
+                                        "direction":         "outbound",
+                                        "message_type":      "text",
+                                        "content":           _ad_msg,
+                                        "status":            "sent",
+                                        "window_open":       True,
+                                        "window_expires_at": _ad_win,
+                                        "sent_by":           None,
+                                        "created_at":        _now_triage_ad,
+                                    }).execute()
+                                except Exception as _ad_save_exc:
+                                    logger.warning("[AD-INQUIRY] triage: msg save failed: %s", _ad_save_exc)
+                        except Exception as _ad_conf_exc:
+                            logger.warning("[AD-INQUIRY] triage: confirmation failed: %s", _ad_conf_exc)
+                        try:
+                            _ad_assigned = locals().get("_triage_lead", {}).get("assigned_to")
+                            if not _ad_assigned:
+                                _ad_ur = db.table("users").select("id, roles(template)").eq("org_id", org_id).execute()
+                                for _ad_u in (_ad_ur.data or []):
+                                    if (_ad_u.get("roles") or {}).get("template", "").lower() == "owner":
+                                        _ad_assigned = _ad_u["id"]
+                                        break
+                            if _ad_assigned:
+                                db.table("notifications").insert({
+                                    "org_id":        org_id,
+                                    "user_id":       _ad_assigned,
+                                    "type":          "new_lead",
+                                    "title":         f"New lead from ad: {contact_name or sender_phone}",
+                                    "body":          "Came from an ad landing page — no qualification needed. Reach out now.",
+                                    "resource_type": "lead",
+                                    "resource_id":   _triage_lead_id,
+                                    "is_read":       False,
+                                    "created_at":    _now_triage_ad,
+                                }).execute()
+                        except Exception as _ad_notif_exc:
+                            logger.warning("[AD-INQUIRY] triage: notification failed: %s", _ad_notif_exc)
+                        try:
+                            db.table("lead_qualification_sessions").insert({
+                                "org_id":                 org_id,
+                                "lead_id":                _triage_lead_id,
+                                "ai_active":              False,
+                                "stage":                  "handed_off",
+                                "current_question_index": 0,
+                                "answers":                {"ad_inquiry": True},
+                                "created_at":             _now_triage_ad,
+                                "last_message_at":        _now_triage_ad,
+                                "handed_off_at":          _now_triage_ad,
+                                "handoff_summary":        "Lead came from ad landing page. Qualification skipped.",
+                            }).execute()
+                        except Exception as _ad_sess_exc:
+                            logger.warning("[AD-INQUIRY] triage: qual session mark failed: %s", _ad_sess_exc)
+                    logger.info("[AD-INQUIRY] triage: ad inquiry handled lead=%s", _triage_lead_id)
+                    if _triage_lead_id:
+                        return
+                    # _triage_lead_id is None (duplicate) — fall through to triage menu
+
                 _triage_intent_title = _is_catalog_product_intent(content)
                 if _triage_intent_title:
                     _triage_lead_id = locals().get("_triage_lead", {}).get("id") if "_triage_lead" in locals() else None
@@ -1640,6 +1732,93 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 lead_id, _pqs_exc,
             )
 
+        # AD-INQUIRY: Ad landing page CTA — skip qualification, route to rep.
+        if msg_type == "text" and content and _is_ad_inquiry_intent(content):
+            logger.info("[AD-INQUIRY] known lead=%s — skipping qualification", lead_id)
+            try:
+                db.table("leads").update({
+                    "problem_stated": "Saw an ad and wants to learn more",
+                }).eq("id", lead_id).eq("org_id", org_id).execute()
+            except Exception as _kl_ad_pi_exc:
+                logger.warning("[AD-INQUIRY] known lead update failed: %s", _kl_ad_pi_exc)
+            try:
+                from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+                from datetime import datetime, timezone, timedelta
+                _kl_ad_phone_id, _kl_ad_token, _ = _get_org_wa_credentials(db, org_id)
+                _kl_ad_phone_id = (_kl_ad_phone_id or "").strip()
+                _kl_ad_first = ((contact_name or "").split() or [""])[0]
+                _kl_ad_msg = (
+                    f"Hi {_kl_ad_first}! 👋 Thanks for reaching out. "
+                    "One of our team will be in touch with you shortly to help."
+                    if _kl_ad_first else
+                    "Hi there! 👋 Thanks for reaching out. "
+                    "One of our team will be in touch with you shortly to help."
+                )
+                if _kl_ad_phone_id and _kl_ad_token:
+                    _call_meta_send(_kl_ad_phone_id, {
+                        "messaging_product": "whatsapp",
+                        "to": sender_phone,
+                        "type": "text",
+                        "text": {"body": _kl_ad_msg},
+                    }, token=_kl_ad_token)
+                    try:
+                        _kl_ad_win = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+                        db.table("whatsapp_messages").insert({
+                            "org_id":            org_id,
+                            "lead_id":           lead_id,
+                            "direction":         "outbound",
+                            "message_type":      "text",
+                            "content":           _kl_ad_msg,
+                            "status":            "sent",
+                            "window_open":       True,
+                            "window_expires_at": _kl_ad_win,
+                            "sent_by":           None,
+                            "created_at":        now_ts,
+                        }).execute()
+                    except Exception as _kl_ad_save_exc:
+                        logger.warning("[AD-INQUIRY] known: msg save failed: %s", _kl_ad_save_exc)
+            except Exception as _kl_ad_conf_exc:
+                logger.warning("[AD-INQUIRY] known: confirmation failed: %s", _kl_ad_conf_exc)
+            try:
+                _kl_ad_notify = assigned_to
+                if not _kl_ad_notify:
+                    _kl_ur = db.table("users").select("id, roles(template)").eq("org_id", org_id).execute()
+                    for _kl_u in (_kl_ur.data or []):
+                        if (_kl_u.get("roles") or {}).get("template", "").lower() == "owner":
+                            _kl_ad_notify = _kl_u["id"]
+                            break
+                if _kl_ad_notify:
+                    db.table("notifications").insert({
+                        "org_id":        org_id,
+                        "user_id":       _kl_ad_notify,
+                        "type":          "new_lead",
+                        "title":         f"New lead from ad: {contact_name or sender_phone}",
+                        "body":          "Came from an ad landing page — no qualification needed. Reach out now.",
+                        "resource_type": "lead",
+                        "resource_id":   lead_id,
+                        "is_read":       False,
+                        "created_at":    now_ts,
+                    }).execute()
+            except Exception as _kl_ad_notif_exc:
+                logger.warning("[AD-INQUIRY] known: notification failed: %s", _kl_ad_notif_exc)
+            try:
+                db.table("lead_qualification_sessions").insert({
+                    "org_id":                 org_id,
+                    "lead_id":                lead_id,
+                    "ai_active":              False,
+                    "stage":                  "handed_off",
+                    "current_question_index": 0,
+                    "answers":                {"ad_inquiry": True},
+                    "created_at":             now_ts,
+                    "last_message_at":        now_ts,
+                    "handed_off_at":          now_ts,
+                    "handoff_summary":        "Lead came from ad landing page. Qualification skipped.",
+                }).execute()
+            except Exception as _kl_ad_sess_exc:
+                logger.warning("[AD-INQUIRY] known: qual session mark failed: %s", _kl_ad_sess_exc)
+            logger.info("[AD-INQUIRY] known lead handled lead=%s", lead_id)
+            return
+
         # CATALOG-5: Product-intent classifier — matches the Variant A CTA pre-fill
         # pattern "Hi, I'm interested in the {title}" from the public catalog.
         # The lead has already chosen a specific product, so qualification is skipped.
@@ -1956,6 +2135,21 @@ def _is_catalog_product_intent(content: str) -> Optional[str]:
     except Exception as exc:
         logger.warning("_is_catalog_product_intent failed: %s", exc)
         return None
+
+
+def _is_ad_inquiry_intent(content: str) -> bool:
+    """
+    AD-INQUIRY: Returns True if the message matches the ad landing page CTA
+    pre-fill pattern: "Hi, I saw your ad and would like to learn more".
+    Skips qualification — routes directly to sales rep, same as triage "Speak to Sales".
+    S14: never raises.
+    """
+    try:
+        PHRASE = "hi, i saw your ad and would like to learn more"
+        return (content or "").strip().lower() == PHRASE
+    except Exception as exc:
+        logger.warning("_is_ad_inquiry_intent failed: %s", exc)
+        return False
 
 
 def _handle_structured_qualification_turn(
