@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Book a Demo — Opsra</title>
+  <meta name="description" content="Book a free 30-minute demo. No pressure, no sales script. We show you exactly what Opsra looks like for your industry and tell you honestly which plan makes sense."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+  <link rel="stylesheet" href="_base.css"/>
+  <style>
+    .contact-page{padding:72px 0 80px;background:var(--white);min-height:80vh;}
+    .contact-layout{display:grid;grid-template-columns:1.1fr 1fr;gap:72px;align-items:start;}
+    .form-group{margin-bottom:20px;}
+    .form-label{display:block;font-size:13px;font-weight:500;color:var(--text-2);margin-bottom:6px;}
+    .form-input{width:100%;padding:11px 14px;border:1px solid var(--border-mid);border-radius:var(--r-md);font-size:14px;font-family:inherit;color:var(--text);background:var(--white);transition:border-color 0.15s;outline:none;}
+    .form-input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(29,158,117,0.1);}
+    .form-input::placeholder{color:var(--text-3);}
+    .form-textarea{width:100%;padding:11px 14px;border:1px solid var(--border-mid);border-radius:var(--r-md);font-size:14px;font-family:inherit;color:var(--text);background:var(--white);transition:border-color 0.15s;outline:none;resize:vertical;min-height:110px;}
+    .form-textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(29,158,117,0.1);}
+    .form-textarea::placeholder{color:var(--text-3);}
+    .form-submit{width:100%;padding:14px;font-size:15px;font-weight:500;border-radius:var(--r-md);border:none;background:var(--teal);color:#fff;cursor:pointer;font-family:inherit;transition:background 0.15s;}
+    .form-submit:hover{background:var(--teal-dark);}
+    .form-note{font-size:12px;color:var(--text-3);text-align:center;margin-top:10px;}
+    .side-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;margin-bottom:14px;}
+    .side-card-title{font-size:14px;font-weight:500;color:var(--text);margin-bottom:14px;}
+    .contact-item{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text-2);margin-bottom:10px;}
+    .contact-item i{font-size:17px;color:var(--teal);flex-shrink:0;}
+    .contact-item:last-child{margin-bottom:0;}
+    .expect-list{list-style:none;display:flex;flex-direction:column;gap:12px;}
+    .expect-item{display:flex;align-items:flex-start;gap:10px;font-size:14px;color:var(--text-2);line-height:1.5;}
+    .expect-item i{font-size:15px;color:var(--teal);flex-shrink:0;margin-top:2px;}
+    .fallback-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
+    .success-state{display:none;text-align:center;padding:48px 24px;}
+    .success-state.visible{display:block;}
+    .form-state{transition:opacity 0.2s;}
+    @media(max-width:900px){.contact-layout{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">Op<span>sra</span></a>
+    <div class="nav-links">
+      <a href="features.html">Features</a>
+      <a href="solutions.html">Solutions</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+    </div>
+    <div class="nav-actions">
+      <button class="btn-ghost">Sign in</button>
+      <button class="btn-primary">Book a demo</button>
+    </div>
+  </div>
+</nav>
+
+<section class="contact-page">
+  <div class="container">
+    <div class="contact-layout">
+
+      <div>
+        <p class="section-tag">Book a demo</p>
+        <h1 class="section-heading display" style="max-width:480px;">See Opsra working for your business — in 30 minutes</h1>
+        <p style="font-size:15px;color:var(--text-2);line-height:1.75;margin-bottom:36px;">No pressure. No sales script. We show you exactly what it looks like for your industry and tell you honestly which plan makes sense — or whether Opsra is even right for you right now.</p>
+
+        <div id="form-state">
+          <form id="demo-form" onsubmit="submitForm(event)" novalidate>
+            <div class="form-group">
+              <label class="form-label" for="name">Full name <span style="color:var(--red);">*</span></label>
+              <input class="form-input" type="text" id="name" name="name" placeholder="Tunde Adeyemi" required autocomplete="name"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="email">Business email <span style="color:var(--red);">*</span></label>
+              <input class="form-input" type="email" id="email" name="email" placeholder="tunde@yourbusiness.com" required autocomplete="email"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="business">Business name <span style="color:var(--red);">*</span></label>
+              <input class="form-input" type="text" id="business" name="business" placeholder="Adeyemi &amp; Co." required autocomplete="organization"/>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div class="form-group">
+                <label class="form-label" for="industry">Industry <span style="color:var(--red);">*</span></label>
+                <select class="form-input" id="industry" name="industry" required>
+                  <option value="">Select your industry</option>
+                  <option>Real estate</option>
+                  <option>SaaS / Tech</option>
+                  <option>Healthcare</option>
+                  <option>Insurance</option>
+                  <option>Retail / E-commerce</option>
+                  <option>Education / Schools</option>
+                  <option>Professional services</option>
+                  <option>Financial services</option>
+                  <option>Logistics / Supply chain</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="team-size">Team size</label>
+                <select class="form-input" id="team-size" name="team_size">
+                  <option value="">Select team size</option>
+                  <option>Just me</option>
+                  <option>2–5 people</option>
+                  <option>6–15 people</option>
+                  <option>16–50 people</option>
+                  <option>50+ people</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="challenge">What is your biggest operational challenge right now?</label>
+              <textarea class="form-textarea" id="challenge" name="challenge" placeholder="e.g. My team is not following up on leads fast enough — I have no way to see who did what. Or: I manage 8 contractors and I have no idea how any of them are actually performing day to day..."></textarea>
+            </div>
+            <div id="form-error" style="display:none;background:var(--red-light);color:var(--red-dark);font-size:13px;padding:12px 14px;border-radius:var(--r-md);margin-bottom:16px;"></div>
+            <button class="form-submit" type="submit" id="submit-btn">Book my free demo</button>
+            <p class="form-note">We respond within 2 hours on business days &nbsp;·&nbsp; No spam, ever</p>
+          </form>
+        </div>
+
+        <div class="success-state" id="success-state">
+          <div style="width:56px;height:56px;border-radius:50%;background:var(--teal-light);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+            <i class="ti ti-check" style="font-size:28px;color:var(--teal-dark);" aria-hidden="true"></i>
+          </div>
+          <h2 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:600;color:var(--text);margin-bottom:12px;">You are booked in.</h2>
+          <p style="font-size:15px;color:var(--text-2);line-height:1.75;max-width:380px;margin:0 auto 20px;">Check your email for a confirmation and a calendar link to pick your preferred slot. We will review your answers before the call so we come prepared for your specific business.</p>
+          <a href="index.html"><button class="btn-secondary-lg">Back to homepage</button></a>
+        </div>
+      </div>
+
+      <div>
+        <div class="side-card">
+          <p class="side-card-title">What happens after you book</p>
+          <ul class="expect-list">
+            <li class="expect-item"><i class="ti ti-check" aria-hidden="true"></i>You get a confirmation with a calendar link to choose your preferred slot</li>
+            <li class="expect-item"><i class="ti ti-check" aria-hidden="true"></i>We read your answers before the call so we come prepared — not generic</li>
+            <li class="expect-item"><i class="ti ti-check" aria-hidden="true"></i>30-minute video call — we demo, you ask questions, we answer honestly</li>
+            <li class="expect-item"><i class="ti ti-check" aria-hidden="true"></i>After the call, we send a tailored proposal with pricing — no obligation</li>
+          </ul>
+        </div>
+
+        <div class="side-card">
+          <p class="side-card-title">Prefer to reach us directly?</p>
+          <div class="contact-item">
+            <i class="ti ti-mail" aria-hidden="true"></i>
+            <a href="mailto:hello@opsra.io" style="color:var(--text-2);">hello@opsra.io</a>
+          </div>
+          <div class="contact-item">
+            <i class="ti ti-brand-whatsapp" aria-hidden="true"></i>
+            <a href="https://wa.me/234XXXXXXXXXX" style="color:var(--text-2);">+234 xxx xxx xxxx</a>
+          </div>
+          <div class="contact-item">
+            <i class="ti ti-clock" aria-hidden="true"></i>
+            <span>Monday – Friday, 9am – 6pm WAT</span>
+          </div>
+        </div>
+
+        <div class="side-card">
+          <p class="side-card-title">Not ready to book yet?</p>
+          <p style="font-size:13px;color:var(--text-2);line-height:1.65;margin-bottom:14px;">Browse the features page to see exactly what each module does, or check pricing to understand which plan fits your business size and stage.</p>
+          <div class="fallback-links">
+            <a href="features.html"><button class="btn-secondary-lg" style="font-size:13px;padding:9px 18px;">View features</button></a>
+            <a href="pricing.html"><button class="btn-secondary-lg" style="font-size:13px;padding:9px 18px;">See pricing</button></a>
+          </div>
+        </div>
+
+        <div style="background:var(--teal-light);border-radius:var(--r-lg);padding:20px;margin-top:4px;">
+          <p style="font-size:13px;font-weight:500;color:var(--teal-dark);margin-bottom:6px;">Why book instead of just signing up?</p>
+          <p style="font-size:13px;color:var(--teal-deeper);line-height:1.65;">Opsra is configured specifically for your business — your pipeline stages, your KPI targets, your team structure. The demo is also the first step in that setup. You will leave with a clear picture of what day one looks like for you.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <a href="index.html" class="footer-logo">Op<span>sra</span></a>
+    <nav class="footer-links" aria-label="Footer navigation">
+      <a href="features.html">Features</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+    <span class="footer-copy">© 2026 Opsra. All rights reserved.</span>
+  </div>
+</footer>
+
+<script>
+function submitForm(e){
+  e.preventDefault();
+  var err=document.getElementById('form-error');
+  var btn=document.getElementById('submit-btn');
+  err.style.display='none';
+  var name=document.getElementById('name').value.trim();
+  var email=document.getElementById('email').value.trim();
+  var biz=document.getElementById('business').value.trim();
+  var ind=document.getElementById('industry').value;
+  if(!name||!email||!biz||!ind){
+    err.textContent='Please fill in all required fields before submitting.';
+    err.style.display='block';
+    return;
+  }
+  var emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if(!emailRe.test(email)){
+    err.textContent='Please enter a valid email address.';
+    err.style.display='block';
+    return;
+  }
+  btn.textContent='Submitting...';
+  btn.disabled=true;
+  /*
+    FORM SUBMISSION
+    Connect this to your backend, Formspree, Netlify Forms, or any form handler.
+    Example Formspree: replace the fetch URL with your Formspree endpoint.
+
+    fetch('https://formspree.io/f/YOUR_FORM_ID', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name,email,business:biz,industry:ind,
+        team_size:document.getElementById('team-size').value,
+        challenge:document.getElementById('challenge').value})
+    }).then(function(r){
+      if(r.ok){ showSuccess(); }
+      else { showError('Something went wrong. Please email us at hello@opsra.io'); }
+    }).catch(function(){ showError('Connection error. Please try again or email us directly.'); });
+
+    For now, we simulate a successful submission:
+  */
+  setTimeout(function(){ showSuccess(); }, 800);
+}
+function showSuccess(){
+  document.getElementById('form-state').style.display='none';
+  var s=document.getElementById('success-state');
+  s.classList.add('visible');
+  s.focus();
+}
+function showError(msg){
+  var btn=document.getElementById('submit-btn');
+  var err=document.getElementById('form-error');
+  btn.textContent='Book my free demo';
+  btn.disabled=false;
+  err.textContent=msg;
+  err.style.display='block';
+}
+</script>
+</body>
+</html>

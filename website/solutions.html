@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Solutions — Opsra</title>
+  <meta name="description" content="Opsra works differently depending on your role. See how it helps business owners, heads of sales, operations managers, and support teams."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+  <link rel="stylesheet" href="_base.css"/>
+  <style>
+    .solutions-hero{padding:72px 0 0;background:var(--white);}
+    .tab-bar{border-bottom:1px solid var(--border);background:var(--white);}
+    .tab-bar-inner{display:flex;max-width:1120px;margin:0 auto;padding:0 32px;}
+    .tab-btn{padding:16px 24px;font-size:14px;color:var(--text-2);background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:inherit;transition:all 0.15s;white-space:nowrap;}
+    .tab-btn:hover{color:var(--text);}
+    .tab-btn.active{color:var(--teal);border-bottom-color:var(--teal);font-weight:500;}
+    .tab-panel{display:none;}
+    .tab-panel.active{display:block;}
+    .sol-layout{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;padding:72px 0;}
+    .sol-heading{font-family:'Syne',sans-serif;font-size:28px;font-weight:600;line-height:1.2;letter-spacing:-0.4px;color:var(--text);margin-bottom:16px;}
+    .sol-desc{font-size:15px;color:var(--text-2);line-height:1.75;margin-bottom:28px;}
+    .img-placeholder{border-radius:var(--r-xl);overflow:hidden;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;}
+    .img-ph-lbl{font-size:12px;color:var(--text-3);text-align:center;max-width:200px;line-height:1.5;}
+    .img-ph-lbl strong{display:block;font-weight:500;color:var(--text-2);margin-bottom:4px;}
+    @media(max-width:900px){.sol-layout{grid-template-columns:1fr;padding:48px 0;}.tab-btn{padding:12px 16px;font-size:13px;}}
+  </style>
+</head>
+<body>
+
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">Op<span>sra</span></a>
+    <div class="nav-links">
+      <a href="features.html">Features</a>
+      <a href="solutions.html" class="active">Solutions</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+    </div>
+    <div class="nav-actions">
+      <button class="btn-ghost">Sign in</button>
+      <button class="btn-primary">Book a demo</button>
+    </div>
+  </div>
+</nav>
+
+<section class="solutions-hero">
+  <div class="container">
+    <p class="section-tag">Solutions</p>
+    <h1 class="section-heading display" style="max-width:580px;">Opsra works for your role, not just your business</h1>
+    <p class="section-sub">The same platform speaks differently depending on what you need. Choose your role below to see exactly how Opsra works for you.</p>
+  </div>
+</section>
+
+<div class="tab-bar" role="tablist" aria-label="Audience selector">
+  <div class="tab-bar-inner">
+    <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="panel-owner" onclick="showTab('owner',this)">Business owner</button>
+    <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-sales" onclick="showTab('sales',this)">Head of sales</button>
+    <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-ops" onclick="showTab('ops',this)">Ops manager</button>
+    <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-support" onclick="showTab('support',this)">Support team</button>
+  </div>
+</div>
+
+<div class="tab-panel active" id="panel-owner" role="tabpanel">
+  <div style="background:var(--surface);">
+    <div class="container">
+      <div class="sol-layout">
+        <div>
+          <p class="section-tag">For business owners &amp; CEOs</p>
+          <h2 class="sol-heading">You built the business. Now see all of it — without asking anyone.</h2>
+          <p class="sol-desc">Most business owners are the last to know when something is going wrong. By the time the lead slipped, the customer churned, or the contractor underperformed — it has already cost money. Opsra gives you a live view of everything, every morning, before you even open a group chat.</p>
+          <ul class="check-list" style="margin-bottom:28px;">
+            <li><i class="ti ti-check" aria-hidden="true"></i>Monday AI digest — know your week before it starts</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Live pipeline — see every lead and its current status</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Team and contractor KPIs — live, not end-of-month</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Churn risk alerts — flagged weeks before customers leave</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>AI anomaly detection — unusual patterns flagged instantly</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Ask your data anything in plain English</li>
+          </ul>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <button class="btn-primary-lg">Book a demo for owners</button>
+            <a href="pricing.html"><button class="btn-secondary-lg">See pricing</button></a>
+          </div>
+        </div>
+        <div>
+          <div class="img-placeholder" style="height:320px;margin-bottom:20px;" role="img" aria-label="Business owner reviewing Opsra dashboard">
+            <!--
+              PHOTO PLACEHOLDER
+              Replace with: <img src="images/solution-owner.jpg" alt="Business owner reviewing Opsra dashboard" />
+              Show: Confident business owner (30s-50s) reviewing a screen or in a decisive moment
+              Dimensions: 640 x 640px minimum
+            -->
+            <i class="ti ti-photo" style="font-size:28px;color:#B4B2A9;" aria-hidden="true"></i>
+            <p class="img-ph-lbl"><strong>Photo</strong>Business owner reviewing dashboard — confident, decisive, natural setting</p>
+          </div>
+          <div class="proof-card">
+            <p class="proof-quote">"I used to spend Monday mornings chasing 5 people for updates. Now Opsra sends me everything at 7am and I spend the time actually making decisions."</p>
+            <div class="proof-attr">
+              <div class="proof-avatar" style="background:var(--blue-light);color:var(--blue);">BI</div>
+              <div>
+                <div class="proof-name">Bola I.</div>
+                <div class="proof-role">Founder — insurance brokerage, Port Harcourt</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-sales" role="tabpanel">
+  <div style="background:var(--surface);">
+    <div class="container">
+      <div class="sol-layout">
+        <div>
+          <p class="section-tag">For heads of sales</p>
+          <h2 class="sol-heading">A pipeline you can trust. A team you can hold accountable.</h2>
+          <p class="sol-desc">Managing a sales team without data is managing by hope. Opsra gives you a real-time view of every lead, every rep's activity, and every conversion — so you can coach on the right things, catch problems early, and hit your numbers with clarity.</p>
+          <ul class="check-list" style="margin-bottom:28px;">
+            <li><i class="ti ti-check" aria-hidden="true"></i>Full pipeline visibility — every lead, every stage, every rep</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Activity tracking — calls, demos, follow-ups logged daily</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Lead aging alerts — catch stale leads before they die</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Conversion analytics — see what is working and what is not</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Rep performance dashboard — compare output across the team</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>AI outreach drafts — help reps write better faster</li>
+          </ul>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <button class="btn-primary-lg">Book a demo for sales teams</button>
+            <a href="pricing.html"><button class="btn-secondary-lg">See pricing</button></a>
+          </div>
+        </div>
+        <div>
+          <div class="img-placeholder" style="height:320px;margin-bottom:20px;" role="img" aria-label="Sales team reviewing pipeline together">
+            <!--
+              PHOTO PLACEHOLDER
+              Replace with: <img src="images/solution-sales.jpg" alt="Sales team reviewing pipeline" />
+              Show: Head of sales or sales team reviewing a screen together — energetic, focused
+              Dimensions: 640 x 640px minimum
+            -->
+            <i class="ti ti-photo" style="font-size:28px;color:#B4B2A9;" aria-hidden="true"></i>
+            <p class="img-ph-lbl"><strong>Photo</strong>Head of sales reviewing team pipeline — focused, data-driven moment</p>
+          </div>
+          <div class="proof-card">
+            <p class="proof-quote">"Before Opsra, I had no idea which leads my team had followed up and which ones had gone cold. Now I check one screen and I know everything."</p>
+            <div class="proof-attr">
+              <div class="proof-avatar" style="background:var(--teal-light);color:var(--teal-dark);">AO</div>
+              <div>
+                <div class="proof-name">Adebayo O.</div>
+                <div class="proof-role">CEO — real estate firm, Lagos</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-ops" role="tabpanel">
+  <div style="background:var(--surface);">
+    <div class="container">
+      <div class="sol-layout">
+        <div>
+          <p class="section-tag">For operations managers</p>
+          <h2 class="sol-heading">Manage contractors, track KPIs, and surface blockers before they become expensive.</h2>
+          <p class="sol-desc">Operations managers are expected to know what is happening across the whole business — but are often the last to find out. Opsra gives you live visibility into every team member's output, every contractor's performance, and every issue that needs your attention.</p>
+          <ul class="check-list" style="margin-bottom:28px;">
+            <li><i class="ti ti-check" aria-hidden="true"></i>Live KPI tracker for staff and contractors</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Daily activity log — what everyone worked on, every day</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Blocker alerts — flag and escalate issues instantly</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Internal issue tracker — log, assign, and resolve ops problems</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Downloadable PDF reports for contractor reviews</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Cross-team overview — one screen for the whole operation</li>
+          </ul>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <button class="btn-primary-lg">Book a demo for ops teams</button>
+            <a href="pricing.html"><button class="btn-secondary-lg">See pricing</button></a>
+          </div>
+        </div>
+        <div>
+          <div class="img-placeholder" style="height:320px;margin-bottom:20px;" role="img" aria-label="Operations manager reviewing team output">
+            <!--
+              PHOTO PLACEHOLDER
+              Replace with: <img src="images/solution-ops.jpg" alt="Operations manager at work" />
+              Show: Ops manager at a desk reviewing data or in a planning discussion — systematic, organised
+              Dimensions: 640 x 640px minimum
+            -->
+            <i class="ti ti-photo" style="font-size:28px;color:#B4B2A9;" aria-hidden="true"></i>
+            <p class="img-ph-lbl"><strong>Photo</strong>Operations manager reviewing team output — systematic, organised setting</p>
+          </div>
+          <div class="proof-card">
+            <p class="proof-quote">"Our contractors used to argue about their KPIs at review time. Now we both look at the same numbers. The conversations are shorter and fairer."</p>
+            <div class="proof-attr">
+              <div class="proof-avatar" style="background:var(--purple-light);color:var(--purple);">FK</div>
+              <div>
+                <div class="proof-name">Funmi K.</div>
+                <div class="proof-role">Operations manager — SaaS company, Abuja</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-support" role="tabpanel">
+  <div style="background:var(--surface);">
+    <div class="container">
+      <div class="sol-layout">
+        <div>
+          <p class="section-tag">For support teams</p>
+          <h2 class="sol-heading">Every customer issue handled. Nothing disappears in a chat thread.</h2>
+          <p class="sol-desc">Support teams running on WhatsApp lose tickets, miss follow-ups, and have no way to show what they resolved. Opsra gives your team a structured ticketing system where everything is assigned, tracked, and closed — with a full audit trail.</p>
+          <ul class="check-list" style="margin-bottom:28px;">
+            <li><i class="ti ti-check" aria-hidden="true"></i>Tickets from WhatsApp, email, or manual entry</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Priority tiers — Low, Medium, High, Urgent</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Agent assignment with workload view</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>SLA tracking — flag tickets approaching breach</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Resolution notes and customer satisfaction logging</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Full ticket history — never lose context on a returning issue</li>
+          </ul>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <button class="btn-primary-lg">Book a demo for support teams</button>
+            <a href="pricing.html"><button class="btn-secondary-lg">See pricing</button></a>
+          </div>
+        </div>
+        <div>
+          <div class="img-placeholder" style="height:320px;margin-bottom:20px;" role="img" aria-label="Support team working through customer tickets">
+            <!--
+              PHOTO PLACEHOLDER
+              Replace with: <img src="images/solution-support.jpg" alt="Support team at work" />
+              Show: Support agent or team at computers — focused, professional, helpful energy
+              Dimensions: 640 x 640px minimum
+            -->
+            <i class="ti ti-photo" style="font-size:28px;color:#B4B2A9;" aria-hidden="true"></i>
+            <p class="img-ph-lbl"><strong>Photo</strong>Support team at work — focused, professional, helpful energy</p>
+          </div>
+          <div class="proof-card">
+            <p class="proof-quote">"We were losing customers silently. Opsra flagged three accounts at churn risk before we would have ever noticed. We saved all three."</p>
+            <div class="proof-attr">
+              <div class="proof-avatar" style="background:var(--amber-light);color:var(--amber);">TM</div>
+              <div>
+                <div class="proof-name">Temi M.</div>
+                <div class="proof-role">Head of customer success — healthcare platform, Lagos</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<section class="cta-band">
+  <div class="container">
+    <p class="section-tag">Find your fit</p>
+    <h2 class="cta-heading display">Which role are you? Book a tailored demo.</h2>
+    <p class="cta-sub">Tell us your role and biggest challenge. We'll show you exactly what Opsra looks like for you — in 30 minutes.</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;">
+      <a href="contact.html"><button class="btn-primary-lg">Book a free demo</button></a>
+      <a href="pricing.html"><button class="btn-secondary-lg">See pricing</button></a>
+    </div>
+    <p class="cta-footnote">No credit card required &nbsp;·&nbsp; Setup included &nbsp;·&nbsp; Live in under 5 days</p>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <a href="index.html" class="footer-logo">Op<span>sra</span></a>
+    <nav class="footer-links" aria-label="Footer navigation">
+      <a href="features.html">Features</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+    <span class="footer-copy">© 2026 Opsra. All rights reserved.</span>
+  </div>
+</footer>
+
+<script>
+function showTab(id,btn){
+  document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');b.setAttribute('aria-selected','false');});
+  document.getElementById('panel-'+id).classList.add('active');
+  btn.classList.add('active');
+  btn.setAttribute('aria-selected','true');
+}
+</script>
+</body>
+</html>

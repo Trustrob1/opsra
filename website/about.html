@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>About — Opsra</title>
+  <meta name="description" content="We built Opsra because we watched good businesses lose money to bad systems. Learn about our mission, our team, and why we believe every growing business deserves operational clarity."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+  <link rel="stylesheet" href="_base.css"/>
+  <style>
+    .about-hero{padding:72px 0;background:var(--white);}
+    .about-layout{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;}
+    .img-placeholder{border-radius:var(--r-xl);overflow:hidden;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;}
+    .img-ph-lbl{font-size:12px;color:var(--text-3);text-align:center;max-width:200px;line-height:1.5;}
+    .img-ph-lbl strong{display:block;font-weight:500;color:var(--text-2);margin-bottom:4px;}
+    .mission-band{background:var(--surface);padding:72px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+    .mission-quote{font-family:'Syne',sans-serif;font-size:28px;font-weight:600;color:var(--text);line-height:1.3;letter-spacing:-0.4px;max-width:680px;}
+    .values-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+    .value-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;}
+    .value-icon{width:36px;height:36px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
+    .value-name{font-size:14px;font-weight:500;color:var(--text);margin-bottom:7px;}
+    .value-desc{font-size:13px;color:var(--text-2);line-height:1.65;}
+    .team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+    .team-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;text-align:center;}
+    .team-photo{width:90px;height:90px;border-radius:50%;margin:0 auto 16px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;}
+    .team-name{font-size:15px;font-weight:500;color:var(--text);margin-bottom:4px;}
+    .team-role{font-size:12px;color:var(--teal);margin-bottom:10px;}
+    .team-bio{font-size:13px;color:var(--text-2);line-height:1.6;}
+    @media(max-width:900px){.about-layout{grid-template-columns:1fr;}.team-grid{grid-template-columns:1fr;}.values-grid{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">Op<span>sra</span></a>
+    <div class="nav-links">
+      <a href="features.html">Features</a>
+      <a href="solutions.html">Solutions</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html" class="active">About</a>
+    </div>
+    <div class="nav-actions">
+      <button class="btn-ghost">Sign in</button>
+      <button class="btn-primary">Book a demo</button>
+    </div>
+  </div>
+</nav>
+
+<section class="about-hero">
+  <div class="container">
+    <div class="about-layout">
+      <div>
+        <p class="section-tag">About Opsra</p>
+        <h1 class="section-heading display">We built Opsra because we watched good businesses lose money to bad systems</h1>
+        <p style="font-size:16px;color:var(--text-2);line-height:1.75;margin-bottom:20px;">Most growing businesses in Nigeria are run by smart, capable people — who spend too much of their time chasing updates, managing spreadsheets, and dealing with problems they didn't see coming.</p>
+        <p style="font-size:16px;color:var(--text-2);line-height:1.75;margin-bottom:28px;">We built Opsra to fix that. A business owner should be able to see everything that is happening in their business from one screen, every morning — and spend the rest of the day actually building the business, not administering it.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <a href="contact.html"><button class="btn-primary-lg">Book a demo</button></a>
+          <a href="features.html"><button class="btn-secondary-lg">See the product</button></a>
+        </div>
+      </div>
+      <div class="img-placeholder" style="height:440px;" role="img" aria-label="Founder working on Opsra">
+        <!--
+          PHOTO PLACEHOLDER
+          Replace with: <img src="images/about-founder.jpg" alt="Opsra founder" />
+          Brief: Natural, candid photo of the founder — at a desk, in a meeting, or in conversation.
+          Real, not stock. Warm, approachable, professional but not stiff.
+          Dimensions: 640 x 880px minimum (portrait)
+        -->
+        <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-ph-lbl"><strong>Founder photo</strong>Natural, candid — real not stock. Warm and approachable.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="mission-band">
+  <div class="container">
+    <p class="section-tag" style="margin-bottom:20px;">Our mission</p>
+    <p class="mission-quote">Give every growing business the operational clarity that used to belong only to large enterprises with dedicated ops teams and expensive software.</p>
+  </div>
+</div>
+
+<section class="section">
+  <div class="container">
+    <p class="section-tag">How we work</p>
+    <h2 class="section-heading display">What we believe about building businesses</h2>
+    <p class="section-sub">These are the principles behind how Opsra is built — and why it works the way it does.</p>
+    <div class="values-grid">
+      <div class="value-card">
+        <div class="value-icon" style="background:var(--teal-light);">
+          <i class="ti ti-eye" style="font-size:18px;color:var(--teal-dark);" aria-hidden="true"></i>
+        </div>
+        <div class="value-name">Visibility before decisions</div>
+        <div class="value-desc">You cannot make good decisions about things you cannot see. Every feature we build starts with the question: what does the business owner need to see right now?</div>
+      </div>
+      <div class="value-card">
+        <div class="value-icon" style="background:var(--blue-light);">
+          <i class="ti ti-users" style="font-size:18px;color:var(--blue);" aria-hidden="true"></i>
+        </div>
+        <div class="value-name">Clarity creates fairness</div>
+        <div class="value-desc">When both sides of a relationship — employer and contractor, manager and team — see the same data, conversations become factual instead of emotional. We build for that.</div>
+      </div>
+      <div class="value-card">
+        <div class="value-icon" style="background:var(--purple-light);">
+          <i class="ti ti-rocket" style="font-size:18px;color:var(--purple);" aria-hidden="true"></i>
+        </div>
+        <div class="value-name">Simple enough to actually use</div>
+        <div class="value-desc">A system nobody uses is not a system — it is a subscription. We design Opsra for people who are not technical, who are busy, and who need it to work from day one without a manual.</div>
+      </div>
+      <div class="value-card">
+        <div class="value-icon" style="background:var(--amber-light);">
+          <i class="ti ti-shield-check" style="font-size:18px;color:var(--amber);" aria-hidden="true"></i>
+        </div>
+        <div class="value-name">Early warnings save money</div>
+        <div class="value-desc">Every churn, every performance problem, and every missed lead shows signs before it becomes expensive. We build Opsra to surface those signs weeks earlier than you would otherwise notice them.</div>
+      </div>
+      <div class="value-card">
+        <div class="value-icon" style="background:var(--green-light);">
+          <i class="ti ti-chart-line" style="font-size:18px;color:var(--green);" aria-hidden="true"></i>
+        </div>
+        <div class="value-name">Honest about what works</div>
+        <div class="value-desc">We tell every prospective client honestly whether Opsra is the right fit for them. A customer who is not ready for a system like this will not get value — and that is not good for either of us.</div>
+      </div>
+      <div class="value-card">
+        <div class="value-icon" style="background:#FAECE7;">
+          <i class="ti ti-heart" style="font-size:18px;color:#993C1D;" aria-hidden="true"></i>
+        </div>
+        <div class="value-name">Built for Nigerian businesses</div>
+        <div class="value-desc">Opsra is designed for how businesses actually run in Nigeria — WhatsApp-first customer relationships, lean teams, contractor-heavy operations, and owners who wear many hats at once.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="section bg">
+  <div class="container">
+    <p class="section-tag">The team</p>
+    <h2 class="section-heading display">Built by people who understand business operations</h2>
+    <p class="section-sub">Replace these placeholders with real team bios and photos when ready.</p>
+    <div class="team-grid">
+      <div class="team-card">
+        <div class="team-photo" role="img" aria-label="Founder and CEO photo placeholder">
+          <!--
+            PHOTO PLACEHOLDER
+            Replace with: <img src="images/team-founder.jpg" alt="[Founder name]" style="border-radius:50%;" />
+            Circular headshot — professional but natural, not stiff.
+            Dimensions: 200 x 200px minimum
+          -->
+          <i class="ti ti-photo" style="font-size:20px;color:#B4B2A9;" aria-hidden="true"></i>
+        </div>
+        <div class="team-name">[Founder name]</div>
+        <div class="team-role">Founder &amp; CEO</div>
+        <div class="team-bio">Background in business operations and systems design. Built Opsra after watching the same operational problems repeat across multiple growing businesses in Nigeria.</div>
+      </div>
+      <div class="team-card">
+        <div class="team-photo" role="img" aria-label="Head of product photo placeholder">
+          <!--
+            PHOTO PLACEHOLDER
+            Replace with: <img src="images/team-product.jpg" alt="[Name]" style="border-radius:50%;" />
+          -->
+          <i class="ti ti-photo" style="font-size:20px;color:#B4B2A9;" aria-hidden="true"></i>
+        </div>
+        <div class="team-name">[Team member name]</div>
+        <div class="team-role">Head of product</div>
+        <div class="team-bio">Replace with real bio — background, what they bring to the team, one line about why they joined Opsra. Keep it human and specific, not generic.</div>
+      </div>
+      <div class="team-card">
+        <div class="team-photo" role="img" aria-label="Head of engineering photo placeholder">
+          <!--
+            PHOTO PLACEHOLDER
+            Replace with: <img src="images/team-engineering.jpg" alt="[Name]" style="border-radius:50%;" />
+          -->
+          <i class="ti ti-photo" style="font-size:20px;color:#B4B2A9;" aria-hidden="true"></i>
+        </div>
+        <div class="team-name">[Team member name]</div>
+        <div class="team-role">Head of engineering</div>
+        <div class="team-bio">Replace with real bio — technical background, what they build, one specific thing they are proud of in the product. Specific beats generic every time.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="cta-band">
+  <div class="container">
+    <p class="section-tag">Work with us</p>
+    <h2 class="cta-heading display">Want to see what we built?</h2>
+    <p class="cta-sub">Book a 30-minute demo and we will walk you through the platform, answer your questions honestly, and tell you whether Opsra is the right fit for your business right now.</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;">
+      <a href="contact.html"><button class="btn-primary-lg">Book a demo</button></a>
+      <a href="pricing.html"><button class="btn-secondary-lg">See pricing</button></a>
+    </div>
+    <p class="cta-footnote">No credit card required &nbsp;·&nbsp; Setup included &nbsp;·&nbsp; Live in under 5 days</p>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <a href="index.html" class="footer-logo">Op<span>sra</span></a>
+    <nav class="footer-links" aria-label="Footer navigation">
+      <a href="features.html">Features</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+    <span class="footer-copy">© 2026 Opsra. All rights reserved.</span>
+  </div>
+</footer>
+</body>
+</html>

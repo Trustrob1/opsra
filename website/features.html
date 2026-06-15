@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Features — Opsra</title>
+  <meta name="description" content="Six modules that give growing businesses full visibility over leads, customers, team performance, contractor KPIs, support, and operations intelligence."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+  <link rel="stylesheet" href="_base.css"/>
+  <style>
+    .features-hero{padding:72px 0 48px;background:var(--white);}
+    .module-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px;}
+    .module-pill{font-size:12px;padding:5px 14px;border-radius:20px;border:1px solid var(--border-mid);color:var(--text-2);background:var(--white);cursor:pointer;transition:all 0.15s;}
+    .module-pill:hover{border-color:var(--teal);color:var(--teal);}
+    .feature-section{padding:72px 0;}
+    .feature-section.bg{background:var(--surface);}
+    .feature-layout{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;}
+    .feature-layout.reverse{direction:rtl;}
+    .feature-layout.reverse > *{direction:ltr;}
+    .feature-tag{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.09em;margin-bottom:10px;}
+    .feature-heading{font-family:'Syne',sans-serif;font-size:26px;font-weight:600;line-height:1.2;letter-spacing:-0.4px;color:var(--text);margin-bottom:14px;}
+    .feature-desc{font-size:15px;color:var(--text-2);line-height:1.75;margin-bottom:24px;}
+    .img-placeholder{border-radius:var(--r-xl);overflow:hidden;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;height:320px;}
+    .img-placeholder-lbl{font-size:12px;color:var(--text-3);text-align:center;max-width:200px;line-height:1.5;}
+    .img-placeholder-lbl strong{display:block;font-weight:500;color:var(--text-2);margin-bottom:4px;}
+    @media(max-width:900px){.feature-layout,.feature-layout.reverse{grid-template-columns:1fr;direction:ltr;}.img-placeholder{height:220px;}}
+  </style>
+</head>
+<body>
+
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">Op<span>sra</span></a>
+    <div class="nav-links">
+      <a href="features.html" class="active">Features</a>
+      <a href="solutions.html">Solutions</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+    </div>
+    <div class="nav-actions">
+      <button class="btn-ghost">Sign in</button>
+      <button class="btn-primary">Book a demo</button>
+    </div>
+  </div>
+</nav>
+
+<section class="features-hero">
+  <div class="container">
+    <p class="section-tag">Features</p>
+    <h1 class="section-heading display" style="max-width:600px;">Every feature your business needs. Nothing it doesn't.</h1>
+    <p class="section-sub">Six modules. One platform. Each one solves a specific, real problem — and they all work together from day one.</p>
+    <div class="module-pills">
+      <a href="#leads" class="module-pill">Lead management</a>
+      <a href="#comms" class="module-pill">Customer communication</a>
+      <a href="#kpis" class="module-pill">Team &amp; contractor KPIs</a>
+      <a href="#support" class="module-pill">Support ticketing</a>
+      <a href="#renewals" class="module-pill">Renewals &amp; retention</a>
+      <a href="#intelligence" class="module-pill">Operations intelligence</a>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="feature-section" id="leads">
+  <div class="container">
+    <div class="feature-layout">
+      <div>
+        <p class="feature-tag" style="color:var(--teal);">Lead management</p>
+        <h2 class="feature-heading">Never lose a lead to a missed follow-up again</h2>
+        <p class="feature-desc">Every enquiry from every channel — WhatsApp, web form, ads, manual entry — lands in one pipeline. AI scores it instantly. The right rep is assigned automatically. The follow-up never slips.</p>
+        <ul class="check-list">
+          <li><i class="ti ti-check" aria-hidden="true"></i>Capture leads from WhatsApp, web forms, ads, and manual entry</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>AI lead scoring — Hot, Warm, Cold in seconds</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Pipeline stages — New → Contacted → Demo → Converted</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Lead aging alerts when no activity for 3 or more days</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Lost lead reactivation — auto-detect returning leads</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Full activity timeline per lead</li>
+        </ul>
+      </div>
+      <div class="img-placeholder" role="img" aria-label="Lead pipeline dashboard screenshot">
+        <!--
+          SCREENSHOT PLACEHOLDER
+          Replace with: <img src="images/feature-leads.png" alt="Opsra lead pipeline dashboard" />
+          Show: kanban board with lead cards, score badges (Hot/Warm/Cold), rep assignment
+          Dimensions: 640 x 640px minimum
+        -->
+        <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-placeholder-lbl"><strong>UI screenshot</strong>Lead pipeline kanban with AI-scored cards and rep assignment</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="feature-section bg" id="comms">
+  <div class="container">
+    <div class="feature-layout reverse">
+      <div>
+        <p class="feature-tag" style="color:var(--blue);">Customer communication</p>
+        <h2 class="feature-heading">All customer conversations in one tracked inbox</h2>
+        <p class="feature-desc">Manage all outbound and inbound customer messaging in one place — with full history, delivery tracking, and AI-drafted replies. Works across WhatsApp, email, and broadcast campaigns.</p>
+        <ul class="check-list">
+          <li><i class="ti ti-check" aria-hidden="true"></i>Unified inbox — WhatsApp, email, broadcast in one view</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Template library with organisational approval workflow</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>AI-drafted messages — editable before sending</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Delivery and read tracking per message</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Segmented broadcasts by customer group or tag</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Full conversation history — never lose context</li>
+        </ul>
+      </div>
+      <div class="img-placeholder" role="img" aria-label="Unified conversations inbox screenshot">
+        <!--
+          SCREENSHOT PLACEHOLDER
+          Replace with: <img src="images/feature-comms.png" alt="Opsra conversations inbox" />
+          Show: inbox with WhatsApp threads, delivery status indicators, AI draft button
+          Dimensions: 640 x 640px minimum
+        -->
+        <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-placeholder-lbl"><strong>UI screenshot</strong>Unified inbox showing message threads and delivery status</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="feature-section" id="kpis">
+  <div class="container">
+    <div class="feature-layout">
+      <div>
+        <p class="feature-tag" style="color:var(--purple);">Team &amp; contractor KPIs</p>
+        <h2 class="feature-heading">Your KPIs should never live in a document nobody opens</h2>
+        <p class="feature-desc">KPIs agreed at the start, logged daily, visible to both sides in real time. Performance conversations become factual, fast, and fair — not emotional. Works for in-house staff and external contractors.</p>
+        <ul class="check-list">
+          <li><i class="ti ti-check" aria-hidden="true"></i>KPI targets set at contract or role start</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Daily activity logging by staff and contractors</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Blocker flagging with instant management alerts</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>At-risk flags before review time — not after</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Downloadable PDF activity reports per staff member</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Weekly plan logging and retrospective notes</li>
+        </ul>
+      </div>
+      <div class="img-placeholder" role="img" aria-label="Contractor KPI tracking dashboard screenshot">
+        <!--
+          SCREENSHOT PLACEHOLDER
+          Replace with: <img src="images/feature-kpis.png" alt="Opsra contractor KPI tracker" />
+          Show: table with contractor names, targets vs actuals, status pills (On track / At risk / Watch)
+          Dimensions: 640 x 640px minimum
+        -->
+        <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-placeholder-lbl"><strong>UI screenshot</strong>Contractor KPI tracker with live status and blocker alerts</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="feature-section bg" id="support">
+  <div class="container">
+    <div class="feature-layout reverse">
+      <div>
+        <p class="feature-tag" style="color:#993C1D;">Support ticketing</p>
+        <h2 class="feature-heading">Every customer issue tracked, assigned, and resolved</h2>
+        <p class="feature-desc">Every customer complaint, query, or escalation becomes a tracked ticket — assigned to the right agent, prioritised, and monitored until it is closed. Nothing gets lost in a chat thread again.</p>
+        <ul class="check-list">
+          <li><i class="ti ti-check" aria-hidden="true"></i>Tickets created from WhatsApp, email, or manually</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Priority tiers — Low, Medium, High, Urgent</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Agent assignment with workload balancing</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>SLA tracking — flag tickets nearing breach</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Resolution notes and customer satisfaction logging</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Manager escalation for overdue or critical tickets</li>
+        </ul>
+      </div>
+      <div class="img-placeholder" role="img" aria-label="Support ticketing dashboard screenshot">
+        <!--
+          SCREENSHOT PLACEHOLDER
+          Replace with: <img src="images/feature-support.png" alt="Opsra support ticketing" />
+          Show: ticket list with priority badges, assigned agents, SLA countdown
+          Dimensions: 640 x 640px minimum
+        -->
+        <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-placeholder-lbl"><strong>UI screenshot</strong>Support ticket list with priorities, assignments, and SLA tracking</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="feature-section" id="renewals">
+  <div class="container">
+    <div class="feature-layout">
+      <div>
+        <p class="feature-tag" style="color:var(--green);">Renewals &amp; retention</p>
+        <h2 class="feature-heading">Stop losing customers you didn't know were leaving</h2>
+        <p class="feature-desc">Opsra monitors your customer base for early churn signals — declining engagement, missed renewals, unresolved tickets — and flags them weeks before they would cancel. Then it helps you act.</p>
+        <ul class="check-list">
+          <li><i class="ti ti-check" aria-hidden="true"></i>Churn risk scoring per customer — updated weekly</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Renewal date tracking with advance alerts</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>AI-drafted win-back messages for at-risk accounts</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Outreach logging — track every retention touchpoint</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Customer health dashboard — see the whole portfolio at once</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Revenue at risk view — understand what is on the line</li>
+        </ul>
+      </div>
+      <div class="img-placeholder" role="img" aria-label="Customer retention and renewals dashboard screenshot">
+        <!--
+          SCREENSHOT PLACEHOLDER
+          Replace with: <img src="images/feature-renewals.png" alt="Opsra renewals and retention" />
+          Show: customer health table, churn risk scores, renewal dates, at-risk flags
+          Dimensions: 640 x 640px minimum
+        -->
+        <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-placeholder-lbl"><strong>UI screenshot</strong>Customer health dashboard with churn risk scores and renewal dates</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="feature-section bg" id="intelligence">
+  <div class="container">
+    <div class="feature-layout reverse">
+      <div>
+        <p class="feature-tag" style="color:var(--amber);">Operations intelligence</p>
+        <h2 class="feature-heading">Know what's happening in your business before you even ask</h2>
+        <p class="feature-desc">The executive dashboard brings together leads, team performance, customer health, and support into one view — refreshed every morning, with an AI digest that tells you exactly what to focus on first.</p>
+        <ul class="check-list">
+          <li><i class="ti ti-check" aria-hidden="true"></i>Monday morning AI digest — delivered at 7am</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Ask-your-data — query your business in plain English</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Anomaly detection — unusual patterns flagged automatically</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Growth analytics — trends across leads, revenue, and retention</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Cross-module view — everything in one screen</li>
+          <li><i class="ti ti-check" aria-hidden="true"></i>Downloadable executive PDF reports</li>
+        </ul>
+      </div>
+      <div class="img-placeholder" role="img" aria-label="Operations intelligence executive dashboard screenshot">
+        <!--
+          SCREENSHOT PLACEHOLDER
+          Replace with: <img src="images/feature-intelligence.png" alt="Opsra operations intelligence dashboard" />
+          Show: KPI cards, AI digest panel, anomaly flags, growth chart
+          Dimensions: 640 x 640px minimum
+        -->
+        <i class="ti ti-photo" style="font-size:32px;color:#B4B2A9;" aria-hidden="true"></i>
+        <p class="img-placeholder-lbl"><strong>UI screenshot</strong>Executive dashboard with AI digest, KPI cards, and anomaly flags</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="cta-band">
+  <div class="container">
+    <p class="section-tag">See it in action</p>
+    <h2 class="cta-heading display">See all six modules working for your business</h2>
+    <p class="cta-sub">30-minute demo. We walk through every module relevant to your industry and show you exactly what changes on day one.</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;">
+      <button class="btn-primary-lg">Book a free demo</button>
+      <a href="pricing.html"><button class="btn-secondary-lg">View pricing</button></a>
+    </div>
+    <p class="cta-footnote">No credit card required &nbsp;·&nbsp; Setup included &nbsp;·&nbsp; Live in under 5 days</p>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <a href="index.html" class="footer-logo">Op<span>sra</span></a>
+    <nav class="footer-links" aria-label="Footer navigation">
+      <a href="features.html">Features</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+    <span class="footer-copy">© 2026 Opsra. All rights reserved.</span>
+  </div>
+</footer>
+</body>
+</html>
