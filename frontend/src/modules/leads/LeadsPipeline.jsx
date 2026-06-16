@@ -35,6 +35,10 @@
  *     (kanban context — user may be managing multiple leads).
  */
 import { useState, useCallback, useMemo, useEffect } from 'react'
+import {
+  LayoutGrid, List, Calendar, Leaf, Upload, Plus,
+  MessageSquare, Ticket, DollarSign, Clock, AlertTriangle, X,
+} from 'lucide-react'
 import { useLeads }       from '../../hooks/useLeads'
 import {
   moveStage, convertLead, getLeadAttentionSummary, listLeads, updateLead,
@@ -101,7 +105,7 @@ function DealValueModal({ leadName, onConfirm, onSkip, loading }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
       <div style={{ background: 'white', borderRadius: ds.radius.xl, padding: '28px 28px 24px', width: '100%', maxWidth: 420, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
-        <div style={{ fontSize: 32, marginBottom: 8, textAlign: 'center' }}>🎉</div>
+        
         <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: ds.dark, margin: '0 0 6px', textAlign: 'center' }}>Deal Closed!</h3>
         <p style={{ fontSize: 13.5, color: ds.gray, margin: '0 0 20px', lineHeight: 1.5, textAlign: 'center' }}>
           Converting <strong>{leadName}</strong> to a customer. What was the deal value?
@@ -117,7 +121,7 @@ function DealValueModal({ leadName, onConfirm, onSkip, loading }) {
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onSkip} disabled={loading} style={{ padding: '9px 18px', borderRadius: ds.radius.md, border: `1.5px solid ${ds.border}`, background: 'white', color: ds.gray, fontSize: 13, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer' }}>Skip</button>
           <button onClick={handleConfirm} disabled={loading} style={{ padding: '9px 20px', borderRadius: ds.radius.md, border: 'none', background: ds.teal, color: 'white', fontSize: 13, fontWeight: 600, fontFamily: ds.fontSyne, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
-            {loading ? '…' : '✓ Convert'}
+            {loading ? '…' : 'Convert'}
           </button>
         </div>
       </div>
@@ -132,9 +136,9 @@ function MobileLeadCard({ lead, onOpenLead, pipelineStages, attention, demoEnabl
   const stage = pipelineStages.find(s => s.key === lead.stage)
   const badges = []
   if (attention) {
-    if ((attention.unread_messages ?? 0) > 0) badges.push({ key: 'msg', label: `💬 ${attention.unread_messages}`, bg: '#E53E3E', color: 'white', title: `${attention.unread_messages} unread` })
-    if (demoEnabled && (attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: '📅', bg: '#D97706', color: 'white', title: 'Visit awaiting confirmation' })
-    if ((attention.open_tickets ?? 0) > 0) badges.push({ key: 'ticket', label: `🎫 ${attention.open_tickets}`, bg: '#ED8936', color: 'white', title: `${attention.open_tickets} open tickets` })
+    if ((attention.unread_messages ?? 0) > 0) badges.push({ key: 'msg', label: attention.unread_messages, icon: 'msg', bg: '#E53E3E', color: 'white', title: `${attention.unread_messages} unread` })
+    if (demoEnabled && (attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: null, icon: 'demo', bg: '#D97706', color: 'white', title: 'Visit awaiting confirmation' })
+    if ((attention.open_tickets ?? 0) > 0) badges.push({ key: 'ticket', label: attention.open_tickets, icon: 'ticket', bg: '#ED8936', color: 'white', title: `${attention.open_tickets} open tickets` })
   }
   return (
     <div
@@ -154,8 +158,11 @@ function MobileLeadCard({ lead, onOpenLead, pipelineStages, attention, demoEnabl
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {badges.map(b => (
-            <span key={b.key} title={b.title} style={{ background: b.bg, color: b.color, borderRadius: 20, padding: '1px 6px', fontSize: 10, fontWeight: 700, lineHeight: '16px' }}>
-              {b.label}
+            <span key={b.key} title={b.title} style={{ background: b.bg, color: b.color, borderRadius: 20, padding: '1px 6px', fontSize: 10, fontWeight: 700, lineHeight: '16px', display:'inline-flex', alignItems:'center', gap:3 }}>
+              {b.icon === 'msg' && <MessageSquare size={9} strokeWidth={2.5} />}
+              {b.icon === 'demo' && <Calendar size={9} strokeWidth={2.5} />}
+              {b.icon === 'ticket' && <Ticket size={9} strokeWidth={2.5} />}
+              {b.label != null && b.label}
             </span>
           ))}
           <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>{scoreStyle.label}</span>
@@ -170,9 +177,7 @@ function MobileLeadCard({ lead, onOpenLead, pipelineStages, attention, demoEnabl
         )}
         {lead.phone && <span style={{ fontSize: 12, color: ds.gray }}>{lead.phone}</span>}
         {lead.deal_value != null && (
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a' }}>
-            💰 ₦{Number(lead.deal_value).toLocaleString()}
-          </span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', display:'inline-flex', alignItems:'center', gap:3 }}><DollarSign size={10} strokeWidth={2.5} />₦{Number(lead.deal_value).toLocaleString()}</span>
         )}
       </div>
     </div>
@@ -219,7 +224,7 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pip
           ))}
         </div>
         {loading && <p style={{ textAlign: 'center', color: ds.gray, fontSize: 13, padding: '20px 0' }}>Loading…</p>}
-        {error   && <p style={{ color: ds.red, fontSize: 13 }}>⚠ {error}</p>}
+        {error   && <p style={{ color: ds.red, fontSize: 13 }}>{error}</p>}
         {!loading && rawLeads.map(lead => (
           <MobileLeadCard key={lead.id} lead={lead} onOpenLead={onOpenLead} pipelineStages={pipelineStages} attention={attentionMap[lead.id] ?? null} demoEnabled={demoEnabled} />
         ))}
@@ -237,7 +242,7 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pip
           {pipelineStages.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
       </div>
-      {error && <p style={{ color: ds.red, fontSize: 13, marginBottom: 12 }}>⚠ {error}</p>}
+      {error && <p style={{ color: ds.red, fontSize: 13, marginBottom: 12 }}>{error}</p>}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -264,9 +269,9 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pip
                   <td style={{ padding: '10px 12px', fontWeight: 600, color: ds.dark, whiteSpace: 'nowrap' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       {lead.full_name}
-                      {(attn.unread_messages > 0) && <span style={{ background: '#E53E3E', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700 }}>💬 {attn.unread_messages}</span>}
-                      {demoEnabled && (attn.pending_demos > 0) && <span style={{ background: '#D97706', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700 }}>📅</span>}
-                      {(attn.open_tickets > 0) && <span style={{ background: '#ED8936', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700 }}>🎫</span>}
+                      {(attn.unread_messages > 0) && <span style={{ background: '#E53E3E', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700, display:'inline-flex', alignItems:'center', gap:2 }}><MessageSquare size={9} strokeWidth={2.5} />{attn.unread_messages}</span>}
+                      {demoEnabled && (attn.pending_demos > 0) && <span style={{ background: '#D97706', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700, display:'inline-flex', alignItems:'center' }}><Calendar size={9} strokeWidth={2.5} /></span>}
+                      {(attn.open_tickets > 0) && <span style={{ background: '#ED8936', color: 'white', borderRadius: 20, padding: '1px 5px', fontSize: 9, fontWeight: 700, display:'inline-flex', alignItems:'center' }}><Ticket size={9} strokeWidth={2.5} /></span>}
                     </span>
                   </td>
                   <td style={{ padding: '10px 12px', color: ds.gray }}>{lead.business_name || '—'}</td>
@@ -486,21 +491,21 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ display: 'flex', border: `1.5px solid ${ds.teal}`, borderRadius: ds.radius.md, overflow: 'hidden' }}>
               <button onClick={() => handleViewToggle('kanban')} style={{ padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: ds.fontSyne, background: viewMode === 'kanban' ? ds.teal : 'white', color: viewMode === 'kanban' ? 'white' : ds.teal, transition: 'all 0.15s' }}>⊞ Kanban</button>
-              <button onClick={() => handleViewToggle('list')}   style={{ padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: ds.fontSyne, background: viewMode === 'list' ? ds.teal : 'white', color: viewMode === 'list' ? 'white' : ds.teal, borderLeft: `1.5px solid ${ds.teal}`, transition: 'all 0.15s' }}>☰ List</button>
+              <button onClick={() => handleViewToggle('list')}   style={{ padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: ds.fontSyne, background: viewMode === 'list' ? ds.teal : 'white', color: viewMode === 'list' ? 'white' : ds.teal, borderLeft: `1.5px solid ${ds.teal}`, transition: 'all 0.15s' }}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><List size={14} />List</span></button>
             </div>
             {isManager && onOpenDemoQueue && demoEnabled && (
               <button onClick={onOpenDemoQueue} style={{ ...secondaryBtn, position: 'relative' }}>
-                📅 {meetingLabel} Queue
+                {meetingLabel} Queue
                 {pendingDemosTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{pendingDemosTotal > 9 ? '9+' : pendingDemosTotal}</span>}
               </button>
             )}
             {isManager && (
-              <button onClick={() => handleViewToggle(viewMode === 'nurture' ? 'kanban' : 'nurture')} style={{ ...secondaryBtn, background: viewMode === 'nurture' ? ds.teal : 'white', color: viewMode === 'nurture' ? 'white' : ds.teal }}>🌱 Nurture Queue</button>
+              <button onClick={() => handleViewToggle(viewMode === 'nurture' ? 'kanban' : 'nurture')} style={{ ...secondaryBtn, background: viewMode === 'nurture' ? ds.teal : 'white', color: viewMode === 'nurture' ? 'white' : ds.teal }}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><Leaf size={14} />Nurture Queue</span></button>
             )}
             {!isAffiliate && (
               <>
-                <button onClick={() => setShowImport(true)} style={secondaryBtn}>⬆ Import CSV</button>
-                <button onClick={() => setShowCreate(true)} style={primaryBtn}>+ New Lead</button>
+                <button onClick={() => setShowImport(true)} style={secondaryBtn}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><Upload size={14} />Import CSV</span></button>
+                <button onClick={() => setShowCreate(true)} style={primaryBtn}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><Plus size={14} />New Lead</span></button>
               </>
             )}
           </div>
@@ -509,10 +514,10 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
         {/* Mobile: compact actions row */}
         {isMobile && !isAffiliate && (
           <div style={{ display: 'flex', gap: 8, width: '100%', marginTop: 4 }}>
-            <button onClick={() => setShowCreate(true)} style={{ ...primaryBtn, flex: 1, justifyContent: 'center', fontSize: 13, padding: '10px 12px', minHeight: 44 }}>+ New Lead</button>
+            <button onClick={() => setShowCreate(true)} style={{ ...primaryBtn, flex: 1, justifyContent: 'center', fontSize: 13, padding: '10px 12px', minHeight: 44 }}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><Plus size={14} />New Lead</span></button>
             {isManager && onOpenDemoQueue && demoEnabled && (
               <button onClick={onOpenDemoQueue} style={{ ...secondaryBtn, position: 'relative', minHeight: 44, padding: '10px 12px', fontSize: 12 }}>
-                📅 {meetingLabel}
+                {meetingLabel}
                 {pendingDemosTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{pendingDemosTotal > 9 ? '9+' : pendingDemosTotal}</span>}
               </button>
             )}
@@ -532,9 +537,9 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             <>
               <select value={filterScore}  onChange={e => setFilterScore(e.target.value)}  style={filterSelect}>
                 <option value="">All Scores</option>
-                <option value="hot">🔥 Hot</option>
-                <option value="warm">☀️ Warm</option>
-                <option value="cold">❄️ Cold</option>
+                <option value="hot">Hot</option>
+                <option value="warm">Warm</option>
+                <option value="cold">Cold</option>
                 <option value="unscored">— Unscored</option>
               </select>
               <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={filterSelect}>
@@ -550,26 +555,26 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             </>
           )}
           {(filterSearch || filterScore || filterSource) && (
-            <button onClick={() => { setFilterSearch(''); setFilterScore(''); setFilterSource('') }} style={{ fontSize: 12, color: ds.gray, background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}>✕ Clear filters</button>
+            <button onClick={() => { setFilterSearch(''); setFilterScore(''); setFilterSource('') }} style={{ fontSize: 12, color: ds.gray, background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}><span style={{display:'inline-flex',alignItems:'center',gap:4}}><X size={12} />Clear filters</span></button>
           )}
         </div>
       )}
 
       {/* ── Errors ───────────────────────────────────────────────── */}
-      {error     && <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 16 }}>⚠ {error}</div>}
-      {moveError && <div style={{ background: '#FFF9E0', border: `1px solid #FFE066`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: '#8B6800', marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}><span>⚠ {moveError}</span><button onClick={() => setMoveError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray }}>✕</button></div>}
+      {error     && <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 16 }}>{error}</div>}
+      {moveError && <div style={{ background: '#FFF9E0', border: `1px solid #FFE066`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: '#8B6800', marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}><span>{moveError}</span><button onClick={() => setMoveError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, display:'flex', alignItems:'center' }}><X size={14} /></button></div>}
 
       {/* ATTRIB-1: attribution info banner */}
       {attributionInfo && (
         <div style={{ background: '#FFF9E0', border: '1.5px solid #F59E0B', borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: '#92400E', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <span>⏳ {attributionInfo.message}</span>
+          <span style={{display:'inline-flex',alignItems:'center',gap:6}}><Clock size={13} />{attributionInfo.message}</span>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <button
               onClick={() => { setAttributionInfo(null); onOpenLead(attributionInfo.leadId) }}
               style={{ background: '#F59E0B', color: 'white', border: 'none', borderRadius: ds.radius.sm, padding: '5px 12px', fontSize: 12, fontWeight: 700, fontFamily: ds.fontSyne, cursor: 'pointer' }}>
               Open Lead
             </button>
-            <button onClick={() => setAttributionInfo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 14 }}>✕</button>
+            <button onClick={() => setAttributionInfo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, display:'flex', alignItems:'center' }}><X size={14} /></button>
           </div>
         </div>
       )}
@@ -631,9 +636,9 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
   const scoreStyle = SCORE_STYLE[lead.score] ?? SCORE_STYLE.unscored
   const badges = []
   if (attention) {
-    if ((attention.unread_messages ?? 0) > 0) badges.push({ key: 'msg', label: `💬 ${attention.unread_messages}`, bg: '#E53E3E', color: 'white', title: `${attention.unread_messages} unread` })
-    if (demoEnabled && (attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: '📅', bg: '#D97706', color: 'white', title: 'Visit awaiting confirmation' })
-    if ((attention.open_tickets ?? 0) > 0) badges.push({ key: 'ticket', label: `🎫 ${attention.open_tickets}`, bg: '#ED8936', color: 'white', title: `${attention.open_tickets} open tickets` })
+    if ((attention.unread_messages ?? 0) > 0) badges.push({ key: 'msg', label: attention.unread_messages, icon: 'msg', bg: '#E53E3E', color: 'white', title: `${attention.unread_messages} unread` })
+    if (demoEnabled && (attention.pending_demos ?? 0) > 0) badges.push({ key: 'demo', label: null, icon: 'demo', bg: '#D97706', color: 'white', title: 'Visit awaiting confirmation' })
+    if ((attention.open_tickets ?? 0) > 0) badges.push({ key: 'ticket', label: attention.open_tickets, icon: 'ticket', bg: '#ED8936', color: 'white', title: `${attention.open_tickets} open tickets` })
   }
   return (
     <div draggable={canDrag} onDragStart={canDrag ? onDragStart : undefined} onDragEnd={canDrag ? onDragEnd : undefined} onClick={onOpen}
@@ -644,7 +649,14 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
         <p style={{ fontWeight: 600, fontSize: 12.5, color: ds.dark, margin: 0, lineHeight: 1.4, flex: 1 }}>{lead.full_name}</p>
         {badges.length > 0 && (
           <div style={{ display: 'flex', gap: 3, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {badges.map(b => <span key={b.key} title={b.title} style={{ background: b.bg, color: b.color, borderRadius: 20, padding: '1px 6px', fontSize: 10, fontWeight: 700, flexShrink: 0, lineHeight: '16px', cursor: 'default' }}>{b.label}</span>)}
+            {badges.map(b => (
+              <span key={b.key} title={b.title} style={{ background: b.bg, color: b.color, borderRadius: 20, padding: '1px 6px', fontSize: 10, fontWeight: 700, flexShrink: 0, lineHeight: '16px', cursor: 'default', display:'inline-flex', alignItems:'center', gap:3 }}>
+                {b.icon === 'msg' && <MessageSquare size={9} strokeWidth={2.5} />}
+                {b.icon === 'demo' && <Calendar size={9} strokeWidth={2.5} />}
+                {b.icon === 'ticket' && <Ticket size={9} strokeWidth={2.5} />}
+                {b.label != null && b.label}
+              </span>
+            ))}
           </div>
         )}
       </div>
@@ -652,8 +664,8 @@ function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, isMoving, canDrag, a
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         <span style={{ background: scoreStyle.bg, color: scoreStyle.color, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>{scoreStyle.label}</span>
         {lead.source && <span style={{ background: ds.mint, color: ds.tealDark, padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{SOURCE_SHORT[lead.source] ?? lead.source}</span>}
-        {lead.deal_value != null && <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>💰 {Number(lead.deal_value) >= 1000 ? `₦${(Number(lead.deal_value) / 1000).toFixed(0)}K` : `₦${Number(lead.deal_value).toLocaleString()}`}</span>}
-        {lead.pending_attribution && <span style={{ background: '#FFF9E0', color: '#92400E', padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>⏳</span>}
+        {lead.deal_value != null && <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700, display:'inline-flex', alignItems:'center', gap:3 }}><DollarSign size={9} strokeWidth={2.5} />{Number(lead.deal_value) >= 1000 ? `₦${(Number(lead.deal_value) / 1000).toFixed(0)}K` : `₦${Number(lead.deal_value).toLocaleString()}`}</span>}
+        {lead.pending_attribution && <span title='Attribution pending' style={{ background: '#FFF9E0', color: '#92400E', padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700, display:'inline-flex', alignItems:'center' }}><Clock size={9} strokeWidth={2.5} /></span>}
       </div>
     </div>
   )

@@ -62,6 +62,12 @@ import { _supabase } from './services/api'
 import PublicCatalogShell from './catalog/PublicCatalogShell'
 import ReportsModule from './modules/reports/ReportsModule'
 import PerformanceModule from './modules/performance/PerformanceModule'
+import {
+  Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
+  CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
+  Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
+  ChevronRight,
+} from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -76,18 +82,33 @@ const IDLE_MS = 12 * 60 * 60 * 1000  // 12 hours
 
 // ─── Sidebar navigation definition ───────────────────────────────────────────
 const NAV = [
-  { id: 'leads',    label: 'Lead Center', icon: '🎯', module: '01', active: true  },
-  { id: 'conversations', label: 'Conversations',      icon: '📨', module: '02',  active: true  },
-  { id: 'whatsapp', label: 'WhatsApp Engine',      icon: '💬', module: '03', active: true },
-  { id: 'support',  label: 'Support Tickets',      icon: '🎫', module: '04', active: true },
-  { id: 'renewal',  label: 'Client Subscription',     icon: '🔄', module: '05', active: true  },
-  { id: 'ops',      label: 'Operations Hub',     icon: '📊', module: '06', active: true  },
-  { id: 'performance', label: 'Performance Hub',    icon: '📊', module: '07',  active: true  },
-  { id: 'tasks',    label: 'Tasks Board',            icon: '✅', module: '08',  active: true  },
-  { id: 'commissions', label: 'Commissions',        icon: '💼', module: '09',  active: true  },
-  { id: 'reports',     label: 'Reports', icon: '📋', module: '10',  active: true  },
+  { id: 'leads',    label: 'Lead Center', icon: 'leads', module: '01', active: true  },
+  { id: 'conversations', label: 'Conversations',      icon: 'conversations', module: '02',  active: true  },
+  { id: 'whatsapp', label: 'WhatsApp Engine',      icon: 'whatsapp', module: '03', active: true },
+  { id: 'support',  label: 'Support Tickets',      icon: 'support', module: '04', active: true },
+  { id: 'renewal',  label: 'Client Subscription',     icon: 'renewal', module: '05', active: true  },
+  { id: 'ops',      label: 'Operations Hub',     icon: 'ops', module: '06', active: true  },
+  { id: 'performance', label: 'Performance Hub',    icon: 'performance', module: '07',  active: true  },
+  { id: 'tasks',    label: 'Tasks Board',            icon: 'tasks', module: '08',  active: true  },
+  { id: 'commissions', label: 'Commissions',        icon: 'commissions', module: '09',  active: true  },
+  { id: 'reports',     label: 'Reports', icon: 'reports', module: '10',  active: true  },
   
 ]
+
+
+// ─── Nav icon map (Lucide components keyed by nav id) ────────────────────────
+const NAV_ICONS = {
+  leads:         Target,
+  conversations: MessageSquare,
+  whatsapp:      MessageCircle,
+  support:       Ticket,
+  renewal:       RefreshCw,
+  ops:           BarChart2,
+  performance:   BarChart2,
+  tasks:         CheckSquare,
+  commissions:   Briefcase,
+  reports:       ClipboardList,
+}
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
@@ -205,7 +226,7 @@ function UpdatePasswordScreen() {
 
         {done ? (
           <>
-            <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 16 }}>✅</div>
+            <div style={{ display:'flex',justifyContent:'center',marginBottom:16}}><CheckSquare size={40} color={ds.green} strokeWidth={1.5} /></div>
             <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 12px', textAlign: 'center' }}>Password updated</h1>
             <p style={{ fontSize: 13, color: '#7A9BAD', textAlign: 'center', lineHeight: 1.6 }}>
               Your password has been changed successfully.<br />
@@ -219,7 +240,7 @@ function UpdatePasswordScreen() {
 
             {error && (
               <div style={{ background: '#1a0a0a', border: '1px solid #5a1a1a', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>
-                <p style={{ fontSize: 13, color: '#FF9A9A', margin: 0 }}>⚠ {error}</p>
+                <p style={{ fontSize: 13, color: '#FF9A9A', margin: 0 }}>{error}</p>
                 {(errorCode || !accessToken) && (
                   <a href="/" style={{ fontSize: 12, color: '#5a9aaa', display: 'block', marginTop: 8, textDecoration: 'underline' }}>
                     ← Back to sign in to request a new link
@@ -243,7 +264,7 @@ function UpdatePasswordScreen() {
                 type="button" onClick={() => setShowPwd(p => !p)}
                 style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
                 title={showPwd ? 'Hide password' : 'Show password'}
-              >{showPwd ? '🙈' : '👁'}</button>
+              >{showPwd ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
             <label style={loginLabel}>Confirm new password</label>
             <div style={{ position: 'relative', marginBottom: 28 }}>
@@ -257,7 +278,7 @@ function UpdatePasswordScreen() {
                 type="button" onClick={() => setShowConfirm(p => !p)}
                 style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
                 title={showConfirm ? 'Hide password' : 'Show password'}
-              >{showConfirm ? '🙈' : '👁'}</button>
+              >{showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
                 <button onClick={handleSubmit} disabled={loading} style={loginBtn(loading)}>
                   {loading ? <Spinner label="Updating…" /> : 'Set New Password'}
@@ -412,7 +433,7 @@ function LoginScreen({ onAuth }) {
               onKeyDown={handleKeyDown} autoComplete="one-time-code"
               style={{ ...loginInput, marginBottom: 24, letterSpacing: '0.3em', textAlign: 'center', fontSize: 22 }}
             />
-            {error && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>⚠ {error}</p>}
+            {error && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>{error}</p>}
             <button onClick={handleMfaVerify} disabled={loading} style={loginBtn(loading)}>
               {loading ? <Spinner label="Verifying…" /> : 'Verify code'}
             </button>
@@ -433,7 +454,7 @@ function LoginScreen({ onAuth }) {
               autoComplete="email"
               style={{ ...loginInput, marginBottom: 24 }}
             />
-            {forgotError && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>⚠ {forgotError}</p>}
+            {forgotError && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>{forgotError}</p>}
             <button onClick={handleForgotSubmit} disabled={forgotLoading} style={loginBtn(forgotLoading)}>
               {forgotLoading ? <Spinner label="Sending…" /> : 'Send Reset Link'}
             </button>
@@ -446,14 +467,14 @@ function LoginScreen({ onAuth }) {
           </>
         ) : forgotView === 'reset_sent' ? (
           <>
-            <div style={{ fontSize: 40, marginBottom: 16, textAlign: 'center' }}>📧</div>
+            <div style={{ display:'flex',justifyContent:'center',marginBottom: 16 }}><Mail size={40} color={ds.teal} strokeWidth={1.5} /></div>
             <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 12px', textAlign: 'center' }}>Check your email</h1>
             <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 24, lineHeight: 1.6, textAlign: 'center' }}>
               If an account exists for <strong style={{ color: '#A0BDC8' }}>{forgotEmail}</strong>, a reset link has been sent.<br />
               The link expires in 1 hour.
             </p>
             <p style={{ fontSize: 12, color: '#4a6a7a', background: '#0e2030', borderRadius: 8, padding: '10px 14px', lineHeight: 1.6, marginBottom: 20 }}>
-              💡 Didn't receive it? Check your spam folder, or contact your administrator who can send the link directly.
+              Didn't receive it? Check your spam folder, or contact your administrator who can send the link directly.
             </p>
             <button
               onClick={() => { setForgotView('login'); setForgotError(null); setForgotEmail('') }}
@@ -481,14 +502,14 @@ function LoginScreen({ onAuth }) {
                 type="button" onClick={() => setShowLoginPwd(p => !p)}
                 style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
                 title={showLoginPwd ? 'Hide password' : 'Show password'}
-              >{showLoginPwd ? '🙈' : '👁'}</button>
+              >{showLoginPwd ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
             {idleMsg && (
               <div style={{ background: '#0e2a38', border: '1px solid #1e4a60', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#7ecfea', lineHeight: 1.5 }}>
-                🔒 You have been logged out due to inactivity.
+                <span style={{display:'inline-flex',alignItems:'center',gap:6}}><Lock size={14} />You have been logged out due to inactivity.</span>
               </div>
             )}
-            {error && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>⚠ {error}</p>}
+            {error && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>{error}</p>}
             <button onClick={handleLogin} disabled={loading} style={loginBtn(loading)}>
               {loading ? <Spinner label="Signing in…" /> : 'Sign In'}
             </button>
@@ -648,8 +669,8 @@ function AppShell() {
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            style={{ background: 'none', border: 'none', color: '#7A9BAD', fontSize: 20, cursor: 'pointer', padding: 4, lineHeight: 1 }}
-          >✕</button>
+            style={{ background: 'none', border: 'none', color: '#7A9BAD', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+          ><X size={20} /></button>
         </div>
       )}
 
@@ -675,8 +696,8 @@ function AppShell() {
               minHeight:  44,   // 44px tap target on mobile
             }}
           >
-            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)', flexShrink: 0 }}>
-              {item.icon}
+            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)', flexShrink: 0 }}>
+              {(() => { const Icon = NAV_ICONS[item.id]; return Icon ? <Icon size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /> : null })()}
             </div>
             <span style={{ flex: 1, lineHeight: 1.3 }}>{item.label}</span>
             <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.6)' : '#3a5a6a' }}>{item.module}</span>
@@ -695,7 +716,7 @@ function AppShell() {
             onClick={() => { setActiveNav('admin'); setView('admin'); setSelectedLeadId(null); closeSidebarOnMobile() }}
             style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', margin: '2px 8px', borderRadius: 9, cursor: 'pointer', transition: 'all 0.18s', fontSize: 13.5, fontWeight: 500, color: isActive ? 'white' : '#7A9BAD', background: isActive ? ds.teal : 'none', minHeight: 44 }}
           >
-            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0, background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }}>⚙️</div>
+            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }}><Settings size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /></div>
             <span style={{ flex: 1 }}>Admin Dashboard</span>
           </div>
         )
@@ -713,7 +734,7 @@ function AppShell() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, color: '#A0BDC8', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
-              <div style={{ fontSize: 11, color: isOOO ? '#F59E0B' : ds.green, marginTop: 2 }}>{isOOO ? '🔴 Out of Office' : '🟢 Available'}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: isOOO ? '#F59E0B' : ds.green, marginTop: 2 }}><Circle size={8} fill='currentColor' strokeWidth={0} />{isOOO ? 'Out of Office' : 'Available'}</div>
             </div>
           </div>
           <button
@@ -750,9 +771,9 @@ function AppShell() {
           <>
             <button
               onClick={() => setSidebarOpen(true)}
-              style={{ background: 'none', border: 'none', color: '#7A9BAD', fontSize: 20, cursor: 'pointer', padding: '6px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+              style={{ background: 'none', border: 'none', color: '#7A9BAD', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center' }}
               aria-label="Open menu"
-            >☰</button>
+            ><Menu size={20} /></button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white', flex: 1 }}>
               <div style={{ width: 28, height: 28, background: ds.teal, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'white' }}>O</div>
               Opsra
@@ -776,7 +797,7 @@ function AppShell() {
               </div>
               {['owner', 'ops_manager'].includes(_userTemplate) && (
                 <>
-                  <button onClick={() => { setView('superadmin_health'); setActiveNav('') }} style={topbarBtn}>⚡ Health</button>
+                  <button onClick={() => { setView('superadmin_health'); setActiveNav('') }} style={topbarBtn}>Health</button>
                   <button onClick={() => { setView('superadmin_create_org'); setActiveNav('') }} style={topbarBtn}>+ Org</button>
                 </>
               )}
@@ -786,9 +807,9 @@ function AppShell() {
           {/* Notification bell — always visible */}
           <button
             onClick={() => setShowNotif(true)}
-            style={{ position: 'relative', background: 'none', border: '1px solid #2a4a5a', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 16, lineHeight: 1, color: '#7A9BAD', minWidth: 40, minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ position: 'relative', background: 'none', border: '1px solid #2a4a5a', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', color: '#7A9BAD', minWidth: 40, minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
-            🔔
+            <Bell size={16} />
             {unreadCount > 0 && (
               <span style={{ position: 'absolute', top: -6, right: -6, background: '#EF4444', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>
                 {unreadCount > 99 ? '99+' : unreadCount}
@@ -814,7 +835,7 @@ function AppShell() {
                 title={isOOO ? 'You are out of office — click to mark available' : 'Click to go out of office'}
                 style={{ ...topbarBtn, borderColor: isOOO ? '#F59E0B' : '#2a4a5a', color: isOOO ? '#F59E0B' : '#7A9BAD' }}
               >
-                {oooLoading ? '…' : isOOO ? '🔴 OOO' : '🟢 Available'}
+                {oooLoading ? '…' : isOOO ? 'OOO' : 'Available'}
               </button>
               <button onClick={handleLogout} disabled={loggingOut} style={topbarBtn}>
                 {loggingOut ? 'Signing out…' : 'Sign out'}
@@ -970,7 +991,7 @@ function ComingSoon({ navId }) {
   return (
     <div style={{ padding: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>{item?.icon ?? '🔧'}</div>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center' }}>{(() => { const Icon = NAV_ICONS[item?.id]; return Icon ? <Icon size={48} color={ds.teal} strokeWidth={1.5} /> : <Settings size={48} color={ds.teal} strokeWidth={1.5} /> })()}</div>
         <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 8px' }}>
           {item?.label ?? 'Module'} — Coming Soon
         </h2>

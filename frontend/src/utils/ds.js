@@ -41,9 +41,9 @@ export const ds = {
 
 /** Score badge appearance — matches demo tag-hot / tag-warm / tag-cold classes */
 export const SCORE_STYLE = {
-  hot:      { bg: '#FFE8E8', color: '#C0392B', label: '🔥 Hot' },
-  warm:     { bg: '#FFF3E0', color: '#E07B3A', label: '☀️ Warm' },
-  cold:     { bg: '#EAF0F2', color: '#6B7C8E', label: '❄️ Cold' },
+  hot:      { bg: '#FFE8E8', color: '#C0392B', label: 'Hot' },
+  warm:     { bg: '#FFF3E0', color: '#E07B3A', label: 'Warm' },
+  cold:     { bg: '#EAF0F2', color: '#6B7C8E', label: 'Cold' },
   unscored: { bg: '#F0F0F0', color: '#9E9E9E', label: '— Unscored' },
 }
 
@@ -99,13 +99,13 @@ export const LOST_REASON_LABELS = {
 }
 
 export const TIMELINE_ICONS = {
-  lead_created:  '🌱',
-  stage_changed: '🔄',
-  message_sent:  '💬',
-  call_logged:   '📞',
-  score_updated: '🤖',
-  task_created:  '✅',
-  note_added:    '📝',
+  lead_created:  '',
+  stage_changed: '',
+  message_sent:  '',
+  call_logged:   '',
+  score_updated: '',
+  task_created:  '',
+  note_added:    '',
 }
 
 export const BRANCHES_OPTIONS = ['1', '2-3', '4-10', '10+']
