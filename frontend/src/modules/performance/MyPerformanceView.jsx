@@ -158,7 +158,7 @@ export default function MyPerformanceView({ user }) {
       {/* Acknowledge banner */}
       {!profile?.acknowledged && activeKpis.length > 0 && (
         <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: '#92400e' }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ClipboardList size={13} />Please acknowledge your targets for {month} to confirm you've reviewed them.</span></span></span>
+          <span style={{ fontSize: 13, color: '#92400e', display:'inline-flex', alignItems:'center', gap:5 }}><ClipboardList size={13} />Please acknowledge your targets for {month} to confirm you've reviewed them.</span>
           <button
             onClick={handleAcknowledge}
             disabled={ackLoading}
