@@ -353,7 +353,7 @@ function SectionCard({ sKey, label, icon, data, collapsed, onToggle, compareOff 
       <div style={{ background: 'white', borderRadius: 12, padding: 16, marginBottom: 12,
         border: '1px solid #FEE2E2' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 18 }}>{icon}</span>
+          {icon && <ReportIcon Icon={icon} size={18} />}
           <span style={{ fontSize: 14, fontWeight: 600, color: '#DC2626' }}>{label}</span>
           <span style={{ fontSize: 12, color: '#EF4444', marginLeft: 8 }}>
             Section unavailable — data could not be loaded
@@ -894,7 +894,7 @@ function ScheduleModal({ open, onClose, defaultSections }) {
                       borderRadius: 20, background: form.sections.includes(s.key) ? '#F0FDFA' : 'white',
                       color: form.sections.includes(s.key) ? ds.teal : '#6B7280',
                       cursor: 'pointer', fontSize: 12, fontWeight: form.sections.includes(s.key) ? 600 : 400 }}>
-                    {s.icon} {s.label}
+                    {s.Icon && <ReportIcon Icon={s.Icon} size={14} />} {s.label}
                   </button>
                 ))}
               </div>
@@ -1091,7 +1091,7 @@ function FilterPanel({ filters, setFilters, sections, setSections, teams, users,
               style={{ marginTop: 2, accentColor: ds.teal, flexShrink: 0 }} />
             <div>
               <span style={{ fontSize: 13, color: '#111827', fontWeight: 500 }}>
-                {s.icon} {s.label}
+                {s.Icon && <ReportIcon Icon={s.Icon} size={14} />} {s.label}
               </span>
               <p style={{ fontSize: 11, color: '#9CA3AF', margin: '1px 0 0' }}>{s.desc}</p>
             </div>
@@ -1366,7 +1366,7 @@ export default function ReportsModule({ user }) {
                     key={key}
                     sKey={key}
                     label={sec.label}
-                    icon={sec.icon}
+                    icon={sec.Icon}
                     data={report[key]}
                     collapsed={!!collapsed[key]}
                     onToggle={() => toggleCollapse(key)}
@@ -1404,4 +1404,10 @@ export default function ReportsModule({ user }) {
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
     </div>
   )
+}// ── Safe icon renderer ──────────────────────────────────────────────────────
+function ReportIcon({ Icon, size = 16 }) {
+  if (!Icon) return null
+  return <Icon size={size} strokeWidth={1.8} />
 }
+
+
