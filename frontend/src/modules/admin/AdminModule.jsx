@@ -14,6 +14,7 @@
  *   Expanded: 210px with icon + label. Collapsed: 52px icon-only.
  *   Toggle button at top of sidebar. Sidebar state persisted in localStorage.
  *   Tabs grouped into logical sections for scannability.
+ * UI-ICONS: Lucide React icons replace all emojis in sidebar nav.
  *
  * LAZY MOUNT FIX: Tab components are only mounted when first visited.
  * Once mounted they stay mounted (display:none) to preserve state.
@@ -24,6 +25,15 @@
  * Pattern 51: full rewrite only — never sed.
  */
 import { useState, useEffect } from 'react'
+import {
+  Users, Shield, GitBranch, Plug, Smartphone,
+  Briefcase, Target, ClipboardList, FileText, BarChart2,
+  Clock, AlarmClock, ArrowRightLeft, Leaf, Menu as MenuIcon,
+  Layers, Tag, UsersRound, AlertCircle, Building2,
+  ShoppingCart, ShoppingBag, Store, Bot, TrendingUp,
+  DollarSign, MessageSquare, CalendarDays, Zap, Package,
+  ChevronLeft, ChevronRight, Settings,
+} from 'lucide-react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
 import UserManagement          from './UserManagement'
@@ -64,61 +74,61 @@ const TAB_GROUPS = [
   {
     section: 'Organisation',
     tabs: [
-      { id: 'users',         label: 'Users',           icon: '👥' },
-      { id: 'roles',         label: 'Roles',           icon: '🎭' },
-      { id: 'teams',         label: 'Teams',           icon: '🤝' },
-      { id: 'routing',       label: 'Routing Rules',   icon: '🔀' },
-      { id: 'integrations',  label: 'Integrations',    icon: '🔌' },
+      { id: 'users',         label: 'Users',           Icon: Users },
+      { id: 'roles',         label: 'Roles',           Icon: Shield },
+      { id: 'teams',         label: 'Teams',           Icon: UsersRound },
+      { id: 'routing',       label: 'Routing Rules',   Icon: GitBranch },
+      { id: 'integrations',  label: 'Integrations',    Icon: Plug },
     ],
   },
   {
     section: 'Leads',
     tabs: [
-      { id: 'pipeline',       label: 'Pipeline',        icon: '🗂️' },
-      { id: 'scoring',        label: 'Lead Scoring',    icon: '🎯' },
-      { id: 'lead-assignment',label: 'Lead Assignment', icon: '🔀' },
-      { id: 'lead-form',      label: 'Lead Form',       icon: '📝' },
-      { id: 'qualification',  label: 'Qual. Flow',      icon: '📋' },
-      { id: 'nurture',        label: 'Nurture Engine',  icon: '🌱' },
+      { id: 'pipeline',        label: 'Pipeline',        Icon: Layers },
+      { id: 'scoring',         label: 'Lead Scoring',    Icon: Target },
+      { id: 'lead-assignment', label: 'Lead Assignment', Icon: ArrowRightLeft },
+      { id: 'lead-form',       label: 'Lead Form',       Icon: FileText },
+      { id: 'qualification',   label: 'Qual. Flow',      Icon: ClipboardList },
+      { id: 'nurture',         label: 'Nurture Engine',  Icon: Leaf },
     ],
   },
   {
     section: 'WhatsApp',
     tabs: [
-      { id: 'whatsapp',      label: 'WhatsApp',        icon: '📱' },
-      { id: 'whatsapp-menu', label: 'WhatsApp Menu',   icon: '📋' },
-      { id: 'wa-sales-mode', label: 'WA Sales Mode',   icon: '🤖' },
-      { id: 'messaging-limits', label: 'Msg Limits',   icon: '💬' },
+      { id: 'whatsapp',         label: 'WhatsApp',      Icon: Smartphone },
+      { id: 'whatsapp-menu',    label: 'WA Menu',       Icon: MenuIcon },
+      { id: 'wa-sales-mode',    label: 'WA Sales Mode', Icon: Bot },
+      { id: 'messaging-limits', label: 'Msg Limits',    Icon: MessageSquare },
     ],
   },
   {
     section: 'Commerce',
     tabs: [
-      { id: 'catalog',       label: 'Catalog',         icon: '📦' },
-      { id: 'sales-system',  label: 'Sales System',    icon: '🛒' },
-      { id: 'shopify',       label: 'Shopify',         icon: '🛍️' },
-      { id: 'commerce',      label: 'Commerce',        icon: '🛒' },
-      { id: 'sales-log',     label: 'Sales Log',       icon: '💰' },
-      { id: 'commission',    label: 'Commissions',     icon: '💼' },
+      { id: 'catalog',      label: 'Catalog',     Icon: Package },
+      { id: 'sales-system', label: 'Sales System',Icon: ShoppingCart },
+      { id: 'shopify',      label: 'Shopify',     Icon: ShoppingBag },
+      { id: 'commerce',     label: 'Commerce',    Icon: Store },
+      { id: 'sales-log',    label: 'Sales Log',   Icon: DollarSign },
+      { id: 'commission',   label: 'Commissions', Icon: Briefcase },
     ],
   },
   {
     section: 'Support',
     tabs: [
-      { id: 'categories',    label: 'Categories',      icon: '🏷️' },
-      { id: 'internal_cats', label: 'Issue Categories',icon: '🏷️' },
-      { id: 'sla',           label: 'SLA Targets',     icon: '⏱️' },
-      { id: 'sla-hours',     label: 'Business Hours',  icon: '🕐' },
+      { id: 'categories',   label: 'Categories',       Icon: Tag },
+      { id: 'internal_cats',label: 'Issue Categories', Icon: AlertCircle },
+      { id: 'sla',          label: 'SLA Targets',      Icon: AlarmClock },
+      { id: 'sla-hours',    label: 'Business Hours',   Icon: Clock },
     ],
   },
   {
     section: 'Growth & Config',
     tabs: [
-      { id: 'growth-dashboard', label: 'Dashboard Config', icon: '📊' },
-      { id: 'growth-config',    label: 'Growth Config',    icon: '📈' },
-      { id: 'biz-types',        label: 'Business Types',   icon: '🏢' },
-      { id: 'automation',       label: 'Automation',       icon: '⚡' },
-      { id: 'demo-settings',    label: 'Demo Settings',    icon: '📅' },
+      { id: 'growth-dashboard', label: 'Dashboard Config', Icon: BarChart2 },
+      { id: 'growth-config',    label: 'Growth Config',    Icon: TrendingUp },
+      { id: 'biz-types',        label: 'Business Types',   Icon: Building2 },
+      { id: 'automation',       label: 'Automation',       Icon: Zap },
+      { id: 'demo-settings',    label: 'Demo Settings',    Icon: CalendarDays },
     ],
   },
 ]
@@ -150,7 +160,7 @@ function LazyTab({ active, visited, children }) {
   )
 }
 
-// ── Sub-tab bar (reused for sales-system and catalog) ─────────────────────────
+// ── Sub-tab bar ───────────────────────────────────────────────────────────────
 function SubTabBar({ tabs, active, onChange }) {
   return (
     <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
@@ -238,6 +248,7 @@ export default function AdminModule({ user }) {
   }
 
   const activeTabMeta = ALL_TABS.find(t => t.id === tab)
+  const ActiveIcon = activeTabMeta?.Icon ?? Settings
   const sidebarW = sidebarOpen ? SIDEBAR_W_OPEN : SIDEBAR_W_CLOSED
 
   return (
@@ -258,7 +269,7 @@ export default function AdminModule({ user }) {
 
         {/* Sidebar header */}
         <div style={{
-          padding: sidebarOpen ? '18px 14px 14px' : '18px 0 14px',
+          padding: sidebarOpen ? '16px 14px 13px' : '16px 0 13px',
           borderBottom: '1px solid #1a2f3f',
           display: 'flex',
           alignItems: 'center',
@@ -277,7 +288,7 @@ export default function AdminModule({ user }) {
               </div>
               <span style={{
                 fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14,
-                color: 'white', whiteSpace: 'nowrap', overflow: 'hidden',
+                color: 'white', whiteSpace: 'nowrap',
               }}>
                 Admin
               </span>
@@ -293,12 +304,10 @@ export default function AdminModule({ user }) {
               flexShrink: 0,
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              {sidebarOpen
-                ? <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                : <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              }
-            </svg>
+            {sidebarOpen
+              ? <ChevronLeft size={16} />
+              : <ChevronRight size={16} />
+            }
           </button>
         </div>
 
@@ -306,8 +315,7 @@ export default function AdminModule({ user }) {
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 16 }}>
           {TAB_GROUPS.map(group => (
             <div key={group.section}>
-              {/* Section label — only when open */}
-              {sidebarOpen && (
+              {sidebarOpen ? (
                 <div style={{
                   padding: '14px 14px 4px',
                   fontSize: 10, fontWeight: 600,
@@ -316,33 +324,43 @@ export default function AdminModule({ user }) {
                 }}>
                   {group.section}
                 </div>
-              )}
-              {!sidebarOpen && (
-                <div style={{ height: 10 }} />
+              ) : (
+                <div style={{
+                  height: 1, background: '#1a2f3f',
+                  margin: '10px 10px 6px',
+                }} />
               )}
 
               {group.tabs.map(t => {
                 const isActive = tab === t.id
+                const { Icon } = t
                 return (
                   <button
                     key={t.id}
                     onClick={() => handleTabChange(t.id)}
                     title={!sidebarOpen ? t.label : undefined}
                     style={{
-                      width: '100%', background: 'none', border: 'none',
+                      width: '100%', border: 'none',
                       cursor: 'pointer', textAlign: 'left',
                       display: 'flex', alignItems: 'center',
-                      gap: sidebarOpen ? 9 : 0,
+                      gap: sidebarOpen ? 10 : 0,
                       justifyContent: sidebarOpen ? 'flex-start' : 'center',
                       padding: sidebarOpen ? '7px 14px' : '8px 0',
-                      borderLeft: isActive ? `3px solid ${ds.teal}` : '3px solid transparent',
-                      background: isActive ? 'rgba(29,158,117,0.08)' : 'transparent',
+                      borderLeft: isActive
+                        ? `3px solid ${ds.teal}`
+                        : '3px solid transparent',
+                      background: isActive
+                        ? 'rgba(2,128,144,0.12)'
+                        : 'transparent',
                       transition: 'background 0.12s',
                     }}
                   >
-                    <span style={{ fontSize: 15, flexShrink: 0, lineHeight: 1 }}>
-                      {t.icon}
-                    </span>
+                    <Icon
+                      size={16}
+                      color={isActive ? ds.teal : '#5a8a9f'}
+                      strokeWidth={isActive ? 2.5 : 1.8}
+                      style={{ flexShrink: 0 }}
+                    />
                     {sidebarOpen && (
                       <span style={{
                         fontFamily: ds.fontDm, fontSize: 13,
@@ -368,19 +386,25 @@ export default function AdminModule({ user }) {
         {/* Content header */}
         <div style={{
           background: '#0a1a24',
-          padding: '18px 28px 16px',
+          padding: '16px 28px 14px',
           borderBottom: '1px solid #1a2f3f',
           flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
         }}>
-          <h1 style={{
-            fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18,
-            color: 'white', margin: 0,
-          }}>
-            {activeTabMeta ? `${activeTabMeta.icon} ${activeTabMeta.label}` : 'Admin Dashboard'}
-          </h1>
-          <p style={{ fontSize: 12, color: '#5a8a9f', margin: '3px 0 0' }}>
-            Admin Dashboard · {TAB_GROUPS.find(g => g.tabs.some(t => t.id === tab))?.section ?? 'Settings'}
-          </p>
+          <ActiveIcon size={18} color={ds.teal} strokeWidth={2} />
+          <div>
+            <h1 style={{
+              fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18,
+              color: 'white', margin: 0,
+            }}>
+              {activeTabMeta?.label ?? 'Admin Dashboard'}
+            </h1>
+            <p style={{ fontSize: 11, color: '#5a8a9f', margin: '2px 0 0' }}>
+              Admin · {TAB_GROUPS.find(g => g.tabs.some(t => t.id === tab))?.section ?? 'Settings'}
+            </p>
+          </div>
         </div>
 
         {/* Tab content */}
