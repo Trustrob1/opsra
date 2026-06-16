@@ -20,6 +20,7 @@
  */
 
 import { useState } from 'react'
+import { User, Users, CheckSquare } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import useAuthStore from '../../store/authStore'
 import useTasks from '../../hooks/useTasks'
@@ -30,8 +31,8 @@ import CreateTaskModal from './CreateTaskModal'
 
 function TabBar({ active, onChange, showTeam }) {
   const tabs = [
-    { id: 'personal', label: 'My Tasks',  icon: '👤' },
-    ...(showTeam ? [{ id: 'team', label: 'Team View', icon: '👥' }] : []),
+    { id: 'personal', label: 'My Tasks',  Icon: User },
+    ...(showTeam ? [{ id: 'team', label: 'Team View', Icon: Users }] : []),
   ]
 
   if (tabs.length === 1) return null
@@ -46,6 +47,7 @@ function TabBar({ active, onChange, showTeam }) {
     }}>
       {tabs.map(tab => {
         const isActive = active === tab.id
+        const TabIcon = tab.Icon || null
         return (
           <button
             key={tab.id}
@@ -63,7 +65,7 @@ function TabBar({ active, onChange, showTeam }) {
               marginBottom: -1,
             }}
           >
-            {tab.icon} {tab.label}
+            {TabIcon && <TabIcon size={14} strokeWidth={isActive ? 2.5 : 1.8} />} {tab.label}
           </button>
         )
       })}
@@ -86,9 +88,9 @@ function ModuleHeader({ onNewTask }) {
           width: 40, height: 40, borderRadius: 10,
           background: ds.teal, display: 'flex',
           alignItems: 'center', justifyContent: 'center',
-          fontSize: 20, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          ✅
+          <CheckSquare size={22} color="white" strokeWidth={2} />
         </div>
         <div>
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>

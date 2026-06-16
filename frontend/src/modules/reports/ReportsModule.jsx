@@ -17,6 +17,7 @@
  *   user — current user object from Zustand auth store
  */
 
+import { TrendingUp, DollarSign, User, Users, MessageSquare, Heart, AlertTriangle, Radio, X, Edit, ClipboardList, BarChart2, Calendar, Filter, Lock, RefreshCw, Target, Ticket, CheckSquare } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { ds } from '../../utils/ds'
 import useAuthStore from '../../store/authStore'
@@ -35,18 +36,18 @@ import { getGrowthTeams } from '../../services/growth.service'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SECTIONS = [
-  { key: 'executive_summary', label: 'Executive Summary',    icon: '📈', desc: 'Revenue, leads, conversions, CAC, close time' },
-  { key: 'lead_pipeline',     label: 'Lead & Pipeline',      icon: '🎯', desc: 'Leads by source and score, funnel, pipeline value' },
-  { key: 'revenue',           label: 'Revenue Summary',      icon: '💰', desc: 'Revenue by source and team, weekly trend' },
+  { key: 'executive_summary', label: 'Executive Summary',    Icon: TrendingUp, desc: 'Revenue, leads, conversions, CAC, close time' },
+  { key: 'lead_pipeline',     label: 'Lead & Pipeline',      Icon: Target, desc: 'Leads by source and score, funnel, pipeline value' },
+  { key: 'revenue',           label: 'Revenue Summary',      Icon: DollarSign, desc: 'Revenue by source and team, weekly trend' },
   { key: 'response_time',     label: 'Response Time',        icon: '⏱️', desc: 'First-response time, SLA compliance, per-rep' },
-  { key: 'rep_performance',   label: 'Sales Rep Performance',icon: '👤', desc: 'Per-rep leads, conversions, revenue, tasks' },
-  { key: 'team_performance',  label: 'Team Performance',     icon: '👥', desc: 'Team leads, conversion rate, revenue' },
-  { key: 'whatsapp',          label: 'WhatsApp Activity',    icon: '💬', desc: 'Messages, AI vs human split, reply rate' },
-  { key: 'support',           label: 'Support & Tickets',    icon: '🎫', desc: 'Tickets opened, resolved, escalated' },
-  { key: 'customer_health',   label: 'Customer Health',      icon: '❤️', desc: 'Active customers, NPS, churn risk' },
-  { key: 'tasks',             label: 'Task & Activity',      icon: '✅', desc: 'Tasks created, completed, overdue' },
-  { key: 'lost_leads',        label: 'Lost Lead Analysis',   icon: '⚠️', desc: 'Lost leads by reason, rep, and team' },
-  { key: 'channel_roi',       label: 'Channel ROI',          icon: '📡', desc: 'Per-channel leads, conversion rate, ROI' },
+  { key: 'rep_performance',   label: 'Sales Rep Performance',Icon: User, desc: 'Per-rep leads, conversions, revenue, tasks' },
+  { key: 'team_performance',  label: 'Team Performance',     Icon: Users, desc: 'Team leads, conversion rate, revenue' },
+  { key: 'whatsapp',          label: 'WhatsApp Activity',    Icon: MessageSquare, desc: 'Messages, AI vs human split, reply rate' },
+  { key: 'support',           label: 'Support & Tickets',    Icon: Ticket, desc: 'Tickets opened, resolved, escalated' },
+  { key: 'customer_health',   label: 'Customer Health',      Icon: Heart, desc: 'Active customers, NPS, churn risk' },
+  { key: 'tasks',             label: 'Task & Activity',      Icon: CheckSquare, desc: 'Tasks created, completed, overdue' },
+  { key: 'lost_leads',        label: 'Lost Lead Analysis',   Icon: AlertTriangle, desc: 'Lost leads by reason, rep, and team' },
+  { key: 'channel_roi',       label: 'Channel ROI',          Icon: Radio, desc: 'Per-channel leads, conversion rate, ROI' },
 ]
 
 const PRESETS = [
@@ -203,7 +204,7 @@ function Toast({ msg, onClose }) {
     }}>
       {msg}
       <button onClick={onClose} style={{ background: 'none', border: 'none',
-        color: '#9CA3AF', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>✕</button>
+        color: '#9CA3AF', cursor: 'pointer', display:'flex',alignItems:'center' }><X size={16} /></button>
     </div>
   )
 }
@@ -337,7 +338,7 @@ function RepSparkline({ values = [], orgAvg = 0 }) {
         ))}
       </svg>
       <span style={{ fontSize: 11, color: streak > 0 ? '#16A34A' : '#9CA3AF' }}>
-        {streak > 0 ? `${streak}w streak ✅` : `${pts.length - aboveAvg}w below ⚠️`}
+        {streak > 0 ? `${streak}w streak ✓` : `${pts.length - aboveAvg}w below`}
       </span>
     </div>
   )
@@ -662,7 +663,7 @@ function RecipientTagInput({ value, onChange }) {
             display: 'flex', alignItems: 'center', gap: 6 }}>
             {r}
             <button onClick={() => remove(i)} style={{ background: 'none', border: 'none',
-              color: '#9CA3AF', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}>✕</button>
+              color: '#9CA3AF', cursor: 'pointer', padding: 0, display:'flex',alignItems:'center' }><X size={14} /></button>
           </span>
         ))}
       </div>
@@ -793,13 +794,13 @@ function ScheduleModal({ open, onClose, defaultSections }) {
             Scheduled Reports
           </h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none',
-            color: '#9CA3AF', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: 4 }}>✕</button>
+            color: '#9CA3AF', cursor: 'pointer', display:'flex',alignItems:'center', padding:4 }><X size={22} /></button>
         </div>
 
         {/* Form */}
         <div style={{ background: '#F9FAFB', borderRadius: 12, padding: 20, marginBottom: 24 }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: ds.teal, margin: '0 0 16px' }}>
-            {editingId ? '✏️ Edit Schedule' : '＋ New Schedule'}
+            {editingId ? <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Edit size={13} />Edit Schedule</span> : <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Calendar size={13} />New Schedule</span>}
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -868,13 +869,13 @@ function ScheduleModal({ open, onClose, defaultSections }) {
                       borderRadius: 8, background: form.deliveryChannel === c ? '#F0FDFA' : 'white',
                       color: form.deliveryChannel === c ? ds.teal : '#374151',
                       cursor: 'pointer', fontSize: 13, fontWeight: form.deliveryChannel === c ? 600 : 400 }}>
-                    {c === 'email' ? '📧 Email' : '📱 WhatsApp'}
+                    {c === 'email' ? <span style={{display:'inline-flex',alignItems:'center',gap:4}}><MessageSquare size={12} />Email</span> : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><MessageSquare size={12} />WhatsApp</span>}
                   </button>
                 ))}
               </div>
               {form.deliveryChannel === 'whatsapp' && (
                 <p style={{ fontSize: 11, color: '#F59E0B', marginTop: 4 }}>
-                  ⚠️ WhatsApp delivery coming soon — use email for now
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />WhatsApp delivery coming soon — use email for now</span>
                 </p>
               )}
             </div>
@@ -900,7 +901,7 @@ function ScheduleModal({ open, onClose, defaultSections }) {
             </div>
           </div>
 
-          {formErr && <p style={{ fontSize: 13, color: '#EF4444', margin: '12px 0 0' }}>⚠ {formErr}</p>}
+          {formErr && <p style={{ fontSize: 13, color: '#EF4444', margin: '12px 0 0' }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{formErr}</span></p>}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <button onClick={handleSave} disabled={saving}
@@ -1127,7 +1128,7 @@ function FilterPanel({ filters, setFilters, sections, setSections, teams, users,
             justifyContent: 'space-between', borderBottom: '1px solid #F3F4F6', marginBottom: 4 }}>
             <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16 }}>Filters</span>
             <button onClick={onClose} style={{ background: 'none', border: 'none',
-              color: '#9CA3AF', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>✕</button>
+              color: '#9CA3AF', cursor: 'pointer', display:'flex',alignItems:'center' }><X size={20} /></button>
           </div>
           {content}
         </div>
@@ -1157,7 +1158,7 @@ export default function ReportsModule({ user }) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+          <div style={{ display:'flex',justifyContent:'center',marginBottom:12 }}><Lock size={40} color={ds.teal} strokeWidth={1.5} /></div>
           <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 16, color: ds.dark }}>
             Access restricted
           </p>
@@ -1252,9 +1253,7 @@ export default function ReportsModule({ user }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, background: ds.teal,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 14, color: 'white', flexShrink: 0 }}>
-            📋
-          </div>
+            fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 14, color: 'white', flexShrink: 0 }}><ClipboardList size={20} color={ds.teal} /></div>
           <div>
             <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>
               Management Reports
@@ -1271,13 +1270,13 @@ export default function ReportsModule({ user }) {
             <button onClick={() => setFiltersOpen(true)}
               style={{ padding: '8px 14px', background: 'none', border: '1px solid #2a4a5a',
                 borderRadius: 8, color: '#A0BDC8', cursor: 'pointer', fontSize: 13 }}>
-              ⚙️ Filters
+              <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Filter size={13} />Filters</span>
             </button>
           )}
           <button onClick={() => setScheduleOpen(true)}
             style={{ padding: '8px 14px', background: 'none', border: '1px solid #2a4a5a',
               borderRadius: 8, color: '#A0BDC8', cursor: 'pointer', fontSize: 13 }}>
-            🗓️ Schedule
+            <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Calendar size={13} />Schedule</span>
           </button>
           <button onClick={handleApply} disabled={loading}
             style={{ padding: '8px 14px', background: 'none', border: '1px solid #2a4a5a',
@@ -1338,7 +1337,7 @@ export default function ReportsModule({ user }) {
           {fetchErr && !loading && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FEE2E2',
               borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
-              <p style={{ color: '#DC2626', fontSize: 13, margin: 0 }}>⚠ {fetchErr}</p>
+              <p style={{ color: '#DC2626', fontSize: 13, margin: 0 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{fetchErr}</span></p>
             </div>
           )}
 
@@ -1352,9 +1351,9 @@ export default function ReportsModule({ user }) {
               {filters.compare !== 'none' && !loading && (
                 <div style={{ display: 'flex', gap: 16, marginBottom: 16,
                   fontSize: 11, color: '#9CA3AF', flexWrap: 'wrap' }}>
-                  <span>📊 Current: <strong style={{ color: '#111827' }}>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:4}}><BarChart2 size={13} />Current: <strong style={{ color: '#111827' }}>
                     {meta?.period_label || '—'}</strong></span>
-                  <span>🔁 Compare: <strong style={{ color: '#111827' }}>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:4}}><RefreshCw size={13} />Compare: <strong style={{ color: '#111827' }}>
                     {meta?.comparison_period_label || '—'}</strong></span>
                 </div>
               )}
@@ -1382,7 +1381,7 @@ export default function ReportsModule({ user }) {
           {!loading && !report && !fetchErr && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
               minHeight: 300, flexDirection: 'column', gap: 12, color: '#9CA3AF' }}>
-              <div style={{ fontSize: 48 }}>📋</div>
+              <div style={{ fontSize: 48 }}><ClipboardList size={20} color={ds.teal} /></div>
               <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: 0 }}>
                 No report loaded
               </p>
