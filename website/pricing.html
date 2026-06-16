@@ -7,7 +7,7 @@
   <meta name="description" content="Simple, transparent pricing for Opsra. Three plans — Visibility, Growth, and Operations. Monthly or annual billing. Setup from ₦75,000."/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
   <link rel="stylesheet" href="_base.css"/>
   <style>
@@ -15,29 +15,29 @@
     .billing-toggle{display:flex;align-items:center;gap:12px;margin-bottom:32px;flex-wrap:wrap;}
     .toggle-track{width:44px;height:24px;border-radius:12px;position:relative;cursor:pointer;flex-shrink:0;transition:background 0.2s;background:var(--teal);}
     .toggle-thumb{width:18px;height:18px;background:white;border-radius:50%;position:absolute;top:3px;transition:left 0.2s;left:23px;}
-    .toggle-lbl{font-size:13px;color:var(--text-2);}
-    .toggle-lbl.active{font-weight:500;color:var(--text);}
+    .toggle-lbl{font-size:13px;font-weight:500;color:var(--text-2);}
+    .toggle-lbl.active{font-weight:700;color:var(--text);}
     .plans-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
-    .plan-name{font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:5px;}
-    .plan-desc{font-size:13px;color:var(--text-2);margin-bottom:16px;line-height:1.5;}
-    .plan-price{font-size:28px;font-weight:600;font-family:'Syne',sans-serif;color:var(--text);}
-    .plan-per{font-size:13px;font-weight:400;color:var(--text-3);}
-    .plan-billing{font-size:11px;color:var(--text-3);margin:4px 0 16px;min-height:18px;}
+    .plan-name{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:5px;}
+    .plan-desc{font-size:13px;font-weight:500;color:var(--text-2);margin-bottom:16px;line-height:1.5;}
+    .plan-price{font-size:28px;font-weight:800;font-family:'Poppins',sans-serif;color:var(--text);}
+    .plan-per{font-size:13px;font-weight:500;color:var(--text-3);}
+    .plan-billing{font-size:11px;font-weight:500;color:var(--text-3);margin:4px 0 16px;min-height:18px;}
     .plan-billing s{color:var(--border-mid);}
     .managed-card{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:20px 24px;margin-bottom:32px;}
     .compare-table{width:100%;border-collapse:collapse;border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--border);}
-    .compare-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:500;color:var(--text-2);background:var(--surface);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:0.05em;}
+    .compare-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:700;color:var(--text-2);background:var(--surface);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:0.05em;}
     .compare-table th:nth-child(2),.compare-table th:nth-child(3){text-align:center;}
-    .compare-table td{padding:10px 14px;font-size:13px;color:var(--text-2);border-bottom:1px solid var(--border);vertical-align:middle;}
+    .compare-table td{padding:10px 14px;font-size:13px;font-weight:500;color:var(--text-2);border-bottom:1px solid var(--border);vertical-align:middle;}
     .compare-table td:nth-child(2){text-align:center;color:var(--red-dark);}
     .compare-table td:nth-child(3){text-align:center;color:var(--teal-dark);}
     .compare-table tr:last-child td{border-bottom:none;}
     .compare-table tr:nth-child(even) td{background:var(--surface);}
     .faq-item{border-bottom:1px solid var(--border);padding:18px 0;}
     .faq-item:last-child{border-bottom:none;}
-    .faq-q{font-size:15px;font-weight:500;color:var(--text);margin-bottom:8px;display:flex;align-items:flex-start;gap:10px;}
+    .faq-q{font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:flex-start;gap:10px;}
     .faq-q i{font-size:16px;color:var(--teal);flex-shrink:0;margin-top:2px;}
-    .faq-a{font-size:14px;color:var(--text-2);line-height:1.7;padding-left:26px;}
+    .faq-a{font-size:14px;font-weight:500;color:var(--text-2);line-height:1.7;padding-left:26px;}
     @media(max-width:900px){.plans-grid{grid-template-columns:1fr;}.managed-card{flex-direction:column;align-items:flex-start;}}
   </style>
 </head>
@@ -64,8 +64,8 @@
   <div class="container">
     <p class="section-tag">Pricing</p>
     <h1 class="section-heading display" style="max-width:560px;">What does it cost you not to have this?</h1>
-    <p style="font-size:16px;color:var(--text-2);line-height:1.75;max-width:540px;margin-bottom:8px;">Every untracked lead, unresolved ticket, and missed KPI has a real cost. Opsra pays for itself when it recovers one customer you would otherwise have lost.</p>
-    <p style="font-size:13px;color:var(--text-3);margin-bottom:32px;">All plans include onboarding support · cancel anytime · one-time setup fee from ₦75,000</p>
+    <p style="font-size:16px;font-weight:500;color:var(--text-2);line-height:1.75;max-width:540px;margin-bottom:8px;">Every untracked lead, unresolved ticket, and missed KPI has a real cost. Opsra pays for itself when it recovers one customer you would otherwise have lost.</p>
+    <p style="font-size:13px;font-weight:500;color:var(--text-3);margin-bottom:32px;">All plans include onboarding support · cancel anytime · one-time setup fee from ₦75,000</p>
 
     <div class="billing-toggle">
       <span class="toggle-lbl" id="lbl-m">Monthly</span>
@@ -74,7 +74,7 @@
       </div>
       <span class="toggle-lbl active" id="lbl-a">Annual</span>
       <span class="pill" style="background:var(--teal-light);color:var(--teal-dark);">2 months free</span>
-      <span id="billing-note" style="font-size:12px;color:var(--text-3);">Billed annually · switch to monthly anytime</span>
+      <span id="billing-note" style="font-size:12px;font-weight:500;color:var(--text-3);">Billed annually · switch to monthly anytime</span>
     </div>
 
     <div class="plans-grid">
@@ -120,8 +120,8 @@
 
     <div class="card managed-card">
       <div>
-        <p style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:5px;">Prefer us to run it for you?</p>
-        <p style="font-size:13px;color:var(--text-2);line-height:1.6;">Our managed service tier includes full platform operation, weekly reporting, and a dedicated Opsra manager. You focus on the business — we handle the system. Starting from ₦300k/month.</p>
+        <p style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:5px;">Prefer us to run it for you?</p>
+        <p style="font-size:13px;font-weight:500;color:var(--text-2);line-height:1.6;">Our managed service tier includes full platform operation, weekly reporting, and a dedicated Opsra manager. You focus on the business — we handle the system. Starting from ₦300k/month.</p>
       </div>
       <button class="btn-secondary-lg" style="white-space:nowrap;">Talk to us</button>
     </div>
@@ -195,7 +195,7 @@
     <h2 class="cta-heading display">Not sure where to start? Talk to us first.</h2>
     <p class="cta-sub">30-minute demo. We will show you exactly what Opsra looks like for your industry and recommend the right plan — no pressure, no commitment required.</p>
     <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;">
-      <button class="btn-primary-lg">Book a free demo</button>
+      <a href="contact.html"><button class="btn-primary-lg">Book a free demo</button></a>
       <button class="btn-secondary-lg">Talk to us first</button>
     </div>
     <p class="cta-footnote">No credit card required &nbsp;·&nbsp; Setup included &nbsp;·&nbsp; Live in under 5 days</p>
