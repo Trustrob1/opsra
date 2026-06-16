@@ -217,7 +217,7 @@ function TabBar({ active, onChange, tabs }) {
             fontFamily: ds.fontDm, color: isActive ? ds.teal : ds.gray,
             transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: -1,
           }}>
-            <span>{tab.Icon && <tab.Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} />}</span>{tab.label}
+            {tab.Icon && (() => { const Icon = tab.Icon; return <Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} /> })()}{tab.label}
           </button>
         )
       })}

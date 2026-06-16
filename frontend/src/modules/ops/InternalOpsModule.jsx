@@ -1421,7 +1421,7 @@ export default function InternalOpsModule({ user }) {
                 marginBottom: -1,
               }}
             >
-              <span>{tab.Icon && <tab.Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} />}</span> {tab.label}
+              {tab.Icon && (() => { const Icon = tab.Icon; return <Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} /> })()} {tab.label}
             </button>
           )
         })}
