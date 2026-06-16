@@ -10,6 +10,10 @@
  * GPM-1E: "💰 Sales Log" tab added — SalesLog.
  * MULTI-ORG-WA-1: "📱 WhatsApp" tab added — WhatsAppIntegration.
  * LEAD-FORM-CONFIG: "📋 Lead Form" tab added — LeadFormConfig.
+ * UI-SIDEBAR: Horizontal tab bar replaced with collapsible left sidebar.
+ *   Expanded: 210px with icon + label. Collapsed: 52px icon-only.
+ *   Toggle button at top of sidebar. Sidebar state persisted in localStorage.
+ *   Tabs grouped into logical sections for scannability.
  *
  * LAZY MOUNT FIX: Tab components are only mounted when first visited.
  * Once mounted they stay mounted (display:none) to preserve state.
@@ -55,38 +59,72 @@ import DemoSettings            from './DemoSettings'
 import CatalogConfig           from './CatalogConfig'
 import CatalogItems            from './CatalogItems'
 
-const TABS = [
-  { id: 'users',            label: '👥 Users' },
-  { id: 'roles',            label: '🎭 Roles' },
-  { id: 'routing',          label: '🔀 Routing Rules' },
-  { id: 'integrations',     label: '🔌 Integrations' },
-  { id: 'whatsapp',         label: '📱 WhatsApp' },
-  { id: 'commission',       label: '💼 Commissions' },
-  { id: 'scoring',          label: '🎯 Lead Scoring' },
-  { id: 'qualification',    label: '📋 Qualification Flow' },
-  { id: 'lead-form',        label: '📝 Lead Form' },
-  { id: 'growth-dashboard', label: '📊 Dashboard Config' },
-  { id: 'sla',              label: '⏱️ SLA Targets' },
-  { id: 'sla-hours',        label: '🕐 Business Hours' },
-  { id: 'lead-assignment',  label: '🔀 Lead Assignment' },
-  { id: 'nurture',          label: '🌱 Nurture Engine' },
-  { id: 'whatsapp-menu',    label: '📋 WhatsApp Menu' },
-  { id: 'pipeline',         label: '🗂️ Pipeline' },
-  { id: 'categories',       label: '🏷️ Categories' },
-  { id: 'teams',            label: '👥 Teams' },
-  { id: 'internal_cats',    label: '🏷️ Issue Categories' },
-  { id: 'biz-types',        label: '🏢 Business Types' },
-  { id: 'sales-system',     label: '🛒 Sales System' },
-  { id: 'shopify',          label: '🛍️ Shopify' },
-  { id: 'commerce',         label: '🛒 Commerce' },
-  { id: 'wa-sales-mode',    label: '🤖 WA Sales Mode' },
-  { id: 'growth-config',    label: '📈 Growth Config' },
-  { id: 'sales-log',        label: '💰 Sales Log' },
-  { id: 'messaging-limits', label: '💬 Messaging Limits' },
-  { id: 'demo-settings',    label: '📅 Demo Settings' },
-  { id: 'automation',       label: '⚡ Automation' },
-  { id: 'catalog',          label: '📦 Catalog' },
+// ── Sidebar tab groups ────────────────────────────────────────────────────────
+const TAB_GROUPS = [
+  {
+    section: 'Organisation',
+    tabs: [
+      { id: 'users',         label: 'Users',           icon: '👥' },
+      { id: 'roles',         label: 'Roles',           icon: '🎭' },
+      { id: 'teams',         label: 'Teams',           icon: '🤝' },
+      { id: 'routing',       label: 'Routing Rules',   icon: '🔀' },
+      { id: 'integrations',  label: 'Integrations',    icon: '🔌' },
+    ],
+  },
+  {
+    section: 'Leads',
+    tabs: [
+      { id: 'pipeline',       label: 'Pipeline',        icon: '🗂️' },
+      { id: 'scoring',        label: 'Lead Scoring',    icon: '🎯' },
+      { id: 'lead-assignment',label: 'Lead Assignment', icon: '🔀' },
+      { id: 'lead-form',      label: 'Lead Form',       icon: '📝' },
+      { id: 'qualification',  label: 'Qual. Flow',      icon: '📋' },
+      { id: 'nurture',        label: 'Nurture Engine',  icon: '🌱' },
+    ],
+  },
+  {
+    section: 'WhatsApp',
+    tabs: [
+      { id: 'whatsapp',      label: 'WhatsApp',        icon: '📱' },
+      { id: 'whatsapp-menu', label: 'WhatsApp Menu',   icon: '📋' },
+      { id: 'wa-sales-mode', label: 'WA Sales Mode',   icon: '🤖' },
+      { id: 'messaging-limits', label: 'Msg Limits',   icon: '💬' },
+    ],
+  },
+  {
+    section: 'Commerce',
+    tabs: [
+      { id: 'catalog',       label: 'Catalog',         icon: '📦' },
+      { id: 'sales-system',  label: 'Sales System',    icon: '🛒' },
+      { id: 'shopify',       label: 'Shopify',         icon: '🛍️' },
+      { id: 'commerce',      label: 'Commerce',        icon: '🛒' },
+      { id: 'sales-log',     label: 'Sales Log',       icon: '💰' },
+      { id: 'commission',    label: 'Commissions',     icon: '💼' },
+    ],
+  },
+  {
+    section: 'Support',
+    tabs: [
+      { id: 'categories',    label: 'Categories',      icon: '🏷️' },
+      { id: 'internal_cats', label: 'Issue Categories',icon: '🏷️' },
+      { id: 'sla',           label: 'SLA Targets',     icon: '⏱️' },
+      { id: 'sla-hours',     label: 'Business Hours',  icon: '🕐' },
+    ],
+  },
+  {
+    section: 'Growth & Config',
+    tabs: [
+      { id: 'growth-dashboard', label: 'Dashboard Config', icon: '📊' },
+      { id: 'growth-config',    label: 'Growth Config',    icon: '📈' },
+      { id: 'biz-types',        label: 'Business Types',   icon: '🏢' },
+      { id: 'automation',       label: 'Automation',       icon: '⚡' },
+      { id: 'demo-settings',    label: 'Demo Settings',    icon: '📅' },
+    ],
+  },
 ]
+
+// Flat list for lookup
+const ALL_TABS = TAB_GROUPS.flatMap(g => g.tabs)
 
 const SALES_SUB_TABS = [
   { id: 'sales-mode',    label: 'Sales Mode' },
@@ -98,9 +136,11 @@ const CATALOG_SUB_TABS = [
   { id: 'catalog-items',  label: '📦 Items' },
 ]
 
+// ── Sidebar width constants ───────────────────────────────────────────────────
+const SIDEBAR_W_OPEN   = 210
+const SIDEBAR_W_CLOSED = 52
+
 // ── Lazy mount helper ─────────────────────────────────────────────────────────
-// Renders children only after the tab has been visited at least once.
-// Once mounted, stays mounted (display:none when inactive) to preserve state.
 function LazyTab({ active, visited, children }) {
   if (!visited) return null
   return (
@@ -110,15 +150,54 @@ function LazyTab({ active, visited, children }) {
   )
 }
 
+// ── Sub-tab bar (reused for sales-system and catalog) ─────────────────────────
+function SubTabBar({ tabs, active, onChange }) {
+  return (
+    <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
+      {tabs.map(st => (
+        <button
+          key={st.id}
+          onClick={() => onChange(st.id)}
+          style={{
+            background: 'none', border: 'none',
+            borderBottom: `2px solid ${active === st.id ? ds.teal : 'transparent'}`,
+            padding: '9px 18px', cursor: 'pointer',
+            fontFamily: ds.fontDm, fontSize: 13.5,
+            fontWeight: active === st.id ? 600 : 400,
+            color: active === st.id ? ds.teal : '#5a8a9f',
+            marginBottom: -2, whiteSpace: 'nowrap',
+          }}
+        >
+          {st.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminModule({ user }) {
-  const [tab, setTab]                 = useState('users')
+  const [tab, setTab]                     = useState('users')
   const [salesSubTab, setSalesSubTab]     = useState('sales-mode')
   const [catalogSubTab, setCatalogSubTab] = useState('catalog-config')
-  const [accessDenied, setAccessDenied] = useState(false)
-  const [checking, setChecking]       = useState(true)
+  const [accessDenied, setAccessDenied]   = useState(false)
+  const [checking, setChecking]           = useState(true)
+  const [visited, setVisited]             = useState({ users: true })
 
-  // Track which tabs have been visited so we only mount them on first visit
-  const [visited, setVisited] = useState({ users: true }) // 'users' is default tab
+  // Sidebar open/closed — persist preference
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem('admin_sidebar_open')
+      return stored === null ? true : stored === 'true'
+    } catch { return true }
+  })
+
+  function toggleSidebar() {
+    setSidebarOpen(prev => {
+      const next = !prev
+      try { localStorage.setItem('admin_sidebar_open', String(next)) } catch {}
+      return next
+    })
+  }
 
   function handleTabChange(newTab) {
     setTab(newTab)
@@ -158,149 +237,212 @@ export default function AdminModule({ user }) {
     )
   }
 
+  const activeTabMeta = ALL_TABS.find(t => t.id === tab)
+  const sidebarW = sidebarOpen ? SIDEBAR_W_OPEN : SIDEBAR_W_CLOSED
+
   return (
-    <div>
-      <div style={{ background: '#0a1a24', padding: '28px 32px 0', borderBottom: '1px solid #1a2f3f' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{
-            background: ds.teal, color: 'white', borderRadius: 8,
-            width: 36, height: 36, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontFamily: ds.fontSyne,
-            fontWeight: 800, fontSize: 12, flexShrink: 0,
-          }}>
-            08
-          </div>
-          <div>
-            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: 0 }}>
-              Admin Dashboard
-            </h1>
-            <p style={{ fontSize: 12, color: '#5a8a9f', margin: '2px 0 0' }}>
-              Users · Roles · Routing rules · Integrations
-            </p>
-          </div>
+    <div style={{ display: 'flex', minHeight: '100%' }}>
+
+      {/* ── Collapsible Sidebar ── */}
+      <div style={{
+        width: sidebarW,
+        minWidth: sidebarW,
+        background: '#0a1a24',
+        borderRight: '1px solid #1a2f3f',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'width 0.2s ease, min-width 0.2s ease',
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}>
+
+        {/* Sidebar header */}
+        <div style={{
+          padding: sidebarOpen ? '18px 14px 14px' : '18px 0 14px',
+          borderBottom: '1px solid #1a2f3f',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: sidebarOpen ? 'space-between' : 'center',
+          gap: 8,
+        }}>
+          {sidebarOpen && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+              <div style={{
+                background: ds.teal, color: 'white', borderRadius: 7,
+                width: 30, height: 30, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', fontFamily: ds.fontSyne,
+                fontWeight: 800, fontSize: 11, flexShrink: 0,
+              }}>
+                08
+              </div>
+              <span style={{
+                fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14,
+                color: 'white', whiteSpace: 'nowrap', overflow: 'hidden',
+              }}>
+                Admin
+              </span>
+            </div>
+          )}
+          <button
+            onClick={toggleSidebar}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#5a8a9f', padding: 4, borderRadius: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              {sidebarOpen
+                ? <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                : <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              }
+            </svg>
+          </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
-          {TABS.map(t => {
-            const isActive = tab === t.id
-            return (
-              <button
-                key={t.id}
-                onClick={() => handleTabChange(t.id)}
-                title={t.link ? 'View-only — manage in the respective module' : undefined}
-                style={{
-                  background: 'none', border: 'none',
-                  borderBottom: isActive ? `2px solid ${ds.teal}` : '2px solid transparent',
-                  padding: '10px 18px', cursor: 'pointer',
-                  fontFamily: ds.fontDm, fontSize: 13.5,
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? ds.teal : '#5a8a9f',
-                  transition: 'all 0.15s', opacity: t.link ? 0.7 : 1,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {t.label}{t.link ? ' ↗' : ''}
-              </button>
-            )
-          })}
+        {/* Nav groups */}
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 16 }}>
+          {TAB_GROUPS.map(group => (
+            <div key={group.section}>
+              {/* Section label — only when open */}
+              {sidebarOpen && (
+                <div style={{
+                  padding: '14px 14px 4px',
+                  fontSize: 10, fontWeight: 600,
+                  color: '#3a6a7f', textTransform: 'uppercase',
+                  letterSpacing: '0.08em', whiteSpace: 'nowrap',
+                }}>
+                  {group.section}
+                </div>
+              )}
+              {!sidebarOpen && (
+                <div style={{ height: 10 }} />
+              )}
+
+              {group.tabs.map(t => {
+                const isActive = tab === t.id
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => handleTabChange(t.id)}
+                    title={!sidebarOpen ? t.label : undefined}
+                    style={{
+                      width: '100%', background: 'none', border: 'none',
+                      cursor: 'pointer', textAlign: 'left',
+                      display: 'flex', alignItems: 'center',
+                      gap: sidebarOpen ? 9 : 0,
+                      justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                      padding: sidebarOpen ? '7px 14px' : '8px 0',
+                      borderLeft: isActive ? `3px solid ${ds.teal}` : '3px solid transparent',
+                      background: isActive ? 'rgba(29,158,117,0.08)' : 'transparent',
+                      transition: 'background 0.12s',
+                    }}
+                  >
+                    <span style={{ fontSize: 15, flexShrink: 0, lineHeight: 1 }}>
+                      {t.icon}
+                    </span>
+                    {sidebarOpen && (
+                      <span style={{
+                        fontFamily: ds.fontDm, fontSize: 13,
+                        fontWeight: isActive ? 600 : 400,
+                        color: isActive ? ds.teal : '#7a9bad',
+                        whiteSpace: 'nowrap', overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {t.label}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
-      <div style={{ padding: 28 }}>
+      {/* ── Main content area ── */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
 
-        <LazyTab active={tab === 'users'}            visited={visited['users']}>            <UserManagement /></LazyTab>
-        <LazyTab active={tab === 'roles'}            visited={visited['roles']}>            <RoleBuilder /></LazyTab>
-        <LazyTab active={tab === 'routing'}          visited={visited['routing']}>          <RoutingRules /></LazyTab>
-        <LazyTab active={tab === 'integrations'}     visited={visited['integrations']}>     <IntegrationStatus /></LazyTab>
-        <LazyTab active={tab === 'whatsapp'}         visited={visited['whatsapp']}>         <WhatsAppIntegration /></LazyTab>
-        <LazyTab active={tab === 'commission'}       visited={visited['commission']}>       <CommissionSettings /></LazyTab>
-        <LazyTab active={tab === 'scoring'}          visited={visited['scoring']}>          <ScoringRubric /></LazyTab>
-        <LazyTab active={tab === 'qualification'}    visited={visited['qualification']}>    <QualificationFlow /></LazyTab>
-        <LazyTab active={tab === 'lead-form'}        visited={visited['lead-form']}>        <LeadFormConfig /></LazyTab>
-        <LazyTab active={tab === 'growth-dashboard'} visited={visited['growth-dashboard']}> <GrowthDashboardConfig /></LazyTab>
-        <LazyTab active={tab === 'sla'}              visited={visited['sla']}>              <LeadSLASettings /></LazyTab>
-        <LazyTab active={tab === 'sla-hours'}        visited={visited['sla-hours']}>        <SLABusinessHoursConfig /></LazyTab>
-        <LazyTab active={tab === 'lead-assignment'}  visited={visited['lead-assignment']}>  <LeadAssignmentConfig /></LazyTab>
-        <LazyTab active={tab === 'nurture'}          visited={visited['nurture']}>          <NurtureSettings /></LazyTab>
-        <LazyTab active={tab === 'whatsapp-menu'}    visited={visited['whatsapp-menu']}>    <CustomerMenuConfig /></LazyTab>
-        <LazyTab active={tab === 'pipeline'}         visited={visited['pipeline']}>         <PipelineConfig /></LazyTab>
-        <LazyTab active={tab === 'categories'}       visited={visited['categories']}>       <TicketCategoriesConfig /></LazyTab>
-        <LazyTab active={tab === 'teams'}            visited={visited['teams']}>            <TeamsConfig /></LazyTab>
-        <LazyTab active={tab === 'internal_cats'}    visited={visited['internal_cats']}>    <InternalIssueCategoriesConfig /></LazyTab>
-        <LazyTab active={tab === 'biz-types'}        visited={visited['biz-types']}>        <DripBusinessTypesConfig /></LazyTab>
-        <LazyTab active={tab === 'messaging-limits'} visited={visited['messaging-limits']}> <MessagingLimitsConfig /></LazyTab>
-        <LazyTab active={tab === 'demo-settings'}    visited={visited['demo-settings']}>    <DemoSettings /></LazyTab>
-        <LazyTab active={tab === 'automation'}       visited={visited['automation']}>        <AutomationConfig /></LazyTab>
+        {/* Content header */}
+        <div style={{
+          background: '#0a1a24',
+          padding: '18px 28px 16px',
+          borderBottom: '1px solid #1a2f3f',
+          flexShrink: 0,
+        }}>
+          <h1 style={{
+            fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18,
+            color: 'white', margin: 0,
+          }}>
+            {activeTabMeta ? `${activeTabMeta.icon} ${activeTabMeta.label}` : 'Admin Dashboard'}
+          </h1>
+          <p style={{ fontSize: 12, color: '#5a8a9f', margin: '3px 0 0' }}>
+            Admin Dashboard · {TAB_GROUPS.find(g => g.tabs.some(t => t.id === tab))?.section ?? 'Settings'}
+          </p>
+        </div>
 
-        <LazyTab active={tab === 'catalog'} visited={visited['catalog']}>
-          <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
-            {CATALOG_SUB_TABS.map(st => (
-              <button
-                key={st.id}
-                onClick={() => setCatalogSubTab(st.id)}
-                style={{
-                  background: 'none', border: 'none',
-                  borderBottom: `2px solid ${catalogSubTab === st.id ? ds.teal : 'transparent'}`,
-                  padding: '9px 18px', cursor: 'pointer',
-                  fontFamily: ds.fontDm, fontSize: 13.5,
-                  fontWeight: catalogSubTab === st.id ? 600 : 400,
-                  color: catalogSubTab === st.id ? ds.teal : '#5a8a9f',
-                  marginBottom: -2, whiteSpace: 'nowrap',
-                }}
-              >
-                {st.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: catalogSubTab === 'catalog-config' ? 'block' : 'none' }}><CatalogConfig /></div>
-          <div style={{ display: catalogSubTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems /></div>
-        </LazyTab>
+        {/* Tab content */}
+        <div style={{ padding: 28, flex: 1, minWidth: 0 }}>
 
-        {/* SM-1: Sales System — sub-tabbed */}
-        <LazyTab active={tab === 'sales-system'} visited={visited['sales-system']}>
-          <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
-            {SALES_SUB_TABS.map(st => (
-              <button
-                key={st.id}
-                onClick={() => setSalesSubTab(st.id)}
-                style={{
-                  background: 'none', border: 'none',
-                  borderBottom: `2px solid ${salesSubTab === st.id ? ds.teal : 'transparent'}`,
-                  padding: '9px 18px', cursor: 'pointer',
-                  fontFamily: ds.fontDm, fontSize: 13.5,
-                  fontWeight: salesSubTab === st.id ? 600 : 400,
-                  color: salesSubTab === st.id ? ds.teal : '#5a8a9f',
-                  marginBottom: -2, whiteSpace: 'nowrap',
-                }}
-              >
-                {st.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: salesSubTab === 'sales-mode'    ? 'block' : 'none' }}><SalesModeConfig /></div>
-          <div style={{ display: salesSubTab === 'contact-menus' ? 'block' : 'none' }}><ContactMenuConfig /></div>
-        </LazyTab>
+          <LazyTab active={tab === 'users'}            visited={visited['users']}>            <UserManagement /></LazyTab>
+          <LazyTab active={tab === 'roles'}            visited={visited['roles']}>            <RoleBuilder /></LazyTab>
+          <LazyTab active={tab === 'routing'}          visited={visited['routing']}>          <RoutingRules /></LazyTab>
+          <LazyTab active={tab === 'integrations'}     visited={visited['integrations']}>     <IntegrationStatus /></LazyTab>
+          <LazyTab active={tab === 'whatsapp'}         visited={visited['whatsapp']}>         <WhatsAppIntegration /></LazyTab>
+          <LazyTab active={tab === 'commission'}       visited={visited['commission']}>       <CommissionSettings /></LazyTab>
+          <LazyTab active={tab === 'scoring'}          visited={visited['scoring']}>          <ScoringRubric /></LazyTab>
+          <LazyTab active={tab === 'qualification'}    visited={visited['qualification']}>    <QualificationFlow /></LazyTab>
+          <LazyTab active={tab === 'lead-form'}        visited={visited['lead-form']}>        <LeadFormConfig /></LazyTab>
+          <LazyTab active={tab === 'growth-dashboard'} visited={visited['growth-dashboard']}> <GrowthDashboardConfig /></LazyTab>
+          <LazyTab active={tab === 'sla'}              visited={visited['sla']}>              <LeadSLASettings /></LazyTab>
+          <LazyTab active={tab === 'sla-hours'}        visited={visited['sla-hours']}>        <SLABusinessHoursConfig /></LazyTab>
+          <LazyTab active={tab === 'lead-assignment'}  visited={visited['lead-assignment']}>  <LeadAssignmentConfig /></LazyTab>
+          <LazyTab active={tab === 'nurture'}          visited={visited['nurture']}>          <NurtureSettings /></LazyTab>
+          <LazyTab active={tab === 'whatsapp-menu'}    visited={visited['whatsapp-menu']}>    <CustomerMenuConfig /></LazyTab>
+          <LazyTab active={tab === 'pipeline'}         visited={visited['pipeline']}>         <PipelineConfig /></LazyTab>
+          <LazyTab active={tab === 'categories'}       visited={visited['categories']}>       <TicketCategoriesConfig /></LazyTab>
+          <LazyTab active={tab === 'teams'}            visited={visited['teams']}>            <TeamsConfig /></LazyTab>
+          <LazyTab active={tab === 'internal_cats'}    visited={visited['internal_cats']}>    <InternalIssueCategoriesConfig /></LazyTab>
+          <LazyTab active={tab === 'biz-types'}        visited={visited['biz-types']}>        <DripBusinessTypesConfig /></LazyTab>
+          <LazyTab active={tab === 'messaging-limits'} visited={visited['messaging-limits']}> <MessagingLimitsConfig /></LazyTab>
+          <LazyTab active={tab === 'demo-settings'}    visited={visited['demo-settings']}>    <DemoSettings /></LazyTab>
+          <LazyTab active={tab === 'automation'}       visited={visited['automation']}>       <AutomationConfig /></LazyTab>
 
-        <LazyTab active={tab === 'shopify'}      visited={visited['shopify']}>      <ShopifyIntegration /></LazyTab>
-        <LazyTab active={tab === 'commerce'}     visited={visited['commerce']}>     <CommerceSettings /></LazyTab>
-        <LazyTab active={tab === 'wa-sales-mode'} visited={visited['wa-sales-mode']}><WASalesModeConfig /></LazyTab>
-        <LazyTab active={tab === 'growth-config'} visited={visited['growth-config']}><GrowthConfig /></LazyTab>
-        <LazyTab active={tab === 'sales-log'}    visited={visited['sales-log']}>    <SalesLog /></LazyTab>
+          <LazyTab active={tab === 'catalog'} visited={visited['catalog']}>
+            <SubTabBar tabs={CATALOG_SUB_TABS} active={catalogSubTab} onChange={setCatalogSubTab} />
+            <div style={{ display: catalogSubTab === 'catalog-config' ? 'block' : 'none' }}><CatalogConfig /></div>
+            <div style={{ display: catalogSubTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems /></div>
+          </LazyTab>
 
-        {tab === 'kb' && (
-          <LinkMessage
-            icon="📚" title="Knowledge Base"
-            body="KB articles are managed in the Support Tickets module."
-            hint="Navigate to Support → KB Manager tab to create and publish articles."
-          />
-        )}
-        {tab === 'templates' && (
-          <LinkMessage
-            icon="💬" title="WhatsApp Templates"
-            body="Message templates are managed in the WhatsApp Engine module."
-            hint="Navigate to WhatsApp → Templates tab to create and manage templates."
-          />
-        )}
+          <LazyTab active={tab === 'sales-system'} visited={visited['sales-system']}>
+            <SubTabBar tabs={SALES_SUB_TABS} active={salesSubTab} onChange={setSalesSubTab} />
+            <div style={{ display: salesSubTab === 'sales-mode'    ? 'block' : 'none' }}><SalesModeConfig /></div>
+            <div style={{ display: salesSubTab === 'contact-menus' ? 'block' : 'none' }}><ContactMenuConfig /></div>
+          </LazyTab>
+
+          <LazyTab active={tab === 'shopify'}       visited={visited['shopify']}>       <ShopifyIntegration /></LazyTab>
+          <LazyTab active={tab === 'commerce'}      visited={visited['commerce']}>      <CommerceSettings /></LazyTab>
+          <LazyTab active={tab === 'wa-sales-mode'} visited={visited['wa-sales-mode']}> <WASalesModeConfig /></LazyTab>
+          <LazyTab active={tab === 'growth-config'} visited={visited['growth-config']}> <GrowthConfig /></LazyTab>
+          <LazyTab active={tab === 'sales-log'}     visited={visited['sales-log']}>     <SalesLog /></LazyTab>
+
+          {tab === 'kb' && (
+            <LinkMessage
+              icon="📚" title="Knowledge Base"
+              body="KB articles are managed in the Support Tickets module."
+              hint="Navigate to Support → KB Manager tab to create and publish articles."
+            />
+          )}
+          {tab === 'templates' && (
+            <LinkMessage
+              icon="💬" title="WhatsApp Templates"
+              body="Message templates are managed in the WhatsApp Engine module."
+              hint="Navigate to WhatsApp → Templates tab to create and manage templates."
+            />
+          )}
+        </div>
       </div>
     </div>
   )
