@@ -1404,6 +1404,7 @@ export default function InternalOpsModule({ user }) {
       }}>
         {TABS.map(tab => {
           const active = activeTab === tab.id
+          const TabIcon = tab.Icon || null
           return (
             <button
               key={tab.id}
@@ -1421,7 +1422,7 @@ export default function InternalOpsModule({ user }) {
                 marginBottom: -1,
               }}
             >
-              {tab.Icon && (() => { const Icon = tab.Icon; return <Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} /> })()} {tab.label}
+              {TabIcon && <TabIcon size={14} strokeWidth={active ? 2.5 : 1.8} />} {tab.label}
             </button>
           )
         })}

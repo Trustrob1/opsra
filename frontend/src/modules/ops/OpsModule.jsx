@@ -77,6 +77,7 @@ function TabBar({ active, onChange, tabs }) {
     }}>
       {tabs.map(tab => {
         const isActive = active === tab.id
+        const TabIcon = TAB_ICONS[tab.id] || null
         return (
           <button
             key={tab.id}
@@ -99,7 +100,7 @@ function TabBar({ active, onChange, tabs }) {
               marginBottom: -1,
             }}
           >
-            {(() => { const Icon = TAB_ICONS[tab.id]; return Icon ? <Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} /> : null })()}
+            {TabIcon && <TabIcon size={14} strokeWidth={isActive ? 2.5 : 1.8} />}
             {tab.label}
           </button>
         )

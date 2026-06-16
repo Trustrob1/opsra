@@ -208,6 +208,7 @@ function TabBar({ active, onChange, tabs }) {
     }}>
       {tabs.map(tab => {
         const isActive = active === tab.id
+        const TabIcon = tab.Icon || null
         return (
           <button key={tab.id} onClick={() => onChange(tab.id)} style={{
             display: 'flex', alignItems: 'center', gap: 6,
@@ -217,7 +218,7 @@ function TabBar({ active, onChange, tabs }) {
             fontFamily: ds.fontDm, color: isActive ? ds.teal : ds.gray,
             transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: -1,
           }}>
-            {tab.Icon && (() => { const Icon = tab.Icon; return <Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} /> })()}{tab.label}
+            {TabIcon && <TabIcon size={14} strokeWidth={isActive ? 2.5 : 1.8} />}{tab.label}
           </button>
         )
       })}
