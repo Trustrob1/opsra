@@ -367,7 +367,7 @@ function SectionCard({ sKey, label, icon, data, collapsed, onToggle, compareOff 
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: collapsed ? 0 : 12 }}>
       <div style={{ width: 30, height: 30, borderRadius: 7, background: '#F0FDFA',
         display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
-        {icon}
+        {icon && <ReportIcon Icon={icon} size={16} />}
       </div>
       <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#111827' }}>{label}</span>
       {!compareOff && !collapsed && (
@@ -1253,7 +1253,7 @@ export default function ReportsModule({ user }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, background: ds.teal,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 14, color: 'white', flexShrink: 0 }}><ClipboardList size={20} color={ds.teal} /></div>
+            fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 14, color: 'white', flexShrink: 0 }}><ClipboardList size={20} color="white" strokeWidth={2} /></div>
           <div>
             <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>
               Management Reports
