@@ -3,40 +3,37 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Book a Demo — Opsra</title>
-  <meta name="description" content="Book a free 30-minute demo. No pressure, no sales script. We show you exactly what Opsra looks like for your industry and tell you honestly which plan makes sense."/>
+  <title>Case Studies — Opsra</title>
+  <meta name="description" content="Real businesses, real results. See how Opsra helped a Lagos real estate firm, an Abuja SaaS company, and a healthcare platform solve their biggest operational problems."/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@500;600&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
   <link rel="stylesheet" href="_base.css"/>
   <style>
-    .contact-page{padding:72px 0 80px;background:var(--white);min-height:80vh;}
-    .contact-layout{display:grid;grid-template-columns:1.1fr 1fr;gap:72px;align-items:start;}
-    .form-group{margin-bottom:20px;}
-    .form-label{display:block;font-size:13px;font-weight:500;color:var(--text-2);margin-bottom:6px;}
-    .form-input{width:100%;padding:11px 14px;border:1px solid var(--border-mid);border-radius:var(--r-md);font-size:14px;font-family:inherit;color:var(--text);background:var(--white);transition:border-color 0.15s;outline:none;}
-    .form-input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(29,158,117,0.1);}
-    .form-input::placeholder{color:var(--text-3);}
-    .form-textarea{width:100%;padding:11px 14px;border:1px solid var(--border-mid);border-radius:var(--r-md);font-size:14px;font-family:inherit;color:var(--text);background:var(--white);transition:border-color 0.15s;outline:none;resize:vertical;min-height:110px;}
-    .form-textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(29,158,117,0.1);}
-    .form-textarea::placeholder{color:var(--text-3);}
-    .form-submit{width:100%;padding:14px;font-size:15px;font-weight:500;border-radius:var(--r-md);border:none;background:var(--teal);color:#fff;cursor:pointer;font-family:inherit;transition:background 0.15s;}
-    .form-submit:hover{background:var(--teal-dark);}
-    .form-note{font-size:12px;color:var(--text-3);text-align:center;margin-top:10px;}
-    .side-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;margin-bottom:14px;}
-    .side-card-title{font-size:14px;font-weight:500;color:var(--text);margin-bottom:14px;}
-    .contact-item{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text-2);margin-bottom:10px;}
-    .contact-item i{font-size:17px;color:var(--teal);flex-shrink:0;}
-    .contact-item:last-child{margin-bottom:0;}
-    .expect-list{list-style:none;display:flex;flex-direction:column;gap:12px;}
-    .expect-item{display:flex;align-items:flex-start;gap:10px;font-size:14px;color:var(--text-2);line-height:1.5;}
-    .expect-item i{font-size:15px;color:var(--teal);flex-shrink:0;margin-top:2px;}
-    .fallback-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
-    .success-state{display:none;text-align:center;padding:48px 24px;}
-    .success-state.visible{display:block;}
-    .form-state{transition:opacity 0.2s;}
-    @media(max-width:900px){.contact-layout{grid-template-columns:1fr;}}
+    .cs-hero{padding:72px 0 56px;background:var(--white);}
+    .cs-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:48px;}
+    .cs-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;transition:border-color 0.15s;}
+    .cs-card:hover{border-color:var(--border-mid);}
+    .cs-img{height:200px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;}
+    .cs-img-lbl{font-size:11px;color:var(--text-3);text-align:center;max-width:160px;line-height:1.4;}
+    .cs-img-lbl strong{display:block;font-weight:600;color:var(--text-2);margin-bottom:3px;}
+    .cs-body{padding:24px;}
+    .cs-industry{font-size:11px;padding:4px 12px;border-radius:20px;display:inline-block;margin-bottom:14px;font-weight:600;}
+    .cs-title{font-family:'Poppins',sans-serif;font-size:17px;font-weight:700;color:var(--text);line-height:1.3;margin-bottom:10px;}
+    .cs-excerpt{font-size:13px;font-weight:500;color:var(--text-2);line-height:1.65;margin-bottom:18px;}
+    .cs-results{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
+    .cs-result{background:var(--surface);border-radius:var(--r-md);padding:12px;text-align:center;}
+    .cs-result-num{font-size:22px;font-weight:800;font-family:'Poppins',sans-serif;color:var(--teal);}
+    .cs-result-lbl{font-size:11px;font-weight:500;color:var(--text-2);margin-top:3px;line-height:1.3;}
+    .cs-link{font-size:13px;color:var(--teal);display:flex;align-items:center;gap:5px;font-weight:600;}
+    .cs-link i{font-size:14px;}
+    .cs-detail-section{padding:72px 0;}
+    .cs-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+    .cs-detail-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;}
+    .cs-detail-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;}
+    .cs-detail-text{font-size:14px;font-weight:500;color:var(--text-2);line-height:1.7;}
+    @media(max-width:900px){.cs-grid{grid-template-columns:1fr;}.cs-detail-grid{grid-template-columns:1fr;}}
   </style>
 </head>
 <body>
@@ -48,7 +45,7 @@
       <a href="features.html">Features</a>
       <a href="solutions.html">Solutions</a>
       <a href="pricing.html">Pricing</a>
-      <a href="case-studies.html">Case studies</a>
+      <a href="case-studies.html" class="active">Case studies</a>
       <a href="about.html">About</a>
     </div>
     <div class="nav-actions">
@@ -58,121 +55,157 @@
   </div>
 </nav>
 
-<section class="contact-page">
+<section class="cs-hero">
   <div class="container">
-    <div class="contact-layout">
+    <p class="section-tag">Case studies</p>
+    <h1 class="section-heading display" style="max-width:560px;">Real businesses. Real results. Real numbers.</h1>
+    <p class="section-sub">Each story follows the same structure: the problem the business had, what changed when they used Opsra, and the measurable outcome.</p>
+    <p style="font-size:13px;font-weight:500;color:var(--text-3);font-style:italic;">Note: placeholder case studies — to be replaced with real client results when available.</p>
+  </div>
+</section>
 
-      <div>
-        <p class="section-tag">Book a demo</p>
-        <h1 class="section-heading display" style="max-width:480px;">See Opsra working for your business — in 30 minutes</h1>
-        <p style="font-size:15px;color:var(--text-2);line-height:1.75;margin-bottom:36px;">No pressure. No sales script. We show you exactly what it looks like for your industry and tell you honestly which plan makes sense — or whether Opsra is even right for you right now.</p>
+<div class="divider"></div>
 
-        <div id="form-state">
-          <form id="demo-form" onsubmit="submitForm(event)" novalidate>
-            <div class="form-group">
-              <label class="form-label" for="name">Full name <span style="color:var(--red);">*</span></label>
-              <input class="form-input" type="text" id="name" name="name" placeholder="Tunde Adeyemi" required autocomplete="name"/>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="email">Business email <span style="color:var(--red);">*</span></label>
-              <input class="form-input" type="email" id="email" name="email" placeholder="tunde@yourbusiness.com" required autocomplete="email"/>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="business">Business name <span style="color:var(--red);">*</span></label>
-              <input class="form-input" type="text" id="business" name="business" placeholder="Adeyemi &amp; Co." required autocomplete="organization"/>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-              <div class="form-group">
-                <label class="form-label" for="industry">Industry <span style="color:var(--red);">*</span></label>
-                <select class="form-input" id="industry" name="industry" required>
-                  <option value="">Select your industry</option>
-                  <option>Real estate</option>
-                  <option>SaaS / Tech</option>
-                  <option>Healthcare</option>
-                  <option>Insurance</option>
-                  <option>Retail / E-commerce</option>
-                  <option>Education / Schools</option>
-                  <option>Professional services</option>
-                  <option>Financial services</option>
-                  <option>Logistics / Supply chain</option>
-                  <option>Other</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="team-size">Team size</label>
-                <select class="form-input" id="team-size" name="team_size">
-                  <option value="">Select team size</option>
-                  <option>Just me</option>
-                  <option>2–5 people</option>
-                  <option>6–15 people</option>
-                  <option>16–50 people</option>
-                  <option>50+ people</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="challenge">What is your biggest operational challenge right now?</label>
-              <textarea class="form-textarea" id="challenge" name="challenge" placeholder="e.g. My team is not following up on leads fast enough — I have no way to see who did what. Or: I manage 8 contractors and I have no idea how any of them are actually performing day to day..."></textarea>
-            </div>
-            <div id="form-error" style="display:none;background:var(--red-light);color:var(--red-dark);font-size:13px;padding:12px 14px;border-radius:var(--r-md);margin-bottom:16px;"></div>
-            <button class="form-submit" type="submit" id="submit-btn">Book my free demo</button>
-            <p class="form-note">We respond within 2 hours on business days &nbsp;·&nbsp; No spam, ever</p>
-          </form>
+<section class="section bg">
+  <div class="container">
+    <div class="cs-grid">
+
+      <article class="cs-card">
+        <div class="cs-img" role="img" aria-label="Real estate firm office in Lagos">
+          <i class="ti ti-photo" style="font-size:24px;color:#B4B2A9;" aria-hidden="true"></i>
+          <p class="cs-img-lbl"><strong>Client photo or office</strong>Real estate context, Lagos</p>
         </div>
-
-        <div class="success-state" id="success-state">
-          <div style="width:56px;height:56px;border-radius:50%;background:var(--teal-light);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
-            <i class="ti ti-check" style="font-size:28px;color:var(--teal-dark);" aria-hidden="true"></i>
+        <div class="cs-body">
+          <span class="cs-industry" style="background:var(--teal-light);color:var(--teal-dark);">Real estate · Lagos</span>
+          <h2 class="cs-title">How a Lagos real estate firm stopped losing leads on weekends</h2>
+          <p class="cs-excerpt">Weekend enquiries went unanswered until Monday. By that time, 40% of hot leads had already moved on to a competitor. The sales team had no visibility into what was coming in — or falling through.</p>
+          <div class="cs-results">
+            <div class="cs-result"><div class="cs-result-num">+62%</div><div class="cs-result-lbl">Lead response rate</div></div>
+            <div class="cs-result"><div class="cs-result-num">Zero</div><div class="cs-result-lbl">Weekend lead losses</div></div>
           </div>
-          <h2 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:600;color:var(--text);margin-bottom:12px;">You are booked in.</h2>
-          <p style="font-size:15px;color:var(--text-2);line-height:1.75;max-width:380px;margin:0 auto 20px;">Check your email for a confirmation and a calendar link to pick your preferred slot. We will review your answers before the call so we come prepared for your specific business.</p>
-          <a href="index.html"><button class="btn-secondary-lg">Back to homepage</button></a>
+          <a href="#cs-realestate" class="cs-link">Read full story <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
         </div>
-      </div>
+      </article>
 
-      <div>
-        <div class="side-card">
-          <p class="side-card-title">What happens after you book</p>
-          <ul class="expect-list">
-            <li class="expect-item"><i class="ti ti-check" aria-hidden="true"></i>You get a confirmation with a calendar link to choose your preferred slot</li>
-            <li class="expect-item"><i class="ti ti-check" aria-hidden="true"></i>We read your answers before the call so we come prepared — not generic</li>
-            <li class="expect-item"><i class="ti ti-check" aria-hidden="true"></i>30-minute video call — we demo, you ask questions, we answer honestly</li>
-            <li class="expect-item"><i class="ti ti-check" aria-hidden="true"></i>After the call, we send a tailored proposal with pricing — no obligation</li>
-          </ul>
+      <article class="cs-card">
+        <div class="cs-img" role="img" aria-label="SaaS company team in Abuja">
+          <i class="ti ti-photo" style="font-size:24px;color:#B4B2A9;" aria-hidden="true"></i>
+          <p class="cs-img-lbl"><strong>Client photo or office</strong>SaaS / tech context, Abuja</p>
         </div>
+        <div class="cs-body">
+          <span class="cs-industry" style="background:var(--purple-light);color:var(--purple);">SaaS · Abuja</span>
+          <h2 class="cs-title">How an Abuja SaaS company made contractor reviews fair and fast</h2>
+          <p class="cs-excerpt">KPI disputes at review time took hours and relied on memory. Both sides came to the table with different numbers. Conversations were emotional, not factual, and good contractors felt unfairly judged.</p>
+          <div class="cs-results">
+            <div class="cs-result"><div class="cs-result-num">-80%</div><div class="cs-result-lbl">Time spent in KPI reviews</div></div>
+            <div class="cs-result"><div class="cs-result-num">3</div><div class="cs-result-lbl">Key contractors retained</div></div>
+          </div>
+          <a href="#cs-saas" class="cs-link">Read full story <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
+        </div>
+      </article>
 
-        <div class="side-card">
-          <p class="side-card-title">Prefer to reach us directly?</p>
-          <div class="contact-item">
-            <i class="ti ti-mail" aria-hidden="true"></i>
-            <a href="mailto:hello@opsra.io" style="color:var(--text-2);">hello@opsra.io</a>
-          </div>
-          <div class="contact-item">
-            <i class="ti ti-brand-whatsapp" aria-hidden="true"></i>
-            <a href="https://wa.me/234XXXXXXXXXX" style="color:var(--text-2);">+234 xxx xxx xxxx</a>
-          </div>
-          <div class="contact-item">
-            <i class="ti ti-clock" aria-hidden="true"></i>
-            <span>Monday – Friday, 9am – 6pm WAT</span>
-          </div>
+      <article class="cs-card">
+        <div class="cs-img" role="img" aria-label="Healthcare platform team in Lagos">
+          <i class="ti ti-photo" style="font-size:24px;color:#B4B2A9;" aria-hidden="true"></i>
+          <p class="cs-img-lbl"><strong>Client photo or office</strong>Healthcare context, Lagos</p>
         </div>
-
-        <div class="side-card">
-          <p class="side-card-title">Not ready to book yet?</p>
-          <p style="font-size:13px;color:var(--text-2);line-height:1.65;margin-bottom:14px;">Browse the features page to see exactly what each module does, or check pricing to understand which plan fits your business size and stage.</p>
-          <div class="fallback-links">
-            <a href="features.html"><button class="btn-secondary-lg" style="font-size:13px;padding:9px 18px;">View features</button></a>
-            <a href="pricing.html"><button class="btn-secondary-lg" style="font-size:13px;padding:9px 18px;">See pricing</button></a>
+        <div class="cs-body">
+          <span class="cs-industry" style="background:var(--amber-light);color:var(--amber);">Healthcare · Lagos</span>
+          <h2 class="cs-title">How a healthcare platform saved 3 at-risk customers before they churned</h2>
+          <p class="cs-excerpt">Churn signals were completely invisible until customers cancelled. By then it was too late. The team had no early warning system — and no structured outreach for at-risk accounts.</p>
+          <div class="cs-results">
+            <div class="cs-result"><div class="cs-result-num">3/3</div><div class="cs-result-lbl">At-risk customers saved</div></div>
+            <div class="cs-result"><div class="cs-result-num">6 wks</div><div class="cs-result-lbl">Earlier than they'd have noticed</div></div>
           </div>
+          <a href="#cs-healthcare" class="cs-link">Read full story <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
         </div>
-
-        <div style="background:var(--teal-light);border-radius:var(--r-lg);padding:20px;margin-top:4px;">
-          <p style="font-size:13px;font-weight:500;color:var(--teal-dark);margin-bottom:6px;">Why book instead of just signing up?</p>
-          <p style="font-size:13px;color:var(--teal-deeper);line-height:1.65;">Opsra is configured specifically for your business — your pipeline stages, your KPI targets, your team structure. The demo is also the first step in that setup. You will leave with a clear picture of what day one looks like for you.</p>
-        </div>
-      </div>
+      </article>
 
     </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="cs-detail-section" id="cs-realestate">
+  <div class="container">
+    <span class="pill" style="background:var(--teal-light);color:var(--teal-dark);margin-bottom:16px;display:inline-block;">Real estate · Lagos</span>
+    <h2 class="section-heading display" style="max-width:600px;">How a Lagos real estate firm stopped losing leads on weekends</h2>
+    <div class="cs-detail-grid" style="margin-top:32px;">
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--red-dark);">The challenge</p>
+        <p class="cs-detail-text">The business was running Facebook and Instagram ads that generated strong lead volume — but enquiries that came in on Friday evenings or over the weekend went into a WhatsApp group that nobody actively monitored. By Monday morning, leads had already called a competitor. There was no pipeline, no assignment system, and no visibility into how many leads were actually being lost.</p>
+      </div>
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--blue);">What changed</p>
+        <p class="cs-detail-text">Opsra's lead management module was connected to the business's Facebook lead forms and WhatsApp inbox. Every incoming lead was automatically captured, AI-scored, and assigned to a rep with a follow-up task. The owner got a notification when a Hot lead came in — even on a Saturday. The team's activity was logged daily, so the head of sales could see who had followed up and who had not.</p>
+      </div>
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--teal-dark);">The results</p>
+        <p class="cs-detail-text">Within 30 days of going live, lead response rate increased from 38% to 62%. Weekend lead losses dropped to zero — every enquiry was followed up within 4 hours regardless of when it came in. The head of sales stopped spending Monday mornings reconstructing what had happened the previous week. The owner could see the full pipeline from one screen, live, at any time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="cs-detail-section bg" id="cs-saas">
+  <div class="container">
+    <span class="pill" style="background:var(--purple-light);color:var(--purple);margin-bottom:16px;display:inline-block;">SaaS · Abuja</span>
+    <h2 class="section-heading display" style="max-width:600px;">How an Abuja SaaS company made contractor reviews fair and fast</h2>
+    <div class="cs-detail-grid" style="margin-top:32px;">
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--red-dark);">The challenge</p>
+        <p class="cs-detail-text">The company had 6 contractors across sales and customer success. KPIs were set in a shared document at the start of each quarter — and then effectively forgotten until review time. When reviews came around, contractors and managers often had different recollections of what was agreed, what was achieved, and what had blocked delivery. Conversations were time-consuming and sometimes adversarial. Two strong contractors had already resigned citing unfair treatment.</p>
+      </div>
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--blue);">What changed</p>
+        <p class="cs-detail-text">Opsra's contractor KPI tracking module moved targets from the shared document into a live system. Each contractor logged their daily activities — calls made, demos completed, accounts contacted — directly into Opsra. Blockers were flagged immediately with a note. Managers could see progress against targets at any point. Both sides had access to the same data before any review conversation started.</p>
+      </div>
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--teal-dark);">The results</p>
+        <p class="cs-detail-text">Quarterly review meetings went from averaging 3 hours to under 45 minutes. Disputes dropped significantly — when both sides are looking at the same logged data, there is little room for disagreement about what happened. All 3 at-risk contractors chose to renew their agreements. The operations manager reported that blocker flags had helped her intervene earlier on two significant delivery risks that would previously have only surfaced at review time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="cs-detail-section" id="cs-healthcare">
+  <div class="container">
+    <span class="pill" style="background:var(--amber-light);color:var(--amber);margin-bottom:16px;display:inline-block;">Healthcare · Lagos</span>
+    <h2 class="section-heading display" style="max-width:600px;">How a healthcare platform saved 3 at-risk customers before they churned</h2>
+    <div class="cs-detail-grid" style="margin-top:32px;">
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--red-dark);">The challenge</p>
+        <p class="cs-detail-text">The platform had a recurring revenue model with monthly and annual subscribers. Customer success was managed informally — there was no system tracking engagement levels, no renewal calendar, and no process for reaching out to accounts that had gone quiet. Churn was only discovered when customers cancelled or stopped paying. By that point, re-engaging them was very difficult.</p>
+      </div>
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--blue);">What changed</p>
+        <p class="cs-detail-text">Opsra's renewals and retention module began tracking each customer account against engagement signals — login frequency, support ticket volume, outstanding issues. Accounts that showed early warning signs were automatically flagged as At Risk. The head of customer success received weekly alerts for flagged accounts, with AI-drafted win-back messages ready to personalise and send. A renewal calendar was set up to trigger outreach 6 weeks before each renewal date.</p>
+      </div>
+      <div class="cs-detail-card">
+        <p class="cs-detail-label" style="color:var(--teal-dark);">The results</p>
+        <p class="cs-detail-text">Within the first 8 weeks, Opsra flagged 3 accounts as At Risk. In all 3 cases, the team had not noticed any issues — the accounts had been quietly disengaging. Personalised outreach was sent within 24 hours of each flag. All 3 accounts were retained after brief conversations that addressed their underlying concerns. The head of customer success noted that without early warning, they would not have reached out until renewal time — at which point 2 of the 3 accounts said they would have cancelled.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section class="cta-band">
+  <div class="container">
+    <p class="section-tag">Your turn</p>
+    <h2 class="cta-heading display">Want results like these for your business?</h2>
+    <p class="cta-sub">Book a 30-minute demo. We will show you exactly what Opsra looks like for your industry and tell you honestly where the biggest impact will be.</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;">
+      <a href="contact.html"><button class="btn-primary-lg">Book a free demo</button></a>
+      <a href="pricing.html"><button class="btn-secondary-lg">See pricing</button></a>
+    </div>
+    <p class="cta-footnote">No credit card required &nbsp;·&nbsp; Setup included &nbsp;·&nbsp; Live in under 5 days</p>
   </div>
 </section>
 
@@ -189,64 +222,5 @@
     <span class="footer-copy">© 2026 Opsra. All rights reserved.</span>
   </div>
 </footer>
-
-<script>
-function submitForm(e){
-  e.preventDefault();
-  var err=document.getElementById('form-error');
-  var btn=document.getElementById('submit-btn');
-  err.style.display='none';
-  var name=document.getElementById('name').value.trim();
-  var email=document.getElementById('email').value.trim();
-  var biz=document.getElementById('business').value.trim();
-  var ind=document.getElementById('industry').value;
-  if(!name||!email||!biz||!ind){
-    err.textContent='Please fill in all required fields before submitting.';
-    err.style.display='block';
-    return;
-  }
-  var emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if(!emailRe.test(email)){
-    err.textContent='Please enter a valid email address.';
-    err.style.display='block';
-    return;
-  }
-  btn.textContent='Submitting...';
-  btn.disabled=true;
-  /*
-    FORM SUBMISSION
-    Connect this to your backend, Formspree, Netlify Forms, or any form handler.
-    Example Formspree: replace the fetch URL with your Formspree endpoint.
-
-    fetch('https://formspree.io/f/YOUR_FORM_ID', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name,email,business:biz,industry:ind,
-        team_size:document.getElementById('team-size').value,
-        challenge:document.getElementById('challenge').value})
-    }).then(function(r){
-      if(r.ok){ showSuccess(); }
-      else { showError('Something went wrong. Please email us at hello@opsra.io'); }
-    }).catch(function(){ showError('Connection error. Please try again or email us directly.'); });
-
-    For now, we simulate a successful submission:
-  */
-  setTimeout(function(){ showSuccess(); }, 800);
-}
-function showSuccess(){
-  document.getElementById('form-state').style.display='none';
-  var s=document.getElementById('success-state');
-  s.classList.add('visible');
-  s.focus();
-}
-function showError(msg){
-  var btn=document.getElementById('submit-btn');
-  var err=document.getElementById('form-error');
-  btn.textContent='Book my free demo';
-  btn.disabled=false;
-  err.textContent=msg;
-  err.style.display='block';
-}
-</script>
 </body>
 </html>
