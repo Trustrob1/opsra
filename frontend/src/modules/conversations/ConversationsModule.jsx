@@ -34,6 +34,12 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import {
+  MessageCircle, Camera, Facebook, Search, Circle, User, Bot,
+  Paperclip, Send, Download, FileText, Video, File, Music,
+  Image, Lightbulb, Clock, X, AlertTriangle,
+  Sparkles,
+} from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import {
@@ -52,9 +58,9 @@ import { getCustomerMessages, sendMessage } from '../../services/whatsapp.servic
 // ─── Channel config ───────────────────────────────────────────────────────────
 
 const CHANNEL = {
-  whatsapp:  { label: 'WhatsApp',  icon: '💬', color: '#25D366', bg: '#E8F8EE' },
-  instagram: { label: 'Instagram', icon: '📷', color: '#C13584', bg: '#FCE4EC' },
-  messenger: { label: 'Messenger', icon: '💙', color: '#0084FF', bg: '#E3F2FD' },
+  whatsapp:  { label: 'WhatsApp',  icon: 'whatsapp',  IconComp: MessageCircle, color: '#25D366', bg: '#E8F8EE' },
+  instagram: { label: 'Instagram', icon: 'instagram', IconComp: Camera,        color: '#C13584', bg: '#FCE4EC' },
+  messenger: { label: 'Messenger', icon: 'messenger', IconComp: Facebook,      color: '#0084FF', bg: '#E3F2FD' },
 }
 
 const THREAD_POLL_MS = 5000
@@ -102,11 +108,19 @@ function initials(name) {
 }
 
 function fileIcon(type) {
-  if (!type) return '📎'
-  if (type.startsWith('image/')) return '🖼'
-  if (type.startsWith('video/')) return '🎥'
-  if (type.startsWith('audio/')) return '🎵'
-  return '📄'
+  if (!type) return 'attach'
+  if (type.startsWith('image/')) return 'image'
+  if (type.startsWith('video/')) return 'video'
+  if (type.startsWith('audio/')) return 'audio'
+  return 'file'
+}
+function FileTypeIcon({ type, size = 20 }) {
+  const t = fileIcon(type)
+  if (t === 'image') return <Image size={size} />
+  if (t === 'video') return <Video size={size} />
+  if (t === 'audio') return <Music size={size} />
+  if (t === 'attach') return <Paperclip size={size} />
+  return <File size={size} />
 }
 
 function formatBytes(n) {
@@ -543,7 +557,7 @@ function ListPanel({ conversations, allCount, loading, error, search, onSearch, 
         </div>
 
         <div style={{ position: 'relative', marginBottom: 9 }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: ds.gray, pointerEvents: 'none' }}>🔍</span>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: ds.gray, pointerEvents: 'none', display:'flex', alignItems:'center' }}><Search size={13} /></span>
           <input
             value={search}
             onChange={e => onSearch(e.target.value)}
@@ -553,22 +567,22 @@ function ListPanel({ conversations, allCount, loading, error, search, onSearch, 
         </div>
 
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-          {[{ v: 'all', l: 'All channels' }, { v: 'whatsapp', l: '💬 WA' }, { v: 'instagram', l: '📷 IG' }, { v: 'messenger', l: '💙 FB' }].map(({ v, l }) => (
+          {[{ v: 'all', l: 'All channels' }, { v: 'whatsapp', l: 'WA' }, { v: 'instagram', l: 'IG' }, { v: 'messenger', l: 'FB' }].map(({ v, l }) => (
             <Chip key={v} active={channelFilter === v} color={ds.teal} onClick={() => onChannelFilter(v)}>{l}</Chip>
           ))}
           {[{ v: 'all', l: 'All' }, { v: 'lead', l: 'Leads' }, { v: 'customer', l: 'Customers' }].map(({ v, l }) => (
             <Chip key={v} active={typeFilter === v} color={ds.dark} onClick={() => onTypeFilter(v)}>{l}</Chip>
           ))}
-          <Chip active={unreadOnly} color='#E53E3E' onClick={() => onUnreadOnly(!unreadOnly)}>🔴 Unread</Chip>
+          <Chip active={unreadOnly} color='#E53E3E' onClick={() => onUnreadOnly(!unreadOnly)}><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Circle size={8} fill='currentColor' strokeWidth={0} />Unread</span></Chip>
         </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {loading && [1,2,3,4,5,6].map(n => <ConvSkeleton key={n} />)}
-        {!loading && error && <div style={{ padding: 28, textAlign: 'center', color: ds.red, fontSize: 13 }}>⚠ {error}</div>}
+        {!loading && error && <div style={{ padding: 28, textAlign: 'center', color: ds.red, fontSize: 13 }}>{error}</div>}
         {!loading && !error && allCount === 0 && (
           <div style={{ padding: 40, textAlign: 'center', color: ds.gray, fontSize: 13 }}>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>💬</div>No conversations yet.
+            <div style={{ marginBottom: 10, display:'flex', justifyContent:'center' }}><MessageCircle size={36} color={ds.teal} strokeWidth={1.5} /></div>No conversations yet.
           </div>
         )}
         {!loading && !error && allCount > 0 && conversations.length === 0 && (
@@ -598,8 +612,8 @@ function ConvRow({ conv, isActive, onSelect }) {
         <div style={{ width: 44, height: 44, borderRadius: '50%', background: isLead ? `linear-gradient(135deg, ${ds.accent} 0%, #C05A00 100%)` : `linear-gradient(135deg, ${ds.teal} 0%, ${ds.tealDark} 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#fff' }}>
           {initials(conv.contact_name)}
         </div>
-        <span style={{ position: 'absolute', bottom: -1, right: -1, width: 18, height: 18, borderRadius: '50%', background: '#fff', border: '1.5px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>
-          {ch.icon}
+        <span style={{ position: 'absolute', bottom: -1, right: -1, width: 18, height: 18, borderRadius: '50%', background: '#fff', border: '1.5px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {ch.IconComp && <ch.IconComp size={10} color={ch.color} strokeWidth={2} />}
         </span>
       </div>
 
@@ -619,7 +633,7 @@ function ConvRow({ conv, isActive, onSelect }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             {conv.ai_paused && (
-              <span title="Human mode — AI paused" style={{ fontSize: 12 }}>👤</span>
+              <span title='Human mode — AI paused' style={{ display:'flex', alignItems:'center' }}><User size={12} color={ds.gray} /></span>
             )}
             <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, fontWeight: 600, fontFamily: ds.fontSyne, background: isLead ? '#FFF3E0' : '#E0F4F6', color: isLead ? '#C05A00' : ds.teal }}>
               {isLead ? 'Lead' : 'CX'}
@@ -662,7 +676,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 20, background: ch.bg, color: ch.color, fontWeight: 600, fontFamily: ds.fontSyne }}>
-              {ch.icon} {ch.label}
+              {ch.IconComp && <ch.IconComp size={11} color={ch.color} strokeWidth={2} />} {ch.label}
             </span>
             <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 20, fontWeight: 600, fontFamily: ds.fontSyne, background: isLead ? '#FFF3E0' : '#E0F4F6', color: isLead ? '#C05A00' : ds.teal }}>
               {isLead ? 'Lead' : 'Customer'}
@@ -676,27 +690,27 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
           {aiPaused ? (
             <>
               <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#FFF3E0', color: '#C05A00', fontWeight: 700, fontFamily: ds.fontSyne }}>
-                👤 Human Mode{humanModeDuration ? ` · ${humanModeDuration}` : ''}
+                Human Mode{humanModeDuration ? ` · ${humanModeDuration}` : ''}
               </span>
               <button
                 onClick={onResumeAI}
                 disabled={resuming}
                 style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, border: `1px solid ${ds.teal}`, background: '#fff', color: ds.teal, fontWeight: 600, cursor: resuming ? 'not-allowed' : 'pointer', fontFamily: ds.fontSyne, opacity: resuming ? 0.6 : 1 }}
               >
-                {resuming ? 'Resuming…' : '🤖 Resume AI'}
+                {resuming ? 'Resuming…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Bot size={11} />Resume AI</span>}
               </button>
             </>
           ) : (
             <>
-              <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#E8F8EE', color: '#27AE60', fontWeight: 700, fontFamily: ds.fontSyne }}>
-                🤖 AI Active
+              <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#E8F8EE', color: '#27AE60', fontWeight: 700, fontFamily: ds.fontSyne, display:'inline-flex', alignItems:'center', gap:4 }}>
+                <Bot size={10} strokeWidth={2.5} />AI Active
               </span>
               <button
                 onClick={onPauseAI}
                 disabled={pausing}
                 style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, border: '1px solid #C05A00', background: '#fff', color: '#C05A00', fontWeight: 600, cursor: pausing ? 'not-allowed' : 'pointer', fontFamily: ds.fontSyne, opacity: pausing ? 0.6 : 1 }}
               >
-                {pausing ? 'Taking over…' : '👤 Take over'}
+                {pausing ? 'Taking over…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><User size={11} />Take over</span>}
               </button>
             </>
           )}
@@ -710,7 +724,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
               onMouseEnter={e => e.currentTarget.style.background = '#1a3040'}
               onMouseLeave={e => e.currentTarget.style.background = '#0e2030'}
             >
-              ✦ Ask Aria
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Sparkles size={11} />Ask Aria</span>
             </button>
           )}
         </div>
@@ -745,14 +759,14 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
               onClick={onResumeAI}
               style={{ fontSize: 11.5, padding: '4px 11px', borderRadius: 20, border: `1px solid ${ds.teal}`, background: '#fff', color: ds.teal, fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontSyne }}
             >
-              🤖 Resume AI
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Bot size={11} />Resume AI</span>
             </button>
             <button
               onClick={onDismissNudge}
               title="Dismiss"
               style={{ fontSize: 13, padding: '2px 8px', background: 'none', border: 'none', cursor: 'pointer', color: '#A07820', lineHeight: 1 }}
             >
-              ✕
+              <X size={14} />
             </button>
           </div>
         </div>
@@ -941,7 +955,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
       {/* Window-closed banner — shown once status is known and window is closed */}
       {!statusLoading && !windowOpen && (
         <div style={{ background: '#FFF8E1', borderBottom: '1px solid #FFE082', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12 }}>⚠</span>
+          <AlertTriangle size={12} />
           <span style={{ fontSize: 11.5, color: '#7B6000', fontFamily: ds.fontDm }}>
             {(channel === 'instagram' || channel === 'messenger')
               ? '24-hour window closed — you can only reply within 24 hours of the last message'
@@ -954,7 +968,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
       {file && (
         <div style={{ padding: '8px 14px 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', border: `1px solid ${ds.border}`, borderRadius: 8, padding: '5px 10px', flex: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 16, flexShrink: 0 }}>{fileIcon(file.type)}</span>
+            <span style={{ fontSize: 16, flexShrink: 0 }}><FileTypeIcon type={file.type} size={18} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: ds.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
               <div style={{ fontSize: 10.5, color: ds.gray }}>{formatBytes(file.size)}</div>
@@ -962,10 +976,8 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
             <button
               onClick={clearFile}
               title="Remove file"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 16, lineHeight: 1, padding: 2, flexShrink: 0 }}
-            >
-              ✕
-            </button>
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 2, flexShrink: 0, display:'flex', alignItems:'center' }}
+            ><X size={16} /></button>
           </div>
         </div>
       )}
@@ -973,7 +985,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
       {/* File size / validation error */}
       {fileError && (
         <div style={{ padding: '4px 14px', fontSize: 11.5, color: '#C0392B', fontFamily: ds.fontDm }}>
-          ⚠ {fileError}
+          {fileError}
         </div>
       )}
 
@@ -1000,7 +1012,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
                 onMouseEnter={e => e.currentTarget.style.color = ds.teal}
                 onMouseLeave={e => e.currentTarget.style.color = ds.gray}
               >
-                📎
+                <Paperclip size={18} />
               </button>
             </>
           )}
@@ -1048,7 +1060,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
       {/* Send error */}
       {sendError && (
         <div style={{ padding: '2px 14px 8px', fontSize: 11.5, color: '#C0392B', fontFamily: ds.fontDm }}>
-          ⚠ {sendError}
+          {sendError}
         </div>
       )}
     </div>
@@ -1106,7 +1118,7 @@ function SendButton({ canSend, sending, onClick }) {
     >
       {sending
         ? <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
-        : '➤'
+        : <Send size={16} />
       }
     </button>
   )
@@ -1169,7 +1181,7 @@ function Bubble({ msg, onRequestSuggestion }) {
         ...style,
       }}
     >
-      {downloading ? '…' : '⬇'}
+      {downloading ? '…' : <Download size={12} />}
     </button>
   )
 
@@ -1178,7 +1190,7 @@ function Bubble({ msg, onRequestSuggestion }) {
       <div style={{ maxWidth: '72%', background: isOut ? '#DCF8C6' : '#fff', border: `1px solid ${isOut ? '#B0DDB8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
         {msg.template_name && (
           <p style={{ fontSize: 10, color: '#856404', background: '#FFF3CD', borderRadius: 4, padding: '2px 6px', margin: '0 0 5px', display: 'inline-block' }}>
-            📋 {msg.template_name}
+            {msg.template_name}
           </p>
         )}
 
@@ -1207,7 +1219,7 @@ function Bubble({ msg, onRequestSuggestion }) {
               /* document or video */
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: '8px 10px' }}>
                 <span style={{ fontSize: 20 }}>
-                  {msg.message_type === 'video' ? '🎥' : '📄'}
+                  {msg.message_type === 'video' ? <Video size={20} /> : <FileText size={20} />}
                 </span>
                 <span style={{ fontSize: 12, color: ds.dark, fontWeight: 500, flex: 1, wordBreak: 'break-all' }}>
                   {msg.message_type === 'document'
@@ -1232,7 +1244,7 @@ function Bubble({ msg, onRequestSuggestion }) {
             onMouseEnter={e => e.currentTarget.style.opacity = '1'}
             onMouseLeave={e => e.currentTarget.style.opacity = '0.55'}
           >
-            💡 Suggest reply
+            <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Lightbulb size={11} />Suggest reply</span>
           </button>
         )}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: isOut ? 'space-between' : 'flex-end', gap: 4, marginTop: 4 }}>
@@ -1244,7 +1256,7 @@ function Bubble({ msg, onRequestSuggestion }) {
               color:      msg.sent_by_name ? ds.teal : ds.gray,
               flexShrink: 0,
             }}>
-              {msg.sent_by_name ? `👤 ${msg.sent_by_name.split(' ')[0]}` : '🤖 AI'}
+              {msg.sent_by_name ? `${msg.sent_by_name.split(' ')[0]}` : 'AI'}
             </span>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1260,11 +1272,11 @@ function Bubble({ msg, onRequestSuggestion }) {
 // ─── Status tick ──────────────────────────────────────────────────────────────
 
 function StatusTick({ status }) {
-  if (!status || status === 'pending') return <span style={{ fontSize: 10, color: ds.gray }}>🕐</span>
-  if (status === 'sent')              return <span style={{ fontSize: 10, color: ds.gray }} title="Sent">✓</span>
-  if (status === 'delivered')         return <span style={{ fontSize: 10, color: ds.gray }} title="Delivered">✓✓</span>
-  if (status === 'read')              return <span style={{ fontSize: 10, color: ds.teal }} title="Read">✓✓</span>
-  if (status === 'failed')            return <span style={{ fontSize: 10, color: ds.red  }} title="Failed">✗</span>
+  if (!status || status === 'pending') return <Clock size={10} color={ds.gray} title='Pending' />
+  if (status === 'sent')     return <span style={{ fontSize: 10, color: ds.gray }} title='Sent'>✓</span>
+  if (status === 'delivered') return <span style={{ fontSize: 10, color: ds.gray }} title='Delivered'>✓✓</span>
+  if (status === 'read')      return <span style={{ fontSize: 10, color: ds.teal }} title='Read'>✓✓</span>
+  if (status === 'failed')    return <X size={10} color={ds.red} title='Failed' />
   return null
 }
 
@@ -1285,7 +1297,7 @@ function KBSuggestionBar({ suggestion, loading, onUse, onDismiss }) {
   if (suggestion.noResult) {
     return (
       <div style={{ flexShrink: 0, background: '#F9FAFB', borderTop: '1px solid #E5E7EB', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 12, color: ds.gray, fontFamily: ds.fontDm }}>💡 No KB match found for this message.</span>
+        <span style={{ fontSize: 12, color: ds.gray, fontFamily: ds.fontDm }}><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Lightbulb size={11} />No KB match found for this message.</span></span>
       </div>
     )
   }
@@ -1294,7 +1306,7 @@ function KBSuggestionBar({ suggestion, loading, onUse, onDismiss }) {
     <div style={{ flexShrink: 0, background: '#F0F7FF', borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE', padding: '9px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: '#1E40AF', fontFamily: ds.fontSyne, marginBottom: 3 }}>
-          💡 KB · {suggestion.title}
+          <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Lightbulb size={11} />KB · {suggestion.title}</span>
         </div>
         <div style={{ fontSize: 12, color: '#1E3A5F', fontFamily: ds.fontDm, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
           {suggestion.snippet}
@@ -1323,7 +1335,7 @@ function KBSuggestionBar({ suggestion, loading, onUse, onDismiss }) {
 function EmptyState({ totalUnread }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 14, background: '#FAFCFD' }}>
-      <div style={{ fontSize: 52 }}>💬</div>
+      <div style={{ display:'flex', justifyContent:'center', marginBottom:0 }}><MessageCircle size={52} color={ds.teal} strokeWidth={1.2} /></div>
       <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: ds.dark }}>
         {totalUnread > 0 ? `${totalUnread} unread message${totalUnread > 1 ? 's' : ''}` : 'Select a conversation'}
       </div>

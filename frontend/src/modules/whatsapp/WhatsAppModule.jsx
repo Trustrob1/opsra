@@ -17,6 +17,7 @@
  */
 
 import { useState } from 'react'
+import { Users, Radio, FileText, Droplets } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import CustomerList from './CustomerList'
 import CustomerProfile from './CustomerProfile'
@@ -26,10 +27,17 @@ import DripSequenceConfig from './DripSequenceConfig'
 
 const VIEWS = ['customers', 'broadcasts', 'templates', 'drip']
 const VIEW_LABELS = {
-  customers:  '👥 Customers',
-  broadcasts: '📢 Broadcasts',
-  templates:  '📋 Templates',
-  drip:       '💧 Drip Sequence',
+  customers:  'Customers',
+  broadcasts: 'Broadcasts',
+  templates: 'Templates',
+  drip: 'Drip Sequence',
+}
+
+const VIEW_ICONS = {
+  customers:  Users,
+  broadcasts: Radio,
+  templates:  FileText,
+  drip:       Droplets,
 }
 
 export default function WhatsAppModule({ org }) {
@@ -82,7 +90,10 @@ export default function WhatsAppModule({ org }) {
             style={S.navBtn(view === v)}
             onClick={() => { setView(v); setSel(null) }}
           >
+            <span style={{display:'inline-flex',alignItems:'center',gap:7}}>
+            {(() => { const Icon = VIEW_ICONS[v]; return Icon ? <Icon size={14} strokeWidth={1.8} /> : null })()}
             {VIEW_LABELS[v]}
+          </span>
           </button>
         ))}
       </div>

@@ -25,6 +25,10 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import {
+  Phone, MessageSquare,
+  ShoppingCart, Edit, AlertTriangle, Check,
+} from 'lucide-react'
 import { ds } from '../../utils/ds'
 import {
   getCustomer,
@@ -303,9 +307,9 @@ export default function CustomerProfile({ customerId, onBack }) {
     { key: 'messages',        label: 'Messages',          badge: attention.unread_messages, color: 'red'   },
     { key: 'tasks',           label: 'Tasks',             badge: attention.pending_tasks,   color: 'amber' },
     { key: 'nps',             label: 'NPS History'        },
-    { key: 'log-interaction', label: '📞 Interaction Log' },
-    { key: 'create-ticket',   label: '🎫 Tickets',        badge: attention.open_tickets,    color: 'red'   },
-    ...(isManager ? [{ key: 'contacts', label: '👥 Contacts' }] : []),
+    { key: 'log-interaction', label: 'Interaction Log' },
+    { key: 'create-ticket',   label: 'Tickets',        badge: attention.open_tickets,    color: 'red'   },
+    ...(isManager ? [{ key: 'contacts', label: 'Contacts' }] : []),
   ]
 
   const BADGE_STYLE = {
@@ -416,7 +420,7 @@ export default function CustomerProfile({ customerId, onBack }) {
         <div>
           <div style={S.name}>{customer.full_name}</div>
           <div style={S.biz}>{customer.business_name} · {customer.business_type || 'Business'}</div>
-          <div style={S.waNum}>💬 {customer.whatsapp}</div>
+          <div style={{...S.waNum, display:'inline-flex', alignItems:'center', gap:6}}><MessageSquare size={13} />{customer.whatsapp}</div>
           <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <RiskBadge risk={customer.churn_risk} />
             {customer.onboarding_complete
@@ -431,7 +435,7 @@ export default function CustomerProfile({ customerId, onBack }) {
           </div>
         </div>
         {!editing && (
-          <button style={S.editBtn} onClick={startEdit}>✏ Edit</button>
+          <button style={S.editBtn} onClick={startEdit}><span style={{display:'inline-flex',alignItems:'center',gap:5}}><Edit size={12} />Edit</span></button>
         )}
       </div>
 
@@ -499,7 +503,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                 </label>
               </div>
 
-              {saveErr && <div style={{ color: '#C0392B', fontSize: 12, margin: '10px 0' }}>⚠ {saveErr}</div>}
+              {saveErr && <div style={{ color: '#C0392B', fontSize: 12, margin: '10px 0', display:'flex', alignItems:'center', gap:5 }}><AlertTriangle size={12} />{saveErr}</div>}
               <div style={{ marginTop: 16 }}>
                 <button style={S.saveBtn} onClick={handleSave} disabled={saving}>
                   {saving ? 'Saving…' : 'Save Changes'}
@@ -602,7 +606,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                       title="Edit deal value"
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 13, padding: '0 2px', lineHeight: 1 }}
                     >
-                      ✏️
+                      
                     </button>
                   )}
                 </div>
@@ -682,7 +686,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                 display: 'inline-flex', alignItems: 'center', gap: 8,
               }}
             >
-              💬 Send WhatsApp Message
+              <span style={{display:'inline-flex',alignItems:'center',gap:6}}><MessageSquare size={14} />Send WhatsApp Message</span>
             </button>
           </div>
         </div>
@@ -698,7 +702,7 @@ export default function CustomerProfile({ customerId, onBack }) {
             background: '#FAFCFD',
           }}>
             <div style={{ fontFamily: ds.fontHead, fontWeight: 700, fontSize: 13.5, color: ds.dark }}>
-              🛒 Active Cart
+              <span style={{display:'inline-flex',alignItems:'center',gap:6}}><ShoppingCart size={14} />Active Cart</span>
             </div>
             {cartSession && (
               <span style={{
@@ -777,7 +781,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                 {/* Completed order link */}
                 {cartSession.shopify_order_id && (
                   <div style={{ marginTop: 10, fontSize: 12.5, color: '#27AE60', fontWeight: 600 }}>
-                    ✓ Order #{cartSession.shopify_order_id} completed
+                    <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Check size={14} />Order #{cartSession.shopify_order_id} completed</span>
                   </div>
                 )}
               </>
@@ -838,7 +842,7 @@ export default function CustomerProfile({ customerId, onBack }) {
           </div>
 
           {taskActionError && (
-            <p style={{ color: ds.red, fontSize: 13, marginBottom: 10 }}>⚠ {taskActionError}</p>
+            <p style={{ color: ds.red, fontSize: 13, marginBottom: 10, display:'flex', alignItems:'center', gap:5 }}><AlertTriangle size={13} />{taskActionError}</p>
           )}
 
           {tasks.length === 0 ? (
@@ -848,7 +852,7 @@ export default function CustomerProfile({ customerId, onBack }) {
               {/* Active tasks */}
               {activeTasks.length === 0 ? (
                 <p style={{ color: ds.gray, fontSize: 13, fontStyle: 'italic', marginBottom: 12 }}>
-                  All tasks completed. ✅
+                  All tasks completed.
                 </p>
               ) : (
                 <div>
@@ -881,7 +885,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                       background: '#E8F8EE', color: '#276749',
                       borderRadius: 20, padding: '2px 8px', fontSize: 11,
                     }}>
-                      ✓ {completedTasks.length} completed
+                      {completedTasks.length} completed
                     </span>
                     <span style={{ fontSize: 10 }}>{showCompletedTasks ? '▲ Hide' : '▼ Show'}</span>
                   </button>
@@ -962,7 +966,7 @@ export default function CustomerProfile({ customerId, onBack }) {
           </p>
 
           {contactErr && (
-            <p style={{ color: '#C0392B', fontSize: 13, marginBottom: 10 }}>⚠ {contactErr}</p>
+            <p style={{ color: '#C0392B', fontSize: 13, marginBottom: 10, display:'flex', alignItems:'center', gap:5 }}><AlertTriangle size={13} />{contactErr}</p>
           )}
 
           {contactsLoading ? (
