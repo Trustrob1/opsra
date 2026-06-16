@@ -6,6 +6,7 @@
  * Acknowledge Targets button visible at month start if not yet acknowledged.
  */
 import { useState, useEffect, useCallback } from 'react'
+import { AlertTriangle, ClipboardList, FileEdit, Check } from 'lucide-react'
 import useAuthStore from '../../store/authStore'
 import {
   getStaffProfile,
@@ -134,7 +135,7 @@ export default function MyPerformanceView({ user }) {
   }
 
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#7A9BAD', fontSize: 13 }}>Loading your performance data…</div>
-  if (error)   return <div style={{ background: '#fee2e2', borderRadius: 8, padding: '10px 14px', color: '#991b1b', fontSize: 13 }}>⚠ {error}</div>
+  if (error)   return <div style={{ background: '#fee2e2', borderRadius: 8, padding: '10px 14px', color: '#991b1b', fontSize: 13 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span></div>
 
   return (
     <div style={{ maxWidth: 680 }}>
@@ -157,7 +158,7 @@ export default function MyPerformanceView({ user }) {
       {/* Acknowledge banner */}
       {!profile?.acknowledged && activeKpis.length > 0 && (
         <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: '#92400e' }}>📋 Please acknowledge your targets for {month} to confirm you've reviewed them.</span>
+          <span style={{ fontSize: 13, color: '#92400e' }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ClipboardList size={13} />Please acknowledge your targets for {month} to confirm you've reviewed them.</span></span></span>
           <button
             onClick={handleAcknowledge}
             disabled={ackLoading}
@@ -171,18 +172,18 @@ export default function MyPerformanceView({ user }) {
       {/* Daily log form */}
       <div style={{ background: 'white', borderRadius: 10, border: '1px solid #e5e7eb', padding: 20, marginBottom: 16 }}>
         <div style={{ fontWeight: 600, fontSize: 14, color: ds.dark, marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>📝 Log Today — {today}</span>
+          <span style={{display:"inline-flex",alignItems:"center",gap:5}}><FileEdit size={13} />Log Today — {today}</span>
           {loggedToday && <span style={{ fontSize: 11, background: '#d1fae5', color: '#065f46', borderRadius: 6, padding: '3px 10px' }}>✓ Submitted for today</span>}
         </div>
 
         {submitSuccess && (
           <div style={{ background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#065f46' }}>
-            ✓ Daily log submitted successfully.
+            <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Check size={13} />Daily log submitted successfully.</span>
           </div>
         )}
         {submitError && (
           <div style={{ background: '#fee2e2', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#991b1b' }}>
-            ⚠ {submitError}
+            <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{submitError}</span>
           </div>
         )}
 

@@ -11,6 +11,7 @@
  * Pattern 56 — authStore: user id at user?.id, roles at user?.roles?.template.
  */
 import { useState, useEffect } from 'react'
+import { Link, X, Check, Lock, Unlock, AlertTriangle, Lightbulb, BarChart2, TrendingUp } from 'lucide-react'
 import useAuthStore from '../../store/authStore'
 import { ds } from '../../utils/ds'
 import ScorecardView      from './ScorecardView'
@@ -116,7 +117,7 @@ function OwnerDashboardDrawer({ onClose }) {
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <div>
             <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: ds.dark }}>
-              🔗 Owner Dashboard
+              <span style={{display:"inline-flex",alignItems:"center",gap:7}}><Link size={16} />Owner Dashboard</span>
             </div>
             <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
               External view — accessible without logging into Opsra
@@ -125,7 +126,7 @@ function OwnerDashboardDrawer({ onClose }) {
           <button
             onClick={onClose}
             style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#6b7280', lineHeight: 1, padding: 4 }}
-          >✕</button>
+          ><X size={18} /></button>
         </div>
 
         <div style={{ padding: '20px 24px', flex: 1 }}>
@@ -170,7 +171,7 @@ function OwnerDashboardDrawer({ onClose }) {
                         minWidth: 70,
                       }}
                     >
-                      {copied ? '✓ Copied' : 'Copy'}
+                      {copied ? <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Check size={13} />Copied</span> : 'Copy'}
                     </button>
                   </div>
                 ) : (
@@ -204,7 +205,7 @@ function OwnerDashboardDrawer({ onClose }) {
               {/* PIN setup */}
               <div>
                 <label style={{ ...LBL, fontSize: 13, color: ds.dark, fontWeight: 700 }}>
-                  {setup?.pin_set ? '🔒 Update PIN' : '🔓 Set a PIN'}
+                  {setup?.pin_set ? <span style={{display:'inline-flex',alignItems:'center',gap:6}}><Lock size={13} />Update PIN</span> : <span style={{display:'inline-flex',alignItems:'center',gap:6}}><Unlock size={13} />Set a PIN</span>}
                 </label>
                 <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 14, lineHeight: 1.6 }}>
                   {setup?.pin_set
@@ -214,19 +215,19 @@ function OwnerDashboardDrawer({ onClose }) {
 
                 {setup?.pin_set && (
                   <div style={{ background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 7, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#065f46' }}>
-                    ✓ PIN is set — dashboard is accessible
+                    <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Check size={13} />PIN is set — dashboard is accessible</span>
                   </div>
                 )}
 
                 {pinSuccess && (
                   <div style={{ background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 7, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#065f46' }}>
-                    ✓ PIN updated successfully
+                    <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Check size={13} />PIN updated successfully</span>
                   </div>
                 )}
 
                 {pinError && (
                   <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 7, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#991b1b' }}>
-                    ⚠ {pinError}
+                    <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{pinError}</span>
                   </div>
                 )}
 
@@ -270,7 +271,7 @@ function OwnerDashboardDrawer({ onClose }) {
 
               {/* Bookmark tip */}
               <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '14px 16px' }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: '#1e40af', marginBottom: 6 }}>💡 Tips</div>
+                <div style={{ fontWeight: 600, fontSize: 13, color: '#1e40af', marginBottom: 6 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><Lightbulb size={13} />Tips</span></div>
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#374151', lineHeight: 1.8 }}>
                   <li>Bookmark the link on your phone for quick morning access</li>
                   <li>The dashboard auto-refreshes every 2 minutes</li>
@@ -332,7 +333,7 @@ export default function PerformanceModule({ user }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 4px' }}>
-            📊 Performance Hub
+            <span style={{display:"inline-flex",alignItems:"center",gap:10}}><BarChart2 size={22} />Performance Hub</span>
           </h1>
           <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0 }}>
             {isManager ? 'Org-wide performance tracking and KPI management' : 'Your personal performance and daily log'}
@@ -355,7 +356,7 @@ export default function PerformanceModule({ user }) {
               onMouseEnter={e => e.currentTarget.style.borderColor = ds.teal}
               onMouseLeave={e => e.currentTarget.style.borderColor = '#e5e7eb'}
             >
-              📈 Ads Dashboard
+              <span style={{display:"inline-flex",alignItems:"center",gap:6}}><TrendingUp size={14} />Ads Dashboard</span>
             </button>
             <button
               onClick={() => setDrawerOpen(true)}
@@ -370,7 +371,7 @@ export default function PerformanceModule({ user }) {
               onMouseEnter={e => e.currentTarget.style.borderColor = ds.teal}
               onMouseLeave={e => e.currentTarget.style.borderColor = '#e5e7eb'}
             >
-              🔗 Owner Dashboard
+              <span style={{display:"inline-flex",alignItems:"center",gap:6}}><Link size={14} />Owner Dashboard</span>
             </button>
           </div>
         )}
