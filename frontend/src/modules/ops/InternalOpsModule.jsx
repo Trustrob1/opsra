@@ -16,6 +16,7 @@
  *   user — current user object from Zustand auth store
  */
 import { useState, useEffect, useCallback } from 'react'
+import { AlertTriangle, Flag, Edit, CheckCircle, Construction, CalendarDays, X } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import {
   listIssues, createIssue, updateIssue, deleteIssue, getIssuesSummary,
@@ -197,7 +198,7 @@ function IssueDrawer({ issue, teamMembers, onUpdate, onDelete, isManager, onClos
           />
         </div>
 
-        {err && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>⚠ {err}</p>}
+        {err && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{err}</span></p>}
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 }}>
           <div>
@@ -309,7 +310,7 @@ function NewIssueModal({ teams, categories, teamMembers, onCreate, onClose }) {
           </div>
         </div>
 
-        {err && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>⚠ {err}</p>}
+        {err && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{err}</span></p>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
           <button onClick={onClose} style={BTN_OUTLINE}>Cancel</button>
@@ -438,7 +439,7 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
           </button>
         </div>
 
-        {err && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}>⚠ {err}</p>}
+        {err && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{err}</span></p>}
 
         {/* Entry cards */}
         {entries.map((entry, i) => (
@@ -449,7 +450,7 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
               </span>
               {entries.length > 1 && (
                 <button onClick={() => removeEntry(i)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#DC2626', padding: 0 }}>✕</button>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: 0, display:'flex', alignItems:'center' }}><X size={16} /></button>
               )}
             </div>
 
@@ -486,7 +487,7 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
                 style={{ accentColor: '#DC2626', width: 15, height: 15 }} />
               <label htmlFor={`blocker-staff-${i}`}
                 style={{ fontSize: 13, color: entry.has_blocker ? '#DC2626' : '#4a7a8a', fontWeight: entry.has_blocker ? 600 : 400, cursor: 'pointer' }}>
-                🔴 This activity has a blocker
+                <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} color="#DC2626" />This activity has a blocker</span>
               </label>
             </div>
 
@@ -579,7 +580,7 @@ function IssuesTab({ user }) {
   const handleDelete = async (id) => { await deleteIssue(id); load() }
 
   if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading issues…</div>
-  if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}>⚠ {error} <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
+  if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span> <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
 
   return (
     <div style={{ padding: 28 }}>
@@ -728,7 +729,7 @@ function IssuesTab({ user }) {
             </div>
 
             {dlError && (
-              <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>⚠ {dlError}</p>
+              <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{dlError}</span></p>
             )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end',
@@ -797,7 +798,7 @@ function IssuesTab({ user }) {
       {/* Table */}
       {issues.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '64px 32px', color: '#7A9BAD' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🏗️</div>
+          <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}><Construction size={40} color={ds.teal} strokeWidth={1.5} /></div>
           <p style={{ fontSize: 14 }}>No issues found. Create one to get started.</p>
         </div>
       ) : (
@@ -846,7 +847,7 @@ function IssuesTab({ user }) {
                           display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
                         }}
                       >
-                        🚩 {iss.needs_owner_attention ? 'Flagged' : 'Flag'}
+                        <span style={{display:"inline-flex",alignItems:"center",gap:4}}><Flag size={12} />{iss.needs_owner_attention ? "Flagged" : "Flag"}</span>
                       </button>
                     )}
                   </td>
@@ -1031,7 +1032,7 @@ function ActivityLogTab({ user }) {
 
 
   if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading activity logs…</div>
-  if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}>⚠ {error} <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
+  if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span> <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
 
   return (
     <div style={{ padding: 28 }}>
@@ -1161,7 +1162,7 @@ function ActivityLogTab({ user }) {
             </div>
 
             {dlError && (
-              <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>⚠ {dlError}</p>
+              <p style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{dlError}</span></p>
             )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
@@ -1201,7 +1202,7 @@ function ActivityLogTab({ user }) {
       {/* Log list */}
       {logs.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '64px 32px', color: '#7A9BAD' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
+          <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}><CalendarDays size={40} color={ds.teal} strokeWidth={1.5} /></div>
           <p style={{ fontSize: 14 }}>No activity logs yet. Start by logging today's activities.</p>
         </div>
       ) : (
@@ -1228,8 +1229,8 @@ function ActivityLogTab({ user }) {
                       {log.blockers && (
                         (log.entries || []).filter(e => e.has_blocker).length > 0 &&
                         (log.entries || []).filter(e => e.has_blocker).every(e => e.blocker_issue_status === 'resolved')
-                          ? <span style={{ fontSize: 11, background: '#D1FAE5', color: '#065F46', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>✅ Blocker Resolved</span>
-                          : <span style={{ fontSize: 11, background: '#FEE2E2', color: '#991B1B', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>🚧 Blocker</span>
+                          ? <span style={{ fontSize: 11, background: '#D1FAE5', color: '#065F46', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}> Blocker Resolved</span>
+                          : <span style={{ fontSize: 11, background: '#FEE2E2', color: '#991B1B', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>Blocker</span>
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: '#7A9BAD', marginTop: 3 }}>
@@ -1245,7 +1246,7 @@ function ActivityLogTab({ user }) {
                         title="Edit this log"
                         style={{ ...BTN_OUTLINE, padding: '5px 11px', fontSize: 11, fontWeight: 600 }}
                       >
-                        ✏️ Edit
+                        <span style={{display:"inline-flex",alignItems:"center",gap:4}}><Edit size={12} />Edit</span>
                       </button>
                     </div>
                   )}
@@ -1296,7 +1297,7 @@ function ActivityLogTab({ user }) {
                               }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <span style={{ fontSize: 11, fontWeight: 700, color: entry.blocker_issue_status === 'resolved' ? '#065F46' : '#DC2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    {entry.blocker_issue_status === 'resolved' ? '✅ Blocker Resolved' : '🚧 Blocker'}
+                                    {entry.blocker_issue_status === 'resolved' ? <span style={{display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle size={11} color="#065F46" />Blocker Resolved</span> : <span style={{display:"inline-flex",alignItems:"center",gap:4}}><AlertTriangle size={11} color="#92400E" />Blocker</span>}
                                   </span>
                                   {entry.blocker_issue_id && (
                                     <span style={{
@@ -1376,8 +1377,8 @@ function ActivityLogTab({ user }) {
 }
 // ── Main Module ───────────────────────────────────────────────────────────────
 const ALL_TABS = [
-  { id: 'issues',   label: 'Issues',       icon: '🏗️' },
-  { id: 'activity', label: 'Activity Log', icon: '📅' },
+  { id: 'issues',   label: 'Issues',       Icon: Construction },
+  { id: 'activity', label: 'Activity Log', Icon: CalendarDays },
 ]
 
 export default function InternalOpsModule({ user }) {
@@ -1420,7 +1421,7 @@ export default function InternalOpsModule({ user }) {
                 marginBottom: -1,
               }}
             >
-              <span>{tab.icon}</span> {tab.label}
+              <span>{tab.Icon && <tab.Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} />}</span> {tab.label}
             </button>
           )
         })}

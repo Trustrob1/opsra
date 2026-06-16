@@ -18,6 +18,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { AlertOctagon, Info, Sparkles, Target, CheckCircle, AlertTriangle, Trophy } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import {
   getGrowthOverview,
@@ -131,9 +132,9 @@ function Skeleton({ height = 120, width = '100%' }) {
 // ─── GPM-2: Anomaly Banner ────────────────────────────────────────────────────
 
 const ANOMALY_STYLES = {
-  high:   { bg: '#FFF1F2', border: '#FCA5A5', text: '#991B1B', icon: '🚨' },
-  medium: { bg: '#FFFBEB', border: '#FCD34D', text: '#92400E', icon: '⚠️' },
-  low:    { bg: '#EFF6FF', border: '#93C5FD', text: '#1E40AF', icon: 'ℹ️' },
+  high:   { bg: '#FFF1F2', border: '#FCA5A5', text: '#991B1B', Icon: AlertOctagon },
+  medium: { bg: '#FFFBEB', border: '#FCD34D', text: '#92400E', Icon: AlertTriangle },
+  low:    { bg: '#EFF6FF', border: '#93C5FD', text: '#1E40AF', Icon: Info },
 }
 
 function AnomalyBanner({ anomalies }) {
@@ -193,7 +194,7 @@ function InsightCard({ insight, loading }) {
         alignItems:   'center',
         gap:          6,
       }}>
-        <span style={{ fontSize: 12, display: 'inline-block', animation: 'spin 1.2s linear infinite', color: ds.teal }}>✦</span>
+        <span style={{ display: 'inline-block', animation: 'spin 1.2s linear infinite', color: ds.teal }}><Sparkles size={14} /></span>
         <span style={{ fontSize: 12, color: ds.teal, fontFamily: ds.fontDm }}>Generating AI insight…</span>
       </div>
     )
@@ -225,7 +226,7 @@ function InsightCard({ insight, loading }) {
       padding:      '12px 14px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-        <span style={{ color: ds.teal, fontSize: 12 }}>✦</span>
+        <Sparkles size={12} color={ds.teal} />
         <span style={{ fontFamily: ds.fontDm, fontWeight: 700, fontSize: 11.5, color: ds.teal, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           AI Insight
         </span>
@@ -298,7 +299,7 @@ function InsightPanel({ open, onClose, dateFrom, dateTo }) {
         }}>
           <div>
             <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: ds.dark, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ color: ds.teal }}>✦</span> AI Growth Insights
+              <Sparkles size={12} color={ds.teal} /> AI Growth Insights
             </div>
             <div style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#6b8fa0', marginTop: 2 }}>Full dashboard narrative</div>
           </div>
@@ -309,7 +310,7 @@ function InsightPanel({ open, onClose, dateFrom, dateTo }) {
         <div style={{ padding: '22px', flex: 1 }}>
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, paddingTop: 50 }}>
-              <span style={{ fontSize: 30, display: 'inline-block', animation: 'spin 1.5s linear infinite', color: ds.teal }}>✦</span>
+              <span style={{ display: 'inline-block', animation: 'spin 1.5s linear infinite', color: ds.teal }}><Sparkles size={14} /></span>
               <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, color: ds.teal, fontSize: 14 }}>Analysing your growth data…</div>
               <div style={{ fontFamily: ds.fontDm, color: '#94a3b8', fontSize: 12, textAlign: 'center' }}>This usually takes a few seconds</div>
             </div>
@@ -331,7 +332,7 @@ function InsightPanel({ open, onClose, dateFrom, dateTo }) {
               {result.top_priorities?.length > 0 && (
                 <div>
                   <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: ds.dark, marginBottom: 10 }}>
-                    🎯 Top Priorities
+                    <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Target size={14} />Top Priorities</span>
                   </div>
                   {result.top_priorities.map((p, i) => (
                     <div key={i} style={{
@@ -686,7 +687,7 @@ function VelocitySection({ data, loading }) {
 function RiskSection({ data, loading, onLeadClick }) {
   if (loading) return <Skeleton height={140} />
   if (!data || !data.length) return (
-    <div style={{ color: '#16a34a', fontSize: 13, fontFamily: ds.fontDm }}>✓ No stuck leads. Pipeline is healthy.</div>
+    <div style={{ color: '#16a34a', fontSize: 13, fontFamily: ds.fontDm }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><CheckCircle size={13} color="#16a34a" />No stuck leads. Pipeline is healthy.</span></div>
   )
 
   function rowColor(days) {
@@ -770,7 +771,7 @@ function RepSection({ data, loading }) {
             <tr key={row.rep_id}>
               {REP_COLS.map(col => (
                 <td key={col.key} style={{ ...td, fontWeight: col.key === 'rep_name' ? 600 : 400, color: col.key === 'revenue_closed' ? ds.teal : td.color }}>
-                  {i === 0 && col.key === 'rep_name' ? <span>🏆 {col.fmt(row[col.key])}</span> : col.fmt(row[col.key])}
+                  {i === 0 && col.key === 'rep_name' ? <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Trophy size={13} color='#d97706' />{col.fmt(row[col.key])}</span> : col.fmt(row[col.key])}
                 </td>
               ))}
             </tr>
@@ -791,13 +792,13 @@ function ChannelSection({ data, loading }) {
 
   const channelIcon = (source) => {
     const s = (source || '').toLowerCase()
-    if (s === 'whatsapp')       return '💬 '
-    if (s === 'instagram')      return '📸 '
-    if (s === 'facebook')       return '🔵 '
-    if (s === 'messenger')      return '💙 '
-    if (s === 'web form')       return '🌐 '
-    if (s === 'meta lead ad')   return '📣 '
-    if (s === 'manual')         return '✍️ '
+    if (s === 'whatsapp')       return ''
+    if (s === 'instagram')      return ''
+    if (s === 'facebook')       return ''
+    if (s === 'messenger')      return ''
+    if (s === 'web form')       return ''
+    if (s === 'meta lead ad')   return ''
+    if (s === 'manual')         return ''
     return ''
   }
 
@@ -896,13 +897,13 @@ function CampaignSection({ data, loading }) {
 
   const sourceIcon = (source) => {
     const s = (source || '').toLowerCase()
-    if (s === 'email')     return '📧 '
-    if (s === 'instagram') return '📸 '
-    if (s === 'facebook')  return '🔵 '
-    if (s === 'whatsapp')  return '💬 '
-    if (s === 'sms')       return '📱 '
-    if (s === 'tiktok')    return '🎵 '
-    return '📣 '
+    if (s === 'email')     return ''
+    if (s === 'instagram') return ''
+    if (s === 'facebook')  return ''
+    if (s === 'whatsapp')  return ''
+    if (s === 'sms')       return ''
+    if (s === 'tiktok')    return ''
+    return ''
   }
 
   const stageColour = (stage) => {
@@ -1176,7 +1177,7 @@ export default function GrowthDashboard({ user, setView }) {
               flexShrink:   0,
             }}
           >
-            <span style={{ fontSize: 13 }}>✦</span> AI Insights
+            <span style={{ fontSize: 13 }}><Sparkles size={14} /></span> AI Insights
           </button>
           <button
             onClick={handleRefreshInsights}
@@ -1192,7 +1193,7 @@ export default function GrowthDashboard({ user, setView }) {
               opacity: (insightRefreshing || insightsLoading) ? 0.6 : 1,
             }}
           >
-            <span style={{ display: 'inline-block', animation: (insightRefreshing || insightsLoading) ? 'spin 0.8s linear infinite' : 'none' }}>✦</span>
+            <span style={{ display: 'inline-block', animation: (insightRefreshing || insightsLoading) ? 'spin 0.8s linear infinite' : 'none' }}><Sparkles size={14} /></span>
             {insightRefreshing ? 'Clearing…' : 'Refresh Insights'}
           </button>
         </div>
@@ -1200,65 +1201,65 @@ export default function GrowthDashboard({ user, setView }) {
 
       {error && (
         <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#dc2626', fontFamily: ds.fontDm }}>
-          ⚠ {error}
+          <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span>
         </div>
       )}
 
       {/* Section 1 — Overview */}
-      <Section title="📊 Executive Overview" insight={insights.overview} insightLoading={insightsLoading}>
+      <Section title="Executive Overview" insight={insights.overview} insightLoading={insightsLoading}>
         <OverviewSection data={overview} loading={loadingMap.overview} />
       </Section>
 
       {/* Section 2 — Team Performance */}
       {isSectionVisible('team_performance') && (
-        <Section title="👥 Team Performance" insight={insights.team_performance} insightLoading={insightsLoading}>
+        <Section title="Team Performance" insight={insights.team_performance} insightLoading={insightsLoading}>
           <TeamSection data={teams} loading={loadingMap.teams} />
         </Section>
       )}
 
       {/* Section 3 — Funnel */}
       {isSectionVisible('funnel') && (
-        <Section title="🔽 Funnel Breakdown" insight={insights.funnel} insightLoading={insightsLoading}>
+        <Section title="Funnel Breakdown" insight={insights.funnel} insightLoading={insightsLoading}>
           <FunnelSection data={funnel} loading={loadingMap.funnel} teams={teamsList} params={funnelParams} onParamsChange={handleFunnelParamsChange} />
         </Section>
       )}
 
       {/* Section 4 — Lead Velocity */}
       {isSectionVisible('velocity') && (
-        <Section title="📈 Lead Velocity" insight={insights.velocity} insightLoading={insightsLoading}>
+        <Section title="Lead Velocity" insight={insights.velocity} insightLoading={insightsLoading}>
           <VelocitySection data={velocity} loading={loadingMap.velocity} />
         </Section>
       )}
 
       {/* Section 5 — Pipeline at Risk (always visible) */}
-      <Section title="⚠️ Pipeline at Risk" insight={insights.pipeline_at_risk} insightLoading={insightsLoading}>
+      <Section title="Pipeline at Risk" insight={insights.pipeline_at_risk} insightLoading={insightsLoading}>
         <RiskSection data={atRisk} loading={loadingMap.atRisk} onLeadClick={setView ? (id) => setView('lead-profile', id) : null} />
       </Section>
 
       {/* Section 6 — Rep Leaderboard */}
       {isSectionVisible('sales_reps') && (
-        <Section title="🏆 Sales Rep Leaderboard" insight={insights.sales_reps} insightLoading={insightsLoading}>
+        <Section title="Sales Rep Leaderboard" insight={insights.sales_reps} insightLoading={insightsLoading}>
           <RepSection data={reps} loading={loadingMap.reps} />
         </Section>
       )}
 
       {/* Section 7 — Channels */}
       {isSectionVisible('channels') && (
-        <Section title="📡 Channel Performance" insight={insights.channels} insightLoading={insightsLoading}>
+        <Section title="Channel Performance" insight={insights.channels} insightLoading={insightsLoading}>
           <ChannelSection data={channels} loading={loadingMap.channels} />
         </Section>
       )}
 
       {/* Section 9 — Campaign Performance */}
       {isSectionVisible('campaigns') && (
-        <Section title="🎯 Campaign Performance" insight={insights.campaigns} insightLoading={insightsLoading}>
+        <Section title="Campaign Performance" insight={insights.campaigns} insightLoading={insightsLoading}>
           <CampaignSection data={campaigns} loading={loadingMap.campaigns} />
         </Section>
       )}
 
       {/* Section 8 — Win / Loss */}
       {isSectionVisible('win_loss') && (
-        <Section title="🎯 Win / Loss Analysis" insight={insights.win_loss} insightLoading={insightsLoading}>
+        <Section title="Win / Loss Analysis" insight={insights.win_loss} insightLoading={insightsLoading}>
           <WinLossSection data={winLoss} loading={loadingMap.winLoss} />
         </Section>
       )}

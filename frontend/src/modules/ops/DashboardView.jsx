@@ -14,6 +14,7 @@
  */
 
 import { ds } from '../../utils/ds'
+import { Target, ClipboardList, Users, Ticket, AlertOctagon, RefreshCw, AlertTriangle, Circle, Star, CheckSquare, DollarSign, RotateCcw } from 'lucide-react'
 
 const CARD_GAP  = 16
 const CARD_BASE = {
@@ -52,7 +53,7 @@ function StatCard({ label, value, sub, accent, icon, loading }) {
           )}
         </div>
         {icon && (
-          <span style={{ fontSize: 22, opacity: 0.6 }}>{icon}</span>
+          <span style={{ opacity: 0.6, display:'flex', alignItems:'center' }}>{icon}</span>
         )}
       </div>
     </div>
@@ -117,9 +118,7 @@ export default function DashboardView({ metrics, loading, error, onRefresh }) {
             transition: 'background 0.2s',
           }}
         >
-          <span style={{ display: 'inline-block', animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
-            ↻
-          </span>
+          <RotateCcw size={14} style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }} />
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
@@ -130,16 +129,16 @@ export default function DashboardView({ metrics, loading, error, onRefresh }) {
           background: '#fff1f0', border: '1px solid #fca5a5', borderRadius: 8,
           padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 20,
         }}>
-          ⚠ {error}
+          <span style={{display:"inline-flex",alignItems:"center",gap:6}}><AlertTriangle size={13} />{error}</span>
         </div>
       )}
 
       {/* ── Pipeline ── */}
       <SectionLabel>Pipeline</SectionLabel>
       <Row>
-        <StatCard label="New Leads This Week"  value={m.leads_this_week}   icon="🎯" loading={loading} />
-        <StatCard label="Total Leads"          value={m.leads_total}        icon="📋" loading={loading} />
-        <StatCard label="Active Customers"     value={m.active_customers}   icon="👥" loading={loading} accent={ds.teal} />
+        <StatCard label="New Leads This Week"  value={m.leads_this_week}   icon={<Target size={18} />} loading={loading} />
+        <StatCard label="Total Leads"          value={m.leads_total}        icon={<ClipboardList size={18} />} loading={loading} />
+        <StatCard label="Active Customers"     value={m.active_customers}   icon={<Users size={18} />} loading={loading} accent={ds.teal} />
       </Row>
 
       {/* ── Operations ── */}
@@ -148,14 +147,14 @@ export default function DashboardView({ metrics, loading, error, onRefresh }) {
         <StatCard
           label="Open Tickets"
           value={m.open_tickets}
-          icon="🎫"
+          icon={<Ticket size={18} />}
           loading={loading}
           accent={m.open_tickets > 0 ? '#d97706' : undefined}
         />
         <StatCard
           label="SLA Breached"
           value={m.sla_breached_tickets}
-          icon="🚨"
+          icon={<AlertOctagon size={18} />}
           loading={loading}
           accent={m.sla_breached_tickets > 0 ? '#dc2626' : undefined}
           sub={m.sla_breached_tickets > 0 ? 'Requires immediate attention' : undefined}
@@ -163,7 +162,7 @@ export default function DashboardView({ metrics, loading, error, onRefresh }) {
         <StatCard
           label="Renewals Due (30 days)"
           value={m.renewals_due_30_days}
-          icon="🔄"
+          icon={<RefreshCw size={18} />}
           loading={loading}
           accent={m.renewals_due_30_days > 0 ? '#d97706' : undefined}
         />
@@ -175,14 +174,14 @@ export default function DashboardView({ metrics, loading, error, onRefresh }) {
         <StatCard
           label="High Churn Risk"
           value={m.churn_risk_high}
-          icon="⚠️"
+          icon={<AlertTriangle size={18} />}
           loading={loading}
           accent={m.churn_risk_high > 0 ? '#d97706' : undefined}
         />
         <StatCard
           label="Critical Churn Risk"
           value={m.churn_risk_critical}
-          icon="🔴"
+          icon={<Circle size={18} fill="#dc2626" color="#dc2626" />}
           loading={loading}
           accent={m.churn_risk_critical > 0 ? '#dc2626' : undefined}
           sub={m.churn_risk_critical > 0 ? 'Immediate follow-up required' : undefined}
@@ -190,7 +189,7 @@ export default function DashboardView({ metrics, loading, error, onRefresh }) {
         <StatCard
           label="Average NPS"
           value={loading ? undefined : fmtNps(m.nps_average)}
-          icon="⭐"
+          icon={<Star size={18} />}
           loading={loading}
           accent={
             m.nps_average == null ? undefined
@@ -202,7 +201,7 @@ export default function DashboardView({ metrics, loading, error, onRefresh }) {
         <StatCard
           label="Overdue Tasks"
           value={m.overdue_tasks}
-          icon="✅"
+          icon={<CheckSquare size={18} />}
           loading={loading}
           accent={m.overdue_tasks > 0 ? '#d97706' : undefined}
         />
@@ -216,14 +215,14 @@ export default function DashboardView({ metrics, loading, error, onRefresh }) {
             <StatCard
               label="Monthly Recurring Revenue"
               value={loading ? undefined : fmtCurrency(m.mrr_ngn)}
-              icon="💰"
+              icon={<DollarSign size={18} />}
               loading={loading}
               accent={ds.teal}
             />
             <StatCard
               label="Revenue at Risk"
               value={loading ? undefined : fmtCurrency(m.revenue_at_risk_ngn)}
-              icon="⚠️"
+              icon={<AlertTriangle size={18} />}
               loading={loading}
               accent={
                 m.revenue_at_risk_ngn > 0 ? '#dc2626' : undefined

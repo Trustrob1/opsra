@@ -19,6 +19,7 @@
  */
 
 import { useState } from 'react'
+import { LayoutDashboard, MessageSquare, Building2, Users, TrendingUp } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import useOps from '../../hooks/useOps'
 import DashboardView  from './DashboardView'
@@ -38,18 +39,26 @@ function buildTabs(role) {
 
   // Sales agents see only Internal Ops (Activity Log — Issues hidden inside InternalOpsModule)
   if (role === SALES_AGENT_ROLE) {
-    return [{ id: 'internal', label: 'Internal Ops', icon: '🏗️' }]
+    return [{ id: 'internal', label: 'Internal Ops' }]
   }
 
   // Owner + ops_manager see everything
   const tabs = [
-    { id: 'dashboard',   label: 'Dashboard',    icon: '📊' },
-    { id: 'ask',         label: 'Ask Data',      icon: '💬' },
-    { id: 'internal',    label: 'Internal Ops',  icon: '🏗️' },
-    { id: 'contractors', label: 'Contractors',   icon: '🤝' },
-    { id: 'growth',      label: 'Growth',        icon: '📈' },
+    { id: 'dashboard',   label: 'Dashboard' },
+    { id: 'ask',         label: 'Ask Data' },
+    { id: 'internal',    label: 'Internal Ops' },
+    { id: 'contractors', label: 'Contractors' },
+    { id: 'growth',      label: 'Growth' },
   ]
   return tabs
+}
+
+const TAB_ICONS = {
+  dashboard:   LayoutDashboard,
+  ask:         MessageSquare,
+  internal:    Building2,
+  contractors: Users,
+  growth:      TrendingUp,
 }
 
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
@@ -90,7 +99,7 @@ function TabBar({ active, onChange, tabs }) {
               marginBottom: -1,
             }}
           >
-            <span>{tab.icon}</span>
+            {(() => { const Icon = TAB_ICONS[tab.id]; return Icon ? <Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} /> : null })()}
             {tab.label}
           </button>
         )

@@ -14,7 +14,7 @@
  * Pattern 56: role check via user?.roles?.template
  *
  * CPM-1A additions:
- *   ContractorCreateModal Step 3 — "📄 Parse from Contract" + "📋 Load Template ▾"
+ *   ContractorCreateModal Step 3 — "📄 Parse from Contract" + "<ClipboardList size={13} />Load Template ▾"
  *   Step 4 — risk clauses auto-filled from parser result
  *
  * Props:
@@ -22,6 +22,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { ClipboardList, Handshake, CheckSquare, BarChart2, CalendarDays, AlertTriangle, Zap, Flag, Edit, Trash2, Check, X, FileText, Clock, TrendingUp } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { generateLogToken, getPerformanceSummary, logDailyEntry, getPerformanceLogs, updateDailyLog, deleteDailyLog, listActivityLogs, flagActivityLog } from '../../services/performance_logs.service'
 import {
@@ -112,7 +113,7 @@ function Spinner() {
 function EmptyState({ icon, title, sub }) {
   return (
     <div style={{ textAlign: 'center', padding: '56px 24px', color: ds.gray }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}>{icon}</div>
+      <div style={{ marginBottom: 12, display:'flex', justifyContent:'center', fontSize: 36 }}>{icon}</div>
       <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: ds.dark, marginBottom: 6 }}>{title}</div>
       <div style={{ fontSize: 13 }}>{sub}</div>
     </div>
@@ -216,7 +217,7 @@ function TabBar({ active, onChange, tabs }) {
             fontFamily: ds.fontDm, color: isActive ? ds.teal : ds.gray,
             transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: -1,
           }}>
-            <span>{tab.icon}</span>{tab.label}
+            <span>{tab.Icon && <tab.Icon size={14} strokeWidth={isActive ? 2.5 : 1.8} />}</span>{tab.label}
           </button>
         )
       })}
@@ -243,7 +244,7 @@ function ScorecardTab({ onSelectContractor }) {
   if (loading) return <Spinner />
   if (error)   return <div style={{ padding: 32, color: '#c5221f', fontSize: 13 }}>{error}</div>
   if (!data?.items?.length) return (
-    <EmptyState icon="📋" title="No contractors yet" sub="Add a contractor to start tracking performance" />
+    <EmptyState icon={<ClipboardList size={36} color={ds.teal} strokeWidth={1.5} />} title="No contractors yet" sub="Add a contractor to start tracking performance" />
   )
 
   return (
@@ -281,7 +282,7 @@ function ScorecardCard({ contractor: c, onSelect }) {
           background: '#fce8e6', borderBottom: '1px solid #f5c6c2',
           padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          <span style={{ fontSize: 14 }}>⚠️</span>
+          <AlertTriangle size={14} color="#b45309" />
           <span style={{ fontSize: 12, fontWeight: 600, color: '#c5221f', fontFamily: ds.fontDm }}>
             Termination Risk — {risk.consecutive_months_off_track}+ consecutive months below target
           </span>
@@ -385,7 +386,7 @@ function ContractorsTab({ user, onOpenCreate, refreshKey }) {
       />
 
       {!contractors.length ? (
-        <EmptyState icon="🤝" title="No contractors added yet" sub='Click "+ Add Contractor" to create your first contractor profile' />
+        <EmptyState icon={<Handshake size={36} color={ds.teal} strokeWidth={1.5} />} title="No contractors added yet" sub='Click "+ Add Contractor" to create your first contractor profile' />
       ) : (
         <div style={{ background: 'white', borderRadius: 12, border: '1px solid #dde4e8', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -490,7 +491,7 @@ function ContractorDetailPanel({ contractorId, user, onClose }) {
             <div style={{ fontSize: 12, color: ds.gray, marginTop: 2 }}>{contractor.role_title}</div>
           )}
         </div>
-        <button onClick={() => onClose(didUpdate)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: ds.gray, padding: 4 }}>✕</button>
+        <button onClick={() => onClose(didUpdate)} style={{ background: 'none', border: 'none', cursor: 'pointer', display:'flex', alignItems:'center', color: ds.gray, padding: 4 }}><X size={20} /></button>
       </div>
 
       {/* Sub-tabs */}
@@ -699,7 +700,7 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
   }
 
   if (!targets.length) return (
-    <EmptyState icon="📊" title="No KPI targets defined" sub="Edit this contractor to add KPI targets" />
+    <EmptyState icon={<BarChart2 size={36} color={ds.teal} strokeWidth={1.5} />} title="No KPI targets defined" sub="Edit this contractor to add KPI targets" />
   )
 
   return (
@@ -709,7 +710,7 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
       {risk.at_termination_risk && (
         <div style={{ background: '#fce8e6', border: '1px solid #f5c6c2', borderRadius: 8, padding: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#c5221f' }}>
-            ⚠️ Termination Risk — {risk.consecutive_months_off_track} consecutive months below target
+            <span style={{display:"inline-flex",alignItems:"center",gap:6}}><AlertTriangle size={13} />Termination Risk — {risk.consecutive_months_off_track} consecutive months below target</span>
           </div>
           <div style={{ fontSize: 12, color: '#c5221f', marginTop: 4 }}>
             Off-track months: {risk.missed_kpi_months?.join(', ')}
@@ -748,8 +749,8 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
                               style={{ border: `1px solid ${ds.teal}`, borderRadius: 6, padding: '4px 6px', fontSize: 12, width: '100%' }}
                             />
                             <div style={{ display: 'flex', gap: 4 }}>
-                              <Btn onClick={handleSaveEdit} small disabled={saving}>✓</Btn>
-                              <Btn onClick={() => setEditCell(null)} small variant="secondary">✕</Btn>
+                              <Btn onClick={handleSaveEdit} small disabled={saving}><Check size={13} /></Btn>
+                              <Btn onClick={() => setEditCell(null)} small variant="secondary"><X size={13} /></Btn>
                             </div>
                           </div>
                         ) : (
@@ -783,7 +784,7 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
 
       {/* Empty state when no months yet */}
       {monthLabels.length === 0 && !showAddMonth && (
-        <EmptyState icon="📅" title="No actuals logged yet" sub="Click '+ Log New Month' below to start" />
+        <EmptyState icon={<CalendarDays size={36} color={ds.teal} strokeWidth={1.5} />} title="No actuals logged yet" sub="Click '+ Log New Month' below to start" />
       )}
 
       {/* Add new month — inline form, all KPIs in one go */}
@@ -837,7 +838,7 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
               Cancel
             </Btn>
             <Btn onClick={handleSaveNewMonth} small disabled={saving}>
-              {saving ? 'Saving…' : '✓ Save Month'}
+              {saving ? 'Saving…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Check size={13} />Save Month</span>}
             </Btn>
           </div>
         </div>
@@ -882,7 +883,7 @@ function ExpandableTaskRow({ task, isOverdue, saving, onStatusChange, onSaveNote
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: ds.dark, display: 'flex', alignItems: 'center', gap: 6 }}>
             {task.task_description}
-            {task.notes && <span style={{ fontSize: 10, background: '#e8f0fe', color: '#1a56db', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>📝</span>}
+            {task.notes && <span style={{ fontSize: 10, background: '#e8f0fe', color: '#1a56db', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}></span>}
           </div>
           <div style={{ fontSize: 11, color: ds.gray, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {showPhase && task.phase && <span>Phase: {task.phase}</span>}
@@ -939,7 +940,7 @@ function ExpandableTaskRow({ task, isOverdue, saving, onStatusChange, onSaveNote
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <Btn onClick={() => setExpanded(false)} variant="secondary" small>Cancel</Btn>
             <Btn onClick={handleSave} small disabled={noteSaving}>
-              {noteSaving ? 'Saving…' : '✓ Save Note'}
+              {noteSaving ? 'Saving…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Check size={13} />Save Note</span>}
             </Btn>
           </div>
         </div>
@@ -1014,7 +1015,7 @@ function TasksPanel({ contractor, onUpdate }) {
           <div style={{ display: 'flex', gap: 8 }}>
             {contractor.task_template?.length > 0 && (
               <Btn onClick={handleGenerate} small variant="secondary" disabled={generating}>
-                {generating ? 'Generating…' : '⚡ Generate Tasks'}
+                {generating ? 'Generating…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Zap size={13} />Generate Tasks</span>}
               </Btn>
             )}
           </div>
@@ -1022,7 +1023,7 @@ function TasksPanel({ contractor, onUpdate }) {
       />
 
       {!tasks.length ? (
-        <EmptyState icon="✅" title="No tasks yet" sub={contractor.task_template?.length ? 'Click "Generate Tasks" to create from template' : 'No task template defined on this contractor'} />
+        <EmptyState icon={<CheckSquare size={36} color={ds.teal} strokeWidth={1.5} />} title="No tasks yet" sub={contractor.task_template?.length ? 'Click "Generate Tasks" to create from template' : 'No task template defined on this contractor'} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {tasks.map(task => {
@@ -1130,7 +1131,7 @@ function AllTasksTab({ refreshKey, isActive }) {
       </div>
 
       {!hasAnyTasks ? (
-        <EmptyState icon="✅" title="No tasks found" sub="Generate tasks from contractor profiles to see them here" />
+        <EmptyState icon={<CheckSquare size={36} color={ds.teal} strokeWidth={1.5} />} title="No tasks found" sub="Generate tasks from contractor profiles to see them here" />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {visibleContractors.map(c => {
@@ -1208,7 +1209,7 @@ function ContractorActivityLogPanel({ contractorId }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <SectionHeader title="Daily Activity Log" />
       {logs.length === 0 ? (
-        <EmptyState icon="📝" title="No activity logs yet" sub="Contractor hasn't submitted daily activity logs yet" />
+        <EmptyState icon={<FileText size={36} color={ds.teal} strokeWidth={1.5} />} title="No activity logs yet" sub="Contractor hasn't submitted daily activity logs yet" />
       ) : (
         Object.entries(byDate).map(([date, dayLogs]) => (
           <div key={date}>
@@ -1230,7 +1231,7 @@ function ContractorActivityLogPanel({ contractorId }) {
                           <span style={{ fontSize: 11, color: ds.gray }}>{log.duration_minutes}h</span>
                         )}
                         {log.blocker_note && (
-                          <span style={{ fontSize: 11, fontWeight: 600, background: '#fce8e6', color: '#c5221f', borderRadius: 4, padding: '1px 6px' }}>🔴 Blocked</span>
+                          <span style={{ display:"inline-flex",alignItems:"center",gap:3,fontSize: 11, fontWeight: 600, background: '#fce8e6', color: '#c5221f', borderRadius: 4, padding: '1px 6px' }}> Blocked</span>
                         )}
                       </div>
                       <div style={{ fontSize: 12, color: ds.dark, lineHeight: 1.5 }}>{log.notes}</div>
@@ -1256,7 +1257,7 @@ function ContractorActivityLogPanel({ contractorId }) {
                             fontSize: 11, fontWeight: 500,
                             color: log.needs_management_attention ? '#b45309' : ds.gray,
                           }}>
-                          🚩 {log.needs_management_attention ? 'Flagged' : 'Flag'}
+                          <span style={{display:"inline-flex",alignItems:"center",gap:4}}><Flag size={12} />{log.needs_management_attention ? "Flagged" : "Flag"}</span>
                         </button>
                       )}
                     </div>
@@ -1465,7 +1466,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
             <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: ds.dark }}>Add Contractor</div>
             <div style={{ fontSize: 12, color: ds.gray, marginTop: 2 }}>Step {step + 1} of {STEPS.length} — {STEPS[step]}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: ds.gray }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: ds.gray }}><X size={20} /></button>
         </div>
 
         {/* Step indicator */}
@@ -1476,7 +1477,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
                 width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: i < step ? ds.teal : i === step ? ds.teal : '#e0e0e0',
                 color: i <= step ? 'white' : ds.gray, fontSize: 11, fontWeight: 700,
-              }}>{i < step ? '✓' : i + 1}</div>
+              }}>{i < step ? <Check size={12} /> : i + 1}</div>
               <div style={{ fontSize: 10, color: i === step ? ds.teal : ds.gray, fontWeight: i === step ? 600 : 400, textAlign: 'center', whiteSpace: 'nowrap' }}>{s}</div>
             </div>
           ))}
@@ -1529,14 +1530,14 @@ function ContractorCreateModal({ onClose, onCreated }) {
                     variant="secondary" small
                     disabled={parsing}
                   >
-                    {parsing ? '⏳ Parsing…' : '📄 Parse from Contract'}
+                    {parsing ? <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Clock size={13} />Parsing…</span> : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><FileText size={13} />Parse from Contract</span>}
                   </Btn>
                 </div>
 
                 {/* Template dropdown */}
                 <div style={{ position: 'relative' }}>
                   <Btn onClick={() => setShowTemplates(p => !p)} variant="secondary" small>
-                    📋 Load Template ▾
+                    <ClipboardList size={13} />Load Template ▾
                   </Btn>
                   {showTemplates && (
                     <div style={{
@@ -1577,7 +1578,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
               {/* Weight warning */}
               {kpiTargets.length > 0 && Math.abs(totalWeight - 100) > 0.5 && (
                 <div style={{ background: '#fef3e2', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#b45309' }}>
-                  ⚠ Weights sum to {totalWeight.toFixed(0)}% — should total 100%
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />Weights sum to {totalWeight.toFixed(0)}% — should total 100%</span>
                 </div>
               )}
 
@@ -1686,7 +1687,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
             </Btn>
           ) : (
             <Btn onClick={handleSubmit} disabled={saving}>
-              {saving ? 'Saving…' : '✓ Save Contractor'}
+              {saving ? 'Saving…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Check size={13} />Save Contractor</span>}
             </Btn>
           )}
         </div>
@@ -1766,7 +1767,7 @@ function LogLinkSetup({ contractor, onRefresh }) {
           <div style={{ fontSize: 12, color: '#4a6375', marginBottom: 8, wordBreak: 'break-all' }}>{logUrl}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
             <button onClick={copyUrl} style={{ padding: '6px 12px', fontSize: 12, background: copied ? '#1dc8a4' : '#e8f4f0', color: copied ? 'white' : '#1dc8a4', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
-              {copied ? '✓ Copied' : 'Copy Link'}
+              {copied ? <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Check size={13} />Copied</span> : 'Copy Link'}
             </button>
           </div>
         </>
@@ -1939,7 +1940,12 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
   }
 
   const paceColour = { on_track: '#1dc8a4', at_risk: '#f39c12', off_track: '#e74c3c', pending: '#6B8FA0' }
-  const paceIcon  = { on_track: '📈', at_risk: '⚠️', off_track: '🔴', pending: '⏳' }
+  const paceIcon  = {
+    on_track: <TrendingUp size={14} color="#1e7e34" />,
+    at_risk:  <AlertTriangle size={14} color="#b45309" />,
+    off_track: <AlertTriangle size={14} color="#c5221f" />,
+    pending:  <Clock size={14} color="#5f6368" />,
+  }
 
   return (
     <div style={{ marginTop: 20 }}>
@@ -1973,9 +1979,9 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                 if (total === 0) return null
                 return (
                   <div style={{ fontSize: 11, color: '#6B8FA0', marginBottom: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <span>📋 Tasks: <strong style={{ color: '#0a1f2e' }}>{done}/{total} done</strong></span>
-                    {blocked > 0 && <span style={{ color: '#c5221f', fontWeight: 600 }}>🔴 {blocked} blocked</span>}
-                    {overdue > 0 && <span style={{ color: '#b45309', fontWeight: 600 }}>⚠️ {overdue} overdue</span>}
+                    <span style={{display:"inline-flex",alignItems:"center",gap:4}}><ClipboardList size={13} />Tasks: <strong style={{ color: '#0a1f2e' }}>{done}/{total} done</strong></span>
+                    {blocked > 0 && <span style={{ color: '#c5221f', fontWeight: 600, display:"inline-flex", alignItems:"center", gap:4 }}><AlertTriangle size={11} />{blocked} blocked</span>}
+                    {overdue > 0 && <span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#b45309",fontWeight:600}}><AlertTriangle size={11} />{overdue} overdue</span>}
                   </div>
                 )
               })()}
@@ -2022,7 +2028,7 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                   >
                     {logSaving ? '…' : 'Save'}
                   </button>
-                  <button onClick={() => { setLogForm(null); setLogValue('') }} style={{ padding: '7px 10px', background: '#edf1f4', border: 'none', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>✕</button>
+                  <button onClick={() => { setLogForm(null); setLogValue('') }} style={{ padding: '7px 10px', background: '#edf1f4', border: 'none', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}><X size={20} /></button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -2088,7 +2094,7 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                             />
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button onClick={handleSaveEdit} disabled={editSaving} style={{ padding: '4px 10px', background: ds.teal, color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                                {editSaving ? '…' : '✓ Save'}
+                                {editSaving ? '…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Check size={11} />Save</span>}
                               </button>
                               <button onClick={() => setEditLog(null)} style={{ padding: '4px 10px', background: '#f1f3f4', color: ds.dark, border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>
                                 Cancel
@@ -2120,13 +2126,13 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                                 onClick={() => setEditLog({ id: log.id, value: log.value ?? '', notes: log.notes || '' })}
                                 style={{ padding: '3px 8px', background: '#f1f3f4', border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}
                               >
-                                ✏️ Edit
+                                <span style={{display:"inline-flex",alignItems:"center",gap:4}}><Edit size={11} />Edit</span>
                               </button>
                               <button
                                 onClick={() => setDeleteConfirm(log.id)}
                                 style={{ padding: '3px 8px', background: '#fce8e6', border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#c5221f' }}
                               >
-                                🗑
+                                <Trash2 size={11} />
                               </button>
                             </div>
                           </div>
@@ -2146,9 +2152,9 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
 
 export default function ContractorModule({ user }) {
   const TABS = [
-    { id: 'scorecard',   label: 'Scorecard',   icon: '📋' },
-    { id: 'contractors', label: 'Contractors',  icon: '🤝' },
-    { id: 'tasks',       label: 'All Tasks',    icon: '✅' },
+    { id: 'scorecard',   label: 'Scorecard',   Icon: ClipboardList },
+    { id: 'contractors', label: 'Contractors',  Icon: Handshake },
+    { id: 'tasks',       label: 'All Tasks',    Icon: CheckSquare },
   ]
 
   const [activeTab, setActiveTab]     = useState('scorecard')
