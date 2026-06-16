@@ -204,7 +204,7 @@ function Toast({ msg, onClose }) {
     }}>
       {msg}
       <button onClick={onClose} style={{ background: 'none', border: 'none',
-        color: '#9CA3AF', cursor: 'pointer', display:'flex',alignItems:'center' }><X size={16} /></button>
+        color: '#9CA3AF', cursor: 'pointer', display:'flex', alignItems:'center' }}><X size={16} /></button>
     </div>
   )
 }
@@ -663,7 +663,7 @@ function RecipientTagInput({ value, onChange }) {
             display: 'flex', alignItems: 'center', gap: 6 }}>
             {r}
             <button onClick={() => remove(i)} style={{ background: 'none', border: 'none',
-              color: '#9CA3AF', cursor: 'pointer', padding: 0, display:'flex',alignItems:'center' }><X size={14} /></button>
+              color: '#9CA3AF', cursor: 'pointer', padding: 0, display:'flex', alignItems:'center' }}><X size={14} /></button>
           </span>
         ))}
       </div>
@@ -794,7 +794,7 @@ function ScheduleModal({ open, onClose, defaultSections }) {
             Scheduled Reports
           </h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none',
-            color: '#9CA3AF', cursor: 'pointer', display:'flex',alignItems:'center', padding:4 }><X size={22} /></button>
+            color: '#9CA3AF', cursor: 'pointer', display:'flex', alignItems:'center', padding: 4 }}><X size={22} /></button>
         </div>
 
         {/* Form */}
@@ -1128,7 +1128,7 @@ function FilterPanel({ filters, setFilters, sections, setSections, teams, users,
             justifyContent: 'space-between', borderBottom: '1px solid #F3F4F6', marginBottom: 4 }}>
             <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16 }}>Filters</span>
             <button onClick={onClose} style={{ background: 'none', border: 'none',
-              color: '#9CA3AF', cursor: 'pointer', display:'flex',alignItems:'center' }><X size={20} /></button>
+              color: '#9CA3AF', cursor: 'pointer', display:'flex', alignItems:'center' }}><X size={20} /></button>
           </div>
           {content}
         </div>
