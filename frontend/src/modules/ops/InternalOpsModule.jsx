@@ -356,9 +356,13 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
     return [{ activity_description: existingLog.activities || '', activity_type: 'General', duration_minutes: '', has_blocker: !!(existingLog.blockers), blocker_note: existingLog.blockers || '', plan: existingLog.plan || '' }]
   }
 
-  const [entries, setEntries] = useState(seedEntries)
-  const [saving,  setSaving]  = useState(false)
-  const [err,     setErr]     = useState(null)
+  const [entries,  setEntries]  = useState(seedEntries)
+  const [saving,   setSaving]   = useState(false)
+  const [err,      setErr]      = useState(null)
+  const [logDate,  setLogDate]  = useState(() => {
+    if (existingLog?.log_date) return existingLog.log_date
+    return logType === 'weekly' ? getMonday() : today
+  })
 
   const addEntry    = () => setEntries(p => [...p, { activity_description: '', activity_type: 'General', duration_minutes: '', has_blocker: false, blocker_note: '', plan: '' }])
   const removeEntry = (i) => setEntries(p => p.filter((_, idx) => idx !== i))
@@ -370,7 +374,6 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
     if (validEntries.length === 0) { setErr('At least one activity description is required.'); return }
     setSaving(true); setErr(null)
     try {
-      const logDate = logType === 'weekly' ? getMonday() : today
       // Both new and update use bulk endpoint — upsert handles the rest
       await submitActivityLogBulk({
         log_date: logDate,
@@ -405,6 +408,21 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>{title}</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+        </div>
+
+        {/* Date picker — allows logging for any past date */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '8px 12px', background: '#f4f8fb', borderRadius: 8, border: '1px solid #dce8ef' }}>
+          <span style={{ fontSize: 13, color: '#4a6274', fontWeight: 600, whiteSpace: 'nowrap' }}>Log date:</span>
+          <input
+            type="date"
+            value={logDate}
+            max={today}
+            onChange={e => setLogDate(e.target.value || today)}
+            style={{ fontSize: 13, border: '1.5px solid #b8d0dc', borderRadius: 6, padding: '4px 8px', color: '#0a1a24', background: '#fff', cursor: 'pointer', flex: 1 }}
+          />
+          {logDate !== today && (
+            <span style={{ fontSize: 11, color: '#e67e22', fontWeight: 600, whiteSpace: 'nowrap' }}>Logging for past date</span>
+          )}
         </div>
 
         {/* Entry count indicator */}
