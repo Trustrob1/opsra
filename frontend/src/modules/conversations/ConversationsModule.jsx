@@ -35,7 +35,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  MessageCircle, Camera, Facebook, Search, Circle, User, Bot,
+  MessageCircle, Camera, Search, Circle, User, Bot,
   Paperclip, Send, Download, FileText, Video, File, Music,
   Image, Lightbulb, Clock, X, AlertTriangle,
   Sparkles,
@@ -60,7 +60,7 @@ import { getCustomerMessages, sendMessage } from '../../services/whatsapp.servic
 const CHANNEL = {
   whatsapp:  { label: 'WhatsApp',  icon: 'whatsapp',  IconComp: MessageCircle, color: '#25D366', bg: '#E8F8EE' },
   instagram: { label: 'Instagram', icon: 'instagram', IconComp: Camera,        color: '#C13584', bg: '#FCE4EC' },
-  messenger: { label: 'Messenger', icon: 'messenger', IconComp: Facebook,      color: '#0084FF', bg: '#E3F2FD' },
+  messenger: { label: 'Messenger', icon: 'messenger', IconComp: MessageCircle,      color: '#0084FF', bg: '#E3F2FD' },
 }
 
 const THREAD_POLL_MS = 5000
