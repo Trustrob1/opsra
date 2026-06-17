@@ -3548,6 +3548,10 @@ def send_checkout_link(
 # Conversations — unified inbox list
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Conversations — unified inbox list
+# ---------------------------------------------------------------------------
+
 def get_conversations(
     db,
     org_id: str,
@@ -3562,6 +3566,15 @@ def get_conversations(
     assigned contacts.  Admins/owners see all.
 
     S14: per-section failures are swallowed — the other section still returns.
+
+    BUGFIX (Conv-list-1): leads/customers queries previously had no
+    .order() before .limit(300). Without an explicit ORDER BY, Postgres
+    makes no guarantee about which 300 rows are returned when a table has
+    more than 300 matching rows — an org with >300 leads could silently
+    drop an active conversation from the inbox regardless of how recently
+    it was active. Both queries now order by updated_at (falling back to
+    created_at) descending, so the most recently active contacts are
+    always prioritized within the 300-row window.
     """
     conversations: list = []
 
@@ -3576,6 +3589,7 @@ def get_conversations(
                 )
                 .eq("org_id", org_id)
                 .is_("deleted_at", "null")
+                .order("updated_at", desc=True)
                 .limit(300)
             )
             if is_scoped:
@@ -3678,6 +3692,7 @@ def get_conversations(
                 )
                 .eq("org_id", org_id)
                 .is_("deleted_at", "null")
+                .order("updated_at", desc=True)
                 .limit(300)
             )
             if is_scoped:
