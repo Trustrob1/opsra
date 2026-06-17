@@ -14,6 +14,7 @@
  *   - Table of all commissions with inline edit (amount + status)
  */
 import { useState, useEffect, useCallback } from 'react'
+import { Clock, CheckCircle, DollarSign, BarChart2, User, Briefcase, X, AlertTriangle, RefreshCw, Edit } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import useAuthStore from '../../store/authStore'
 import * as commSvc from '../../services/commissions.service'
@@ -29,6 +30,11 @@ const STATUS_COLORS = {
 const EVENT_LABELS = {
   lead_converted:    'Lead Converted',
   payment_confirmed: 'Payment Confirmed',
+}
+
+function CardIcon({ Icon, size = 18 }) {
+  if (!Icon) return null
+  return <Icon size={size} strokeWidth={1.8} />
 }
 
 function _fmt(amount) {
@@ -104,10 +110,10 @@ export default function CommissionsModule({ user }) {
   function SummaryCards() {
     if (!summary) return null
     const cards = [
-      { label: 'Pending',  key: 'pending',  icon: '⏳' },
-      { label: 'Approved', key: 'approved', icon: '✅' },
-      { label: 'Paid',     key: 'paid',     icon: '💰' },
-      { label: 'Total',    key: null,       icon: '📊' },
+      { label: 'Pending',  key: 'pending',  Icon: Clock },
+      { label: 'Approved', key: 'approved', Icon: CheckCircle },
+      { label: 'Paid',     key: 'paid',     Icon: DollarSign },
+      { label: 'Total',    key: null,       Icon: BarChart2 },
     ]
     return (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
@@ -121,7 +127,7 @@ export default function CommissionsModule({ user }) {
               border: '1px solid #E4EEF2', padding: '16px 18px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <span style={{ fontSize: 18 }}>{card.icon}</span>
+                <CardIcon Icon={card.Icon} size={18} />
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.7px' }}>
                   {card.label}
                 </span>
@@ -148,7 +154,7 @@ export default function CommissionsModule({ user }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 14, color: 'white',
         }}>
-          {isAffiliate ? '👤' : '💼'}
+          {isAffiliate ? <User size={20} color="white" strokeWidth={2} /> : <Briefcase size={20} color="white" strokeWidth={2} />}
         </div>
         <div>
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#0a1a24', margin: 0 }}>
@@ -163,9 +169,7 @@ export default function CommissionsModule({ user }) {
         <button
           onClick={load}
           style={{ marginLeft: 'auto', background: 'none', border: '1px solid #CBD5E1', borderRadius: 8, padding: '7px 14px', fontSize: 13, color: '#4a7a8a', cursor: 'pointer', fontFamily: ds.fontDm }}
-        >
-          ↻ Refresh
-        </button>
+        ><span style={{display:'inline-flex',alignItems:'center',gap:6}}><RefreshCw size={13} />Refresh</span></button>
       </div>
 
       {/* Summary cards */}
@@ -189,9 +193,7 @@ export default function CommissionsModule({ user }) {
             <button
               onClick={() => { setFilterStatus(''); setPage(1) }}
               style={{ fontSize: 12, color: '#7A9BAD', background: 'none', border: 'none', cursor: 'pointer' }}
-            >
-              ✕ Clear
-            </button>
+            ><span style={{display:'inline-flex',alignItems:'center',gap:4}}><X size={12} />Clear</span></button>
           )}
         </div>
       )}
@@ -199,7 +201,7 @@ export default function CommissionsModule({ user }) {
       {/* Error */}
       {error && (
         <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#DC2626', marginBottom: 16 }}>
-          ⚠ {error}
+          <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span>
         </div>
       )}
 
@@ -326,9 +328,7 @@ export default function CommissionsModule({ user }) {
                         <button
                           onClick={() => { setEditingId(c.id); setEditForm({ amount_ngn: c.amount_ngn, status: c.status }) }}
                           style={{ background: 'white', border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: '#4a7a8a', fontFamily: ds.fontDm }}
-                        >
-                          ✏ Edit
-                        </button>
+                        ><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Edit size={11} />Edit</span></button>
                       )}
                     </td>
                   )}
