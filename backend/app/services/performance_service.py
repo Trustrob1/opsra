@@ -205,6 +205,85 @@ def _score_colour(pct: float) -> str:
     return "red"
 
 
+def _contractor_kpi_status(target_value, actual_value, kpi_type: str) -> str:
+    """
+    Mirrors app/routers/contractors.py:_kpi_status — kept in sync manually.
+    Duplicated locally rather than imported to avoid a router→service
+    reverse dependency. Returns: 'on_track' | 'at_risk' | 'off_track' | 'pending'
+    """
+    if actual_value is None:
+        return "pending"
+    if kpi_type == "leads_generated":
+        pct = actual_value / target_value * 100 if target_value else 0
+        if pct >= 100:
+            return "on_track"
+        if pct >= 70:
+            return "at_risk"
+        return "off_track"
+    if kpi_type == "conversion_rate":
+        if actual_value >= target_value:
+            return "on_track"
+        if actual_value >= target_value * 0.7:
+            return "at_risk"
+        return "off_track"
+    if kpi_type == "response_time":
+        if actual_value <= target_value:
+            return "on_track"
+        if actual_value <= target_value * 1.3:
+            return "at_risk"
+        return "off_track"
+    return "pending"
+
+
+def _contractor_risk_summary(actuals_by_month: dict, kpi_targets: list) -> dict:
+    """
+    Mirrors app/routers/contractors.py:_compute_risk_summary — kept in sync
+    manually. Used to surface termination risk on the Owner Dashboard
+    KPI tracker without importing across router/service boundaries.
+    """
+    if not kpi_targets or not actuals_by_month:
+        return {
+            "consecutive_months_off_track": 0,
+            "at_termination_risk": False,
+            "missed_kpi_months": [],
+        }
+
+    def _month_sort_key(label: str) -> int:
+        try:
+            return int(label.replace("Month", "").strip())
+        except ValueError:
+            return 0
+
+    sorted_months = sorted(actuals_by_month.keys(), key=_month_sort_key)
+    missed_kpi_months = []
+    for month_label in sorted_months:
+        month_actuals = actuals_by_month[month_label]
+        all_off_track = True
+        for kpi in kpi_targets:
+            key      = kpi.get("key", "")
+            kpi_type = kpi.get("kpi_type", "manual")
+            target_val = kpi.get("target_value")
+            actual_val = month_actuals.get(key)
+            if _contractor_kpi_status(target_val, actual_val, kpi_type) != "off_track":
+                all_off_track = False
+                break
+        if all_off_track:
+            missed_kpi_months.append(month_label)
+
+    consecutive = 0
+    for month_label in reversed(sorted_months):
+        if month_label in missed_kpi_months:
+            consecutive += 1
+        else:
+            break
+
+    return {
+        "consecutive_months_off_track": consecutive,
+        "at_termination_risk": consecutive >= 2,
+        "missed_kpi_months": missed_kpi_months,
+    }
+
+
 # ---------------------------------------------------------------------------
 # KPI Templates
 # ---------------------------------------------------------------------------
@@ -1385,6 +1464,9 @@ async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) ->
         perf_logs_leads,
         perf_logs_posts,
         activity_logs_today,
+        contractor_kpi_history_res,
+        staff_targets_res,
+        entity_logs_res,
     ) = await asyncio.gather(
         _async_fetch(
             db, "leads",
@@ -1403,7 +1485,7 @@ async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) ->
         ),
         _async_fetch(
             db, "contractors",
-            "id, full_name, role_title",
+            "id, full_name, role_title, kpi_targets, fee_structure, fee_amount, fee_currency, contract_start, contract_end",
             [("org_id", "eq", org_id)],
         ),
         _async_fetch(
@@ -1445,6 +1527,28 @@ async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) ->
             "id, entity_id, log_date, kpi_label, notes, blocker_note, needs_management_attention, resolved_at, created_at",
             [("org_id", "eq", org_id), ("kpi_key", "eq", "daily_activity"),
              ("log_date", "eq", str(today))],
+        ),
+        # All-time contractor KPI actuals — needed for termination-risk
+        # detection (consecutive off-track months) and the 3-month trend
+        # shown in the Owner Dashboard KPI tracker expand panel.
+        _async_fetch(
+            db, "contractor_kpi_actuals",
+            "contractor_id, month_label, month_start, kpi_key, actual_value",
+            [("org_id", "eq", org_id)],
+        ),
+        # Staff KPI targets for the brief's month — drives the staff rows
+        # in the Owner Dashboard KPI tracker.
+        _async_fetch(
+            db, "staff_kpi_targets",
+            "user_id, kpi_name, target_value, actual_value, month_start",
+            [("org_id", "eq", org_id), ("month_start", "eq", month_start_str)],
+        ),
+        # Daily logs across the brief's month, by entity — gives last-log
+        # date and a running-total fallback for staff rows in the tracker.
+        _async_fetch(
+            db, "performance_daily_logs",
+            "entity_id, entity_type, log_date, kpi_key, value",
+            [("org_id", "eq", org_id), ("log_date", "gte", month_start_str)],
         ),
     )
 
@@ -1636,6 +1740,151 @@ async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) ->
                 "status":          "open",
             })
 
+    # ── 7. Unified staff + contractor KPI tracker (Owner Dashboard) ───────
+    staff_targets_by_user: dict[str, list] = {}
+    for t in staff_targets_res:
+        staff_targets_by_user.setdefault(t["user_id"], []).append(t)
+
+    entity_logs_by_id: dict[str, list] = {}
+    for log in entity_logs_res:
+        entity_logs_by_id.setdefault(log.get("entity_id", ""), []).append(log)
+
+    def _tracker_last_log_date(entity_id: str) -> str | None:
+        rows = entity_logs_by_id.get(entity_id, [])
+        if not rows:
+            return None
+        return max((l.get("log_date", "") for l in rows), default=None) or None
+
+    def _tracker_stale_flag(last_date: str | None) -> dict | None:
+        if not last_date:
+            return None
+        delta = (today - date.fromisoformat(last_date)).days
+        if delta >= 2:
+            return {"type": "stale_log", "label": "Stale log", "severity": "danger"}
+        return None
+
+    contractor_summary_by_id = {cs["contractor_id"]: cs for cs in contractor_summaries}
+    contractor_kpi_history_by_id: dict[str, list] = {}
+    for row in contractor_kpi_history_res:
+        contractor_kpi_history_by_id.setdefault(row.get("contractor_id", ""), []).append(row)
+
+    kpi_tracker: list[dict] = []
+
+    # Staff rows — only included once a staff member has at least one KPI
+    # target set for this month (nothing meaningful to show otherwise).
+    for user in users_res:
+        uid = user["id"]
+        user_targets = staff_targets_by_user.get(uid)
+        if not user_targets:
+            continue
+        primary = max(user_targets, key=lambda t: float(t.get("target_value") or 0))
+        target_val = float(primary.get("target_value") or 0)
+        actual_val = primary.get("actual_value")
+        if actual_val is None:
+            actual_val = sum(
+                float(l.get("value") or 0)
+                for l in entity_logs_by_id.get(uid, [])
+                if l.get("kpi_key") == primary.get("kpi_name")
+            )
+        pct = _kpi_achievement_pct(actual_val, target_val)
+        status = "on_track" if pct >= 90 else "at_risk" if pct >= 60 else "off_track"
+        last_date = _tracker_last_log_date(uid)
+        kpi_tracker.append({
+            "entity_id":     uid,
+            "type":          "staff",
+            "name":          user.get("full_name", ""),
+            "role":          (user.get("roles") or {}).get("template", "general_staff"),
+            "status":        status,
+            "pace":          _pace_status(actual_val, target_val, days_elapsed, days_in_month_n),
+            "key_kpi": {
+                "label":  primary.get("kpi_name", ""),
+                "actual": actual_val,
+                "target": target_val,
+                "pct":    pct,
+            },
+            "last_log_date": last_date,
+            "flag":          _tracker_stale_flag(last_date),
+            "profile":       None,
+        })
+
+    # Contractor rows — every active contractor gets a row so the owner
+    # sees who exists even before any KPI actuals have been logged.
+    for c in contractors_res:
+        cid = c["id"]
+        c_targets = c.get("kpi_targets") or []
+        history = contractor_kpi_history_by_id.get(cid, [])
+        actuals_by_month: dict[str, dict] = {}
+        for row in history:
+            ml = row.get("month_label", "")
+            actuals_by_month.setdefault(ml, {})[row.get("kpi_key", "")] = row.get("actual_value")
+        risk = _contractor_risk_summary(actuals_by_month, c_targets)
+
+        primary_kpi = c_targets[0] if c_targets else None
+        key_kpi = None
+        status = "pending"
+        if primary_kpi:
+            p_key    = primary_kpi.get("key", "")
+            p_type   = primary_kpi.get("kpi_type", "manual")
+            p_target = primary_kpi.get("target_value")
+            current_month_label = next(
+                (row.get("month_label") for row in history if row.get("month_start") == month_start_str),
+                None,
+            )
+            p_actual = actuals_by_month.get(current_month_label, {}).get(p_key) if current_month_label else None
+            status = _contractor_kpi_status(p_target, p_actual, p_type)
+            key_kpi = {
+                "label":  primary_kpi.get("label", p_key),
+                "actual": p_actual,
+                "target": p_target,
+                "pct":    (_kpi_achievement_pct(p_actual, float(p_target)) if (p_target and p_actual is not None) else None),
+            }
+
+        summary   = contractor_summary_by_id.get(cid, {})
+        last_date = _tracker_last_log_date(cid)
+        flag = None
+        if risk["at_termination_risk"]:
+            flag = {"type": "termination_risk", "label": "Termination risk", "severity": "danger"}
+        elif summary.get("activities_today") == 0:
+            flag = {"type": "no_activity", "label": "No activity logged", "severity": "warning"}
+
+        sorted_months = sorted(
+            actuals_by_month.keys(),
+            key=lambda m: int(m.replace("Month", "").strip()) if m.replace("Month", "").strip().isdigit() else 0,
+        )[-3:]
+        trend = []
+        for m in sorted_months:
+            m_actuals = actuals_by_month[m]
+            pcts = [
+                _kpi_achievement_pct(m_actuals.get(k.get("key", "")), float(k.get("target_value") or 0))
+                for k in c_targets if k.get("target_value")
+            ]
+            trend.append({"month": m, "score_pct": round(sum(pcts) / len(pcts), 1) if pcts else None})
+
+        kpi_tracker.append({
+            "entity_id":     cid,
+            "type":          "contractor",
+            "name":          c.get("full_name", ""),
+            "role":          c.get("role_title", "contractor"),
+            "status":        status,
+            "pace":          "Behind" if status == "off_track" else "On track" if status == "on_track" else "—",
+            "key_kpi":       key_kpi,
+            "last_log_date": last_date,
+            "flag":          flag,
+            "profile": {
+                "fee_structure":  c.get("fee_structure", ""),
+                "fee_amount":     c.get("fee_amount"),
+                "fee_currency":   c.get("fee_currency", "NGN"),
+                "contract_start": str(c.get("contract_start") or ""),
+                "contract_end":   str(c.get("contract_end") or ""),
+                "kpi_trend":      trend,
+                "risk_summary":   risk,
+                "pending_tasks":  summary.get("in_progress_tasks", []),
+            },
+        })
+
+    _STATUS_SORT = {"off_track": 0, "at_risk": 1, "pending": 2, "on_track": 3}
+    kpi_tracker.sort(key=lambda r: _STATUS_SORT.get(r["status"], 2))
+
     result = {
         "generated_at":          datetime.utcnow().isoformat(),
         "period":                f"{month_start_str} — {today}",
@@ -1650,6 +1899,7 @@ async def get_daily_brief(db, org_id: str, brief_date: Optional[date] = None) ->
         "goals":                 goals_progress,
         "contractors":           contractor_summaries,
         "attention_issues":      attention_issues,
+        "kpi_tracker":           kpi_tracker,
     }
     _cache_set(cache_key, result, ttl)
     return result

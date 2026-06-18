@@ -110,6 +110,84 @@ function Avatar({ name, size = 28 }) {
   )
 }
 
+function KpiTrackerRow({ row, expanded, onToggle }) {
+  const statusV = row.status === 'on_track' ? 'green' : row.status === 'at_risk' ? 'amber' : row.status === 'off_track' ? 'red' : 'blue'
+  const statusLabel = { on_track: 'On track', at_risk: 'At risk', off_track: 'Off track', pending: 'Pending' }[row.status] || 'Pending'
+  const flagV = row.flag?.severity === 'danger' ? 'red' : 'amber'
+  const isContractor = row.type === 'contractor'
+  const pct = row.key_kpi?.pct != null ? Math.min(100, Math.round(row.key_kpi.pct)) : 0
+
+  return (
+    <div style={{ borderBottom: '1px solid #f3f4f6' }}>
+      <div
+        onClick={isContractor ? onToggle : undefined}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px', cursor: isContractor ? 'pointer' : 'default' }}
+      >
+        <Avatar name={row.name} size={26} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2535', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</div>
+          <div style={{ fontSize: 10, color: '#9ca3af' }}>{isContractor ? 'Contractor' : 'Sales agent'}{row.key_kpi ? ` · ${row.key_kpi.label}` : ''}</div>
+        </div>
+        {row.key_kpi && (
+          <div style={{ width: 90, flexShrink: 0 }}>
+            <div style={{ fontSize: 10, color: '#9ca3af', textAlign: 'right', marginBottom: 2 }}>
+              {fmt(row.key_kpi.actual)}{row.key_kpi.target ? ` / ${fmt(row.key_kpi.target)}` : ''}
+            </div>
+            <div style={{ background: '#f3f4f6', borderRadius: 4, height: 5 }}>
+              <div style={{ background: T[statusV].bar || T[statusV].color, borderRadius: 4, height: 5, width: `${pct}%` }} />
+            </div>
+          </div>
+        )}
+        <span style={{ ...pill(statusV, 10), flexShrink: 0 }}>{statusLabel}</span>
+        <span style={{ fontSize: 10, color: '#9ca3af', width: 56, textAlign: 'right', flexShrink: 0 }}>
+          {row.last_log_date ? fmtDateLabel(new Date(row.last_log_date + 'T00:00:00')) : '—'}
+        </span>
+        <div style={{ width: 120, flexShrink: 0, textAlign: 'right' }}>
+          {row.flag ? <span style={pill(flagV, 10)}>{row.flag.label}</span> : <span style={{ fontSize: 10, color: '#d1d5db' }}>—</span>}
+        </div>
+        {isContractor && (
+          <i className={`ti ti-chevron-${expanded ? 'up' : 'down'}`} style={{ fontSize: 13, color: '#9ca3af', flexShrink: 0 }} aria-hidden="true" />
+        )}
+      </div>
+      {isContractor && expanded && row.profile && (
+        <div style={{ background: '#f9fafb', borderRadius: 8, padding: '10px 12px', margin: '0 4px 10px', fontSize: 11 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+            <div>
+              <div style={{ color: '#9ca3af', marginBottom: 2 }}>Contract</div>
+              <div style={{ color: '#374151' }}>
+                {row.profile.fee_structure?.replace(/_/g, ' ') || '—'}
+                {row.profile.fee_amount ? ` · ${row.profile.fee_currency === 'NGN' ? '₦' : row.profile.fee_currency + ' '}${fmt(row.profile.fee_amount)}` : ''}
+              </div>
+            </div>
+            <div>
+              <div style={{ color: '#9ca3af', marginBottom: 2 }}>3-month trend</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {row.profile.kpi_trend?.length
+                  ? row.profile.kpi_trend.map((t, i) => (
+                      <span key={i} style={{ color: i === row.profile.kpi_trend.length - 1 ? T.red.color : '#6b7280' }}>
+                        {t.month}: {t.score_pct !== null ? `${t.score_pct}%` : '—'}
+                      </span>
+                    ))
+                  : <span style={{ color: '#9ca3af' }}>No history yet</span>}
+              </div>
+            </div>
+          </div>
+          {row.profile.risk_summary?.at_termination_risk && (
+            <div style={{ color: '#A32D2D', marginBottom: 6 }}>
+              {row.profile.risk_summary.consecutive_months_off_track} consecutive months off-track — flagged for termination review.
+            </div>
+          )}
+          {row.profile.pending_tasks?.length > 0 && (
+            <div style={{ color: '#6b7280' }}>
+              Pending: {row.profile.pending_tasks.map(t => t.task).join(' · ')}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AttentionIssueCard({ iss, onResolved, sessionToken }) {
   const [resolving, setResolving] = useState(false)
   const [showResolve, setShowResolve] = useState(false)
@@ -184,6 +262,8 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
   const [refresh,      setRefresh]      = useState(null)
   // Default to yesterday so the morning view is always populated
   const [selectedDate, setSelectedDate] = useState(yesterday)
+  const [kpiFilter,    setKpiFilter]    = useState('all')
+  const [expandedContractor, setExpandedContractor] = useState(null)
   const timerRef = useRef(null)
 
   const fetchBrief = useCallback(async (dateOverride) => {
@@ -371,6 +451,40 @@ export default function OwnerDashboardContent({ token, sessionToken, orgName, on
               </div>
             </div>
           </div>
+        )}
+
+        {/* Team & contractor KPI tracker */}
+        {brief?.kpi_tracker?.length > 0 && (
+          <Section title="Team & contractor KPI tracker" icon="chart-bar" accent="#534AB7">
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              {['all', 'staff', 'contractor'].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setKpiFilter(f)}
+                  style={{
+                    fontSize: 11, padding: '4px 10px', borderRadius: 14, cursor: 'pointer',
+                    border: kpiFilter === f ? 'none' : '1px solid #e5e7eb',
+                    background: kpiFilter === f ? '#0f2535' : 'white',
+                    color: kpiFilter === f ? 'white' : '#6b7280',
+                  }}
+                >
+                  {f === 'all' ? `All (${brief.kpi_tracker.length})`
+                    : f === 'staff' ? `Staff (${brief.kpi_tracker.filter(r => r.type === 'staff').length})`
+                    : `Contractors (${brief.kpi_tracker.filter(r => r.type === 'contractor').length})`}
+                </button>
+              ))}
+            </div>
+            {brief.kpi_tracker
+              .filter(r => kpiFilter === 'all' || r.type === kpiFilter)
+              .map(row => (
+                <KpiTrackerRow
+                  key={row.entity_id}
+                  row={row}
+                  expanded={expandedContractor === row.entity_id}
+                  onToggle={() => setExpandedContractor(p => p === row.entity_id ? null : row.entity_id)}
+                />
+              ))}
+          </Section>
         )}
 
         {/* 2-column grid */}
