@@ -135,6 +135,7 @@ celery_app = Celery(
         "app.workers.performance_rollup_worker",        # ← CPM-1B Gap 1
         "app.workers.attribution_worker",               # ← ATTRIB-1
         "app.workers.health_score_worker",              # ← PERF-1C (registered now, worker built in PERF-1C)
+        "app.workers.owner_report_worker",              # ← RPT-DAILY
     ],
 )
 
@@ -388,12 +389,27 @@ celery_app.conf.beat_schedule = {
     },
 
     # ------------------------------------------------------------------ #
-    # weekly_growth_digest — Every Monday 08:00 WAT (07:00 UTC)  (GPM-2) #
-    # Worker: growth_insights_worker.py                                   #
+    # weekly_growth_digest — RETIRED (RPT-DAILY)                         #
+    # Absorbed into owner_daily_report. On Mondays the weekly growth      #
+    # section is appended to the daily brief message. Do not re-enable    #
+    # without removing the Monday section from owner_report_worker.py.    #
     # ------------------------------------------------------------------ #
-    "weekly_growth_digest": {
-       "task": "app.workers.growth_insights_worker.run_weekly_growth_digest",
-       "schedule": crontab(hour=7, minute=0, day_of_week=1),
+    # "weekly_growth_digest": {
+    #    "task": "app.workers.growth_insights_worker.run_weekly_growth_digest",
+    #    "schedule": crontab(hour=7, minute=0, day_of_week=1),
+    # },
+
+    # ------------------------------------------------------------------ #
+    # owner_daily_report — Daily 07:30 WAT (06:30 UTC)  (RPT-DAILY)     #
+    # Worker: owner_report_worker.py                                       #
+    # Sends the org owner a WhatsApp brief with yesterday's KPIs + link   #
+    # to the Owner Dashboard. On Mondays: weekly growth section appended. #
+    # Slot: 30 min after monday_digest (06:00 UTC), before renewals       #
+    # (07:00 UTC). D1 + D2 gates applied per org.                         #
+    # ------------------------------------------------------------------ #
+    "owner_daily_report": {
+        "task": "app.workers.owner_report_worker.run_owner_daily_report",
+        "schedule": crontab(hour=6, minute=30),
     },
 
     # ------------------------------------------------------------------ #

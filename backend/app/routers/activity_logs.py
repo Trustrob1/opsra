@@ -520,6 +520,197 @@ def _generate_activity_log_pdf(report_data: dict) -> bytes:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+def build_daily_report_data(
+    db,
+    org_id: str,
+    report_date_str: str,
+    org_name: str,
+) -> dict:
+    """
+    Assembles report_data for a single day — all staff + contractors,
+    no user/team filter, is_manager=True implied.
+
+    Called by the public daily-report-pdf route (token-as-credential).
+    Mirrors the assembly logic in download_activity_log_report but
+    scoped to one date with no filter params. download_activity_log_report
+    is unchanged — this is an additive sibling, not a refactor.
+    """
+    from datetime import datetime, timezone
+    from itertools import groupby as _groupby, groupby as _igroupby
+    now = datetime.now(timezone.utc)
+
+    # Staff activity logs
+    result = (
+        db.table("activity_logs")
+        .select("*, user:user_id(id, full_name, team)")
+        .eq("org_id", org_id)
+        .eq("log_date", report_date_str)
+        .order("log_date", desc=True)
+        .execute()
+    )
+    logs = result.data or []
+    if isinstance(logs, dict):
+        logs = [logs]
+
+    log_rows: list    = []
+    blocker_rows: list = []
+    staff_map: dict   = {}
+
+    for log in logs:
+        user_obj  = log.get("user") or {}
+        full_name = user_obj.get("full_name") or "Unknown"
+        _team     = user_obj.get("team") or log.get("team") or ""
+        uid       = log.get("user_id") or ""
+        log_date  = log.get("log_date") or ""
+
+        if uid not in staff_map:
+            staff_map[uid] = {
+                "full_name": full_name, "team": _team,
+                "days": set(), "activities": 0, "hours": 0, "blockers": 0,
+            }
+        staff_map[uid]["days"].add(log_date)
+
+        entries = log.get("entries")
+        if entries and isinstance(entries, list):
+            for entry in entries:
+                _hrs          = entry.get("duration_minutes") or 0
+                _has_blocker  = entry.get("has_blocker", False)
+                _blocker_note = entry.get("blocker_note") or ""
+                log_rows.append({
+                    "full_name": full_name, "team": _team, "log_date": log_date,
+                    "activity_type":        entry.get("activity_type") or "General",
+                    "activity_description": entry.get("activity_description") or "",
+                    "duration_minutes": _hrs or None,
+                    "has_blocker": _has_blocker, "blocker_note": _blocker_note,
+                })
+                staff_map[uid]["activities"] += 1
+                staff_map[uid]["hours"]      += _hrs or 0
+                if _has_blocker:
+                    staff_map[uid]["blockers"] += 1
+                    blocker_rows.append({
+                        "full_name": full_name, "log_date": log_date,
+                        "blocker_note": _blocker_note or "No details provided",
+                    })
+        else:
+            _acts = log.get("activities") or ""
+            _blk  = log.get("blockers") or ""
+            log_rows.append({
+                "full_name": full_name, "team": _team, "log_date": log_date,
+                "activity_type": "General", "activity_description": _acts,
+                "duration_minutes": None, "has_blocker": bool(_blk), "blocker_note": _blk,
+            })
+            staff_map[uid]["activities"] += 1
+            if _blk:
+                staff_map[uid]["blockers"] += 1
+                blocker_rows.append({"full_name": full_name, "log_date": log_date, "blocker_note": _blk})
+
+    # Sort: group by staff name, date desc within each group
+    log_rows_sorted = sorted(log_rows, key=lambda r: r.get("full_name") or "")
+    grouped: list = []
+    for _name, _entries in _groupby(log_rows_sorted, key=lambda r: r.get("full_name") or ""):
+        grouped.extend(sorted(list(_entries), key=lambda r: r.get("log_date") or "", reverse=True))
+    log_rows = grouped
+    blocker_rows.sort(key=lambda r: r.get("log_date") or "", reverse=True)
+
+    per_staff = sorted([
+        {
+            "full_name": s["full_name"], "team": s["team"],
+            "days_logged": len(s["days"]), "activities": s["activities"],
+            "hours": s["hours"], "blockers": s["blockers"],
+        }
+        for s in staff_map.values()
+    ], key=lambda x: (x.get("team") or "", x.get("full_name") or ""))
+
+    # Contractor activity logs
+    contractor_rows: list         = []
+    contractor_blocker_rows: list = []
+    active_contractor_ids: set    = set()
+
+    contractors_result = (
+        db.table("contractors")
+        .select("id, full_name, role_title")
+        .eq("org_id", org_id)
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    contractor_lookup = {
+        c["id"]: {"name": c.get("full_name") or "Unknown", "role": c.get("role_title") or ""}
+        for c in (contractors_result.data or [])
+    }
+
+    if contractor_lookup:
+        contr_logs = (
+            db.table("performance_daily_logs")
+            .select(
+                "id, entity_id, log_date, kpi_label, notes, duration_minutes, "
+                "needs_management_attention, blocker_note, resolved_at, created_at"
+            )
+            .eq("org_id", org_id)
+            .eq("kpi_key", "daily_activity")
+            .eq("log_date", report_date_str)
+            .order("created_at", desc=True)
+            .execute()
+            .data or []
+        )
+        for log in contr_logs:
+            cid   = log.get("entity_id") or ""
+            cinfo = contractor_lookup.get(cid, {})
+            _has_blocker  = bool(log.get("needs_management_attention"))
+            _blocker_note = (log.get("blocker_note") or "").strip()
+            contractor_rows.append({
+                "contractor_name": cinfo.get("name") or "Unknown",
+                "contractor_role": cinfo.get("role") or "",
+                "log_date":        log.get("log_date") or "",
+                "activity_type":   (log.get("kpi_label") or "General").strip(),
+                "activity_description": (log.get("notes") or "").strip(),
+                "duration_minutes": log.get("duration_minutes"),
+                "has_blocker": _has_blocker, "blocker_note": _blocker_note,
+                "resolved_at": log.get("resolved_at"),
+            })
+            active_contractor_ids.add(cid)
+            if _has_blocker:
+                contractor_blocker_rows.append({
+                    "contractor_name": cinfo.get("name") or "Unknown",
+                    "log_date": log.get("log_date") or "",
+                    "blocker_note": _blocker_note or "No details provided",
+                    "resolved_at": log.get("resolved_at"),
+                })
+
+        sorted_by_name = sorted(contractor_rows, key=lambda r: r.get("contractor_name") or "")
+        grouped_contr: list = []
+        for _cn, _entries in _igroupby(sorted_by_name, key=lambda r: r.get("contractor_name") or ""):
+            grouped_contr.extend(
+                sorted(list(_entries), key=lambda r: r.get("log_date") or "", reverse=True)
+            )
+        contractor_rows = grouped_contr
+        contractor_blocker_rows.sort(key=lambda r: r.get("log_date") or "", reverse=True)
+
+    return {
+        "meta": {
+            "org_name":     org_name,
+            "date_from":    report_date_str,
+            "date_to":      report_date_str,
+            "generated_at": now.isoformat(),
+            "generated_by": "Opsra",
+            "filter_label": "All staff",
+        },
+        "summary": {
+            "total_activities": sum(s["activities"] for s in staff_map.values()),
+            "total_hours":      sum(s["hours"]      for s in staff_map.values()),
+            "total_blockers":   sum(s["blockers"]   for s in staff_map.values()),
+            "staff_active":     len(staff_map),
+            "contractor_count": len(active_contractor_ids),
+        },
+        "per_staff":               per_staff,
+        "log_rows":                log_rows,
+        "blocker_rows":            blocker_rows,
+        "contractor_rows":         contractor_rows,
+        "contractor_blocker_rows": contractor_blocker_rows,
+        "include_contractors":     True,
+        "is_manager":              True,
+    }
+
+
 @router.get("/activity-logs/report/download")
 def download_activity_log_report(
     date_from:           Optional[str] = None,

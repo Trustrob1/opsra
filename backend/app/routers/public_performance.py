@@ -244,6 +244,79 @@ async def get_owner_dashboard_goals(
         headers=_CORS_HEADERS,
     )
 
+# GET /r/{token}/{date} — short-link redirect to daily-report-pdf
+# Token-as-credential, no session required. 302 (not 301) so the
+# destination can change in future without browsers caching the old path.
+@router.get("/r/{token}/{date}")
+async def daily_report_shortlink(token: str, date: str, db=Depends(get_supabase)):
+    from fastapi.responses import RedirectResponse
+    org = db.table("organisations").select("id").eq(
+        "owner_dashboard_token", token
+    ).limit(1).execute()
+    if not (org.data or []):
+        raise HTTPException(status_code=404, detail="Link not found")
+    return RedirectResponse(
+        url=f"/api/v1/public/owner-dashboard/{token}/daily-report-pdf?date={date}",
+        status_code=302,
+    )
+
+
+# GET /public/owner-dashboard/{token}/daily-report-pdf
+# No session token required — dashboard_token IS the credential.
+# Single-tap from WhatsApp link: opens the activity log PDF inline.
+@router.get("/public/owner-dashboard/{token}/daily-report-pdf")
+async def get_daily_report_pdf(
+    token: str,
+    date: Optional[str] = None,
+    db=Depends(get_supabase),
+):
+    from fastapi.responses import Response
+    from app.routers.activity_logs import (
+        build_daily_report_data,
+        _generate_activity_log_pdf,
+    )
+
+    org = db.table("organisations").select("id, name").eq(
+        "owner_dashboard_token", token
+    ).limit(1).execute()
+    row = (org.data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    from datetime import date as _date
+    if date:
+        try:
+            report_date = _date.fromisoformat(date)
+            if report_date > _date.today():
+                report_date = _date.today()
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD.")
+    else:
+        report_date = _date.today() - timedelta(days=1)
+
+    try:
+        report_data = build_daily_report_data(
+            db              = db,
+            org_id          = row["id"],
+            report_date_str = report_date.isoformat(),
+            org_name        = row.get("name", ""),
+        )
+        pdf_bytes = _generate_activity_log_pdf(report_data)
+    except Exception as exc:
+        logger.error("get_daily_report_pdf: generation failed — %s", exc)
+        raise HTTPException(status_code=500, detail="Could not generate report.")
+
+    org_slug = (row.get("name") or "org").replace(" ", "_")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="Activity_Log_{org_slug}_{report_date}.pdf"',
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+
 # GET /public/owner-dashboard/{token}/brief
 @router.get("/public/owner-dashboard/{token}/brief")
 async def get_owner_brief(
