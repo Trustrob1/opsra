@@ -11,8 +11,11 @@ beat entry (growth_insights_worker.run_weekly_growth_digest).
 
 9E-D gates:
   D1: is_org_active() — top of per-org loop.
-  D2: is_quiet_hours() — before each WhatsApp send. Skip rather than
-      retry — the brief is time-sensitive and stale by the next day.
+  D2: deliberately NOT applied. Quiet hours exist to stop customer-facing
+      messages at antisocial hours; this is the owner's own operational
+      brief, scheduled at 07:30 WAT — which falls inside the typical
+      20:00-08:00 customer quiet-hours window. Applying D2 here would
+      silently skip the send every single morning.
   D3: not applicable — sends to staff users (owner), not customers.
 """
 from __future__ import annotations
@@ -20,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -28,7 +31,7 @@ import httpx
 from app.database import get_supabase
 from app.services.performance_service import get_daily_brief
 from app.services.whatsapp_service import _get_org_wa_credentials
-from app.utils.org_gates import is_org_active, is_quiet_hours
+from app.utils.org_gates import is_org_active
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -223,7 +226,6 @@ def run_owner_daily_report(self):
     """
     logger.info("owner_report_worker: run_owner_daily_report starting.")
     db        = get_supabase()
-    now       = datetime.now(timezone.utc)  # passed to is_quiet_hours — keep UTC
     now_lagos = datetime.now(_LAGOS_TZ)     # used for all date/weekday decisions
     yesterday = now_lagos.date() - timedelta(days=1)
     is_monday = now_lagos.weekday() == 0
@@ -324,28 +326,24 @@ def run_owner_daily_report(self):
                 dashboard_url,
             ]
 
-            # ── D2: Quiet hours — skip (brief is time-sensitive) ──────────
-            if is_quiet_hours(org_row, now):
-                logger.info(
-                    "owner_report_worker: skipped for org %s — quiet hours active",
-                    org_id,
+            # D2 (quiet hours) intentionally not applied — see module
+            # docstring. This is the owner's own brief, not a customer
+            # message, and is deliberately timed for early morning.
+            try:
+                send_method = _send_owner_whatsapp(
+                    db, org_id, owner_number, message,
+                    template_params=template_params,
                 )
-            else:
-                try:
-                    send_method = _send_owner_whatsapp(
-                        db, org_id, owner_number, message,
-                        template_params=template_params,
-                    )
-                    sent += 1
-                    logger.info(
-                        "owner_report_worker: sent daily report for org %s via %s",
-                        org_id, send_method,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "owner_report_worker: WA send failed for org %s — %s",
-                        org_id, exc,
-                    )
+                sent += 1
+                logger.info(
+                    "owner_report_worker: sent daily report for org %s via %s",
+                    org_id, send_method,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "owner_report_worker: WA send failed for org %s — %s",
+                    org_id, exc,
+                )
 
             # Audit log — no LLM cost for this task (no Haiku call)
             try:
