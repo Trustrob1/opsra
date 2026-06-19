@@ -125,7 +125,7 @@ export default function App() {
     const link  = document.createElement('link')
     link.id     = 'opsra-fonts'
     link.rel    = 'stylesheet'
-    link.href   = 'https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap'
+    link.href   = 'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap'
     document.head.appendChild(link)
   }, [])
 

@@ -21,8 +21,8 @@ export const ds = {
   border:    '#D6E8EC',
 
   // Typography
-  fontSyne: "'Syne', sans-serif",
-  fontDm:   "'DM Sans', sans-serif",
+  fontSyne: "'Poppins', sans-serif",
+  fontDm:   "'Poppins', sans-serif",
 
   // Shadows
   cardShadow:  '0 2px 12px rgba(2,128,144,0.05)',
