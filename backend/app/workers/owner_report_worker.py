@@ -351,6 +351,7 @@ def run_owner_daily_report(self):
                     "org_id":             org_id,
                     "user_id":            None,
                     "action_type":        "owner_daily_report",
+                    "function_name":      "run_owner_daily_report",
                     "model":              "none",
                     "input_tokens":       0,
                     "output_tokens":      0,
