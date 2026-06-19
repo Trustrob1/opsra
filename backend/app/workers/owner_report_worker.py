@@ -74,28 +74,22 @@ def _build_message(
     Format the WhatsApp message body from the daily brief dict.
     Uses WhatsApp bold (*text*) for headers — no markdown beyond that.
     """
-    rev    = brief.get("revenue") or {}
-    pipe   = brief.get("pipeline") or {}
+    rev    = brief.get("revenue_snapshot") or {}
     issues = brief.get("attention_issues") or []
 
     mtd        = rev.get("revenue_mtd") or 0
-    target_pct = rev.get("target_pct")
-    convs      = rev.get("total_conversions") or 0
+    target_pct = rev.get("revenue_pct")
+    convs      = rev.get("total_converted") or 0
     cr         = rev.get("conversion_rate") or 0
-    leads      = (
-        pipe.get("this_week")
-        or pipe.get("leads_this_week")
-        or pipe.get("total_leads")
-        or 0
-    )
-    n_issues = len(issues)
+    leads      = rev.get("total_leads") or 0
+    n_issues   = len(issues)
 
     target_str = f" ({target_pct:.0f}% of target)" if target_pct is not None else ""
 
     lines = [
         f"*Daily Brief \u2014 {brief_date.strftime('%d %b %Y')}*\n",
         f"Revenue MTD: {_fmt_ngn(mtd)}{target_str}",
-        f"New leads (week): {leads}",
+        f"Total leads (MTD): {leads}",
         f"Conversions: {convs} ({cr:.1f}% CR)",
     ]
 
