@@ -14,7 +14,7 @@
  *   ├─ LoginScreen     (shown when token === null)
  *   └─ AppShell        (shown when authenticated)
  *       ├─ Topbar      (fixed 60px — hamburger on mobile)
- *       ├─ Sidebar     (fixed 248px desktop / slide drawer mobile)
+ *       ├─ Sidebar     (fixed 248px desktop, collapsible to 72px / slide drawer mobile)
  *       ├─ Main
  *       │   ├─ view === 'leads'        → LeadsPipeline
  *       │   └─ view === 'lead-profile' → LeadProfile
@@ -66,7 +66,7 @@ import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight,
+  ChevronRight, ChevronLeft,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 
@@ -79,6 +79,10 @@ const _authPatch = (path, body, token) => axios.patch(`${BASE}${path}`, body, { 
 // ─── Session timeout (Phase 9D) ───────────────────────────────────────────────
 let _idleLogout = false
 const IDLE_MS = 12 * 60 * 60 * 1000  // 12 hours
+
+// ─── Main sidebar collapse widths (desktop only — mobile drawer is unaffected) ─
+const SIDEBAR_W_OPEN   = 248
+const SIDEBAR_W_CLOSED = 72
 
 // ─── Sidebar navigation definition ───────────────────────────────────────────
 const NAV = [
@@ -543,6 +547,21 @@ function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false)    // mobile drawer state
   const sidebarRef = useRef(null)
 
+  // Desktop sidebar collapsed/expanded — persisted preference (mirrors AdminModule pattern)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('main_sidebar_collapsed') === 'true'
+    } catch { return false }
+  })
+
+  function toggleSidebarCollapsed() {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('main_sidebar_collapsed', String(next)) } catch {}
+      return next
+    })
+  }
+
   // Close drawer when tapping backdrop on mobile
   const handleBackdropClick = () => setSidebarOpen(false)
 
@@ -658,6 +677,8 @@ function AppShell() {
   const userName    = user?.full_name ?? user?.email ?? 'User'
 
   // Sidebar nav content — shared between desktop sidebar and mobile drawer
+  const collapsed = !isMobile && sidebarCollapsed   // desktop-only collapse; mobile drawer always full-width
+
   const SidebarContent = () => (
     <>
       {/* Mobile drawer header */}
@@ -674,8 +695,31 @@ function AppShell() {
         </div>
       )}
 
-      <div style={{ padding: '20px 16px 8px', fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
-        Modules
+      {/* Modules header + desktop collapse toggle */}
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'space-between',
+        padding: collapsed ? '20px 0 8px' : '20px 16px 8px',
+      }}>
+        {!collapsed && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+            Modules
+          </span>
+        )}
+        {!isMobile && (
+          <button
+            onClick={toggleSidebarCollapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#5a8a9f', padding: 4, borderRadius: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        )}
       </div>
 
       {visibleNav.map(item => {
@@ -684,10 +728,11 @@ function AppShell() {
           <div
             key={item.id}
             onClick={() => handleNavClick(item.id)}
-            title={!item.active ? 'Coming soon' : undefined}
+            title={!item.active ? 'Coming soon' : (collapsed ? item.label : undefined)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '11px 16px', margin: '2px 8px', borderRadius: 9,
+              display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              padding: collapsed ? '11px 0' : '11px 16px', margin: '2px 8px', borderRadius: 9,
               cursor: item.active ? 'pointer' : 'default', transition: 'all 0.18s',
               fontSize: 13.5, fontWeight: 500,
               color:      isActive ? 'white' : (item.active ? '#7A9BAD' : '#3a5a6a'),
@@ -699,25 +744,41 @@ function AppShell() {
             <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)', flexShrink: 0 }}>
               {(() => { const Icon = NAV_ICONS[item.id]; return Icon ? <Icon size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /> : null })()}
             </div>
-            <span style={{ flex: 1, lineHeight: 1.3 }}>{item.label}</span>
-            <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.6)' : '#3a5a6a' }}>{item.module}</span>
+            {!collapsed && (
+              <>
+                <span style={{ flex: 1, lineHeight: 1.3 }}>{item.label}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.6)' : '#3a5a6a' }}>{item.module}</span>
+              </>
+            )}
           </div>
         )
       })}
 
-      <div style={{ padding: '20px 16px 8px', fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 8 }}>
-        Admin
-      </div>
+      {!collapsed && (
+        <div style={{ padding: '20px 16px 8px', fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 8 }}>
+          Admin
+        </div>
+      )}
+      {collapsed && (
+        <div style={{ height: 1, background: '#1a2f3f', margin: '14px 10px 6px' }} />
+      )}
 
       {(() => {
         const isActive = activeNav === 'admin'
         return (
           <div
             onClick={() => { setActiveNav('admin'); setView('admin'); setSelectedLeadId(null); closeSidebarOnMobile() }}
-            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', margin: '2px 8px', borderRadius: 9, cursor: 'pointer', transition: 'all 0.18s', fontSize: 13.5, fontWeight: 500, color: isActive ? 'white' : '#7A9BAD', background: isActive ? ds.teal : 'none', minHeight: 44 }}
+            title={collapsed ? 'Admin Dashboard' : undefined}
+            style={{
+              display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              padding: collapsed ? '11px 0' : '11px 16px', margin: '2px 8px', borderRadius: 9,
+              cursor: 'pointer', transition: 'all 0.18s', fontSize: 13.5, fontWeight: 500,
+              color: isActive ? 'white' : '#7A9BAD', background: isActive ? ds.teal : 'none', minHeight: 44,
+            }}
           >
             <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }}><Settings size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /></div>
-            <span style={{ flex: 1 }}>Admin Dashboard</span>
+            {!collapsed && <span style={{ flex: 1 }}>Admin Dashboard</span>}
           </div>
         )
       })()}
@@ -849,10 +910,12 @@ function AppShell() {
       {!isMobile && (
         <nav style={{
           position: 'fixed', top: 60, left: 0, bottom: 0,
-          width: 248, background: ds.dark2,
+          width: sidebarCollapsed ? SIDEBAR_W_CLOSED : SIDEBAR_W_OPEN,
+          background: ds.dark2,
           borderRight: '1px solid #1a2f3f',
-          overflowY: 'auto', zIndex: ds.z.sidebar,
+          overflowY: 'auto', overflowX: 'hidden', zIndex: ds.z.sidebar,
           display: 'flex', flexDirection: 'column',
+          transition: 'width 0.2s ease',
         }}>
           <SidebarContent />
         </nav>
@@ -893,9 +956,10 @@ function AppShell() {
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <main style={{
-        marginLeft:   isMobile ? 0 : 248,
+        marginLeft:   isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_W_CLOSED : SIDEBAR_W_OPEN),
         marginTop:    60,
         minHeight:    'calc(100vh - 60px)',
+        transition:   isMobile ? undefined : 'margin-left 0.2s ease',
         // Bottom padding on mobile to not clip content behind potential bottom bars
         paddingBottom: isMobile ? 16 : 0,
       }}>
