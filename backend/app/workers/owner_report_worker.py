@@ -21,6 +21,7 @@ import asyncio
 import logging
 import os
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -34,6 +35,15 @@ logger = logging.getLogger(__name__)
 
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "https://opsra-frontend.onrender.com")
 _API_BASE_URL  = os.getenv("RENDER_EXTERNAL_URL", "")
+
+# Nigeria has no DST — fixed UTC+1 year-round. Used for "yesterday" / "is
+# Monday" so the report reflects the owner's local calendar day regardless
+# of which exact UTC moment the beat schedule fires at.
+_LAGOS_TZ = ZoneInfo("Africa/Lagos")
+
+# Must match the approved template name exactly as shown in WhatsApp Manager.
+_TEMPLATE_NAME = os.getenv("OWNER_DAILY_BRIEF_TEMPLATE_NAME", "owner_daily_brief_notification")
+_META_REENGAGEMENT_ERROR_CODE = 131047
 
 
 # ---------------------------------------------------------------------------
@@ -105,24 +115,32 @@ def _build_message(
     return "\n".join(lines)
 
 
-def _send_owner_whatsapp(db, org_id: str, to: str, text: str) -> None:
+def _send_owner_whatsapp(
+    db, org_id: str, to: str, text: str, template_params: list[str] | None = None
+) -> str:
     """
-    Send a plain-text WhatsApp message directly to a staff user (owner).
+    Sends the owner's daily report, preferring free text and falling back
+    to the approved template only when Meta rejects the free text because
+    the 24h customer service window is closed (error 131047).
 
-    Uses _get_org_wa_credentials for the per-org token (multi-org safe,
-    no META_WHATSAPP_TOKEN env-var fallback per I0 in whatsapp_service.py).
-    Makes the HTTP call directly with httpx rather than _call_meta_send,
-    to avoid HTTPException propagating into the Celery worker context.
+    Free text first: if the owner messaged the business number within the
+    last 24h, the full dynamic message — live numbers and, on Mondays,
+    the weekly growth section — goes through as-is.
+
+    Template fallback: fixed, minimal notification (date + both links) —
+    Meta won't approve a template carrying the full dynamic body, so the
+    owner taps through to the dashboard for the actual numbers.
+
+    Returns "text" or "template" depending on which path succeeded.
+    Raises RuntimeError if both attempts fail.
     """
     phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
     if not phone_id or not access_token:
-        logger.warning(
-            "owner_report_worker: no WA credentials for org %s — skipping send",
-            org_id,
-        )
-        return
+        raise RuntimeError(f"No WA credentials for org {org_id}")
 
     url = f"https://graph.facebook.com/v17.0/{phone_id}/messages"
+
+    # ── 1. Try free text first ──────────────────────────────────────────
     with httpx.Client(timeout=15) as client:
         resp = client.post(
             url,
@@ -137,10 +155,55 @@ def _send_owner_whatsapp(db, org_id: str, to: str, text: str) -> None:
                 "text": {"body": text},
             },
         )
-    if resp.status_code not in (200, 201):
-        raise RuntimeError(
-            f"Meta API {resp.status_code}: {resp.text[:200]}"
+    if resp.status_code in (200, 201):
+        return "text"
+
+    # Only fall back to the template for the specific 24h-window error —
+    # any other failure (bad number, auth issue) should surface as a real
+    # error rather than being masked by a template send attempt.
+    is_reengagement_error = False
+    try:
+        is_reengagement_error = (
+            resp.json().get("error", {}).get("code") == _META_REENGAGEMENT_ERROR_CODE
         )
+    except Exception:
+        pass
+
+    if not is_reengagement_error:
+        raise RuntimeError(f"Meta API {resp.status_code}: {resp.text[:200]}")
+
+    if not template_params:
+        raise RuntimeError(
+            "Free text failed (24h window closed) and no template_params provided"
+        )
+
+    # ── 2. Fall back to the approved template ───────────────────────────
+    with httpx.Client(timeout=15) as client:
+        resp2 = client.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type":  "application/json",
+            },
+            json={
+                "messaging_product": "whatsapp",
+                "to":   to,
+                "type": "template",
+                "template": {
+                    "name": _TEMPLATE_NAME,
+                    "language": {"code": "en"},
+                    "components": [{
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": p} for p in template_params
+                        ],
+                    }],
+                },
+            },
+        )
+    if resp2.status_code not in (200, 201):
+        raise RuntimeError(f"Meta API (template) {resp2.status_code}: {resp2.text[:200]}")
+    return "template"
 
 
 # ---------------------------------------------------------------------------
@@ -166,9 +229,10 @@ def run_owner_daily_report(self):
     """
     logger.info("owner_report_worker: run_owner_daily_report starting.")
     db        = get_supabase()
-    now       = datetime.now(timezone.utc)
-    yesterday = now.date() - timedelta(days=1)
-    is_monday = now.weekday() == 0  # UTC Monday — close enough for WAT offset
+    now       = datetime.now(timezone.utc)  # passed to is_quiet_hours — keep UTC
+    now_lagos = datetime.now(_LAGOS_TZ)     # used for all date/weekday decisions
+    yesterday = now_lagos.date() - timedelta(days=1)
+    is_monday = now_lagos.weekday() == 0
     sent      = 0
 
     try:
@@ -176,7 +240,8 @@ def run_owner_daily_report(self):
             db.table("organisations")
             .select(
                 "id, subscription_status, owner_dashboard_token, "
-                "whatsapp_phone_id, quiet_hours_start, quiet_hours_end, timezone"
+                "org_business_contact_number, whatsapp_phone_id, "
+                "quiet_hours_start, quiet_hours_end, timezone"
             )
             .eq("is_live", True)
             .execute()
@@ -198,21 +263,16 @@ def run_owner_daily_report(self):
             continue
 
         try:
-            # Find active owners with a WhatsApp number on record
-            users = (
-                db.table("users")
-                .select("id, whatsapp_number, roles(template)")
-                .eq("org_id", org_id)
-                .eq("is_active", True)
-                .execute()
-                .data or []
-            )
-            targets = [
-                u for u in users
-                if (u.get("roles") or {}).get("template") == "owner"
-                and u.get("whatsapp_number")
-            ]
-            if not targets:
+            # Owner's personal contact number lives on the org row itself,
+            # not on a user record. org_whatsapp_number is a different
+            # field (the Business API number used for customer-facing
+            # chat) — must not be confused with this one.
+            owner_number = org_row.get("org_business_contact_number") or ""
+            if not owner_number:
+                logger.info(
+                    "owner_report_worker: org %s skipped — no org_business_contact_number",
+                    org_id,
+                )
                 continue
 
             # Build yesterday's brief (async → sync bridge)
@@ -262,29 +322,35 @@ def run_owner_daily_report(self):
 
             message = _build_message(brief, yesterday, dashboard_url, weekly_section, pdf_url)
 
-            for user in targets:
-                # ── D2: Quiet hours — skip (brief is time-sensitive) ──────
-                if is_quiet_hours(org_row, now):
-                    logger.info(
-                        "owner_report_worker: skipped for user %s — "
-                        "quiet hours active for org %s",
-                        user["id"], org_id,
-                    )
-                    continue
+            # Fixed, minimal content for the template fallback — date plus
+            # both links, in the same order as the approved template body.
+            template_params = [
+                yesterday.strftime("%d %b %Y"),
+                pdf_url or dashboard_url,
+                dashboard_url,
+            ]
 
+            # ── D2: Quiet hours — skip (brief is time-sensitive) ──────────
+            if is_quiet_hours(org_row, now):
+                logger.info(
+                    "owner_report_worker: skipped for org %s — quiet hours active",
+                    org_id,
+                )
+            else:
                 try:
-                    _send_owner_whatsapp(
-                        db, org_id, user["whatsapp_number"], message
+                    send_method = _send_owner_whatsapp(
+                        db, org_id, owner_number, message,
+                        template_params=template_params,
                     )
                     sent += 1
                     logger.info(
-                        "owner_report_worker: sent daily report to user %s (org %s)",
-                        user["id"], org_id,
+                        "owner_report_worker: sent daily report for org %s via %s",
+                        org_id, send_method,
                     )
                 except Exception as exc:
                     logger.warning(
-                        "owner_report_worker: WA send failed for user %s org %s — %s",
-                        user["id"], org_id, exc,
+                        "owner_report_worker: WA send failed for org %s — %s",
+                        org_id, exc,
                     )
 
             # Audit log — no LLM cost for this task (no Haiku call)
