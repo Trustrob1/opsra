@@ -109,7 +109,7 @@ class PaginatedData(BaseModel, Generic[DataT]):
     items: List[DataT]
     total: int = Field(..., ge=0)
     page: int = Field(..., ge=1)
-    page_size: int = Field(..., ge=1, le=500)
+    page_size: int = Field(..., ge=1, le=3000)
     has_more: bool
 
     @classmethod
