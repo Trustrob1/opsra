@@ -160,7 +160,7 @@ async def list_leads(
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=500),
+    page_size: int = Query(20, ge=1, le=3000),
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):

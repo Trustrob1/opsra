@@ -300,7 +300,7 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pip
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
-  const { leads, loading, error, refresh, total } = useLeads({}, 200)
+  const { leads, loading, error, refresh, total } = useLeads({}, 3000)
   const isMobile = useIsMobile()
 
   const [pipelineStages, setPipelineStages] = useState(STAGES)
