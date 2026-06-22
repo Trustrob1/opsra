@@ -537,9 +537,10 @@ def filter_catalog_items_by_tags(
             return matched, tag_filters
 
         # Progressive relaxation — remove least specific filters first
-        # (shortest tag_value = least specific)
+        # (shortest tag_value = least specific). Size is excluded — it's a
+        # hard physical constraint, never a soft preference to relax away.
         relaxation_order = sorted(
-            tag_filters.keys(),
+            [k for k in tag_filters.keys() if k not in ("size", "sizes")],
             key=lambda k: len(str(tag_filters[k])),
         )
         active_filters = dict(tag_filters)
@@ -556,13 +557,16 @@ def filter_catalog_items_by_tags(
                 )
                 return matched, active_filters
 
-        # Full fallback — return all available products
+        # Full fallback — return all available products. Preserve the
+        # original size filter (if any) so callers can still detect and
+        # honestly report a size mismatch, instead of losing that context.
+        preserved = {k: v for k, v in tag_filters.items() if k in ("size", "sizes")}
         logger.info(
             "filter_catalog_items_by_tags: no tag matches after full relaxation "
-            "— returning all %d products as fallback org=%s",
-            len(all_products), org_id,
+            "— returning all %d products as fallback org=%s preserved=%s",
+            len(all_products), org_id, preserved,
         )
-        return all_products, {}
+        return all_products, preserved
 
     except Exception as exc:
         logger.warning(
