@@ -33,13 +33,30 @@
  *     Refreshes board and shows an info banner directing manager to open the lead
  *     for the full attribution review. Does NOT redirect or open the lead automatically
  *     (kanban context — user may be managing multiple leads).
+ *
+ * KANBAN-SCALE-1:
+ *   - Kanban no longer fetches the entire org's lead list. Each pipeline stage is its
+ *     own independently-paginated column, reusing the same listLeads() endpoint the
+ *     List view already uses (stage + score + source + search + page + page_size).
+ *   - Column header counts are real server-side totals per stage — accurate regardless
+ *     of org size or any upstream row cap.
+ *   - "Load 30 more" button per column. KANBAN_PAGE_SIZE = 30.
+ *   - 60s auto-refresh per column is merge-by-id: new leads not yet loaded are
+ *     prepended to the top, existing loaded leads are updated in place, nothing
+ *     already-loaded is ever removed by auto-refresh.
+ *   - Drag-and-drop (and the two modal-driven moves: convert, mark lost/not_ready)
+ *     are deterministic local events — on success, the lead is removed immediately
+ *     from its source column, and the destination column is refreshed-and-merged
+ *     from the server (so we get the real post-move record, e.g. deal_value).
+ *   - Filter changes (search/score/source) reset every column to page 1 and refetch.
+ *   - CSV import can land leads in any stage, so it refreshes-and-merges every column.
+ *   - The old single-fetch useLeads({}, 3000) hook is no longer used by this component.
  */
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   LayoutGrid, List, Calendar, Leaf, Upload, Plus,
   MessageSquare, Ticket, DollarSign, Clock, AlertTriangle, X,
 } from 'lucide-react'
-import { useLeads }       from '../../hooks/useLeads'
 import {
   moveStage, convertLead, getLeadAttentionSummary, listLeads, updateLead,
 } from '../../services/leads.service'
@@ -53,7 +70,8 @@ import MarkLostModal      from './MarkLostModal'
 import NurtureQueue       from './NurtureQueue'
 import Pagination         from '../../shared/Pagination'
 
-const LIST_PAGE_SIZE = 20
+const LIST_PAGE_SIZE   = 20
+const KANBAN_PAGE_SIZE  = 30
 
 const SOURCE_LABELS = {
   facebook_ad:       'Facebook Ad',
@@ -300,7 +318,6 @@ function LeadListView({ filterScore, filterSource, filterSearch, onOpenLead, pip
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
-  const { leads, loading, error, refresh, total } = useLeads({}, 3000)
   const isMobile = useIsMobile()
 
   const [pipelineStages, setPipelineStages] = useState(STAGES)
@@ -321,19 +338,12 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
     getLeadAttentionSummary().then(res => { if (res.success) setAttentionMap(res.data ?? {}) }).catch(() => {})
   }, [])
   useEffect(() => { refreshAttentionMap() }, [])
-  useEffect(() => { refreshAttentionMap() }, [leads])
 
   // Auto-refresh badges every 30s
   useEffect(() => {
     const attId = setInterval(refreshAttentionMap, 30_000)
     return () => clearInterval(attId)
   }, [refreshAttentionMap])
-
-  // Auto-refresh lead list every 60s
-  useEffect(() => {
-    const leadId = setInterval(refresh, 60_000)
-    return () => clearInterval(leadId)
-  }, [refresh])
 
   useEffect(() => {
     const handler = (e) => {
@@ -385,22 +395,130 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
     if (mode === 'nurture') setNurtureMounted(true)
   }, [])
 
-  const filtered = useMemo(() => {
-    const q = filterSearch.toLowerCase()
-    return leads.filter((l) => {
-      if (filterScore  && l.score  !== filterScore)  return false
-      if (filterSource && l.source !== filterSource) return false
-      if (q && ![l.full_name, l.business_name, l.email, l.phone].filter(Boolean).some(v => v.toLowerCase().includes(q))) return false
-      return true
-    })
-  }, [leads, filterScore, filterSource, filterSearch])
+  // ── KANBAN-SCALE-1: per-stage column state ───────────────────────────────
+  // columns[stageKey] = { cards: Lead[], total: number, page: number, loading: bool, error: string|null }
+  const [columns, setColumns] = useState({})
+  const columnsRef = useRef(columns)
+  columnsRef.current = columns
 
-  const byStage = useMemo(() => {
-    const map = {}
-    pipelineStages.forEach(s => { map[s.key] = [] })
-    filtered.forEach(lead => { if (map[lead.stage]) map[lead.stage].push(lead) })
-    return map
-  }, [filtered, pipelineStages])
+  const fetchColumn = useCallback(async (stageKey, mode = 'initial') => {
+    setColumns(prev => ({
+      ...prev,
+      [stageKey]: { ...(prev[stageKey] ?? { cards: [], total: 0, page: 1 }), loading: true, error: null },
+    }))
+    try {
+      const params = { stage: stageKey, page: 1, page_size: KANBAN_PAGE_SIZE }
+      if (filterScore)  params.score  = filterScore
+      if (filterSource) params.source = filterSource
+      if (filterSearch) params.search = filterSearch
+
+      if (mode === 'loadMore') {
+        const current = columnsRef.current[stageKey] ?? { cards: [], total: 0, page: 1 }
+        params.page = current.page + 1
+        const res = await listLeads(params)
+        if (res.success) {
+          setColumns(prev => {
+            const prevCol = prev[stageKey] ?? { cards: [], total: 0, page: 1 }
+            const existingIds = new Set(prevCol.cards.map(c => c.id))
+            const fresh = (res.data?.items ?? []).filter(l => !existingIds.has(l.id))
+            return { ...prev, [stageKey]: { cards: [...prevCol.cards, ...fresh], total: res.data?.total ?? prevCol.total, page: params.page, loading: false, error: null } }
+          })
+        } else {
+          setColumns(prev => ({ ...prev, [stageKey]: { ...prev[stageKey], loading: false, error: res.error ?? 'Failed to load leads' } }))
+        }
+        return
+      }
+
+      // 'initial' and 'refreshMerge' both fetch page 1
+      const res = await listLeads(params)
+      if (!res.success) {
+        setColumns(prev => ({ ...prev, [stageKey]: { ...(prev[stageKey] ?? { cards: [], total: 0, page: 1 }), loading: false, error: res.error ?? 'Failed to load leads' } }))
+        return
+      }
+      const fetchedItems = res.data?.items ?? []
+      const fetchedTotal = res.data?.total ?? 0
+
+      if (mode === 'initial') {
+        setColumns(prev => ({ ...prev, [stageKey]: { cards: fetchedItems, total: fetchedTotal, page: 1, loading: false, error: null } }))
+        return
+      }
+
+      // refreshMerge: prepend genuinely new leads, update existing in place, never remove
+      setColumns(prev => {
+        const prevCol = prev[stageKey] ?? { cards: [], total: 0, page: 1 }
+        const byId = new Map(prevCol.cards.map(c => [c.id, c]))
+        const newOnes = []
+        fetchedItems.forEach(l => {
+          if (byId.has(l.id)) byId.set(l.id, { ...byId.get(l.id), ...l })
+          else newOnes.push(l)
+        })
+        const merged = [...newOnes, ...prevCol.cards.map(c => byId.get(c.id) ?? c)]
+        return { ...prev, [stageKey]: { cards: merged, total: fetchedTotal, page: prevCol.page, loading: false, error: null } }
+      })
+    } catch (err) {
+      setColumns(prev => ({ ...prev, [stageKey]: { ...(prev[stageKey] ?? { cards: [], total: 0, page: 1 }), loading: false, error: err?.response?.data?.error ?? 'Failed to load leads' } }))
+    }
+  }, [filterScore, filterSource, filterSearch])
+
+  const removeFromColumn = useCallback((stageKey, id) => {
+    setColumns(prev => {
+      const prevCol = prev[stageKey]
+      if (!prevCol) return prev
+      return { ...prev, [stageKey]: { ...prevCol, cards: prevCol.cards.filter(c => c.id !== id), total: Math.max(0, prevCol.total - 1) } }
+    })
+  }, [])
+
+  const completeMove = useCallback((fromStage, toStage, id) => {
+    if (fromStage) removeFromColumn(fromStage, id)
+    fetchColumn(toStage, 'refreshMerge')
+  }, [removeFromColumn, fetchColumn])
+
+  const refreshAllColumns = useCallback(() => {
+    pipelineStages.forEach(s => fetchColumn(s.key, 'refreshMerge'))
+  }, [pipelineStages, fetchColumn])
+
+  // Initial load — fetch every visible stage once pipelineStages is known.
+  // Re-runs only if the actual set of stage keys changes (not on every reference change).
+  const stageKeysSignature = pipelineStages.map(s => s.key).join(',')
+  useEffect(() => {
+    if (isMobile) return // Kanban isn't rendered on mobile — don't fetch it
+    pipelineStages.forEach(s => {
+      if (!columnsRef.current[s.key]) fetchColumn(s.key, 'initial')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageKeysSignature, isMobile])
+
+  // Filter changes — every column resets to page 1 and refetches fresh
+  useEffect(() => {
+    if (isMobile) return
+    pipelineStages.forEach(s => fetchColumn(s.key, 'initial'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterScore, filterSource, filterSearch])
+
+  // 60s auto-refresh per column — merge-by-id (see fetchColumn 'refreshMerge')
+  useEffect(() => {
+    if (isMobile) return
+    const id = setInterval(() => {
+      pipelineStages.forEach(s => fetchColumn(s.key, 'refreshMerge'))
+    }, 60_000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageKeysSignature, isMobile])
+
+  // Flat lookup across whatever's currently loaded in any column — replaces the
+  // old single master `leads` array for modal/badge lookups.
+  const findLoadedLead = useCallback((id) => {
+    for (const col of Object.values(columnsRef.current)) {
+      const found = col.cards?.find(c => c.id === id)
+      if (found) return found
+    }
+    return null
+  }, [])
+
+  const totalLeads = useMemo(() => Object.values(columns).reduce((sum, c) => sum + (c?.total ?? 0), 0), [columns])
+  const shownLeads  = useMemo(() => Object.values(columns).reduce((sum, c) => sum + (c?.cards?.length ?? 0), 0), [columns])
+  const anyColumnLoading = useMemo(() => Object.values(columns).some(c => c?.loading && (c?.cards?.length ?? 0) === 0), [columns])
+  const firstColumnError = useMemo(() => Object.values(columns).find(c => c?.error)?.error ?? null, [columns])
 
   const pendingDemosTotal = useMemo(() =>
     Object.values(attentionMap).reduce((sum, a) => sum + (a.pending_demos || 0), 0), [attentionMap])
@@ -425,24 +543,24 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
     const id = e.dataTransfer.getData('text/plain') || draggedId
     setDraggedId(null)
     if (!id || movingId) return
-    const lead = leads.find(l => l.id === id)
+    const lead = findLoadedLead(id)
     if (!lead || lead.stage === targetStage) return
-    if (targetStage === 'converted') { setDealValueCtx({ id, leadName: lead.full_name }); return }
-    if (targetStage === 'lost' || targetStage === 'not_ready') { setMarkLostCtx({ id, defaultReason: targetStage === 'not_ready' ? 'not_ready' : '' }); return }
+    if (targetStage === 'converted') { setDealValueCtx({ id, leadName: lead.full_name, fromStage: lead.stage }); return }
+    if (targetStage === 'lost' || targetStage === 'not_ready') { setMarkLostCtx({ id, defaultReason: targetStage === 'not_ready' ? 'not_ready' : '', fromStage: lead.stage, targetStage }); return }
     setMovingId(id)
     try {
       const res = await moveStage(id, targetStage)
       if (!res.success) setMoveError(res.error ?? 'Stage move failed')
-      else refresh()
+      else completeMove(lead.stage, targetStage, id)
     } catch (err) {
       setMoveError(err?.response?.data?.error ?? 'Stage move failed')
     } finally { setMovingId(null) }
-  }, [draggedId, movingId, leads, refresh, isAffiliate])
+  }, [draggedId, movingId, findLoadedLead, isAffiliate, completeMove])
   const onDragEnd = useCallback(() => { setDraggedId(null); setDragTarget(null) }, [])
 
   const handleDealValueConfirm = useCallback(async (dealValue) => {
     if (!dealValueCtx) return
-    const { id, leadName } = dealValueCtx
+    const { id, leadName, fromStage } = dealValueCtx
     setDealValueCtx(null); setMovingId(id)
     try {
       const res = await convertLead(id)
@@ -451,12 +569,14 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       } else {
         const data = res.data?.lead ?? res.data
 
-        // ATTRIB-1: backend returned pending_attribution — review needed before conversion finalises
+        // ATTRIB-1: backend returned pending_attribution — review needed before conversion finalises.
+        // Stage may not have actually changed yet, so refresh-merge the source column rather than
+        // optimistically removing the card.
         if (data?._attribution_status === 'pending_attribution') {
           if (dealValue != null) {
             await updateLead(id, { deal_value: dealValue }).catch(() => {})
           }
-          refresh()
+          fetchColumn(fromStage, 'refreshMerge')
           setAttributionInfo({
             leadName,
             leadId: id,
@@ -467,12 +587,12 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
 
         // Normal single-window conversion
         if (dealValue != null) await updateLead(id, { deal_value: dealValue }).catch(() => {})
-        refresh()
+        completeMove(fromStage, 'converted', id)
       }
     } catch (err) {
       setMoveError(err?.response?.data?.error ?? 'Conversion failed')
     } finally { setMovingId(null) }
-  }, [dealValueCtx, refresh])
+  }, [dealValueCtx, completeMove, fetchColumn])
   const handleDealValueSkip = useCallback(() => handleDealValueConfirm(null), [handleDealValueConfirm])
 
   return (
@@ -483,7 +603,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
         <div style={{ width: isMobile ? 36 : 44, height: isMobile ? 36 : 44, background: ds.teal, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 800, fontSize: isMobile ? 13 : 15, color: 'white' }}>01</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: isMobile ? 18 : 22, color: ds.dark, margin: 0 }}>Lead Center</h1>
-          <p style={{ fontSize: 12, color: ds.gray, margin: 0 }}>{loading ? 'Loading…' : `${total} leads · ${filtered.length} shown`}</p>
+          <p style={{ fontSize: 12, color: ds.gray, margin: 0 }}>{(!isMobile && anyColumnLoading) ? 'Loading…' : (isMobile ? '' : `${totalLeads} leads · ${shownLeads} shown`)}</p>
         </div>
 
         {/* Action buttons */}
@@ -561,7 +681,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       )}
 
       {/* ── Errors ───────────────────────────────────────────────── */}
-      {error     && <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 16 }}>{error}</div>}
+      {firstColumnError && <div style={{ background: '#FFE8E8', border: `1px solid #FFCCCC`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: ds.red, marginBottom: 16 }}>{firstColumnError}</div>}
       {moveError && <div style={{ background: '#FFF9E0', border: `1px solid #FFE066`, borderRadius: ds.radius.md, padding: '10px 14px', fontSize: 13, color: '#8B6800', marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}><span>{moveError}</span><button onClick={() => setMoveError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, display:'flex', alignItems:'center' }}><X size={14} /></button></div>}
 
       {/* ATTRIB-1: attribution info banner */}
@@ -583,23 +703,33 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       {!isMobile && (
         <div style={{ display: viewMode === 'kanban' ? 'flex' : 'none', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
           {pipelineStages.map(stage => {
-            const cards        = byStage[stage.key] ?? []
-            const isDropTarget = !isAffiliate && dragTarget === stage.key && draggedId
+            const col           = columns[stage.key] ?? { cards: [], total: 0, page: 1, loading: false, error: null }
+            const isDropTarget  = !isAffiliate && dragTarget === stage.key && draggedId
+            const hasMore       = col.cards.length < col.total
             return (
               <div key={stage.key} onDragOver={e => onDragOver(e, stage.key)} onDragLeave={onDragLeave} onDrop={e => onDrop(e, stage.key)} style={{ minWidth: 220, maxWidth: 220, flexShrink: 0, background: isDropTarget ? ds.mint : ds.light, border: `2px dashed ${isDropTarget ? ds.teal : 'transparent'}`, borderRadius: ds.radius.lg, padding: 14, transition: 'all 0.15s' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.dot, flexShrink: 0 }} />
                   <span style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: ds.gray, flex: 1 }}>{stage.label}</span>
-                  <span style={{ background: ds.teal, color: 'white', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{cards.length}</span>
+                  <span style={{ background: ds.teal, color: 'white', width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{col.total}</span>
                 </div>
-                {loading && cards.length === 0 && <LoadingCard />}
-                {cards.map(lead => (
+                {col.error && <p style={{ fontSize: 11, color: ds.red, marginBottom: 8 }}>{col.error}</p>}
+                {col.loading && col.cards.length === 0 && <LoadingCard />}
+                {col.cards.map(lead => (
                   <KanbanCard key={lead.id} lead={lead} onOpen={() => onOpenLead(lead.id)} onDragStart={e => onDragStart(e, lead.id)} onDragEnd={onDragEnd} isMoving={movingId === lead.id} canDrag={!isAffiliate} attention={attentionMap[lead.id] ?? null} demoEnabled={demoEnabled} />
                 ))}
-                {!loading && cards.length === 0 && (
+                {!col.loading && col.cards.length === 0 && (
                   <div style={{ border: `1px dashed ${ds.border}`, borderRadius: ds.radius.md, padding: '20px 10px', textAlign: 'center', fontSize: 12, color: ds.border }}>
                     {isAffiliate ? 'No leads' : 'Drop here'}
                   </div>
+                )}
+                {hasMore && !col.loading && (
+                  <button onClick={() => fetchColumn(stage.key, 'loadMore')} style={loadMoreBtn}>
+                    Load {Math.min(KANBAN_PAGE_SIZE, col.total - col.cards.length)} more
+                  </button>
+                )}
+                {hasMore && col.loading && col.cards.length > 0 && (
+                  <p style={{ textAlign: 'center', fontSize: 11, color: ds.gray, padding: '8px 0' }}>Loading…</p>
                 )}
               </div>
             )
@@ -622,10 +752,10 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       )}
 
       {/* ── Modals ───────────────────────────────────────────────── */}
-      {showCreate && <LeadCreateModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); refresh() }} />}
-      {showImport && <LeadImportModal onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); refresh() }} />}
+      {showCreate && <LeadCreateModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); fetchColumn('new', 'refreshMerge') }} />}
+      {showImport && <LeadImportModal onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); refreshAllColumns() }} />}
       {dealValueCtx && <DealValueModal leadName={dealValueCtx.leadName} onConfirm={handleDealValueConfirm} onSkip={handleDealValueSkip} loading={movingId === dealValueCtx?.id} />}
-      {markLostCtx  && <MarkLostModal leadId={markLostCtx.id} leadName={leads.find(l => l.id === markLostCtx.id)?.full_name} defaultReason={markLostCtx.defaultReason} onClose={() => setMarkLostCtx(null)} onMarked={() => { setMarkLostCtx(null); refresh() }} />}
+      {markLostCtx  && <MarkLostModal leadId={markLostCtx.id} leadName={findLoadedLead(markLostCtx.id)?.full_name} defaultReason={markLostCtx.defaultReason} onClose={() => setMarkLostCtx(null)} onMarked={() => { setMarkLostCtx(null); completeMove(markLostCtx.fromStage, markLostCtx.targetStage, markLostCtx.id) }} />}
     </div>
   )
 }
@@ -683,3 +813,4 @@ function LoadingCard() {
 const primaryBtn    = { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: ds.radius.md, border: 'none', background: ds.teal, color: 'white', fontSize: 13.5, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer', transition: 'all 0.15s' }
 const secondaryBtn  = { ...primaryBtn, background: 'white', color: ds.teal, border: `1.5px solid ${ds.teal}` }
 const filterSelect  = { border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, padding: '8px 12px', fontSize: 13, color: ds.dark, fontFamily: ds.fontDm, background: 'white', outline: 'none', cursor: 'pointer' }
+const loadMoreBtn   = { width: '100%', marginTop: 6, padding: '8px 0', borderRadius: ds.radius.md, border: `1.5px dashed ${ds.border}`, background: 'white', color: ds.teal, fontSize: 12, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer' }
