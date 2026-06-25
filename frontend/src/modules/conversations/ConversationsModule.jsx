@@ -170,6 +170,14 @@ export default function ConversationsModule({ onOpenAria }) {
   const threadRef                         = useRef(null)
   const isPollingRef                      = useRef(false)
 
+  // CHAT-SCROLL-1 — preserve scroll position across background refreshes.
+  // true = thread should snap to bottom on this messages update (initial open,
+  // after sending). false = a background poll while the user has scrolled up —
+  // leave their position alone, same as native WhatsApp.
+  const wasNearBottomRef                  = useRef(true)
+  // CHAT-SCROLL-1 — jump-to-original-message on reply-quote click
+  const [highlightedMsgId, setHighlightedMsgId] = useState(null)
+
   // Human mode duration counter + inactivity nudge
   const [humanModeStart, setHumanModeStart]       = useState(null)
   const [humanModeDuration, setHumanModeDuration] = useState('')
@@ -199,9 +207,17 @@ export default function ConversationsModule({ onOpenAria }) {
   // templates useEffect removed — AI-SUGGEST-1 (template mode removed from InlineComposer)
 
   // ── Load thread messages ───────────────────────────────────────────────
-  const loadMessages = useCallback((showSpinner = false) => {
+  const loadMessages = useCallback((showSpinner = false, forceScrollBottom = showSpinner) => {
     if (!active) return
     if (showSpinner) setMsgLoading(true)
+
+    // CHAT-SCROLL-1 — capture scroll intent BEFORE the fetch resolves. Forced
+    // (initial open, after sending) always snaps to bottom. Otherwise (e.g. a
+    // background poll) only snap if the user was already near the bottom —
+    // someone scrolled up to read history shouldn't get yanked back down.
+    const el = threadRef.current
+    const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight < 100)
+    wasNearBottomRef.current = forceScrollBottom || nearBottom
 
     const fetchPromise = active.contact_type === 'lead'
       ? getLeadMessages(active.contact_id, 1, 30)
@@ -265,7 +281,7 @@ export default function ConversationsModule({ onOpenAria }) {
   }, [active, loadMessages])
 
   useEffect(() => {
-    if (threadRef.current && messages.length > 0) {
+    if (threadRef.current && messages.length > 0 && wasNearBottomRef.current) {
       threadRef.current.scrollTop = threadRef.current.scrollHeight
     }
   }, [messages])
@@ -293,6 +309,19 @@ export default function ConversationsModule({ onOpenAria }) {
 
   useEffect(() => { fetchThreadStatus() }, [fetchThreadStatus])
 
+  // CHAT-SCROLL-1 — clicking a quoted-reply preview jumps to and briefly
+  // highlights the original message, like native WhatsApp. Graceful no-op if
+  // the original isn't currently loaded in this page of the thread.
+  const handleJumpToMessage = useCallback((metaId) => {
+    if (!metaId || !threadRef.current) return
+    const el = Array.from(threadRef.current.querySelectorAll('[data-meta-id]'))
+      .find(node => node.dataset.metaId === metaId)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedMsgId(metaId)
+    setTimeout(() => setHighlightedMsgId(prev => (prev === metaId ? null : prev)), 1500)
+  }, [])
+
   // ── Open a conversation ────────────────────────────────────────────────
   const openConversation = (conv) => {
     setActive(conv)
@@ -312,7 +341,7 @@ export default function ConversationsModule({ onOpenAria }) {
     lastSentRef.current = Date.now()   // reset inactivity nudge timer
     nudgeDismissedRef.current = false
     setShowNudge(false)
-    loadMessages(false)
+    loadMessages(false, true)
     // Optimistic: immediately reflect Human Mode in the UI
     setThreadStatus(prev => ({ ...prev, ai_paused: true }))
     setConversations(prev =>
@@ -516,6 +545,8 @@ export default function ConversationsModule({ onOpenAria }) {
       onRequestSuggestion={active?.contact_type === 'lead' ? handleRequestSuggestion : null}
       onSuggestionFeedback={active?.contact_type === 'lead' ? handleSuggestionFeedback : null}
       onDismissSuggestion={() => setKbSuggestion(null)}
+      onJumpToMessage={handleJumpToMessage}
+      highlightedMsgId={highlightedMsgId}
     />
   ) : (
     <EmptyState totalUnread={totalUnread} />
@@ -652,7 +683,7 @@ function ConvRow({ conv, isActive, onSelect }) {
 
 // ─── Thread Panel ─────────────────────────────────────────────────────────────
 
-function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, humanModeDuration, showNudge, onDismissNudge, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onOpenAria, onBack, kbSuggestion, suggestionLoading, injectTextRef, onRequestSuggestion, onSuggestionFeedback, onDismissSuggestion }) {
+function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, humanModeDuration, showNudge, onDismissNudge, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onOpenAria, onBack, kbSuggestion, suggestionLoading, injectTextRef, onRequestSuggestion, onSuggestionFeedback, onDismissSuggestion, onJumpToMessage, highlightedMsgId }) {
   const ch     = CHANNEL[active.channel] || CHANNEL.whatsapp
   const isLead = active.contact_type === 'lead'
   const { window_open: windowOpen, ai_paused: aiPaused } = threadStatus
@@ -745,7 +776,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
             No messages yet — send the first one below.
           </div>
         )}
-        {!loading && [...messages].reverse().map(msg => <Bubble key={msg.id} msg={msg} onRequestSuggestion={onRequestSuggestion} />)}
+        {!loading && [...messages].reverse().map(msg => <Bubble key={msg.id} msg={msg} onRequestSuggestion={onRequestSuggestion} onJumpToMessage={onJumpToMessage} isHighlighted={!!msg.meta_message_id && highlightedMsgId === msg.meta_message_id} />)}
       </div>
 
       {/* ── Inactivity nudge ────────────────────────────────────────────── */}
@@ -1126,7 +1157,7 @@ function SendButton({ canSend, sending, onClick }) {
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function Bubble({ msg, onRequestSuggestion }) {
+function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted }) {
   const isOut  = msg.direction === 'outbound'
   const d      = msg.created_at ? new Date(msg.created_at) : null
   const time   = d ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
@@ -1187,12 +1218,22 @@ function Bubble({ msg, onRequestSuggestion }) {
 
   return (
     <div style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-      <div style={{ maxWidth: '72%', background: isOut ? '#DCF8C6' : '#fff', border: `1px solid ${isOut ? '#B0DDB8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+      <div
+        data-meta-id={msg.meta_message_id || undefined}
+        style={{ maxWidth: '72%', background: isHighlighted ? '#FFF3B0' : (isOut ? '#DCF8C6' : '#fff'), border: `1px solid ${isOut ? '#B0DDB8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'background-color 0.4s ease' }}
+      >
         {/* Quoted-reply preview — shown when this message was a WhatsApp native
-            reply to an earlier message (text or image). Falls back to a generic
-            label if the original couldn't be resolved (e.g. predates this feature). */}
+            reply to an earlier message (text or image). Clicking it jumps to and
+            highlights the original, like native WhatsApp. Falls back to a generic
+            label if the original couldn't be resolved (e.g. predates this feature
+            or isn't currently loaded in this page of the thread). */}
         {msg.reply_to_message_id && (
-          <div style={{ background: 'rgba(0,0,0,0.045)', borderLeft: `3px solid ${ds.teal}`, borderRadius: 6, padding: '5px 8px', marginBottom: 6, fontSize: 11.5, color: ds.gray, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+          <div
+            onClick={() => onJumpToMessage?.(msg.reply_to_message_id)}
+            style={{ background: 'rgba(0,0,0,0.045)', borderLeft: `3px solid ${ds.teal}`, borderRadius: 6, padding: '5px 8px', marginBottom: 6, fontSize: 11.5, color: ds.gray, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', cursor: onJumpToMessage ? 'pointer' : 'default' }}
+            onMouseEnter={e => { if (onJumpToMessage) e.currentTarget.style.background = 'rgba(0,0,0,0.08)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.045)' }}
+          >
             {msg.reply_preview ? (
               msg.reply_preview.message_type === 'image' && msg.reply_preview.media_url ? (
                 <>
