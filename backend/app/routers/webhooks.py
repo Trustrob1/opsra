@@ -880,6 +880,11 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     sender_phone = normalize_phone(message.get("from", ""))
     msg_id       = message.get("id", "")
+    # Reply context — when the customer used WhatsApp's native "reply" feature,
+    # Meta includes context.id pointing at the original message's meta_message_id.
+    # Applies to any message type (text, image, etc.) — the field lives at the
+    # top level of the message object regardless of msg_type.
+    _reply_to_id = (message.get("context") or {}).get("id")
     try:
         _dedup = (
             db.table("whatsapp_messages")
@@ -1407,6 +1412,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         "storage_path":    _inbound_storage_path,
         "status":          "delivered",
         "meta_message_id": msg_id,
+        "reply_to_message_id": _reply_to_id,
         "window_open":     True,
         "window_expires_at": window_expires,
         "sent_by":         None,

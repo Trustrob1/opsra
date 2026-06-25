@@ -1201,6 +1201,33 @@ async def get_lead_messages(
     except Exception as _exc:
         logger.warning("sent_by_name enrichment failed for lead %s: %s", lead_id, _exc)
 
+    # Resolve reply-to context — if a message is a WhatsApp native reply, attach
+    # a lightweight preview (content/type/media) of the original message it
+    # replied to, so the Conversations UI can render a quoted-reply box.
+    # S14: failure silently skips enrichment — messages still return without previews.
+    try:
+        reply_ids = list({m["reply_to_message_id"] for m in messages if m.get("reply_to_message_id")})
+        previews_map = {}
+        if reply_ids:
+            originals_r = (
+                db.table("whatsapp_messages")
+                .select("meta_message_id, content, message_type, media_url")
+                .eq("org_id", _org_id(org))
+                .in_("meta_message_id", reply_ids)
+                .execute()
+            )
+            for o in (originals_r.data or []):
+                previews_map[o["meta_message_id"]] = {
+                    "content":      o.get("content"),
+                    "message_type": o.get("message_type"),
+                    "media_url":    o.get("media_url"),
+                }
+        for m in messages:
+            rid = m.get("reply_to_message_id")
+            m["reply_preview"] = previews_map.get(rid) if rid else None
+    except Exception as _exc:
+        logger.warning("reply_preview enrichment failed for lead %s: %s", lead_id, _exc)
+
     return paginated(
         items=result["items"],
         total=result["total"],

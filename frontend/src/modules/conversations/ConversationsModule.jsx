@@ -1188,6 +1188,30 @@ function Bubble({ msg, onRequestSuggestion }) {
   return (
     <div style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
       <div style={{ maxWidth: '72%', background: isOut ? '#DCF8C6' : '#fff', border: `1px solid ${isOut ? '#B0DDB8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+        {/* Quoted-reply preview — shown when this message was a WhatsApp native
+            reply to an earlier message (text or image). Falls back to a generic
+            label if the original couldn't be resolved (e.g. predates this feature). */}
+        {msg.reply_to_message_id && (
+          <div style={{ background: 'rgba(0,0,0,0.045)', borderLeft: `3px solid ${ds.teal}`, borderRadius: 6, padding: '5px 8px', marginBottom: 6, fontSize: 11.5, color: ds.gray, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+            {msg.reply_preview ? (
+              msg.reply_preview.message_type === 'image' && msg.reply_preview.media_url ? (
+                <>
+                  <img src={msg.reply_preview.media_url} alt="" style={{ width: 26, height: 26, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
+                  <span>Photo</span>
+                </>
+              ) : msg.reply_preview.message_type && msg.reply_preview.message_type !== 'text' ? (
+                <span>{`[${msg.reply_preview.message_type}]`}</span>
+              ) : (
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {msg.reply_preview.content || '(message)'}
+                </span>
+              )
+            ) : (
+              <span>↪ Replying to a message</span>
+            )}
+          </div>
+        )}
+
         {msg.template_name && (
           <p style={{ fontSize: 10, color: '#856404', background: '#FFF3CD', borderRadius: 4, padding: '2px 6px', margin: '0 0 5px', display: 'inline-block' }}>
             {msg.template_name}
