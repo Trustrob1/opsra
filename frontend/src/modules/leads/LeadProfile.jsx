@@ -219,6 +219,11 @@ export default function LeadProfile({ leadId, onBack }) {
   const [showDealValueModal, setShowDealValueModal] = useState(false)
   const [dealValueLoading,   setDealValueLoading]   = useState(false)
 
+  // Deal Value inline editor (separate from the conversion-flow modal above —
+  // this lets a manager correct the value at any time, not just at conversion)
+  const [dealValueInput,  setDealValueInput]  = useState('')
+  const [dealValueSaving, setDealValueSaving] = useState(false)
+
   // ATTRIB-1: attribution review state
   const [showAttributionModal, setShowAttributionModal] = useState(false)
   const [attributionProposal,  setAttributionProposal]  = useState(null)
@@ -231,7 +236,11 @@ export default function LeadProfile({ leadId, onBack }) {
     setLoading(true); setError(null)
     try {
       const res = await getLead(leadId)
-      if (res.success) { setLead(res.data); setAssignedTo(res.data?.assigned_to ?? '') }
+      if (res.success) {
+        setLead(res.data)
+        setAssignedTo(res.data?.assigned_to ?? '')
+        setDealValueInput(res.data?.deal_value != null ? String(res.data.deal_value) : '')
+      }
       else setError(res.error ?? 'Failed to load lead')
     } catch (err) { setError(err?.response?.data?.error ?? 'Failed to load lead') }
     finally { setLoading(false) }
@@ -278,6 +287,28 @@ export default function LeadProfile({ leadId, onBack }) {
       else setActionError(res?.error ?? 'Override failed')
     } catch (err) { setActionError(err?.response?.data?.error ?? 'Override failed') }
     finally { setOverrideLoading(false) }
+  }
+
+  // Deal Value inline editor — lets a manager correct the value any time,
+  // not just at the moment of conversion. Empty input clears it (sets null).
+  const handleSaveDealValue = async () => {
+    setActionError(null)
+    const trimmed = dealValueInput.trim()
+    let parsed = null
+    if (trimmed !== '') {
+      const num = parseFloat(trimmed.replace(/,/g, ''))
+      if (isNaN(num) || num < 0) { setActionError('Deal value must be a positive number.'); return }
+      parsed = num
+    }
+    setDealValueSaving(true)
+    try {
+      await updateLead(leadId, { deal_value: parsed })
+      await fetchLead()
+    } catch {
+      setActionError('Failed to update deal value.')
+    } finally {
+      setDealValueSaving(false)
+    }
   }
 
   const handleDealValueConfirm = async (dealValue) => {
@@ -452,6 +483,33 @@ export default function LeadProfile({ leadId, onBack }) {
             </div>
           ) : (
             <p style={{ fontSize: 13.5, color: lead.assigned_to ? ds.dark : ds.gray, margin: 0 }}>{lead.assigned_user?.full_name ?? (lead.assigned_to ? lead.assigned_to.slice(0, 8) + '…' : 'Unassigned')}</p>
+          )}
+        </div>
+
+        {/* Deal Value — manager-editable any time, not just at conversion */}
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${ds.border}` }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>Deal Value</p>
+          {isManager ? (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13.5, color: ds.gray, fontFamily: ds.fontDm, pointerEvents: 'none' }}>₦</span>
+                <input
+                  type="text"
+                  value={dealValueInput}
+                  onChange={e => setDealValueInput(e.target.value)}
+                  placeholder="0.00 — leave blank to clear"
+                  style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, padding: '9px 12px 9px 28px', fontSize: 13.5, fontFamily: ds.fontDm, color: ds.dark, minHeight: 44 }}
+                />
+              </div>
+              <button
+                disabled={dealValueSaving || dealValueInput.trim() === (lead.deal_value != null ? String(lead.deal_value) : '')}
+                onClick={handleSaveDealValue}
+                style={{ background: (dealValueSaving || dealValueInput.trim() === (lead.deal_value != null ? String(lead.deal_value) : '')) ? '#9ca3af' : ds.teal, color: 'white', border: 'none', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: (dealValueSaving || dealValueInput.trim() === (lead.deal_value != null ? String(lead.deal_value) : '')) ? 'not-allowed' : 'pointer', fontFamily: ds.fontSyne, whiteSpace: 'nowrap', minHeight: 44 }}>
+                {dealValueSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          ) : (
+            <p style={{ fontSize: 13.5, color: lead.deal_value != null ? ds.dark : ds.gray, margin: 0 }}>{lead.deal_value != null ? `₦${Number(lead.deal_value).toLocaleString()}` : 'Not set'}</p>
           )}
         </div>
       </div>
