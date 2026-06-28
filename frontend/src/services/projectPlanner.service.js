@@ -88,6 +88,12 @@ export async function createPhase(strategyId, payload) {
   return res.data
 }
 
+/** PATCH /api/v1/project-planner/phases/{phaseId}  Body: { title?, sub_label? } */
+export async function updatePhase(phaseId, payload) {
+  const res = await api.patch(`${BASE_PATH}/phases/${phaseId}`, payload)
+  return res.data
+}
+
 /**
  * POST /api/v1/project-planner/phases/{phaseId}/tasks
  * Body: { title, description, owner_label, due_date } — owner is free text only.

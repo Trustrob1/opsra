@@ -20,6 +20,7 @@ from app.models.common import ok, paginated
 from app.models.project_planner_models import (
     DocumentLinkSet,
     PhaseCreate,
+    PhaseUpdate,
     PlanCreate,
     PlanUpdate,
     StrategyCreate,
@@ -190,6 +191,17 @@ async def create_phase(
 ):
     phase = project_planner_service.create_phase(db=db, org_id=_org_id(org), strategy_id=strategy_id, payload=payload)
     return ok(data=phase, message="Phase created")
+
+
+@router.patch("/phases/{phase_id}")
+async def update_phase(
+    phase_id: str,
+    payload: PhaseUpdate,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    phase = project_planner_service.update_phase(db=db, org_id=_org_id(org), phase_id=phase_id, payload=payload)
+    return ok(data=phase, message="Phase updated")
 
 
 @router.post("/phases/{phase_id}/tasks", status_code=status.HTTP_201_CREATED)

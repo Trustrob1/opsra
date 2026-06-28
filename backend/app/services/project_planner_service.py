@@ -32,6 +32,7 @@ from fastapi import HTTPException
 from app.models.common import ErrorCode
 from app.models.project_planner_models import (
     PhaseCreate,
+    PhaseUpdate,
     PlanCreate,
     PlanUpdate,
     StrategyCreate,
@@ -466,6 +467,15 @@ def create_phase(db, org_id: str, strategy_id: str, payload: PhaseCreate) -> dic
         .execute()
     )
     return _normalise_data(row.data)
+
+
+def update_phase(db, org_id: str, phase_id: str, payload: PhaseUpdate) -> dict:
+    _phase_or_404(db, org_id, phase_id)
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        return _phase_or_404(db, org_id, phase_id)
+    db.table("project_strategy_phases").update(updates).eq("id", phase_id).eq("org_id", org_id).execute()
+    return _phase_or_404(db, org_id, phase_id)
 
 
 def create_task(db, org_id: str, phase_id: str, payload: TaskCreate) -> dict:

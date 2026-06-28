@@ -3,7 +3,7 @@ import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import {
   FolderKanban, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
-  Trash2, Pencil, FileText, Link2, Upload, X, AlertTriangle, Check,
+  Trash2, Pencil, FileText, Link2, Upload, X, AlertTriangle, Check, ListChecks,
 } from 'lucide-react'
 import * as plannerApi from '../../services/projectPlanner.service'
 
@@ -107,17 +107,20 @@ export default function ProjectPlannerModule() {
     }
   }
 
-  async function refreshStrategies() {
-    if (activePlanId) await loadStrategies(activePlanId)
+  // ── Local, in-place state updates — no network refetch, no "Loading…"
+  // flash. Used after every mutation instead of refreshStrategies(), since
+  // every mutating endpoint already returns the data we need to merge in.
+  function updateStrategyInPlace(strategyId, updater) {
+    setStrategies(prev => prev.map(s => (s.id === strategyId ? updater(s) : s)))
   }
 
   async function handleCreateStrategy(phase, title, channel) {
     if (!title.trim()) return
     try {
-      await plannerApi.createStrategy({
+      const res = await plannerApi.createStrategy({
         plan_id: activePlanId, phase, channel, title: title.trim(),
       })
-      await refreshStrategies()
+      setStrategies(prev => [...prev, res.data])
     } catch (e) {
       setError('Could not create strategy.')
     }
@@ -125,8 +128,8 @@ export default function ProjectPlannerModule() {
 
   async function handleUpdateStrategy(strategy, payload) {
     try {
-      await plannerApi.updateStrategy(strategy.id, payload)
-      await refreshStrategies()
+      const res = await plannerApi.updateStrategy(strategy.id, payload)
+      updateStrategyInPlace(strategy.id, s => ({ ...s, ...res.data }))
     } catch (e) {
       setError('Could not update strategy.')
     }
@@ -136,7 +139,7 @@ export default function ProjectPlannerModule() {
     try {
       await plannerApi.deleteStrategy(strategy.id)
       if (expandedStrategyId === strategy.id) { setExpandedStrategyId(null); setExpandedPanel(null) }
-      await refreshStrategies()
+      setStrategies(prev => prev.filter(s => s.id !== strategy.id))
     } catch (e) {
       setError('Could not delete strategy.')
     }
@@ -144,8 +147,8 @@ export default function ProjectPlannerModule() {
 
   async function handleApprove(strategy) {
     try {
-      await plannerApi.approveStrategy(strategy.id)
-      await refreshStrategies()
+      const res = await plannerApi.approveStrategy(strategy.id)
+      updateStrategyInPlace(strategy.id, s => ({ ...s, ...res.data }))
     } catch (e) {
       setError(e?.response?.data?.detail?.message || 'Could not advance approval status.')
     }
@@ -153,8 +156,8 @@ export default function ProjectPlannerModule() {
 
   async function handleRevert(strategy) {
     try {
-      await plannerApi.revertStrategy(strategy.id)
-      await refreshStrategies()
+      const res = await plannerApi.revertStrategy(strategy.id)
+      updateStrategyInPlace(strategy.id, s => ({ ...s, ...res.data }))
     } catch (e) {
       setError(e?.response?.data?.detail?.message || 'Could not revert approval status.')
     }
@@ -278,8 +281,7 @@ export default function ProjectPlannerModule() {
                     onDelete={() => handleDeleteStrategy(strategy)}
                     onApprove={() => handleApprove(strategy)}
                     onRevert={() => handleRevert(strategy)}
-                    onTaskChanged={refreshStrategies}
-                    onDocumentChanged={refreshStrategies}
+                    onStrategyChange={(updater) => updateStrategyInPlace(strategy.id, updater)}
                   />
                 ))}
 
@@ -297,7 +299,7 @@ export default function ProjectPlannerModule() {
 // Strategy card
 // =============================================================================
 
-function StrategyCard({ strategy, isMobile, expanded, onToggleExpand, onUpdate, onDelete, onApprove, onRevert, onTaskChanged, onDocumentChanged }) {
+function StrategyCard({ strategy, isMobile, expanded, onToggleExpand, onUpdate, onDelete, onApprove, onRevert, onStrategyChange }) {
   const [editing, setEditing] = useState(false)
   const [titleDraft, setTitleDraft] = useState(strategy.title)
   const { done, total } = taskProgress(strategy)
@@ -343,7 +345,8 @@ function StrategyCard({ strategy, isMobile, expanded, onToggleExpand, onUpdate, 
           {approval.label}
         </span>
 
-        <button onClick={() => onToggleExpand('execution')} style={pillBtnStyle(expanded === 'execution')}>
+        <button onClick={() => onToggleExpand('execution')} style={executionPlanBtnStyle(expanded === 'execution')}>
+          <ListChecks size={13} strokeWidth={2} />
           Execution plan
         </button>
         <button onClick={() => onToggleExpand('details')} style={linkBtnStyle}>
@@ -389,10 +392,10 @@ function StrategyCard({ strategy, isMobile, expanded, onToggleExpand, onUpdate, 
           </div>
 
           {expanded === 'execution' && (
-            <ExecutionPlanPanel strategy={strategy} onTaskChanged={onTaskChanged} />
+            <ExecutionPlanPanel strategy={strategy} onStrategyChange={onStrategyChange} />
           )}
           {expanded === 'details' && (
-            <DetailsPanel strategy={strategy} onDocumentChanged={onDocumentChanged} />
+            <DetailsPanel strategy={strategy} onStrategyChange={onStrategyChange} />
           )}
         </div>
       )}
@@ -404,52 +407,144 @@ function StrategyCard({ strategy, isMobile, expanded, onToggleExpand, onUpdate, 
 // Execution plan panel — phases & tasks
 // =============================================================================
 
-function ExecutionPlanPanel({ strategy, onTaskChanged }) {
+function ExecutionPlanPanel({ strategy, onStrategyChange }) {
   const phases = strategy.phases || []
 
-  async function cycleStatus(task) {
+  function patchPhase(phaseId, patch) {
+    onStrategyChange(s => ({
+      ...s,
+      phases: (s.phases || []).map(p => (p.id === phaseId ? { ...p, ...patch } : p)),
+    }))
+  }
+
+  function patchTask(phaseId, taskId, patch) {
+    onStrategyChange(s => ({
+      ...s,
+      phases: (s.phases || []).map(p => (
+        p.id !== phaseId ? p : { ...p, tasks: (p.tasks || []).map(t => (t.id === taskId ? { ...t, ...patch } : t)) }
+      )),
+    }))
+  }
+
+  function addTask(phaseId, task) {
+    onStrategyChange(s => ({
+      ...s,
+      phases: (s.phases || []).map(p => (p.id === phaseId ? { ...p, tasks: [...(p.tasks || []), task] } : p)),
+    }))
+  }
+
+  function removeTask(phaseId, taskId) {
+    onStrategyChange(s => ({
+      ...s,
+      phases: (s.phases || []).map(p => (
+        p.id !== phaseId ? p : { ...p, tasks: (p.tasks || []).filter(t => t.id !== taskId) }
+      )),
+    }))
+  }
+
+  async function handleSavePhase(phase, patch) {
+    try {
+      const res = await plannerApi.updatePhase(phase.id, patch)
+      patchPhase(phase.id, res.data)
+    } catch (e) { /* no-op — field reverts visually on next real load if it truly failed */ }
+  }
+
+  async function handleCycleStatus(task, phaseId) {
     const idx = TASK_STATUS_ORDER.indexOf(task.status)
     const next = TASK_STATUS_ORDER[(idx + 1) % TASK_STATUS_ORDER.length]
     try {
-      await plannerApi.updateTask(task.id, { status: next })
-      await onTaskChanged()
-    } catch (e) { /* surfaced via parent reload failure if it occurs */ }
+      const res = await plannerApi.updateTask(task.id, { status: next })
+      patchTask(phaseId, task.id, res.data)
+    } catch (e) { /* leave as-is on failure — no optimistic flip without confirmation */ }
   }
 
-  async function saveTaskField(task, field, value) {
+  async function handleSaveTaskField(task, phaseId, field, value) {
     try {
-      await plannerApi.updateTask(task.id, { [field]: value })
-      await onTaskChanged()
-    } catch (e) { /* no-op — next reload will reflect true state */ }
+      const res = await plannerApi.updateTask(task.id, { [field]: value })
+      patchTask(phaseId, task.id, res.data)
+    } catch (e) { /* field keeps its typed value locally even if the save failed */ }
   }
 
-  async function removeTask(task) {
+  async function handleRemoveTask(task, phaseId) {
     try {
       await plannerApi.deleteTask(task.id)
-      await onTaskChanged()
+      removeTask(phaseId, task.id)
     } catch (e) { /* no-op */ }
+  }
+
+  async function handleCreateTask(phaseId, title) {
+    const res = await plannerApi.createTask(phaseId, { title })
+    addTask(phaseId, res.data)
   }
 
   return (
     <div>
       {phases.map(phase => (
         <div key={phase.id} style={{ marginBottom: 16 }}>
-          <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 13.5, color: ds.dark, margin: '0 0 6px' }}>
-            {phase.title} <span style={{ color: ds.gray, fontWeight: 400 }}>· {phase.sub_label}</span>
-          </p>
+          <PhaseHeader phase={phase} onSave={(patch) => handleSavePhase(phase, patch)} />
           {(phase.tasks || []).map(task => (
             <TaskRow
               key={task.id}
               task={task}
-              onCycleStatus={() => cycleStatus(task)}
-              onSaveField={(field, value) => saveTaskField(task, field, value)}
-              onDelete={() => removeTask(task)}
+              onCycleStatus={() => handleCycleStatus(task, phase.id)}
+              onSaveField={(field, value) => handleSaveTaskField(task, phase.id, field, value)}
+              onDelete={() => handleRemoveTask(task, phase.id)}
             />
           ))}
-          <AddTaskInline phaseId={phase.id} onCreated={onTaskChanged} />
+          <AddTaskInline phaseId={phase.id} onCreate={handleCreateTask} />
         </div>
       ))}
     </div>
+  )
+}
+
+function PhaseHeader({ phase, onSave }) {
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [editingSub, setEditingSub] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(phase.title)
+  const [subDraft, setSubDraft] = useState(phase.sub_label || '')
+
+  function saveTitle() {
+    setEditingTitle(false)
+    if (titleDraft.trim() && titleDraft.trim() !== phase.title) onSave({ title: titleDraft.trim() })
+  }
+  function saveSub() {
+    setEditingSub(false)
+    if (subDraft.trim() !== (phase.sub_label || '')) onSave({ sub_label: subDraft.trim() })
+  }
+
+  return (
+    <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 13.5, color: ds.dark, margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 4 }}>
+      {editingTitle ? (
+        <input
+          autoFocus
+          value={titleDraft}
+          onChange={e => setTitleDraft(e.target.value)}
+          onBlur={saveTitle}
+          onKeyDown={e => { if (e.key === 'Enter') saveTitle() }}
+          style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 13.5, padding: '2px 6px', border: `1px solid ${ds.teal}`, borderRadius: 5, width: 160 }}
+        />
+      ) : (
+        <span onClick={() => setEditingTitle(true)} style={{ cursor: 'pointer' }}>{phase.title}</span>
+      )}
+      <span style={{ color: ds.gray, fontWeight: 400 }}>·</span>
+      {editingSub ? (
+        <input
+          autoFocus
+          value={subDraft}
+          onChange={e => setSubDraft(e.target.value)}
+          onBlur={saveSub}
+          onKeyDown={e => { if (e.key === 'Enter') saveSub() }}
+          placeholder="e.g. Week 1"
+          style={{ fontFamily: ds.fontDm, fontWeight: 400, fontSize: 13, padding: '2px 6px', border: `1px solid ${ds.teal}`, borderRadius: 5, width: 110, color: ds.gray }}
+        />
+      ) : (
+        <span onClick={() => setEditingSub(true)} style={{ color: ds.gray, fontWeight: 400, cursor: 'pointer' }}>
+          {phase.sub_label || 'add timing'}
+        </span>
+      )}
+      <Pencil size={11} color={ds.gray} style={{ marginLeft: 2 }} />
+    </p>
   )
 }
 
@@ -487,17 +582,16 @@ function TaskRow({ task, onCycleStatus, onSaveField, onDelete }) {
   )
 }
 
-function AddTaskInline({ phaseId, onCreated }) {
+function AddTaskInline({ phaseId, onCreate }) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
 
   async function submit() {
     if (!title.trim()) return
     try {
-      await plannerApi.createTask(phaseId, { title: title.trim() })
+      await onCreate(phaseId, title.trim())
       setTitle('')
       setOpen(false)
-      await onCreated()
     } catch (e) { /* no-op */ }
   }
 
@@ -524,11 +618,18 @@ function AddTaskInline({ phaseId, onCreated }) {
 // Details panel — documents & links
 // =============================================================================
 
-function DetailsPanel({ strategy, onDocumentChanged }) {
+function DetailsPanel({ strategy, onStrategyChange }) {
   const [link, setLink] = useState('')
   const [uploading, setUploading] = useState(false)
   const [localError, setLocalError] = useState('')
   const documents = strategy.documents || []
+
+  function addDocument(doc) {
+    onStrategyChange(s => ({ ...s, documents: [...(s.documents || []), doc] }))
+  }
+  function removeDocument(docId) {
+    onStrategyChange(s => ({ ...s, documents: (s.documents || []).filter(d => d.id !== docId) }))
+  }
 
   async function handleUpload(e) {
     const file = e.target.files?.[0]
@@ -538,8 +639,8 @@ function DetailsPanel({ strategy, onDocumentChanged }) {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      await plannerApi.uploadStrategyDocument(strategy.id, formData)
-      await onDocumentChanged()
+      const res = await plannerApi.uploadStrategyDocument(strategy.id, formData)
+      addDocument(res.data)
     } catch (err) {
       const status = err?.response?.status
       if (status === 415) setLocalError('That file type isn\'t supported. Allowed: JPG, PNG, GIF, WEBP, PDF, CSV.')
@@ -554,9 +655,9 @@ function DetailsPanel({ strategy, onDocumentChanged }) {
   async function handleSaveLink() {
     if (!link.trim()) return
     try {
-      await plannerApi.setStrategyDocumentLink(strategy.id, link.trim())
+      const res = await plannerApi.setStrategyDocumentLink(strategy.id, link.trim())
+      addDocument(res.data)
       setLink('')
-      await onDocumentChanged()
     } catch (e) {
       setLocalError('Could not save that link.')
     }
@@ -574,7 +675,7 @@ function DetailsPanel({ strategy, onDocumentChanged }) {
   async function handleRemove(doc) {
     try {
       await plannerApi.deleteDocument(doc.id)
-      await onDocumentChanged()
+      removeDocument(doc.id)
     } catch (e) {
       setLocalError('Could not remove that document.')
     }
@@ -728,5 +829,16 @@ function pillBtnStyle(active) {
     background: active ? '#E8F8EE' : ds.border, color: active ? ds.green : ds.gray,
     border: 'none', borderRadius: 999, fontFamily: ds.fontDm, fontSize: 12, fontWeight: 600,
     padding: '5px 11px', cursor: 'pointer', flexShrink: 0,
+  }
+}
+
+function executionPlanBtnStyle(active) {
+  return {
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: active ? ds.teal : ds.white,
+    color: active ? ds.white : ds.teal,
+    border: `1.5px solid ${ds.teal}`, borderRadius: 7,
+    fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 12.5,
+    padding: '6px 12px', cursor: 'pointer', flexShrink: 0,
   }
 }

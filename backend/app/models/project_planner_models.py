@@ -57,6 +57,11 @@ class PhaseCreate(BaseModel):
     position: int = Field(0, ge=0)
 
 
+class PhaseUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=120)
+    sub_label: Optional[str] = Field(None, max_length=120)
+
+
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=300)
     description: Optional[str] = Field(None, max_length=5000)
