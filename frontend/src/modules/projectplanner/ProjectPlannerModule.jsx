@@ -6,19 +6,19 @@ import { FolderKanban, Plus, FolderOpen, ChevronLeft, AlertTriangle } from 'luci
 const TOOL_URL = '/tools/project-planner.html'
 
 export default function ProjectPlannerModule() {
-  const iframeRef = useRef(null)
   const fileInputRef = useRef(null)
   const isMobile = useIsMobile()
-  const [loaded, setLoaded] = useState(false)
+  // planSource drives the iframe declaratively — avoids any ref-timing issue
+  // where the iframe doesn't exist yet when we'd try to set its src/srcDoc.
+  //   null                          -> show the start screen
+  //   { type: 'url', value }        -> iframe src = value (fresh blank tool)
+  //   { type: 'doc', value }        -> iframe srcDoc = value (a previously saved plan)
+  const [planSource, setPlanSource] = useState(null)
   const [error, setError] = useState('')
 
   function startNewPlan() {
     setError('')
-    if (iframeRef.current) {
-      iframeRef.current.removeAttribute('srcdoc')
-      iframeRef.current.src = TOOL_URL
-    }
-    setLoaded(true)
+    setPlanSource({ type: 'url', value: TOOL_URL })
   }
 
   function openFilePicker() {
@@ -38,11 +38,7 @@ export default function ProjectPlannerModule() {
 
     const reader = new FileReader()
     reader.onload = () => {
-      if (iframeRef.current) {
-        iframeRef.current.removeAttribute('src')
-        iframeRef.current.srcdoc = reader.result
-      }
-      setLoaded(true)
+      setPlanSource({ type: 'doc', value: reader.result })
     }
     reader.onerror = () => setError('Could not read that file. Please try again.')
     reader.readAsText(file)
@@ -50,15 +46,11 @@ export default function ProjectPlannerModule() {
   }
 
   function backToStart() {
-    if (iframeRef.current) {
-      iframeRef.current.removeAttribute('src')
-      iframeRef.current.removeAttribute('srcdoc')
-    }
-    setLoaded(false)
+    setPlanSource(null)
     setError('')
   }
 
-  if (loaded) {
+  if (planSource) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 60px)' }}>
         <div style={{
@@ -80,8 +72,10 @@ export default function ProjectPlannerModule() {
           </button>
         </div>
         <iframe
-          ref={iframeRef}
+          key={planSource.type === 'url' ? planSource.value : 'saved-plan'}
           title="Project Planner"
+          src={planSource.type === 'url' ? planSource.value : undefined}
+          srcDoc={planSource.type === 'doc' ? planSource.value : undefined}
           style={{ flex: 1, width: '100%', border: 'none', minHeight: isMobile ? '70vh' : '80vh' }}
         />
       </div>
