@@ -30,7 +30,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from app.models.common import ErrorCode
-from app.models.project_planner import (
+from app.models.project_planner_models import (
     PhaseCreate,
     PlanCreate,
     PlanUpdate,
@@ -39,7 +39,13 @@ from app.models.project_planner import (
     TaskCreate,
     TaskUpdate,
 )
-from app.services.lead_service import write_audit_log
+#
+# NOTE: lead_service.write_audit_log() is NOT used here. Its real signature
+# is write_audit_log(db, org_id, user_id, action, resource_type, resource_id=...),
+# but its body hardcodes resource_type="lead" regardless of what's passed in —
+# using it here would mislabel every Project Planner audit row as a lead
+# event. _audit_log() below replicates the same audit_logs insert shape with
+# the correct resource_type instead.
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +104,27 @@ DEFAULT_PHASES = [
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _audit_log(db, org_id: str, user_id: Optional[str], action: str, resource_type: str, resource_id: Optional[str] = None) -> None:
+    """
+    Writes directly to audit_logs — same column shape as
+    lead_service.write_audit_log(), but with the correct resource_type
+    (that function hardcodes "lead" internally, so it can't be reused here).
+    S14: audit logging failure must never block the actual mutation.
+    """
+    try:
+        db.table("audit_logs").insert({
+            "org_id": org_id,
+            "user_id": user_id,
+            "action": action,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "old_value": None,
+            "new_value": None,
+        }).execute()
+    except Exception as exc:
+        logger.warning("_audit_log: failed to write audit row action=%s resource_type=%s: %s", action, resource_type, exc)
 
 
 def _normalise_data(result_data):
@@ -223,7 +250,7 @@ def list_plans(db, org_id: str) -> list:
     return result.data or []
 
 
-def create_plan(db, org_id: str, payload: PlanCreate) -> dict:
+def create_plan(db, org_id: str, user_id: str, payload: PlanCreate) -> dict:
     row = (
         db.table("project_plans")
         .insert({
@@ -235,11 +262,11 @@ def create_plan(db, org_id: str, payload: PlanCreate) -> dict:
         .execute()
     )
     plan = _normalise_data(row.data)
-    write_audit_log(db, org_id=org_id, action="project_plan_created", entity_type="project_plan", entity_id=plan["id"])
+    _audit_log(db, org_id, user_id, "project_plan_created", "project_plan", plan["id"])
     return plan
 
 
-def update_plan(db, org_id: str, plan_id: str, payload: PlanUpdate) -> dict:
+def update_plan(db, org_id: str, user_id: str, plan_id: str, payload: PlanUpdate) -> dict:
     _plan_or_404(db, org_id, plan_id)
     updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
     if not updates:
@@ -252,12 +279,15 @@ def update_plan(db, org_id: str, plan_id: str, payload: PlanUpdate) -> dict:
         .eq("org_id", org_id)
         .execute()
     )
-    return _normalise_data(row.data) or _plan_or_404(db, org_id, plan_id)
+    result = _normalise_data(row.data) or _plan_or_404(db, org_id, plan_id)
+    _audit_log(db, org_id, user_id, "project_plan_updated", "project_plan", plan_id)
+    return result
 
 
-def delete_plan(db, org_id: str, plan_id: str) -> None:
+def delete_plan(db, org_id: str, user_id: str, plan_id: str) -> None:
     _plan_or_404(db, org_id, plan_id)
     db.table("project_plans").delete().eq("id", plan_id).eq("org_id", org_id).execute()
+    _audit_log(db, org_id, user_id, "project_plan_deleted", "project_plan", plan_id)
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +384,7 @@ def create_strategy(db, org_id: str, user_id: str, payload: StrategyCreate) -> d
         raise HTTPException(status_code=503, detail="Failed to create strategy — please try again")
 
     _seed_default_phases(db, org_id, strategy["id"], payload.title)
-    write_audit_log(db, org_id=org_id, action="project_strategy_created", entity_type="project_strategy", entity_id=strategy["id"])
+    _audit_log(db, org_id, user_id, "project_strategy_created", "project_strategy", strategy["id"])
 
     # Return the fully nested version (with its freshly seeded default
     # phases/tasks) rather than the bare insert result, so the frontend has
@@ -363,19 +393,21 @@ def create_strategy(db, org_id: str, user_id: str, payload: StrategyCreate) -> d
     return next((s for s in nested if s["id"] == strategy["id"]), strategy)
 
 
-def update_strategy(db, org_id: str, strategy_id: str, payload: StrategyUpdate) -> dict:
+def update_strategy(db, org_id: str, user_id: str, strategy_id: str, payload: StrategyUpdate) -> dict:
     _strategy_or_404(db, org_id, strategy_id)
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         return _strategy_or_404(db, org_id, strategy_id)
     updates["updated_at"] = _now_iso()
     db.table("project_strategies").update(updates).eq("id", strategy_id).eq("org_id", org_id).execute()
+    _audit_log(db, org_id, user_id, "project_strategy_updated", "project_strategy", strategy_id)
     return _strategy_or_404(db, org_id, strategy_id)
 
 
-def delete_strategy(db, org_id: str, strategy_id: str) -> None:
+def delete_strategy(db, org_id: str, user_id: str, strategy_id: str) -> None:
     _strategy_or_404(db, org_id, strategy_id)
     db.table("project_strategies").delete().eq("id", strategy_id).eq("org_id", org_id).execute()
+    _audit_log(db, org_id, user_id, "project_strategy_deleted", "project_strategy", strategy_id)
 
 
 def approve_strategy(db, org_id: str, strategy_id: str, user_id: str) -> dict:
@@ -393,14 +425,11 @@ def approve_strategy(db, org_id: str, strategy_id: str, user_id: str) -> dict:
         updates["approved_at"] = _now_iso()
 
     db.table("project_strategies").update(updates).eq("id", strategy_id).eq("org_id", org_id).execute()
-    write_audit_log(
-        db, org_id=org_id, action=f"project_strategy_{next_status}",
-        entity_type="project_strategy", entity_id=strategy_id,
-    )
+    _audit_log(db, org_id, user_id, f"project_strategy_{next_status}", "project_strategy", strategy_id)
     return _strategy_or_404(db, org_id, strategy_id)
 
 
-def revert_strategy(db, org_id: str, strategy_id: str) -> dict:
+def revert_strategy(db, org_id: str, strategy_id: str, user_id: str) -> dict:
     """Steps approval_status back one stage: approved -> reviewed -> draft."""
     strategy = _strategy_or_404(db, org_id, strategy_id)
     current = strategy.get("approval_status", "draft")
@@ -415,10 +444,7 @@ def revert_strategy(db, org_id: str, strategy_id: str) -> dict:
         updates["approved_at"] = None
 
     db.table("project_strategies").update(updates).eq("id", strategy_id).eq("org_id", org_id).execute()
-    write_audit_log(
-        db, org_id=org_id, action=f"project_strategy_reverted_to_{prev_status}",
-        entity_type="project_strategy", entity_id=strategy_id,
-    )
+    _audit_log(db, org_id, user_id, f"project_strategy_reverted_to_{prev_status}", "project_strategy", strategy_id)
     return _strategy_or_404(db, org_id, strategy_id)
 
 
@@ -546,10 +572,7 @@ def upload_strategy_document(
         .execute()
     )
     document = _normalise_data(row.data)
-    write_audit_log(
-        db, org_id=org_id, action="project_strategy_document_uploaded",
-        entity_type="project_strategy", entity_id=strategy_id,
-    )
+    _audit_log(db, org_id, user_id, "project_strategy_document_uploaded", "project_strategy_document", document["id"])
     return document
 
 

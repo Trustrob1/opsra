@@ -1,5 +1,5 @@
 """
-app/routers/project_planner.py — PROJECT-PLANNER v2 routes.
+app/routers/project_planner_router.py — PROJECT-PLANNER v2 routes.
 
 Conventions (matching app/routers/leads.py, app/routers/whatsapp.py):
   - All routes prefixed /api/v1/project-planner (registered in main.py)
@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok, paginated
-from app.models.project_planner import (
+from app.models.project_planner_models import (
     DocumentLinkSet,
     PhaseCreate,
     PlanCreate,
@@ -75,7 +75,7 @@ async def create_plan(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    plan = project_planner_service.create_plan(db=db, org_id=_org_id(org), payload=payload)
+    plan = project_planner_service.create_plan(db=db, org_id=_org_id(org), user_id=_user_id(org), payload=payload)
     return ok(data=plan, message="Plan created")
 
 
@@ -86,7 +86,7 @@ async def update_plan(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    plan = project_planner_service.update_plan(db=db, org_id=_org_id(org), plan_id=plan_id, payload=payload)
+    plan = project_planner_service.update_plan(db=db, org_id=_org_id(org), user_id=_user_id(org), plan_id=plan_id, payload=payload)
     return ok(data=plan, message="Plan updated")
 
 
@@ -96,7 +96,7 @@ async def delete_plan(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    project_planner_service.delete_plan(db=db, org_id=_org_id(org), plan_id=plan_id)
+    project_planner_service.delete_plan(db=db, org_id=_org_id(org), user_id=_user_id(org), plan_id=plan_id)
     return ok(data={"deleted": True})
 
 
@@ -134,7 +134,7 @@ async def update_strategy(
     db=Depends(get_supabase),
 ):
     strategy = project_planner_service.update_strategy(
-        db=db, org_id=_org_id(org), strategy_id=strategy_id, payload=payload,
+        db=db, org_id=_org_id(org), user_id=_user_id(org), strategy_id=strategy_id, payload=payload,
     )
     return ok(data=strategy, message="Strategy updated")
 
@@ -145,7 +145,7 @@ async def delete_strategy(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    project_planner_service.delete_strategy(db=db, org_id=_org_id(org), strategy_id=strategy_id)
+    project_planner_service.delete_strategy(db=db, org_id=_org_id(org), user_id=_user_id(org), strategy_id=strategy_id)
     return ok(data={"deleted": True})
 
 
@@ -172,7 +172,7 @@ async def revert_strategy(
     """Owner + ops_manager only. approved -> reviewed, or reviewed -> draft."""
     _require_approver(org)
     strategy = project_planner_service.revert_strategy(
-        db=db, org_id=_org_id(org), strategy_id=strategy_id,
+        db=db, org_id=_org_id(org), strategy_id=strategy_id, user_id=_user_id(org),
     )
     return ok(data=strategy, message=f"Strategy reverted to {strategy['approval_status']}")
 

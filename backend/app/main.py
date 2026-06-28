@@ -5,7 +5,8 @@ Registers all routers — Phase 1 (auth, admin, webhooks) + Phase 2A (leads)
   + Phase 3A (customers, whatsapp) + Phase 4A (tickets)
   + Phase 5A (subscriptions) + Phase 6A (ops intel) + Phase 7A (tasks)
   + M01-10b (assistant / Aria)
-  + ORG-ONBOARDING-A (superadmin, onboarding).
+  + ORG-ONBOARDING-A (superadmin, onboarding)
+  + PROJECT-PLANNER-1 (project planner — v2, file-based v1 superseded).
 
 9E-A additions:
   - Sentry SDK initialised before app creation (traces_sample_rate=0.2)
@@ -190,6 +191,7 @@ from app.routers import contractors as contractors_router
 from app.routers import performance_logs as performance_logs_router
 from app.routers import performance_hub as performance_hub_router
 from app.routers import public_performance as public_performance_router
+from app.routers import project_planner_router
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -223,6 +225,7 @@ app.include_router(contractors_router.router,          prefix="/api/v1", tags=["
 app.include_router(performance_logs_router.router,     prefix="/api/v1", tags=["performance-logs"])
 app.include_router(performance_hub_router.router,      prefix="/api/v1", tags=["performance-hub"])
 app.include_router(public_performance_router.router,   prefix="/api/v1", tags=["public-performance"])
+app.include_router(project_planner_router.router,      prefix="/api/v1/project-planner", tags=["project-planner"])
 
 
 # ---------------------------------------------------------------------------

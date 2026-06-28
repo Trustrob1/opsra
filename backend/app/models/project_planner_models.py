@@ -1,5 +1,5 @@
 """
-app/models/project_planner.py — Pydantic models for PROJECT-PLANNER v2.
+app/models/project_planner_models.py — Pydantic models for PROJECT-PLANNER v2.
 
 Conventions (matching app/models/leads.py, app/models/whatsapp.py):
   - Field(..., max_length=...) on every free-text field (S4)
