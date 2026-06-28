@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F2F3F6;
+  --surface:#FFFFFF;
+  --navy:#463C8B;
+  --navy-soft:#6F6798;
+  --accent:#9B6FAE;
+  --accent-light:#F2E8F5;
+  --gray:#5B6580;
+  --teal:#0F6E56;
+  --teal-light:#E1F5EE;
+  --coral:#993C1D;
+  --coral-light:#FAECE7;
+  --danger:#A32D2D;
+  --danger-light:#FCEBEB;
+  --success:#3B6D11;
+  --success-light:#EAF3DE;
+  --not-started:#6B7280;
+  --not-started-light:#EDEEF1;
+  --in-progress:#B8862F;
+  --in-progress-light:#FBF1DF;
+  --done:#3B6D11;
+  --done-light:#EAF3DE;
+  --blocked:#A32D2D;
+  --blocked-light:#FCEBEB;
+  --border:#DDE1E8;
+  --radius:10px;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--navy);font-family:'Inter',system-ui,sans-serif;line-height:1.6;}
+h1,h2{font-family:'Fraunces',serif;font-weight:500;margin:0;}
+header{background:var(--navy);color:#fff;padding:2.75rem 2rem 4rem;}
+header .inner{max-width:980px;margin:0 auto;}
+header .eyebrow{color:var(--accent);letter-spacing:.06em;font-size:13px;text-transform:uppercase;margin-bottom:.5rem;}
+header h1{font-size:30px;margin-bottom:.6rem;}
+header p.lead{color:#D2CBE3;font-size:15px;max-width:640px;margin:0;}
+main{max-width:980px;margin:-2rem auto 4rem;padding:0 2rem;}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;}
+.detail-view .stats{grid-template-columns:repeat(4,1fr);}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.25rem;box-shadow:0 2px 6px rgba(70,60,139,0.06);}
+.stat-label{font-size:12.5px;color:var(--gray);margin-bottom:.2rem;}
+.stat-value{font-size:25px;font-family:'Fraunces',serif;font-weight:500;}
+.stat-value.overdue{color:var(--blocked);}
+
+.overall-progress{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1.5rem;}
+.overall-progress .row{display:flex;justify-content:space-between;font-size:13px;color:var(--gray);margin-bottom:.5rem;}
+.bar{height:8px;background:var(--border);border-radius:5px;overflow:hidden;}
+.bar-fill{height:100%;background:var(--accent);transition:width .2s;}
+
+.toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.75rem;margin-bottom:1.5rem;}
+.filters{display:flex;gap:.5rem;flex-wrap:wrap;}
+.filter-btn{padding:.45rem 1rem;border:1px solid var(--border);background:var(--surface);border-radius:999px;font-size:13.5px;cursor:pointer;color:var(--navy-soft);}
+.filter-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+.export-row{display:flex;gap:.5rem;flex-wrap:wrap;}
+.export-btn{padding:.45rem 1rem;border:1px solid var(--accent);background:var(--accent-light);color:#5C3F6B;border-radius:999px;font-size:13.5px;cursor:pointer;}
+
+.legend{display:flex;gap:1.5rem;font-size:13px;color:var(--navy-soft);margin-bottom:2rem;align-items:center;}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle;}
+.dot-online{background:var(--teal);}
+.dot-offline{background:var(--coral);}
+
+.timeline{position:relative;}
+.phase{position:relative;padding-left:3rem;margin-bottom:2.75rem;}
+.phase::before{content:'';position:absolute;left:14px;top:42px;bottom:-2.75rem;width:2px;background:var(--border);}
+.phase:last-child::before{display:none;}
+.phase-badge{position:absolute;left:0;top:2px;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:14px;}
+.phase-header{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem;}
+.detail-view .phase-header{justify-content:space-between;margin-bottom:.5rem;}
+.phase-title-group{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;}
+.phase-header h2{font-size:20px;}
+.detail-view .phase-header h2{font-size:18px;}
+.phase-sub{color:var(--navy-soft);font-size:14px;}
+.phase-count{font-size:13px;color:var(--gray);}
+.phase-bar{margin-bottom:1rem;}
+
+.item-list,.task-list{min-height:12px;}
+.item-list.drag-over{background:var(--accent-light);border-radius:var(--radius);}
+.empty-hint{font-size:13px;color:var(--navy-soft);font-style:italic;padding:.75rem 1rem;margin:0;}
+
+.item,.task{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.6rem;}
+.item{transition:opacity .15s;}
+.item.dragging{opacity:.4;}
+.item.removed{opacity:.55;}
+.item.removed .item-title{text-decoration:line-through;}
+.task.done .task-title{text-decoration:line-through;color:var(--gray);}
+
+.item-row,.task-row{display:flex;align-items:center;gap:.6rem;padding:.7rem 1rem;cursor:pointer;flex-wrap:wrap;}
+.drag-handle{cursor:grab;color:var(--navy-soft);font-size:13px;user-select:none;letter-spacing:-1px;}
+.item-title,.task-title{flex:1 1 200px;font-size:14.5px;font-weight:500;min-width:140px;}
+.item-title-edit,.task-title-edit{flex:1 1 200px;font-size:14.5px;font-weight:500;font-family:inherit;padding:.3rem .5rem;border:1px solid var(--accent);border-radius:6px;}
+.chevron{color:var(--gray);font-size:13px;width:1em;text-align:center;margin-left:auto;}
+
+.progress-chip{flex-shrink:0;font-size:11.5px;font-weight:500;color:var(--navy-soft);background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:.2rem .55rem;}
+.progress-chip.chip-done{color:var(--success);border-color:var(--success);background:var(--success-light);}
+
+.status-badge{flex-shrink:0;font-size:11.5px;font-weight:600;padding:.22rem .65rem;border-radius:999px;border:1px solid transparent;}
+.status-badge.status-draft{background:var(--not-started-light);color:var(--not-started);border-color:var(--not-started);}
+.status-badge.status-reviewed{background:var(--in-progress-light);color:var(--in-progress);border-color:var(--in-progress);}
+.status-badge.status-approved{background:var(--done-light);color:var(--done);border-color:var(--done);}
+
+.view-details-link{display:inline-block;font-size:13px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;font-weight:500;margin:0 0 .9rem;}
+.view-details-link:hover{text-decoration:underline;}
+
+.approval-row{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:.7rem .9rem;margin-bottom:.9rem;}
+.approval-label{font-size:12.5px;color:var(--navy-soft);font-weight:500;}
+.approval-actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-left:auto;}
+.approve-btn{font-size:13px;padding:.4rem .9rem;border-radius:8px;border:1px solid var(--accent);background:var(--accent-light);color:#5C3F6B;cursor:pointer;font-weight:500;}
+.revert-link{font-size:12px;color:var(--navy-soft);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;}
+
+.status-btn{flex-shrink:0;font-size:12px;font-weight:500;padding:.3rem .6rem;border-radius:7px;border:1px solid transparent;cursor:pointer;width:104px;text-align:center;}
+.status-not-started{background:var(--not-started-light);color:var(--not-started);border-color:var(--not-started);}
+.status-in-progress{background:var(--in-progress-light);color:var(--in-progress);border-color:var(--in-progress);}
+.status-done{background:var(--done-light);color:var(--done);border-color:var(--done);}
+.status-blocked{background:var(--blocked-light);color:var(--blocked);border-color:var(--blocked);}
+.owner-input,.date-input{font-size:12.5px;font-family:inherit;padding:.3rem .5rem;border:1px solid var(--border);border-radius:7px;color:var(--navy);background:#fff;}
+.owner-input{width:150px;}
+.date-input{width:130px;}
+.overdue-tag{font-size:11px;font-weight:600;color:#fff;background:var(--blocked);padding:.2rem .5rem;border-radius:6px;}
+
+.item-detail,.task-detail{padding:0 1rem 1rem 2.5rem;}
+.item-desc,.task-desc{font-size:13.5px;color:var(--navy-soft);margin:0 0 .75rem;}
+.item-desc-edit,.task-desc-edit{width:100%;font-family:inherit;font-size:13.5px;color:var(--navy-soft);padding:.5rem;border:1px solid var(--accent);border-radius:8px;margin-bottom:.75rem;resize:vertical;}
+
+.controls-row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;}
+.phase-move{display:flex;align-items:center;gap:.35rem;font-size:13px;color:var(--navy-soft);}
+select{font-family:inherit;font-size:13px;padding:.4rem .6rem;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--navy);}
+.ctrl-btn{font-size:13px;padding:.4rem .8rem;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--navy);cursor:pointer;}
+.include-btn.is-included{color:var(--success);border-color:var(--success);background:var(--success-light);}
+.include-btn.is-removed{color:var(--danger);border-color:var(--danger);background:var(--danger-light);}
+.delete-btn{color:var(--danger);}
+.exec-btn{color:#5C3F6B;border-color:var(--accent);background:var(--accent-light);}
+
+.add-row{padding-left:2.5rem;margin-top:.4rem;}
+.add-link{font-size:13px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;font-weight:500;}
+.add-form{background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius);padding:1rem;margin-top:.6rem;}
+.add-form input,.add-form textarea{width:100%;font-family:inherit;font-size:13.5px;padding:.5rem;border:1px solid var(--border);border-radius:8px;margin-bottom:.5rem;}
+.add-form .two-col{display:flex;gap:.5rem;}
+
+.back-row{margin-bottom:1.25rem;}
+.back-link{font-size:13.5px;font-weight:500;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;}
+.detail-heading{margin-bottom:1.5rem;}
+.detail-eyebrow{font-size:12.5px;color:var(--navy-soft);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.3rem;}
+.detail-title{font-size:24px;}
+.detail-sub{font-size:14px;color:var(--navy-soft);margin-top:.3rem;max-width:640px;}
+
+.doc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1.25rem;}
+.doc-card-label{font-size:13px;font-weight:600;color:var(--navy);margin:0 0 .6rem;}
+.doc-card-hint{font-size:12.5px;color:var(--navy-soft);margin:.3rem 0 0;}
+.doc-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;}
+.link-input{flex:1 1 280px;font-family:inherit;font-size:13.5px;padding:.5rem .7rem;border:1px solid var(--border);border-radius:8px;color:var(--navy);}
+.doc-link-display{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.75rem;font-size:13.5px;}
+.doc-link-display a{color:var(--accent);font-weight:500;text-decoration:none;}
+.doc-link-display a:hover{text-decoration:underline;}
+.doc-empty{font-size:13.5px;color:var(--navy-soft);font-style:italic;}
+.doc-file-meta{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.75rem;font-size:13.5px;}
+.doc-file-name{font-weight:500;}
+.doc-preview{margin-top:.5rem;}
+.doc-preview iframe{width:100%;height:560px;border:1px solid var(--border);border-radius:8px;display:block;}
+.doc-preview img{max-width:100%;border-radius:8px;border:1px solid var(--border);display:block;}
+.doc-preview pre{white-space:pre-wrap;font-size:12.5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;max-height:560px;overflow:auto;}
+.doc-unsupported{font-size:13.5px;color:var(--navy-soft);background:var(--bg);border:1px dashed var(--border);border-radius:8px;padding:1rem;}
+.file-input-hidden{display:none;}
+.save-file-btn{border-color:var(--success);background:var(--success-light);color:#2C5009;}
+
+footer{text-align:center;padding:0 0 3rem;color:var(--navy-soft);font-size:13px;}
+
+@media print{
+  header p.lead,.toolbar,.add-row,.legend,.controls-row,.drag-handle,.chevron,.exec-btn,.approval-actions,.view-details-link{display:none;}
+  .item-detail,.task-detail{display:block !important;}
+}
+@media (max-width:600px){
+  header{padding:2.25rem 1.25rem 3.5rem;}
+  header h1{font-size:24px;}
+  main{padding:0 1rem;}
+  .stats{grid-template-columns:repeat(2,1fr) !important;}
+  .toolbar{flex-direction:column;align-items:flex-start;}
+  .export-row{width:100%;}
+  .export-row .export-btn{flex:1 1 auto;}
+  .task-row,.item-row{flex-wrap:wrap;}
+  .item-title,.task-title{flex-basis:100%;}
+  .chevron{margin-left:0;}
+  .controls-row{flex-direction:column;align-items:stretch;}
+  .controls-row .ctrl-btn,.controls-row .phase-move{width:100%;}
+  .controls-row select{width:100%;}
+  .approval-row{flex-direction:column;align-items:stretch;}
+  .approval-actions{margin-left:0;width:100%;}
+  .approval-actions .approve-btn{flex:1 1 auto;}
+  .doc-row{flex-direction:column;align-items:stretch;}
+  .doc-row .link-input,.doc-row .ctrl-btn{width:100%;}
+  .doc-file-meta{flex-direction:column;align-items:flex-start;}
+  .owner-input,.date-input{width:auto;flex:1 1 130px;}
+  .doc-preview iframe,.doc-preview pre{height:380px;max-height:380px;}
+  .ctrl-btn,.approve-btn,.exec-btn,.export-btn,.filter-btn,.view-details-link{padding:.55rem 1rem;}
+  .status-btn{width:auto;flex:1 1 110px;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <p class="eyebrow">Planning</p>
+    <h1>Project Planner</h1>
+    <p class="lead">Lay out your project timeline below, then open "Execution plan" on any project to build out and track exactly how it gets done — owners, dates, status, all editable.</p>
+  </div>
+</header>
+
+<main>
+
+  <div id="view-list" class="view">
+    <div class="stats">
+      <div class="stat-card"><p class="stat-label">Total projects</p><p class="stat-value" id="count-total">0</p></div>
+      <div class="stat-card"><p class="stat-label">Included</p><p class="stat-value" id="count-included">0</p></div>
+      <div class="stat-card"><p class="stat-label">Removed</p><p class="stat-value" id="count-removed">0</p></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="filters">
+        <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+        <button class="filter-btn" onclick="setFilter('online',this)">Digital</button>
+        <button class="filter-btn" onclick="setFilter('offline',this)">In-person</button>
+      </div>
+      <div class="export-row">
+        <button class="export-btn" id="copy-btn" onclick="copyPlan()">Copy plan as text</button>
+        <button class="export-btn" onclick="window.print()">Print / save as PDF</button>
+        <button class="export-btn save-file-btn" id="save-file-btn" onclick="saveUpdatedFile()">Save plan as file</button>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><span class="dot dot-online"></span>Digital</span>
+      <span><span class="dot dot-offline"></span>In-person</span>
+    </div>
+
+    <section class="timeline" id="list-timeline">
+      <div class="phase" data-phase="1">
+        <div class="phase-badge">1</div>
+        <div class="phase-header"><h2>Foundation</h2><span class="phase-sub">Months 1&ndash;3</span></div>
+        <div class="item-list"></div>
+        <div class="add-row"><button class="add-link" onclick="showAddForm(this)">+ Add project</button></div>
+      </div>
+      <div class="phase" data-phase="2">
+        <div class="phase-badge">2</div>
+        <div class="phase-header"><h2>Build &amp; launch</h2><span class="phase-sub">Months 4&ndash;6</span></div>
+        <div class="item-list"></div>
+        <div class="add-row"><button class="add-link" onclick="showAddForm(this)">+ Add project</button></div>
+      </div>
+      <div class="phase" data-phase="3">
+        <div class="phase-badge">3</div>
+        <div class="phase-header"><h2>Scale and embed</h2><span class="phase-sub">Months 7&ndash;9</span></div>
+        <div class="item-list"></div>
+        <div class="add-row"><button class="add-link" onclick="showAddForm(this)">+ Add project</button></div>
+      </div>
+      <div class="phase" data-phase="4">
+        <div class="phase-badge">4</div>
+        <div class="phase-header"><h2>Optimize and renew</h2><span class="phase-sub">Months 10&ndash;12</span></div>
+        <div class="item-list"></div>
+        <div class="add-row"><button class="add-link" onclick="showAddForm(this)">+ Add project</button></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="detail-root"></div>
+
+</main>
+
+<footer>Edits here — including uploaded documents — only live in this browser tab until you click <strong>Save plan as file</strong>, which downloads a new copy of this file with everything baked in. Use that file going forward.</footer>
+
+<script>
+/* Capture this document's own pristine source, before any dynamic content
+   is injected below. This is what "Save plan as file" rewrites and re-downloads. */
+var ORIGINAL_HTML = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+/*SAVED_STATE_START*/
+var SAVED_STATE = null;
+/*SAVED_STATE_END*/
+
+/* =========================================================
+   DATA
+   ========================================================= */
+/* Generic starter template ships with zero pre-loaded projects —
+   each organization builds its own plan from a blank canvas using
+   "+ Add project" in any phase below. */
+var INITIAL_DATA = [];
+
+/* Generic execution-plan template — seeded per project with placeholder
+   tasks that reference the project by name. Fully editable afterwards. */
+function genericPlanFor(title){
+  return [
+    { title: "Immediate", sub: "Week 1", tasks: [
+      { title: "Assign an owner for " + title, owner: "", due: "", status: "not-started", desc: "Name one person accountable for getting this project off the ground — not a shared team responsibility." },
+      { title: "Confirm budget and resources", owner: "", due: "", status: "not-started", desc: "Lock in the spend and people needed before any work starts." }
+    ]},
+    { title: "Setup & foundation", sub: "Weeks 2\u20134", tasks: [
+      { title: "Define scope and requirements", owner: "", due: "", status: "not-started", desc: "Spell out exactly what this project includes, who it's for, and who's involved." },
+      { title: "Select vendors, partners or tools", owner: "", due: "", status: "not-started", desc: "Lock in any external suppliers, platforms or partners needed to execute." },
+      { title: "Produce core assets and materials", owner: "", due: "", status: "not-started", desc: "Creative, copy, or physical materials needed before launch." }
+    ]},
+    { title: "Launch & rollout", sub: "Weeks 5\u20138", tasks: [
+      { title: "Launch " + title, owner: "", due: "", status: "not-started", desc: "Go live and start execution." },
+      { title: "Monitor early results and fix friction points", owner: "", due: "", status: "not-started", desc: "Watch the first few weeks closely and resolve issues as they surface, rather than waiting for a formal review." }
+    ]},
+    { title: "Review & decision", sub: "Weeks 9\u201312", tasks: [
+      { title: "Review performance against goals", owner: "", due: "", status: "not-started", desc: "Compare actual results to what was expected when this project was approved." },
+      { title: "Decide to scale, adjust, or stop", owner: "", due: "", status: "not-started", desc: "Make the call on next steps based on results, not on the original assumption." }
+    ]}
+  ];
+}
+
+/* Seed records actually rendered on load: prefer a previously saved state
+   (uploaded docs, links, task statuses and all) over the bundled defaults. */
+var STRATEGY_RECORDS = SAVED_STATE ? SAVED_STATE : INITIAL_DATA.map(function(d){
+  return {
+    id: d.id, phase: d.phase, channel: d.channel, title: d.title, desc: d.desc,
+    included: true, approvalStatus: 'draft',
+    plan: genericPlanFor(d.title),
+    detailLink: '', detailDoc: null
+  };
+});
+
+var STATUS_ORDER = ["not-started", "in-progress", "done", "blocked"];
+var STATUS_LABEL = { "not-started": "Not started", "in-progress": "In progress", "done": "Done", "blocked": "Blocked" };
+var draggedItem = null;
+var detailViews = {};     // strategyId -> built execution-plan DOM node (cached, persists edits)
+var docViews = {};        // strategyId -> built strategy-details DOM node (cached, persists edits)
+var strategyExtras = {};  // strategyId -> { link, doc:{name,type,dataUrl} }
+
+/* =========================================================
+   PROJECT LIST VIEW
+   ========================================================= */
+function buildItemNode(strategy){
+  var item = document.createElement('div');
+  item.className = 'item';
+  item.dataset.channel = strategy.channel;
+  item.dataset.strategyId = strategy.id;
+  item.draggable = true;
+  item.addEventListener('dragstart', function(e){ dragStart(e, item); });
+  item.addEventListener('dragend', function(e){ dragEnd(e, item); });
+
+  var row = document.createElement('div');
+  row.className = 'item-row';
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  row.setAttribute('aria-expanded', 'false');
+  row.addEventListener('click', function(){ toggleExpand(row); });
+  row.addEventListener('keydown', function(e){
+    if((e.key === 'Enter' || e.key === ' ') && e.target === row){ e.preventDefault(); toggleExpand(row); }
+  });
+
+  var handle = document.createElement('span');
+  handle.className = 'drag-handle';
+  handle.setAttribute('aria-hidden', 'true');
+  handle.textContent = '\u22EE\u22EE';
+
+  var dot = document.createElement('span');
+  dot.className = 'dot dot-' + strategy.channel;
+
+  var titleSpan = document.createElement('span');
+  titleSpan.className = 'item-title';
+  titleSpan.textContent = strategy.title;
+
+  var titleInput = document.createElement('input');
+  titleInput.className = 'item-title-edit';
+  titleInput.hidden = true;
+  titleInput.addEventListener('click', function(e){ e.stopPropagation(); });
+  titleInput.addEventListener('keydown', function(e){ e.stopPropagation(); });
+
+  var chip = document.createElement('span');
+  chip.className = 'progress-chip';
+  chip.textContent = '\u2014';
+
+  var statusBadgeRow = document.createElement('span');
+  statusBadgeRow.className = 'status-badge';
+
+  var chevron = document.createElement('span');
+  chevron.className = 'chevron';
+  chevron.textContent = '\u25B8';
+
+  row.appendChild(handle);
+  row.appendChild(dot);
+  row.appendChild(titleSpan);
+  row.appendChild(titleInput);
+  row.appendChild(chip);
+  row.appendChild(statusBadgeRow);
+  row.appendChild(chevron);
+
+  var detail = document.createElement('div');
+  detail.className = 'item-detail';
+  detail.hidden = true;
+
+  var descP = document.createElement('p');
+  descP.className = 'item-desc';
+  descP.textContent = strategy.desc;
+
+  var descTextarea = document.createElement('textarea');
+  descTextarea.className = 'item-desc-edit';
+  descTextarea.hidden = true;
+  descTextarea.rows = 2;
+
+  var viewDetailsLink = document.createElement('button');
+  viewDetailsLink.className = 'view-details-link';
+  viewDetailsLink.textContent = 'View details';
+  viewDetailsLink.addEventListener('click', function(e){ e.stopPropagation(); openStrategyDetails(strategy.id, item); });
+
+  var approvalRow = document.createElement('div');
+  approvalRow.className = 'approval-row';
+  var approvalLabel = document.createElement('span');
+  approvalLabel.className = 'approval-label';
+  approvalLabel.textContent = 'Approval status:';
+  var statusBadgeDetail = document.createElement('span');
+  statusBadgeDetail.className = 'status-badge';
+  var approvalActions = document.createElement('div');
+  approvalActions.className = 'approval-actions';
+  approvalRow.appendChild(approvalLabel);
+  approvalRow.appendChild(statusBadgeDetail);
+  approvalRow.appendChild(approvalActions);
+
+  var controls = document.createElement('div');
+  controls.className = 'controls-row';
+
+  var phaseLabel = document.createElement('label');
+  phaseLabel.className = 'phase-move';
+  phaseLabel.appendChild(document.createTextNode('Phase '));
+  var select = document.createElement('select');
+  select.className = 'phase-select';
+  [['1','1 \u2014 Foundation'],['2','2 \u2014 Build & launch'],['3','3 \u2014 Scale and embed'],['4','4 \u2014 Optimize and renew']].forEach(function(opt){
+    var o = document.createElement('option');
+    o.value = opt[0];
+    o.textContent = opt[1];
+    select.appendChild(o);
+  });
+  select.addEventListener('change', function(){ moveViaSelect(select); });
+  select.addEventListener('click', function(e){ e.stopPropagation(); });
+  phaseLabel.appendChild(select);
+
+  var includeBtn = document.createElement('button');
+  includeBtn.className = 'ctrl-btn include-btn is-included';
+  includeBtn.textContent = '\u2713 Included';
+  includeBtn.setAttribute('aria-pressed', 'true');
+  includeBtn.addEventListener('click', function(){ toggleInclude(includeBtn); });
+
+  var execBtn = document.createElement('button');
+  execBtn.className = 'ctrl-btn exec-btn';
+  execBtn.textContent = 'Execution plan';
+  execBtn.addEventListener('click', function(e){ e.stopPropagation(); openExecutionPlan(strategy.id, item); });
+
+  var editBtn = document.createElement('button');
+  editBtn.className = 'ctrl-btn edit-btn';
+  editBtn.textContent = 'Edit';
+  editBtn.addEventListener('click', function(){ editItem(editBtn); });
+
+  var deleteBtn = document.createElement('button');
+  deleteBtn.className = 'ctrl-btn delete-btn';
+  deleteBtn.textContent = 'Delete';
+  deleteBtn.addEventListener('click', function(){ deleteItem(deleteBtn); });
+
+  controls.appendChild(phaseLabel);
+  controls.appendChild(includeBtn);
+  controls.appendChild(execBtn);
+  controls.appendChild(editBtn);
+  controls.appendChild(deleteBtn);
+
+  detail.appendChild(descP);
+  detail.appendChild(descTextarea);
+  detail.appendChild(viewDetailsLink);
+  detail.appendChild(approvalRow);
+  detail.appendChild(controls);
+
+  item.appendChild(row);
+  item.appendChild(detail);
+
+  if(strategy.included === false){
+    item.classList.add('removed');
+    includeBtn.classList.remove('is-included');
+    includeBtn.classList.add('is-removed');
+    includeBtn.textContent = '\u2715 Removed';
+    includeBtn.setAttribute('aria-pressed', 'false');
+  }
+
+  item.dataset.approvalStatus = strategy.approvalStatus || 'draft';
+  updateApprovalUI(item);
+
+  return item;
+}
+
+function updateApprovalUI(item){
+  var status = item.dataset.approvalStatus || 'draft';
+  var label = { draft: 'Draft', reviewed: 'Reviewed', approved: 'Approved' }[status];
+
+  item.querySelectorAll('.status-badge').forEach(function(badge){
+    badge.className = 'status-badge status-' + status;
+    badge.textContent = label;
+  });
+
+  var actions = item.querySelector('.approval-actions');
+  actions.innerHTML = '';
+
+  if(status === 'draft'){
+    var reviewBtn = document.createElement('button');
+    reviewBtn.className = 'approve-btn';
+    reviewBtn.textContent = 'Mark reviewed';
+    reviewBtn.addEventListener('click', function(e){ e.stopPropagation(); setApprovalStatus(item, 'reviewed'); });
+    actions.appendChild(reviewBtn);
+  } else if(status === 'reviewed'){
+    var approveBtn = document.createElement('button');
+    approveBtn.className = 'approve-btn';
+    approveBtn.textContent = 'Approve';
+    approveBtn.addEventListener('click', function(e){ e.stopPropagation(); setApprovalStatus(item, 'approved'); });
+    var revertToDraft = document.createElement('button');
+    revertToDraft.className = 'revert-link';
+    revertToDraft.textContent = 'Revert to draft';
+    revertToDraft.addEventListener('click', function(e){ e.stopPropagation(); setApprovalStatus(item, 'draft'); });
+    actions.appendChild(approveBtn);
+    actions.appendChild(revertToDraft);
+  } else {
+    var revertToReviewed = document.createElement('button');
+    revertToReviewed.className = 'revert-link';
+    revertToReviewed.textContent = 'Revert to reviewed';
+    revertToReviewed.addEventListener('click', function(e){ e.stopPropagation(); setApprovalStatus(item, 'reviewed'); });
+    actions.appendChild(revertToReviewed);
+  }
+}
+
+function setApprovalStatus(item, status){
+  item.dataset.approvalStatus = status;
+  updateApprovalUI(item);
+}
+
+function toggleExpand(row){
+  var item = row.closest('.item');
+  var detail = item.querySelector('.item-detail');
+  var chevron = row.querySelector('.chevron');
+  var hidden = detail.hasAttribute('hidden');
+  if(hidden){
+    detail.removeAttribute('hidden');
+    chevron.textContent = '\u25BE';
+    row.setAttribute('aria-expanded', 'true');
+    var select = detail.querySelector('.phase-select');
+    var phaseNum = item.closest('.phase').dataset.phase;
+    select.value = phaseNum;
+  } else {
+    detail.setAttribute('hidden', '');
+    chevron.textContent = '\u25B8';
+    row.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function toggleInclude(btn){
+  var item = btn.closest('.item');
+  var removed = item.classList.toggle('removed');
+  if(removed){
+    btn.classList.remove('is-included');
+    btn.classList.add('is-removed');
+    btn.textContent = '\u2715 Removed';
+    btn.setAttribute('aria-pressed', 'false');
+  } else {
+    btn.classList.remove('is-removed');
+    btn.classList.add('is-included');
+    btn.textContent = '\u2713 Included';
+    btn.setAttribute('aria-pressed', 'true');
+  }
+  updateCounts();
+}
+
+function editItem(btn){
+  var item = btn.closest('.item');
+  var titleSpan = item.querySelector('.item-title');
+  var titleInput = item.querySelector('.item-title-edit');
+  var descP = item.querySelector('.item-desc');
+  var descTextarea = item.querySelector('.item-desc-edit');
+  var editing = !titleInput.hidden;
+  if(!editing){
+    titleInput.value = titleSpan.textContent;
+    descTextarea.value = descP.textContent;
+    titleSpan.hidden = true;
+    titleInput.hidden = false;
+    descP.hidden = true;
+    descTextarea.hidden = false;
+    btn.textContent = 'Save';
+    titleInput.focus();
+  } else {
+    var newTitle = titleInput.value.trim();
+    var newDesc = descTextarea.value.trim();
+    if(newTitle){ titleSpan.textContent = newTitle; }
+    if(newDesc){ descP.textContent = newDesc; }
+    titleSpan.hidden = false;
+    titleInput.hidden = true;
+    descP.hidden = false;
+    descTextarea.hidden = true;
+    btn.textContent = 'Edit';
+  }
+}
+
+function deleteItem(btn){
+  var item = btn.closest('.item');
+  var id = item.dataset.strategyId;
+  item.remove();
+  if(detailViews[id]){ detailViews[id].remove(); delete detailViews[id]; }
+  if(docViews[id]){ docViews[id].remove(); delete docViews[id]; }
+  delete strategyExtras[id];
+  refreshEmptyStates();
+  updateCounts();
+}
+
+function moveViaSelect(select){
+  var item = select.closest('.item');
+  var target = document.querySelector('.phase[data-phase="' + select.value + '"] .item-list');
+  target.appendChild(item);
+  refreshEmptyStates();
+}
+
+function dragStart(e, item){
+  draggedItem = item;
+  item.classList.add('dragging');
+}
+function dragEnd(e, item){
+  item.classList.remove('dragging');
+  draggedItem = null;
+  refreshEmptyStates();
+}
+function getDragAfterElement(container, y){
+  var closest = {offset: -Infinity, element: null};
+  Array.prototype.forEach.call(container.querySelectorAll('.item:not(.dragging)'), function(child){
+    var box = child.getBoundingClientRect();
+    var offset = y - box.top - box.height / 2;
+    if(offset < 0 && offset > closest.offset){ closest = {offset: offset, element: child}; }
+  });
+  return closest.element;
+}
+
+function refreshEmptyStates(){
+  document.querySelectorAll('#view-list .item-list').forEach(function(list){
+    var hint = list.querySelector('.empty-hint');
+    var hasItems = list.querySelector('.item');
+    if(!hasItems){
+      if(!hint){
+        hint = document.createElement('p');
+        hint.className = 'empty-hint';
+        hint.textContent = 'No projects here yet \u2014 drag one in or add a new one.';
+        list.appendChild(hint);
+      }
+    } else if(hint){
+      hint.remove();
+    }
+  });
+}
+
+function updateCounts(){
+  var items = document.querySelectorAll('#view-list .item');
+  var removed = document.querySelectorAll('#view-list .item.removed').length;
+  var total = items.length;
+  document.getElementById('count-total').textContent = total;
+  document.getElementById('count-included').textContent = total - removed;
+  document.getElementById('count-removed').textContent = removed;
+}
+
+function setFilter(channel, btn){
+  document.querySelectorAll('#view-list .filter-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.querySelectorAll('#view-list .item').forEach(function(it){
+    it.style.display = (channel === 'all' || it.dataset.channel === channel) ? '' : 'none';
+  });
+  document.querySelectorAll('#view-list .phase').forEach(function(phase){
+    var allItems = phase.querySelectorAll('.item');
+    if(allItems.length === 0){ phase.style.display = ''; return; }
+    var anyVisible = Array.prototype.some.call(allItems, function(it){ return it.style.display !== 'none'; });
+    phase.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function showAddForm(btn){
+  var phase = btn.closest('.phase');
+  var existing = phase.querySelector('.add-form');
+  if(existing){ existing.querySelector('.new-title').focus(); return; }
+
+  var form = document.createElement('div');
+  form.className = 'add-form';
+
+  var chSel = document.createElement('select');
+  chSel.className = 'new-channel';
+  [['online','Digital'],['offline','In-person']].forEach(function(o){
+    var op = document.createElement('option');
+    op.value = o[0];
+    op.textContent = o[1];
+    chSel.appendChild(op);
+  });
+
+  var titleInput = document.createElement('input');
+  titleInput.className = 'new-title';
+  titleInput.placeholder = 'Project name';
+
+  var descTextarea = document.createElement('textarea');
+  descTextarea.className = 'new-desc';
+  descTextarea.placeholder = 'Short description (optional)';
+  descTextarea.rows = 2;
+
+  var row = document.createElement('div');
+  row.className = 'controls-row';
+
+  var addBtn = document.createElement('button');
+  addBtn.className = 'ctrl-btn';
+  addBtn.textContent = 'Add';
+  addBtn.addEventListener('click', function(){ confirmAdd(form, phase); });
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'ctrl-btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', function(){ form.remove(); });
+
+  row.appendChild(chSel);
+  row.appendChild(addBtn);
+  row.appendChild(cancelBtn);
+
+  form.appendChild(titleInput);
+  form.appendChild(descTextarea);
+  form.appendChild(row);
+
+  phase.appendChild(form);
+  titleInput.focus();
+}
+
+var nextStrategyId = STRATEGY_RECORDS.reduce(function(max, r){ return Math.max(max, r.id); }, 0) + 1;
+function confirmAdd(form, phase){
+  var channel = form.querySelector('.new-channel').value;
+  var title = form.querySelector('.new-title').value.trim();
+  var desc = form.querySelector('.new-desc').value.trim();
+  if(!title){ form.querySelector('.new-title').focus(); return; }
+  var id = nextStrategyId++;
+  var strategy = { id: id, channel: channel, title: title, desc: desc || 'No description yet \u2014 click Edit to add one.', plan: genericPlanFor(title) };
+  var list = phase.querySelector('.item-list');
+  list.appendChild(buildItemNode(strategy));
+  strategyExtras[id] = { link: '', doc: null };
+  getOrBuildDetailView(id, title, strategy.plan);
+  form.remove();
+  refreshEmptyStates();
+  updateCounts();
+}
+
+function copyPlan(){
+  var lines = ['Project Plan', ''];
+  document.querySelectorAll('#view-list .phase').forEach(function(phase){
+    var num = phase.dataset.phase;
+    var name = phase.querySelector('.phase-header h2').textContent;
+    var sub = phase.querySelector('.phase-sub').textContent;
+    lines.push('Phase ' + num + ' \u2014 ' + name + ' (' + sub + ')');
+    var items = phase.querySelectorAll('.item');
+    if(items.length === 0){ lines.push('  (no projects)'); }
+    items.forEach(function(it){
+      var title = it.querySelector('.item-title').textContent;
+      var channel = it.dataset.channel;
+      var status = it.classList.contains('removed') ? 'removed' : 'included';
+      lines.push('  - [' + channel + ', ' + status + '] ' + title);
+    });
+    lines.push('');
+  });
+  var text = lines.join('\n');
+  var btn = document.getElementById('copy-btn');
+  var original = btn.textContent;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      btn.textContent = 'Copied!';
+      setTimeout(function(){ btn.textContent = original; }, 1500);
+    }).catch(function(){
+      alert('Could not copy automatically. Plan text:\n\n' + text);
+    });
+  } else {
+    alert('Plan text:\n\n' + text);
+  }
+}
+
+function showOnlyView(target){
+  document.getElementById('view-list').hidden = true;
+  Object.keys(detailViews).forEach(function(id){ detailViews[id].hidden = (detailViews[id] !== target); });
+  Object.keys(docViews).forEach(function(id){ docViews[id].hidden = (docViews[id] !== target); });
+  window.scrollTo({top:0, behavior:'instant'});
+}
+
+function showStrategyList(){
+  var list = document.getElementById('view-list');
+  list.hidden = false;
+  Object.keys(detailViews).forEach(function(id){ detailViews[id].hidden = true; });
+  Object.keys(docViews).forEach(function(id){ docViews[id].hidden = true; });
+  updateAllProgressChips();
+  window.scrollTo({top:0, behavior:'instant'});
+}
+
+function updateAllProgressChips(){
+  Object.keys(detailViews).forEach(function(id){
+    var wrapper = detailViews[id];
+    var tasks = wrapper.querySelectorAll('.task');
+    var done = wrapper.querySelectorAll('.task[data-status="done"]').length;
+    var item = document.querySelector('#view-list .item[data-strategy-id="' + id + '"]');
+    if(!item) return;
+    var chip = item.querySelector('.progress-chip');
+    chip.textContent = done + '/' + tasks.length + ' tasks';
+    chip.classList.toggle('chip-done', tasks.length > 0 && done === tasks.length);
+  });
+}
+
+function init(){
+  STRATEGY_RECORDS.forEach(function(d){
+    var list = document.querySelector('#view-list .phase[data-phase="' + d.phase + '"] .item-list');
+    list.appendChild(buildItemNode(d));
+  });
+  document.querySelectorAll('#view-list .item-list').forEach(function(list){
+    list.addEventListener('dragover', function(e){
+      e.preventDefault();
+      if(!draggedItem) return;
+      list.classList.add('drag-over');
+      var after = getDragAfterElement(list, e.clientY);
+      if(after == null){ list.appendChild(draggedItem); } else { list.insertBefore(draggedItem, after); }
+    });
+    list.addEventListener('dragleave', function(){ list.classList.remove('drag-over'); });
+    list.addEventListener('drop', function(e){ e.preventDefault(); list.classList.remove('drag-over'); });
+  });
+  refreshEmptyStates();
+  updateCounts();
+
+  // Pre-build every project's execution plan + details panel so progress chips
+  // and attached documents are ready immediately, and so Save can find them later.
+  STRATEGY_RECORDS.forEach(function(d){
+    getOrBuildDetailView(d.id, d.title, d.plan);
+    strategyExtras[d.id] = { link: d.detailLink || '', doc: d.detailDoc || null };
+    getOrBuildDocView(d.id, d.title);
+  });
+  updateAllProgressChips();
+}
+
+/* =========================================================
+   PER-PROJECT EXECUTION PLAN (built lazily, cached, scoped)
+   ========================================================= */
+function getOrBuildDetailView(id, title, plan){
+  if(detailViews[id]) return detailViews[id];
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'view detail-view';
+  wrapper.dataset.strategyId = id;
+  wrapper.hidden = true;
+
+  var backRow = document.createElement('div');
+  backRow.className = 'back-row';
+  var backBtn = document.createElement('button');
+  backBtn.className = 'back-link';
+  backBtn.innerHTML = '\u2190 Back to plan';
+  backBtn.addEventListener('click', showStrategyList);
+  backRow.appendChild(backBtn);
+
+  var heading = document.createElement('div');
+  heading.className = 'detail-heading';
+  var eyebrow = document.createElement('p');
+  eyebrow.className = 'detail-eyebrow';
+  eyebrow.textContent = 'Execution plan';
+  var h2 = document.createElement('h2');
+  h2.className = 'detail-title';
+  h2.textContent = title;
+  var sub = document.createElement('p');
+  sub.className = 'detail-sub';
+  sub.textContent = 'This started from the standard execution template \u2014 edit owners, dates, statuses and tasks to fit this specific project.';
+  heading.appendChild(eyebrow);
+  heading.appendChild(h2);
+  heading.appendChild(sub);
+
+  var stats = document.createElement('div');
+  stats.className = 'stats';
+  stats.innerHTML =
+    '<div class="stat-card"><p class="stat-label">Total tasks</p><p class="stat-value count-total-t">0</p></div>' +
+    '<div class="stat-card"><p class="stat-label">Done</p><p class="stat-value count-done">0</p></div>' +
+    '<div class="stat-card"><p class="stat-label">In progress</p><p class="stat-value count-progress">0</p></div>' +
+    '<div class="stat-card"><p class="stat-label">Overdue</p><p class="stat-value overdue count-overdue">0</p></div>';
+
+  var overall = document.createElement('div');
+  overall.className = 'overall-progress';
+  overall.innerHTML =
+    '<div class="row"><span>Overall progress</span><span class="overall-pct">0%</span></div>' +
+    '<div class="bar"><div class="bar-fill overall-bar" style="width:0%;"></div></div>';
+
+  var toolbar = document.createElement('div');
+  toolbar.className = 'toolbar';
+  var filters = document.createElement('div');
+  filters.className = 'filters';
+  [['all','All'],['not-started','Not started'],['in-progress','In progress'],['done','Done'],['blocked','Blocked'],['overdue','Overdue']].forEach(function(f, i){
+    var b = document.createElement('button');
+    b.className = 'filter-btn' + (i === 0 ? ' active' : '');
+    b.textContent = f[1];
+    b.addEventListener('click', function(){ setTrackerFilter(f[0], b, wrapper); });
+    filters.appendChild(b);
+  });
+  var copyBtn = document.createElement('button');
+  copyBtn.className = 'export-btn copy-btn-tracker';
+  copyBtn.textContent = 'Copy status report';
+  copyBtn.addEventListener('click', function(){ copyTrackerPlan(wrapper, title); });
+  toolbar.appendChild(filters);
+  toolbar.appendChild(copyBtn);
+
+  var timeline = document.createElement('section');
+  timeline.className = 'timeline';
+
+  plan.forEach(function(p, idx){
+    var phase = document.createElement('div');
+    phase.className = 'phase';
+    phase.dataset.phase = idx + 1;
+
+    var badge = document.createElement('div');
+    badge.className = 'phase-badge';
+    badge.textContent = idx + 1;
+
+    var headerDiv = document.createElement('div');
+    headerDiv.className = 'phase-header';
+    var titleGroup = document.createElement('div');
+    titleGroup.className = 'phase-title-group';
+    var ph2 = document.createElement('h2');
+    ph2.textContent = p.title;
+    var subSpan = document.createElement('span');
+    subSpan.className = 'phase-sub';
+    subSpan.textContent = p.sub;
+    titleGroup.appendChild(ph2);
+    titleGroup.appendChild(subSpan);
+    var countSpan = document.createElement('span');
+    countSpan.className = 'phase-count';
+    countSpan.textContent = '(0/0 done)';
+    headerDiv.appendChild(titleGroup);
+    headerDiv.appendChild(countSpan);
+
+    var barWrap = document.createElement('div');
+    barWrap.className = 'bar phase-bar';
+    var barFill = document.createElement('div');
+    barFill.className = 'bar-fill phase-bar-fill';
+    barFill.style.width = '0%';
+    barWrap.appendChild(barFill);
+
+    var list = document.createElement('div');
+    list.className = 'task-list';
+    p.tasks.forEach(function(t){ list.appendChild(buildTaskNode(t)); });
+
+    var addRow = document.createElement('div');
+    addRow.className = 'add-row';
+    var addLink = document.createElement('button');
+    addLink.className = 'add-link';
+    addLink.textContent = '+ Add task';
+    addLink.addEventListener('click', function(){ showAddTaskForm(addLink, wrapper); });
+    addRow.appendChild(addLink);
+
+    phase.appendChild(badge);
+    phase.appendChild(headerDiv);
+    phase.appendChild(barWrap);
+    phase.appendChild(list);
+    phase.appendChild(addRow);
+    timeline.appendChild(phase);
+  });
+
+  wrapper.appendChild(backRow);
+  wrapper.appendChild(heading);
+  wrapper.appendChild(stats);
+  wrapper.appendChild(overall);
+  wrapper.appendChild(toolbar);
+  wrapper.appendChild(timeline);
+
+  document.getElementById('detail-root').appendChild(wrapper);
+  detailViews[id] = wrapper;
+
+  refreshTaskEmptyStates(wrapper);
+  refreshCounts(wrapper);
+
+  return wrapper;
+}
+
+function openExecutionPlan(id, itemEl){
+  var liveTitle = itemEl.querySelector('.item-title').textContent;
+  var wrapper = getOrBuildDetailView(id, liveTitle, genericPlanFor(liveTitle));
+  wrapper.querySelector('.detail-title').textContent = liveTitle;
+
+  showOnlyView(wrapper);
+  refreshCounts(wrapper);
+}
+
+function buildTaskNode(t){
+  var task = document.createElement('div');
+  task.className = 'task';
+  task.dataset.status = t.status;
+
+  var row = document.createElement('div');
+  row.className = 'task-row';
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  row.setAttribute('aria-expanded', 'false');
+  row.addEventListener('click', function(){ toggleTaskExpand(row); });
+  row.addEventListener('keydown', function(e){ if((e.key === 'Enter' || e.key === ' ') && e.target === row){ e.preventDefault(); toggleTaskExpand(row); } });
+
+  var statusBtn = document.createElement('button');
+  statusBtn.className = 'status-btn status-' + t.status;
+  statusBtn.textContent = STATUS_LABEL[t.status];
+  statusBtn.addEventListener('click', function(e){ e.stopPropagation(); cycleStatus(task); });
+
+  var titleSpan = document.createElement('span');
+  titleSpan.className = 'task-title';
+  titleSpan.textContent = t.title;
+
+  var titleInput = document.createElement('input');
+  titleInput.className = 'task-title-edit';
+  titleInput.hidden = true;
+  titleInput.addEventListener('click', function(e){ e.stopPropagation(); });
+  titleInput.addEventListener('keydown', function(e){ e.stopPropagation(); });
+
+  var ownerInput = document.createElement('input');
+  ownerInput.type = 'text';
+  ownerInput.className = 'owner-input';
+  ownerInput.value = t.owner || '';
+  ownerInput.placeholder = 'Owner';
+  ownerInput.addEventListener('click', function(e){ e.stopPropagation(); });
+  ownerInput.addEventListener('keydown', function(e){ e.stopPropagation(); });
+
+  var dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.className = 'date-input';
+  dateInput.value = t.due || '';
+  dateInput.addEventListener('click', function(e){ e.stopPropagation(); });
+  dateInput.addEventListener('change', function(e){ e.stopPropagation(); checkOverdue(task); refreshCounts(task.closest('.detail-view')); });
+
+  var overdueTag = document.createElement('span');
+  overdueTag.className = 'overdue-tag';
+  overdueTag.textContent = 'Overdue';
+  overdueTag.hidden = true;
+
+  var chevron = document.createElement('span');
+  chevron.className = 'chevron';
+  chevron.textContent = '\u25B8';
+
+  row.appendChild(statusBtn);
+  row.appendChild(titleSpan);
+  row.appendChild(titleInput);
+  row.appendChild(ownerInput);
+  row.appendChild(dateInput);
+  row.appendChild(overdueTag);
+  row.appendChild(chevron);
+
+  var detail = document.createElement('div');
+  detail.className = 'task-detail';
+  detail.hidden = true;
+
+  var descP = document.createElement('p');
+  descP.className = 'task-desc';
+  descP.textContent = t.desc || '';
+
+  var descTextarea = document.createElement('textarea');
+  descTextarea.className = 'task-desc-edit';
+  descTextarea.hidden = true;
+  descTextarea.rows = 2;
+
+  var controls = document.createElement('div');
+  controls.className = 'controls-row';
+
+  var editBtn = document.createElement('button');
+  editBtn.className = 'ctrl-btn edit-btn';
+  editBtn.textContent = 'Edit';
+  editBtn.addEventListener('click', function(){ editTask(editBtn); });
+
+  var deleteBtn = document.createElement('button');
+  deleteBtn.className = 'ctrl-btn delete-btn';
+  deleteBtn.textContent = 'Delete';
+  deleteBtn.addEventListener('click', function(){ deleteTask(deleteBtn); });
+
+  controls.appendChild(editBtn);
+  controls.appendChild(deleteBtn);
+  detail.appendChild(descP);
+  detail.appendChild(descTextarea);
+  detail.appendChild(controls);
+
+  task.appendChild(row);
+  task.appendChild(detail);
+
+  checkOverdue(task);
+  return task;
+}
+
+function toggleTaskExpand(row){
+  var task = row.closest('.task');
+  var detail = task.querySelector('.task-detail');
+  var chevron = row.querySelector('.chevron');
+  var hidden = detail.hasAttribute('hidden');
+  if(hidden){ detail.removeAttribute('hidden'); chevron.textContent = '\u25BE'; row.setAttribute('aria-expanded', 'true'); }
+  else { detail.setAttribute('hidden', ''); chevron.textContent = '\u25B8'; row.setAttribute('aria-expanded', 'false'); }
+}
+
+function cycleStatus(task){
+  var current = task.dataset.status;
+  var idx = STATUS_ORDER.indexOf(current);
+  var next = STATUS_ORDER[(idx + 1) % STATUS_ORDER.length];
+  task.dataset.status = next;
+  var btn = task.querySelector('.status-btn');
+  btn.className = 'status-btn status-' + next;
+  btn.textContent = STATUS_LABEL[next];
+  task.classList.toggle('done', next === 'done');
+  checkOverdue(task);
+  var wrapper = task.closest('.detail-view');
+  refreshCounts(wrapper);
+  applyTrackerFilter(wrapper);
+}
+
+function checkOverdue(task){
+  var dateInput = task.querySelector('.date-input');
+  var tag = task.querySelector('.overdue-tag');
+  if(!dateInput.value){ tag.hidden = true; return; }
+  var due = new Date(dateInput.value + 'T00:00:00');
+  var today = new Date();
+  today.setHours(0,0,0,0);
+  var isOverdue = due < today && task.dataset.status !== 'done';
+  tag.hidden = !isOverdue;
+}
+
+function editTask(btn){
+  var task = btn.closest('.task');
+  var titleSpan = task.querySelector('.task-title');
+  var titleInput = task.querySelector('.task-title-edit');
+  var descP = task.querySelector('.task-desc');
+  var descTextarea = task.querySelector('.task-desc-edit');
+  var editing = !titleInput.hidden;
+  if(!editing){
+    titleInput.value = titleSpan.textContent;
+    descTextarea.value = descP.textContent;
+    titleSpan.hidden = true; titleInput.hidden = false;
+    descP.hidden = true; descTextarea.hidden = false;
+    btn.textContent = 'Save';
+    titleInput.focus();
+  } else {
+    var newTitle = titleInput.value.trim();
+    var newDesc = descTextarea.value.trim();
+    if(newTitle){ titleSpan.textContent = newTitle; }
+    if(newDesc){ descP.textContent = newDesc; }
+    titleSpan.hidden = false; titleInput.hidden = true;
+    descP.hidden = false; descTextarea.hidden = true;
+    btn.textContent = 'Edit';
+  }
+}
+
+function deleteTask(btn){
+  var task = btn.closest('.task');
+  var wrapper = task.closest('.detail-view');
+  task.remove();
+  refreshTaskEmptyStates(wrapper);
+  refreshCounts(wrapper);
+}
+
+function showAddTaskForm(btn, wrapper){
+  var phase = btn.closest('.phase');
+  var existing = phase.querySelector('.add-form');
+  if(existing){ existing.querySelector('.new-title').focus(); return; }
+
+  var form = document.createElement('div');
+  form.className = 'add-form';
+
+  var titleInput = document.createElement('input');
+  titleInput.className = 'new-title';
+  titleInput.placeholder = 'Task name';
+
+  var row1 = document.createElement('div');
+  row1.className = 'two-col';
+  var ownerInput = document.createElement('input');
+  ownerInput.className = 'new-owner';
+  ownerInput.placeholder = 'Owner';
+  var dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.className = 'new-date';
+  row1.appendChild(ownerInput);
+  row1.appendChild(dateInput);
+
+  var descTextarea = document.createElement('textarea');
+  descTextarea.className = 'new-desc';
+  descTextarea.placeholder = 'Short description (optional)';
+  descTextarea.rows = 2;
+
+  var controls = document.createElement('div');
+  controls.className = 'controls-row';
+  var addBtn = document.createElement('button');
+  addBtn.className = 'ctrl-btn';
+  addBtn.textContent = 'Add';
+  addBtn.addEventListener('click', function(){ confirmAddTask(form, phase, wrapper); });
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'ctrl-btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', function(){ form.remove(); });
+  controls.appendChild(addBtn);
+  controls.appendChild(cancelBtn);
+
+  form.appendChild(titleInput);
+  form.appendChild(row1);
+  form.appendChild(descTextarea);
+  form.appendChild(controls);
+  phase.appendChild(form);
+  titleInput.focus();
+}
+
+function confirmAddTask(form, phase, wrapper){
+  var title = form.querySelector('.new-title').value.trim();
+  var owner = form.querySelector('.new-owner').value.trim() || 'Unassigned';
+  var due = form.querySelector('.new-date').value || '';
+  var desc = form.querySelector('.new-desc').value.trim();
+  if(!title){ form.querySelector('.new-title').focus(); return; }
+  var list = phase.querySelector('.task-list');
+  list.appendChild(buildTaskNode({ title: title, owner: owner, due: due, status: 'not-started', desc: desc }));
+  form.remove();
+  refreshTaskEmptyStates(wrapper);
+  refreshCounts(wrapper);
+  applyTrackerFilter(wrapper);
+}
+
+function refreshTaskEmptyStates(wrapper){
+  wrapper.querySelectorAll('.task-list').forEach(function(list){
+    var hint = list.querySelector('.empty-hint');
+    var hasItems = list.querySelector('.task');
+    if(!hasItems){
+      if(!hint){ hint = document.createElement('p'); hint.className = 'empty-hint'; hint.textContent = 'No tasks here yet \u2014 add one below.'; list.appendChild(hint); }
+    } else if(hint){ hint.remove(); }
+  });
+}
+
+function refreshCounts(wrapper){
+  if(!wrapper) return;
+  var tasks = wrapper.querySelectorAll('.task');
+  var total = tasks.length;
+  var done = wrapper.querySelectorAll('.task[data-status="done"]').length;
+  var inProgress = wrapper.querySelectorAll('.task[data-status="in-progress"]').length;
+  var overdue = 0;
+  tasks.forEach(function(t){ if(!t.querySelector('.overdue-tag').hidden){ overdue++; } });
+
+  wrapper.querySelector('.count-total-t').textContent = total;
+  wrapper.querySelector('.count-done').textContent = done;
+  wrapper.querySelector('.count-progress').textContent = inProgress;
+  wrapper.querySelector('.count-overdue').textContent = overdue;
+
+  var pct = total ? Math.round((done / total) * 100) : 0;
+  wrapper.querySelector('.overall-pct').textContent = pct + '%';
+  wrapper.querySelector('.overall-bar').style.width = pct + '%';
+
+  wrapper.querySelectorAll('.phase').forEach(function(phase){
+    var phaseTasks = phase.querySelectorAll('.task');
+    var phaseDone = phase.querySelectorAll('.task[data-status="done"]').length;
+    var countEl = phase.querySelector('.phase-count');
+    var barEl = phase.querySelector('.phase-bar-fill');
+    if(countEl){ countEl.textContent = '(' + phaseDone + '/' + phaseTasks.length + ' done)'; }
+    if(barEl){ var pPct = phaseTasks.length ? Math.round((phaseDone / phaseTasks.length) * 100) : 0; barEl.style.width = pPct + '%'; }
+  });
+
+  // Keep the list-view progress chip for this project in sync as edits happen.
+  var id = wrapper.dataset.strategyId;
+  var item = document.querySelector('#view-list .item[data-strategy-id="' + id + '"]');
+  if(item){
+    var chip = item.querySelector('.progress-chip');
+    chip.textContent = done + '/' + total + ' tasks';
+    chip.classList.toggle('chip-done', total > 0 && done === total);
+  }
+}
+
+function setTrackerFilter(filter, btn, wrapper){
+  wrapper.dataset.activeFilter = filter;
+  wrapper.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  applyTrackerFilter(wrapper);
+}
+
+function applyTrackerFilter(wrapper){
+  var filter = wrapper.dataset.activeFilter || 'all';
+  wrapper.querySelectorAll('.task').forEach(function(t){
+    var show = true;
+    if(filter === 'overdue'){ show = !t.querySelector('.overdue-tag').hidden; }
+    else if(filter !== 'all'){ show = t.dataset.status === filter; }
+    t.style.display = show ? '' : 'none';
+  });
+  wrapper.querySelectorAll('.phase').forEach(function(phase){
+    var allTasks = phase.querySelectorAll('.task');
+    if(allTasks.length === 0){ phase.style.display = ''; return; }
+    var anyVisible = Array.prototype.some.call(allTasks, function(t){ return t.style.display !== 'none'; });
+    phase.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function copyTrackerPlan(wrapper, title){
+  var lines = ['Execution plan: ' + title, ''];
+  wrapper.querySelectorAll('.phase').forEach(function(phase){
+    var ptitle = phase.querySelector('.phase-header h2').textContent;
+    var sub = phase.querySelector('.phase-sub').textContent;
+    lines.push(ptitle + ' (' + sub + ')');
+    phase.querySelectorAll('.task').forEach(function(t){
+      var title2 = t.querySelector('.task-title').textContent;
+      var owner = t.querySelector('.owner-input').value;
+      var due = t.querySelector('.date-input').value;
+      var status = STATUS_LABEL[t.dataset.status];
+      lines.push('  - [' + status + '] ' + title2 + ' | Owner: ' + owner + ' | Due: ' + due);
+    });
+    lines.push('');
+  });
+  var text = lines.join('\n');
+  var btn = wrapper.querySelector('.copy-btn-tracker');
+  var original = btn.textContent;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ btn.textContent = 'Copied!'; setTimeout(function(){ btn.textContent = original; }, 1500); })
+      .catch(function(){ alert('Status report:\n\n' + text); });
+  } else { alert('Status report:\n\n' + text); }
+}
+
+/* =========================================================
+   PER-PROJECT DETAILS PANEL (uploaded document + external link)
+   ========================================================= */
+function getOrBuildDocView(id, title){
+  if(docViews[id]){
+    docViews[id].querySelector('.detail-title').textContent = title;
+    return docViews[id];
+  }
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'view doc-view';
+  wrapper.dataset.strategyId = id;
+  wrapper.hidden = true;
+
+  var backRow = document.createElement('div');
+  backRow.className = 'back-row';
+  var backBtn = document.createElement('button');
+  backBtn.className = 'back-link';
+  backBtn.innerHTML = '\u2190 Back to plan';
+  backBtn.addEventListener('click', showStrategyList);
+  backRow.appendChild(backBtn);
+
+  var heading = document.createElement('div');
+  heading.className = 'detail-heading';
+  var eyebrow = document.createElement('p');
+  eyebrow.className = 'detail-eyebrow';
+  eyebrow.textContent = 'Project details';
+  var h2 = document.createElement('h2');
+  h2.className = 'detail-title';
+  h2.textContent = title;
+  var sub = document.createElement('p');
+  sub.className = 'detail-sub';
+  sub.textContent = 'Attach the detailed brief for this project \u2014 upload a document, paste a link to where it already lives, or both. Both travel with this file once you click "Save plan as file".';
+  heading.appendChild(eyebrow);
+  heading.appendChild(h2);
+  heading.appendChild(sub);
+
+  var linkCard = document.createElement('div');
+  linkCard.className = 'doc-card';
+  var linkLabel = document.createElement('p');
+  linkLabel.className = 'doc-card-label';
+  linkLabel.textContent = 'Link to the detail document';
+  var linkRow = document.createElement('div');
+  linkRow.className = 'doc-row';
+  var linkInput = document.createElement('input');
+  linkInput.type = 'url';
+  linkInput.className = 'link-input';
+  linkInput.placeholder = 'https://drive.google.com/...';
+  var linkSaveBtn = document.createElement('button');
+  linkSaveBtn.className = 'ctrl-btn';
+  linkSaveBtn.textContent = 'Save link';
+  linkSaveBtn.addEventListener('click', function(){ saveDetailLink(id, wrapper); });
+  linkRow.appendChild(linkInput);
+  linkRow.appendChild(linkSaveBtn);
+  var linkHint = document.createElement('p');
+  linkHint.className = 'doc-card-hint';
+  linkHint.textContent = 'Good for docs that already live in Drive, Dropbox, Notion, etc. \u2014 opens in a new tab.';
+  var linkDisplay = document.createElement('div');
+  linkDisplay.className = 'doc-link-display';
+  linkCard.appendChild(linkLabel);
+  linkCard.appendChild(linkRow);
+  linkCard.appendChild(linkHint);
+  linkCard.appendChild(linkDisplay);
+
+  var uploadCard = document.createElement('div');
+  uploadCard.className = 'doc-card';
+  var uploadLabel = document.createElement('p');
+  uploadLabel.className = 'doc-card-label';
+  uploadLabel.textContent = 'Attached document';
+  var fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.className = 'file-input-hidden';
+  fileInput.accept = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.txt,.md,.csv,.xlsx';
+  fileInput.addEventListener('change', function(e){
+    var file = e.target.files && e.target.files[0];
+    if(file){ handleFileUpload(file, id, wrapper); }
+    fileInput.value = '';
+  });
+  var chooseBtn = document.createElement('button');
+  chooseBtn.className = 'ctrl-btn';
+  chooseBtn.textContent = 'Choose file to upload';
+  chooseBtn.addEventListener('click', function(){ fileInput.click(); });
+  var uploadHint = document.createElement('p');
+  uploadHint.className = 'doc-card-hint';
+  uploadHint.textContent = 'PDFs preview right here. Other file types stay attached and downloadable, just without an inline preview.';
+  var docArea = document.createElement('div');
+  docArea.className = 'doc-area';
+  uploadCard.appendChild(uploadLabel);
+  uploadCard.appendChild(chooseBtn);
+  uploadCard.appendChild(fileInput);
+  uploadCard.appendChild(uploadHint);
+  uploadCard.appendChild(docArea);
+
+  wrapper.appendChild(backRow);
+  wrapper.appendChild(heading);
+  wrapper.appendChild(linkCard);
+  wrapper.appendChild(uploadCard);
+
+  document.getElementById('detail-root').appendChild(wrapper);
+  docViews[id] = wrapper;
+
+  refreshDocView(id, wrapper);
+  return wrapper;
+}
+
+function openStrategyDetails(id, itemEl){
+  var liveTitle = itemEl.querySelector('.item-title').textContent;
+  var wrapper = getOrBuildDocView(id, liveTitle);
+  showOnlyView(wrapper);
+}
+
+function refreshDocView(id, wrapper){
+  var extra = strategyExtras[id] || { link: '', doc: null };
+  var linkInput = wrapper.querySelector('.link-input');
+  var linkDisplay = wrapper.querySelector('.doc-link-display');
+  var docArea = wrapper.querySelector('.doc-area');
+
+  linkInput.value = extra.link || '';
+  linkDisplay.innerHTML = '';
+  if(extra.link){
+    var a = document.createElement('a');
+    a.href = extra.link;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = 'Open linked document \u2197';
+    var removeLinkBtn = document.createElement('button');
+    removeLinkBtn.className = 'ctrl-btn delete-btn';
+    removeLinkBtn.textContent = 'Remove link';
+    removeLinkBtn.addEventListener('click', function(){ removeDetailLink(id, wrapper); });
+    linkDisplay.appendChild(a);
+    linkDisplay.appendChild(removeLinkBtn);
+  }
+
+  docArea.innerHTML = '';
+  if(extra.doc){
+    var metaRow = document.createElement('div');
+    metaRow.className = 'doc-file-meta';
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'doc-file-name';
+    nameSpan.textContent = '\uD83D\uDCC4 ' + extra.doc.name;
+    var downloadLink = document.createElement('a');
+    downloadLink.className = 'ctrl-btn';
+    downloadLink.href = extra.doc.dataUrl;
+    downloadLink.download = extra.doc.name;
+    downloadLink.textContent = 'Download';
+    var removeDocBtn = document.createElement('button');
+    removeDocBtn.className = 'ctrl-btn delete-btn';
+    removeDocBtn.textContent = 'Remove';
+    removeDocBtn.addEventListener('click', function(){ removeDetailDoc(id, wrapper); });
+    metaRow.appendChild(nameSpan);
+    metaRow.appendChild(downloadLink);
+    metaRow.appendChild(removeDocBtn);
+    docArea.appendChild(metaRow);
+    docArea.appendChild(buildDocPreview(extra.doc));
+  } else {
+    var empty = document.createElement('p');
+    empty.className = 'doc-empty';
+    empty.textContent = 'No document attached yet.';
+    docArea.appendChild(empty);
+  }
+}
+
+function buildDocPreview(doc){
+  var wrap = document.createElement('div');
+  wrap.className = 'doc-preview';
+  var type = doc.type || '';
+  var lowerName = (doc.name || '').toLowerCase();
+  if(type === 'application/pdf' || lowerName.endsWith('.pdf')){
+    var iframe = document.createElement('iframe');
+    iframe.src = doc.dataUrl;
+    wrap.appendChild(iframe);
+  } else if(type.indexOf('image/') === 0){
+    var img = document.createElement('img');
+    img.src = doc.dataUrl;
+    wrap.appendChild(img);
+  } else if(type.indexOf('text/') === 0 || lowerName.endsWith('.md') || lowerName.endsWith('.txt') || lowerName.endsWith('.csv')){
+    var pre = document.createElement('pre');
+    pre.textContent = decodeBase64FromDataUrl(doc.dataUrl);
+    wrap.appendChild(pre);
+  } else {
+    var note = document.createElement('p');
+    note.className = 'doc-unsupported';
+    note.textContent = 'Preview isn\u2019t available for this file type \u2014 use Download to open it.';
+    wrap.appendChild(note);
+  }
+  return wrap;
+}
+
+function decodeBase64FromDataUrl(dataUrl){
+  try{
+    var base64 = dataUrl.split(',')[1] || '';
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for(var i=0;i<binary.length;i++){ bytes[i] = binary.charCodeAt(i); }
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch(e){ return '(could not preview this file)'; }
+}
+
+function saveDetailLink(id, wrapper){
+  var linkInput = wrapper.querySelector('.link-input');
+  var value = linkInput.value.trim();
+  strategyExtras[id] = strategyExtras[id] || { link: '', doc: null };
+  strategyExtras[id].link = value;
+  refreshDocView(id, wrapper);
+}
+
+function removeDetailLink(id, wrapper){
+  strategyExtras[id] = strategyExtras[id] || { link: '', doc: null };
+  strategyExtras[id].link = '';
+  refreshDocView(id, wrapper);
+}
+
+function handleFileUpload(file, id, wrapper){
+  var maxSize = 15 * 1024 * 1024;
+  if(file.size > maxSize){
+    var ok = confirm('This file is about ' + Math.round(file.size/1024/1024) + 'MB. Large files make "Save plan as file" slower and the resulting file bigger. Continue anyway?');
+    if(!ok) return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(){
+    strategyExtras[id] = strategyExtras[id] || { link: '', doc: null };
+    strategyExtras[id].doc = { name: file.name, type: file.type, dataUrl: reader.result };
+    refreshDocView(id, wrapper);
+  };
+  reader.onerror = function(){ alert('Could not read that file. Please try again.'); };
+  reader.readAsDataURL(file);
+}
+
+function removeDetailDoc(id, wrapper){
+  strategyExtras[id] = strategyExtras[id] || { link: '', doc: null };
+  strategyExtras[id].doc = null;
+  refreshDocView(id, wrapper);
+}
+
+/* =========================================================
+   SAVE PLAN AS A NEW, SELF-CONTAINED FILE
+   ========================================================= */
+function collectStateFromDOM(){
+  var state = [];
+  document.querySelectorAll('#view-list .phase').forEach(function(phaseEl){
+    var phaseNum = parseInt(phaseEl.dataset.phase, 10);
+    phaseEl.querySelectorAll('.item').forEach(function(itemEl){
+      var id = itemEl.dataset.strategyId;
+      var channel = itemEl.dataset.channel;
+      var title = itemEl.querySelector('.item-title').textContent;
+      var desc = itemEl.querySelector('.item-desc').textContent;
+      var included = !itemEl.classList.contains('removed');
+      var approvalStatus = itemEl.dataset.approvalStatus || 'draft';
+
+      var plan = [];
+      var wrapper = detailViews[id];
+      if(wrapper){
+        wrapper.querySelectorAll('.phase').forEach(function(p){
+          var ptitle = p.querySelector('.phase-header h2').textContent;
+          var sub = p.querySelector('.phase-sub').textContent;
+          var tasks = [];
+          p.querySelectorAll('.task').forEach(function(t){
+            tasks.push({
+              title: t.querySelector('.task-title').textContent,
+              owner: t.querySelector('.owner-input').value,
+              due: t.querySelector('.date-input').value,
+              status: t.dataset.status,
+              desc: t.querySelector('.task-desc').textContent
+            });
+          });
+          plan.push({ title: ptitle, sub: sub, tasks: tasks });
+        });
+      }
+
+      var extra = strategyExtras[id] || { link: '', doc: null };
+
+      state.push({
+        id: parseInt(id, 10), phase: phaseNum, channel: channel, title: title, desc: desc,
+        included: included, approvalStatus: approvalStatus, plan: plan,
+        detailLink: extra.link || '', detailDoc: extra.doc || null
+      });
+    });
+  });
+  return state;
+}
+
+function saveUpdatedFile(){
+  var btn = document.getElementById('save-file-btn');
+  var original = btn.textContent;
+  btn.textContent = 'Building file\u2026';
+  btn.disabled = true;
+  setTimeout(function(){
+    try{
+      var state = collectStateFromDOM();
+      var json = JSON.stringify(state).replace(/</g, '\\u003C');
+      var newSource = ORIGINAL_HTML.replace(
+        /\/\*SAVED_STATE_START\*\/[\s\S]*?\/\*SAVED_STATE_END\*\//,
+        '/*SAVED_STATE_START*/\nvar SAVED_STATE = ' + json + ';\n/*SAVED_STATE_END*/'
+      );
+      var blob = new Blob([newSource], { type: 'text/html' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'project_planner.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      btn.textContent = 'Saved \u2014 check downloads';
+    } catch(e){
+      alert('Could not build the file: ' + e.message);
+      btn.textContent = original;
+    }
+    setTimeout(function(){ btn.textContent = original; btn.disabled = false; }, 2200);
+  }, 30);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

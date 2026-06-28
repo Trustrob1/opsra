@@ -43,6 +43,7 @@ import WhatsAppModule from './modules/whatsapp/WhatsAppModule'
 import SupportModule from './modules/support/SupportModule'
 import RenewalModule from './modules/renewal/RenewalModule'
 import OpsModule     from './modules/ops/OpsModule'
+import ProjectPlannerModule from './modules/projectplanner/ProjectPlannerModule'
 import TaskBoard     from './modules/tasks/TaskBoard'
 import AdminModule   from './modules/admin/AdminModule'
 import NotificationsDrawer from './modules/notifications/NotificationsDrawer'
@@ -66,7 +67,7 @@ import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft,
+  ChevronRight, ChevronLeft, FolderKanban,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 
@@ -96,6 +97,7 @@ const NAV = [
   { id: 'tasks',    label: 'Tasks Board',            icon: 'tasks', module: '08',  active: true  },
   { id: 'commissions', label: 'Commissions',        icon: 'commissions', module: '09',  active: true  },
   { id: 'reports',     label: 'Reports', icon: 'reports', module: '10',  active: true  },
+  { id: 'project-planner', label: 'Project Planner', icon: 'project-planner', module: '11', active: true },
   
 ]
 
@@ -112,6 +114,7 @@ const NAV_ICONS = {
   tasks:         CheckSquare,
   commissions:   Briefcase,
   reports:       ClipboardList,
+  'project-planner': FolderKanban,
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -588,6 +591,8 @@ function AppShell() {
   const visibleNav = NAV.filter(item => {
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
     if (item.id === 'reports' && !['owner', 'ops_manager'].includes(_userTemplate)) return false
+    // Project Planner: owner + ops_manager only — a planning tool for leadership, not day-to-day staff
+    if (item.id === 'project-planner' && !['owner', 'ops_manager'].includes(_userTemplate)) return false
     // Performance Hub: visible to all roles (each role sees their own scoped view)
     if (item.id === 'renewal' && _userTemplate === 'affiliate_partner') return false
     if (item.id === 'commissions') {
@@ -1007,6 +1012,9 @@ function AppShell() {
         {view === 'reports' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><ReportsModule user={user} /></div>
         )}
+        {view === 'project-planner' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><ProjectPlannerModule /></div>
+        )}
         {view === 'performance' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><PerformanceModule user={user} /></div>
         )}
@@ -1016,7 +1024,7 @@ function AppShell() {
         {view === 'superadmin_health' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><HealthDashboard /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>
