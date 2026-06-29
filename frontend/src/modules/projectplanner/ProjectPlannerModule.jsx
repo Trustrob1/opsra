@@ -622,6 +622,7 @@ function DetailsPanel({ strategy, onStrategyChange }) {
   const [link, setLink] = useState('')
   const [uploading, setUploading] = useState(false)
   const [localError, setLocalError] = useState('')
+  const [preview, setPreview] = useState(null) // { docId, url, type: 'pdf' | 'image' } | null
   const documents = strategy.documents || []
 
   function addDocument(doc) {
@@ -629,6 +630,14 @@ function DetailsPanel({ strategy, onStrategyChange }) {
   }
   function removeDocument(docId) {
     onStrategyChange(s => ({ ...s, documents: (s.documents || []).filter(d => d.id !== docId) }))
+    if (preview?.docId === docId) setPreview(null)
+  }
+
+  function guessDocType(doc) {
+    const name = (doc.file_name || '').toLowerCase()
+    if (name.endsWith('.pdf')) return 'pdf'
+    if (/\.(png|jpe?g|gif|webp)$/.test(name)) return 'image'
+    return 'other'
   }
 
   async function handleUpload(e) {
@@ -663,10 +672,20 @@ function DetailsPanel({ strategy, onStrategyChange }) {
     }
   }
 
-  async function handleDownload(doc) {
+  async function handleOpen(doc) {
+    if (preview?.docId === doc.id) {
+      setPreview(null)
+      return
+    }
+    setLocalError('')
     try {
       const res = await plannerApi.getDocumentDownloadUrl(doc.id)
-      window.open(res.data.url, '_blank', 'noopener')
+      const type = guessDocType(doc)
+      if (doc.external_link || type === 'other') {
+        window.open(res.data.url, '_blank', 'noopener')
+      } else {
+        setPreview({ docId: doc.id, url: res.data.url, type })
+      }
     } catch (e) {
       setLocalError('Could not open that document.')
     }
@@ -693,16 +712,42 @@ function DetailsPanel({ strategy, onStrategyChange }) {
         </p>
       )}
 
-      {documents.map(doc => (
-        <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${ds.border}` }}>
-          {doc.external_link ? <Link2 size={14} color={ds.teal} /> : <FileText size={14} color={ds.teal} />}
-          <span style={{ flex: 1, fontFamily: ds.fontDm, fontSize: 13, color: ds.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {doc.file_name || doc.external_link}
-          </span>
-          <button onClick={() => handleDownload(doc)} style={linkBtnStyle}>Open</button>
-          <button onClick={() => handleRemove(doc)} style={{ ...iconBtnStyle, color: ds.red }}><Trash2 size={13} /></button>
-        </div>
-      ))}
+      {documents.map(doc => {
+        const isOpen = preview?.docId === doc.id
+        const type = guessDocType(doc)
+        const canPreviewInline = !doc.external_link && type !== 'other'
+        return (
+          <div key={doc.id}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${ds.border}` }}>
+              {doc.external_link ? <Link2 size={14} color={ds.teal} /> : <FileText size={14} color={ds.teal} />}
+              <span style={{ flex: 1, fontFamily: ds.fontDm, fontSize: 13, color: ds.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {doc.file_name || doc.external_link}
+              </span>
+              <button onClick={() => handleOpen(doc)} style={linkBtnStyle}>
+                {canPreviewInline ? (isOpen ? 'Close preview' : 'Preview') : 'Open'}
+              </button>
+              <button onClick={() => handleRemove(doc)} style={{ ...iconBtnStyle, color: ds.red }}><Trash2 size={13} /></button>
+            </div>
+            {isOpen && (
+              <div style={{ padding: '10px 0' }}>
+                {preview.type === 'pdf' ? (
+                  <iframe
+                    src={preview.url}
+                    title={doc.file_name}
+                    style={{ width: '100%', height: 480, border: `1px solid ${ds.border}`, borderRadius: ds.radius.sm }}
+                  />
+                ) : (
+                  <img
+                    src={preview.url}
+                    alt={doc.file_name}
+                    style={{ maxWidth: '100%', maxHeight: 480, border: `1px solid ${ds.border}`, borderRadius: ds.radius.sm, display: 'block' }}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <input
