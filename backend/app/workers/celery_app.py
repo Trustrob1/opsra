@@ -301,7 +301,7 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     "review_window_sender": {
         "task": "app.workers.qualification_worker.run_review_window_sender",
-        "schedule": crontab(minute="*"),  # every minute
+        "schedule": crontab(minute="*/3"),  # every minute
     },
 
     # ------------------------------------------------------------------ #
@@ -419,7 +419,7 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     "broadcast_dispatcher": {
         "task": "app.workers.broadcast_worker.run_broadcast_dispatcher",
-        "schedule": crontab(minute="*/5"),
+        "schedule": crontab(minute="*/10"),
     },
 
     # ------------------------------------------------------------------ #
@@ -440,7 +440,7 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     "meta_token_check": {
         "task": "app.workers.meta_token_worker.run_meta_token_check",
-        "schedule": crontab(hour=6, minute=0),
+        "schedule": crontab(hour=6, minute=15),
     },
 
     # ------------------------------------------------------------------ #
@@ -460,7 +460,7 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     "ai_auto_resume": {
         "task": "app.workers.ai_resume_worker.run_ai_auto_resume",
-        "schedule": crontab(minute="*"),
+        "schedule": crontab(minute="*/5"),
     },
 
     # ------------------------------------------------------------------ #
@@ -502,7 +502,7 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     "attribution-auto-confirm": {
         "task": "app.workers.attribution_worker.run_attribution_auto_confirm",
-        "schedule": crontab(minute=0),  # every hour at :00
+        "schedule": crontab(minute=10),  # every hour at :00
     },
 
     # ------------------------------------------------------------------ #
@@ -513,7 +513,7 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     "health-score-recalc": {
         "task": "app.workers.health_score_worker.run_health_score_recalc",
-        "schedule": crontab(minute="*/30"),
+        "schedule": crontab(minute=0),
     },
 }
 
