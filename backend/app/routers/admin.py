@@ -1316,9 +1316,10 @@ async def get_integration_status(
     """
     Returns live status of all integrations.
     Technical Spec Section 5.7 and Section 12.7.
+    INTEGRATIONS-1: also includes provider rows from the integrations table.
     """
     from app.config import settings
-
+ 
     integrations = {
         "whatsapp": {
             "name": "WhatsApp (Meta Cloud API)",
@@ -1346,9 +1347,34 @@ async def get_integration_status(
             "status": "connected" if settings.REDIS_URL else "not_configured",
         },
     }
-
+ 
+    # INTEGRATIONS-1: merge provider rows from the integrations table
+    # (credentials are never returned — status only)
+    try:
+        rows_result = (
+            db.table("integrations")
+            .select("provider, status, connected_at, last_verified_at, last_error")
+            .eq("org_id", org["org_id"])
+            .execute()
+        )
+        for row in (rows_result.data or []):
+            provider = row.get("provider") or ""
+            if provider and provider not in integrations:
+                integrations[provider] = {
+                    "name":             provider.replace("_", " ").title(),
+                    "configured":       row.get("status") == "connected",
+                    "status":           row.get("status") or "disconnected",
+                    "connected_at":     row.get("connected_at"),
+                    "last_verified_at": row.get("last_verified_at"),
+                    "last_error":       row.get("last_error"),
+                }
+    except Exception as _ie:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "get_integration_status: integrations table read failed — %s", _ie
+        )
+ 
     return {"success": True, "data": integrations, "error": None}
-
 
 @router.post("/integrations/{name}/reconnect")
 async def reconnect_integration(

@@ -634,6 +634,43 @@ def _handle_opt_keywords(
         logger.warning("_handle_opt_keywords: error processing keyword from %s: %s", sender_phone, exc)
         return False
 
+def _is_org_owner(db, org_id: str, sender_phone: str) -> bool:
+    """
+    Returns True if sender_phone exactly matches
+    organisations.org_business_contact_number for this org.
+ 
+    Exact E.164 match only — no fuzzy matching.
+    Verified live on every call — no caching.
+    S14: returns False on any failure (safe default: fall through
+    to normal lead/customer routing).
+    Owner-only — ops managers are explicitly excluded.
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("org_business_contact_number")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        stored = (data or {}).get("org_business_contact_number") or ""
+        if not stored or not sender_phone:
+            return False
+        # Normalise both sides: strip spaces and dashes, ensure leading +
+        def _norm(p: str) -> str:
+            p = p.replace(" ", "").replace("-", "")
+            if p and not p.startswith("+"):
+                p = "+" + p
+            return p
+        return _norm(stored) == _norm(sender_phone)
+    except Exception as exc:
+        logger.warning("_is_org_owner failed org=%s: %s", org_id, exc)
+        return False
+ 
+ 
 def _is_lead_pre_qualified(db, org_id: str, lead_id: str) -> bool:
     """
     PRE-QUAL: Returns True if the lead already has qualification data populated.
@@ -941,7 +978,20 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
     logger.info("[WH] lookup result: org_id=%s customer_id=%s lead_id=%s", org_id, customer_id, lead_id)
-
+ 
+    # ── OWNER QUERY: check if sender is the org owner (path A — number in leads/customers) ──
+    # Unlikely but safe: if owner's number happens to be in leads/customers table,
+    # catch it here before opt-keyword handler fires.
+    if org_id and _is_org_owner(db, org_id, sender_phone):
+        logger.info("[OQ] owner message org=%s — routing to owner query handler (path A)", org_id)
+        from app.services.owner_query_service import handle_owner_query
+        handle_owner_query(
+            db=db, org_id=org_id,
+            message_text=(content or ""),
+            sender_number=sender_phone,
+        )
+        return
+ 
     if org_id and msg_type == "text" and content:
         if _handle_opt_keywords(db, content, sender_phone, org_id, customer_id, lead_id):
             return
@@ -952,7 +1002,21 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         if not org_id:
             logger.info("[WH] no org found — dropping message")
             return
-
+ 
+        # ── OWNER QUERY: check if sender is the org owner (path B — main path) ──
+        # Owner's number is not in leads/customers table; org_id is resolved
+        # via phone_number_id. Check before unknown-contact message save and
+        # before all triage/session routing.
+        if _is_org_owner(db, org_id, sender_phone):
+            logger.info("[OQ] owner message org=%s — routing to owner query handler (path B)", org_id)
+            from app.services.owner_query_service import handle_owner_query
+            handle_owner_query(
+                db=db, org_id=org_id,
+                message_text=(content or ""),
+                sender_number=sender_phone,
+            )
+            return
+ 
         # Save inbound message for unknown contacts — ensures all messages
         # appear in the conversation thread regardless of contact status.
         # S14: failure is non-blocking — triage routing continues regardless.
