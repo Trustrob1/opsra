@@ -319,7 +319,7 @@ celery_app.conf.beat_schedule = {
     # ------------------------------------------------------------------ #
     "lead_sla_check": {
         "task": "app.workers.lead_sla_worker.run_lead_sla_check",
-        "schedule": crontab(minute="*/2"),
+        "schedule": crontab(minute="*/5"),
     },
 
     # ------------------------------------------------------------------ #
