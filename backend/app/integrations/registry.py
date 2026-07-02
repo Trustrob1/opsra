@@ -32,16 +32,21 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _load_providers() -> dict[str, IntegrationProvider]:
-    """
-    Lazy-load all registered providers. Using a function rather than a
-    module-level dict prevents circular imports during startup.
-    """
     providers: dict[str, IntegrationProvider] = {}
     try:
         from app.services.payment_service import PaystackProvider
         providers["paystack"] = PaystackProvider()
     except Exception as exc:
         logger.warning("registry: failed to load paystack provider — %s", exc)
+    # TESTING ONLY — remove before go-live with real data
+    try:
+        from app.services.mock_provider_service import (
+            MockRevenueProvider, MockLeadsProvider
+        )
+        providers["mock_revenue"] = MockRevenueProvider()
+        providers["mock_leads"]   = MockLeadsProvider()
+    except Exception as exc:
+        logger.warning("registry: failed to load mock providers — %s", exc)
     # Future providers added here:
     # from app.services.zoho_service import ZohoBooksProvider
     # providers["zoho_books"] = ZohoBooksProvider()
