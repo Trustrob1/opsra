@@ -312,8 +312,8 @@ Provider disambiguation rules — use these to pick the right provider:
 - Questions about PAYMENTS, SUBSCRIPTIONS, MONEY RECEIVED, INVOICES → paystack or flutterwave
 - Questions about SHOPIFY STORE, SHOPIFY ORDERS, PRODUCTS, FULFILMENT, DELIVERY, TOP SELLERS → shopify
 - Questions about LEADS, PIPELINE, PROSPECTS, CONVERSION RATE, LEAD SOURCE, WHATSAPP ORDERS, UNFULFILLED ORDERS (non-Shopify) → opsra_orders
-- If a question mentions "unfulfilled orders" and BOTH shopify and opsra_orders are connected, prefer shopify
-- If a question mentions "leads" or "pipeline" → always opsra_orders, never shopify or paystack
+- If a question mentions unfulfilled orders and BOTH shopify and opsra_orders are connected, prefer shopify
+- If a question mentions leads or pipeline → always opsra_orders, never shopify or paystack
 
 {security_block}
 """.strip()
