@@ -72,7 +72,7 @@ FRONTEND_URL      = os.getenv("FRONTEND_URL", "https://opsra-frontend.onrender.c
 RATE_LIMIT_PER_HOUR  = 10
 CONTEXT_WINDOW_SIZE  = 5   # last N queries stored for follow-up resolution
 
-_VALID_ACTIONS = {"get_summary", "search", "out_of_scope", "help", "pdf_report"}
+_VALID_ACTIONS = {"get_summary", "search", "out_of_scope", "help", "pdf_report", "compare"}
 
 _HELP_TRIGGERS = frozenset({"help", "menu", "?"})
 
@@ -252,35 +252,57 @@ Previous query context (use this to resolve follow-up questions):
 
 Return ONLY a valid JSON object. No explanation, no preamble, no markdown fences, no text outside the JSON.
 
-Schema:
+Schema — choose the correct action:
+
+For a single period question (what is X this month):
 {{
-  "action": "<one of: get_summary | search | out_of_scope | help | pdf_report>",
-  "providers": ["<list of provider names — required for get_summary and search>"],
-  "date_from": "<YYYY-MM-DD — required for get_summary and pdf_report>",
-  "date_to":   "<YYYY-MM-DD — required for get_summary and pdf_report>",
-  "search_query": "<string — required for search action only>"
+  "action": "get_summary",
+  "providers": ["<provider name>"],
+  "date_from": "<YYYY-MM-DD>",
+  "date_to":   "<YYYY-MM-DD>"
 }}
+
+For a comparison question (X vs Y, change from A to B, increase/decrease):
+{{
+  "action": "compare",
+  "providers": ["<provider name>"],
+  "period_a": {{"date_from": "<YYYY-MM-DD>", "date_to": "<YYYY-MM-DD>", "label": "<human label e.g. yesterday>"}},
+  "period_b": {{"date_from": "<YYYY-MM-DD>", "date_to": "<YYYY-MM-DD>", "label": "<human label e.g. today>"}}
+}}
+
+For a search/lookup question:
+{{
+  "action": "search",
+  "providers": ["<provider name>"],
+  "search_query": "<search terms>"
+}}
+
+For out-of-scope: {{"action":"out_of_scope"}}
+For help: {{"action":"help"}}
+For PDF report: {{"action":"pdf_report","providers":["<provider>"],"date_from":"<YYYY-MM-DD>","date_to":"<YYYY-MM-DD>"}}
 
 Examples:
 Question: "What's my revenue this month?"
 Response: {{"action":"get_summary","providers":["paystack"],"date_from":"{first_of_month}","date_to":"{today}"}}
 
-Question: "How many conversions this week?"
-Response: {{"action":"get_summary","providers":["paystack"],"date_from":"{monday}","date_to":"{today}"}}
+Question: "How many leads came in yesterday vs today?"
+Response: {{"action":"compare","providers":["mock_leads"],"period_a":{{"date_from":"{yesterday}","date_to":"{yesterday}","label":"yesterday"}},"period_b":{{"date_from":"{today}","date_to":"{today}","label":"today"}}}}
 
-Question: "Compare my revenue and leads last month"
-Response: {{"action":"get_summary","providers":["paystack"],"date_from":"{first_of_last_month}","date_to":"{last_of_last_month}"}}
+Question: "What is the percentage change in revenue this week vs last week?"
+Response: {{"action":"compare","providers":["paystack"],"period_a":{{"date_from":"{last_monday}","date_to":"{last_sunday}","label":"last week"}},"period_b":{{"date_from":"{monday}","date_to":"{today}","label":"this week"}}}}
+
+Question: "Compare this month vs last month"
+Response: {{"action":"compare","providers":["paystack"],"period_a":{{"date_from":"{first_of_last_month}","date_to":"{last_of_last_month}","label":"last month"}},"period_b":{{"date_from":"{first_of_month}","date_to":"{today}","label":"this month"}}}}
 
 Question: "What is the weather?"
 Response: {{"action":"out_of_scope"}}
 
-Question: "Help"
-Response: {{"action":"help"}}
-
 Rules:
-- Include ONLY providers that are in the Connected providers list. Never invent providers.
-- If no connected provider can answer the question, return {{"action":"out_of_scope"}}.
-- For follow-up questions ("and last month?", "same for leads?"), resolve from previous query context.
+- Use "compare" action for ANY question involving: vs, versus, change, increase, decrease, percentage, growth, decline, compared to, better than, worse than.
+- Use "get_summary" for single period questions only.
+- Include ONLY providers from the Connected providers list. Never invent providers.
+- If no connected provider can answer, return {{"action":"out_of_scope"}}.
+- For follow-up questions, resolve from previous query context.
 - NEVER return markdown fences, NEVER add text outside the JSON object.
 
 {security_block}
@@ -417,8 +439,29 @@ def _validate_routing_response(raw: Optional[str]) -> Optional[dict]:
             )
             return None
 
+    # Validate compare action
+    if action == "compare":
+        providers = parsed.get("providers") or []
+        if not providers and parsed.get("provider"):
+            providers = [parsed["provider"]]
+        if not providers:
+            logger.warning("_validate_routing_response: compare requires providers")
+            return None
+        parsed["providers"] = providers
+        period_a = parsed.get("period_a") or {}
+        period_b = parsed.get("period_b") or {}
+        try:
+            date.fromisoformat(period_a.get("date_from", ""))
+            date.fromisoformat(period_a.get("date_to", ""))
+            date.fromisoformat(period_b.get("date_from", ""))
+            date.fromisoformat(period_b.get("date_to", ""))
+        except Exception:
+            logger.warning("_validate_routing_response: invalid dates in compare periods")
+            return None
+
     allowed_keys = {
-        "action", "providers", "date_from", "date_to", "search_query"
+        "action", "providers", "date_from", "date_to",
+        "search_query", "period_a", "period_b",
     }
     return {k: v for k, v in parsed.items() if k in allowed_keys}
 
@@ -438,6 +481,26 @@ _FORMAT_SYSTEM_PROMPT = (
     "No bullet points using '-'. Use line breaks between sections.\n"
     "- Maximum 900 characters total.\n"
     "- All monetary values in Nigerian Naira — use the ₦ symbol.\n"
+    f"{_SECURITY_BLOCK}"
+)
+
+
+_FORMAT_COMPARE_PROMPT = (
+    "You are a WhatsApp assistant formatting a business comparison for a business owner.\n"
+    "You are given two periods of data in the <data> block: period_a and period_b.\n"
+    "Rules you MUST follow:\n"
+    "- Compute the change for each numeric metric: change = period_b value - period_a value.\n"
+    "- Compute percentage change: ((period_b - period_a) / period_a) * 100. "
+    "If period_a is 0, say 'N/A (no data in first period)' instead of dividing.\n"
+    "- Use only the figures present in the <data> block. "
+    "Do NOT fabricate, estimate, or infer any numbers not present in the data.\n"
+    "- If the data contains a 'data_warning' field, include it prominently.\n"
+    "- Format as a WhatsApp message using bold (*text*) for headers and key figures.\n"
+    "- Show: metric name, period_a value, period_b value, change (+/-), percentage change.\n"
+    "- Use ▲ for increases, ▼ for decreases, → for no change.\n"
+    "- Maximum 900 characters total.\n"
+    "- All monetary values in Nigerian Naira — use the ₦ symbol.\n"
+    "- No HTML. No bullet points using '-'. Use line breaks between sections.\n"
     f"{_SECURITY_BLOCK}"
 )
 
@@ -885,7 +948,36 @@ def handle_owner_query(
             )
             return
 
-        # ── 11. Execute query (search actions skip confirmation) ──────────
+        # ── 11. Compare confirmation step ─────────────────────────────────
+        if action == "compare":
+            period_a = routing.get("period_a", {})
+            period_b = routing.get("period_b", {})
+            providers = routing.get("providers", [])
+            provider_labels = []
+            for p in providers:
+                caps = get_provider_capabilities(p)
+                provider_labels.append(caps.get("label", p) if caps else p)
+            label_a = period_a.get("label") or _human_date_range(
+                period_a.get("date_from", ""), period_a.get("date_to", "")
+            )
+            label_b = period_b.get("label") or _human_date_range(
+                period_b.get("date_from", ""), period_b.get("date_to", "")
+            )
+            label = (
+                f"*{label_a}* vs *{label_b}* "
+                f"for {', '.join(provider_labels)}"
+            )
+            _save_pending_confirmation(
+                db, org_id, sender_number, context_history, routing, label
+            )
+            _send_reply(
+                db, org_id, sender_number,
+                f"I'll compare {label}.\n"
+                f"Reply *YES* to proceed or *NO* to change the periods.",
+            )
+            return
+
+        # ── 12. Execute query (search actions skip confirmation) ──────────
         _execute_query(
             db, org_id, sender_number, routing,
             context_history, today, original_question=clean_text,
@@ -924,16 +1016,83 @@ def _execute_query(
         # Org created_at for partial period check
         org_created_at = _get_org_created_at(db, org_id)
 
-        # ── Provider call(s) ─────────────────────────────────────────────
+        # ── Compare action — two provider calls ───────────────────────────
+        if action == "compare":
+            period_a = routing.get("period_a", {})
+            period_b = routing.get("period_b", {})
+
+            routing_a = {**routing, "date_from": period_a["date_from"], "date_to": period_a["date_to"]}
+            routing_b = {**routing, "date_from": period_b["date_from"], "date_to": period_b["date_to"]}
+
+            data_a = _query_providers(db, org_id, provider_names, "get_summary", routing_a, org_created_at)
+            data_b = _query_providers(db, org_id, provider_names, "get_summary", routing_b, org_created_at)
+
+            if not data_a.get("available") or not data_b.get("available"):
+                _send_reply(
+                    db, org_id, sender_number,
+                    "No records found for one or both periods. "
+                    "If you expected data here, check that your integration is connected correctly.",
+                )
+                return
+
+            compare_data = {
+                "period_a": {
+                    "label":    period_a.get("label", period_a["date_from"]),
+                    "date_from": period_a["date_from"],
+                    "date_to":   period_a["date_to"],
+                    "data":      data_a,
+                },
+                "period_b": {
+                    "label":    period_b.get("label", period_b["date_from"]),
+                    "date_from": period_b["date_from"],
+                    "date_to":   period_b["date_to"],
+                    "data":      data_b,
+                },
+            }
+
+            format_user = (
+                f"<question>{original_question}</question>\n"
+                f"<data>{json.dumps(compare_data, default=str)}</data>"
+            )
+            raw_format, fmt_in, fmt_out = _call_claude(
+                HAIKU_MODEL, _FORMAT_COMPARE_PROMPT, format_user, max_tokens=600
+            )
+            _log_usage(db, org_id, "owner_query_compare_format", HAIKU_MODEL, fmt_in, fmt_out)
+
+            if not raw_format:
+                _send_reply(
+                    db, org_id, sender_number,
+                    "I retrieved the data but couldn't format the comparison. Please try again.",
+                )
+                return
+
+            formatted  = raw_format.strip()[:900]
+            dash_token = _get_dash_token(db, org_id)
+            if dash_token:
+                deep_link = _build_deep_link(
+                    dash_token, provider_names,
+                    period_a["date_from"], period_b["date_to"],
+                )
+                final_message = f"{formatted}\n\n📊 Full breakdown → {deep_link}"
+            else:
+                final_message = formatted
+
+            _send_reply(db, org_id, sender_number, final_message)
+            _save_context(db, org_id, sender_number, context_history, {
+                "providers": provider_names,
+                "date_from": period_a["date_from"],
+                "date_to":   period_b["date_to"],
+                "question":  original_question[:200],
+            })
+            return
+
+        # ── Provider call(s) — single period ─────────────────────────────
         provider_data = _query_providers(
             db, org_id, provider_names, action, routing, org_created_at
         )
 
         if not provider_data or not provider_data.get("available", True):
-            reason = (
-                provider_data.get("reason", "")
-                if isinstance(provider_data, dict) else ""
-            )
+            reason = provider_data.get("reason", "") if isinstance(provider_data, dict) else ""
             friendly = (
                 reason if reason and "integration" in reason
                 else "No records found for that period. "
