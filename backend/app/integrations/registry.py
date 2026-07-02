@@ -47,6 +47,11 @@ def _load_providers() -> dict[str, IntegrationProvider]:
         providers["mock_leads"]   = MockLeadsProvider()
     except Exception as exc:
         logger.warning("registry: failed to load mock providers — %s", exc)
+    try:
+        from app.services.shopify_provider_service import ShopifyProvider
+        providers["shopify"] = ShopifyProvider()
+    except Exception as exc:
+        logger.warning("registry: failed to load shopify provider — %s", exc)
     # Future providers added here:
     # from app.services.zoho_service import ZohoBooksProvider
     # providers["zoho_books"] = ZohoBooksProvider()
