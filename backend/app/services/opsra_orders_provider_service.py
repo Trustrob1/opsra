@@ -146,20 +146,37 @@ class OpsraOrdersProvider(IntegrationProvider):
                         best_rate   = rate
                         best_source = src
 
-            # ── WhatsApp commerce sessions ────────────────────────────────────
-            sessions_result = (
-                db.table("commerce_sessions")
-                .select(
-                    "id, status, subtotal, "
-                    "created_at, completed_at, abandoned_at, cart"
-                )
-                .eq("org_id", org_id)
-                .gte("created_at", from_iso)
-                .lte("created_at", to_iso)
+            # ── WhatsApp commerce sessions (only for orgs using commerce mode) ──
+            # Skip for consultative/human mode orgs — sessions will be empty
+            # and showing zeros adds noise to the owner's report.
+            org_mode_result = (
+                db.table("organisations")
+                .select("whatsapp_sales_mode")
+                .eq("id", org_id)
+                .maybe_single()
                 .execute()
             )
-            sessions = sessions_result.data or []
+            org_mode_data = org_mode_result.data
+            if isinstance(org_mode_data, list):
+                org_mode_data = org_mode_data[0] if org_mode_data else None
+            wa_sales_mode = (org_mode_data or {}).get("whatsapp_sales_mode") or "human"
+            include_commerce = wa_sales_mode in ("bot", "ai_agent")
 
+            sessions = []
+            if include_commerce:
+                sessions_result = (
+                    db.table("commerce_sessions")
+                    .select(
+                        "id, status, subtotal, "
+                        "created_at, completed_at, abandoned_at, cart"
+                    )
+                    .eq("org_id", org_id)
+                    .gte("created_at", from_iso)
+                    .lte("created_at", to_iso)
+                    .execute()
+                )
+                sessions = sessions_result.data or []
+            
             total_wa_orders    = len(sessions)
             completed_orders   = sum(
                 1 for s in sessions if s.get("status") == "completed"
@@ -177,6 +194,17 @@ class OpsraOrdersProvider(IntegrationProvider):
                 if s.get("status") == "completed"
             )
 
+            # Only include commerce data in response if org uses commerce mode
+            commerce_data = {}
+            if include_commerce:
+                commerce_data = {
+                    "total_wa_sessions":       total_wa_orders,
+                    "completed_wa_orders":     completed_orders,
+                    "open_wa_orders":          open_orders,
+                    "abandoned_wa_sessions":   abandoned_sessions,
+                    "wa_commerce_revenue_ngn": round(wa_revenue, 2),
+                }
+
             return {
                 "available":                 True,
                 "provider":                  self.name,
@@ -191,12 +219,7 @@ class OpsraOrdersProvider(IntegrationProvider):
                 "leads_by_score":            by_score,
                 "best_converting_source":    best_source,
                 "best_source_conversion_pct": round(best_rate, 1),
-                # WhatsApp orders
-                "total_wa_sessions":         total_wa_orders,
-                "completed_wa_orders":       completed_orders,
-                "open_wa_orders":            open_orders,
-                "abandoned_wa_sessions":     abandoned_sessions,
-                "wa_commerce_revenue_ngn":   round(wa_revenue, 2),
+                **commerce_data,
             }
 
         except Exception as exc:
