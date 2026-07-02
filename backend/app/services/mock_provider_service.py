@@ -109,26 +109,31 @@ class MockLeadsProvider(IntegrationProvider):
         date_to: date,
     ) -> dict:
         """Returns realistic fake leads data."""
+        import hashlib
+        # Generate deterministic but different numbers per date range
+        # so comparisons show meaningful changes
+        seed = int(hashlib.md5(str(date_from).encode()).hexdigest()[:4], 16) % 10
         days = (date_to - date_from).days + 1
+        base = days * 8 + seed
         return {
-            "available":          True,
-            "provider":           self.name,
-            "data_source":        "mock_data_for_testing",
-            "date_from":          str(date_from),
-            "date_to":            str(date_to),
-            "total_leads":        days * 8,
-            "converted":          days * 2,
-            "conversion_rate_pct": 25.0,
+            "available":           True,
+            "provider":            self.name,
+            "data_source":         "mock_data_for_testing",
+            "date_from":           str(date_from),
+            "date_to":             str(date_to),
+            "total_leads":         base,
+            "converted":           max(1, base // 4),
+            "conversion_rate_pct": round((max(1, base // 4) / base) * 100, 1),
             "by_source": {
-                "facebook_ad":     days * 4,
-                "instagram_ad":    days * 2,
-                "whatsapp_inbound": days * 2,
+                "facebook_ad":      max(1, base // 2),
+                "instagram_ad":     max(1, base // 4),
+                "whatsapp_inbound": max(1, base // 4 + seed),
             },
             "by_stage": {
-                "new":           days * 3,
-                "contacted":     days * 2,
-                "converted":     days * 2,
-                "lost":          days * 1,
+                "new":       max(1, base // 3),
+                "contacted": max(1, base // 4),
+                "converted": max(1, base // 4),
+                "lost":      max(1, seed),
             },
         }
 
