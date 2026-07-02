@@ -150,7 +150,7 @@ class OpsraOrdersProvider(IntegrationProvider):
             sessions_result = (
                 db.table("commerce_sessions")
                 .select(
-                    "id, status, total_amount, payment_status, "
+                    "id, status, subtotal, "
                     "created_at, completed_at, abandoned_at, cart"
                 )
                 .eq("org_id", org_id)
@@ -172,9 +172,9 @@ class OpsraOrdersProvider(IntegrationProvider):
                 1 for s in sessions if s.get("status") == "abandoned"
             )
             wa_revenue         = sum(
-                float(s.get("total_amount") or 0)
+                float(s.get("subtotal") or 0)
                 for s in sessions
-                if s.get("payment_status") == "paid"
+                if s.get("status") == "completed"
             )
 
             return {
@@ -257,7 +257,7 @@ class OpsraOrdersProvider(IntegrationProvider):
                 q = (
                     db.table("commerce_sessions")
                     .select(
-                        "id, status, total_amount, payment_status, "
+                        "id, status, subtotal, "
                         "phone_number, cart, created_at, completed_at, "
                         "checkout_url"
                     )
@@ -278,14 +278,13 @@ class OpsraOrdersProvider(IntegrationProvider):
                         for item in (cart_items if isinstance(cart_items, list) else [])[:3]
                     ) or "—"
                     results.append({
-                        "type":            "whatsapp_order",
-                        "status":          s.get("status") or "—",
-                        "phone_number":    s.get("phone_number") or "—",
-                        "total_ngn":       float(s.get("total_amount") or 0),
-                        "payment_status":  s.get("payment_status") or "—",
-                        "items":           item_names,
-                        "created_at":      (s.get("created_at") or "")[:10],
-                        "checkout_url":    s.get("checkout_url") or "—",
+                        "type":         "whatsapp_order",
+                        "status":       s.get("status") or "—",
+                        "phone_number": s.get("phone_number") or "—",
+                        "total_ngn":    float(s.get("subtotal") or 0),
+                        "items":        item_names,
+                        "created_at":   (s.get("created_at") or "")[:10],
+                        "checkout_url": s.get("checkout_url") or "—",
                     })
 
             # ── Lead search ───────────────────────────────────────────────────
