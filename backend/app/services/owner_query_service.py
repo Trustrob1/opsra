@@ -69,7 +69,7 @@ SONNET_MODEL      = "claude-sonnet-4-6"          # routing — reliability criti
 HAIKU_MODEL       = "claude-haiku-4-5-20251001"  # formatting — cost efficient
 FRONTEND_URL      = os.getenv("FRONTEND_URL", "https://opsra-frontend.onrender.com")
 
-RATE_LIMIT_PER_HOUR  = 10
+RATE_LIMIT_PER_HOUR  = 30
 CONTEXT_WINDOW_SIZE  = 5   # last N queries stored for follow-up resolution
 
 _VALID_ACTIONS = {"get_summary", "search", "out_of_scope", "help", "pdf_report", "compare"}
