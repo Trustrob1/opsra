@@ -406,13 +406,27 @@ class ShopifyProvider(IntegrationProvider):
             )
 
             query_lower = query.lower()
+            # Split into individual words for flexible matching
+            query_words = [w for w in query_lower.split() if len(w) > 2]
             results = []
 
+            # Detect explicit status filters from query
+            filter_unfulfilled = any(
+                w in query_lower for w in ["unfulfill", "pending", "not fulfilled"]
+            )
+            filter_fulfilled = (
+                "fulfilled" in query_lower and not filter_unfulfilled
+            )
+            filter_paid = "paid" in query_lower
+            filter_refund = any(
+                w in query_lower for w in ["refund", "cancelled", "canceled"]
+            )
+
             for order in orders:
-                order_name   = (order.get("name") or "").lower()
-                fin_status   = (order.get("financial_status") or "").lower()
+                fin_status     = (order.get("financial_status") or "").lower()
                 fulfill_status = (order.get("fulfillment_status") or "unfulfilled").lower()
-                line_titles  = " ".join(
+                order_name     = (order.get("name") or "").lower()
+                line_titles    = " ".join(
                     (item.get("title") or "").lower()
                     for item in (order.get("line_items") or [])
                 )
@@ -421,12 +435,25 @@ class ShopifyProvider(IntegrationProvider):
                     (order.get("customer") or {}).get("last_name", ""),
                 ])).lower()
 
-                if query_lower and not any(
-                    query_lower in field
-                    for field in [order_name, fin_status, fulfill_status,
-                                  line_titles, customer_name]
-                ):
+                # Apply explicit status filters first
+                if filter_unfulfilled and fulfill_status == "fulfilled":
                     continue
+                if filter_fulfilled and fulfill_status != "fulfilled":
+                    continue
+                if filter_paid and fin_status != "paid":
+                    continue
+                if filter_refund and "refund" not in fin_status and "cancel" not in fin_status:
+                    continue
+
+                # For non-status queries, check word-level match across all fields
+                if query_words and not filter_unfulfilled and not filter_fulfilled \
+                        and not filter_paid and not filter_refund:
+                    all_text = " ".join([
+                        order_name, fin_status, fulfill_status,
+                        line_titles, customer_name
+                    ])
+                    if not any(word in all_text for word in query_words):
+                        continue
 
                 customer     = order.get("customer") or {}
                 customer_name = " ".join(filter(None, [

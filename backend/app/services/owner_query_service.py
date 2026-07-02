@@ -294,6 +294,9 @@ Response: {{"action":"compare","providers":["paystack"],"period_a":{{"date_from"
 Question: "Compare this month vs last month"
 Response: {{"action":"compare","providers":["paystack"],"period_a":{{"date_from":"{first_of_last_month}","date_to":"{last_of_last_month}","label":"last month"}},"period_b":{{"date_from":"{first_of_month}","date_to":"{today}","label":"this month"}}}}
 
+Question: "Show me unfulfilled orders"
+Response: {{"action":"search","providers":["shopify"],"search_query":"unfulfilled"}}
+
 Question: "What is the weather?"
 Response: {{"action":"out_of_scope"}}
 
