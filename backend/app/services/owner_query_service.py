@@ -211,6 +211,10 @@ def _call_claude(
             )
             return None, 0, 0
         data    = resp.json()
+        logger.info(
+            "_call_claude [%s] status=200 content_blocks=%d",
+            model, len(data.get("content", [])),
+        )
         blocks  = data.get("content", [])
         text    = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
         usage   = data.get("usage", {})
