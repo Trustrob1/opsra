@@ -428,8 +428,15 @@ class ShopifyProvider(IntegrationProvider):
                 ):
                     continue
 
+                customer     = order.get("customer") or {}
+                customer_name = " ".join(filter(None, [
+                    customer.get("first_name", ""),
+                    customer.get("last_name", ""),
+                ])).strip() or "—"
                 results.append({
                     "order_name":         order.get("name") or "—",
+                    "customer_name":      customer_name,
+                    "customer_email":     customer.get("email") or "—",
                     "total_ngn":          float(order.get("total_price") or 0),
                     "financial_status":   order.get("financial_status") or "—",
                     "fulfillment_status": order.get("fulfillment_status") or "unfulfilled",
