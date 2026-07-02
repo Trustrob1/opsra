@@ -417,6 +417,15 @@ def _validate_routing_response(raw: Optional[str]) -> Optional[dict]:
         )
         return None
 
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except Exception:
+            logger.warning(
+                "_validate_routing_response: double-encoded string — raw=%r", raw[:200]
+            )
+            return None
+
     if not isinstance(parsed, dict):
         return None
 
@@ -1021,6 +1030,13 @@ def _execute_query(
     S14: never raises — sends fallback on any failure.
     """
     try:
+        if not isinstance(routing, dict):
+            logger.warning("_execute_query: routing is not a dict — %r", routing)
+            _send_reply(
+                db, org_id, sender_number,
+                "Something went wrong processing your request. Please try again.",
+            )
+            return
         action         = routing["action"]
         provider_names = routing.get("providers", [])
 
