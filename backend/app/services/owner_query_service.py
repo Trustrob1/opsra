@@ -386,12 +386,16 @@ def _build_routing_prompt(
 
     date_vars = _compute_date_vars(today)
 
-    return _ROUTING_SYSTEM_PROMPT_TEMPLATE.format(
-        provider_summary=provider_summary,
-        context_summary=context_summary,
-        security_block=_SECURITY_BLOCK,
+    result = _ROUTING_SYSTEM_PROMPT_TEMPLATE
+    replacements = {
+        "provider_summary": provider_summary,
+        "context_summary":  context_summary,
+        "security_block":   _SECURITY_BLOCK,
         **date_vars,
-    )
+    }
+    for key, value in replacements.items():
+        result = result.replace("{" + key + "}", str(value))
+    return result
 
 
 def _validate_routing_response(raw: Optional[str]) -> Optional[dict]:
