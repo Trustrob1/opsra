@@ -743,14 +743,25 @@ def handle_owner_query(
         if last_ctx.get("pending_confirmation"):
             if normalised in _YES_WORDS:
                 # Owner confirmed — proceed with saved routing
-                saved_routing = last_ctx.get("routing", {})
-                # Remove pending entry from history
+                saved_routing    = last_ctx.get("routing", {})
+                original_question = last_ctx.get("label", "")
+                # Remove pending entry from history before executing
+                # so context is clean for the next question
                 context_history = context_history[:-1]
-                # Proceed to provider call with saved routing
+                # Clear pending confirmation from DB immediately
+                # so a new question after this doesn't re-trigger it
+                try:
+                    db.table("whatsapp_sessions").update(
+                        {"owner_query_context": context_history}
+                    ).eq("org_id", org_id).eq(
+                        "phone_number", sender_number
+                    ).execute()
+                except Exception:
+                    pass
                 _execute_query(
                     db, org_id, sender_number, saved_routing,
                     context_history, today,
-                    original_question=last_ctx.get("label", ""),
+                    original_question=original_question,
                 )
                 return
             elif normalised in _NO_WORDS:
@@ -919,12 +930,17 @@ def _execute_query(
         )
 
         if not provider_data or not provider_data.get("available", True):
-            reason = provider_data.get("reason", "") if isinstance(provider_data, dict) else ""
-            _send_reply(
-                db, org_id, sender_number,
-                "I couldn't retrieve that data right now. "
-                + (reason if reason else "Please try again in a moment."),
+            reason = (
+                provider_data.get("reason", "")
+                if isinstance(provider_data, dict) else ""
             )
+            friendly = (
+                reason if reason and "integration" in reason
+                else "No records found for that period. "
+                     "If you expected data here, check that your payment "
+                     "integration is connected correctly."
+            )
+            _send_reply(db, org_id, sender_number, friendly)
             return
 
         # ── Format call (Haiku) ──────────────────────────────────────────
