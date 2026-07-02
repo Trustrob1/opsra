@@ -1017,6 +1017,24 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             )
             return
  
+        # ── OWNER NUMBER GUARD ────────────────────────────────────────────
+        # Belt-and-suspenders: if _is_org_owner returns True here it means
+        # the owner's number was not caught at path B above (e.g. number
+        # format edge case). Skip all lead/contact creation for the owner.
+        if _is_org_owner(db, org_id, sender_phone):
+            logger.info(
+                "[OQ] owner number guard fired org=%s — skipping lead creation",
+                org_id,
+            )
+            from app.services.owner_query_service import handle_owner_query
+            handle_owner_query(
+                db=db, org_id=org_id,
+                message_text=(content or ""),
+                sender_number=sender_phone,
+            )
+            return
+        # ── END OWNER NUMBER GUARD ────────────────────────────────────────
+
         # Save inbound message for unknown contacts — ensures all messages
         # appear in the conversation thread regardless of contact status.
         # S14: failure is non-blocking — triage routing continues regardless.
