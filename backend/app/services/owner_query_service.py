@@ -808,6 +808,7 @@ def handle_owner_query(
     today = datetime.now(timezone.utc).date()
 
     try:
+        import traceback as _tb
         normalised = (message_text or "").strip().lower()
 
         # ── 1. HELP check ────────────────────────────────────────────────
@@ -1005,7 +1006,8 @@ def handle_owner_query(
 
     except Exception as exc:
         logger.error(
-            "handle_owner_query: unhandled exception org=%s: %s", org_id, exc
+            "handle_owner_query: unhandled exception org=%s: %s\n%s",
+            org_id, exc, _tb.format_exc()
         )
         try:
             _send_reply(
