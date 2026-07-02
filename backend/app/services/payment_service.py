@@ -128,12 +128,13 @@ class PaystackProvider(IntegrationProvider):
 
     def capabilities(self) -> dict:
         return {
-            "label": "Revenue & Payments",
+            "label": "Subscription Payments & Revenue",
             "emoji": "💰",
             "examples": [
-                "What's my revenue this month?",
-                "How many conversions this week?",
+                "What's my subscription revenue this month?",
+                "How many payment conversions this week?",
                 "Payment summary for last quarter",
+                "How much did I receive in payments?",
             ],
         }
 

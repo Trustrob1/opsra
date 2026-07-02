@@ -286,13 +286,14 @@ class ShopifyProvider(IntegrationProvider):
 
     def capabilities(self) -> dict:
         return {
-            "label": "Shopify Orders & Revenue",
+            "label": "Shopify Storefront Orders & Products",
             "emoji": "🛍️",
             "examples": [
-                "What's my Shopify revenue this month?",
-                "How many orders did we get this week?",
-                "What are my top selling products this month?",
-                "How many unfulfilled orders do we have?",
+                "What's my Shopify store revenue this month?",
+                "How many Shopify orders did we get this week?",
+                "What are my top selling Shopify products?",
+                "Show me unfulfilled Shopify orders",
+                "What is my average Shopify order value?",
             ],
         }
 

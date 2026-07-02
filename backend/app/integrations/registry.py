@@ -52,6 +52,11 @@ def _load_providers() -> dict[str, IntegrationProvider]:
         providers["shopify"] = ShopifyProvider()
     except Exception as exc:
         logger.warning("registry: failed to load shopify provider — %s", exc)
+    try:
+        from app.services.opsra_orders_provider_service import OpsraOrdersProvider
+        providers["opsra_orders"] = OpsraOrdersProvider()
+    except Exception as exc:
+        logger.warning("registry: failed to load opsra_orders provider — %s", exc)
     # Future providers added here:
     # from app.services.zoho_service import ZohoBooksProvider
     # providers["zoho_books"] = ZohoBooksProvider()

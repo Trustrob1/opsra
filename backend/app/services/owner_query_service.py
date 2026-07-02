@@ -304,9 +304,16 @@ Rules:
 - Use "compare" action for ANY question involving: vs, versus, change, increase, decrease, percentage, growth, decline, compared to, better than, worse than.
 - Use "get_summary" for single period questions only.
 - Include ONLY providers from the Connected providers list. Never invent providers.
-- If no connected provider can answer, return {{"action":"out_of_scope"}}.
+- If no connected provider can answer, return {"action":"out_of_scope"}.
 - For follow-up questions, resolve from previous query context.
 - NEVER return markdown fences, NEVER add text outside the JSON object.
+
+Provider disambiguation rules — use these to pick the right provider:
+- Questions about PAYMENTS, SUBSCRIPTIONS, MONEY RECEIVED, INVOICES → paystack or flutterwave
+- Questions about SHOPIFY STORE, SHOPIFY ORDERS, PRODUCTS, FULFILMENT, DELIVERY, TOP SELLERS → shopify
+- Questions about LEADS, PIPELINE, PROSPECTS, CONVERSION RATE, LEAD SOURCE, WHATSAPP ORDERS, UNFULFILLED ORDERS (non-Shopify) → opsra_orders
+- If a question mentions "unfulfilled orders" and BOTH shopify and opsra_orders are connected, prefer shopify
+- If a question mentions "leads" or "pipeline" → always opsra_orders, never shopify or paystack
 
 {security_block}
 """.strip()
@@ -527,11 +534,12 @@ def _human_date_range(date_from: str, date_to: str) -> str:
 # ── Deep-link construction ────────────────────────────────────────────────────
 
 _VIEW_MAP = {
-    "paystack":    "revenue",
-    "flutterwave": "revenue",
-    "zoho_books":  "finance",
-    "shopify":     "orders",
-    "gmail":       "comms",
+    "paystack":     "revenue",
+    "flutterwave":  "revenue",
+    "zoho_books":   "finance",
+    "shopify":      "orders",
+    "opsra_orders": "pipeline",
+    "gmail":        "comms",
 }
 
 
