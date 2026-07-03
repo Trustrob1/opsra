@@ -136,6 +136,7 @@ celery_app = Celery(
         "app.workers.attribution_worker",               # ← ATTRIB-1
         "app.workers.health_score_worker",              # ← PERF-1C (registered now, worker built in PERF-1C)
         "app.workers.owner_report_worker",              # ← RPT-DAILY
+        "app.workers.owner_pdf_worker",                  # ← OWNER-PDF-1
     ],
 )
 
