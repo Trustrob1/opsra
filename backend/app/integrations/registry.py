@@ -139,10 +139,20 @@ def get_provider_capabilities(provider_name: str) -> dict:
         return {}
 
 
-def build_help_message(db: Any, org_id: str, dashboard_url: str) -> str:
+def build_help_message(
+    db: Any, org_id: str, dashboard_url: str, ask_guide_url: str = ""
+) -> str:
     """
     Build the dynamic HELP message based on connected providers for
-    this org. Lists only what is actually callable right now.
+    this org.
+
+    Kept deliberately short — the full example list moved to a linked
+    web page (see public_performance.py's get_ask_guide /
+    _render_ask_guide_html) because a WhatsApp message can never fit
+    the genuinely unbounded space of things the owner can ask (routing
+    is natural-language via Sonnet, not a fixed command list — no
+    example list in chat text will ever be complete).
+
     S14: returns a minimal fallback message on any failure.
     """
     try:
@@ -150,25 +160,20 @@ def build_help_message(db: Any, org_id: str, dashboard_url: str) -> str:
         lines = ["*What can I help you with?*\n"]
 
         if connected:
-            lines.append("Here's what I can answer right now:\n")
-            for name in connected:
-                caps = get_provider_capabilities(name)
-                if not caps:
-                    continue
-                emoji = caps.get("emoji", "📊")
-                label = caps.get("label", name.replace("_", " ").title())
-                examples = caps.get("examples", [])
-                lines.append(f"{emoji} *{label}*")
-                for ex in examples[:3]:
-                    lines.append(f"- {ex}")
-                lines.append("")
+            lines.append(
+                "Ask me anything about your leads, pipeline, payments, or "
+                "orders — in plain English. I can also generate PDF reports."
+            )
         else:
             lines.append(
                 "No data sources are connected yet. "
                 "Please contact your Opsra administrator."
             )
 
-        lines.append("Reply with your question any time, or send HELP to see this again.")
+        if connected and ask_guide_url:
+            lines.append(f"\n📘 See everything you can ask → {ask_guide_url}")
+
+        lines.append("\nReply with your question any time, or send HELP to see this again.")
         if dashboard_url:
             lines.append(f"📈 Full dashboard → {dashboard_url}")
 

@@ -68,6 +68,7 @@ ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 SONNET_MODEL      = "claude-sonnet-4-6"          # routing — reliability critical
 HAIKU_MODEL       = "claude-haiku-4-5-20251001"  # formatting — cost efficient
 FRONTEND_URL      = os.getenv("FRONTEND_URL", "https://opsra-frontend.onrender.com")
+API_BASE_URL      = os.getenv("API_BASE_URL", "")
 
 RATE_LIMIT_PER_HOUR  = 30
 CONTEXT_WINDOW_SIZE  = 5   # last N queries stored for follow-up resolution
@@ -826,8 +827,12 @@ def handle_owner_query(
         if normalised in _HELP_TRIGGERS:
             dash_token = _get_dash_token(db, org_id)
             dash_url   = f"{FRONTEND_URL}/owner-dashboard/{dash_token}" if dash_token else ""
+            ask_guide_url = (
+                f"{API_BASE_URL}/api/v1/public/owner-dashboard/{dash_token}/ask-guide"
+                if dash_token and API_BASE_URL else ""
+            )
             _send_reply(db, org_id, sender_number,
-                        build_help_message(db, org_id, dash_url))
+                        build_help_message(db, org_id, dash_url, ask_guide_url))
             return
 
         # ── 2. Load context (last 5 questions) ───────────────────────────

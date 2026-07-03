@@ -106,6 +106,220 @@ def _verify_session_token(
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# ASK-GUIDE — full "what can I ask" web page, linked from the WhatsApp HELP
+# message instead of trying to fit an unbounded example list into a chat
+# bubble. Reuses owner_dashboard_token as the sole credential, same as
+# get_daily_report_pdf below (single-tap from WhatsApp, no session required).
+#
+# Deliberately separate from IntegrationProvider.capabilities()["examples"]
+# (which stays short — 2-3 items — for the WhatsApp HELP message). This bank
+# can be as long as useful since the guide page has no character ceiling.
+# Grounded in each provider's actual documented data domain:
+#   opsra_orders  -> opsra_orders_provider_service.py docstring + get_summary() fields
+#   paystack      -> payment_service.py docstring + get_summary() fields
+#   shopify       -> shopify_provider_service.py get_summary() fields
+#     (total_revenue_ngn, total_orders, average_order_value_ngn,
+#      fulfilment_rate_pct, unfulfilled_orders, top_products)
+# Adding a new provider: add one entry here + one to registry.py's PROVIDERS.
+# ---------------------------------------------------------------------------
+_GUIDE_EXAMPLES = {
+    "opsra_orders": {
+        "label": "Leads, Pipeline & WhatsApp Orders",
+        "emoji": "\U0001F4CA",
+        "examples": [
+            "How many leads came in this week?",
+            "How many leads came in this month?",
+            "What is my conversion rate this month?",
+            "Which lead source is converting best?",
+            "How many leads are in each stage?",
+            "Show me my hot leads",
+            "Show me new leads from Instagram",
+            "Show me leads that haven't converted",
+            "Show me unfulfilled WhatsApp orders",
+            "Show me abandoned WhatsApp carts",
+            "Show me recent conversions",
+            "How many WhatsApp orders are pending?",
+        ],
+    },
+    "paystack": {
+        "label": "Subscription Payments & Revenue",
+        "emoji": "\U0001F4B0",
+        "examples": [
+            "What's my subscription revenue this month?",
+            "How many payment conversions this week?",
+            "Payment summary for last quarter",
+            "How much did I receive in payments today?",
+            "What's my revenue this year so far?",
+            "How many active subscriptions do I have?",
+        ],
+    },
+    "shopify": {
+        "label": "Shopify Store & Orders",
+        "emoji": "\U0001F6CD\uFE0F",
+        "examples": [
+            "What's my Shopify revenue this month?",
+            "How many orders came in this week?",
+            "What are my top selling products?",
+            "Show me unfulfilled orders",
+            "What's my average order value?",
+            "What's my fulfilment rate this month?",
+        ],
+    },
+}
+
+_COMPARISON_EXAMPLES = [
+    "Compare this month vs last month",
+    "What is the percentage change in revenue this week vs last week?",
+    "How many leads came in yesterday vs today?",
+    "How did this quarter compare to last quarter?",
+]
+
+_REPORT_TYPES = [
+    {
+        "emoji": "\U0001F4C4",
+        "title": "Period Summary",
+        "desc": "A full overview across everything connected — leads, revenue, orders — for any date range.",
+        "examples": ["Send me a report for this month", "PDF of this week", "Give me a report for July"],
+    },
+    {
+        "emoji": "\U0001F4CB",
+        "title": "Lead Pipeline",
+        "desc": "Every lead in the period — name, phone, source, score, stage, last activity, assigned rep — sorted by stage.",
+        "examples": ["Send me a PDF of my leads", "Export my pipeline", "Lead pipeline report for this month"],
+    },
+    {
+        "emoji": "\U0001F4E6",
+        "title": "Orders & Fulfilment",
+        "desc": "Every order in the period, with status and fulfilment detail — works whether you use Shopify, WhatsApp commerce, or neither.",
+        "examples": ["Orders report for this week", "Send me a PDF of unfulfilled orders", "Export my orders"],
+    },
+    {
+        "emoji": "\U0001F4C8",
+        "title": "Comparison",
+        "desc": "Every key metric side by side against the equivalent prior period, with a plain-English summary.",
+        "examples": ["Send a PDF comparing this month vs last month", "Performance comparison report"],
+    },
+]
+
+_BRAND_TEAL = "#0d9488"  # placeholder — see owner_pdf_service.py note on ds.teal
+
+
+def _render_ask_guide_html(org_name: str, connected_providers: list[str]) -> str:
+    """
+    Builds the full 'what can I ask' guide page. Only shows sections for
+    providers actually connected to this org — mirrors build_help_message's
+    filtering behaviour. PDF Reports and Comparisons sections always show
+    if at least one provider is connected (both are provider-agnostic
+    capabilities layered on top of whatever data sources exist).
+    """
+    if not connected_providers:
+        body = (
+            '<div class="empty">No data sources are connected yet. '
+            "Please contact your Opsra administrator.</div>"
+        )
+        return _guide_shell(org_name, body)
+
+    sections_html = ""
+    for name in connected_providers:
+        cfg = _GUIDE_EXAMPLES.get(name)
+        if not cfg:
+            continue
+        items = "".join(f"<li>{ex}</li>" for ex in cfg["examples"])
+        sections_html += f"""
+        <section>
+          <h2>{cfg['emoji']} {cfg['label']}</h2>
+          <ul>{items}</ul>
+        </section>
+        """
+
+    # Comparisons — provider-agnostic, always shown if anything is connected
+    comp_items = "".join(f"<li>{ex}</li>" for ex in _COMPARISON_EXAMPLES)
+    sections_html += f"""
+    <section>
+      <h2>\U0001F501 Comparisons</h2>
+      <p class="sub">Ask any question above as a comparison — just say "vs", "compared to", or "change from".</p>
+      <ul>{comp_items}</ul>
+    </section>
+    """
+
+    # PDF Reports — provider-agnostic, always shown if anything is connected
+    report_cards = ""
+    for r in _REPORT_TYPES:
+        ex_items = "".join(f"<li>{ex}</li>" for ex in r["examples"])
+        report_cards += f"""
+        <div class="report-card">
+          <h3>{r['emoji']} {r['title']}</h3>
+          <p class="sub">{r['desc']}</p>
+          <ul>{ex_items}</ul>
+        </div>
+        """
+    sections_html += f"""
+    <section>
+      <h2>\U0001F4C4 PDF Reports</h2>
+      <p class="sub">Any of the above, delivered as a downloadable PDF — just ask.</p>
+      <div class="report-grid">{report_cards}</div>
+    </section>
+    """
+
+    return _guide_shell(org_name, sections_html)
+
+
+def _guide_shell(org_name: str, body_html: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What can I ask? \u2014 {org_name}</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f7f9f9; color: #1a1a1a; margin: 0; padding: 20px 16px 60px;
+    max-width: 640px; margin-left: auto; margin-right: auto;
+  }}
+  header {{ margin-bottom: 24px; }}
+  h1 {{ color: {_BRAND_TEAL}; font-size: 22px; margin: 0 0 4px; }}
+  .subtitle {{ color: #666; font-size: 14px; }}
+  .intro {{
+    background: #e6f7f5; border-left: 3px solid {_BRAND_TEAL};
+    padding: 12px 14px; border-radius: 6px; font-size: 14px; margin-bottom: 24px;
+  }}
+  section {{ margin-bottom: 28px; }}
+  h2 {{ font-size: 17px; border-bottom: 1px solid #e0e0e0; padding-bottom: 6px; }}
+  h3 {{ font-size: 15px; margin: 0 0 4px; }}
+  .sub {{ color: #666; font-size: 13px; margin: 4px 0 8px; }}
+  ul {{ margin: 0; padding-left: 20px; }}
+  li {{ font-size: 14px; padding: 3px 0; }}
+  .report-grid {{ display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 8px; }}
+  .report-card {{
+    background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 14px;
+  }}
+  .empty {{ color: #666; font-size: 15px; padding: 40px 0; text-align: center; }}
+  footer {{ margin-top: 32px; color: #999; font-size: 12px; text-align: center; }}
+  @media (min-width: 480px) {{
+    .report-grid {{ grid-template-columns: 1fr 1fr; }}
+  }}
+</style>
+</head>
+<body>
+  <header>
+    <h1>What can I ask?</h1>
+    <div class="subtitle">{org_name}'s WhatsApp business assistant</div>
+  </header>
+  <div class="intro">
+    Ask in plain English \u2014 no fixed commands. The examples below show what's
+    possible, but you can phrase things however feels natural, ask follow-up
+    questions, and combine periods (this week, last month, this year, or any
+    custom range).
+  </div>
+  {body_html}
+  <footer>Generated by Opsra</footer>
+</body>
+</html>"""
+
+
 class PinVerifyRequest(BaseModel):
     pin: str = Field(..., min_length=4, max_length=6, pattern=r"^\d{4,6}$")
 
@@ -243,6 +457,26 @@ async def get_owner_dashboard_goals(
         content={"data": perf_svc.get_business_goals(db, row["id"], period_start)},
         headers=_CORS_HEADERS,
     )
+
+
+# GET /public/owner-dashboard/{token}/ask-guide
+# No session token required — dashboard_token IS the credential, same as
+# daily-report-pdf below. Single-tap from a short WhatsApp HELP link.
+@router.get("/public/owner-dashboard/{token}/ask-guide")
+async def get_ask_guide(token: str, db=Depends(get_supabase)):
+    from fastapi.responses import HTMLResponse
+    from app.integrations.registry import get_connected_providers
+
+    org = db.table("organisations").select("id, name").eq(
+        "owner_dashboard_token", token
+    ).limit(1).execute()
+    row = (org.data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    connected = get_connected_providers(db, row["id"])
+    html = _render_ask_guide_html(row.get("name") or "Your Business", connected)
+    return HTMLResponse(content=html, headers={"Access-Control-Allow-Origin": "*"})
 
 # GET /r/report/{short_code} — OWNER-PDF-1 short-link redirect.
 # Registered BEFORE /r/{token}/{date} below (Pattern 53 — static before
