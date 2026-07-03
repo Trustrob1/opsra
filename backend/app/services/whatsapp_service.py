@@ -3034,6 +3034,88 @@ def send_fulfillment_message(
             org_id, phone_number, exc,
         )
 
+
+# ---------------------------------------------------------------------------
+# PAY-LINK-1 — Payment link messages
+# ---------------------------------------------------------------------------
+
+def send_payment_link_message(
+    db, org_id: str, phone_number: str, customer_name: str,
+    amount: float, currency: str, checkout_url: str,
+    payment_type: str = "full", message_template: Optional[str] = None,
+) -> None:
+    """S14 — matches send_order_confirmation_message exactly."""
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning("send_payment_link_message: no whatsapp_phone_id for org %s", org_id)
+            return
+
+        template = message_template or (
+            "Hi {customer_name}! Please complete payment of {currency} {amount} "
+            "to confirm your order: {link}"
+        )
+        body = template.format(
+            customer_name=customer_name, currency=currency,
+            amount=f"{amount:,.2f}", link=checkout_url,
+        )
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "text",
+            "text": {"body": body},
+        }, token=access_token)
+
+    except Exception as exc:
+        logger.warning(
+            "send_payment_link_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_payment_received_message(
+    db, org_id: str, phone_number: str, amount: float, currency: str,
+    balance_due: float = 0,
+) -> None:
+    """
+    PAY-LINK-1: Sent from paystack_storefront_service.mark_paid().
+    Wording differs if balance_due > 0 (deposit received, balance still owed).
+    S14 — full try/except; logs warning on failure, never raises.
+    """
+    try:
+        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id:
+            logger.warning("send_payment_received_message: no whatsapp_phone_id for org %s", org_id)
+            return
+
+        if balance_due and balance_due > 0:
+            body = (
+                f"✅ We've received your payment of {currency} {amount:,.2f}. "
+                f"Remaining balance: {currency} {balance_due:,.2f}. "
+                "We'll be in touch when it's time to settle the rest."
+            )
+        else:
+            body = (
+                f"✅ Payment confirmed! We've received {currency} {amount:,.2f} in full. "
+                "Thank you — we'll be in touch with next steps."
+            )
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to":   phone_number,
+            "type": "text",
+            "text": {"body": body},
+        }, token=access_token)
+
+    except Exception as exc:
+        logger.warning(
+            "send_payment_received_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
 # ---------------------------------------------------------------------------
 # COMM-1 — Commerce WhatsApp Functions
 # ---------------------------------------------------------------------------

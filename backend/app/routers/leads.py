@@ -49,7 +49,8 @@ from app.models.leads import (
     MarkLostRequest,
     MoveStageRequest,
 )
-from app.services import lead_service, demo_service
+from app.services import lead_service, demo_service, paystack_storefront_service
+from app.dependencies import has_permission
 from app.utils.rbac import (
     get_role_template,
     is_scoped_role,
@@ -132,6 +133,13 @@ class LogOutcomeRequest(BaseModel):
     """PATCH /api/v1/leads/{id}/demos/{demo_id} — log outcome of a confirmed demo."""
     outcome:       str           = Field(..., pattern="^(attended|no_show|rescheduled)$")
     outcome_notes: Optional[str] = Field(None, max_length=5000)
+
+
+class SendPaymentLinkRequest(BaseModel):
+    """POST /api/v1/leads/{id}/payment-link — PAY-LINK-1."""
+    amount:       float = Field(..., gt=0)
+    payment_type: str   = Field("full", pattern="^(full|deposit|balance)$")
+    currency:     str   = Field("NGN", max_length=5)
 
 
 # ---------------------------------------------------------------------------
@@ -899,6 +907,7 @@ async def move_stage(
         lead_id=lead_id,
         new_stage=payload.new_stage.value,
         user_id=_user_id(org),
+        confirm_full_payment=payload.confirm_full_payment,
     )
     return ok(data=lead)
 
@@ -1362,3 +1371,93 @@ async def log_demo_outcome(
         outcome_notes=payload.outcome_notes,
     )
     return ok(data=demo, message=f"Demo outcome logged: {payload.outcome}")
+
+
+# ---------------------------------------------------------------------------
+# PAY-LINK-1 — Payment Links
+# POST /{lead_id}/payment-link      — rep sends a Paystack storefront link
+# GET  /{lead_id}/payment-progress  — deal_value / amount_paid / balance_due
+# ---------------------------------------------------------------------------
+
+@router.post("/{lead_id}/payment-link", status_code=status.HTTP_201_CREATED)
+async def send_payment_link(
+    lead_id: str,
+    payload: SendPaymentLinkRequest,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    Rep confirms an amount and sends a Paystack storefront payment link.
+    RBAC follows the confirm_demo pattern in this file — inline permission
+    check rather than a require_permission() dependency.
+    """
+    if not has_permission(org, "send_payment_links"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "You do not have permission to send payment links."},
+        )
+
+    if payload.payment_type in ("deposit", "balance"):
+        cfg_r = (
+            db.table("organisations").select("payment_link_config")
+            .eq("id", _org_id(org)).maybe_single().execute()
+        )
+        cfg_d = cfg_r.data
+        if isinstance(cfg_d, list):
+            cfg_d = cfg_d[0] if cfg_d else None
+        allow_partial = ((cfg_d or {}).get("payment_link_config") or {}).get("allow_partial", False)
+        if not allow_partial:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "PARTIAL_NOT_ALLOWED", "message": "Partial payments are not enabled for this organisation."},
+            )
+
+    cfg_r2 = (
+        db.table("organisations").select("payment_link_config")
+        .eq("id", _org_id(org)).maybe_single().execute()
+    )
+    cfg_d2 = cfg_r2.data
+    if isinstance(cfg_d2, list):
+        cfg_d2 = cfg_d2[0] if cfg_d2 else None
+    pay_cfg = (cfg_d2 or {}).get("payment_link_config") or {}
+
+    try:
+        result = paystack_storefront_service.generate_payment_link(
+            db=db, org_id=_org_id(org), lead_id=lead_id,
+            amount=payload.amount, payment_type=payload.payment_type,
+            currency=payload.currency,
+            trigger_stage=pay_cfg.get("trigger_stage"),
+            target_stage_on_paid=pay_cfg.get("target_stage_on_paid"),
+            created_by=_user_id(org),
+        )
+    except paystack_storefront_service.PaystackLinkError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "PAYSTACK_LINK_FAILED", "message": str(exc)},
+        )
+
+    lead_data = result.get("lead") or {}
+    phone_number = (lead_data.get("whatsapp") or lead_data.get("phone") or "").strip()
+    if phone_number:
+        from app.services import whatsapp_service
+        whatsapp_service.send_payment_link_message(
+            db=db, org_id=_org_id(org), phone_number=phone_number,
+            customer_name=lead_data.get("full_name") or "there",
+            amount=payload.amount, currency=payload.currency,
+            checkout_url=result["checkout_url"], payment_type=payload.payment_type,
+            message_template=pay_cfg.get("message_template"),
+        )
+
+    return ok(data=result, message="Payment link sent")
+
+
+@router.get("/{lead_id}/payment-progress")
+async def get_payment_progress(
+    lead_id: str,
+    org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    progress = paystack_storefront_service.get_lead_payment_progress(
+        db=db, org_id=_org_id(org), lead_id=lead_id
+    )
+    return ok(data=progress)

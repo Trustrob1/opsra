@@ -893,7 +893,11 @@ def move_stage(
     org_id: str,
     lead_id: str,
     new_stage: str,
-    user_id: str,
+    user_id: Optional[str],
+    confirm_full_payment: bool = False,
+    bypass_payment_guard: bool = False,   # internal-only — never exposed via API/Pydantic;
+                                           # used by system callers (mark_paid, demo attendance
+                                           # auto-advance) that are not a rep skipping payment
 ) -> dict:
     """
     General stage mover. Validates against VALID_TRANSITIONS.
@@ -917,6 +921,48 @@ def move_stage(
                 ),
             },
         )
+
+    # PAY-LINK-1 — manual move guard: block moving into target_stage_on_paid
+    # while the lead is still underpaid, unless the rep explicitly confirms
+    # payment was received another way (e.g. cash outside Paystack).
+    _payment_override = False
+    try:
+        org_cfg_r = (
+            db.table("organisations")
+            .select("payment_link_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_cfg_d = org_cfg_r.data
+        if isinstance(org_cfg_d, list):
+            org_cfg_d = org_cfg_d[0] if org_cfg_d else None
+        pay_cfg = (org_cfg_d or {}).get("payment_link_config") or {}
+        target_stage_on_paid = pay_cfg.get("target_stage_on_paid")
+    except Exception:
+        target_stage_on_paid = None
+
+    if target_stage_on_paid and new_stage == target_stage_on_paid and not bypass_payment_guard:
+        from app.services.paystack_storefront_service import get_lead_payment_progress
+        progress = get_lead_payment_progress(db, org_id, lead_id)
+        deal_value = progress.get("deal_value")
+        amount_paid = progress.get("amount_paid") or 0
+        fully_paid = deal_value is not None and amount_paid >= deal_value
+        if not fully_paid:
+            if not confirm_full_payment:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "PAYMENT_NOT_CONFIRMED",
+                        "message": (
+                            f"Balance not fully paid "
+                            f"({amount_paid:,.2f} of "
+                            f"{deal_value if deal_value is not None else 'unset'} received). "
+                            "Confirm payment was received another way to proceed."
+                        ),
+                    },
+                )
+            _payment_override = True
 
     updates: dict = {
         "stage": new_stage,
@@ -952,6 +998,63 @@ def move_stage(
         old_value={"stage": current_stage},
         new_value={"stage": new_stage},
     )
+
+    # PAY-LINK-1 — audit trail for a manually-confirmed payment override
+    if _payment_override:
+        write_timeline_event(
+            db, org_id, lead_id,
+            event_type="stage_moved_payment_override",
+            actor_id=user_id,
+            description=(
+                f"Moved to {new_stage} with payment manually confirmed outside "
+                "Paystack (balance was not fully reflected in payment_links)."
+            ),
+            metadata={"to_stage": new_stage},
+        )
+
+    # PAY-LINK-1 — trigger-stage hook: prompt the rep to send a payment link
+    try:
+        org_cfg_r2 = (
+            db.table("organisations")
+            .select("payment_link_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_cfg_d2 = org_cfg_r2.data
+        if isinstance(org_cfg_d2, list):
+            org_cfg_d2 = org_cfg_d2[0] if org_cfg_d2 else None
+        pay_cfg2 = (org_cfg_d2 or {}).get("payment_link_config") or {}
+        if pay_cfg2.get("enabled") and new_stage == pay_cfg2.get("trigger_stage"):
+            assigned_to = lead.get("assigned_to") or updated.get("assigned_to")
+            if assigned_to:
+                task_id = str(uuid.uuid4())
+                db.table("tasks").insert({
+                    "id": task_id,
+                    "org_id": org_id,
+                    "title": f"Send payment link: {lead.get('full_name', 'Lead')}",
+                    "description": "Confirm the amount and send a Paystack payment link to this customer.",
+                    "task_type": "system_event",
+                    "source_module": "leads",
+                    "source_record_id": lead_id,
+                    "assigned_to": assigned_to,
+                    "priority": "high",
+                    "status": "open",
+                    "created_at": _now_iso(),
+                    "updated_at": _now_iso(),
+                }).execute()
+                db.table("notifications").insert({
+                    "org_id": org_id,
+                    "user_id": assigned_to,
+                    "title": f"Send payment link: {lead.get('full_name', 'Lead')}",
+                    "body": "This lead reached the payment-trigger stage — confirm the amount and send a payment link.",
+                    "type": "payment_link_needed",
+                    "resource_type": "lead",
+                    "resource_id": lead_id,
+                }).execute()
+    except Exception as exc:
+        logger.warning("move_stage: payment-link trigger hook failed lead=%s: %s", lead_id, exc)
+
     return updated
 
 

@@ -29,11 +29,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   getLead, moveStage, convertLead, reactivateLead, reactivateFromNurture,
+  getPaymentProgress, sendPaymentLink,
   updateLead, overrideLeadScore, getLeadAttentionSummary, confirmAttribution,
 } from '../../services/leads.service'
 import useAuthStore   from '../../store/authStore'
 import UserSelect     from '../../shared/UserSelect'
-import { ds, SCORE_STYLE, STAGE_STYLE, STAGES, SOURCE_LABELS, LOST_REASON_LABELS, BRANCHES_OPTIONS } from '../../utils/ds'
+import { ds, SCORE_STYLE, STAGE_STYLE, STAGES, SOURCE_LABELS, LOST_REASON_LABELS, BRANCHES_OPTIONS, PAYMENT_STATUS_STYLE } from '../../utils/ds'
 import { getPipelineStages } from '../../services/admin.service'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import LeadScoreButton from './LeadScoreButton'
@@ -202,6 +203,99 @@ function AttributionReviewModal({ lead, leadId, proposal, onConfirmed, onClose }
   )
 }
 
+// ── Payment Panel (PAY-LINK-1) ──────────────────────────────────────────────────
+
+function PaymentPanel({ leadId, isManager, lead }) {
+  const [progress, setProgress] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [paymentType, setPaymentType] = useState('full')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = () => {
+    getPaymentProgress(leadId)
+      .then(res => setProgress(res?.data || res))
+      .catch(() => setProgress(null))
+  }
+
+  useEffect(() => { if (leadId) load() }, [leadId])
+
+  async function handleSend() {
+    setError('')
+    const num = parseFloat(amount)
+    if (isNaN(num) || num <= 0) { setError('Enter a valid amount.'); return }
+    setSending(true)
+    try {
+      await sendPaymentLink(leadId, { amount: num, payment_type: paymentType, currency: 'NGN' })
+      setShowForm(false)
+      setAmount('')
+      load()
+    } catch (err) {
+      setError(err?.response?.data?.error?.message || 'Could not send payment link.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (!progress) return null
+
+  return (
+    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${ds.border}` }}>
+      <p style={{ fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
+        Payment
+      </p>
+
+      <div style={{ display: 'flex', gap: 16, marginBottom: 10, fontSize: 13.5 }}>
+        <div><span style={{ color: ds.gray }}>Owed:</span> {progress.deal_value != null ? `₦${Number(progress.deal_value).toLocaleString()}` : '—'}</div>
+        <div><span style={{ color: ds.gray }}>Paid:</span> ₦{Number(progress.amount_paid).toLocaleString()}</div>
+        <div><span style={{ color: ds.gray }}>Balance:</span> {progress.balance_due != null ? `₦${Number(progress.balance_due).toLocaleString()}` : '—'}</div>
+      </div>
+
+      {progress.payment_links?.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          {progress.payment_links.map(p => {
+            const style = PAYMENT_STATUS_STYLE[p.status] || {}
+            return (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, marginBottom: 4 }}>
+                <span style={{ background: style.bg, color: style.color, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>
+                  {style.label || p.status}
+                </span>
+                <span style={{ color: ds.gray }}>{p.payment_type} · ₦{Number(p.amount).toLocaleString()}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {isManager && (
+        showForm ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text" value={amount} onChange={e => setAmount(e.target.value)}
+              placeholder="Amount" style={{ width: 120, border: `1.5px solid ${ds.border}`, borderRadius: 8, padding: '8px 10px', fontSize: 13 }}
+            />
+            <select value={paymentType} onChange={e => setPaymentType(e.target.value)} style={{ border: `1.5px solid ${ds.border}`, borderRadius: 8, padding: '8px 10px', fontSize: 13 }}>
+              <option value="full">Full</option>
+              <option value="deposit">Deposit</option>
+              <option value="balance">Balance</option>
+            </select>
+            <button onClick={handleSend} disabled={sending} style={{ background: ds.teal, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              {sending ? 'Sending…' : 'Send'}
+            </button>
+            <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: ds.gray, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+          </div>
+        ) : (
+          <button onClick={() => setShowForm(true)} style={{ background: ds.mint, color: ds.tealDark, border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            + Send Payment Link
+          </button>
+        )
+      )}
+      {error && <p style={{ color: '#C0392B', fontSize: 12.5, marginTop: 8 }}>{error}</p>}
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function LeadProfile({ leadId, onBack }) {
@@ -276,7 +370,24 @@ export default function LeadProfile({ leadId, onBack }) {
     finally { setActionLoading(null) }
   }, [])
 
-  const handleMoveStage    = (newStage) => { if (!newStage || newStage === lead.stage) return; runAction('move', () => moveStage(leadId, newStage)) }
+  const handleMoveStage = (newStage) => {
+    if (!newStage || newStage === lead.stage) return
+    runAction('move', async () => {
+      try {
+        return await moveStage(leadId, newStage)
+      } catch (err) {
+        const code = err?.response?.data?.error?.code
+        if (code === 'PAYMENT_NOT_CONFIRMED') {
+          const msg = err?.response?.data?.error?.message || 'Balance not fully paid.'
+          if (window.confirm(`${msg}\n\nConfirm payment was received another way?`)) {
+            return await moveStage(leadId, newStage, true)
+          }
+          return
+        }
+        throw err
+      }
+    })
+  }
   const handleConvertClick = () => setShowDealValueModal(true)
 
   const handleOverrideScore = async (score) => {
@@ -512,6 +623,9 @@ export default function LeadProfile({ leadId, onBack }) {
             <p style={{ fontSize: 13.5, color: lead.deal_value != null ? ds.dark : ds.gray, margin: 0 }}>{lead.deal_value != null ? `₦${Number(lead.deal_value).toLocaleString()}` : 'Not set'}</p>
           )}
         </div>
+
+        {/* PAY-LINK-1 — Payment Progress */}
+        <PaymentPanel leadId={leadId} isManager={isManager} lead={lead} />
       </div>
 
       {/* ── Desktop tab strip ──────────────────────────────── */}

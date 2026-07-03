@@ -1415,6 +1415,117 @@ async def reconnect_integration(
     }
 
 
+# ============================================================
+# PAY-LINK-1 — Payment Link Config + Paystack Storefront
+# ============================================================
+
+class PaymentLinkConfigUpdate(BaseModel):
+    enabled: bool = False
+    trigger_stage: Optional[str] = None
+    target_stage_on_paid: Optional[str] = None
+    deposit_ack_stage: Optional[str] = None
+    allow_partial: bool = False
+    message_template: Optional[str] = None
+
+
+def _validate_stage_keys(db, org_id: str, payload: "PaymentLinkConfigUpdate") -> None:
+    stages_r = (
+        db.table("organisations").select("pipeline_stages")
+        .eq("id", org_id).maybe_single().execute()
+    )
+    stages_d = stages_r.data
+    if isinstance(stages_d, list):
+        stages_d = stages_d[0] if stages_d else None
+    stages = (stages_d or {}).get("pipeline_stages") or []
+    enabled_keys = {s["key"] for s in stages if s.get("enabled", True)} | {"new", "converted"}
+    for field_name in ("trigger_stage", "target_stage_on_paid", "deposit_ack_stage"):
+        value = getattr(payload, field_name)
+        if value and value not in enabled_keys:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVALID_STAGE", "message": f"'{value}' is not an enabled pipeline stage."},
+            )
+
+
+@router.get("/payment-link-config")
+async def get_payment_link_config(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    result = (
+        db.table("organisations").select("payment_link_config")
+        .eq("id", org["org_id"]).maybe_single().execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return ok(data=(data or {}).get("payment_link_config") or {"enabled": False})
+
+
+@router.patch("/payment-link-config")
+async def update_payment_link_config(
+    payload: PaymentLinkConfigUpdate,
+    org=Depends(require_permission("manage_integrations")),
+    db=Depends(get_supabase),
+):
+    _validate_stage_keys(db, org["org_id"], payload)
+    db.table("organisations").update(
+        {"payment_link_config": payload.model_dump()}
+    ).eq("id", org["org_id"]).execute()
+    return ok(data=payload.model_dump(), message="Payment link settings saved")
+
+
+class PaystackStorefrontConnect(BaseModel):
+    public_key: str = Field(..., min_length=1)
+    secret_key: str = Field(..., min_length=1)
+
+
+@router.get("/integrations/paystack-storefront/status")
+async def get_paystack_storefront_status(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    result = (
+        db.table("integrations").select("status, connected_at, last_verified_at")
+        .eq("org_id", org["org_id"]).eq("provider", "paystack_storefront")
+        .maybe_single().execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else None
+    connected = bool(data and data.get("status") == "connected")
+    return ok(data={"connected": connected, **(data or {})})
+
+
+@router.post("/integrations/paystack-storefront/connect")
+async def connect_paystack_storefront(
+    payload: PaystackStorefrontConnect,
+    org=Depends(require_permission("manage_integrations")),
+    db=Depends(get_supabase),
+):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    db.table("integrations").upsert({
+        "org_id": org["org_id"],
+        "provider": "paystack_storefront",
+        "status": "connected",
+        "credentials": {"public_key": payload.public_key, "secret_key": payload.secret_key},
+        "connected_at": now,
+        "updated_at": now,
+    }, on_conflict="org_id,provider").execute()
+    return ok(data={"connected": True}, message="Paystack Storefront connected")
+
+
+@router.delete("/integrations/paystack-storefront/disconnect")
+async def disconnect_paystack_storefront(
+    org=Depends(require_permission("manage_integrations")),
+    db=Depends(get_supabase),
+):
+    db.table("integrations").update(
+        {"status": "disconnected", "credentials": {}}
+    ).eq("org_id", org["org_id"]).eq("provider", "paystack_storefront").execute()
+    return ok(data={"connected": False}, message="Paystack Storefront disconnected")
+
 
 # ============================================================
 # ROLE USER OVERRIDES  (Phase 8A)

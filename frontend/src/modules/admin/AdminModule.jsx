@@ -32,7 +32,7 @@ import {
   Layers, Tag, UsersRound, AlertCircle, Building2,
   ShoppingCart, ShoppingBag, Store, Bot, TrendingUp,
   DollarSign, MessageSquare, CalendarDays, Zap, Package,
-  ChevronLeft, ChevronRight, Settings,
+  ChevronLeft, ChevronRight, Settings, CreditCard,
 } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
@@ -68,6 +68,7 @@ import AutomationConfig        from './AutomationConfig'
 import DemoSettings            from './DemoSettings'
 import CatalogConfig           from './CatalogConfig'
 import CatalogItems            from './CatalogItems'
+import PaymentLinkConfig       from './PaymentLinkConfig'
 
 // ── Sidebar tab groups ────────────────────────────────────────────────────────
 const TAB_GROUPS = [
@@ -107,6 +108,7 @@ const TAB_GROUPS = [
       { id: 'catalog',      label: 'Catalog',     Icon: Package },
       { id: 'sales-system', label: 'Sales System',Icon: ShoppingCart },
       { id: 'shopify',      label: 'Shopify',     Icon: ShoppingBag },
+      { id: 'payment-links',label: 'Payment Links',Icon: CreditCard },
       { id: 'commerce',     label: 'Commerce',    Icon: Store },
       { id: 'sales-log',    label: 'Sales Log',   Icon: DollarSign },
       { id: 'commission',   label: 'Commissions', Icon: Briefcase },
@@ -447,6 +449,7 @@ export default function AdminModule({ user }) {
           </LazyTab>
 
           <LazyTab active={tab === 'shopify'}       visited={visited['shopify']}>       <ShopifyIntegration /></LazyTab>
+          <LazyTab active={tab === 'payment-links'} visited={visited['payment-links']}> <PaymentLinkConfig /></LazyTab>
           <LazyTab active={tab === 'commerce'}      visited={visited['commerce']}>      <CommerceSettings /></LazyTab>
           <LazyTab active={tab === 'wa-sales-mode'} visited={visited['wa-sales-mode']}> <WASalesModeConfig /></LazyTab>
           <LazyTab active={tab === 'growth-config'} visited={visited['growth-config']}> <GrowthConfig /></LazyTab>

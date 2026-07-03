@@ -755,6 +755,10 @@ def log_outcome(
             lead_service.move_stage(
                 db=db, org_id=org_id, lead_id=lead_id,
                 new_stage=_DEMO_DONE_STAGE, user_id=user_id,
+                bypass_payment_guard=True,  # PAY-LINK-1 — demo attendance is unrelated
+                                             # to payment status; never gate this on it,
+                                             # even if an org's target_stage_on_paid
+                                             # happens to coincide with _DEMO_DONE_STAGE
             )
         except Exception as exc:
             logger.warning("demo_service: stage advance to demo_done failed — %s", exc)

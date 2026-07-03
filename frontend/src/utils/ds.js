@@ -98,6 +98,15 @@ export const LOST_REASON_LABELS = {
   other:         'Other',
 }
 
+/** PAY-LINK-1 — payment_links.status badge appearance */
+export const PAYMENT_STATUS_STYLE = {
+  pending:   { bg: '#FFF3E0', color: '#C05A00', label: 'Pending' },
+  paid:      { bg: '#E8F8EE', color: '#1A7A40', label: 'Paid' },
+  failed:    { bg: '#FFE8E8', color: '#C0392B', label: 'Failed' },
+  expired:   { bg: '#EAF0F2', color: '#6B7C8E', label: 'Expired' },
+  cancelled: { bg: '#EAF0F2', color: '#6B7C8E', label: 'Cancelled' },
+}
+
 export const TIMELINE_ICONS = {
   lead_created:  '',
   stage_changed: '',

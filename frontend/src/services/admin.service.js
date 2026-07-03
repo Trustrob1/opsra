@@ -279,6 +279,29 @@ export const triggerShopifySync = () =>
   api.post('/api/v1/admin/shopify/sync', {})
     .then(r => r.data)
 
+// ── PAY-LINK-1: Payment Link Config + Paystack Storefront ───────────────────
+
+export const getPaymentLinkConfig = () =>
+  api.get('/api/v1/admin/payment-link-config')
+    .then(r => r.data.data)
+
+export const updatePaymentLinkConfig = (payload) =>
+  api.patch('/api/v1/admin/payment-link-config', payload)
+    .then(r => r.data.data)
+
+export const getPaystackStorefrontStatus = () =>
+  api.get('/api/v1/admin/integrations/paystack-storefront/status')
+    .then(r => r.data.data)
+
+export const connectPaystackStorefront = (payload) =>
+  // payload: { public_key, secret_key }
+  api.post('/api/v1/admin/integrations/paystack-storefront/connect', payload)
+    .then(r => r.data.data)
+
+export const disconnectPaystackStorefront = () =>
+  api.delete('/api/v1/admin/integrations/paystack-storefront/disconnect')
+    .then(r => r.data.data)
+
 // ── MULTI-ORG-WA-1: WhatsApp connection management ───────────────────────────
 
 export const getWhatsAppStatus = () =>

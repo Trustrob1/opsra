@@ -143,6 +143,8 @@ class DealValueUpdate(BaseModel):
 class MoveStageRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     new_stage: LeadStage
+    confirm_full_payment: bool = False   # PAY-LINK-1 — required True to move into
+                                          # target_stage_on_paid while underpaid
 
 
 class MarkLostRequest(BaseModel):

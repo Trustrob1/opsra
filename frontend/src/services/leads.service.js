@@ -119,9 +119,33 @@ export async function scoreLead(id) {
  * Validates transition against state machine before moving.
  * @param {string} id
  * @param {string} new_stage — one of: new|contacted|demo_done|proposal_sent
+ * @param {boolean} [confirm_full_payment=false] — PAY-LINK-1: required true to
+ *   move into target_stage_on_paid while the lead is still underpaid. A 409
+ *   with error.code === 'PAYMENT_NOT_CONFIRMED' means this needs to be set.
  */
-export async function moveStage(id, new_stage) {
-  const res = await api.post(`/api/v1/leads/${id}/move-stage`, { new_stage })
+export async function moveStage(id, new_stage, confirm_full_payment = false) {
+  const res = await api.post(`/api/v1/leads/${id}/move-stage`, { new_stage, confirm_full_payment })
+  return res.data
+}
+
+// ─── PAY-LINK-1: Payment Links ────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/leads/{id}/payment-link
+ * @param {string} id
+ * @param {{ amount: number, payment_type?: 'full'|'deposit'|'balance', currency?: string }} payload
+ */
+export async function sendPaymentLink(id, payload) {
+  const res = await api.post(`/api/v1/leads/${id}/payment-link`, payload)
+  return res.data
+}
+
+/**
+ * GET /api/v1/leads/{id}/payment-progress
+ * Returns { deal_value, amount_paid, balance_due, payment_links }
+ */
+export async function getPaymentProgress(id) {
+  const res = await api.get(`/api/v1/leads/${id}/payment-progress`)
   return res.data
 }
 

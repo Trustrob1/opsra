@@ -3436,6 +3436,77 @@ async def receive_paystack_webhook(request: Request, db=Depends(get_supabase)):
 
 
 # ---------------------------------------------------------------------------
+# POST /webhooks/payment/paystack-storefront
+# PAY-LINK-1 — separate from the route above. That route uses the global
+# PAYSTACK_SECRET_KEY env var for Opsra's own subscription billing. This one
+# resolves the org from the payment_links.reference lookup (mirrors the
+# Shopify shop_domain lookup pattern in this file) and verifies against
+# THAT org's own paystack_storefront secret_key. No org_id in the URL.
+# ---------------------------------------------------------------------------
+
+@router.post("/payment/paystack-storefront", status_code=status.HTTP_200_OK)
+async def receive_paystack_storefront_webhook(request: Request, db=Depends(get_supabase)):
+    raw_body = await request.body()
+    import time as _time
+    _t0 = _time.monotonic()
+
+    try:
+        payload = json.loads(raw_body)
+    except Exception:
+        return {"status": "ok"}
+
+    reference = (payload.get("data") or {}).get("reference")
+    if not reference:
+        return {"status": "ok"}
+
+    link_r = (
+        db.table("payment_links").select("org_id")
+        .eq("reference", reference).maybe_single().execute()
+    )
+    link_d = link_r.data
+    if isinstance(link_d, list):
+        link_d = link_d[0] if link_d else None
+    if not link_d:
+        logger.warning("[PAYSTACK-STOREFRONT] unknown reference=%s — dropping", reference)
+        return {"status": "ok"}
+    org_id = link_d["org_id"]
+
+    creds_r = (
+        db.table("integrations").select("credentials")
+        .eq("org_id", org_id).eq("provider", "paystack_storefront")
+        .maybe_single().execute()
+    )
+    creds_d = creds_r.data
+    if isinstance(creds_d, list):
+        creds_d = creds_d[0] if creds_d else None
+    secret_key = ((creds_d or {}).get("credentials") or {}).get("secret_key", "")
+
+    sig = request.headers.get("X-Paystack-Signature")
+    expected = hmac.new(secret_key.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
+    if not secret_key or not sig or not hmac.compare_digest(expected, sig):
+        logger.warning("[PAYSTACK-STOREFRONT] invalid signature org=%s ref=%s", org_id, reference)
+        _log_webhook(db, route="/webhooks/payment/paystack-storefront", org_id=org_id,
+                     response_status=401, error_message="Invalid signature")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Paystack signature")
+
+    _err = None
+    if payload.get("event") == "charge.success":
+        try:
+            from app.services import paystack_storefront_service
+            paystack_storefront_service.mark_paid(db=db, org_id=org_id, reference=reference)
+        except Exception as exc:
+            logger.error("[PAYSTACK-STOREFRONT] mark_paid failed org=%s ref=%s: %s", org_id, reference, exc)
+            _err = str(exc)[:500]
+
+    _log_webhook(
+        db, route="/webhooks/payment/paystack-storefront", org_id=org_id,
+        response_status=200, topic=payload.get("event"),
+        processing_ms=int((_time.monotonic() - _t0) * 1000), error_message=_err,
+    )
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
 # POST /webhooks/payment/flutterwave
 # ---------------------------------------------------------------------------
 
