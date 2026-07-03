@@ -76,6 +76,12 @@ _VALID_ACTIONS = {"get_summary", "search", "out_of_scope", "help", "pdf_report",
 
 _HELP_TRIGGERS = frozenset({"help", "menu", "?"})
 
+# OWNER-PDF-1 — valid report_type values for the pdf_report action
+_VALID_REPORT_TYPES = frozenset({
+    "period_summary", "lead_pipeline", "orders_fulfilment", "comparison",
+})
+_DEFAULT_REPORT_TYPE = "period_summary"
+
 # Words the owner can send to confirm a pending date range
 _YES_WORDS = frozenset({"yes", "yeah", "yep", "ok", "okay", "sure", "correct",
                         "confirm", "proceed", "go", "go ahead"})
@@ -279,11 +285,26 @@ For a search/lookup question:
 
 For out-of-scope: {{"action":"out_of_scope"}}
 For help: {{"action":"help"}}
-For PDF report: {{"action":"pdf_report","providers":["<provider>"],"date_from":"<YYYY-MM-DD>","date_to":"<YYYY-MM-DD>"}}
+For PDF report: {{"action":"pdf_report","providers":["<provider>"],"report_type":"<period_summary|lead_pipeline|orders_fulfilment|comparison>","date_from":"<YYYY-MM-DD>","date_to":"<YYYY-MM-DD>"}}
+report_type values:
+  - "period_summary"     → general/monthly/overview report requests ("give me a report", "PDF of this week")
+  - "lead_pipeline"       → "list of my leads", "pipeline report", "export my leads"
+  - "orders_fulfilment"   → "orders report", "unfulfilled orders PDF", "export orders"
+  - "comparison"          → "compare this month vs last month PDF", "performance comparison report"
+  - Default to "period_summary" if the request doesn't clearly match another type.
 
 Examples:
 Question: "What's my revenue this month?"
 Response: {{"action":"get_summary","providers":["paystack"],"date_from":"{first_of_month}","date_to":"{today}"}}
+
+Question: "Send me a PDF report of my leads"
+Response: {{"action":"pdf_report","providers":["opsra_orders"],"report_type":"lead_pipeline","date_from":"{first_of_month}","date_to":"{today}"}}
+
+Question: "Give me an orders report for this week"
+Response: {{"action":"pdf_report","providers":["shopify"],"report_type":"orders_fulfilment","date_from":"{monday}","date_to":"{today}"}}
+
+Question: "Send a PDF comparing this month vs last month"
+Response: {{"action":"pdf_report","providers":["paystack"],"report_type":"comparison","date_from":"{first_of_last_month}","date_to":"{today}"}}
 
 Question: "How many leads came in yesterday vs today?"
 Response: {{"action":"compare","providers":["mock_leads"],"period_a":{{"date_from":"{yesterday}","date_to":"{yesterday}","label":"yesterday"}},"period_b":{{"date_from":"{today}","date_to":"{today}","label":"today"}}}}
@@ -451,6 +472,17 @@ def _validate_routing_response(raw: Optional[str]) -> Optional[dict]:
             return None
         parsed["providers"] = providers
 
+    # OWNER-PDF-1 — validate/default report_type for pdf_report action
+    if action == "pdf_report":
+        report_type = parsed.get("report_type") or _DEFAULT_REPORT_TYPE
+        if report_type not in _VALID_REPORT_TYPES:
+            logger.warning(
+                "_validate_routing_response: invalid report_type=%r — defaulting to %s",
+                report_type, _DEFAULT_REPORT_TYPE,
+            )
+            report_type = _DEFAULT_REPORT_TYPE
+        parsed["report_type"] = report_type
+
     # Validate date range
     if action in ("get_summary", "pdf_report"):
         try:
@@ -484,7 +516,7 @@ def _validate_routing_response(raw: Optional[str]) -> Optional[dict]:
 
     allowed_keys = {
         "action", "providers", "date_from", "date_to",
-        "search_query", "period_a", "period_b",
+        "search_query", "period_a", "period_b", "report_type",
     }
     return {k: v for k, v in parsed.items() if k in allowed_keys}
 
@@ -948,6 +980,27 @@ def handle_owner_query(
             if dash_token:
                 ack += f"\n📈 Dashboard → {FRONTEND_URL}/owner-dashboard/{dash_token}"
             _send_reply(db, org_id, sender_number, ack)
+
+            # OWNER-PDF-1 — dispatch async PDF generation. Lazy import (Pattern 63)
+            # keeps this module importable even if owner_pdf_worker briefly fails
+            # to import during a partial deploy.
+            try:
+                from app.workers.owner_pdf_worker import generate_owner_pdf_report
+                generate_owner_pdf_report.delay(
+                    org_id=org_id,
+                    sender_number=sender_number,
+                    provider_names=routing.get("providers", []),
+                    report_type=routing.get("report_type", _DEFAULT_REPORT_TYPE),
+                    date_from=routing.get("date_from"),
+                    date_to=routing.get("date_to"),
+                )
+            except Exception as exc:
+                # S14: dispatch failure must not crash the query handler —
+                # the owner already has the ack message; log and move on.
+                logger.error(
+                    "handle_owner_query: failed to dispatch generate_owner_pdf_report org=%s: %s",
+                    org_id, exc,
+                )
             return
 
         # ── 10. Date confirmation step ────────────────────────────────────
