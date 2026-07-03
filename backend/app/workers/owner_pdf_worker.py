@@ -64,7 +64,7 @@ _SHORT_LINK_EXPIRY_HOURS = 24  # the "link expires in 24 hours" promise made to 
 # Same env var owner_report_worker.py uses to build its absolute /r/{token}/{date}
 # short link — mirrored here rather than reintroducing FRONTEND_URL, since this
 # link points at a backend redirect route, not the frontend SPA.
-_API_BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "")
+_API_BASE_URL = os.getenv("API_BASE_URL", "")
 
 _VALID_REPORT_TYPES = frozenset({
     "period_summary", "lead_pipeline", "orders_fulfilment", "comparison",

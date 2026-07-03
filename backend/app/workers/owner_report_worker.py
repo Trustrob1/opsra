@@ -37,7 +37,7 @@ from app.workers.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "https://opsra-frontend.onrender.com")
-_API_BASE_URL  = os.getenv("RENDER_EXTERNAL_URL", "")
+_API_BASE_URL  = os.getenv("API_BASE_URL", "")
 
 # Nigeria has no DST — fixed UTC+1 year-round. Used for "yesterday" / "is
 # Monday" so the report reflects the owner's local calendar day regardless

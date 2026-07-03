@@ -1168,18 +1168,7 @@ def _execute_query(
             )
             return
 
-        formatted = raw_format.strip()[:900]
-
-        # ── Deep-link ─────────────────────────────────────────────────────
-        dash_token = _get_dash_token(db, org_id)
-        if dash_token:
-            deep_link = _build_deep_link(
-                dash_token, provider_names,
-                routing.get("date_from"), routing.get("date_to"),
-            )
-            final_message = f"{formatted}\n\n📊 Full breakdown → {deep_link}"
-        else:
-            final_message = formatted
+        final_message = raw_format.strip()[:900]
 
         # ── Send ─────────────────────────────────────────────────────────
         _send_reply(db, org_id, sender_number, final_message)
