@@ -335,8 +335,9 @@ def _render_shopify_section(label: str, emoji: str, data: dict) -> tuple[str, li
     html += _stat_block("Unfulfilled orders", data.get("unfulfilled_orders", 0))
     top_products = data.get("top_products") or []
     if top_products:
+        _dash = "\u2014"
         rows = "".join(
-            f"<tr><td>{p.get('title', '\u2014')}</td><td>{p.get('units_sold', 0)}</td>"
+            f"<tr><td>{p.get('title') or _dash}</td><td>{p.get('units_sold', 0)}</td>"
             f"<td>{_money(p.get('revenue_ngn'))}</td></tr>"
             for p in top_products
         )
