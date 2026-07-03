@@ -578,31 +578,6 @@ def _human_date_range(date_from: str, date_to: str) -> str:
 
 # ── Deep-link construction ────────────────────────────────────────────────────
 
-_VIEW_MAP = {
-    "paystack":     "revenue",
-    "flutterwave":  "revenue",
-    "zoho_books":   "finance",
-    "shopify":      "orders",
-    "opsra_orders": "pipeline",
-    "gmail":        "comms",
-}
-
-
-def _build_deep_link(
-    dash_token: str,
-    providers: list[str],
-    date_from: Optional[str],
-    date_to: Optional[str],
-) -> str:
-    view   = _VIEW_MAP.get(providers[0] if providers else "", "overview")
-    params = f"view={view}"
-    if date_from:
-        params += f"&from={date_from}"
-    if date_to:
-        params += f"&to={date_to}"
-    return f"{FRONTEND_URL}/owner-dashboard/{dash_token}?{params}"
-
-
 # ── Context helpers (last 5 questions rolling) ───────────────────────────────
 
 def _load_context(db: Any, org_id: str, sender_number: str) -> list[dict]:
@@ -972,13 +947,10 @@ def handle_owner_query(
 
         # ── 9. PDF report action ─────────────────────────────────────────
         if action == "pdf_report":
-            dash_token = _get_dash_token(db, org_id)
             period = ""
             if routing.get("date_from") and routing.get("date_to"):
                 period = f" for {_human_date_range(routing['date_from'], routing['date_to'])}"
             ack = f"Generating your report{period} — I'll send the link shortly."
-            if dash_token:
-                ack += f"\n📈 Dashboard → {FRONTEND_URL}/owner-dashboard/{dash_token}"
             _send_reply(db, org_id, sender_number, ack)
 
             # OWNER-PDF-1 — dispatch async PDF generation. Lazy import (Pattern 63)
@@ -1152,16 +1124,7 @@ def _execute_query(
                 )
                 return
 
-            formatted  = raw_format.strip()[:900]
-            dash_token = _get_dash_token(db, org_id)
-            if dash_token:
-                deep_link = _build_deep_link(
-                    dash_token, provider_names,
-                    period_a["date_from"], period_b["date_to"],
-                )
-                final_message = f"{formatted}\n\n📊 Full breakdown → {deep_link}"
-            else:
-                final_message = formatted
+            final_message = raw_format.strip()[:900]
 
             _send_reply(db, org_id, sender_number, final_message)
             _save_context(db, org_id, sender_number, context_history, {

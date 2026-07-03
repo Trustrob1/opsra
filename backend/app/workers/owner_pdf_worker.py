@@ -13,10 +13,15 @@ Flow:
   3. Formatter returns (pdf_bytes, meta) — never raises (S14).
   4. Upload PDF to the private Supabase Storage 'owner-reports' bucket
      (see migration_owner_pdf_reports_storage.sql).
-  5. Generate a signed URL — 24h expiry per OWNER-PDF-1 spec.
-  6. Send the signed URL to the owner via WhatsApp, reusing
-     _send_owner_whatsapp() from owner_report_worker.py — the same helper
-     owner_query_service.py already uses for every other reply.
+  5. Create a short-link row in owner_pdf_report_links (see
+     migration_owner_pdf_report_links.sql) — 24h expiry.
+  6. Send the SHORT link to the owner via WhatsApp — never the raw Supabase
+     signed URL (that's a 350+ char JWT-bearing string). The link resolves
+     through GET /api/v1/r/report/{short_code} in public_performance.py,
+     which generates a fresh signed URL server-side at click time and
+     302-redirects. This mirrors the existing RPT-DAILY short-link pattern
+     (GET /r/{token}/{date}) in the same file, using RENDER_EXTERNAL_URL
+     for the absolute domain — same env var owner_report_worker.py uses.
   7. Any failure sends a plain-language fallback WhatsApp message. The task
      itself never raises back to Celery — it always returns a summary dict.
 
@@ -40,7 +45,8 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime, timezone
+import secrets
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from dotenv import load_dotenv
@@ -53,8 +59,12 @@ from app.database import get_supabase            # noqa: E402
 logger = logging.getLogger(__name__)
 
 _STORAGE_BUCKET = "owner-reports"
-_SIGNED_URL_EXPIRY_SECONDS = 24 * 60 * 60  # 24h, per OWNER-PDF-1 spec
-_SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+_SHORT_LINK_EXPIRY_HOURS = 24  # the "link expires in 24 hours" promise made to the owner
+
+# Same env var owner_report_worker.py uses to build its absolute /r/{token}/{date}
+# short link — mirrored here rather than reintroducing FRONTEND_URL, since this
+# link points at a backend redirect route, not the frontend SPA.
+_API_BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 _VALID_REPORT_TYPES = frozenset({
     "period_summary", "lead_pipeline", "orders_fulfilment", "comparison",
@@ -75,10 +85,14 @@ def _storage_path(org_id: str, report_type: str) -> str:
     return f"{org_id}/{today.strftime('%Y-%m-%d')}-{report_type}-{today.strftime('%H%M%S')}.pdf"
 
 
-def _upload_and_sign(db: Any, org_id: str, report_type: str, pdf_bytes: bytes) -> Optional[str]:
+def _upload_pdf(db: Any, org_id: str, report_type: str, pdf_bytes: bytes) -> Optional[str]:
     """
-    Upload PDF bytes to the private owner-reports bucket and return a 24h
-    signed URL. Returns None on any failure. S14: never raises.
+    Upload PDF bytes to the private owner-reports bucket. Returns the
+    storage path on success, None on any failure. S14: never raises.
+
+    Deliberately does NOT sign a URL here — signing now happens at click
+    time in the /r/report/{short_code} redirect route, so this function's
+    only job is getting the bytes into Storage.
     """
     try:
         path = _storage_path(org_id, report_type)
@@ -87,39 +101,45 @@ def _upload_and_sign(db: Any, org_id: str, report_type: str, pdf_bytes: bytes) -
             pdf_bytes,
             {"content-type": "application/pdf"},
         )
-
-        signed = db.storage.from_(_STORAGE_BUCKET).create_signed_url(
-            path, _SIGNED_URL_EXPIRY_SECONDS
-        )
-        # supabase-py has returned different response shapes across major
-        # versions (see Build Status: "supabase-py v2 response shape" test
-        # coverage on the whatsapp-media upload path) — check both.
-        if isinstance(signed, dict):
-            url = signed.get("signedURL") or signed.get("signed_url") or signed.get("signedUrl")
-        else:
-            url = getattr(signed, "signed_url", None) or getattr(signed, "signedURL", None)
-
-        if not url:
-            logger.error(
-                "owner_pdf_worker._upload_and_sign: no URL in signed response org=%s path=%s resp=%r",
-                org_id, path, signed,
-            )
-            return None
-
-        # Supabase sometimes returns a path relative to the storage server
-        # rather than an absolute URL — prefix with SUPABASE_URL if so.
-        if url.startswith("http"):
-            return url
-        if _SUPABASE_URL:
-            return f"{_SUPABASE_URL}/storage/v1{url}" if not url.startswith("/storage") else f"{_SUPABASE_URL}{url}"
-        return url
-
+        return path
     except Exception as exc:
         logger.error(
-            "owner_pdf_worker._upload_and_sign failed org=%s report_type=%s: %s",
+            "owner_pdf_worker._upload_pdf failed org=%s report_type=%s: %s",
             org_id, report_type, exc,
         )
         return None
+
+
+def _create_short_link(db: Any, org_id: str, storage_path: str) -> Optional[str]:
+    """
+    Insert a short_code -> storage_path row with a 24h expiry and return
+    the short_code. Retries a few times on the (astronomically unlikely)
+    event of a short_code collision. S14: returns None on any failure.
+    """
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(hours=_SHORT_LINK_EXPIRY_HOURS)).isoformat()
+
+    for attempt in range(3):
+        short_code = secrets.token_urlsafe(6)  # 8 URL-safe chars
+        try:
+            db.table("owner_pdf_report_links").insert({
+                "short_code":   short_code,
+                "org_id":       org_id,
+                "storage_path": storage_path,
+                "created_at":   now.isoformat(),
+                "expires_at":   expires_at,
+            }).execute()
+            return short_code
+        except Exception as exc:
+            logger.warning(
+                "owner_pdf_worker._create_short_link attempt=%d collision/failure org=%s: %s",
+                attempt, org_id, exc,
+            )
+    logger.error(
+        "owner_pdf_worker._create_short_link: exhausted retries org=%s path=%s",
+        org_id, storage_path,
+    )
+    return None
 
 
 @celery_app.task(name="generate_owner_pdf_report", bind=True, max_retries=0)
@@ -133,7 +153,7 @@ def generate_owner_pdf_report(
     date_to: Optional[str],
 ) -> dict:
     """
-    Generate an owner-facing PDF report and deliver a signed link via WhatsApp.
+    Generate an owner-facing PDF report and deliver a short link via WhatsApp.
 
     S13: report_type validated before any processing — falls back to
     period_summary rather than failing outright, matching the same default
@@ -201,8 +221,8 @@ def generate_owner_pdf_report(
             summary["failed"] = True
             return summary
 
-        signed_url = _upload_and_sign(db, org_id, report_type, pdf_bytes)
-        if not signed_url:
+        storage_path = _upload_pdf(db, org_id, report_type, pdf_bytes)
+        if not storage_path:
             _send_owner_whatsapp(
                 db, org_id, sender_number,
                 "Your report was generated but I couldn't upload it right now. Please try again shortly.",
@@ -210,10 +230,36 @@ def generate_owner_pdf_report(
             summary["failed"] = True
             return summary
 
+        short_code = _create_short_link(db, org_id, storage_path)
+        if not short_code:
+            _send_owner_whatsapp(
+                db, org_id, sender_number,
+                "Your report was generated but I couldn't create a link for it right now. Please try again shortly.",
+            )
+            summary["failed"] = True
+            return summary
+
+        if not _API_BASE_URL:
+            # RENDER_EXTERNAL_URL missing is a config error, not a per-request
+            # failure — owner_report_worker.py relies on the same env var and
+            # would already be broken if this were unset in production.
+            logger.error(
+                "generate_owner_pdf_report: RENDER_EXTERNAL_URL not set — cannot build report link org=%s",
+                org_id,
+            )
+            _send_owner_whatsapp(
+                db, org_id, sender_number,
+                "Your report was generated but I couldn't create a link for it right now. Please try again shortly.",
+            )
+            summary["failed"] = True
+            return summary
+
+        report_url = f"{_API_BASE_URL}/api/v1/r/report/{short_code}"
+
         label = (meta or {}).get("label") or report_type.replace("_", " ").title()
         _send_owner_whatsapp(
             db, org_id, sender_number,
-            f"\U0001F4C4 Your *{label}* is ready:\n{signed_url}\n\n(Link expires in 24 hours.)",
+            f"\U0001F4C4 Your *{label}* is ready:\n{report_url}\n\n(Link expires in 24 hours.)",
         )
         summary["delivered"] = True
         return summary

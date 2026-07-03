@@ -244,6 +244,63 @@ async def get_owner_dashboard_goals(
         headers=_CORS_HEADERS,
     )
 
+# GET /r/report/{short_code} — OWNER-PDF-1 short-link redirect.
+# Registered BEFORE /r/{token}/{date} below (Pattern 53 — static before
+# parameterised): "report" is a literal path segment, not a token, so it
+# must be matched first or /r/{token}/{date} would greedily consume it as
+# token="report". short_code is looked up in owner_pdf_report_links
+# (see migration_owner_pdf_report_links.sql) — a fresh 1h Supabase signed
+# URL is generated at click time; the 24h "link expires" promise made to
+# the owner is enforced against that table's expires_at, not against any
+# Supabase-issued token embedded in the WhatsApp message itself.
+@router.get("/r/report/{short_code}")
+async def owner_pdf_report_shortlink(short_code: str, db=Depends(get_supabase)):
+    from fastapi.responses import RedirectResponse
+
+    result = (
+        db.table("owner_pdf_report_links")
+        .select("org_id, storage_path, expires_at")
+        .eq("short_code", short_code)
+        .maybe_single()
+        .execute()
+    )
+    row = result.data
+    if isinstance(row, list):
+        row = row[0] if row else None
+    if not row:
+        raise HTTPException(status_code=404, detail="Link not found or expired")
+
+    try:
+        expires_at = datetime.fromisoformat(str(row["expires_at"]).replace("Z", "+00:00"))
+        from datetime import timezone as _timezone
+        if expires_at < datetime.now(_timezone.utc):
+            raise HTTPException(status_code=410, detail="This link has expired")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Don't 500 the owner over a parsing quirk — log and allow through,
+        # matching the fail-open posture used for the lockout checks above.
+        logger.warning("owner_pdf_report_shortlink: expires_at parse failed short_code=%s: %s", short_code, exc)
+
+    try:
+        signed = db.storage.from_("owner-reports").create_signed_url(row["storage_path"], 3600)
+        if isinstance(signed, dict):
+            url = signed.get("signedURL") or signed.get("signed_url") or signed.get("signedUrl")
+        else:
+            url = getattr(signed, "signed_url", None) or getattr(signed, "signedURL", None)
+        if not url:
+            raise HTTPException(status_code=500, detail="Could not generate report link")
+        if not url.startswith("http"):
+            supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+            url = f"{supabase_url}{url}" if url.startswith("/storage") else f"{supabase_url}/storage/v1{url}"
+        return RedirectResponse(url=url, status_code=302)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("owner_pdf_report_shortlink: signing failed short_code=%s: %s", short_code, exc)
+        raise HTTPException(status_code=500, detail="Could not generate report link")
+
+
 # GET /r/{token}/{date} — short-link redirect to daily-report-pdf
 # Token-as-credential, no session required. 302 (not 301) so the
 # destination can change in future without browsers caching the old path.
