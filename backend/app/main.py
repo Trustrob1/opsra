@@ -229,22 +229,34 @@ app.include_router(project_planner_router.router,      prefix="/api/v1/project-p
 
 
 # ---------------------------------------------------------------------------
-# Health check — 9E-A (replaces stub).
-# Performs a real Supabase ping so Render knows the DB is reachable.
-# Never raises — degraded state returns 200 with db:"error" so Render
-# doesn't trigger a restart loop on transient DB blips.
+# Health check — OPT-1-B: split into lightweight + deep.
+# /health is what Render's own automated check polls every few seconds —
+# now returns instantly from memory, no DB call, so it never adds load to
+# the connection pool. /health/deep keeps the original DB-ping behaviour,
+# for manual checks or external monitoring tools only.
 # ---------------------------------------------------------------------------
 from app.database import get_supabase
 
 
 @app.get("/health", tags=["health"])
 async def health_check():
+    return {"status": "ok", "version": "49.0"}
+
+
+@app.get("/health/deep", tags=["health"])
+async def health_check_deep():
+    """
+    Performs a real Supabase ping. Never raises — degraded state returns
+    200 with db:"error" so a monitoring tool doesn't trigger a restart
+    loop on transient DB blips. Do NOT point Render's healthCheckPath at
+    this route — it should keep pointing at lightweight /health.
+    """
     try:
         db = get_supabase()
         db.table("organisations").select("id").limit(1).execute()
         return {"status": "ok", "db": "ok", "version": "49.0"}
     except Exception as exc:
-        logger.warning("Health check DB ping failed: %s", exc)
+        logger.warning("Deep health check DB ping failed: %s", exc)
         return JSONResponse(
             status_code=200,
             content={"status": "degraded", "db": "error", "version": "49.0"},

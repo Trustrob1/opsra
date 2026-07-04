@@ -183,6 +183,38 @@ def process_inbound_webhook(payload: dict) -> None:
             # ── Process inbound messages ───────────────────────────────────
             for message in (value.get("messages") or []):
                 msg_id = message.get("id", "")
+
+                # ── OPT-1-C idempotency guard ────────────────────────────────
+                # Meta can redeliver the same webhook payload more than once
+                # under normal operation, independent of the old timeout-retry
+                # risk (already fixed by returning 200 immediately). Skip if
+                # this exact message was already stored for this org.
+                if msg_id:
+                    try:
+                        existing = (
+                            db.table("whatsapp_messages")
+                            .select("id")
+                            .eq("org_id", org_id)
+                            .eq("meta_message_id", msg_id)
+                            .limit(1)
+                            .execute()
+                        )
+                        if existing.data:
+                            logger.info(
+                                "process_inbound_webhook: duplicate delivery "
+                                "skipped msg_id=%s org=%s", msg_id, org_id,
+                            )
+                            continue
+                    except Exception as exc:
+                        # S14 — a failed dedup check should never block real
+                        # processing; worst case is an occasional duplicate,
+                        # not a dropped message.
+                        logger.warning(
+                            "process_inbound_webhook: dedup check failed "
+                            "msg_id=%s org=%s: %s — proceeding anyway",
+                            msg_id, org_id, exc,
+                        )
+
                 try:
                     _handle_inbound_message(
                         db, message, contact_name, phone_number_id
