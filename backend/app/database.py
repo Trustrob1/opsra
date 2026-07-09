@@ -28,8 +28,9 @@ Usage in service layer (direct call — for Celery workers):
 
 from __future__ import annotations
 
+import contextvars
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from supabase import Client, create_client
 
@@ -42,6 +43,29 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _supabase_client: Optional[Client] = None
+
+# ---------------------------------------------------------------------------
+# OOM FIX (2026-07): connection tracking for cleanup.
+#
+# get_supabase() intentionally creates a brand-new Client on every call (see
+# docstring below) to avoid query-builder state corruption under concurrency.
+# The problem: each Client opens its own underlying HTTP connection(s) to
+# Supabase, and nothing ever closed them — they were left for the garbage
+# collector, which does not promptly close sockets. Over hours, this piled
+# up hundreds of stale ESTABLISHED connections per worker process and slowly
+# exhausted memory until Render's OOM killer restarted the instance.
+#
+# Fix: every client created gets appended to this contextvar-scoped list (if
+# a context is active). A FastAPI middleware (app/main.py) and Celery signal
+# handlers (app/workers/celery_app.py) open a fresh list at the start of each
+# request/task and close every registered client's sessions at the end.
+# This requires ZERO changes to any of the 50+ existing get_supabase() call
+# sites across routers and workers.
+# ---------------------------------------------------------------------------
+
+_active_clients: contextvars.ContextVar[Optional[List[Client]]] = contextvars.ContextVar(
+    "_active_clients", default=None
+)
 
 
 def get_supabase() -> Client:
@@ -64,11 +88,37 @@ def get_supabase() -> Client:
 
     The module-level singleton (_supabase_client) and reset_supabase_client()
     are retained for test compatibility only.
+
+    OOM fix: if called within a tracked context (see _active_clients above),
+    registers this client so its sessions get closed once the request/task
+    ends. If called outside any tracked context (e.g. a script, a test), this
+    is a silent no-op — behaviour is identical to before.
     """
-    return create_client(
+    client = create_client(
         settings.SUPABASE_URL,
         settings.SUPABASE_SERVICE_KEY,
     )
+    clients = _active_clients.get()
+    if clients is not None:
+        clients.append(client)
+    return client
+
+
+def close_client_sessions(client: Client) -> None:
+    """
+    Closes the underlying HTTP session(s) held by a Supabase client.
+    Called by the request/task-scoped cleanup hooks — never raises.
+    """
+    try:
+        client.postgrest.session.close()
+    except Exception:
+        logger.debug("Failed closing postgrest session", exc_info=True)
+    try:
+        auth_http = getattr(client.auth, "_http_client", None)
+        if auth_http is not None:
+            auth_http.close()
+    except Exception:
+        logger.debug("Failed closing auth session", exc_info=True)
 
 
 def reset_supabase_client() -> None:

@@ -235,7 +235,24 @@ app.include_router(project_planner_router.router,      prefix="/api/v1/project-p
 # the connection pool. /health/deep keeps the original DB-ping behaviour,
 # for manual checks or external monitoring tools only.
 # ---------------------------------------------------------------------------
-from app.database import get_supabase
+from app.database import get_supabase, _active_clients, close_client_sessions
+
+
+@app.middleware("http")
+async def close_supabase_clients_middleware(request: Request, call_next):
+    """
+    OOM FIX (2026-07): closes every Supabase client created during this
+    request. get_supabase() creates a fresh client per call by design (see
+    app/database.py); without this, each one's HTTP connection was never
+    closed, piling up until worker memory hit Render's OOM ceiling.
+    """
+    token = _active_clients.set([])
+    try:
+        return await call_next(request)
+    finally:
+        for client in _active_clients.get() or []:
+            close_client_sessions(client)
+        _active_clients.reset(token)
 
 
 @app.get("/health", tags=["health"])

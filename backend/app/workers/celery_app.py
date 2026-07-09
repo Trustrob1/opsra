@@ -48,7 +48,32 @@ from sentry_sdk.integrations.celery import CeleryIntegration
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import task_prerun, task_postrun
 from kombu import Queue
+
+from app.database import _active_clients, close_client_sessions
+
+
+@task_prerun.connect
+def _open_supabase_client_tracking(**kwargs):
+    """
+    OOM FIX (2026-07): opens a fresh tracking list at the start of every
+    Celery task so get_supabase() calls made inside the task get registered
+    for cleanup in task_postrun below.
+    """
+    _active_clients.set([])
+
+
+@task_postrun.connect
+def _close_supabase_client_tracking(**kwargs):
+    """
+    Closes every Supabase client's sessions created during this task.
+    Same leak as the FastAPI request path — get_supabase() is called
+    directly (not via Depends) in every worker file, and none of them
+    close the client afterward.
+    """
+    for client in _active_clients.get() or []:
+        close_client_sessions(client)
 
 # ---------------------------------------------------------------------------
 # Load REDIS_URL from the environment.
