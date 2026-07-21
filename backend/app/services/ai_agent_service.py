@@ -138,9 +138,10 @@ def _fetch_kb_articles(db, org_id: str, inbound_text: str) -> list[dict]:
     """Top 3 KB articles, keyword-matched against inbound_text. S14: [] on failure."""
     try:
         result = (
-            db.table("kb_articles")
+            db.table("knowledge_base_articles")
             .select("title, content")
             .eq("org_id", org_id)
+            .eq("is_published", True)
             .execute()
         )
         articles = result.data or []

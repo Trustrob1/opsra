@@ -340,7 +340,7 @@ def _write_assignment(
             logger.warning("_write_assignment: inapp notification failed: %s", exc)
 
         # WhatsApp notification to rep (if they have a whatsapp_number)
-        rep_wa = (rep_data or {}).get("whatsapp_number", "").strip()
+        rep_wa = ((rep_data or {}).get("whatsapp_number") or "").strip()
         if rep_wa:
             try:
                 from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
