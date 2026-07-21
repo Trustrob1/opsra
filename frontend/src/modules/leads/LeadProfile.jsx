@@ -358,7 +358,7 @@ export default function LeadProfile({ leadId, onBack }) {
 
   useEffect(() => {
     if (!leadId) return
-    getLeadAttentionSummary(leadId).then(res => { if (res?.success) setAttention(res.data ?? {}) }).catch(() => {})
+    getLeadAttentionSummary().then(res => { if (res?.success) setAttention(res.data?.[leadId] ?? {}) }).catch(() => {})
   }, [leadId])
 
   const runAction = useCallback(async (key, fn) => {

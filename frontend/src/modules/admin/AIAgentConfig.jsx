@@ -203,7 +203,7 @@ export default function AIAgentConfig() {
           onChange={e => update({ qualifying_criteria: e.target.value.slice(0, 1000) })}
           rows={3}
           style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }}
-          placeholder="e.g. Has a stated budget, needs delivery within 2 weeks, and confirmed a size/quantity."
+          placeholder="e.g. Has a stated budget, a clear timeline, and confirmed exactly what they need."
         />
       </Field>
 
@@ -216,7 +216,7 @@ export default function AIAgentConfig() {
           onChange={e => update({ disqualification_criteria: e.target.value.slice(0, 1000) })}
           rows={2}
           style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }}
-          placeholder="e.g. Just browsing, no budget, or outside our delivery area."
+          placeholder="e.g. Just browsing, no budget, or outside the area/market we serve."
         />
       </Field>
 
@@ -240,7 +240,7 @@ export default function AIAgentConfig() {
               type="text"
               value={f.answer_key || ''}
               onChange={e => updateField(idx, { answer_key: e.target.value })}
-              placeholder="answer_key (e.g. product_interest)"
+              placeholder="answer_key (e.g. what_they_need)"
               style={{ ...inputStyle, flex: 1 }}
             />
             <select

@@ -63,6 +63,18 @@ ALLOWED_ACTIONS = frozenset({
     "escalate",
 })
 
+# Reasons where the customer-facing message is backend-controlled, never the
+# model's own phrasing — a firm, consistent decline regardless of how the
+# model happened to word it that turn.
+_SECURITY_ESCALATION_REASONS = frozenset({
+    "suspicious_instruction_attempt",
+    "repeated_injection_attempt",
+})
+_SECURITY_DECLINE_MESSAGE = (
+    "I'm not able to share that information or make that change. I'm happy "
+    "to help with anything else I can assist you with!"
+)
+
 _MAX_HISTORY_TURNS = 20
 _MAX_KB_ARTICLES = 3
 _MAX_KB_CHARS = 500
@@ -351,13 +363,13 @@ def build_agent_system_prompt(
         parts.append(
             "Never make medical claims or promise health outcomes (e.g. 'will help you "
             "heal', 'reduces recovery time', 'treats your condition'). You may describe "
-            "physical comfort and support features factually (firmness, pressure relief, "
-            "spinal alignment support) when that information comes from the knowledge "
-            "base or product description above, but for any question involving a medical "
-            "condition, injury, surgery, or recovery, add that the customer should check "
-            "with their doctor for advice specific to their situation. Do not extrapolate "
-            "general comfort information into medical-outcome claims for a specific "
-            "condition it wasn't written for."
+            "factual product features (comfort, materials, performance, capabilities — "
+            "whatever applies to this business) when that information comes from the "
+            "knowledge base or product description above, but for any question involving "
+            "a medical condition, injury, surgery, or recovery, add that the customer "
+            "should check with a qualified professional for advice specific to their "
+            "situation. Do not extrapolate general product information into "
+            "medical-outcome claims for a specific condition it wasn't written for."
         )
 
         parts.append(
@@ -538,7 +550,7 @@ def run_agent_turn(
                     pass
                 return {
                     "action": "escalate",
-                    "message": "Let me get someone to help you with that.",
+                    "message": _SECURITY_DECLINE_MESSAGE,
                     "data": {"reason": "repeated_injection_attempt"},
                 }
 
@@ -784,9 +796,15 @@ def _execute_agent_action(
 
         elif action == "escalate":
             from app.services.whatsapp_service import send_agent_text_message
+            escalation_reason = data.get("reason")
+            outbound_message = (
+                _SECURITY_DECLINE_MESSAGE
+                if escalation_reason in _SECURITY_ESCALATION_REASONS
+                else message
+            )
             send_agent_text_message(
                 db=db, org_id=org_id, phone_number=phone_number,
-                lead_id=lead_id, message=message,
+                lead_id=lead_id, message=outbound_message,
                 phone_id=phone_id, access_token=access_token,
             )
             if lead_id:
@@ -1139,7 +1157,7 @@ def _handle_agent_confirmation(
                 from app.services.whatsapp_service import send_agent_text_message
                 send_agent_text_message(
                     db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
-                    message="Sorry, I couldn't add that to your cart just now — could you tell me again which mattress and size you'd like?",
+                    message="Sorry, I couldn't add that to your cart just now — could you tell me again which item and option you'd like?",
                     phone_id=phone_id, access_token=access_token,
                 )
                 return

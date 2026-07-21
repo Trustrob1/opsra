@@ -966,14 +966,14 @@ def get_lead_attention_summary(db, org_id: str, lead_ids: list | None = None) ->
     except Exception as exc:
         logger.warning("lead_attention: open_tickets failed — %s", exc)
 
-    # ── 4. Pending/in-progress tasks ──────────────────────────────────────────
+    # ── 4. Open/in-progress tasks ──────────────────────────────────────────
     try:
         rows = (
             db.table("tasks")
             .select("source_record_id")
             .eq("org_id", org_id)
             .eq("source_module", "leads")
-            .in_("status", ["pending", "in_progress"])
+            .in_("status", ["open", "in_progress"])
             .not_.is_("source_record_id", "null")
             .execute().data or []
         )
