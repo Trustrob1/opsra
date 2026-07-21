@@ -268,7 +268,14 @@ def call_claude(
 
     try:
         response = _call_with_retry()
-        text = response.content[0].text if response.content else ""
+        # Concatenate every text-type content block, not just the first —
+        # some models return multiple blocks (e.g. a leading non-text block
+        # followed by the actual answer), and content[0] alone can be empty
+        # or the wrong block entirely.
+        text = "".join(
+            block.text for block in (response.content or [])
+            if getattr(block, "type", None) == "text"
+        )
 
         # G2: Track tokens used
         if org_id and hasattr(response, "usage") and response.usage:
