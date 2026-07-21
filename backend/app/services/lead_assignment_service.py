@@ -20,6 +20,8 @@ import logging
 from datetime import datetime, timezone, time as dt_time
 from typing import Optional
 
+from app.services.lead_service import _open_assignment, _close_assignment
+
 logger = logging.getLogger(__name__)
 
 _VALID_DAYS = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
@@ -228,10 +230,38 @@ def _write_assignment(
             rep_data = rep_data[0] if rep_data else {}
         rep_name = (rep_data or {}).get("full_name", "Unknown")
 
+        # ATTRIB-1 fix: capture the prior assignee before overwriting, so the
+        # attribution window (lead_assignments) is opened/closed exactly like
+        # update_lead() does for manual reassignments. Previously this raw
+        # update bypassed attribution tracking entirely.
+        try:
+            _prior_result = (
+                db.table("leads")
+                .select("assigned_to")
+                .eq("id", lead_id)
+                .eq("org_id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            _prior_data = _prior_result.data
+            if isinstance(_prior_data, list):
+                _prior_data = _prior_data[0] if _prior_data else None
+            old_assigned_to = (_prior_data or {}).get("assigned_to")
+        except Exception as exc:
+            logger.warning("_write_assignment: prior assignee lookup failed lead=%s: %s", lead_id, exc)
+            old_assigned_to = None
+
         # Update lead
         db.table("leads").update(
             {"assigned_to": user_id}
         ).eq("id", lead_id).eq("org_id", org_id).execute()
+
+        # ATTRIB-1 fix: open/close attribution windows (same pattern as update_lead())
+        if old_assigned_to and old_assigned_to != user_id:
+            _close_assignment(db, lead_id, old_assigned_to)
+            _open_assignment(db, org_id, lead_id, user_id, assigned_by=None)
+        elif not old_assigned_to:
+            _open_assignment(db, org_id, lead_id, user_id, assigned_by=None)
 
         now_iso = datetime.now(timezone.utc).isoformat()
 

@@ -213,6 +213,7 @@ def call_claude(
     model: str = HAIKU,
     max_tokens: int = 1000,
     system: Optional[str] = None,
+    system_cache: bool = False,
     org_id: Optional[str] = None,
     db=None,
     function_name: Optional[str] = None,
@@ -224,6 +225,12 @@ def call_claude(
     G1: Retries up to 3 times on RateLimitError or 5xx with exponential backoff.
     G2: Increments per-org daily token counter after every successful call.
         Pass org_id to enable tracking. If omitted, tracking is skipped.
+
+    system_cache: when True, wraps `system` as a cache_control-eligible content
+        block (Anthropic prompt caching, ephemeral) instead of a plain string.
+        Additive — default False preserves the exact prior behaviour for every
+        existing caller. Used by ai_agent_service.py (AI-AGENT-1) where the
+        system prompt is large and reused turn-to-turn.
     """
     # G2: Check hard limit before touching the client
     if org_id and not check_and_increment_token_usage(org_id, 0):
@@ -238,7 +245,17 @@ def call_claude(
         "messages": messages,
     }
     if system:
-        kwargs["system"] = system + "\n" + _SECURITY_RULES
+        full_system = system + "\n" + _SECURITY_RULES
+        if system_cache:
+            kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": full_system,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        else:
+            kwargs["system"] = full_system
 
     @retry(
         retry=retry_if_exception(_is_retryable),

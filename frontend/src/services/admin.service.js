@@ -399,6 +399,33 @@ export const updateWASalesMode = (mode) =>
   api.patch('/api/v1/admin/whatsapp-sales-mode', { mode })
     .then(r => r.data.data)
 
+// ── AI-AGENT-1C: AI Agent config + WhatsApp numbers (per-number mode) ───────
+
+export const getAIAgentConfig = () =>
+  api.get('/api/v1/admin/ai-agent-config')
+    .then(r => r.data.data)
+
+export const updateAIAgentConfig = (config) =>
+  // config: any subset of { business_model, conversion_action, qualifying_criteria,
+  //   disqualification_criteria, fields_to_extract, tone_instructions, escalation,
+  //   max_turns_before_escalation }
+  api.patch('/api/v1/admin/ai-agent-config', config)
+    .then(r => r.data.data)
+
+export const getWhatsAppNumbers = () =>
+  api.get('/api/v1/admin/whatsapp-numbers')
+    .then(r => r.data.data)
+
+export const addWhatsAppNumber = (payload) =>
+  // payload: { phone_id, access_token, waba_id, label, wa_sales_mode }
+  api.post('/api/v1/admin/whatsapp-numbers', payload)
+    .then(r => r.data.data)
+
+export const updateWhatsAppNumber = (numberId, payload) =>
+  // payload: any subset of { label, wa_sales_mode }
+  api.patch(`/api/v1/admin/whatsapp-numbers/${numberId}`, payload)
+    .then(r => r.data.data)
+
 // ── AUTH-RESET-1: Admin password reset + email update ────────────────────────
 
 export async function adminResetPassword(userId) {

@@ -567,6 +567,33 @@ def _lookup_org_by_phone_number_id(db, phone_number_id: str) -> Optional[str]:
     return None
 
 
+def _lookup_whatsapp_number(db, phone_number_id: str) -> Optional[dict]:
+    """
+    AI-AGENT-1B: Resolve the whatsapp_numbers row for an inbound phone_number_id.
+    This is the source of truth for wa_sales_mode per number — NOT the
+    organisations table. A number not yet present here (e.g. pre-backfill)
+    simply returns None and the caller falls through to existing behaviour.
+    S14: never raises.
+    """
+    if not phone_number_id:
+        return None
+    try:
+        result = (
+            db.table("whatsapp_numbers")
+            .select("*")
+            .eq("phone_id", phone_number_id.strip())
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        return data or None
+    except Exception as exc:
+        logger.warning("_lookup_whatsapp_number failed phone_number_id=%s: %s", phone_number_id, exc)
+        return None
+
+
 _OPT_OUT_KEYWORDS: frozenset = frozenset({
     "unsubscribe", "optout", "opt out", "opt-out",
     "quit", "remove me",
@@ -912,6 +939,157 @@ def _handle_pre_qualified_lead(
     except Exception as exc:
         logger.warning("_handle_pre_qualified_lead failed lead=%s: %s", lead_id, exc)
 
+def _route_to_ai_agent(
+    db,
+    org_id: str,
+    number_row: dict,
+    sender_phone: str,
+    contact_name: Optional[str],
+    msg_type: str,
+    content: Optional[str],
+    msg_id: str,
+    interactive_payload: Optional[dict],
+    customer_id: Optional[str],
+    lead_id: Optional[str],
+) -> None:
+    """
+    AI-AGENT-1B: entry point for any number running wa_sales_mode='ai_agent'.
+    Owns the complete customer journey — triage, qualification, and (where
+    configured) conversion — including leads that arrive pre-qualified via
+    Lead Ads forms (Locked decision: AI Agent supersedes the dedicated
+    pre-qualified-lead flow on these numbers too).
+    S14: never raises.
+    """
+    from datetime import datetime, timezone, timedelta
+    from app.services.ai_agent_service import (
+        _get_or_create_ai_agent_user,
+        run_agent_turn,
+        _execute_agent_action,
+        _escalate_to_rep,
+        _handle_agent_confirmation,
+    )
+
+    try:
+        # ── Resolve or create the lead ──────────────────────────────────
+        if not lead_id and not customer_id:
+            try:
+                new_lead_payload = LeadCreate(
+                    full_name=(contact_name or "").strip() or sender_phone,
+                    phone=sender_phone, whatsapp=sender_phone,
+                    source=LeadSource.whatsapp_inbound.value,
+                    problem_stated=content if msg_type == "text" else None,
+                )
+                new_lead = lead_service.create_lead(
+                    db=db, org_id=org_id, user_id=None, payload=new_lead_payload,
+                    entry_path="whatsapp",
+                )
+                lead_id = new_lead["id"]
+            except Exception as exc:
+                detail = getattr(exc, "detail", {}) or {}
+                code = detail.get("code", "") if isinstance(detail, dict) else str(detail)
+                if code == ErrorCode.DUPLICATE_DETECTED:
+                    _, _, lead_id, _ = _lookup_record_by_phone(db, sender_phone)
+                else:
+                    logger.error("_route_to_ai_agent: lead creation failed org=%s: %s", org_id, exc)
+                    return
+            if not lead_id:
+                logger.warning(
+                    "_route_to_ai_agent: no lead resolved org=%s phone=%s", org_id, sender_phone
+                )
+                return
+
+            # First time under AI Agent — assign to the AI Agent system user
+            # so assigned_to is a real UUID (not the old "system" string bug)
+            # and ai_owned reflects that the agent currently owns this lead.
+            agent_user_id = _get_or_create_ai_agent_user(db, org_id)
+            try:
+                updates = {"ai_owned": True}
+                if agent_user_id:
+                    updates["assigned_to"] = agent_user_id
+                db.table("leads").update(updates).eq("id", lead_id).eq("org_id", org_id).execute()
+            except Exception as exc:
+                logger.warning(
+                    "_route_to_ai_agent: lead ai_owned/assign failed lead=%s: %s", lead_id, exc
+                )
+
+        # ── Save inbound message so it appears in the conversation thread ──
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id": org_id, "lead_id": lead_id,
+                "direction": "inbound", "message_type": msg_type,
+                "channel": "whatsapp", "content": content,
+                "status": "delivered", "meta_message_id": msg_id or None,
+                "window_open": True, "window_expires_at": _win_exp,
+                "sent_by": None, "created_at": _now_iso(),
+            }).execute()
+        except Exception as exc:
+            logger.warning("_route_to_ai_agent: message save failed org=%s: %s", org_id, exc)
+
+        # ── Get or create the whatsapp_sessions row for this conversation ──
+        session = triage_service.get_or_create_session(db, org_id, sender_phone)
+        if not session:
+            session = triage_service.get_active_session(db, org_id, sender_phone)
+        if not session:
+            logger.warning(
+                "_route_to_ai_agent: no session for org=%s phone=%s", org_id, sender_phone
+            )
+            return
+
+        lead_result = (
+            db.table("leads").select("*").eq("id", lead_id).eq("org_id", org_id)
+            .maybe_single().execute()
+        )
+        lead = lead_result.data
+        if isinstance(lead, list):
+            lead = lead[0] if lead else None
+
+        # ── If already escalated/paused, stay hands-off — a rep owns this now ──
+        if session.get("ai_paused"):
+            logger.info(
+                "[AI-AGENT] session paused (escalated) — not running agent turn org=%s", org_id
+            )
+            return
+
+        # ── Button tap on a pending agent confirmation? Separate branch ──
+        btn_id = (interactive_payload or {}).get("button_reply", {}).get("id", "")
+        if btn_id in ("agent_confirm", "agent_cancel"):
+            _handle_agent_confirmation(
+                db=db, org_id=org_id, number_row=number_row, session=session,
+                lead=lead, confirmed=(btn_id == "agent_confirm"),
+            )
+            return
+
+        # ── Run the agent turn ──────────────────────────────────────────
+        action_dict = run_agent_turn(
+            db=db, org_id=org_id, session=session, lead=lead,
+            inbound_text=content or "",
+        )
+
+        if action_dict is None:
+            # JSON parse / call failure — per Escalation Trigger Catalog
+            from app.services.whatsapp_service import send_agent_text_message
+            send_agent_text_message(
+                db=db, org_id=org_id, phone_number=sender_phone, lead_id=lead_id,
+                message="Our team will be in touch shortly.",
+                phone_id=number_row.get("phone_id"),
+                access_token=number_row.get("access_token"),
+            )
+            _escalate_to_rep(
+                db=db, org_id=org_id, number_row=number_row, session=session,
+                lead=lead, reason="parse_error", task_priority="low",
+            )
+            return
+
+        _execute_agent_action(
+            db=db, org_id=org_id, number_row=number_row, session=session,
+            lead=lead, action_dict=action_dict,
+        )
+
+    except Exception as exc:
+        logger.warning("_route_to_ai_agent failed org=%s: %s", org_id, exc)
+
+
 def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_id: str) -> None:
     from datetime import datetime, timezone, timedelta
 
@@ -978,6 +1156,41 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
     org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
     logger.info("[WH] lookup result: org_id=%s customer_id=%s lead_id=%s", org_id, customer_id, lead_id)
+
+    # ── AI-AGENT-1B: per-number mode check ──────────────────────────────
+    # wa_sales_mode lives on whatsapp_numbers (per-number), NOT organisations
+    # (per-org) — this is the source of truth per the AI-AGENT-1 design.
+    # Numbers still on 'human' or 'bot' mode fall through completely
+    # unchanged below — this block only intercepts numbers explicitly set
+    # to 'ai_agent', and returns early so none of the existing triage/
+    # qualification/bot/pre-qualified-lead code paths run for them.
+    number_row = _lookup_whatsapp_number(db, phone_number_id)
+    if number_row and number_row.get("wa_sales_mode") == "ai_agent":
+        _agent_org_id = org_id or number_row.get("org_id")
+        if _agent_org_id:
+            if _is_org_owner(db, _agent_org_id, sender_phone):
+                logger.info(
+                    "[OQ] owner message org=%s — routing to owner query handler (AI Agent number)",
+                    _agent_org_id,
+                )
+                from app.services.owner_query_service import handle_owner_query
+                handle_owner_query(
+                    db=db, org_id=_agent_org_id,
+                    message_text=(content or ""),
+                    sender_number=sender_phone,
+                )
+                return
+            if msg_type == "text" and content:
+                if _handle_opt_keywords(db, content, sender_phone, _agent_org_id, customer_id, lead_id):
+                    return
+            _route_to_ai_agent(
+                db=db, org_id=_agent_org_id, number_row=number_row,
+                sender_phone=sender_phone, contact_name=contact_name,
+                msg_type=msg_type, content=content, msg_id=msg_id,
+                interactive_payload=interactive_payload,
+                customer_id=customer_id, lead_id=lead_id,
+            )
+            return
  
     # ── OWNER QUERY: check if sender is the org owner (path A — number in leads/customers) ──
     # Unlikely but safe: if owner's number happens to be in leads/customers table,

@@ -359,11 +359,14 @@ def _notify_new_lead(db: Any, org_id: str, lead: dict, lead_id: str) -> None:
         biz_name    = lead.get("business_name") or ""
 
         # Fetch all active users in org with their roles
+        # AI-AGENT-1A: exclude the AI Agent system user — it should never be
+        # notified as if it were a rep or admin.
         users_result = (
             db.table("users")
             .select("id, whatsapp_number, roles(template)")
             .eq("org_id", org_id)
             .eq("is_active", True)
+            .eq("is_system_user", False)
             .execute()
         )
         all_users: list[dict] = users_result.data or []

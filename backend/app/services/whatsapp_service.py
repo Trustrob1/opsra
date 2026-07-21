@@ -2464,6 +2464,7 @@ def send_recommendation_message(
     rationale: str,
     config: dict = None,
     catalog_url: Optional[str] = None,
+    wa_credentials: Optional[tuple] = None,
 ) -> None:
     """
     CATALOG-4: Send AI product recommendation text to the lead.
@@ -2473,10 +2474,20 @@ def send_recommendation_message(
     interactive message (button: "View Details 🔗").
     Falls back to plain text with URL appended if CTA send fails.
 
+    wa_credentials: optional (phone_id, access_token, waba_id) tuple. When
+    provided, used instead of resolving via _get_org_wa_credentials(org_id) —
+    needed for AI-AGENT-1 where an org can have multiple WhatsApp numbers and
+    the message must go out from the specific number the conversation is on,
+    not the org's legacy single number. Additive — existing callers that omit
+    this param behave exactly as before.
+
     S14 — never raises.
     """
     try:
-        phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        if wa_credentials:
+            phone_id, access_token, _ = wa_credentials
+        else:
+            phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
         phone_id = (phone_id or "").strip()
         if not phone_id:
             logger.warning(
@@ -2907,6 +2918,152 @@ def send_post_qual_cta(
             "send_post_qual_cta failed org=%s phone=%s: %s",
             org_id, phone_number, exc,
         )
+
+
+def send_agent_text_message(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_id: Optional[str],
+    message: str,
+    phone_id: Optional[str] = None,
+    access_token: Optional[str] = None,
+) -> None:
+    """
+    AI-AGENT-1B: Send a plain text WhatsApp message from the AI Agent.
+
+    Unlike send_whatsapp_message() (the authenticated rep-sending route
+    function — requires a user_id + Pydantic payload, and RAISES on invalid
+    input/opt-outs), this is S14-safe and accepts the number's credentials
+    directly, since a number in AI Agent mode is resolved via whatsapp_numbers
+    rather than the org's single legacy number.
+
+    If phone_id/access_token are not passed, falls back to the org's legacy
+    credentials via _get_org_wa_credentials() for backwards compatibility.
+
+    S14 — never raises.
+    """
+    try:
+        if not phone_id or not access_token:
+            phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id or not access_token:
+            logger.warning(
+                "send_agent_text_message: no WhatsApp credentials for org %s", org_id
+            )
+            return
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "text",
+            "text": {"body": message},
+        }, token=access_token)
+
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           message,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_agent_text_message: whatsapp_messages insert failed: %s", _db_exc
+            )
+    except Exception as exc:
+        logger.warning(
+            "send_agent_text_message failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
+def send_agent_confirm_buttons(
+    db,
+    org_id: str,
+    phone_number: str,
+    body_text: str,
+    confirm_id: str,
+    cancel_id: str,
+    confirm_label: str,
+    cancel_label: str,
+    lead_id: Optional[str] = None,
+    phone_id: Optional[str] = None,
+    access_token: Optional[str] = None,
+) -> None:
+    """
+    AI-AGENT-1B: Send a Yes/No (or Confirm/Cancel) interactive button message
+    from the AI Agent. Used for request_variant, confirm_add_to_cart, and
+    confirm_checkout actions — the model is never allowed to add to cart or
+    send a checkout link without an explicit customer tap (Locked decision).
+
+    Button taps are handled in a dedicated webhook branch, not this function —
+    add_to_cart()/send_checkout_link() fire only when the customer taps
+    "agent_confirm".
+
+    If phone_id/access_token are not passed, falls back to the org's legacy
+    credentials via _get_org_wa_credentials() for backwards compatibility.
+
+    S14 — never raises.
+    """
+    try:
+        if not phone_id or not access_token:
+            phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id or not access_token:
+            logger.warning(
+                "send_agent_confirm_buttons: no WhatsApp credentials for org %s", org_id
+            )
+            return
+
+        buttons = [
+            {"type": "reply", "reply": {"id": confirm_id, "title": confirm_label[:20]}},
+            {"type": "reply", "reply": {"id": cancel_id, "title": cancel_label[:20]}},
+        ]
+
+        _call_meta_send(phone_id, {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": body_text},
+                "action": {"buttons": buttons},
+            },
+        }, token=access_token)
+
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           body_text,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_agent_confirm_buttons: whatsapp_messages insert failed: %s", _db_exc
+            )
+    except Exception as exc:
+        logger.warning(
+            "send_agent_confirm_buttons failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
 def send_abandoned_cart_message(
     db,
     org_id: str,

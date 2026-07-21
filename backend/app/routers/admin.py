@@ -793,11 +793,15 @@ async def list_users(
     """
     Lists all users in the organisation.
     Admin only — requires manage_users permission.
+    AI-AGENT-1C: excludes is_system_user rows (e.g. the AI Agent system user)
+    — this feeds UserSelect.jsx and the admin Users list; the AI Agent must
+    never appear as an assignable rep or a manageable staff account.
     """
     result = (
         db.table("users")
         .select("*, roles(id, name, template)")
         .eq("org_id", org["org_id"])
+        .eq("is_system_user", False)
         .order("created_at", desc=False)
         .execute()
     )
@@ -3723,6 +3727,305 @@ def update_whatsapp_sales_mode(
     )
  
     return ok(data={"mode": payload.mode}, message="WhatsApp sales mode saved")
+
+
+# ---------------------------------------------------------------------------
+# AI-AGENT-1C — AI Agent config + WhatsApp numbers (per-number mode)
+# ---------------------------------------------------------------------------
+
+class AIAgentConfigUpdate(BaseModel):
+    business_model: Optional[Literal["physical_product", "software", "service", "other"]] = None
+    conversion_action: Optional[Literal[
+        "checkout_link", "book_consultation", "request_quote", "demo_booking", "handoff_only"
+    ]] = None
+    qualifying_criteria: Optional[str] = Field(None, max_length=1000)
+    disqualification_criteria: Optional[str] = Field(None, max_length=1000)
+    fields_to_extract: Optional[List[dict]] = None
+    tone_instructions: Optional[str] = Field(None, max_length=500)
+    escalation: Optional[dict] = None
+    max_turns_before_escalation: Optional[int] = Field(None, ge=5, le=50)
+
+    @field_validator("fields_to_extract")
+    @classmethod
+    def _validate_fields_to_extract(cls, v):
+        if v is None:
+            return v
+        if len(v) > 5:
+            raise ValueError("fields_to_extract supports a maximum of 5 items")
+        for item in v:
+            map_field = item.get("map_to_lead_field")
+            if map_field is not None and map_field not in _VALID_LEAD_FIELDS:
+                raise ValueError(
+                    f"map_to_lead_field must be null or one of: {', '.join(sorted(_VALID_LEAD_FIELDS))}"
+                )
+        return v
+
+
+@router.get("/ai-agent-config")
+def get_ai_agent_config(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """AI-AGENT-1C: Return org.ai_agent_config, or a default empty config."""
+    result = (
+        db.table("organisations")
+        .select("ai_agent_config")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    config = (data or {}).get("ai_agent_config") or {}
+    return ok(data=config)
+
+
+@router.patch("/ai-agent-config")
+def update_ai_agent_config(
+    payload: AIAgentConfigUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    AI-AGENT-1C: Update org.ai_agent_config (merges with existing).
+    RBAC: owner + ops_manager only.
+    Onboarding gate: if any whatsapp_numbers row for this org is already
+    running 'ai_agent' mode, qualifying_criteria must be non-empty after
+    this update.
+    """
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update AI Agent settings."},
+        )
+
+    org_result = (
+        db.table("organisations")
+        .select("ai_agent_config")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    org_data = org_result.data
+    if isinstance(org_data, list):
+        org_data = org_data[0] if org_data else {}
+    current_config = (org_data or {}).get("ai_agent_config") or {}
+
+    updates = payload.model_dump(exclude_none=True)
+    new_config = {**current_config, **updates}
+
+    ai_agent_numbers = (
+        db.table("whatsapp_numbers")
+        .select("id")
+        .eq("org_id", org["org_id"])
+        .eq("wa_sales_mode", "ai_agent")
+        .execute()
+    )
+    if (ai_agent_numbers.data or []) and not (new_config.get("qualifying_criteria") or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "message": "qualifying_criteria is required while a number is running in AI Agent mode.",
+            },
+        )
+
+    db.table("organisations").update({
+        "ai_agent_config": new_config,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="ai_agent_config.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value=new_config,
+    )
+    return ok(data=new_config, message="AI Agent settings saved")
+
+
+def _mask_wa_number_token(row: dict) -> dict:
+    token = row.get("access_token") or ""
+    masked = {k: v for k, v in row.items() if k != "access_token"}
+    masked["access_token_masked"] = ("••••••" + token[-6:]) if len(token) >= 6 else "••••••"
+    return masked
+
+
+@router.get("/whatsapp-numbers")
+def list_whatsapp_numbers(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """AI-AGENT-1C: Return all whatsapp_numbers rows for this org. Token masked."""
+    result = (
+        db.table("whatsapp_numbers")
+        .select("id, phone_id, access_token, waba_id, label, wa_sales_mode, is_primary, created_at")
+        .eq("org_id", org["org_id"])
+        .execute()
+    )
+    rows = result.data or []
+    return ok(data=[_mask_wa_number_token(r) for r in rows])
+
+
+class WhatsAppNumberCreate(BaseModel):
+    phone_id: str = Field(..., min_length=1)
+    access_token: str = Field(..., min_length=1, max_length=500)
+    waba_id: str = Field(..., min_length=1)
+    label: str = Field(..., min_length=1, max_length=100)
+    wa_sales_mode: Literal["human", "bot", "ai_agent"] = "human"
+
+
+@router.post("/whatsapp-numbers", status_code=status.HTTP_201_CREATED)
+def create_whatsapp_number(
+    payload: WhatsAppNumberCreate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    AI-AGENT-1C: Add a new WhatsApp number for this org.
+    RBAC: owner + ops_manager only.
+    Onboarding gate: wa_sales_mode='ai_agent' requires ai_agent_config.qualifying_criteria set.
+    First 'ai_agent' number for the org → creates the AI Agent system user.
+    """
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can add WhatsApp numbers."},
+        )
+
+    if payload.wa_sales_mode == "ai_agent":
+        org_result = (
+            db.table("organisations")
+            .select("ai_agent_config")
+            .eq("id", org["org_id"])
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else {}
+        qualifying = ((org_data or {}).get("ai_agent_config") or {}).get("qualifying_criteria") or ""
+        if not qualifying.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "VALIDATION_ERROR",
+                    "message": "Set qualifying_criteria in AI Agent Settings before activating AI Agent mode on a number.",
+                },
+            )
+
+    new_number = {
+        "org_id": org["org_id"],
+        "phone_id": payload.phone_id,
+        "access_token": payload.access_token,
+        "waba_id": payload.waba_id,
+        "label": payload.label,
+        "wa_sales_mode": payload.wa_sales_mode,
+        "is_primary": False,
+    }
+    result = db.table("whatsapp_numbers").insert(new_number).execute()
+    created = result.data[0] if result.data else new_number
+
+    if payload.wa_sales_mode == "ai_agent":
+        from app.services.ai_agent_service import _get_or_create_ai_agent_user
+        _get_or_create_ai_agent_user(db, org["org_id"])
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="whatsapp_number.created",
+        resource_type="whatsapp_number", resource_id=created.get("id"),
+        new_value={"phone_id": payload.phone_id, "label": payload.label, "wa_sales_mode": payload.wa_sales_mode},
+    )
+    return ok(data=_mask_wa_number_token(created), message="WhatsApp number added")
+
+
+class WhatsAppNumberUpdate(BaseModel):
+    label: Optional[str] = Field(None, max_length=100)
+    wa_sales_mode: Optional[Literal["human", "bot", "ai_agent"]] = None
+
+
+@router.patch("/whatsapp-numbers/{number_id}")
+def update_whatsapp_number(
+    number_id: str,
+    payload: WhatsAppNumberUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    AI-AGENT-1C: Update label and/or wa_sales_mode for a whatsapp_numbers row.
+    Credentials (phone_id, access_token, waba_id) are NOT updatable here —
+    security: require a new row if credentials change.
+    RBAC: owner + ops_manager only.
+    """
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update WhatsApp numbers."},
+        )
+
+    existing_result = (
+        db.table("whatsapp_numbers")
+        .select("id")
+        .eq("id", number_id)
+        .eq("org_id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    existing = existing_result.data
+    if isinstance(existing, list):
+        existing = existing[0] if existing else None
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "WhatsApp number not found"},
+        )
+
+    updates = payload.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "VALIDATION_ERROR", "message": "No fields to update"},
+        )
+
+    if updates.get("wa_sales_mode") == "ai_agent":
+        org_result = (
+            db.table("organisations")
+            .select("ai_agent_config")
+            .eq("id", org["org_id"])
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else {}
+        qualifying = ((org_data or {}).get("ai_agent_config") or {}).get("qualifying_criteria") or ""
+        if not qualifying.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "VALIDATION_ERROR",
+                    "message": "Set qualifying_criteria in AI Agent Settings before activating AI Agent mode on a number.",
+                },
+            )
+
+    db.table("whatsapp_numbers").update(updates).eq("id", number_id).eq("org_id", org["org_id"]).execute()
+
+    if updates.get("wa_sales_mode") == "ai_agent":
+        from app.services.ai_agent_service import _get_or_create_ai_agent_user
+        _get_or_create_ai_agent_user(db, org["org_id"])
+
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="whatsapp_number.updated",
+        resource_type="whatsapp_number", resource_id=number_id,
+        new_value=updates,
+    )
+    return ok(data=updates, message="WhatsApp number updated")
+
 
 # ---------------------------------------------------------------------------
 # GET/PATCH /api/v1/admin/conversion-template

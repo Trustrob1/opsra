@@ -1,23 +1,32 @@
 /**
  * frontend/src/modules/admin/WASalesModeConfig.jsx
- * COMM-2 — WhatsApp Sales Mode selector.
+ * AI-AGENT-1C — WhatsApp Sales Mode selector (per-number).
+ *
+ * FULL REWRITE (Pattern 51): mode is now scoped per whatsapp_numbers row,
+ * not per org. An org can run AI Agent on one number and Bot on another
+ * simultaneously (A/B test). Number inventory (add/label/credentials) is
+ * managed in the sibling WhatsAppNumbers.jsx panel — this component is
+ * about choosing HOW each existing number behaves.
+ *
+ * AI Agent is no longer "Coming Soon" — fully available. Selecting it
+ * renders <AIAgentConfig /> inline below the mode cards.
  *
  * PWA compliance (Section 13.3 / 13.7):
- *   - useIsMobile() used for responsive layout
- *   - All interactive elements ≥ 44px tap target height
- *   - Fixed save bar has paddingBottom offset on mobile to clear bottom tab bar
- *   - Scrollable form — no fixed-height containers
+ *   - useIsMobile() for responsive layout
+ *   - All interactive elements >= 44px tap target height
+ *   - Fixed save bar with safe-area-inset-bottom offset on mobile
  *
- * Pattern 50: admin.service.js calls only (axios + _h()).
+ * Pattern 50: admin.service.js calls only.
  * Pattern 51: full rewrite only — never sed.
  * No react-router-dom — parent handles navigation (Pattern 13).
  * org_id never in payload — derived from JWT server-side (Pattern 12).
  */
 import { useState, useEffect, useCallback } from 'react'
-import { getWASalesMode, updateWASalesMode } from '../../services/admin.service'
+import { getWhatsAppNumbers, updateWhatsAppNumber } from '../../services/admin.service'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import AIAgentConfig from './AIAgentConfig'
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
+// Icons
 
 function IconHuman() {
   return (
@@ -70,7 +79,7 @@ function IconWarning() {
   )
 }
 
-// ─── Mode definitions ─────────────────────────────────────────────────────────
+// Mode definitions
 
 const MODES = [
   {
@@ -90,7 +99,6 @@ const MODES = [
       'Rep responds directly in WhatsApp',
       'Full conversation visible in lead profile',
     ],
-    available: true,
   },
   {
     key: 'bot',
@@ -102,15 +110,12 @@ const MODES = [
     borderActive: '#7c3aed',
     description:
       'Contacts browse products via an interactive WhatsApp menu, add items to cart, ' +
-      'and receive a Shopify checkout link — all without rep involvement. Requires ' +
-      'Shopify connected and Commerce enabled.',
+      'and receive a Shopify checkout link — all without rep involvement.',
     bullets: [
       'Interactive product list sent on sales intent',
       'Button-driven add-to-cart and checkout flow',
       'Rep notified on completed or abandoned cart',
     ],
-    available: true,
-    requiresCommerce: true,
   },
   {
     key: 'ai_agent',
@@ -121,20 +126,18 @@ const MODES = [
     bgLight: '#fffbeb',
     borderActive: '#d97706',
     description:
-      'An AI agent handles natural-language product discovery, variant selection, ' +
-      'and guided cart building — escalating to a rep when it hits its boundary. ' +
-      'Currently in A/B test phase on a second WhatsApp number.',
+      'An AI agent owns the full customer journey — natural-language product discovery, ' +
+      'qualification, and (where configured) conversion — escalating to a rep when it ' +
+      'reaches its boundary.',
     bullets: [
-      'Natural language product discovery & matching',
+      'Natural language qualification & product discovery',
       'KB-grounded answers to product questions',
-      'Automatic escalation when AI reaches its limit',
+      'Automatic escalation when the agent reaches its limit',
     ],
-    available: false,
-    comingSoon: true,
   },
 ]
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// Toast
 
 function Toast({ toast, onDismiss }) {
   useEffect(() => {
@@ -158,185 +161,154 @@ function Toast({ toast, onDismiss }) {
   )
 }
 
-// ─── Mode card ────────────────────────────────────────────────────────────────
+// Mode card
 
 function ModeCard({ mode, selected, onSelect, saving, isMobile }) {
   const isSelected = selected === mode.key
-  const disabled   = !mode.available || saving
 
   return (
     <button
       type="button"
-      disabled={disabled}
-      onClick={() => !disabled && onSelect(mode.key)}
+      disabled={saving}
+      onClick={() => !saving && onSelect(mode.key)}
       style={{
         display: 'block', width: '100%', textAlign: 'left',
         background: isSelected ? mode.bgLight : 'white',
         border: `2px solid ${isSelected ? mode.borderActive : '#e2e8f0'}`,
         borderRadius: 14,
         padding: isMobile ? '14px' : '20px 22px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: mode.comingSoon ? 0.55 : 1,
+        cursor: saving ? 'not-allowed' : 'pointer',
         transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
         boxShadow: isSelected ? `0 0 0 3px ${mode.borderActive}22` : '0 1px 3px rgba(0,0,0,0.06)',
         position: 'relative',
-        minHeight: 44,                          // Section 13.3 — 44px tap target minimum
-        WebkitTapHighlightColor: 'transparent', // clean tap on iOS
+        minHeight: 44,
+        WebkitTapHighlightColor: 'transparent',
       }}
     >
-      {/* Coming soon badge */}
-      {mode.comingSoon && (
-        <span style={{
-          position: 'absolute', top: 12, right: 12,
-          background: '#fef3c7', color: '#92400e',
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
-          textTransform: 'uppercase', padding: '3px 8px', borderRadius: 20,
-          border: '1px solid #fde68a',
-        }}>
-          Coming soon
-        </span>
-      )}
-
-      {/* Header row */}
-      <div style={{
-        display: 'flex', alignItems: 'flex-start',
-        gap: isMobile ? 10 : 14, marginBottom: 10,
-      }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: isMobile ? 10 : 14, marginBottom: 10 }}>
         <div style={{
           width: 42, height: 42, borderRadius: 10, flexShrink: 0,
           background: isSelected ? mode.color : '#f1f5f9',
           color: isSelected ? 'white' : '#64748b',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'background 0.15s, color 0.15s',
         }}>
           {mode.icon}
         </div>
-
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{
-              fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
-              fontSize: isMobile ? 14 : 15,
-              color: isSelected ? mode.color : '#0f172a',
-            }}>
-              {mode.label}
-            </span>
-            {isSelected && (
-              <span style={{
-                background: mode.color, color: 'white',
-                fontSize: 10, fontWeight: 700, letterSpacing: '0.05em',
-                textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20,
-              }}>
-                Active
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-            {mode.tagline}
-          </div>
-        </div>
-      </div>
-
-      {/* Description — collapsed on mobile when not selected to reduce scroll */}
-      {(!isMobile || isSelected) && (
-        <p style={{
-          fontSize: 13, color: '#475569', lineHeight: 1.6,
-          margin: '0 0 10px',
-          paddingLeft: isMobile ? 0 : 52,
-        }}>
-          {mode.description}
-        </p>
-      )}
-
-      {/* Bullets */}
-      <ul style={{
-        margin: 0,
-        padding: `0 0 0 ${isMobile ? 0 : 52}px`,
-        listStyle: 'none',
-      }}>
-        {mode.bullets.map((b, i) => (
-          <li key={i} style={{
-            display: 'flex', alignItems: 'flex-start', gap: 8,
-            fontSize: isMobile ? 12 : 12.5,
-            color: isSelected ? mode.color : '#64748b',
-            marginBottom: i < mode.bullets.length - 1 ? 5 : 0,
+          <p style={{
+            fontFamily: "'Syne', sans-serif", fontWeight: 700,
+            fontSize: 14.5, color: '#0f172a', margin: 0,
           }}>
-            <span style={{
-              width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-              background: isSelected ? mode.color : '#94a3b8',
-              marginTop: 6,
-            }} />
-            {b}
-          </li>
-        ))}
+            {mode.label}
+          </p>
+          <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
+            {mode.tagline}
+          </p>
+        </div>
+        {isSelected && (
+          <div style={{
+            width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+            background: mode.color, color: 'white',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <IconCheck />
+          </div>
+        )}
+      </div>
+      <p style={{ fontSize: 12.5, color: '#475569', margin: '0 0 10px', lineHeight: 1.5 }}>
+        {mode.description}
+      </p>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+        {mode.bullets.map((b, i) => <li key={i}>{b}</li>)}
       </ul>
-
-      {mode.requiresCommerce && !isSelected && (
-        <p style={{
-          fontSize: 11.5, color: '#7c3aed',
-          marginTop: 10,
-          paddingLeft: isMobile ? 0 : 52,
-          fontStyle: 'italic',
-        }}>
-          Requires Shopify connected + Commerce enabled
-        </p>
-      )}
     </button>
   )
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// Number selector tabs
+
+function NumberTabs({ numbers, activeId, onChange, isMobile }) {
+  if (numbers.length <= 1) return null
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+      {numbers.map(n => {
+        const isActive = n.id === activeId
+        return (
+          <button
+            key={n.id}
+            type="button"
+            onClick={() => onChange(n.id)}
+            style={{
+              minHeight: 40, padding: isMobile ? '8px 12px' : '8px 16px',
+              borderRadius: 20, border: `1.5px solid ${isActive ? '#0e6c7e' : '#e2e8f0'}`,
+              background: isActive ? '#0e6c7e' : 'white',
+              color: isActive ? 'white' : '#475569',
+              fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {n.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Main component
 
 export default function WASalesModeConfig() {
-  const isMobile = useIsMobile()   // Section 13.3 — mandatory hook
+  const isMobile = useIsMobile()
+  const [numbers, setNumbers]     = useState([])
+  const [activeId, setActiveId]   = useState(null)
+  const [selected, setSelected]   = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [toast, setToast]         = useState(null)
 
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving]   = useState(false)
-  const [toast, setToast]     = useState(null)
-
-  const [savedMode, setSavedMode] = useState('human')
-  const [selected, setSelected]   = useState('human')
-
-  const isDirty = selected !== savedMode
-
-  const showToast = useCallback((message, type = 'success') => {
-    setToast({ message, type })
+  const load = useCallback(() => {
+    setLoading(true)
+    getWhatsAppNumbers()
+      .then(data => {
+        const list = data || []
+        setNumbers(list)
+        if (list.length > 0) {
+          const primary = list.find(n => n.is_primary) || list[0]
+          setActiveId(primary.id)
+          setSelected(primary.wa_sales_mode)
+        }
+      })
+      .catch(() => showToast('Could not load WhatsApp numbers.', 'error'))
+      .finally(() => setLoading(false))
   }, [])
 
-  // ── Load ───────────────────────────────────────────────────────────────────
+  useEffect(() => { load() }, [load])
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    getWASalesMode()
-      .then(data => {
-        if (cancelled) return
-        const m = data?.mode ?? 'human'
-        setSavedMode(m)
-        setSelected(m)
-      })
-      .catch(() => {
-        if (!cancelled) showToast('Failed to load WhatsApp sales mode', 'error')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [showToast])
+  const activeNumber = numbers.find(n => n.id === activeId)
+  const savedMode    = activeNumber?.wa_sales_mode
+  const isDirty      = selected !== savedMode
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  function showToast(message, type = 'success') {
+    setToast({ message, type })
+  }
+
+  function handleSelectNumber(id) {
+    setActiveId(id)
+    const num = numbers.find(n => n.id === id)
+    setSelected(num?.wa_sales_mode)
+  }
 
   async function handleSave() {
-    if (!isDirty || saving) return
+    if (!activeId) return
     setSaving(true)
     try {
-      await updateWASalesMode(selected)
-      setSavedMode(selected)
+      await updateWhatsAppNumber(activeId, { wa_sales_mode: selected })
+      setNumbers(prev => prev.map(n => n.id === activeId ? { ...n, wa_sales_mode: selected } : n))
       showToast('WhatsApp sales mode saved')
     } catch (err) {
       setSelected(savedMode)
       const detail = err?.response?.data?.detail
-      const msg =
-        (typeof detail === 'object' ? detail?.message : detail)
-        ?? 'Failed to save. Please try again.'
+      const msg = (typeof detail === 'object' ? detail?.message : detail) ?? 'Failed to save. Please try again.'
       showToast(msg, 'error')
     } finally {
       setSaving(false)
@@ -347,8 +319,6 @@ export default function WASalesModeConfig() {
     setSelected(savedMode)
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
@@ -357,19 +327,27 @@ export default function WASalesModeConfig() {
           border: '4px solid #0e6c7e', borderTopColor: 'transparent',
           animation: 'spin 0.7s linear infinite',
         }} />
+        <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
       </div>
     )
   }
 
-  // Bottom padding must clear: save bar height + PWA bottom tab bar on mobile.
-  // Save bar: ~72px desktop, ~130px mobile (stacked buttons).
-  // PWA tab bar: ~56px on mobile — covered by env(safe-area-inset-bottom) in the bar itself.
+  if (numbers.length === 0) {
+    return (
+      <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center', padding: '48px 24px' }}>
+        <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+          No WhatsApp numbers connected yet. Add one in the WhatsApp Numbers panel first,
+          then come back here to choose how it behaves.
+        </p>
+      </div>
+    )
+  }
+
   const contentPaddingBottom = isDirty ? (isMobile ? 148 : 88) : (isMobile ? 24 : 32)
 
   return (
     <div style={{ maxWidth: 680, margin: '0 auto', paddingBottom: contentPaddingBottom }}>
 
-      {/* Toast — positioned above save bar */}
       {toast && (
         <div style={{
           position: 'fixed',
@@ -381,12 +359,7 @@ export default function WASalesModeConfig() {
         </div>
       )}
 
-      {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'center',
-        gap: isMobile ? 10 : 14,
-        marginBottom: isMobile ? 16 : 24,
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 14, marginBottom: isMobile ? 12 : 16 }}>
         <div style={{
           width: 40, height: 40, borderRadius: 10, flexShrink: 0,
           background: '#f0f9fa', color: '#0e6c7e',
@@ -399,19 +372,17 @@ export default function WASalesModeConfig() {
           </svg>
         </div>
         <div>
-          <h2 style={{
-            fontFamily: "'Syne', sans-serif", fontWeight: 700,
-            fontSize: isMobile ? 15 : 17, color: '#0f172a', margin: 0,
-          }}>
+          <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: isMobile ? 15 : 17, color: '#0f172a', margin: 0 }}>
             WhatsApp Sales Mode
           </h2>
           <p style={{ fontSize: isMobile ? 12 : 13, color: '#64748b', margin: '3px 0 0' }}>
-            Choose how sales conversations are handled when a contact expresses purchase intent
+            Choose how each WhatsApp number handles sales conversations
           </p>
         </div>
       </div>
 
-      {/* Mode cards */}
+      <NumberTabs numbers={numbers} activeId={activeId} onChange={handleSelectNumber} isMobile={isMobile} />
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         {MODES.map(mode => (
           <ModeCard
@@ -425,12 +396,13 @@ export default function WASalesModeConfig() {
         ))}
       </div>
 
-      {/* Behaviour summary */}
+      {selected === 'ai_agent' && <AIAgentConfig />}
+
       {!isDirty && (
         <div style={{
           background: '#f8fafc', border: '1px solid #e2e8f0',
           borderRadius: 12, padding: isMobile ? '14px' : '16px 20px',
-          fontSize: 13, color: '#475569', lineHeight: 1.6,
+          fontSize: 13, color: '#475569', lineHeight: 1.6, marginTop: 20,
         }}>
           <span style={{ fontWeight: 600, color: '#0f172a' }}>Current behaviour: </span>
           {savedMode === 'human' &&
@@ -438,26 +410,20 @@ export default function WASalesModeConfig() {
           {savedMode === 'bot' &&
             'When purchase intent is detected, the bot sends an interactive product list. The contact adds to cart and receives a Shopify checkout link automatically.'}
           {savedMode === 'ai_agent' &&
-            'The AI agent handles the sales conversation end-to-end — discovering needs, matching products, and building the cart — escalating to a rep when it reaches its limit.'}
+            'The AI agent handles the sales conversation end-to-end — discovering needs, qualifying, and converting where configured — escalating to a rep when it reaches its limit.'}
         </div>
       )}
 
-      {/* ── Save bar ─────────────────────────────────────────────────────── */}
       {isDirty && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40,
           display: 'flex',
-          // Mobile: stack buttons vertically so each is full-width ≥ 44px
           flexDirection: isMobile ? 'column' : 'row',
           alignItems: isMobile ? 'stretch' : 'center',
           justifyContent: isMobile ? 'flex-end' : 'space-between',
           gap: isMobile ? 8 : 16,
           padding: isMobile ? '12px 16px' : '14px 24px',
-          // env(safe-area-inset-bottom) clears the PWA home indicator on iOS
-          // and the bottom tab bar on Android in standalone mode (Section 13.3)
-          paddingBottom: isMobile
-            ? 'calc(12px + env(safe-area-inset-bottom, 56px))'
-            : '14px',
+          paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom, 56px))' : '14px',
           background: 'white',
           borderTop: '1px solid #e2e8f0',
           boxShadow: '0 -4px 20px rgba(0,0,0,0.07)',
@@ -467,16 +433,9 @@ export default function WASalesModeConfig() {
               You have unsaved changes
             </p>
           )}
-          <div style={{
-            display: 'flex',
-            flexDirection: isMobile ? 'column' : 'row',
-            gap: isMobile ? 8 : 10,
-          }}>
-            {/* Discard — 44px min height (Section 13.3) */}
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 8 : 10 }}>
             <button
-              type="button"
-              onClick={handleDiscard}
-              disabled={saving}
+              type="button" onClick={handleDiscard} disabled={saving}
               style={{
                 minHeight: 44, padding: isMobile ? '0 18px' : '9px 18px',
                 borderRadius: 8, border: 'none',
@@ -488,12 +447,8 @@ export default function WASalesModeConfig() {
             >
               Discard
             </button>
-
-            {/* Save — 44px min height (Section 13.3) */}
             <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
+              type="button" onClick={handleSave} disabled={saving}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 minHeight: 44, padding: isMobile ? '0 20px' : '9px 20px',
