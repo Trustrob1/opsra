@@ -2985,6 +2985,96 @@ def send_agent_text_message(
         )
 
 
+def send_checkout_cta_button(
+    db,
+    org_id: str,
+    phone_number: str,
+    lead_id: Optional[str],
+    checkout_url: str,
+    phone_id: Optional[str] = None,
+    access_token: Optional[str] = None,
+) -> None:
+    """
+    AI-AGENT-1D: Send the checkout link as a proper tappable CTA URL button
+    ("Complete Checkout 🛒") rather than a plain link in the message body —
+    used when the org's ai_agent_config.conversion_action = 'checkout_link'.
+    Falls back to plain text if the CTA URL message type fails.
+
+    If phone_id/access_token are not passed, falls back to the org's legacy
+    credentials via _get_org_wa_credentials() for backwards compatibility.
+
+    S14 — never raises.
+    """
+    try:
+        if not phone_id or not access_token:
+            phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+        phone_id = (phone_id or "").strip()
+        if not phone_id or not access_token:
+            logger.warning(
+                "send_checkout_cta_button: no WhatsApp credentials for org %s", org_id
+            )
+            return
+
+        body_text = "Your order is ready! Tap below to complete checkout securely. 🛒"
+        sent_as_cta = False
+        try:
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "cta_url",
+                    "body": {"text": body_text},
+                    "action": {
+                        "name": "cta_url",
+                        "parameters": {
+                            "display_text": "Complete Checkout 🛒",
+                            "url": checkout_url,
+                        },
+                    },
+                },
+            }, token=access_token)
+            sent_as_cta = True
+        except Exception as _cta_exc:
+            logger.warning(
+                "send_checkout_cta_button: CTA URL button failed (%s) — falling back to plain text",
+                _cta_exc,
+            )
+
+        if not sent_as_cta:
+            _call_meta_send(phone_id, {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {"body": f"{body_text}\n{checkout_url}"},
+            }, token=access_token)
+
+        try:
+            _win_exp = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            db.table("whatsapp_messages").insert({
+                "org_id":            org_id,
+                "lead_id":           lead_id,
+                "direction":         "outbound",
+                "message_type":      "text",
+                "content":           body_text,
+                "media_url":         checkout_url,
+                "status":            "sent",
+                "window_open":       True,
+                "window_expires_at": _win_exp,
+                "sent_by":           None,
+                "created_at":        _now_iso(),
+            }).execute()
+        except Exception as _db_exc:
+            logger.warning(
+                "send_checkout_cta_button: whatsapp_messages insert failed: %s", _db_exc
+            )
+    except Exception as exc:
+        logger.warning(
+            "send_checkout_cta_button failed org=%s phone=%s: %s",
+            org_id, phone_number, exc,
+        )
+
+
 def send_agent_confirm_buttons(
     db,
     org_id: str,

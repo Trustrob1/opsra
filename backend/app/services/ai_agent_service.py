@@ -1066,25 +1066,120 @@ def _handle_agent_confirmation(
 
         elif pending_action == "confirm_checkout":
             try:
-                from app.services.commerce_service import (
-                    get_or_create_commerce_session,
-                    generate_shopify_checkout,
-                )
-                from app.services.whatsapp_service import send_checkout_link
-                commerce_session = get_or_create_commerce_session(
-                    db, org_id, phone_number, lead_id=lead_id,
-                )
-                checkout_url = generate_shopify_checkout(db, org_id, commerce_session)
                 org_result = (
                     db.table("organisations")
-                    .select("commerce_config")
+                    .select("ai_agent_config, shopify_connected")
                     .eq("id", org_id).maybe_single().execute()
                 )
                 org_data = org_result.data
                 if isinstance(org_data, list):
-                    org_data = org_data[0] if org_data else None
-                commerce_config = (org_data or {}).get("commerce_config") or {}
-                send_checkout_link(db, org_id, phone_number, checkout_url, commerce_config)
+                    org_data = org_data[0] if org_data else {}
+                conversion_action = ((org_data or {}).get("ai_agent_config") or {}).get("conversion_action")
+                shopify_connected = bool((org_data or {}).get("shopify_connected"))
+
+                from app.services.whatsapp_service import send_agent_text_message, send_checkout_cta_button
+
+                if conversion_action == "checkout_link" and shopify_connected:
+                    # Shopify credentials are on file: generate a real
+                    # checkout link and send it as a tappable CTA button.
+                    from app.services.commerce_service import (
+                        get_or_create_commerce_session,
+                        generate_shopify_checkout,
+                    )
+                    commerce_session = get_or_create_commerce_session(
+                        db, org_id, phone_number, lead_id=lead_id,
+                    )
+                    checkout_url = generate_shopify_checkout(db, org_id, commerce_session)
+                    send_checkout_cta_button(
+                        db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                        checkout_url=checkout_url,
+                        phone_id=phone_id, access_token=access_token,
+                    )
+
+                elif conversion_action == "checkout_link" and not shopify_connected and lead_id:
+                    # No Shopify — check if Paystack storefront is connected instead.
+                    integrations_result = (
+                        db.table("integrations")
+                        .select("id")
+                        .eq("org_id", org_id)
+                        .eq("provider", "paystack_storefront")
+                        .eq("status", "connected")
+                        .maybe_single()
+                        .execute()
+                    )
+                    integrations_data = integrations_result.data
+                    if isinstance(integrations_data, list):
+                        integrations_data = integrations_data[0] if integrations_data else None
+
+                    if integrations_data:
+                        from app.services.commerce_service import get_or_create_commerce_session
+                        from app.services.paystack_storefront_service import (
+                            generate_payment_link, PaystackLinkError,
+                        )
+
+                        commerce_session = get_or_create_commerce_session(
+                            db, org_id, phone_number, lead_id=lead_id,
+                        )
+                        cart_total = float(commerce_session.get("subtotal") or 0)
+
+                        if cart_total <= 0:
+                            send_agent_text_message(
+                                db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                                message="I couldn't find any items in your cart to check out — "
+                                        "could you tell me again what you'd like to order?",
+                                phone_id=phone_id, access_token=access_token,
+                            )
+                        else:
+                            try:
+                                link_result = generate_payment_link(
+                                    db=db, org_id=org_id, lead_id=lead_id,
+                                    amount=cart_total, payment_type="full", currency="NGN",
+                                )
+                                send_checkout_cta_button(
+                                    db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                                    checkout_url=link_result["checkout_url"],
+                                    phone_id=phone_id, access_token=access_token,
+                                )
+                            except PaystackLinkError as exc:
+                                logger.warning(
+                                    "_handle_agent_confirmation: Paystack link failed org=%s: %s",
+                                    org_id, exc,
+                                )
+                                send_agent_text_message(
+                                    db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                                    message="Sorry, I couldn't generate a payment link just now — "
+                                            "let me get our sales team to help you complete this order.",
+                                    phone_id=phone_id, access_token=access_token,
+                                )
+                                _escalate_to_rep(
+                                    db=db, org_id=org_id, number_row=number_row, session=session,
+                                    lead=lead, reason="payment_link_generation_failed",
+                                    task_priority="high",
+                                )
+                    else:
+                        # Neither Shopify nor Paystack storefront connected
+                        send_agent_text_message(
+                            db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                            message="Great! Let me connect you with our sales team to complete your order.",
+                            phone_id=phone_id, access_token=access_token,
+                        )
+                        _escalate_to_rep(
+                            db=db, org_id=org_id, number_row=number_row, session=session,
+                            lead=lead, reason="no_checkout_method_configured",
+                            task_priority="high",
+                        )
+                else:
+                    # conversion_action is not checkout_link (handoff_only, etc.)
+                    send_agent_text_message(
+                        db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                        message="Great! Let me connect you with our sales team to complete your order.",
+                        phone_id=phone_id, access_token=access_token,
+                    )
+                    _escalate_to_rep(
+                        db=db, org_id=org_id, number_row=number_row, session=session,
+                        lead=lead, reason="customer_ready_to_checkout_handoff",
+                        task_priority="high",
+                    )
             except Exception as exc:
                 logger.warning(
                     "_handle_agent_confirmation: checkout failed org=%s: %s", org_id, exc
