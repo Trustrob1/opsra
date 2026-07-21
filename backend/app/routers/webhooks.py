@@ -1031,6 +1031,22 @@ def _route_to_ai_agent(
         if not session:
             session = triage_service.get_active_session(db, org_id, sender_phone)
         if not session:
+            # Same pattern already proven in the hybrid-mode path above: a
+            # stale row can block fresh creation at the DB level even when
+            # get_active_session's own filters don't return it. Clear it and
+            # retry once before giving up.
+            logger.info(
+                "_route_to_ai_agent: no usable session found — clearing any "
+                "stale row and retrying org=%s phone=%s", org_id, sender_phone,
+            )
+            try:
+                db.table("whatsapp_sessions").delete().eq("org_id", org_id).eq("phone_number", sender_phone).execute()
+                session = triage_service.create_session(db=db, org_id=org_id, phone_number=sender_phone)
+            except Exception as exc:
+                logger.warning(
+                    "_route_to_ai_agent: could not clear stale session for %s: %s", sender_phone, exc,
+                )
+        if not session:
             logger.warning(
                 "_route_to_ai_agent: no session for org=%s phone=%s", org_id, sender_phone
             )

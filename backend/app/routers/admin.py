@@ -2622,6 +2622,14 @@ async def connect_whatsapp(
         "updated_at":            datetime.utcnow().isoformat(),
     }).eq("id", org["org_id"]).execute()
 
+    # AI-AGENT-1D: keep whatsapp_numbers in sync so every org — not just
+    # ones that existed at the 1A migration backfill — is eligible for
+    # AI Agent mode on their number without a separate manual step.
+    _sync_primary_whatsapp_number(
+        db, org["org_id"],
+        payload.whatsapp_phone_id, payload.whatsapp_access_token, payload.whatsapp_waba_id,
+    )
+
     write_audit_log(
         db=db,
         org_id=org["org_id"],
@@ -3853,6 +3861,107 @@ def _mask_wa_number_token(row: dict) -> dict:
     return masked
 
 
+def _sync_primary_whatsapp_number(db, org_id: str, phone_id: str, access_token: str, waba_id: str) -> None:
+    """
+    AI-AGENT-1D: Keep the org's "primary" whatsapp_numbers row in sync with
+    the legacy /whatsapp/connect flow. Update-if-exists rather than always
+    inserting, so re-connecting with new credentials never resets an
+    already-configured wa_sales_mode (e.g. ai_agent) back to a fresh row.
+    S14 pattern: failure here must never break the org-level connect itself.
+    """
+    try:
+        existing_result = (
+            db.table("whatsapp_numbers")
+            .select("id")
+            .eq("org_id", org_id)
+            .eq("is_primary", True)
+            .maybe_single()
+            .execute()
+        )
+        existing = existing_result.data
+        if isinstance(existing, list):
+            existing = existing[0] if existing else None
+
+        if existing:
+            db.table("whatsapp_numbers").update({
+                "phone_id": phone_id,
+                "access_token": access_token,
+                "waba_id": waba_id,
+            }).eq("id", existing["id"]).execute()
+        else:
+            org_result = (
+                db.table("organisations")
+                .select("whatsapp_sales_mode")
+                .eq("id", org_id)
+                .maybe_single()
+                .execute()
+            )
+            org_data = org_result.data
+            if isinstance(org_data, list):
+                org_data = org_data[0] if org_data else {}
+            default_mode = (org_data or {}).get("whatsapp_sales_mode") or "human"
+
+            db.table("whatsapp_numbers").insert({
+                "org_id": org_id,
+                "phone_id": phone_id,
+                "access_token": access_token,
+                "waba_id": waba_id,
+                "label": "Primary",
+                "wa_sales_mode": default_mode,
+                "is_primary": True,
+            }).execute()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "_sync_primary_whatsapp_number failed org=%s: %s", org_id, exc
+        )
+
+
+def _empty_catalog_warning(db, org_id: str) -> Optional[str]:
+    """
+    Non-blocking check: warns (does not prevent) activating AI Agent mode
+    when the org's business model implies checkout links but no products
+    are synced yet. The agent will run fine without a catalog for
+    conversion_action != 'checkout_link' (e.g. service/software businesses),
+    so this is advisory only, never a 422.
+    """
+    try:
+        org_result = (
+            db.table("organisations")
+            .select("ai_agent_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        org_data = org_result.data
+        if isinstance(org_data, list):
+            org_data = org_data[0] if org_data else {}
+        ai_cfg = (org_data or {}).get("ai_agent_config") or {}
+
+        if ai_cfg.get("business_model") != "physical_product":
+            return None
+        if ai_cfg.get("conversion_action") != "checkout_link":
+            return None
+
+        products_result = (
+            db.table("products")
+            .select("id")
+            .eq("org_id", org_id)
+            .limit(1)
+            .execute()
+        )
+        if not (products_result.data or []):
+            return (
+                "AI Agent is set to recommend products and send checkout links, "
+                "but no products are synced yet. The agent will run without catalog "
+                "knowledge until products are added — sync your catalog to enable "
+                "product recommendations."
+            )
+        return None
+    except Exception:
+        return None
+
+
 @router.get("/whatsapp-numbers")
 def list_whatsapp_numbers(
     org=Depends(get_current_org),
@@ -3929,9 +4038,11 @@ def create_whatsapp_number(
     result = db.table("whatsapp_numbers").insert(new_number).execute()
     created = result.data[0] if result.data else new_number
 
+    warning = None
     if payload.wa_sales_mode == "ai_agent":
         from app.services.ai_agent_service import _get_or_create_ai_agent_user
         _get_or_create_ai_agent_user(db, org["org_id"])
+        warning = _empty_catalog_warning(db, org["org_id"])
 
     write_audit_log(
         db=db, org_id=org["org_id"], user_id=org["id"],
@@ -3939,7 +4050,10 @@ def create_whatsapp_number(
         resource_type="whatsapp_number", resource_id=created.get("id"),
         new_value={"phone_id": payload.phone_id, "label": payload.label, "wa_sales_mode": payload.wa_sales_mode},
     )
-    return ok(data=_mask_wa_number_token(created), message="WhatsApp number added")
+    response_data = _mask_wa_number_token(created)
+    if warning:
+        response_data["warning"] = warning
+    return ok(data=response_data, message="WhatsApp number added")
 
 
 class WhatsAppNumberUpdate(BaseModel):
@@ -4014,9 +4128,11 @@ def update_whatsapp_number(
 
     db.table("whatsapp_numbers").update(updates).eq("id", number_id).eq("org_id", org["org_id"]).execute()
 
+    warning = None
     if updates.get("wa_sales_mode") == "ai_agent":
         from app.services.ai_agent_service import _get_or_create_ai_agent_user
         _get_or_create_ai_agent_user(db, org["org_id"])
+        warning = _empty_catalog_warning(db, org["org_id"])
 
     write_audit_log(
         db=db, org_id=org["org_id"], user_id=org["id"],
@@ -4024,7 +4140,10 @@ def update_whatsapp_number(
         resource_type="whatsapp_number", resource_id=number_id,
         new_value=updates,
     )
-    return ok(data=updates, message="WhatsApp number updated")
+    response_data = dict(updates)
+    if warning:
+        response_data["warning"] = warning
+    return ok(data=response_data, message="WhatsApp number updated")
 
 
 # ---------------------------------------------------------------------------
