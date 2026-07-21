@@ -167,7 +167,7 @@ def _fetch_catalog_products(db, org_id: str, catalog_config: dict, inbound_text:
     try:
         result = (
             db.table("products")
-            .select("id, title, price, variants")
+            .select("id, title, price, variants, catalog_images")
             .eq("org_id", org_id)
             .execute()
         )
@@ -177,10 +177,23 @@ def _fetch_catalog_products(db, org_id: str, catalog_config: dict, inbound_text:
         words = {w.lower() for w in re.findall(r"\w+", inbound_text or "") if len(w) > 3}
         trimmed = []
         for p in products:
+            raw_variants = p.get("variants") or []
+            trimmed_variants = [
+                {
+                    "id": v.get("id") or v.get("variant_id"),
+                    "label": v.get("title") or v.get("size") or v.get("name") or "Standard",
+                    "price": v.get("price", p.get("price")),
+                }
+                for v in raw_variants
+                if (v.get("id") or v.get("variant_id"))
+            ]
+            images = p.get("catalog_images") or []
             trimmed.append({
                 "id": p.get("id"),
                 "title": p.get("title"),
                 "price": p.get("price"),
+                "variants": trimmed_variants,
+                "image_url": images[0] if images else None,
             })
         if not words:
             return trimmed[:_MAX_CATALOG_PRODUCTS]
@@ -226,6 +239,7 @@ def build_agent_system_prompt(
     kb_articles: list[dict],
     cart: Optional[dict],
     conversation_history: list[dict],
+    customer_name: Optional[str] = None,
 ) -> str:
     """
     Assembles the full agent system prompt from org config. No hardcoded
@@ -239,6 +253,20 @@ def build_agent_system_prompt(
         parts: list[str] = [
             f"You are a sales agent for {org_name}, a {business_model} business."
         ]
+
+        safe_customer_name = sanitise_for_prompt(customer_name or "", max_length=100)
+        if safe_customer_name:
+            parts.append(
+                f"The customer's name is: {safe_customer_name}. You may address them "
+                "by this name naturally, but never invent, guess, or use a different "
+                "name — if this field were empty, use no name at all rather than "
+                "making one up."
+            )
+        else:
+            parts.append(
+                "The customer's name is not known. Do not invent, guess, or assume "
+                "a name — use a neutral greeting instead (e.g. 'Hi there')."
+            )
 
         qualifying = sanitise_for_prompt(
             ai_agent_config.get("qualifying_criteria") or "", max_length=1000
@@ -276,10 +304,21 @@ def build_agent_system_prompt(
         # Catalog data supplied by caller as already-trimmed dicts (title/price only)
         catalog = catalog_config.get("_resolved_products") if catalog_config else None
         if catalog:
-            cat_lines = [
-                f"- {p.get('title')} (id: {p.get('id')}) — {p.get('price')}"
-                for p in catalog[:_MAX_CATALOG_PRODUCTS]
-            ]
+            cat_lines = []
+            for p in catalog[:_MAX_CATALOG_PRODUCTS]:
+                line = f"- {p.get('title')} (product_id: {p.get('id')}) — {p.get('price')}"
+                variants = p.get("variants") or []
+                if variants:
+                    variant_bits = "; ".join(
+                        f"{v.get('label')} (variant_id: {v.get('id')}) — {v.get('price')}"
+                        for v in variants
+                    )
+                    line += f"\n  Variants: {variant_bits}"
+                cat_lines.append(line)
+            cat_lines.append(
+                "IMPORTANT: when using confirm_add_to_cart or request_variant, always use "
+                "the exact product_id and variant_id shown above — never invent or guess an id."
+            )
             parts.append("<catalog>\n" + "\n".join(cat_lines) + "\n</catalog>")
 
         if cart:
@@ -298,6 +337,10 @@ def build_agent_system_prompt(
             )
 
         parts.append(
+            "If the customer asks to see a product, asks for an image or photo, or "
+            "asks for more detail on a specific item, use the recommend_product action "
+            "(never plain respond) — the backend will attach the product's photo "
+            "automatically when one exists.\n\n"
             "Respond ONLY with a JSON object matching this exact schema: "
             '{ "action": "...", "message": "...", "data": {} }\n'
             "Valid action values: respond | recommend_product | request_variant | "
@@ -410,6 +453,7 @@ def run_agent_turn(
             kb_articles=kb_articles,
             cart=cart,
             conversation_history=conversation_history,
+            customer_name=(lead or {}).get("full_name"),
         )
 
         raw_response = call_claude(
@@ -496,14 +540,14 @@ def _execute_agent_action(
             )
 
         elif action == "recommend_product":
-            from app.services.whatsapp_service import send_recommendation_message
+            from app.services.whatsapp_service import send_recommendation_message, send_outbound_image_url
             product_id = data.get("product_id")
             product = None
             if product_id:
                 try:
                     p_result = (
                         db.table("products")
-                        .select("id, title, price")
+                        .select("id, title, price, catalog_images")
                         .eq("id", product_id)
                         .eq("org_id", org_id)
                         .maybe_single()
@@ -515,6 +559,12 @@ def _execute_agent_action(
                 except Exception as exc:
                     logger.warning("_execute_agent_action: product lookup failed: %s", exc)
             if product:
+                images = product.get("catalog_images") or []
+                if images:
+                    send_outbound_image_url(
+                        db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                        image_url=images[0],
+                    )
                 send_recommendation_message(
                     db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
                     title=product.get("title", ""), price=product.get("price", 0),
@@ -975,6 +1025,12 @@ def _handle_agent_confirmation(
             if not product_id or not variant_id:
                 logger.warning(
                     "_handle_agent_confirmation: missing product/variant org=%s", org_id
+                )
+                from app.services.whatsapp_service import send_agent_text_message
+                send_agent_text_message(
+                    db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                    message="Sorry, I couldn't add that to your cart just now — could you tell me again which mattress and size you'd like?",
+                    phone_id=phone_id, access_token=access_token,
                 )
                 return
             try:
