@@ -1061,6 +1061,7 @@ def _execute_agent_action(
                     title=product.get("title", ""), price=display_price,
                     rationale=message,
                     wa_credentials=(phone_id, access_token, None),
+                    intro_override="",
                 )
             else:
                 from app.services.whatsapp_service import send_agent_text_message

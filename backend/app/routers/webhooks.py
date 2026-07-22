@@ -1026,6 +1026,17 @@ def _route_to_ai_agent(
         except Exception as exc:
             logger.warning("_route_to_ai_agent: message save failed org=%s: %s", org_id, exc)
 
+        # Show the customer a live "typing..." signal before the (multi-second)
+        # Claude call runs — reuses the exact same mechanism Bot mode already
+        # uses in send_qualification_question(), not a new function.
+        try:
+            from app.services.whatsapp_service import _fire_typing_indicator, _get_last_inbound_msg_id
+            _last_msg_id = _get_last_inbound_msg_id(db, org_id, sender_phone)
+            if _last_msg_id:
+                _fire_typing_indicator(number_row.get("phone_id"), _last_msg_id, number_row.get("access_token"))
+        except Exception as exc:
+            logger.warning("_route_to_ai_agent: typing indicator failed: %s", exc)
+
         # ── Get or create the whatsapp_sessions row for this conversation ──
         session = triage_service.get_or_create_session(db, org_id, sender_phone)
         if not session:

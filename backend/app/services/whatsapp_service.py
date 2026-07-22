@@ -2465,6 +2465,7 @@ def send_recommendation_message(
     config: dict = None,
     catalog_url: Optional[str] = None,
     wa_credentials: Optional[tuple] = None,
+    intro_override: Optional[str] = None,
 ) -> None:
     """
     CATALOG-4: Send AI product recommendation text to the lead.
@@ -2495,10 +2496,13 @@ def send_recommendation_message(
             )
             return
 
-        intro = (
-            (config or {}).get("recommendation_intro")
-            or "Based on what you've shared with us, we recommend:"
-        )
+        if intro_override is not None:
+            intro = intro_override
+        else:
+            intro = (
+                (config or {}).get("recommendation_intro")
+                or "Based on what you've shared with us, we recommend:"
+            )
         price_formatted = f"₦{price:,.0f}" if price else ""
         body = (
             f"{intro}\n\n"
