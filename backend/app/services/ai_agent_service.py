@@ -1038,7 +1038,16 @@ def _execute_agent_action(
                     for v in (product.get("variants") or []):
                         v_id = v.get("id") or v.get("variant_id")
                         if v_id is not None and str(v_id).strip() == variant_id_str:
-                            display_price = v.get("price", display_price)
+                            raw_variant_price = v.get("price")
+                            if raw_variant_price is not None:
+                                try:
+                                    display_price = float(raw_variant_price)
+                                except (TypeError, ValueError):
+                                    logger.warning(
+                                        "_execute_agent_action: variant price not numeric "
+                                        "(%r) for product=%s variant=%s — using base price",
+                                        raw_variant_price, product_id, variant_id_str,
+                                    )
                             break
 
                 images = product.get("catalog_images") or []
