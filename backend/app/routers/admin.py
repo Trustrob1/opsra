@@ -50,6 +50,8 @@ class QualificationFlowQuestion(BaseModel):
     map_to_lead_field: Optional[str] = None
     map_to_catalog_tag: Optional[str] = None  # catalog tag dimension key for wizard filtering
     options: Optional[List[QualificationFlowOption]] = None
+    required: bool = True  # AI-AGENT: most qualification questions should be treated as
+    # must-ask before a confident recommendation; explicitly set False for skippable ones.
  
     @field_validator("text")
     @classmethod
@@ -690,6 +692,7 @@ async def update_qualification_flow(
                 "answer_key": q.answer_key,
                 "map_to_lead_field": q.map_to_lead_field,
                 "map_to_catalog_tag": q.map_to_catalog_tag or None,
+                "required": q.required,
                 "options": [
                     {
                         "id": opt.id,

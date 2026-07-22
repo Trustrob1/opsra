@@ -44,6 +44,7 @@ const EMPTY_QUESTION = () => ({
   map_to_lead_field: '',
   map_to_catalog_tag: '',
   options: [],
+  required: true,
 })
 
 const MAX_QUESTIONS = 5
@@ -107,6 +108,7 @@ export default function QualificationFlow() {
             ...q,
             map_to_lead_field: q.map_to_lead_field || '',
             map_to_catalog_tag: q.map_to_catalog_tag || '',
+            required: q.required !== false,
             options: (q.options || []).map(opt => ({
               ...opt,
               tag_value: opt.tag_value || '',
@@ -194,6 +196,7 @@ export default function QualificationFlow() {
           answer_key: q.answer_key,
           map_to_lead_field: q.map_to_lead_field || null,
           map_to_catalog_tag: q.map_to_catalog_tag?.trim() || null,
+          required: q.required !== false,
           options: q.type === 'free_text' ? null : (q.options || []).map(opt => ({
             id: opt.id,
             label: opt.label,
@@ -581,6 +584,18 @@ export default function QualificationFlow() {
                     </span>
                     <span style={S.pill}>
                       {QUESTION_TYPES.find(t => t.value === q.type)?.label || q.type}
+                    </span>
+                    <span
+                      onClick={e => { e.stopPropagation(); updateQuestion(idx, { required: q.required === false }) }}
+                      title="Click to toggle whether the AI Agent must establish this before confidently recommending"
+                      style={{
+                        ...S.pill,
+                        cursor: 'pointer',
+                        background: q.required !== false ? '#FEF3E2' : '#F0F0F0',
+                        color: q.required !== false ? '#B7791F' : '#888888',
+                      }}
+                    >
+                      {q.required !== false ? '● Required' : '○ Optional'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>

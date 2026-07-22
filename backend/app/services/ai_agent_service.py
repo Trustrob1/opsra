@@ -230,18 +230,52 @@ def _fetch_kb_articles(db, org_id: str, inbound_text: str) -> list[dict]:
         return []
 
 
-def _fetch_catalog_products(db, org_id: str, catalog_config: dict, inbound_text: str) -> list[dict]:
-    """Top 5 relevant products, trimmed to title/price/key tags. S14: [] on failure."""
+def _fetch_catalog_products(
+    db, org_id: str, catalog_config: dict, inbound_text: str,
+    known_tag_values: Optional[dict] = None,
+) -> list[dict]:
+    """
+    Top 5 relevant products, trimmed to title/price/key tags. S14: [] on failure.
+
+    known_tag_values: {dimension_key: value} gathered from qualification
+    answers so far this session. When present, products are filtered to
+    ones whose tags match ALL known dimensions — precise tag-based
+    matching instead of loose keyword guessing, which is what actually
+    grounds recommend_product/request_variant in the right product.
+    Falls back to the full catalog if filtering would return zero matches,
+    so a slightly-off qualification answer never hides the whole catalog.
+    """
     try:
         result = (
             db.table("products")
-            .select("id, title, price, variants, catalog_images, description, catalog_description")
+            .select("id, title, price, variants, catalog_images, description, catalog_description, tags")
             .eq("org_id", org_id)
             .execute()
         )
         products = result.data or []
         if not products:
             return []
+
+        if known_tag_values:
+            def _matches_known_tags(p):
+                p_tags = p.get("tags") or {}
+                for dim_key, wanted_value in known_tag_values.items():
+                    have = p_tags.get(dim_key)
+                    if have is None:
+                        return False
+                    if isinstance(have, list):
+                        if wanted_value not in have:
+                            return False
+                    elif have != wanted_value:
+                        return False
+                return True
+            filtered = [p for p in products if _matches_known_tags(p)]
+            if filtered:
+                products = filtered
+            # else: no products match all known dimensions yet (e.g. a
+            # combination not in stock) — fall through to the full catalog
+            # rather than showing the model nothing at all.
+
         words = {w.lower() for w in re.findall(r"\w+", inbound_text or "") if len(w) > 3}
         trimmed = []
         for p in products:
@@ -279,6 +313,58 @@ def _fetch_catalog_products(db, org_id: str, catalog_config: dict, inbound_text:
         return []
 
 
+def _fetch_qualification_questions(db, org_id: str) -> list[dict]:
+    """
+    Reuses the SAME org qualification_flow config that Bot mode uses — one
+    config surface, not two. Returns only questions that have a
+    map_to_catalog_tag or map_to_lead_field set (the ones relevant to AI
+    Agent's recommendation quality). S14: [] on failure.
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("qualification_flow")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        flow = (data or {}).get("qualification_flow") or {}
+        questions = flow.get("questions") or []
+        return [
+            q for q in questions
+            if q.get("map_to_catalog_tag") or q.get("map_to_lead_field")
+        ]
+    except Exception as exc:
+        logger.warning("_fetch_qualification_questions failed org=%s: %s", org_id, exc)
+        return []
+
+
+def _fetch_tag_dimensions(db, org_id: str) -> dict:
+    """
+    Returns {dimension_key: {label, options}} from catalog_config.tag_dimensions.
+    S14: {} on failure.
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("catalog_config")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        dims = ((data or {}).get("catalog_config") or {}).get("tag_dimensions") or []
+        return {d["key"]: {"label": d.get("label", d["key"]), "options": d.get("options") or []} for d in dims if d.get("key")}
+    except Exception as exc:
+        logger.warning("_fetch_tag_dimensions failed org=%s: %s", org_id, exc)
+        return {}
+
+
 def _fetch_cart(db, org_id: str, phone_number: str) -> Optional[dict]:
     """Current commerce_sessions cart for this conversation. S14: None on failure."""
     try:
@@ -310,6 +396,9 @@ def build_agent_system_prompt(
     cart: Optional[dict],
     conversation_history: list[dict],
     customer_name: Optional[str] = None,
+    qualification_questions: Optional[list[dict]] = None,
+    tag_dimensions: Optional[dict] = None,
+    known_tag_values: Optional[dict] = None,
 ) -> str:
     """
     (docstring unchanged below)
@@ -403,6 +492,46 @@ def build_agent_system_prompt(
                 + ", ".join(field_keys)
             )
 
+        if qualification_questions:
+            required_lines = []
+            optional_lines = []
+            for q in qualification_questions:
+                dim_key = q.get("map_to_catalog_tag")
+                dim = (tag_dimensions or {}).get(dim_key) if dim_key else None
+                option_labels = [o.get("label") for o in (q.get("options") or []) if o.get("label")]
+                line = f"- {q.get('text')}"
+                if dim_key:
+                    line += f" (tag dimension: {dim_key}"
+                    if option_labels:
+                        line += f", valid values: {', '.join(option_labels)}"
+                    line += ")"
+                (required_lines if q.get("required", True) else optional_lines).append(line)
+
+            qual_block = (
+                "This business has specific things it needs to know to make the best "
+                "recommendation. Work these into the conversation NATURALLY over time — do "
+                "NOT interrogate one after another like a rigid form. Ask them where they fit "
+                "the flow, ideally combined with other things you're already saying.\n\n"
+            )
+            if required_lines:
+                qual_block += "Must establish before a confident recommendation:\n" + "\n".join(required_lines) + "\n\n"
+            if optional_lines:
+                qual_block += "Nice to know, but skip if it doesn't fit the conversation:\n" + "\n".join(optional_lines) + "\n\n"
+            qual_block += (
+                "When the customer's answer clearly matches one of the valid values for a tag "
+                "dimension above, include it in your action's data as "
+                'qualification_answers: {"dimension_key": "matched_value"}. If their answer is '
+                "ambiguous or doesn't clearly match any listed value, do NOT guess — simply "
+                "omit that dimension and move on."
+            )
+            parts.append(qual_block)
+
+        if known_tag_values:
+            known_lines = [f"- {k}: {v}" for k, v in known_tag_values.items()]
+            parts.append(
+                "Already established this conversation (do not ask again):\n" + "\n".join(known_lines)
+            )
+
         parts.append(
             "Avoid generic AI-assistant enthusiasm phrases like 'Great choice!', "
             "'Perfect!', 'Wonderful!', 'I'd be happy to help!' — these read as "
@@ -450,8 +579,12 @@ def build_agent_system_prompt(
                     line += f"\n  Variants: {variant_bits}"
                 cat_lines.append(line)
             cat_lines.append(
-                "IMPORTANT: when using confirm_add_to_cart or request_variant, always use "
-                "the exact product_id and variant_id shown above — never invent or guess an id."
+                "IMPORTANT: when using confirm_add_to_cart, request_variant, or "
+                "recommend_product, always use the exact product_id and variant_id shown "
+                "above — never invent or guess an id. For recommend_product specifically, "
+                "if a specific size/variant has been discussed, always include that "
+                "variant_id in data — the price shown to the customer must match the exact "
+                "variant you're describing, not just the base product price."
             )
             parts.append("<catalog>\n" + "\n".join(cat_lines) + "\n</catalog>")
 
@@ -663,14 +796,21 @@ def run_agent_turn(
         ai_agent_config = org_data.get("ai_agent_config") or {}
         catalog_config = org_data.get("commerce_config") or {}
 
+        qualification_questions = _fetch_qualification_questions(db, org_id)
+        tag_dimensions = _fetch_tag_dimensions(db, org_id)
+
+        session_data = session.get("session_data") or {}
+        known_tag_values = session_data.get("qualification_answers") or {}
+
         kb_articles = _fetch_kb_articles(db, org_id, safe_inbound)
-        catalog_products = _fetch_catalog_products(db, org_id, catalog_config, safe_inbound)
+        catalog_products = _fetch_catalog_products(
+            db, org_id, catalog_config, safe_inbound, known_tag_values=known_tag_values,
+        )
         catalog_config = {**catalog_config, "_resolved_products": catalog_products}
 
         phone_number = session.get("phone_number") or ""
         cart = _fetch_cart(db, org_id, phone_number)
 
-        session_data = session.get("session_data") or {}
         conversation_history = session.get("conversation_history") or []
 
         # Active defense: on a second suspicious message in this session,
@@ -702,6 +842,9 @@ def run_agent_turn(
             cart=cart,
             conversation_history=conversation_history,
             customer_name=(lead or {}).get("full_name"),
+            qualification_questions=qualification_questions,
+            tag_dimensions=tag_dimensions,
+            known_tag_values=known_tag_values,
         )
 
         raw_response = call_claude(
@@ -722,6 +865,35 @@ def run_agent_turn(
         action_dict = parse_agent_action(raw_response)
         if action_dict is None:
             return None
+
+        # Capture any newly-reported qualification answers, cumulatively, and
+        # write any that map to a lead field — same pattern as fields_to_extract.
+        new_qual_answers = (action_dict.get("data") or {}).get("qualification_answers")
+        if isinstance(new_qual_answers, dict) and new_qual_answers:
+            valid_dims = {q.get("map_to_catalog_tag") for q in qualification_questions if q.get("map_to_catalog_tag")}
+            for dim_key, value in new_qual_answers.items():
+                if dim_key in valid_dims and isinstance(value, str):
+                    known_tag_values[dim_key] = value
+            session_data["qualification_answers"] = known_tag_values
+
+            lead_id = (lead or {}).get("id")
+            if lead_id:
+                lead_field_updates = {}
+                for q in qualification_questions:
+                    dim_key = q.get("map_to_catalog_tag")
+                    lead_field = q.get("map_to_lead_field")
+                    if dim_key and lead_field and dim_key in new_qual_answers:
+                        lead_field_updates[lead_field] = new_qual_answers[dim_key]
+                if lead_field_updates:
+                    try:
+                        db.table("leads").update(lead_field_updates).eq("id", lead_id).eq(
+                            "org_id", org_id
+                        ).execute()
+                    except Exception as exc:
+                        logger.warning(
+                            "run_agent_turn: qualification lead field write failed lead=%s: %s",
+                            lead_id, exc,
+                        )
 
         # Append this turn to conversation history, cap at last 20.
         # Sanitise the assistant's own output too — defense-in-depth so a
@@ -840,12 +1012,13 @@ def _execute_agent_action(
         elif action == "recommend_product":
             from app.services.whatsapp_service import send_recommendation_message, send_outbound_image_url
             product_id = data.get("product_id")
+            variant_id = data.get("variant_id")
             product = None
             if product_id:
                 try:
                     p_result = (
                         db.table("products")
-                        .select("id, title, price, catalog_images")
+                        .select("id, title, price, variants, catalog_images")
                         .eq("id", product_id)
                         .eq("org_id", org_id)
                         .maybe_single()
@@ -857,6 +1030,15 @@ def _execute_agent_action(
                 except Exception as exc:
                     logger.warning("_execute_agent_action: product lookup failed: %s", exc)
             if product:
+                # Use the specific variant's price if one was discussed — never
+                # show a base/default price that contradicts what was just said.
+                display_price = product.get("price", 0)
+                if variant_id:
+                    for v in (product.get("variants") or []):
+                        if (v.get("id") or v.get("variant_id")) == variant_id:
+                            display_price = v.get("price", display_price)
+                            break
+
                 images = product.get("catalog_images") or []
                 if images:
                     send_outbound_image_url(
@@ -865,7 +1047,7 @@ def _execute_agent_action(
                     )
                 send_recommendation_message(
                     db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
-                    title=product.get("title", ""), price=product.get("price", 0),
+                    title=product.get("title", ""), price=display_price,
                     rationale=message,
                     wa_credentials=(phone_id, access_token, None),
                 )
