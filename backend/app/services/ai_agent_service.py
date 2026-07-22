@@ -1034,8 +1034,10 @@ def _execute_agent_action(
                 # show a base/default price that contradicts what was just said.
                 display_price = product.get("price", 0)
                 if variant_id:
+                    variant_id_str = str(variant_id).strip()
                     for v in (product.get("variants") or []):
-                        if (v.get("id") or v.get("variant_id")) == variant_id:
+                        v_id = v.get("id") or v.get("variant_id")
+                        if v_id is not None and str(v_id).strip() == variant_id_str:
                             display_price = v.get("price", display_price)
                             break
 
