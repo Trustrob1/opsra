@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ds } from '../../utils/ds'
 import {
   listKBArticles, createKBArticle, updateKBArticle, unpublishKBArticle,
+  bulkImportKBArticles,
 } from '../../services/support.service'
 import { getTicketCategories } from '../../services/admin.service'
 
@@ -244,6 +245,8 @@ export default function KBManager({ user, externalTick = 0 }) {
   const [saving, setSaving]       = useState(false)
   const [formError, setFormError] = useState(null)
   const [actionErr, setActionErr] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null)
   const [tick, setTick]           = useState(0)
   const refresh = useCallback(() => setTick(t => t + 1), [])
 
@@ -304,6 +307,24 @@ export default function KBManager({ user, externalTick = 0 }) {
     }
   }
 
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file later
+    if (!file) return
+    setImporting(true)
+    setImportResult(null)
+    setActionErr(null)
+    try {
+      const result = await bulkImportKBArticles(file)
+      setImportResult(result)
+      refresh()
+    } catch (err) {
+      setActionErr(err.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const sel = {
     border: `1.5px solid ${ds.border}`, borderRadius: '8px', padding: '8px 12px',
     fontSize: '12.5px', color: ds.dark, background: 'white', cursor: 'pointer', outline: 'none',
@@ -318,6 +339,18 @@ export default function KBManager({ user, externalTick = 0 }) {
         </select>
         <span style={{ fontSize: '12px', color: ds.gray }}>{total} article{total !== 1 ? 's' : ''}</span>
         <div style={{ flex: 1 }} />
+        <label style={{
+          padding: '9px 18px', borderRadius: '8px', border: `1.5px solid ${ds.teal}`,
+          background: 'white', color: ds.teal, fontSize: '13px', fontWeight: 600,
+          cursor: importing ? 'not-allowed' : 'pointer', opacity: importing ? 0.6 : 1,
+        }}>
+          {importing ? 'Importing…' : '⬆ Import CSV'}
+          <input
+            type="file" accept=".csv" disabled={importing}
+            onChange={handleImportFile}
+            style={{ display: 'none' }}
+          />
+        </label>
         <button
           onClick={() => { setFormError(null); setEditing('new') }}
           style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: ds.teal, color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
@@ -325,6 +358,34 @@ export default function KBManager({ user, externalTick = 0 }) {
           + New Article
         </button>
       </div>
+
+      {importResult && (
+        <div style={{
+          background: importResult.errors?.length ? '#FFF3E0' : '#E8F8EE',
+          border: `1px solid ${importResult.errors?.length ? '#FFD9A0' : '#BBF7D0'}`,
+          borderRadius: '8px', padding: '12px 14px', fontSize: '13px', marginBottom: '14px',
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: importResult.errors?.length ? 6 : 0 }}>
+            {importResult.created?.length || 0} article(s) imported
+            {importResult.errors?.length ? `, ${importResult.errors.length} row(s) had errors:` : ''}
+          </div>
+          {importResult.errors?.length > 0 && (
+            <ul style={{ margin: '4px 0 0', paddingLeft: '18px' }}>
+              {importResult.errors.map((e, i) => (
+                <li key={i} style={{ color: '#C0392B' }}>
+                  Row {e.row} ({e.title || 'untitled'}): {e.error}
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            onClick={() => setImportResult(null)}
+            style={{ marginTop: 8, border: 'none', background: 'none', color: ds.gray, fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {actionErr && (
         <div style={{ background: '#FFF0F0', border: '1px solid #FFD0D0', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#C0392B', marginBottom: '14px' }}>

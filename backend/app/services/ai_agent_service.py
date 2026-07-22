@@ -341,6 +341,32 @@ def build_agent_system_prompt(
                 "a name — use a neutral greeting instead (e.g. 'Hi there')."
             )
 
+        persona_name = ai_agent_config.get("expert_persona_name")
+        persona_bio = ai_agent_config.get("expert_persona_bio")
+        if persona_name and persona_bio:
+            safe_persona_name = sanitise_for_prompt(persona_name, max_length=100)
+            safe_persona_bio = sanitise_for_prompt(persona_bio, max_length=1000)
+            parts.append(
+                f"You are also known to customers as {safe_persona_name}, {org_name}'s "
+                f"{safe_persona_bio}. When a customer asks a general educational question "
+                "related to this expertise (not just a product question), share genuinely "
+                "helpful information in this persona's voice — be a real source of useful "
+                "knowledge, not just a salesperson. This does NOT loosen the rule above: "
+                "only state specific facts that come from the knowledge base — never invent "
+                "expertise-sounding claims just because the persona implies authority.\n\n"
+                "CRITICAL: you are a sales agent who happens to have this expertise, not a "
+                "standalone Q&A or advice service. Never end a response with just the "
+                "educational answer and nothing else — every answer must actively connect "
+                "back to what the customer needs or is shopping for. Use the expertise to "
+                "advance the sales conversation: e.g. after explaining something educational, "
+                "immediately relate it to their specific situation and move the conversation "
+                "forward (ask a qualifying question, make a relevant recommendation, or check "
+                "what they're looking for). Do not let the conversation drift into pure "
+                "back-and-forth education with no sales progress — you always have a next "
+                "step in mind. Keep educational answers especially brief — one or two useful "
+                "sentences, then pivot back to their situation. Do not write a lecture."
+            )
+
         methodology = ai_agent_config.get("sales_methodology")
         if methodology and methodology != "none":
             if methodology == "custom":
@@ -384,9 +410,18 @@ def build_agent_system_prompt(
             "instead, closely following the tone and brand voice below if given."
         )
 
+        parts.append(
+            "Keep every message short — this is WhatsApp, not email. Aim for 2-4 short "
+            "sentences per message. Never write long paragraphs or multiple paragraphs in "
+            "a single reply, even when explaining something educational or detailed. If a "
+            "topic genuinely needs more than a few sentences, share the single most useful "
+            "point first and offer to share more if they want it, rather than sending "
+            "everything at once."
+        )
+
         tone = ai_agent_config.get("tone_instructions")
         if tone:
-            safe_tone = sanitise_for_prompt(tone, max_length=500)
+            safe_tone = sanitise_for_prompt(tone, max_length=1500)
             parts.append(f"Tone and brand voice: {safe_tone}")
 
         if kb_articles:
@@ -459,6 +494,36 @@ def build_agent_system_prompt(
             "data.question to the customer's actual question, so the rep taking over "
             "knows exactly what needs answering. Do not fill a factual gap with a "
             "plausible-sounding guess under any circumstances."
+        )
+
+        parts.append(
+            "Objection handling — use LAER: Listen fully, Acknowledge the concern without "
+            "arguing, Explore the real reason with a clarifying question BEFORE responding "
+            "(the stated objection is often not the real one), then Respond. Types and how "
+            "to handle each: price/budget usually means value isn't clear yet (never "
+            "discount — reframe value instead); 'not right now' usually hides a real reason "
+            "worth exploring; 'I don't need this' means qualification wasn't concrete "
+            "enough yet, ask more; 'need to ask someone else' means help them make the "
+            "case, don't pressure; competitor mentions mean ask what matters most to them, "
+            "never disparage a competitor; trust/skepticism ('is this legit', 'never heard "
+            "of you') means reassure factually using only real information from the "
+            "knowledge base — never invent credentials, reviews, or guarantees; stalling "
+            "('let me think about it' with no reason given) usually hides an unstated real "
+            "objection — ask a specific, gentle question to surface what it actually is "
+            "rather than accepting it at face value. When addressing an objection via "
+            "respond, set data.objection_type to one of: price, timing, need, authority, "
+            "competitor, trust, stalling, other. If you're addressing the SAME objection "
+            "type a second time in this conversation, use escalate with "
+            "data.reason='unresolved_objection' instead of trying again."
+        )
+
+        parts.append(
+            "Recognise buying signals and respond with appropriate energy — questions like "
+            "'how soon can I get it', 'what payment options are there', or asking about a "
+            "specific variant are strong signals of readiness. When you sense one, lean into "
+            "it rather than continuing with scripted questions the customer has effectively "
+            "already answered. Speak with confident, direct energy — avoid hedging phrases "
+            "like 'sorry to bother you' or 'just wondering if maybe'."
         )
 
         parts.append(
@@ -720,6 +785,52 @@ def _execute_agent_action(
     try:
         if action == "respond":
             from app.services.whatsapp_service import send_agent_text_message
+            objection_type = data.get("objection_type")
+
+            if objection_type == "trust":
+                try:
+                    org_result = (
+                        db.table("organisations")
+                        .select("ai_agent_config")
+                        .eq("id", org_id).maybe_single().execute()
+                    )
+                    org_data = org_result.data
+                    if isinstance(org_data, list):
+                        org_data = org_data[0] if org_data else {}
+                    trust_images = ((org_data or {}).get("ai_agent_config") or {}).get("trust_proof_images") or []
+                    if trust_images:
+                        from app.services.whatsapp_service import send_outbound_image_url
+                        send_outbound_image_url(
+                            db=db, org_id=org_id, phone_number=phone_number, lead_id=lead_id,
+                            image_url=trust_images[0],
+                        )
+                except Exception as exc:
+                    logger.warning("_execute_agent_action: trust proof send failed org=%s: %s", org_id, exc)
+
+            if objection_type:
+                session_data = session.get("session_data") or {}
+                objection_counts = session_data.get("objection_counts") or {}
+                count = int(objection_counts.get(objection_type, 0)) + 1
+                objection_counts[objection_type] = count
+                session_data["objection_counts"] = objection_counts
+                try:
+                    db.table("whatsapp_sessions").update({
+                        "session_data": session_data,
+                    }).eq("id", session["id"]).execute()
+                except Exception:
+                    pass
+                if count >= 2:
+                    send_agent_text_message(
+                        db=db, org_id=org_id, phone_number=phone_number,
+                        lead_id=lead_id,
+                        message="Let me get one of our team members to help with that.",
+                        phone_id=phone_id, access_token=access_token,
+                    )
+                    _escalate_to_rep(
+                        db=db, org_id=org_id, number_row=number_row, session=session,
+                        lead=lead, reason="unresolved_objection", task_priority="normal",
+                    )
+                    return
             send_agent_text_message(
                 db=db, org_id=org_id, phone_number=phone_number,
                 lead_id=lead_id, message=message,
@@ -1118,6 +1229,7 @@ def _escalate_to_rep(
             "variant_match_failed_twice": "AI Agent — variant match failed",
             "unanswered_factual_question": "Customer asked something the AI couldn't answer",
             "requires_human_authorization": "Customer requesting discount/refund/delivery guarantee",
+            "unresolved_objection": "Customer objection couldn't be resolved by AI Agent",
             "suspicious_instruction_attempt": "AI Agent — possible prompt injection attempt",
             "repeated_injection_attempt": "AI Agent — possible prompt injection attempt",
         }

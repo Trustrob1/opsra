@@ -147,6 +147,20 @@ export async function suggestKBArticle(ticketId) {
   return request('POST', `/tickets/${ticketId}/suggest-kb-article`)
 }
 
+export async function bulkImportKBArticles(file) {
+  const token = useAuthStore.getState().token
+  const form = new FormData()
+  form.append('file', file)
+  const resp = await fetch(`${BASE}/knowledge-base/bulk-import`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  const json = await resp.json()
+  if (!resp.ok) throw new Error(json.detail || json.message || `HTTP ${resp.status}`)
+  return json.data
+}
+
 // ---------------------------------------------------------------------------
 // Interaction logs
 // ---------------------------------------------------------------------------

@@ -485,6 +485,92 @@ async def unpublish_kb_article(
     return ok(data=article, message="KB article unpublished")
 
 
+@router.post("/knowledge-base/bulk-import", status_code=201)
+async def bulk_import_kb_articles(
+    file: UploadFile = File(...),
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    Bulk-import KB articles from a CSV file — avoids typing articles one by
+    one in the UI. Expected columns: category, title, content (required),
+    tags (optional, semicolon-separated within the cell — commas are the CSV
+    delimiter so can't be used inside a field), is_published (true/false,
+    default true), action_type (informational|action_required, default
+    informational), action_label (optional).
+
+    Each row is validated and created individually via the SAME
+    ticket_service.create_kb_article() the single-article endpoint uses —
+    inherits identical validation, category checking, and versioning. One
+    bad row is reported in the errors list and never blocks the rest of
+    the batch.
+
+    RBAC: same as single create (manage_kb permission).
+    """
+    require_permission_key(
+        org, "manage_kb",
+        "KB management requires owner, admin, support agent, or the manage_kb permission",
+    )
+    org_id: str = org["org_id"]
+    user_id: str = org["id"]
+
+    raw_bytes = await file.read()
+    if len(raw_bytes) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (5MB max)")
+
+    import csv
+    import io
+
+    try:
+        text = raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="File must be UTF-8 encoded CSV")
+
+    reader = csv.DictReader(io.StringIO(text))
+    required_cols = {"category", "title", "content"}
+    field_names_lower = {c.strip().lower() for c in (reader.fieldnames or [])}
+    if not required_cols.issubset(field_names_lower):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"CSV must include columns: {', '.join(sorted(required_cols))} "
+                "(tags, is_published, action_type, action_label are optional)"
+            ),
+        )
+
+    created = []
+    errors = []
+    for i, raw_row in enumerate(reader, start=2):  # row 1 is the header
+        row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw_row.items()}
+        try:
+            tags_raw = row.get("tags", "")
+            tags = [t.strip() for t in tags_raw.split(";") if t.strip()] or None
+
+            is_published_raw = (row.get("is_published") or "true").lower()
+            is_published = is_published_raw in ("true", "1", "yes")
+
+            data = KBArticleCreate(
+                category=row["category"],
+                title=row["title"],
+                content=row["content"],
+                tags=tags,
+                is_published=is_published,
+                action_type=row.get("action_type") or "informational",
+                action_label=row.get("action_label") or None,
+            )
+            article = ticket_service.create_kb_article(
+                db=db, org_id=org_id, user_id=user_id, data=data
+            )
+            created.append({"row": i, "title": data.title, "id": article.get("id")})
+        except Exception as exc:
+            errors.append({"row": i, "title": row.get("title", ""), "error": str(exc)})
+
+    return ok(
+        data={"created": created, "errors": errors, "total_rows": len(created) + len(errors)},
+        message=f"{len(created)} article(s) created, {len(errors)} error(s)",
+    )
+
+
 @router.post("/tickets/{ticket_id}/suggest-kb-article")
 async def suggest_kb_article(
     ticket_id: str,

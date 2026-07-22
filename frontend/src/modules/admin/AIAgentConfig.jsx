@@ -52,6 +52,9 @@ const EMPTY_CONFIG = {
   sales_methodology: 'none',
   custom_methodology_name: '',
   custom_methodology_instructions: '',
+  expert_persona_name: '',
+  expert_persona_bio: '',
+  trust_proof_images: [],
 }
 
 const SALES_METHODOLOGIES = [
@@ -245,6 +248,33 @@ export default function AIAgentConfig() {
           </Field>
         </>
       )}
+
+      <Field label="Expert persona (optional)" hint="Give the agent a named identity and expertise — e.g. a 'Sleep Specialist' who shares genuine educational content, not just sales pitches.">
+        <input
+          type="text"
+          value={config.expert_persona_name || ''}
+          onChange={e => update({ expert_persona_name: e.target.value.slice(0, 100) })}
+          placeholder="e.g. Comfort Advisor"
+          style={{ ...inputStyle, marginBottom: 8 }}
+        />
+        <textarea
+          value={config.expert_persona_bio || ''}
+          onChange={e => update({ expert_persona_bio: e.target.value.slice(0, 1000) })}
+          rows={3}
+          style={{ ...inputStyle, resize: 'vertical', minHeight: 70 }}
+          placeholder="e.g. in-house sleep and comfort specialist, sharing tips on sleep hygiene and choosing the right mattress firmness"
+        />
+      </Field>
+
+      <Field label="Trust proof images (optional)" hint="Real image URLs only (certifications, storefront, registration docs) — sent automatically when a customer expresses skepticism. Never invented if left empty.">
+        <textarea
+          value={(config.trust_proof_images || []).join('\n')}
+          onChange={e => update({ trust_proof_images: e.target.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 5) })}
+          rows={2}
+          style={{ ...inputStyle, resize: 'vertical', minHeight: 50 }}
+          placeholder="One image URL per line, e.g. https://.../cac-certificate.jpg"
+        />
+      </Field>
 
       <Field
         label="Qualifying criteria *"

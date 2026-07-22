@@ -3762,6 +3762,10 @@ class AIAgentConfigUpdate(BaseModel):
     ]] = None
     custom_methodology_name: Optional[str] = Field(None, max_length=100)
     custom_methodology_instructions: Optional[str] = Field(None, max_length=2000)
+    expert_persona_name: Optional[str] = Field(None, max_length=100)
+    expert_persona_bio: Optional[str] = Field(None, max_length=1000)
+    trust_proof_images: Optional[List[str]] = Field(None, max_length=5)
+    trust_proof_note: Optional[str] = Field(None, max_length=500)
 
     @field_validator("fields_to_extract")
     @classmethod
@@ -4163,6 +4167,42 @@ def update_whatsapp_number(
     if warning:
         response_data["warning"] = warning
     return ok(data=response_data, message="WhatsApp number updated")
+
+
+# ---------------------------------------------------------------------------
+# AI-AGENT — Knowledge base gap detection (continuous improvement)
+# ---------------------------------------------------------------------------
+
+@router.get("/ai-agent-kb-gaps")
+def get_ai_agent_kb_gaps(
+    limit: int = 50,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    Returns real customer questions the AI Agent couldn't answer, newest
+    first — raw material for identifying recurring KB gaps. Not automatic
+    clustering; an admin reviews these and decides what needs a real article.
+    """
+    result = (
+        db.table("tasks")
+        .select("id, description, created_at, source_record_id")
+        .eq("org_id", org["org_id"])
+        .eq("title", "Customer asked something the AI couldn't answer")
+        .order("created_at", desc=True)
+        .limit(min(limit, 200))
+        .execute()
+    )
+    rows = result.data or []
+    questions = [
+        {
+            "question": (r.get("description") or "").replace("Customer's question: ", ""),
+            "lead_id": r.get("source_record_id"),
+            "asked_at": r.get("created_at"),
+        }
+        for r in rows
+    ]
+    return ok(data={"questions": questions, "total": len(questions)})
 
 
 # ---------------------------------------------------------------------------
