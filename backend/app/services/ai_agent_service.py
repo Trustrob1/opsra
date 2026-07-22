@@ -80,6 +80,55 @@ _MAX_KB_ARTICLES = 3
 _MAX_KB_CHARS = 500
 _MAX_CATALOG_PRODUCTS = 5
 
+# Named sales methodologies — translates each framework's core principles
+# into concrete conversational instructions. "custom" and "none" are
+# handled separately in build_agent_system_prompt.
+_METHODOLOGY_PLAYBOOKS = {
+    "rackham_spin": (
+        "Sales approach — The Rackham Method (SPIN Selling): follow this order — "
+        "first ask Situation questions to understand their current setup, then "
+        "Problem questions to uncover what's not working, then Implication "
+        "questions to help them see the cost of that problem if left unsolved, "
+        "then Need-payoff questions that get THEM to state the value of solving "
+        "it — don't state the value yourself, ask questions that lead them to say "
+        "it. Only recommend a specific product once they've articulated the need "
+        "in their own words."
+    ),
+    "challenger": (
+        "Sales approach — The Challenger Method (Dixon & Adamson): teach the "
+        "customer something useful about their situation rather than just "
+        "answering what's asked, tailor your questions and recommendations "
+        "specifically to what THEY'VE told you rather than a generic pitch, and "
+        "take confident control of the conversation's direction. It's fine to "
+        "respectfully reframe or push back if their stated approach seems "
+        "suboptimal — don't just agree with everything."
+    ),
+    "sandler": (
+        "Sales approach — The Sandler Method: build rapport first, then get the "
+        "customer to state their own pain point and budget early and directly — "
+        "ask about budget and their decision process without being pushy. Let "
+        "the customer feel like they're the one determining fit, not you selling "
+        "to them. Ask questions that get them to convince themselves rather than "
+        "doing the convincing yourself."
+    ),
+    "voss": (
+        "Sales approach — The Voss Method (Tactical Empathy): label the "
+        "customer's likely emotion out loud before responding to their words "
+        "(e.g. 'It sounds like you're worried about...', 'It seems like timing "
+        "is a concern'). Prefer calibrated open questions ('How am I supposed "
+        "to...', 'What's the biggest challenge with...') over yes/no questions. "
+        "Never rush toward a close — let the customer talk through their own "
+        "reasoning first."
+    ),
+    "gitomer_ziglar": (
+        "Sales approach — The Gitomer-Ziglar Method: lead with the emotional "
+        "benefit (how this will make them feel — relief, pride, security, "
+        "confidence) before technical specs, and always end each response with a "
+        "clear, low-friction next step. Keep energy warm, encouraging, and "
+        "confident throughout."
+    ),
+}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -263,6 +312,9 @@ def build_agent_system_prompt(
     customer_name: Optional[str] = None,
 ) -> str:
     """
+    (docstring unchanged below)
+    """
+    """
     Assembles the full agent system prompt from org config. No hardcoded
     business-type assumptions — everything domain-specific comes from
     ai_agent_config. S14: returns a minimal safe prompt on any failure.
@@ -289,6 +341,22 @@ def build_agent_system_prompt(
                 "a name — use a neutral greeting instead (e.g. 'Hi there')."
             )
 
+        methodology = ai_agent_config.get("sales_methodology")
+        if methodology and methodology != "none":
+            if methodology == "custom":
+                custom_name = sanitise_for_prompt(
+                    ai_agent_config.get("custom_methodology_name") or "Custom Method",
+                    max_length=100,
+                )
+                custom_instructions = sanitise_for_prompt(
+                    ai_agent_config.get("custom_methodology_instructions") or "",
+                    max_length=2000,
+                )
+                if custom_instructions:
+                    parts.append(f"Sales approach — {custom_name}: {custom_instructions}")
+            elif methodology in _METHODOLOGY_PLAYBOOKS:
+                parts.append(_METHODOLOGY_PLAYBOOKS[methodology])
+
         qualifying = sanitise_for_prompt(
             ai_agent_config.get("qualifying_criteria") or "", max_length=1000
         )
@@ -308,6 +376,13 @@ def build_agent_system_prompt(
                 "Fields to extract from the conversation when qualifying: "
                 + ", ".join(field_keys)
             )
+
+        parts.append(
+            "Avoid generic AI-assistant enthusiasm phrases like 'Great choice!', "
+            "'Perfect!', 'Wonderful!', 'I'd be happy to help!' — these read as "
+            "scripted and impersonal. Mirror natural, conversational speech "
+            "instead, closely following the tone and brand voice below if given."
+        )
 
         tone = ai_agent_config.get("tone_instructions")
         if tone:

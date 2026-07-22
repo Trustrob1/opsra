@@ -3741,6 +3741,11 @@ def update_whatsapp_sales_mode(
 # AI-AGENT-1C — AI Agent config + WhatsApp numbers (per-number mode)
 # ---------------------------------------------------------------------------
 
+_SALES_METHODOLOGIES = frozenset({
+    "rackham_spin", "challenger", "sandler", "voss", "gitomer_ziglar", "custom", "none",
+})
+
+
 class AIAgentConfigUpdate(BaseModel):
     business_model: Optional[Literal["physical_product", "software", "service", "other"]] = None
     conversion_action: Optional[Literal[
@@ -3749,9 +3754,14 @@ class AIAgentConfigUpdate(BaseModel):
     qualifying_criteria: Optional[str] = Field(None, max_length=1000)
     disqualification_criteria: Optional[str] = Field(None, max_length=1000)
     fields_to_extract: Optional[List[dict]] = None
-    tone_instructions: Optional[str] = Field(None, max_length=500)
+    tone_instructions: Optional[str] = Field(None, max_length=1500)
     escalation: Optional[dict] = None
     max_turns_before_escalation: Optional[int] = Field(None, ge=5, le=50)
+    sales_methodology: Optional[Literal[
+        "rackham_spin", "challenger", "sandler", "voss", "gitomer_ziglar", "custom", "none"
+    ]] = None
+    custom_methodology_name: Optional[str] = Field(None, max_length=100)
+    custom_methodology_instructions: Optional[str] = Field(None, max_length=2000)
 
     @field_validator("fields_to_extract")
     @classmethod
@@ -3767,6 +3777,15 @@ class AIAgentConfigUpdate(BaseModel):
                     f"map_to_lead_field must be null or one of: {', '.join(sorted(_VALID_LEAD_FIELDS))}"
                 )
         return v
+
+    @model_validator(mode="after")
+    def _validate_custom_methodology(self):
+        if self.sales_methodology == "custom":
+            if not (self.custom_methodology_name or "").strip():
+                raise ValueError("custom_methodology_name is required when sales_methodology is 'custom'")
+            if not (self.custom_methodology_instructions or "").strip():
+                raise ValueError("custom_methodology_instructions is required when sales_methodology is 'custom'")
+        return self
 
 
 @router.get("/ai-agent-config")

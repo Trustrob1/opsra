@@ -49,7 +49,20 @@ const EMPTY_CONFIG = {
   tone_instructions: '',
   escalation: { value_threshold_enabled: false, value_threshold_amount: null },
   max_turns_before_escalation: 20,
+  sales_methodology: 'none',
+  custom_methodology_name: '',
+  custom_methodology_instructions: '',
 }
+
+const SALES_METHODOLOGIES = [
+  { value: 'none',           label: 'No specific methodology (default)' },
+  { value: 'rackham_spin',   label: 'The Rackham Method — SPIN Selling', desc: 'Situation → Problem → Implication → Need-payoff. Best for considered, higher-value purchases.' },
+  { value: 'challenger',     label: 'The Challenger Method — Dixon & Adamson', desc: 'Teach, tailor, and take control of the conversation.' },
+  { value: 'sandler',        label: 'The Sandler Method', desc: 'Get the customer to surface their own pain and budget early.' },
+  { value: 'voss',           label: 'The Voss Method — Tactical Empathy', desc: 'Label emotions, ask calibrated questions, never rush the close.' },
+  { value: 'gitomer_ziglar', label: 'The Gitomer-Ziglar Method', desc: 'Lead with emotional benefit, always end with a clear next step.' },
+  { value: 'custom',         label: 'Custom — define your own' },
+]
 
 const inputStyle = {
   width: '100%', border: `1.5px solid ${ds.border}`, borderRadius: 8,
@@ -194,6 +207,45 @@ export default function AIAgentConfig() {
         </select>
       </Field>
 
+      <Field label="Sales methodology" hint="Shapes how the agent structures the conversation — not just what it says.">
+        <select
+          value={config.sales_methodology || 'none'}
+          onChange={e => update({ sales_methodology: e.target.value })}
+          style={{ ...inputStyle, cursor: 'pointer' }}
+        >
+          {SALES_METHODOLOGIES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {(() => {
+          const selected = SALES_METHODOLOGIES.find(m => m.value === (config.sales_methodology || 'none'))
+          return selected?.desc ? (
+            <p style={{ fontSize: 12, color: ds.gray, margin: '5px 0 0' }}>{selected.desc}</p>
+          ) : null
+        })()}
+      </Field>
+
+      {config.sales_methodology === 'custom' && (
+        <>
+          <Field label="Methodology name" hint="E.g. name it after yourself or your own sales framework.">
+            <input
+              type="text"
+              value={config.custom_methodology_name || ''}
+              onChange={e => update({ custom_methodology_name: e.target.value.slice(0, 100) })}
+              placeholder="e.g. The Robert Method"
+              style={inputStyle}
+            />
+          </Field>
+          <Field label="Methodology instructions" hint={`How should the agent structure conversations? (${(config.custom_methodology_instructions || '').length}/2000)`}>
+            <textarea
+              value={config.custom_methodology_instructions || ''}
+              onChange={e => update({ custom_methodology_instructions: e.target.value.slice(0, 2000) })}
+              rows={4}
+              style={{ ...inputStyle, resize: 'vertical', minHeight: 100 }}
+              placeholder="e.g. Always ask about their timeline before price. Never discount. Close by asking a direct yes/no question."
+            />
+          </Field>
+        </>
+      )}
+
       <Field
         label="Qualifying criteria *"
         hint={`What does a ready-to-close lead look like? Required before AI Agent can be activated. (${(config.qualifying_criteria || '').length}/1000)`}
@@ -222,13 +274,13 @@ export default function AIAgentConfig() {
 
       <Field
         label="Tone & brand voice"
-        hint={`Optional. (${(config.tone_instructions || '').length}/500)`}
+        hint={`Optional — this is a good place for detailed regional/brand style notes. (${(config.tone_instructions || '').length}/1500)`}
       >
         <textarea
           value={config.tone_instructions || ''}
-          onChange={e => update({ tone_instructions: e.target.value.slice(0, 500) })}
-          rows={2}
-          style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }}
+          onChange={e => update({ tone_instructions: e.target.value.slice(0, 1500) })}
+          rows={5}
+          style={{ ...inputStyle, resize: 'vertical', minHeight: 130 }}
           placeholder="e.g. Warm, casual, uses first names, avoids heavy sales language."
         />
       </Field>
