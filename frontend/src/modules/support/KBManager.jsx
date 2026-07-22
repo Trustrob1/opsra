@@ -307,6 +307,27 @@ export default function KBManager({ user, externalTick = 0 }) {
     }
   }
 
+  function handleDownloadTemplate() {
+    const rows = [
+      ['category', 'title', 'content', 'tags', 'is_published', 'action_type', 'action_label'],
+      ['faq', 'What is your return policy?', 'You can return any item within 30 days of purchase, as long as it is unused and in its original packaging.', 'returns;policy', 'true', 'informational', ''],
+      ['pricing', 'How much is delivery?', 'Delivery is free within Lagos. For other locations in Nigeria, delivery takes 3-5 days and costs vary by distance.', 'delivery;shipping', 'true', 'informational', ''],
+      ['faq', 'How do I request a refund?', 'To request a refund, reply here with your order number and we will process it for you.', 'refund;billing', 'true', 'action_required', 'Process refund in billing system'],
+    ]
+    const csv = rows.map(row =>
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'kb_articles_import_template.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   async function handleImportFile(e) {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-selecting the same file later
@@ -339,6 +360,16 @@ export default function KBManager({ user, externalTick = 0 }) {
         </select>
         <span style={{ fontSize: '12px', color: ds.gray }}>{total} article{total !== 1 ? 's' : ''}</span>
         <div style={{ flex: 1 }} />
+        <button
+          onClick={handleDownloadTemplate}
+          style={{
+            padding: '9px 16px', borderRadius: '8px', border: `1px solid ${ds.border}`,
+            background: 'white', color: ds.gray, fontSize: '13px', fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          ⬇ Download Template
+        </button>
         <label style={{
           padding: '9px 18px', borderRadius: '8px', border: `1.5px solid ${ds.teal}`,
           background: 'white', color: ds.teal, fontSize: '13px', fontWeight: 600,
