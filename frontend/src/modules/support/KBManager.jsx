@@ -16,7 +16,7 @@ import {
   listKBArticles, createKBArticle, updateKBArticle, unpublishKBArticle,
   bulkImportKBArticles,
 } from '../../services/support.service'
-import { getTicketCategories } from '../../services/admin.service'
+import { getKBCategories } from '../../services/admin.service'
 
 const DEFAULT_CATEGORIES = [
   { key: 'product_overview', label: 'Product Overview', enabled: true },
@@ -253,7 +253,7 @@ export default function KBManager({ user, externalTick = 0 }) {
   // CONFIG-1: org-configured categories
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   useEffect(() => {
-    getTicketCategories()
+    getKBCategories()
       .then(data => {
         const cats = data?.categories
         if (Array.isArray(cats) && cats.length > 0) setCategories(cats)

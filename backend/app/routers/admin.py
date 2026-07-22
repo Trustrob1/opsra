@@ -390,6 +390,104 @@ def update_ticket_categories(
     return ok(data={"categories": cats_data}, message="Ticket categories saved")
 
 
+# ── KB Categories — separate from ticket_categories, backs Expert Content etc ─
+
+_DEFAULT_KB_CATEGORIES = [
+    {"key": "product_overview", "label": "Product Overview", "enabled": True},
+    {"key": "pricing",          "label": "Pricing",          "enabled": True},
+    {"key": "faq",              "label": "FAQ",               "enabled": True},
+    {"key": "troubleshooting",  "label": "Troubleshooting",  "enabled": True},
+    {"key": "hardware",         "label": "Hardware",         "enabled": True},
+    {"key": "contact",          "label": "Contact",          "enabled": True},
+]
+
+
+class KBCategoryItem(BaseModel):
+    key: str = Field(..., min_length=1, max_length=80)
+    label: str = Field(..., min_length=1, max_length=80)
+    enabled: bool = True
+
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v: str) -> str:
+        import re as _re5
+        if not _re5.match(r'^[a-z0-9_]+$', v):
+            raise ValueError("key must be lowercase alphanumeric and underscores only")
+        return v
+
+    @field_validator("label")
+    @classmethod
+    def _validate_label(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("label is required")
+        return v.strip()
+
+
+class KBCategoriesUpdate(BaseModel):
+    categories: List[KBCategoryItem]
+
+    @field_validator("categories")
+    @classmethod
+    def _validate_categories(cls, v: List[KBCategoryItem]) -> List[KBCategoryItem]:
+        if not v:
+            raise ValueError("At least one category is required")
+        enabled = [c for c in v if c.enabled]
+        if not enabled:
+            raise ValueError("At least one category must be enabled")
+        keys = [c.key for c in v]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Category keys must be unique")
+        return v
+
+
+@router.get("/kb-categories")
+def get_kb_categories(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """Return org KB category config, separate from ticket_categories. Falls back to defaults if null."""
+    result = (
+        db.table("organisations")
+        .select("kb_categories")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    categories = (data or {}).get("kb_categories") or _DEFAULT_KB_CATEGORIES
+    return ok(data={"categories": categories})
+
+
+@router.patch("/kb-categories")
+def update_kb_categories(
+    payload: KBCategoriesUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """Save org KB category config."""
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
+        )
+    cats_data = [c.model_dump() for c in payload.categories]
+    updates = {
+        "kb_categories": cats_data,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    db.table("organisations").update(updates).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="kb_categories.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"categories": cats_data},
+    )
+    return ok(data={"categories": cats_data}, message="KB categories saved")
+
+
 # ── Teams Config — OPS-1 ──────────────────────────────────────────────────────
 
 class TeamsUpdate(BaseModel):

@@ -222,6 +222,15 @@ export const updateTicketCategories = (payload) =>
   api.patch('/api/v1/admin/ticket-categories', payload)
     .then(r => r.data.data)
 
+export const getKBCategories = () =>
+  api.get('/api/v1/admin/kb-categories')
+    .then(r => r.data.data)
+
+export const updateKBCategories = (payload) =>
+  // payload: { categories: [{ key, label, enabled }] }
+  api.patch('/api/v1/admin/kb-categories', payload)
+    .then(r => r.data.data)
+
 // ── Drip Business Types — CONFIG-2 ───────────────────────────────────────────
 
 export const getDripBusinessTypes = () =>

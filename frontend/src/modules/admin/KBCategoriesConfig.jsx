@@ -1,38 +1,40 @@
 /**
- * frontend/src/modules/admin/TicketCategoriesConfig.jsx
- * CONFIG-1 — Org-configurable ticket and KB article categories.
+ * frontend/src/modules/admin/KBCategoriesConfig.jsx
+ * Org-configurable Knowledge Base article categories — separate from
+ * ticket_categories (which now applies ONLY to support tickets).
  *
  * - Lists existing categories with editable labels and enabled toggles
- * - Add new custom categories (key auto-generated from label)
- * - Removes custom categories (default categories can be disabled but not deleted)
- * - Applies to the support ticket category dropdown only — Knowledge Base
- *   articles now use their own separate config (see KBCategoriesConfig.jsx)
+ * - Add new custom categories (key auto-generated from label) — e.g. "Expert
+ *   Content" for AI Agent persona educational articles
+ * - Remove custom categories (default categories can be disabled but not deleted)
+ * - Applies to the KB article category dropdown only — support tickets use
+ *   their own separate list (see TicketCategoriesConfig.jsx)
  *
  * Pattern 51: full rewrite only, never sed.
  */
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
-import { getTicketCategories, updateTicketCategories } from '../../services/admin.service'
+import { getKBCategories, updateKBCategories } from '../../services/admin.service'
 
 const DEFAULT_KEYS = new Set([
-  'technical_bug', 'billing', 'feature_question',
-  'onboarding_help', 'account_access', 'hardware',
+  'product_overview', 'pricing', 'faq',
+  'troubleshooting', 'hardware', 'contact',
 ])
 
 const DEFAULT_CATEGORIES = [
-  { key: 'technical_bug',    label: 'Technical Bug',    enabled: true },
-  { key: 'billing',          label: 'Billing',          enabled: true },
-  { key: 'feature_question', label: 'Feature Question', enabled: true },
-  { key: 'onboarding_help',  label: 'Onboarding Help',  enabled: true },
-  { key: 'account_access',   label: 'Account Access',   enabled: true },
+  { key: 'product_overview', label: 'Product Overview', enabled: true },
+  { key: 'pricing',          label: 'Pricing',          enabled: true },
+  { key: 'faq',              label: 'FAQ',               enabled: true },
+  { key: 'troubleshooting',  label: 'Troubleshooting',  enabled: true },
   { key: 'hardware',         label: 'Hardware',         enabled: true },
+  { key: 'contact',          label: 'Contact',          enabled: true },
 ]
 
 function labelToKey(label) {
   return label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
-export default function TicketCategoriesConfig() {
+export default function KBCategoriesConfig() {
   const [categories, setCategories] = useState(null)
   const [saving,     setSaving]     = useState(false)
   const [error,      setError]      = useState(null)
@@ -41,7 +43,7 @@ export default function TicketCategoriesConfig() {
   const [addError,   setAddError]   = useState(null)
 
   useEffect(() => {
-    getTicketCategories()
+    getKBCategories()
       .then(data => setCategories(data.categories ?? DEFAULT_CATEGORIES))
       .catch(() => setCategories([...DEFAULT_CATEGORIES]))
   }, [])
@@ -91,7 +93,7 @@ export default function TicketCategoriesConfig() {
     setError(null)
     setSuccess(false)
     try {
-      await updateTicketCategories({ categories })
+      await updateKBCategories({ categories })
       setSuccess(true)
     } catch (e) {
       const msg = e?.response?.data?.detail?.message
@@ -108,7 +110,7 @@ export default function TicketCategoriesConfig() {
   if (!categories) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
-        <div style={{ fontSize: 22, marginBottom: 8 }}>🏷️</div>
+        <div style={{ fontSize: 22, marginBottom: 8 }}>📚</div>
         Loading categories…
       </div>
     )
@@ -125,12 +127,12 @@ export default function TicketCategoriesConfig() {
           fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18,
           color: '#0a1a24', margin: '0 0 6px',
         }}>
-          🏷️ Ticket &amp; KB Categories
+          📚 Knowledge Base Categories
         </h2>
         <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0 }}>
-          These categories appear in the ticket creation form. Knowledge Base articles
-          use their own separate categories — see the KB Categories tab.
-          Disable defaults that don't apply to your business, or add custom ones.
+          These categories appear only in the Knowledge Base article dropdown — separate
+          from support ticket categories. Add "Expert Content" here if your AI Agent uses
+          a named persona, to keep its educational articles organised and easy to audit.
         </p>
       </div>
 
@@ -259,7 +261,7 @@ export default function TicketCategoriesConfig() {
               value={newLabel}
               onChange={e => { setNewLabel(e.target.value); setAddError(null) }}
               onKeyDown={e => e.key === 'Enter' && addCategory()}
-              placeholder="e.g. Integration Support"
+              placeholder="e.g. Expert Content"
               maxLength={80}
               style={{
                 width: '100%', border: '1px solid #d4e5ee', borderRadius: 6,
