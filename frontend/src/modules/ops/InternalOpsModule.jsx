@@ -24,7 +24,7 @@ import {
   downloadInternalOpsReport, downloadActivityLogReport,
 } from '../../services/internal_ops.service'
 import { toggleOwnerAttention } from '../../services/performance.service'
-import { getTeams, getInternalIssueCategories, listUsers } from '../../services/admin.service'
+import { getTeams, getDepartments, getInternalIssueCategories, listUsers } from '../../services/admin.service'
 
 const PRIORITIES  = ['critical', 'high', 'medium', 'low']
 const STATUSES    = ['open', 'in_progress', 'resolved']
@@ -531,15 +531,17 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
   
 
 // ── Issues Tab ────────────────────────────────────────────────────────────────
-export function IssuesTab({ user }) {
+export export function IssuesTab({ user }) {
   const isManager = ['owner', 'ops_manager'].includes(user?.roles?.template)
   const [issues, setIssues]           = useState([])
   const [teams, setTeams]             = useState([])
+  const [departments, setDepartments] = useState([])   // REPORTS-DEPT-1 Phase 3
   const [categories, setCategories]   = useState([])
   const [teamMembers, setTeamMembers] = useState([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
   const [filterTeam, setFilterTeam]   = useState('')
+  const [filterDepartment, setFilterDepartment] = useState('')   // REPORTS-DEPT-1 Phase 3
   const [filterStatus, setFilterStatus] = useState('')
   const [showNew, setShowNew]           = useState(false)
   const [selected, setSelected]         = useState(null)
@@ -558,14 +560,16 @@ export function IssuesTab({ user }) {
       const params = {}
       if (filterTeam)   params.team          = filterTeam
       if (filterStatus) params.status_filter = filterStatus
-      const [issData, teamsData, catsData, usersData] = await Promise.all([
+      const [issData, teamsData, deptsData, catsData, usersData] = await Promise.all([
         listIssues(params),
         getTeams(),
+        getDepartments(),
         getInternalIssueCategories(),
         listUsers(),
       ])
       setIssues(issData?.items ?? [])
       setTeams(teamsData?.teams ?? [])
+      setDepartments(deptsData?.departments ?? [])
       setCategories(catsData?.categories ?? [])
       setTeamMembers(usersData ?? [])
     } catch {
@@ -579,6 +583,19 @@ export function IssuesTab({ user }) {
   const handleUpdate = async (id, payload) => { await updateIssue(id, payload); load() }
   const handleDelete = async (id) => { await deleteIssue(id); load() }
 
+  // REPORTS-DEPT-1 Phase 3: team -> department name lookup, and a
+  // department-filtered view. Applied client-side rather than as a new
+  // backend query param — departments derive entirely from the already-
+  // fetched teams/departments config, no new endpoint needed.
+  const teamDeptName = {}
+  teams.forEach(t => {
+    const dept = departments.find(d => d.id === t.department_id)
+    teamDeptName[t.name] = dept ? dept.name : null
+  })
+  const visibleIssues = filterDepartment
+    ? issues.filter(iss => teamDeptName[iss.team] === filterDepartment)
+    : issues
+
   if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading issues…</div>
   if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span> <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
 
@@ -588,7 +605,7 @@ export function IssuesTab({ user }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Issues</h2>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>{issues.length} issue{issues.length !== 1 ? 's' : ''}</p>
+          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>{visibleIssues.length} issue{visibleIssues.length !== 1 ? 's' : ''}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {isManager && (
@@ -781,6 +798,13 @@ export function IssuesTab({ user }) {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        {isManager && departments.length > 0 && (
+          <select value={filterDepartment} onChange={e => setFilterDepartment(e.target.value)}
+            style={{ ...INP, width: 'auto', padding: '7px 12px', fontSize: 13 }}>
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+          </select>
+        )}
         {isManager && (
           <select value={filterTeam} onChange={e => setFilterTeam(e.target.value)}
             style={{ ...INP, width: 'auto', padding: '7px 12px', fontSize: 13 }}>
@@ -806,13 +830,13 @@ export function IssuesTab({ user }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#F5F9FA' }}>
-                {['Ref', 'Title', 'Team', 'Priority', 'Status', 'Assigned To', 'Reported', ''].map(h => (
+                {['Ref', 'Title', 'Department', 'Team', 'Priority', 'Status', 'Assigned To', 'Reported', ''].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.7px', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {issues.map((iss, i) => (
+              {visibleIssues.map((iss, i) => (
                 <tr
                   key={iss.id}
                   onClick={() => setSelected(iss)}
@@ -823,6 +847,11 @@ export function IssuesTab({ user }) {
                   <td style={{ padding: '12px 14px', fontSize: 12, color: '#7A9BAD', fontWeight: 600 }}>{iss.reference}</td>
                   <td style={{ padding: '12px 14px', fontSize: 13.5, color: '#0a1a24', fontWeight: 500, maxWidth: 260 }}>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{iss.title}</div>
+                  </td>
+                  <td style={{ padding: '12px 14px' }}>
+                    {teamDeptName[iss.team] && (
+                      <Badge text={teamDeptName[iss.team]} colours={{ bg: '#FDF4E3', text: '#92601A' }} />
+                    )}
                   </td>
                   <td style={{ padding: '12px 14px' }}><Badge text={iss.team} colours={{ bg: '#F0F9FF', text: '#0369A1' }} /></td>
                   <td style={{ padding: '12px 14px' }}><Badge text={iss.priority} colours={PRIORITY_COLOURS[iss.priority]} /></td>
