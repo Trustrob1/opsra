@@ -22,6 +22,7 @@ from datetime import datetime
 from app.utils.org_gates import SYSTEM_DAILY_CUSTOMER_CEILING
 from app.models.common import ok
 import re as _re
+import uuid
 
 _VALID_QUESTION_TYPES = {"multiple_choice", "list_select", "free_text", "yes_no"}
 _VALID_LEAD_FIELDS = {
@@ -490,18 +491,40 @@ def update_kb_categories(
     return ok(data={"categories": cats_data}, message="KB categories saved")
 
 
-# ── Teams Config — OPS-1 ──────────────────────────────────────────────────────
+# ── Teams Config — OPS-1, extended REPORTS-DEPT-1 Phase 1 ───────────────────
+# teams shape changed from a flat string array to objects with a stable id
+# and department_id (migration already run — see REPORTS-DEPT-1 Phase 1 SQL).
+# users.team is UNCHANGED — still a plain varchar(100) storing the team
+# NAME string, matched against teams[].name at read time. This keeps every
+# existing consumer of users.team working untouched.
+
+class TeamItem(BaseModel):
+    id: str
+    name: str = Field(..., min_length=1, max_length=100)
+    department_id: Optional[str] = None
+    is_active: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Team name is required")
+        return v.strip()
+
 
 class TeamsUpdate(BaseModel):
-    teams: List[str]
+    teams: List[TeamItem]
 
     @field_validator("teams")
     @classmethod
-    def _validate_teams(cls, v: List[str]) -> List[str]:
-        cleaned = [t.strip() for t in v if t.strip()]
-        if len(cleaned) != len(set(cleaned)):
+    def _validate_teams(cls, v: List[TeamItem]) -> List[TeamItem]:
+        names = [t.name.lower() for t in v]
+        if len(names) != len(set(names)):
             raise ValueError("Team names must be unique")
-        return cleaned
+        ids = [t.id for t in v]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Team ids must be unique")
+        return v
 
 
 @router.get("/teams")
@@ -509,7 +532,7 @@ def get_teams(
     org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    """OPS-1: Return org team names config."""
+    """OPS-1: Return org team config (now objects with id/department_id)."""
     result = (
         db.table("organisations")
         .select("teams")
@@ -530,15 +553,36 @@ def update_teams(
     org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    """OPS-1: Save org team names config."""
+    """OPS-1 + REPORTS-DEPT-1: Save org team config. Validates every
+    referenced department_id actually exists before saving."""
     _role = (org.get("roles") or {}).get("template", "").lower()
     if _role not in ("owner", "ops_manager"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can update this setting."},
         )
+
+    dept_result = (
+        db.table("organisations")
+        .select("departments")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    dept_data = dept_result.data
+    if isinstance(dept_data, list):
+        dept_data = dept_data[0] if dept_data else {}
+    valid_dept_ids = {d.get("id") for d in ((dept_data or {}).get("departments") or [])}
+    for t in payload.teams:
+        if t.department_id and t.department_id not in valid_dept_ids:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_DEPARTMENT", "message": f"Unknown department_id: {t.department_id}"},
+            )
+
+    teams_data = [t.model_dump() for t in payload.teams]
     updates = {
-        "teams": payload.teams,
+        "teams": teams_data,
         "updated_at": datetime.utcnow().isoformat(),
     }
     db.table("organisations").update(updates).eq("id", org["org_id"]).execute()
@@ -546,9 +590,211 @@ def update_teams(
         db=db, org_id=org["org_id"], user_id=org["id"],
         action="teams.updated",
         resource_type="organisation", resource_id=org["org_id"],
-        new_value={"teams": payload.teams},
+        new_value={"teams": teams_data},
     )
-    return ok(data={"teams": payload.teams}, message="Teams saved")
+    return ok(data={"teams": teams_data}, message="Teams saved")
+
+
+# ── Departments Config — REPORTS-DEPT-1 Phase 1 ──────────────────────────────
+# Same JSONB-on-organisations pattern as teams/kb_categories. Addable with
+# zero code changes — creating a department (e.g. Operations, later) is a
+# POST to this route, nothing else needs touching.
+
+class DepartmentCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Department name is required")
+        return v.strip()
+
+
+class DepartmentUpdate(BaseModel):
+    name: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.strip():
+            raise ValueError("Department name cannot be empty")
+        return v.strip() if v else v
+
+
+def _require_dept_manager(org: dict) -> None:
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can manage departments."},
+        )
+
+
+@router.get("/departments")
+def get_departments(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """REPORTS-DEPT-1: Return org departments config."""
+    result = (
+        db.table("organisations")
+        .select("departments")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    departments = (data or {}).get("departments") or []
+    return ok(data={"departments": departments})
+
+
+@router.post("/departments", status_code=status.HTTP_201_CREATED)
+def create_department(
+    payload: DepartmentCreate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """REPORTS-DEPT-1: Add a new department."""
+    _require_dept_manager(org)
+    result = (
+        db.table("organisations")
+        .select("departments")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    departments = (data or {}).get("departments") or []
+
+    existing_names = {d.get("name", "").strip().lower() for d in departments}
+    if payload.name.strip().lower() in existing_names:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "DUPLICATE_NAME", "message": "A department with this name already exists."},
+        )
+
+    new_dept = {
+        "id": str(uuid.uuid4()),
+        "name": payload.name,
+        "sort_order": len(departments),
+        "is_active": True,
+    }
+    departments.append(new_dept)
+    db.table("organisations").update({
+        "departments": departments,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="departments.created",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value=new_dept,
+    )
+    return ok(data={"departments": departments}, message="Department created")
+
+
+@router.patch("/departments/{department_id}")
+def update_department(
+    department_id: str,
+    payload: DepartmentUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """REPORTS-DEPT-1: Edit a department — rename, reorder, or toggle active."""
+    _require_dept_manager(org)
+    result = (
+        db.table("organisations")
+        .select("departments")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    departments = (data or {}).get("departments") or []
+
+    found = False
+    for d in departments:
+        if d.get("id") == department_id:
+            found = True
+            if payload.name is not None:
+                d["name"] = payload.name
+            if payload.sort_order is not None:
+                d["sort_order"] = payload.sort_order
+            if payload.is_active is not None:
+                d["is_active"] = payload.is_active
+            break
+    if not found:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": "Department not found"},
+        )
+
+    db.table("organisations").update({
+        "departments": departments,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="departments.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"department_id": department_id, **payload.model_dump(exclude_none=True)},
+    )
+    return ok(data={"departments": departments}, message="Department updated")
+
+
+@router.delete("/departments/{department_id}", status_code=status.HTTP_200_OK)
+def delete_department(
+    department_id: str,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """REPORTS-DEPT-1: Deactivate a department (soft-delete, preserves
+    historical reporting integrity — same pattern as growth_teams)."""
+    _require_dept_manager(org)
+    result = (
+        db.table("organisations")
+        .select("departments")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    departments = (data or {}).get("departments") or []
+
+    found = False
+    for d in departments:
+        if d.get("id") == department_id:
+            d["is_active"] = False
+            found = True
+            break
+    if not found:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": "Department not found"},
+        )
+
+    db.table("organisations").update({
+        "departments": departments,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="departments.deactivated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"department_id": department_id},
+    )
+    return ok(data={"departments": departments}, message="Department deactivated")
 
 
 # ── Internal Issue Categories Config — OPS-1 ─────────────────────────────────

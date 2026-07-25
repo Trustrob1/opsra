@@ -207,6 +207,30 @@ def _resolve_period_preset(preset: str) -> tuple[str, str]:
 # Internal fetch helpers
 # ---------------------------------------------------------------------------
 
+def _get_user_team_map(db: Any, org_id: str) -> dict:
+    """
+    REPORTS-DEPT-1 Phase 0: maps user id -> team name for this org.
+    Used to derive lead/report team attribution via the assigned/attributed
+    rep instead of the unpopulated leads.first_touch_team column.
+    S14: returns {} on any DB failure — callers must treat a missing key
+    as "Unattributed", never raise.
+    """
+    try:
+        result = (
+            db.table("users")
+            .select("id, team")
+            .eq("org_id", org_id)
+            .execute()
+        )
+        rows = result.data or []
+        if isinstance(rows, dict):
+            rows = [rows]
+        return {r["id"]: (r.get("team") or "Unattributed") for r in rows if r.get("id")}
+    except Exception as exc:
+        logger.warning("_get_user_team_map failed org=%s: %s", org_id, exc)
+        return {}
+
+
 def _fetch_leads_in_period(
     db: Any,
     org_id: str,
@@ -237,7 +261,14 @@ def _fetch_leads_in_period(
             rows = [rows]
         rows = [r for r in rows if _in_range(r.get("created_at"), date_from, date_to)]
         if team:
-            rows = [r for r in rows if (r.get("first_touch_team") or "") == team]
+            # REPORTS-DEPT-1 Phase 0: first_touch_team is unpopulated in
+            # production — team now derived from the assigned/attributed
+            # rep's users.team instead.
+            user_team_map = _get_user_team_map(db, org_id)
+            rows = [
+                r for r in rows
+                if user_team_map.get(r.get("attributed_to") or r.get("assigned_to")) == team
+            ]
         return rows
     except Exception as exc:
         logger.warning("_fetch_leads_in_period failed org=%s: %s", org_id, exc)
@@ -273,7 +304,13 @@ def _fetch_converted_leads_in_period(
             rows = [rows]
         rows = [r for r in rows if _in_range(r.get("converted_at"), date_from, date_to)]
         if team:
-            rows = [r for r in rows if (r.get("first_touch_team") or "") == team]
+            # REPORTS-DEPT-1 Phase 0: same fix as _fetch_leads_in_period —
+            # see that function's comment for the reasoning.
+            user_team_map = _get_user_team_map(db, org_id)
+            rows = [
+                r for r in rows
+                if user_team_map.get(r.get("attributed_to") or r.get("assigned_to")) == team
+            ]
         return rows
     except Exception as exc:
         logger.warning("_fetch_converted_leads_in_period failed org=%s: %s", org_id, exc)
@@ -591,6 +628,10 @@ def get_revenue_report(
     S14: returns error dict on any failure — never raises.
     """
     try:
+        # REPORTS-DEPT-1 Phase 0: fetched once per call, used by the
+        # by_team breakdown below instead of leads.first_touch_team.
+        user_team_map = _get_user_team_map(db, org_id)
+
         def _rep_revenue_share(lead: dict, filter_rep_id: Optional[str]) -> float:
             """
             Return the portion of deal_value attributable to filter_rep_id.
@@ -649,12 +690,17 @@ def get_revenue_report(
 
             team_rev: dict = {}
             for l in leads:
-                t = l.get("first_touch_team") or "Unattributed"
+                # REPORTS-DEPT-1 Phase 0: derived from the attributed/assigned
+                # rep now, not the unpopulated first_touch_team column.
+                t = user_team_map.get(l.get("attributed_to") or l.get("assigned_to")) or "Unattributed"
                 try:
                     team_rev[t] = team_rev.get(t, 0.0) + float(l.get("deal_value") or 0)
                 except (TypeError, ValueError):
                     pass
             for ds in direct:
+                # direct_sales has 0 rows for this org today (confirmed
+                # live) — source_team kept only as a fallback for any org
+                # where direct_sales is actually populated.
                 t = ds.get("source_team") or "Unattributed"
                 try:
                     team_rev[t] = team_rev.get(t, 0.0) + float(ds.get("amount") or 0)
@@ -1918,10 +1964,25 @@ def get_lost_lead_report(
             # Filter by lost_at in period
             lost = [l for l in all_lost if _in_range(l.get("lost_at"), date_f, date_t)]
 
+            # REPORTS-DEPT-1 Phase 0: users fetch moved up from below so the
+            # team filter can use real users.team instead of the unpopulated
+            # leads.first_touch_team column. Builds rep_names AND
+            # rep_team_map in one query (was previously fetched further
+            # down for rep_names alone).
+            rep_names: dict = {}
+            rep_team_map: dict = {}
+            try:
+                u_r = db.table("users").select("id, full_name, team").eq("org_id", org_id).execute()
+                for u in (u_r.data or []):
+                    rep_names[u["id"]] = u.get("full_name") or u["id"]
+                    rep_team_map[u["id"]] = u.get("team") or "Unattributed"
+            except Exception:
+                pass
+
             if rep_id:
                 lost = [l for l in lost if l.get("assigned_to") == rep_id]
             if team:
-                lost = [l for l in lost if (l.get("first_touch_team") or "") == team]
+                lost = [l for l in lost if rep_team_map.get(l.get("assigned_to")) == team]
 
             # Lost by reason
             reason_counts: dict = {}
@@ -1938,13 +1999,6 @@ def get_lost_lead_report(
                 aid = l.get("assigned_to")
                 if aid:
                     rep_counts[aid] = rep_counts.get(aid, 0) + 1
-            rep_names: dict = {}
-            try:
-                u_r = db.table("users").select("id, full_name").eq("org_id", org_id).execute()
-                for u in (u_r.data or []):
-                    rep_names[u["id"]] = u.get("full_name") or u["id"]
-            except Exception:
-                pass
             lost_by_rep = [
                 {"rep_name": rep_names.get(rid, rid), "lost_count": cnt}
                 for rid, cnt in sorted(rep_counts.items(), key=lambda x: x[1], reverse=True)
@@ -1953,7 +2007,7 @@ def get_lost_lead_report(
             # Lost by team
             team_counts: dict = {}
             for l in lost:
-                t = l.get("first_touch_team") or "Unattributed"
+                t = rep_team_map.get(l.get("assigned_to")) or "Unattributed"
                 team_counts[t] = team_counts.get(t, 0) + 1
             lost_by_team = [
                 {"team_name": t, "lost_count": cnt}

@@ -280,7 +280,7 @@ function NewIssueModal({ teams, categories, teamMembers, onCreate, onClose }) {
             <label style={LBL}>Team *</label>
             <select value={form.team} onChange={e => { set('team', e.target.value); set('assigned_to', '') }} style={INP}>
               <option value="">Select team</option>
-              {teams.map(t => <option key={t} value={t}>{t}</option>)}
+              {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
             </select>
           </div>
           <div>

@@ -532,6 +532,24 @@ export const updateUserTeam = (userId, team) =>
   api.patch(`/api/v1/admin/users/${userId}`, { team })
     .then(r => r.data.data)
 
+// ── Departments Config — REPORTS-DEPT-1 Phase 1 ─────────────────────────────
+
+export const getDepartments = () =>
+  api.get('/api/v1/admin/departments')
+    .then(r => r.data.data)
+
+export const createDepartment = (payload) =>
+  api.post('/api/v1/admin/departments', payload)
+    .then(r => r.data.data)
+
+export const updateDepartment = (departmentId, payload) =>
+  api.patch(`/api/v1/admin/departments/${departmentId}`, payload)
+    .then(r => r.data.data)
+
+export const deleteDepartment = (departmentId) =>
+  api.delete(`/api/v1/admin/departments/${departmentId}`)
+    .then(r => r.data.data)
+
 export const getInternalIssueCategories = () =>
   api.get('/api/v1/admin/internal-issue-categories')
     .then(r => r.data.data)

@@ -543,7 +543,7 @@ function UserModal({ mode, user, roles, teams = [], onSave, onClose }) {
         <select value={form.team} onChange={e => set('team', e.target.value)} style={INPUT}>
           <option value="">— No team assigned —</option>
           {teams.map(t => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t.id} value={t.name}>{t.name}</option>
           ))}
         </select>
 

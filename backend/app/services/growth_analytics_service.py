@@ -158,7 +158,7 @@ def _fetch_users(db: Any, org_id: str) -> list[dict]:
     try:
         result = (
             db.table("users")
-            .select("id, full_name, roles(template)")
+            .select("id, full_name, team, roles(template)")
             .eq("org_id", org_id)
             .eq("is_active", True)
             .execute()
@@ -531,8 +531,11 @@ def get_team_performance(
     date_to: Optional[date],
 ) -> list[dict]:
     """
-    Per-team performance grouped by first_touch_team.
-    Null first_touch_team → "Unattributed" group.
+    Per-team performance grouped by the assigned rep's team (users.team).
+    REPORTS-DEPT-1 Phase 0: previously grouped by leads.first_touch_team,
+    which is confirmed unpopulated in production (0/2426 leads set) — this
+    silently returned a single "Unattributed" bucket for every org. Null/
+    unassigned/no-team still falls back to "Unattributed", same as before.
     Pattern 33: Python-side grouping.
     """
     leads = _fetch_leads(db, org_id)
@@ -541,10 +544,15 @@ def get_team_performance(
         if _in_range(l.get("created_at"), date_from, date_to)
     ]
 
-    # Group by first_touch_team
+    # REPORTS-DEPT-1: build assigned-rep -> team map once, instead of
+    # trusting leads.first_touch_team (see docstring above)
+    users = _fetch_users(db, org_id)
+    user_team_map = {u["id"]: (u.get("team") or "Unattributed") for u in users}
+
+    # Group by the assigned rep's team
     groups: dict[str, list[dict]] = {}
     for l in period_leads:
-        team = l.get("first_touch_team") or "Unattributed"
+        team = user_team_map.get(l.get("assigned_to")) or "Unattributed"
         groups.setdefault(team, []).append(l)
 
     results = []
@@ -628,7 +636,9 @@ def get_funnel_metrics(
 ) -> dict:
     """
     Stage-by-stage funnel with conversion percentages.
-    team=None → org-wide. team="Unattributed" → null first_touch_team only.
+    team=None → org-wide. team="Unattributed" → rep has no team assigned.
+    REPORTS-DEPT-1 Phase 0: team now derived from the assigned rep's
+    users.team, not the unpopulated leads.first_touch_team column.
     """
     leads = _fetch_leads(db, org_id)
     period_leads = [
@@ -638,12 +648,17 @@ def get_funnel_metrics(
 
     # Team filter
     if team is not None:
+        users = _fetch_users(db, org_id)
+        user_team_map = {u["id"]: (u.get("team") or "Unattributed") for u in users}
         if team == "Unattributed":
-            period_leads = [l for l in period_leads if not l.get("first_touch_team")]
+            period_leads = [
+                l for l in period_leads
+                if user_team_map.get(l.get("assigned_to"), "Unattributed") == "Unattributed"
+            ]
         else:
             period_leads = [
                 l for l in period_leads
-                if (l.get("first_touch_team") or "") == team
+                if user_team_map.get(l.get("assigned_to")) == team
             ]
 
     # GROWTH-DASH-CONFIG: use org-configured enabled stages only

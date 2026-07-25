@@ -31,7 +31,15 @@ import {
   deleteScheduledReport,
   getOrgUsers,
 } from '../../services/reports.service'
-import { getGrowthTeams } from '../../services/growth.service'
+// REPORTS-DEPT-1 Phase 0: was getGrowthTeams() from growth.service.js —
+// that read growth_teams, a manually-curated color-picker table for the
+// Campaign Spend UI, unrelated to users.team (confirmed via
+// growth_config.py: campaign_spend.team_name is a free string, never a
+// growth_teams.id FK). The Reports team filter must match the same team
+// source that report filtering now actually uses — admin.service.js's
+// getTeams(), the same list TeamsConfig.jsx / UserManagement.jsx /
+// InternalOpsModule.jsx already use.
+import { getTeams } from '../../services/admin.service'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1043,7 +1051,7 @@ function FilterPanel({ filters, setFilters, sections, setSections, teams, users,
               borderRadius: 8, fontSize: 13, marginBottom: 14, outline: 'none',
               boxSizing: 'border-box', background: 'white' }}>
             <option value="">All Teams</option>
-            {teams.map(t => <option key={t.id || t.name} value={t.name}>{t.name}</option>)}
+            {teams.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </>
       )}
@@ -1187,7 +1195,9 @@ export default function ReportsModule({ user }) {
 
   // Load supporting filter data on mount
   useEffect(() => {
-    getGrowthTeams().then(setTeams).catch(() => {})
+    // REPORTS-DEPT-1 Phase 0: getTeams() returns { teams: string[] } —
+    // see admin.service.js. Unwrap to the flat array setTeams expects.
+    getTeams().then(data => setTeams(data?.teams ?? [])).catch(() => {})
     getOrgUsers().then(us => {
       const reps = us.filter(u => {
         const t = u?.roles?.template || u?.role_template || ''

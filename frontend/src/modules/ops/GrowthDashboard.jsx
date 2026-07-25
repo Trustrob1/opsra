@@ -36,7 +36,7 @@ import {
   clearInsightCache,
 } from '../../services/growth.service'
 import useAuthStore from '../../store/authStore'
-import { getGrowthDashboardConfig } from '../../services/admin.service'
+import { getGrowthDashboardConfig, getTeams } from '../../services/admin.service'
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1101,9 +1101,12 @@ export default function GrowthDashboard({ user, setView }) {
     fetchAll(dateRange, funnelParams)
     fetchInsights(dateRange)
     fetchAnomalies()
-    import('../../services/growth.service').then(m =>
-      m.getGrowthTeams().then(setTeamsList).catch(() => {})
-    )
+    // REPORTS-DEPT-1 Phase 0: was growth_teams (a separate, manually-curated
+    // color-picker list unrelated to users.team) — get_funnel_metrics()
+    // now filters against users.team, so the Funnel chips must offer the
+    // same team list, not a second independent one. Same fix already
+    // applied to ReportsModule.jsx and InternalOpsModule.jsx.
+    getTeams().then(data => setTeamsList(data?.teams ?? [])).catch(() => {})
     // GROWTH-DASH-CONFIG: fetch section visibility — fail silently (show all on error)
     getGrowthDashboardConfig()
       .then(data => { if (data?.sections) setDashConfig(data) })
