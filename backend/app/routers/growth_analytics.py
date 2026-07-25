@@ -30,7 +30,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.database import get_supabase
 from app.routers.auth import get_current_org
+from app.dependencies import get_user_department_id
 from app.services import growth_analytics_service
+from app.services.report_analytics_service import get_allowed_teams_for_department
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -93,6 +95,71 @@ def _success(data: object) -> dict:
     return {"success": True, "data": data, "error": None}
 
 
+def _resolve_team_scope(org: dict, db, team: Optional[str]) -> Optional[str]:
+    """
+    REPORTS-DEPT-1 Phase 2/3: same enforcement as report_analytics.py's
+    _resolve_team_scope — owner or an unscoped role (department_id is None,
+    which is every pre-existing role) passes through unrestricted. A role
+    with a department_id set may only request one of that department's
+    teams, and must specify one (no silent org-wide fallback).
+    """
+    roles = org.get("roles") or {}
+    if isinstance(roles, list):
+        roles = roles[0] if roles else {}
+    template = (roles.get("template") or "").lower()
+
+    if template == "owner":
+        return team
+
+    department_id = get_user_department_id(org)
+    if not department_id:
+        return team
+
+    allowed_teams = get_allowed_teams_for_department(db, org["org_id"], department_id)
+
+    if not team:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "TEAM_REQUIRED",
+                "message": "Specify which team to view.",
+                "field": "team",
+                "allowed_teams": sorted(allowed_teams),
+            },
+        )
+
+    if team not in allowed_teams:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "You don't have access to this team's reports."},
+        )
+
+    return team
+
+
+def _filter_team_rows_by_department(org: dict, db, rows: list) -> list:
+    """
+    REPORTS-DEPT-1 Phase 2/3: for endpoints returning a list with one row
+    per team (e.g. get_team_performance) rather than accepting a team
+    filter param. Owner or unscoped role → unchanged. Department-scoped
+    role → only rows whose team_name is in their department.
+    """
+    roles = org.get("roles") or {}
+    if isinstance(roles, list):
+        roles = roles[0] if roles else {}
+    template = (roles.get("template") or "").lower()
+
+    if template == "owner":
+        return rows
+
+    department_id = get_user_department_id(org)
+    if not department_id:
+        return rows
+
+    allowed_teams = get_allowed_teams_for_department(db, org["org_id"], department_id)
+    return [r for r in rows if r.get("team_name") in allowed_teams]
+
+
 # ---------------------------------------------------------------------------
 # GET /analytics/growth/overview
 # ---------------------------------------------------------------------------
@@ -134,6 +201,7 @@ def get_teams(
         date_from=df,
         date_to=dt,
     )
+    data = _filter_team_rows_by_department(org, db, data)
     return _success(data)
 
 
@@ -150,6 +218,7 @@ def get_funnel(
     org: dict = Depends(get_current_org),
 ):
     _require_growth_access(org)
+    team = _resolve_team_scope(org, db, team)
     df, dt = _parse_dates(date_from, date_to)
     data = growth_analytics_service.get_funnel_metrics(
         db=db,

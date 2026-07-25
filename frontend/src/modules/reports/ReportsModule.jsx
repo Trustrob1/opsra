@@ -975,7 +975,7 @@ function ScheduleModal({ open, onClose, defaultSections }) {
 
 // ─── Filter Panel ─────────────────────────────────────────────────────────────
 
-function FilterPanel({ filters, setFilters, sections, setSections, teams, users, onApply, loading, isMobile, open, onClose }) {
+function FilterPanel({ filters, setFilters, sections, setSections, teams, users, onApply, loading, isMobile, open, onClose, isScoped }) {
   const upd = (k, v) => setFilters(f => ({ ...f, [k]: v }))
   const toggleSection = (key) => {
     setSections(s => s.includes(key) ? s.filter(k => k !== key) : [...s, key])
@@ -1050,8 +1050,11 @@ function FilterPanel({ filters, setFilters, sections, setSections, teams, users,
             style={{ width: '100%', padding: '8px 10px', border: '1px solid #D1D5DB',
               borderRadius: 8, fontSize: 13, marginBottom: 14, outline: 'none',
               boxSizing: 'border-box', background: 'white' }}>
-            <option value="">All Teams</option>
-            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+            {/* REPORTS-DEPT-1: scoped roles must pick a specific team —
+                no org-wide "All Teams" option, matching the backend's
+                422 TEAM_REQUIRED behaviour when team is omitted. */}
+            {!isScoped && <option value="">All Teams</option>}
+            {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
           </select>
         </>
       )}
@@ -1159,10 +1162,19 @@ function FilterPanel({ filters, setFilters, sections, setSections, teams, users,
 // ─── Main Module ──────────────────────────────────────────────────────────────
 
 export default function ReportsModule({ user }) {
-  const role = user?.roles?.template || useAuthStore.getState().user?.roles?.template || ''
+  const authUser  = user || useAuthStore.getState().user
+  const role      = authUser?.roles?.template || ''
+  // REPORTS-DEPT-1 Phase 2/3: department_id flows through the roles(*)
+  // select-star join server-side, so it's already on the auth/me response
+  // — no new fetch needed. Mirrors backend _resolve_team_scope precedence:
+  // only "owner" is unconditionally unrestricted; any other role —
+  // including ops_manager — is scoped if department_id is set on it.
+  const departmentId = authUser?.roles?.department_id || null
+  const isScoped  = role !== 'owner' && !!departmentId
+  const hasAccess = ['owner', 'ops_manager'].includes(role) || !!departmentId
 
   // RBAC guard
-  if (!['owner', 'ops_manager'].includes(role)) {
+  if (!hasAccess) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
         <div style={{ textAlign: 'center' }}>
@@ -1171,7 +1183,7 @@ export default function ReportsModule({ user }) {
             Access restricted
           </p>
           <p style={{ fontSize: 13, color: '#9CA3AF' }}>
-            Management reports are available to owners and ops managers only.
+            Management reports are available to owners, ops managers, and department leads.
           </p>
         </div>
       </div>
@@ -1195,9 +1207,21 @@ export default function ReportsModule({ user }) {
 
   // Load supporting filter data on mount
   useEffect(() => {
-    // REPORTS-DEPT-1 Phase 0: getTeams() returns { teams: string[] } —
-    // see admin.service.js. Unwrap to the flat array setTeams expects.
-    getTeams().then(data => setTeams(data?.teams ?? [])).catch(() => {})
+    // REPORTS-DEPT-1: getTeams() returns { teams: [{id,name,department_id,
+    // is_active}] } post-Phase-1 migration. Scoped roles see only their
+    // department's active teams, and get a default selection so the
+    // initial report load doesn't hit the backend's 422 TEAM_REQUIRED
+    // (org-wide "All Teams" isn't a valid request for a scoped role).
+    getTeams().then(data => {
+      const allTeams = data?.teams ?? []
+      const visible = isScoped
+        ? allTeams.filter(t => t.department_id === departmentId && t.is_active)
+        : allTeams
+      setTeams(visible)
+      if (isScoped && visible.length > 0) {
+        setFilters(f => (f.team ? f : { ...f, team: visible[0].name }))
+      }
+    }).catch(() => {})
     getOrgUsers().then(us => {
       const reps = us.filter(u => {
         const t = u?.roles?.template || u?.role_template || ''
@@ -1218,7 +1242,14 @@ export default function ReportsModule({ user }) {
       const data   = await getFullReport(params)
       setReport(data)
     } catch (e) {
-      setFetchErr('Failed to load report. Please try again.')
+      const code = e?.response?.data?.detail?.code
+      if (code === 'TEAM_REQUIRED') {
+        setFetchErr('Select a team to view its report.')
+      } else if (code === 'FORBIDDEN') {
+        setFetchErr('You don\u2019t have access to this team\u2019s reports.')
+      } else {
+        setFetchErr('Failed to load report. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -1325,7 +1356,7 @@ export default function ReportsModule({ user }) {
             sections={sections} setSections={setSections}
             teams={teams} users={users}
             onApply={handleApply} loading={loading}
-            isMobile={false}
+            isMobile={false} isScoped={isScoped}
           />
         )}
 
@@ -1336,7 +1367,7 @@ export default function ReportsModule({ user }) {
             sections={sections} setSections={setSections}
             teams={teams} users={users}
             onApply={handleApply} loading={loading}
-            isMobile={true} open={filtersOpen} onClose={() => setFiltersOpen(false)}
+            isMobile={true} open={filtersOpen} onClose={() => setFiltersOpen(false)} isScoped={isScoped}
           />
         )}
 

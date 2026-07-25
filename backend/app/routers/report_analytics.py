@@ -32,7 +32,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.database import get_supabase
 from app.routers.auth import get_current_org
+from app.dependencies import get_user_department_id
 from app.services.report_analytics_service import (
+    get_allowed_teams_for_department,
     get_full_report,
     generate_report_pdf,
     _resolve_period_preset,
@@ -139,6 +141,60 @@ def _require_reports_access(org: dict) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "FORBIDDEN", "message": "Owner or ops_manager access required"},
         )
+
+
+def _resolve_team_scope(org: dict, db, team: Optional[str]) -> Optional[str]:
+    """
+    REPORTS-DEPT-1 Phase 2/3: enforces department scoping on the `team`
+    filter param.
+
+    - Owner, or any role with no department_id set (unscoped roles —
+      includes every pre-existing role, since department_id is new and
+      nullable) → unrestricted, returns `team` unchanged. This is the
+      overwhelmingly common case today and behaves exactly as before.
+    - A role WITH a department_id set is restricted to that department's
+      teams only:
+        - if `team` is given, it must be one of that department's teams,
+          else 403.
+        - if `team` is omitted, 422 — department-scoped roles must specify
+          which of their teams to view. Full cross-team aggregation within
+          one department is Phase 3 Reports-hub work, not yet built.
+
+    Returns the (possibly unchanged) team value to pass into the report
+    functions, or raises.
+    """
+    roles = org.get("roles") or {}
+    if isinstance(roles, list):
+        roles = roles[0] if roles else {}
+    template = (roles.get("template") or "").lower()
+
+    if template == "owner":
+        return team
+
+    department_id = get_user_department_id(org)
+    if not department_id:
+        return team  # unscoped role — no restriction (pre-existing behaviour)
+
+    allowed_teams = get_allowed_teams_for_department(db, org["org_id"], department_id)
+
+    if not team:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "TEAM_REQUIRED",
+                "message": "Specify which team to view.",
+                "field": "team",
+                "allowed_teams": sorted(allowed_teams),
+            },
+        )
+
+    if team not in allowed_teams:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "You don't have access to this team's reports."},
+        )
+
+    return team
 
 
 def _require_owner(org: dict) -> None:
@@ -406,6 +462,7 @@ def get_report(
     Compare: previous_period | year_on_year | none.
     """
     _require_reports_access(org)
+    team = _resolve_team_scope(org, db, team)
 
     resolved_from, resolved_to = _resolve_dates(period_preset, date_from, date_to)
     active_sections = _parse_sections(sections)
@@ -448,6 +505,7 @@ def download_report(
     Returns 429 if limit exceeded.
     """
     _require_reports_access(org)
+    team = _resolve_team_scope(org, db, team)
 
     org_id = org["org_id"]
 

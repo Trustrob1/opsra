@@ -1010,11 +1010,13 @@ class CreateRoleRequest(BaseModel):
     name: str
     template: str
     permissions: dict
+    department_id: Optional[str] = None  # REPORTS-DEPT-1 Phase 2
 
 
 class UpdateRoleRequest(BaseModel):
     name: Optional[str] = None
     permissions: Optional[dict] = None
+    department_id: Optional[str] = None  # REPORTS-DEPT-1 Phase 2
 
 
 class RoutingRuleItem(BaseModel):
@@ -1452,11 +1454,32 @@ async def create_role(
             },
         )
 
+    # REPORTS-DEPT-1 Phase 2: confirm the department actually exists before
+    # attaching a role to it — same validation pattern as teams.department_id.
+    if payload.department_id:
+        dept_result = (
+            db.table("organisations")
+            .select("departments")
+            .eq("id", org["org_id"])
+            .maybe_single()
+            .execute()
+        )
+        dept_data = dept_result.data
+        if isinstance(dept_data, list):
+            dept_data = dept_data[0] if dept_data else {}
+        valid_dept_ids = {d.get("id") for d in ((dept_data or {}).get("departments") or [])}
+        if payload.department_id not in valid_dept_ids:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_DEPARTMENT", "message": f"Unknown department_id: {payload.department_id}"},
+            )
+
     role_data = {
         "org_id": org["org_id"],
         "name": payload.name,
         "template": payload.template,
         "permissions": payload.permissions,
+        "department_id": payload.department_id,
     }
     result = db.table("roles").insert(role_data).execute()
     new_role = result.data[0]
@@ -1503,6 +1526,26 @@ async def update_role(
         )
 
     update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+
+    # REPORTS-DEPT-1 Phase 2: same department validation as create_role
+    if "department_id" in update_data:
+        dept_result = (
+            db.table("organisations")
+            .select("departments")
+            .eq("id", org["org_id"])
+            .maybe_single()
+            .execute()
+        )
+        dept_data = dept_result.data
+        if isinstance(dept_data, list):
+            dept_data = dept_data[0] if dept_data else {}
+        valid_dept_ids = {d.get("id") for d in ((dept_data or {}).get("departments") or [])}
+        if update_data["department_id"] not in valid_dept_ids:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_DEPARTMENT", "message": f"Unknown department_id: {update_data['department_id']}"},
+            )
+
     result = (
         db.table("roles")
         .update(update_data)

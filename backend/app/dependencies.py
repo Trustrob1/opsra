@@ -326,6 +326,22 @@ def require_permission(permission_key: str):
 # has_permission — pure helper (no FastAPI dependency, safe to call directly)
 # ---------------------------------------------------------------------------
 
+def get_user_department_id(user: dict) -> Optional[str]:
+    """
+    REPORTS-DEPT-1 Phase 2: returns the department_id attached to the
+    user's role, or None if unset (owner/ops_manager with no department
+    assigned — full-access roles) or if roles are not yet loaded.
+    Callers should treat None as "not department-scoped" — i.e. either a
+    global role, or one that predates this feature and hasn't been
+    assigned a department yet.
+    """
+    try:
+        role = user.get("roles") or {}
+        return role.get("department_id")
+    except Exception:
+        return None
+
+
 def has_permission(user: dict, permission_key: str) -> bool:
     """
     Check whether `user` has `permission_key` set to True in their role.

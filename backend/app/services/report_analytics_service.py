@@ -231,6 +231,36 @@ def _get_user_team_map(db: Any, org_id: str) -> dict:
         return {}
 
 
+def get_allowed_teams_for_department(db: Any, org_id: str, department_id: str) -> set:
+    """
+    REPORTS-DEPT-1 Phase 2/3: returns the set of team NAME strings whose
+    department_id matches the given department, from organisations.teams
+    (jsonb — see REPORTS-DEPT-1 Phase 1 migration). Only active teams are
+    included — a deactivated team shouldn't be selectable for new reports.
+    S14: returns an empty set on any failure — callers must treat that as
+    "no accessible teams", never as "unrestricted".
+    """
+    try:
+        result = (
+            db.table("organisations")
+            .select("teams")
+            .eq("id", org_id)
+            .maybe_single()
+            .execute()
+        )
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        teams = (data or {}).get("teams") or []
+        return {
+            t.get("name") for t in teams
+            if t.get("department_id") == department_id and t.get("is_active", True)
+        }
+    except Exception as exc:
+        logger.warning("get_allowed_teams_for_department failed org=%s dept=%s: %s", org_id, department_id, exc)
+        return set()
+
+
 def _fetch_leads_in_period(
     db: Any,
     org_id: str,

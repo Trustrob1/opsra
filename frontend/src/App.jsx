@@ -86,19 +86,27 @@ const SIDEBAR_W_OPEN   = 248
 const SIDEBAR_W_CLOSED = 72
 
 // ─── Sidebar navigation definition ───────────────────────────────────────────
+// REPORTS-DEPT-1 Phase 3: `group` added to collapse the flat 11-item list
+// into 3 sections in the sidebar. Nothing else about each item changed —
+// same id/label/icon/module/active fields every existing consumer reads.
 const NAV = [
-  { id: 'leads',    label: 'Lead Center', icon: 'leads', module: '01', active: true  },
-  { id: 'conversations', label: 'Conversations',      icon: 'conversations', module: '02',  active: true  },
-  { id: 'whatsapp', label: 'WhatsApp Engine',      icon: 'whatsapp', module: '03', active: true },
-  { id: 'support',  label: 'Support Tickets',      icon: 'support', module: '04', active: true },
-  { id: 'renewal',  label: 'Client Subscription',     icon: 'renewal', module: '05', active: true  },
-  { id: 'ops',      label: 'Operations Hub',     icon: 'ops', module: '06', active: true  },
-  { id: 'performance', label: 'Performance Hub',    icon: 'performance', module: '07',  active: true  },
-  { id: 'tasks',    label: 'Tasks Board',            icon: 'tasks', module: '08',  active: true  },
-  { id: 'commissions', label: 'Commissions',        icon: 'commissions', module: '09',  active: true  },
-  { id: 'reports',     label: 'Reports', icon: 'reports', module: '10',  active: true  },
-  { id: 'project-planner', label: 'Project Planner', icon: 'project-planner', module: '11', active: true },
-  
+  { id: 'leads',    label: 'Lead Center', icon: 'leads', module: '01', active: true, group: 'sales_marketing' },
+  { id: 'conversations', label: 'Conversations',      icon: 'conversations', module: '02',  active: true, group: 'sales_marketing' },
+  { id: 'whatsapp', label: 'WhatsApp Engine',      icon: 'whatsapp', module: '03', active: true, group: 'sales_marketing' },
+  { id: 'support',  label: 'Support Tickets',      icon: 'support', module: '04', active: true, group: 'operations' },
+  { id: 'renewal',  label: 'Client Subscription',     icon: 'renewal', module: '05', active: true, group: 'operations' },
+  { id: 'ops',      label: 'Operations Hub',     icon: 'ops', module: '06', active: true, group: 'operations' },
+  { id: 'tasks',    label: 'Tasks Board',            icon: 'tasks', module: '08', active: true, group: 'operations' },
+  { id: 'commissions', label: 'Commissions',        icon: 'commissions', module: '09',  active: true, group: 'operations' },
+  { id: 'performance', label: 'Performance Hub',    icon: 'performance', module: '07',  active: true, group: 'insights' },
+  { id: 'reports',     label: 'Reports', icon: 'reports', module: '10',  active: true, group: 'insights' },
+  { id: 'project-planner', label: 'Project Planner', icon: 'project-planner', module: '11', active: true, group: 'insights' },
+]
+
+const NAV_GROUPS = [
+  { id: 'sales_marketing', label: 'Sales & Marketing' },
+  { id: 'operations',      label: 'Operations' },
+  { id: 'insights',        label: 'Insights' },
 ]
 
 
@@ -588,9 +596,14 @@ function AppShell() {
   }, [clearAuth])
 
   const _userTemplate = user?.roles?.template ?? ''
+  // REPORTS-DEPT-1 Phase 2/3: a department-scoped role (department_id set
+  // on their role, e.g. "Marketing Lead") can now also see Reports —
+  // mirrors ReportsModule.jsx's own RBAC gate exactly, so nav visibility
+  // and actual page access never disagree.
+  const _departmentId = user?.roles?.department_id ?? null
   const visibleNav = NAV.filter(item => {
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
-    if (item.id === 'reports' && !['owner', 'ops_manager'].includes(_userTemplate)) return false
+    if (item.id === 'reports' && !['owner', 'ops_manager'].includes(_userTemplate) && !_departmentId) return false
     // Project Planner: owner + ops_manager only — a planning tool for leadership, not day-to-day staff
     if (item.id === 'project-planner' && !['owner', 'ops_manager'].includes(_userTemplate)) return false
     // Performance Hub: visible to all roles (each role sees their own scoped view)
@@ -727,34 +740,50 @@ function AppShell() {
         )}
       </div>
 
-      {visibleNav.map(item => {
-        const isActive = activeNav === item.id
+      {NAV_GROUPS.map(group => {
+        const itemsInGroup = visibleNav.filter(item => item.group === group.id)
+        if (itemsInGroup.length === 0) return null   // e.g. Insights entirely hidden for a role
         return (
-          <div
-            key={item.id}
-            onClick={() => handleNavClick(item.id)}
-            title={!item.active ? 'Coming soon' : (collapsed ? item.label : undefined)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              padding: collapsed ? '11px 0' : '11px 16px', margin: '2px 8px', borderRadius: 9,
-              cursor: item.active ? 'pointer' : 'default', transition: 'all 0.18s',
-              fontSize: 13.5, fontWeight: 500,
-              color:      isActive ? 'white' : (item.active ? '#7A9BAD' : '#3a5a6a'),
-              background: isActive ? ds.teal : 'none',
-              opacity:    item.active ? 1 : 0.5,
-              minHeight:  44,   // 44px tap target on mobile
-            }}
-          >
-            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)', flexShrink: 0 }}>
-              {(() => { const Icon = NAV_ICONS[item.id]; return Icon ? <Icon size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /> : null })()}
-            </div>
+          <div key={group.id}>
             {!collapsed && (
-              <>
-                <span style={{ flex: 1, lineHeight: 1.3 }}>{item.label}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.6)' : '#3a5a6a' }}>{item.module}</span>
-              </>
+              <div style={{ padding: '14px 16px 4px', fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+                {group.label}
+              </div>
             )}
+            {collapsed && group.id !== 'sales_marketing' && (
+              <div style={{ height: 1, background: '#1a2f3f', margin: '10px 10px 4px' }} />
+            )}
+            {itemsInGroup.map(item => {
+              const isActive = activeNav === item.id
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  title={!item.active ? 'Coming soon' : (collapsed ? item.label : undefined)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    padding: collapsed ? '11px 0' : '11px 16px', margin: '2px 8px', borderRadius: 9,
+                    cursor: item.active ? 'pointer' : 'default', transition: 'all 0.18s',
+                    fontSize: 13.5, fontWeight: 500,
+                    color:      isActive ? 'white' : (item.active ? '#7A9BAD' : '#3a5a6a'),
+                    background: isActive ? ds.teal : 'none',
+                    opacity:    item.active ? 1 : 0.5,
+                    minHeight:  44,   // 44px tap target on mobile
+                  }}
+                >
+                  <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)', flexShrink: 0 }}>
+                    {(() => { const Icon = NAV_ICONS[item.id]; return Icon ? <Icon size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /> : null })()}
+                  </div>
+                  {!collapsed && (
+                    <>
+                      <span style={{ flex: 1, lineHeight: 1.3 }}>{item.label}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.6)' : '#3a5a6a' }}>{item.module}</span>
+                    </>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )
       })}
