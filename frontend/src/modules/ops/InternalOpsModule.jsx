@@ -531,7 +531,7 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
   
 
 // ── Issues Tab ────────────────────────────────────────────────────────────────
-export export function IssuesTab({ user }) {
+export function IssuesTab({ user }) {
   const isManager = ['owner', 'ops_manager'].includes(user?.roles?.template)
   const [issues, setIssues]           = useState([])
   const [teams, setTeams]             = useState([])
@@ -916,10 +916,13 @@ export function ActivityLogTab({ user }) {
   const isManager = ['owner', 'ops_manager'].includes(user?.roles?.template)
   const [logs, setLogs]               = useState([])
   const [users, setUsers]             = useState([])
+  const [teams, setTeams]             = useState([])         // REPORTS-DEPT-1 Phase 3
+  const [departments, setDepartments] = useState([])         // REPORTS-DEPT-1 Phase 3
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
   const [filterUser, setFilterUser]   = useState('')
   const [filterType, setFilterType]   = useState('')
+  const [filterDepartment, setFilterDepartment] = useState('')   // REPORTS-DEPT-1 Phase 3
   const [expanded, setExpanded]       = useState(null)
 
   // logModal: null | { logType: 'daily'|'weekly', existingLog: obj|null }
@@ -960,12 +963,16 @@ export function ActivityLogTab({ user }) {
       const params = {}
       if (filterUser) params.user_id_filter = filterUser
       if (filterType) params.log_type       = filterType
-      const [logsData, usersData] = await Promise.all([
+      const [logsData, usersData, teamsData, deptsData] = await Promise.all([
         listActivityLogs(params),
         isManager ? listUsers() : Promise.resolve([]),
+        isManager ? getTeams() : Promise.resolve(null),
+        isManager ? getDepartments() : Promise.resolve(null),
       ])
       setLogs(logsData?.items ?? [])
       setUsers(usersData ?? [])
+      setTeams(teamsData?.teams ?? [])
+      setDepartments(deptsData?.departments ?? [])
     } catch {
       setError('Failed to load activity logs.')
     } finally { setLoading(false) }
@@ -980,6 +987,17 @@ export function ActivityLogTab({ user }) {
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [load])
+
+  // REPORTS-DEPT-1 Phase 3: same client-side derivation used in IssuesTab —
+  // no new backend param, just a lookup over already-fetched teams/departments.
+  const teamDeptName = {}
+  teams.forEach(t => {
+    const dept = departments.find(d => d.id === t.department_id)
+    teamDeptName[t.name] = dept ? dept.name : null
+  })
+  const visibleLogs = filterDepartment
+    ? logs.filter(l => teamDeptName[l.team] === filterDepartment)
+    : logs
 
   const handleSubmit = async (payloadOrId, updatePayload, isUpdate) => {
     if (isUpdate) {
@@ -1212,6 +1230,13 @@ export function ActivityLogTab({ user }) {
       {/* Manager filters */}
       {isManager && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+          {departments.length > 0 && (
+            <select value={filterDepartment} onChange={e => setFilterDepartment(e.target.value)}
+              style={{ ...INP, width: 'auto', padding: '7px 12px', fontSize: 13 }}>
+              <option value="">All Departments</option>
+              {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
+          )}
           <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
             style={{ ...INP, width: 'auto', padding: '7px 12px', fontSize: 13 }}>
             <option value="">All Staff</option>
@@ -1229,14 +1254,14 @@ export function ActivityLogTab({ user }) {
       {/* intentionally empty — logging via header buttons above */}
 
       {/* Log list */}
-      {logs.length === 0 ? (
+      {visibleLogs.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '64px 32px', color: '#7A9BAD' }}>
           <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}><CalendarDays size={40} color={ds.teal} strokeWidth={1.5} /></div>
           <p style={{ fontSize: 14 }}>No activity logs yet. Start by logging today's activities.</p>
         </div>
       ) : (
         <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E4EEF2', overflow: 'hidden' }}>
-          {logs.map((log, i) => {
+          {visibleLogs.map((log, i) => {
             const isOpen   = expanded === log.id
             const isOwnLog = log.user_id === user?.id
 
@@ -1253,6 +1278,9 @@ export function ActivityLogTab({ user }) {
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#0a1a24' }}>
                         {log.user?.full_name || 'You'}
                       </span>
+                      {teamDeptName[log.team] && (
+                        <Badge text={teamDeptName[log.team]} colours={{ bg: '#FDF4E3', text: '#92601A' }} />
+                      )}
                       <Badge text={log.team || '—'} colours={{ bg: '#F0F9FF', text: '#0369A1' }} />
                       <Badge text={log.log_type} colours={{ bg: '#F5F3FF', text: '#6D28D9' }} />
                       {log.blockers && (
