@@ -692,7 +692,7 @@ function IssuesTab({ user }) {
               onChange={e => setDlFilters(f => ({ ...f, team: e.target.value }))}
               style={INP}>
               <option value=''>All Teams</option>
-              {teams.map(t => <option key={t} value={t}>{t}</option>)}
+              {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
             </select>
 
             <label style={LBL}>Category</label>
@@ -785,7 +785,7 @@ function IssuesTab({ user }) {
           <select value={filterTeam} onChange={e => setFilterTeam(e.target.value)}
             style={{ ...INP, width: 'auto', padding: '7px 12px', fontSize: 13 }}>
             <option value="">All Teams</option>
-            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+            {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
           </select>
         )}
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
