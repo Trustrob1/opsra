@@ -531,7 +531,7 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
   
 
 // ── Issues Tab ────────────────────────────────────────────────────────────────
-function IssuesTab({ user }) {
+export function IssuesTab({ user }) {
   const isManager = ['owner', 'ops_manager'].includes(user?.roles?.template)
   const [issues, setIssues]           = useState([])
   const [teams, setTeams]             = useState([])
@@ -883,7 +883,7 @@ function IssuesTab({ user }) {
 }
 
 // ── Activity Log Tab ──────────────────────────────────────────────────────────
-function ActivityLogTab({ user }) {
+export function ActivityLogTab({ user }) {
   const isManager = ['owner', 'ops_manager'].includes(user?.roles?.template)
   const [logs, setLogs]               = useState([])
   const [users, setUsers]             = useState([])

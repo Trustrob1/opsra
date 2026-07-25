@@ -43,6 +43,7 @@ import WhatsAppModule from './modules/whatsapp/WhatsAppModule'
 import SupportModule from './modules/support/SupportModule'
 import RenewalModule from './modules/renewal/RenewalModule'
 import OpsModule     from './modules/ops/OpsModule'
+import BusinessActivitiesModule from './modules/ops/BusinessActivitiesModule'
 import ProjectPlannerModule from './modules/projectplanner/ProjectPlannerModule'
 import TaskBoard     from './modules/tasks/TaskBoard'
 import AdminModule   from './modules/admin/AdminModule'
@@ -67,7 +68,7 @@ import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft, FolderKanban,
+  ChevronRight, ChevronLeft, FolderKanban, Layers,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 
@@ -93,6 +94,7 @@ const NAV = [
   { id: 'leads',    label: 'Lead Center', icon: 'leads', module: '01', active: true, group: 'sales_marketing' },
   { id: 'conversations', label: 'Conversations',      icon: 'conversations', module: '02',  active: true, group: 'sales_marketing' },
   { id: 'whatsapp', label: 'WhatsApp Engine',      icon: 'whatsapp', module: '03', active: true, group: 'sales_marketing' },
+  { id: 'business-activities', label: 'Business Activities', icon: 'business-activities', module: '12', active: true, group: 'business_activities' },
   { id: 'support',  label: 'Support Tickets',      icon: 'support', module: '04', active: true, group: 'operations' },
   { id: 'renewal',  label: 'Client Subscription',     icon: 'renewal', module: '05', active: true, group: 'operations' },
   { id: 'ops',      label: 'Operations Hub',     icon: 'ops', module: '06', active: true, group: 'operations' },
@@ -105,6 +107,7 @@ const NAV = [
 
 const NAV_GROUPS = [
   { id: 'sales_marketing', label: 'Sales & Marketing' },
+  { id: 'business_activities', label: 'Business Activities' },
   { id: 'operations',      label: 'Operations' },
   { id: 'insights',        label: 'Insights' },
 ]
@@ -123,6 +126,7 @@ const NAV_ICONS = {
   commissions:   Briefcase,
   reports:       ClipboardList,
   'project-planner': FolderKanban,
+  'business-activities': Layers,
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -1023,6 +1027,9 @@ function AppShell() {
         )}
         {view === 'ops' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><OpsModule user={user} /></div>
+        )}
+        {view === 'business-activities' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><BusinessActivitiesModule user={user} /></div>
         )}
         {view === 'tasks' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} onOpenLead={(leadId) =>openLeadProfile(leadId)} /></div>
