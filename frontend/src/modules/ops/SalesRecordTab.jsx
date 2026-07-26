@@ -37,7 +37,7 @@ function Badge({ text, tone }) {
   )
 }
 
-export default function SalesRecordTab() {
+export default function SalesRecordTab({ isActive }) {
   const [sales, setSales]       = useState([])
   const [users, setUsers]       = useState([])
   const [loading, setLoading]   = useState(true)
@@ -72,6 +72,12 @@ export default function SalesRecordTab() {
   }, [page, dateFrom, dateTo, repId, model])
 
   useEffect(() => { load() }, [load])
+
+  // REPORTS-DEPT-1: this tab stays mounted once opened (Pattern 26 —
+  // hidden with display:none, not unmounted), so it never refetched
+  // after a new import unless the whole page was reloaded. Refetch
+  // whenever this tab becomes the visible one again.
+  useEffect(() => { if (isActive) load() }, [isActive])
 
   useEffect(() => {
     listUsers().then(us => setUsers(us ?? [])).catch(() => {})

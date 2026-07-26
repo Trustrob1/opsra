@@ -137,7 +137,7 @@ function RateConfig({ rates, canEdit, onAdd, onUpdate, onDelete }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function CommissionsTab({ user }) {
+export default function CommissionsTab({ user, isActive }) {
   const canEdit = ['owner', 'ops_manager'].includes(user?.roles?.template)
 
   const [rates, setRates]       = useState([])
@@ -168,6 +168,10 @@ export default function CommissionsTab({ user }) {
   }, [dateFrom, dateTo])
 
   useEffect(() => { load() }, [load])
+
+  // REPORTS-DEPT-1: same staleness fix as SalesRecordTab — refetch when
+  // this tab becomes visible again, not just once on first mount.
+  useEffect(() => { if (isActive) load() }, [isActive])
 
   const handleAddRate = async (name, rate) => {
     try {

@@ -209,13 +209,13 @@ export default function BusinessActivitiesModule({ user }) {
 
       {tabs.some(t => t.id === 'sales-record') && (
         <div style={{ display: activeTab === 'sales-record' ? 'block' : 'none' }}>
-          <SalesRecordTab />
+          <SalesRecordTab isActive={activeTab === 'sales-record'} />
         </div>
       )}
 
       {tabs.some(t => t.id === 'commissions') && (
         <div style={{ display: activeTab === 'commissions' ? 'block' : 'none' }}>
-          <CommissionsTab user={user} />
+          <CommissionsTab user={user} isActive={activeTab === 'commissions'} />
         </div>
       )}
 
