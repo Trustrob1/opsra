@@ -208,7 +208,14 @@ def _txn_rows_to_dicts(rows: list, region: str) -> list[dict]:
         record: dict = {field: None for field in set(_TXN_ALIASES.values())}
         for idx, canonical in col_map.items():
             cell_val = row[idx] if idx < len(row) else None
-            record[canonical] = str(cell_val).strip() if cell_val is not None else None
+            if isinstance(cell_val, (datetime, date)):
+                # Real Excel date cell — format directly as YYYY-MM-DD rather
+                # than stringifying to "YYYY-MM-DD HH:MM:SS" and forcing
+                # _parse_date to re-parse a shape its format list never
+                # expected. This was silently rejecting real sale dates.
+                record[canonical] = cell_val.strftime("%Y-%m-%d")
+            else:
+                record[canonical] = str(cell_val).strip() if cell_val is not None else None
         record["region"] = region
         result.append(record)
     return result

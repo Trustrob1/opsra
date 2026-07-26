@@ -764,9 +764,25 @@ async def import_transaction_sales_excel(
     file_bytes = await file.read()
 
     try:
-        sheets = parse_multi_sheet_xlsx(file_bytes)
+        all_sheets = parse_multi_sheet_xlsx(file_bytes)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": "PARSE_ERROR", "message": str(exc)})
+
+    # Only these two tabs are actual per-sale region logs — the workbook
+    # also contains summary/commission/per-rep tabs (Breakdown, Summary,
+    # ALL SALES, COMMISSIONS, MARYANN SALES, TOLU'SALE, Records) that
+    # don't share this row shape and would otherwise be misread as regions.
+    ALLOWED_REGIONS = {"lagos sales", "abuja sales"}
+    sheets = {name: rows for name, rows in all_sheets.items() if name.strip().lower() in ALLOWED_REGIONS}
+
+    if not sheets:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "NO_MATCHING_SHEETS",
+                "message": f"No 'Lagos Sales' or 'Abuja Sales' tab found. Sheets in this workbook: {', '.join(all_sheets.keys())}",
+            },
+        )
 
     rows_by_region = {name: _txn_rows_to_dicts(rows, name) for name, rows in sheets.items()}
 
