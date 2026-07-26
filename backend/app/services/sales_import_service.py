@@ -587,6 +587,7 @@ def validate_and_prepare_aggregate_sales_rows(
 
     Returns the same shape as validate_and_prepare_rows().
     """
+    from datetime import timezone
     now_iso = datetime.now(timezone.utc).isoformat()
 
     valid_rows:         list[dict] = []
