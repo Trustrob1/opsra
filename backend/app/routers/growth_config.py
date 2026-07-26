@@ -917,7 +917,7 @@ def _require_commission_manager(org: dict) -> None:
         )
 
 
-@router.get("/commission-rates")
+@router.get("/growth/commission-rates")
 def get_commission_rates(
     org=Depends(get_current_org),
     db=Depends(get_supabase),
@@ -938,7 +938,7 @@ def get_commission_rates(
     return _success({"commission_rates": rates})
 
 
-@router.post("/commission-rates", status_code=status.HTTP_201_CREATED)
+@router.post("/growth/commission-rates", status_code=status.HTTP_201_CREATED)
 def create_commission_rate(
     payload: CommissionRateCreate,
     org=Depends(get_current_org),
@@ -977,7 +977,7 @@ def create_commission_rate(
     return _success({"commission_rates": rates}, "Commission rate added")
 
 
-@router.patch("/commission-rates/{rate_id}")
+@router.patch("/growth/commission-rates/{rate_id}")
 def update_commission_rate(
     rate_id: str,
     payload: CommissionRateUpdate,
@@ -1019,7 +1019,7 @@ def update_commission_rate(
     return _success({"commission_rates": rates}, "Commission rate updated")
 
 
-@router.delete("/commission-rates/{rate_id}", status_code=status.HTTP_200_OK)
+@router.delete("/growth/commission-rates/{rate_id}", status_code=status.HTTP_200_OK)
 def delete_commission_rate(
     rate_id: str,
     org=Depends(get_current_org),
