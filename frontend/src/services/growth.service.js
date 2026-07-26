@@ -121,10 +121,53 @@ export async function deleteSpendEntry(spendId) {
 // Growth config — direct sales
 // ---------------------------------------------------------------------------
 
-export async function getDirectSales(page = 1, pageSize = 20) {
+export async function getDirectSales(page = 1, pageSize = 20, filters = {}) {
   const r = await axios.get(`${BASE}/api/v1/growth/direct-sales`, {
-    ..._h(), params: { page, page_size: pageSize },
+    ..._h(),
+    params: {
+      page, page_size: pageSize,
+      ...(filters.date_from ? { date_from: filters.date_from } : {}),
+      ...(filters.date_to   ? { date_to:   filters.date_to   } : {}),
+      ...(filters.rep_id    ? { rep_id:    filters.rep_id    } : {}),
+      ...(filters.model     ? { model:     filters.model     } : {}),
+    },
   })
+  return r.data.data
+}
+
+// REPORTS-DEPT-1 Phase 4b: commission-relevant sales (narrower fields,
+// broader access — owner/ops_manager/sales_agent) for the Commissions tab.
+export async function getCommissionSales(filters = {}) {
+  const r = await axios.get(`${BASE}/api/v1/growth/direct-sales/commissions`, {
+    ..._h(),
+    params: {
+      ...(filters.date_from ? { date_from: filters.date_from } : {}),
+      ...(filters.date_to   ? { date_to:   filters.date_to   } : {}),
+    },
+  })
+  return r.data.data
+}
+
+// REPORTS-DEPT-1 Phase 4b: commission rates — GET open to any
+// authenticated org member, create/update/delete owner/ops_manager only
+// (enforced server-side; UI also hides the edit controls for other roles).
+export async function getCommissionRates() {
+  const r = await axios.get(`${BASE}/api/v1/growth/commission-rates`, _h())
+  return r.data.data
+}
+
+export async function createCommissionRate(payload) {
+  const r = await axios.post(`${BASE}/api/v1/growth/commission-rates`, payload, _h())
+  return r.data.data
+}
+
+export async function updateCommissionRate(rateId, payload) {
+  const r = await axios.patch(`${BASE}/api/v1/growth/commission-rates/${rateId}`, payload, _h())
+  return r.data.data
+}
+
+export async function deleteCommissionRate(rateId) {
+  const r = await axios.delete(`${BASE}/api/v1/growth/commission-rates/${rateId}`, _h())
   return r.data.data
 }
 

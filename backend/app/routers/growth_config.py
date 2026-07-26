@@ -30,9 +30,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
+import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.database import get_supabase
 from app.routers.auth import get_current_org
@@ -46,6 +47,9 @@ from app.services.sales_import_service import (
     fetch_aggregate_sheets_csv,
     _aggregate_rows_to_dicts,
     validate_and_prepare_aggregate_sales_rows,
+    parse_multi_sheet_xlsx,
+    _txn_rows_to_dicts,
+    validate_and_prepare_transaction_sales_rows,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,6 +69,21 @@ def _require_owner_or_ops(org: dict) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "FORBIDDEN", "message": "Owner or ops_manager access required"},
+        )
+
+
+def _require_owner_ops_or_agent(org: dict) -> None:
+    """REPORTS-DEPT-1 Phase 4b: broader than _require_owner_or_ops —
+    sales_agent included, since every rep sees the full commission
+    leaderboard (client-confirmed), not just managers."""
+    roles = org.get("roles") or {}
+    if isinstance(roles, list):
+        roles = roles[0] if roles else {}
+    template = (roles.get("template") or "").lower()
+    if template not in ("owner", "ops_manager", "sales_agent"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Insufficient permissions"},
         )
 
 
@@ -332,15 +351,33 @@ def delete_spend(
 def list_direct_sales(
     page:      int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    date_from: Optional[str] = Query(None),
+    date_to:   Optional[str] = Query(None),
+    rep_id:    Optional[str] = Query(None),
+    model:     Optional[str] = Query(None),
     db=Depends(get_supabase),
     org: dict = Depends(get_current_org),
 ):
+    """REPORTS-DEPT-1 Phase 4b: date_from/date_to/rep_id/model are new,
+    optional filters for the Sales Record tab — all default to None,
+    identical behaviour to before for any existing caller that omits them."""
     _require_owner_or_ops(org)
     offset = (page - 1) * page_size
-    result = (
+    query = (
         db.table("direct_sales")
         .select("*", count="exact")
         .eq("org_id", org["org_id"])
+    )
+    if date_from:
+        query = query.gte("sale_date", date_from)
+    if date_to:
+        query = query.lte("sale_date", date_to)
+    if rep_id:
+        query = query.eq("recorded_by", rep_id)
+    if model:
+        query = query.ilike("model", f"%{model}%")
+    result = (
+        query
         .order("sale_date", desc=True)
         .range(offset, offset + page_size - 1)
         .execute()
@@ -698,6 +735,89 @@ def import_daily_aggregate_sheets(
     }, f"{inserted} sale(s) imported successfully")
 
 
+@router.post("/growth/direct-sales/import/transactions/excel", status_code=status.HTTP_200_OK)
+async def import_transaction_sales_excel(
+    confirm:          bool = Query(False),
+    from_beginning:   bool = Query(False),
+    file: UploadFile = File(...),
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    REPORTS-DEPT-1 Phase 4b: upload a per-sale transaction workbook with
+    one tab per region (e.g. Lagos, Abuja) — Date/Sales Rep/Customer Name/
+    Model/Units/Amount/Status. Feeds the Sales Record and Commissions tabs.
+    Separate watermark ("txn_excel") from both the daily-aggregate and
+    named-customer importers — three genuinely different row shapes,
+    three independent sync points.
+    """
+    _require_owner_or_ops(org)
+
+    allowed_extensions = (".xlsx", ".xls")
+    filename = (file.filename or "").lower()
+    if not filename.endswith(allowed_extensions):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_FILE_TYPE", "message": "Only .xlsx or .xls workbooks are accepted (multi-sheet required)"},
+        )
+
+    file_bytes = await file.read()
+
+    try:
+        sheets = parse_multi_sheet_xlsx(file_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": "PARSE_ERROR", "message": str(exc)})
+
+    rows_by_region = {name: _txn_rows_to_dicts(rows, name) for name, rows in sheets.items()}
+
+    watermark_date = None if from_beginning else get_watermark(db, org["org_id"], "txn_excel", None)
+
+    try:
+        result = validate_and_prepare_transaction_sales_rows(rows_by_region, org["org_id"], db, "txn_excel", watermark_date)
+    except Exception as exc:
+        logger.exception("Phase 4b: validate_and_prepare_transaction_sales_rows failed")
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+    valid_rows         = result["valid_rows"]
+    error_rows         = result["error_rows"]
+    duplicate_warnings = result["duplicate_warnings"]
+    already_imported   = result["already_imported"]
+
+    if not confirm:
+        return _success({
+            "inserted":          0,
+            "skipped":           len(error_rows),
+            "errors":            error_rows,
+            "duplicate_warnings": duplicate_warnings,
+            "already_imported":  already_imported,
+            "preview":           valid_rows[:10],
+            "total_valid":       len(valid_rows),
+            "regions":           list(sheets.keys()),
+            "watermark_date":    watermark_date,
+        }, "Preview ready — send confirm=true to import")
+
+    inserted = 0
+    if valid_rows:
+        db.table("direct_sales").insert(valid_rows).execute()
+        inserted = len(valid_rows)
+
+    if inserted:
+        max_date = max(r["sale_date"] for r in valid_rows)
+        save_watermark(db, org["org_id"], "txn_excel", None, max_date)
+
+    return _success({
+        "inserted":          inserted,
+        "skipped":           len(error_rows),
+        "errors":            error_rows,
+        "duplicate_warnings": duplicate_warnings,
+        "already_imported":  already_imported,
+        "preview":           [],
+        "total_valid":       len(valid_rows),
+        "regions":           list(sheets.keys()),
+        "watermark_date":    watermark_date,
+    }, f"{inserted} sale(s) imported successfully")
+
+
 @router.delete("/growth/direct-sales/import/watermark", status_code=status.HTTP_200_OK)
 def reset_import_watermark(
     body: WatermarkResetBody,
@@ -762,6 +882,230 @@ def delete_direct_sale(
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Direct sale not found"})
     db.table("direct_sales").delete().eq("id", sale_id).eq("org_id", org["org_id"]).execute()
     return _success(None, "Direct sale deleted")
+
+
+# ---------------------------------------------------------------------------
+# COMMISSION RATES — REPORTS-DEPT-1 Phase 4b
+# Same JSONB-on-organisations pattern as departments/teams (admin.py), but
+# lives here since it's a sales/commission concept, not an admin-nav one —
+# managed from the Commissions tab UI directly, per client preference.
+# ---------------------------------------------------------------------------
+
+class CommissionRateCreate(BaseModel):
+    product_name: str = Field(..., min_length=1, max_length=200)
+    rate_per_unit: float = Field(..., ge=0)
+
+
+class CommissionRateUpdate(BaseModel):
+    product_name: Optional[str] = None
+    rate_per_unit: Optional[float] = None
+
+    @field_validator("product_name")
+    @classmethod
+    def _validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.strip():
+            raise ValueError("Product name cannot be empty")
+        return v.strip() if v else v
+
+
+def _require_commission_manager(org: dict) -> None:
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can manage commission rates."},
+        )
+
+
+@router.get("/commission-rates")
+def get_commission_rates(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """No role restriction beyond authentication — every rep views the
+    commission leaderboard, and needs to see the rates behind it."""
+    result = (
+        db.table("organisations")
+        .select("commission_rates")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    rates = (data or {}).get("commission_rates") or []
+    return _success({"commission_rates": rates})
+
+
+@router.post("/commission-rates", status_code=status.HTTP_201_CREATED)
+def create_commission_rate(
+    payload: CommissionRateCreate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_commission_manager(org)
+    result = (
+        db.table("organisations")
+        .select("commission_rates")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    rates = (data or {}).get("commission_rates") or []
+
+    existing_names = {r.get("product_name", "").strip().lower() for r in rates}
+    if payload.product_name.strip().lower() in existing_names:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "DUPLICATE_NAME", "message": "A rate for this product already exists."},
+        )
+
+    new_rate = {
+        "id": str(uuid.uuid4()),
+        "product_name": payload.product_name.strip(),
+        "rate_per_unit": payload.rate_per_unit,
+    }
+    rates.append(new_rate)
+    db.table("organisations").update({
+        "commission_rates": rates,
+        "updated_at": _now_iso(),
+    }).eq("id", org["org_id"]).execute()
+    return _success({"commission_rates": rates}, "Commission rate added")
+
+
+@router.patch("/commission-rates/{rate_id}")
+def update_commission_rate(
+    rate_id: str,
+    payload: CommissionRateUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_commission_manager(org)
+    result = (
+        db.table("organisations")
+        .select("commission_rates")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    rates = (data or {}).get("commission_rates") or []
+
+    found = False
+    for r in rates:
+        if r.get("id") == rate_id:
+            found = True
+            if payload.product_name is not None:
+                r["product_name"] = payload.product_name
+            if payload.rate_per_unit is not None:
+                r["rate_per_unit"] = payload.rate_per_unit
+            break
+    if not found:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": "Commission rate not found"},
+        )
+
+    db.table("organisations").update({
+        "commission_rates": rates,
+        "updated_at": _now_iso(),
+    }).eq("id", org["org_id"]).execute()
+    return _success({"commission_rates": rates}, "Commission rate updated")
+
+
+@router.delete("/commission-rates/{rate_id}", status_code=status.HTTP_200_OK)
+def delete_commission_rate(
+    rate_id: str,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """Hard delete — unlike departments/teams, a removed product rate has
+    no historical-reporting reason to be preserved; past commission
+    figures were already computed and aren't recalculated retroactively."""
+    _require_commission_manager(org)
+    result = (
+        db.table("organisations")
+        .select("commission_rates")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    rates = (data or {}).get("commission_rates") or []
+
+    new_rates = [r for r in rates if r.get("id") != rate_id]
+    if len(new_rates) == len(rates):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": "Commission rate not found"},
+        )
+
+    db.table("organisations").update({
+        "commission_rates": new_rates,
+        "updated_at": _now_iso(),
+    }).eq("id", org["org_id"]).execute()
+    return _success({"commission_rates": new_rates}, "Commission rate removed")
+
+
+@router.get("/growth/direct-sales/commissions")
+def list_commission_sales(
+    date_from: Optional[str] = Query(None),
+    date_to:   Optional[str] = Query(None),
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    REPORTS-DEPT-1 Phase 4b: commission-relevant sales for the Commissions
+    tab leaderboard. Broader access than list_direct_sales (owner/
+    ops_manager/sales_agent) but narrower field selection — deliberately
+    excludes customer_name/phone/notes so reps see commission data, not
+    customer PII, just because they're allowed to view earnings.
+    Only rows with a model set (i.e. from the transaction-level import —
+    daily-aggregate/named-customer rows have no model and can't be
+    commission-matched). Returns ALL matching rows, not paginated —
+    accurate totals need the full dataset.
+    """
+    _require_owner_ops_or_agent(org)
+    query = (
+        db.table("direct_sales")
+        .select("id, sale_date, recorded_by, model, units, amount, reconciliation_status, region")
+        .eq("org_id", org["org_id"])
+        .not_.is_("model", "null")
+    )
+    if date_from:
+        query = query.gte("sale_date", date_from)
+    if date_to:
+        query = query.lte("sale_date", date_to)
+    result = query.order("sale_date", desc=True).limit(5000).execute()
+
+    rows = result.data or []
+    rep_ids = {r["recorded_by"] for r in rows if r.get("recorded_by")}
+    rep_names: dict = {}
+    if rep_ids:
+        try:
+            u_res = (
+                db.table("users")
+                .select("id, full_name")
+                .eq("org_id", org["org_id"])
+                .in_("id", list(rep_ids))
+                .execute()
+            )
+            rep_names = {u["id"]: u.get("full_name") for u in (u_res.data or [])}
+        except Exception:
+            logger.warning("list_commission_sales: rep name lookup failed — showing unnamed reps.")
+
+    for r in rows:
+        r["rep_name"] = rep_names.get(r.get("recorded_by")) or "Unassigned"
+
+    return _success({"items": rows})
 
 
 # ---------------------------------------------------------------------------

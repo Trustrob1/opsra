@@ -140,6 +140,231 @@ def _match_rep(rep_name: Optional[str], org_id: str, db) -> tuple:
     return None, None
 
 
+# ---------------------------------------------------------------------------
+# REPORTS-DEPT-1 Phase 4b: transaction-level sales log (per-sale, not
+# aggregate) — for a workbook with one tab per region (e.g. Lagos, Abuja),
+# feeding the Sales Record and Commissions tabs. Mirrors the reference
+# commission-dashboard tool's column expectations exactly.
+# ---------------------------------------------------------------------------
+
+_TXN_ALIASES: dict[str, str] = {
+    "date": "sale_date",
+    "sales_rep": "rep_name", "rep": "rep_name", "salesperson": "rep_name",
+    "customer_name": "customer_name", "customer": "customer_name",
+    "items_purchased": "items", "items": "items", "item": "items",
+    "model": "model",
+    "units": "units", "qty": "units", "quantity": "units",
+    "amount": "amount", "sale_amount": "amount",
+    "status": "reconciliation_status",
+    "reconciliation": "reconciliation_status",
+    "reconciled": "reconciliation_status",
+}
+
+
+def parse_multi_sheet_xlsx(file_bytes: bytes) -> dict:
+    """
+    Reads EVERY sheet in an xlsx workbook (unlike parse_excel_file, which
+    only reads wb.active — the one open when the file was last saved).
+    Returns {sheet_name: raw_rows} so a caller can process each region's
+    tab (e.g. "Lagos", "Abuja") separately and tag rows accordingly.
+    S14: raises ValueError on any parse failure.
+    """
+    import openpyxl
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError(f"Could not read workbook: {exc}") from exc
+
+    result: dict = {}
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        rows = list(ws.iter_rows(values_only=True))
+        if rows:
+            result[sheet_name] = rows
+    if not result:
+        raise ValueError("Workbook has no sheets with data.")
+    return result
+
+
+def _txn_rows_to_dicts(rows: list, region: str) -> list[dict]:
+    """
+    Maps raw rows from one sheet/tab into normalised transaction dicts,
+    tagged with the region (sheet name) they came from.
+    """
+    if not rows:
+        return []
+    raw_headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+    col_map: dict[int, str] = {}
+    for idx, raw_h in enumerate(raw_headers):
+        canonical = _normalise_header(raw_h, _TXN_ALIASES)
+        if canonical:
+            col_map[idx] = canonical
+    if not col_map:
+        return []
+    result: list[dict] = []
+    for row in rows[1:]:
+        if all(cell is None or str(cell).strip() == "" for cell in row):
+            continue
+        record: dict = {field: None for field in set(_TXN_ALIASES.values())}
+        for idx, canonical in col_map.items():
+            cell_val = row[idx] if idx < len(row) else None
+            record[canonical] = str(cell_val).strip() if cell_val is not None else None
+        record["region"] = region
+        result.append(record)
+    return result
+
+
+def validate_and_prepare_transaction_sales_rows(
+    rows_by_region: dict,
+    org_id: str,
+    db,
+    import_source: str,
+    watermark_date: Optional[str] = None,
+) -> dict:
+    """
+    Validate and prepare individual-sale rows (one row = one sale, not one
+    day's total) for insertion into direct_sales, across multiple regions
+    (one per sheet tab). Feeds the Sales Record and Commissions tabs.
+
+    Matches the reference commission-dashboard tool's own rules:
+      - customer_name and rep are the meaningful identity of a row (a row
+        with neither is silently skipped, not an error — matches the
+        reference tool's own `r => r[keys.rep] || r[keys.customer]` filter)
+      - amount defaults to 0 if missing/unparseable (not an error) — the
+        reference tool does the same (matchRate() * units still yields a
+        meaningful commission even with a blank Amount column)
+      - reconciliation_status: any value starting with "rec" (case-
+        insensitive) -> "Reconciled", everything else -> "Pending",
+        matching the reference tool's exact rule. Missing Status column
+        entirely -> every row defaults to "Pending".
+      - model falls back to the Items Purchased column if Model is blank,
+        matching the reference tool's `row.model || row.items`.
+    """
+    from datetime import timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    valid_rows:         list[dict] = []
+    error_rows:         list[dict] = []
+    duplicate_warnings: list[dict] = []
+    already_imported:   list[dict] = []
+
+    wm_date: Optional[date] = None
+    if watermark_date:
+        try:
+            wm_date = datetime.strptime(watermark_date[:10], "%Y-%m-%d").date()
+        except Exception:
+            pass
+
+    existing_keys: set = set()
+    try:
+        res = (
+            db.table("direct_sales")
+            .select("recorded_by,sale_date,customer_name,model,amount")
+            .eq("org_id", org_id)
+            .eq("import_source", import_source)
+            .execute()
+        )
+        for r in (res.data or []):
+            if r.get("sale_date"):
+                existing_keys.add((
+                    r.get("recorded_by"),
+                    str(r["sale_date"])[:10],
+                    (r.get("customer_name") or "").strip().lower(),
+                    (r.get("model") or "").strip().lower(),
+                    float(r["amount"]) if r.get("amount") is not None else None,
+                ))
+    except Exception:
+        logger.warning("Phase 4b txn import: duplicate check query failed — skipping.")
+
+    rep_cache: dict = {}
+
+    def _get_rep(rep_name: Optional[str]):
+        if not rep_name:
+            return None, None
+        key = rep_name.strip().lower()
+        if key not in rep_cache:
+            rep_cache[key] = _match_rep(rep_name, org_id, db)
+        return rep_cache[key]
+
+    row_num = 1  # global counter across all regions, 1-indexed after header
+    for region, rows in rows_by_region.items():
+        for row in rows:
+            row_num += 1
+
+            rep_name_raw = (row.get("rep_name") or "").strip() or None
+            customer_name = (row.get("customer_name") or "").strip() or None
+            if not rep_name_raw and not customer_name:
+                continue  # matches reference tool: skip rows with neither
+
+            raw_date = str(row.get("sale_date") or "").strip()
+            sale_date = _parse_date(raw_date)
+            if not sale_date:
+                error_rows.append({
+                    "row": row_num, "region": region,
+                    "message": f"Invalid date: '{raw_date}'. Use YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY",
+                })
+                continue
+
+            try:
+                units = float(str(row.get("units") or "1").replace(",", "")) or 1.0
+            except (ValueError, TypeError):
+                units = 1.0
+
+            try:
+                amount = float(str(row.get("amount") or "0").replace(",", ""))
+            except (ValueError, TypeError):
+                amount = 0.0
+
+            model = (row.get("model") or "").strip() or (row.get("items") or "").strip() or None
+
+            status_raw = (row.get("reconciliation_status") or "").strip().lower()
+            reconciliation_status = "Reconciled" if status_raw.startswith("rec") else "Pending"
+
+            rep_id, rep_team = _get_rep(rep_name_raw)
+
+            if wm_date:
+                try:
+                    row_date = datetime.strptime(sale_date, "%Y-%m-%d").date()
+                    if row_date <= wm_date:
+                        already_imported.append({"row": row_num, "region": region, "sale_date": sale_date})
+                except Exception:
+                    pass
+
+            dup_key = (rep_id, sale_date, (customer_name or "").lower(), (model or "").lower(), amount)
+            if dup_key in existing_keys:
+                duplicate_warnings.append({"row": row_num, "region": region, "sale_date": sale_date, "customer_name": customer_name})
+
+            notes = None
+            if rep_name_raw and not rep_id:
+                notes = f"Unmatched rep on sheet: {rep_name_raw}"
+
+            valid_rows.append({
+                "org_id":                org_id,
+                "customer_name":         customer_name,
+                "amount":                amount,
+                "currency":              "NGN",
+                "sale_date":             sale_date,
+                "channel":               "other",
+                "region":                region,
+                "model":                 model,
+                "units":                 units,
+                "reconciliation_status": reconciliation_status,
+                "source_team":           rep_team,
+                "recorded_by":           rep_id,
+                "notes":                 notes,
+                "import_source":         import_source,
+                "created_at":            now_iso,
+                "updated_at":            now_iso,
+            })
+
+    return {
+        "valid_rows":         valid_rows,
+        "error_rows":         error_rows,
+        "duplicate_warnings": duplicate_warnings,
+        "already_imported":   already_imported,
+    }
+
+
 def _parse_date(value: str) -> Optional[str]:
     if not value:
         return None
