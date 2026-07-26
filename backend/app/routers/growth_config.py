@@ -43,6 +43,9 @@ from app.services.sales_import_service import (
     reset_watermark,
     save_watermark,
     validate_and_prepare_rows,
+    fetch_aggregate_sheets_csv,
+    _aggregate_rows_to_dicts,
+    validate_and_prepare_aggregate_sales_rows,
 )
 
 logger = logging.getLogger(__name__)
@@ -523,6 +526,165 @@ def import_sales_sheets(
     if inserted:
         max_date = max(r["sale_date"] for r in rows_to_insert)
         save_watermark(db, org["org_id"], "sheets", body.url, max_date)
+
+    return _success({
+        "inserted":          inserted,
+        "skipped":           len(valid_rows) - inserted + len(error_rows),
+        "errors":            error_rows,
+        "duplicate_warnings": duplicate_warnings,
+        "already_imported":  already_imported,
+        "preview":           [],
+        "total_valid":       len(valid_rows),
+        "watermark_date":    watermark_date,
+    }, f"{inserted} sale(s) imported successfully")
+
+
+@router.post("/growth/direct-sales/import/daily-aggregate/excel", status_code=status.HTTP_200_OK)
+async def import_daily_aggregate_excel(
+    confirm:          bool = Query(False),
+    from_beginning:   bool = Query(False),
+    selected_indices: Optional[str] = Query(None),
+    file: UploadFile = File(...),
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    REPORTS-DEPT-1 Phase 4: upload a daily-aggregate sales sheet (one row
+    per day per rep, e.g. Date / Sales Rep / Mattress Revenue / Pillow
+    Revenue — not the named-customer transaction shape import_sales_excel
+    expects). Same confirm/preview flow as the existing importer, but a
+    separate validator, and a separate watermark keyed under
+    "daily_aggregate_excel" so it never collides with the named-customer
+    importer's own watermark.
+    """
+    _require_owner_or_ops(org)
+
+    allowed_extensions = (".xlsx", ".xls", ".csv")
+    filename = (file.filename or "").lower()
+    if not any(filename.endswith(ext) for ext in allowed_extensions):
+        content_type = (file.content_type or "").lower()
+        allowed_types = {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel", "text/csv", "application/csv",
+        }
+        if content_type not in allowed_types:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_FILE_TYPE", "message": "Only .xlsx, .xls, or .csv files are accepted"},
+            )
+
+    file_bytes = await file.read()
+
+    try:
+        rows = parse_excel_file(file_bytes, row_mapper=_aggregate_rows_to_dicts)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": "PARSE_ERROR", "message": str(exc)})
+
+    watermark_date = None if from_beginning else get_watermark(db, org["org_id"], "daily_aggregate_excel", None)
+
+    try:
+        result = validate_and_prepare_aggregate_sales_rows(rows, org["org_id"], db, "daily_aggregate_excel", watermark_date)
+    except Exception as exc:
+        logger.exception("Phase 4: validate_and_prepare_aggregate_sales_rows failed for excel import")
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+    valid_rows         = result["valid_rows"]
+    error_rows         = result["error_rows"]
+    duplicate_warnings = result["duplicate_warnings"]
+    already_imported   = result["already_imported"]
+
+    if not confirm:
+        return _success({
+            "inserted":          0,
+            "skipped":           len(error_rows),
+            "errors":            error_rows,
+            "duplicate_warnings": duplicate_warnings,
+            "already_imported":  already_imported,
+            "preview":           valid_rows[:10],
+            "total_valid":       len(valid_rows),
+            "watermark_date":    watermark_date,
+        }, "Preview ready — send confirm=true to import")
+
+    rows_to_insert = _resolve_selected(valid_rows, selected_indices)
+
+    inserted = 0
+    if rows_to_insert:
+        db.table("direct_sales").insert(rows_to_insert).execute()
+        inserted = len(rows_to_insert)
+
+    if inserted:
+        max_date = max(r["sale_date"] for r in rows_to_insert)
+        save_watermark(db, org["org_id"], "daily_aggregate_excel", None, max_date)
+
+    return _success({
+        "inserted":          inserted,
+        "skipped":           len(valid_rows) - inserted + len(error_rows),
+        "errors":            error_rows,
+        "duplicate_warnings": duplicate_warnings,
+        "already_imported":  already_imported,
+        "preview":           [],
+        "total_valid":       len(valid_rows),
+        "watermark_date":    watermark_date,
+    }, f"{inserted} sale(s) imported successfully")
+
+
+@router.post("/growth/direct-sales/import/daily-aggregate/sheets", status_code=status.HTTP_200_OK)
+def import_daily_aggregate_sheets(
+    body: SheetsImportBody,
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    REPORTS-DEPT-1 Phase 4: same as import_daily_aggregate_excel, pulling
+    from a publicly shared Google Sheet instead. Reuses SheetsImportBody —
+    identical shape (url, confirm, selected_indices, from_beginning).
+    """
+    _require_owner_or_ops(org)
+
+    try:
+        rows = fetch_aggregate_sheets_csv(body.url)
+    except Exception as exc:
+        logger.exception("Phase 4: fetch_aggregate_sheets_csv failed")
+        raise HTTPException(status_code=422, detail={"code": "FETCH_ERROR", "message": str(exc)})
+
+    watermark_date = (
+        None if body.from_beginning
+        else get_watermark(db, org["org_id"], "daily_aggregate_sheets", body.url)
+    )
+
+    try:
+        result = validate_and_prepare_aggregate_sales_rows(rows, org["org_id"], db, "daily_aggregate_sheets", watermark_date)
+    except Exception as exc:
+        logger.exception("Phase 4: validate_and_prepare_aggregate_sales_rows failed for sheets import")
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+    valid_rows         = result["valid_rows"]
+    error_rows         = result["error_rows"]
+    duplicate_warnings = result["duplicate_warnings"]
+    already_imported   = result["already_imported"]
+
+    if not body.confirm:
+        return _success({
+            "inserted":          0,
+            "skipped":           len(error_rows),
+            "errors":            error_rows,
+            "duplicate_warnings": duplicate_warnings,
+            "already_imported":  already_imported,
+            "preview":           valid_rows[:10],
+            "total_valid":       len(valid_rows),
+            "watermark_date":    watermark_date,
+        }, "Preview ready — send confirm=true to import")
+
+    rows_to_insert = _resolve_selected(valid_rows, body.selected_indices)
+
+    inserted = 0
+    if rows_to_insert:
+        db.table("direct_sales").insert(rows_to_insert).execute()
+        inserted = len(rows_to_insert)
+
+    if inserted:
+        max_date = max(r["sale_date"] for r in rows_to_insert)
+        save_watermark(db, org["org_id"], "daily_aggregate_sheets", body.url, max_date)
 
     return _success({
         "inserted":          inserted,

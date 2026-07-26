@@ -38,6 +38,7 @@ import { ClipboardList, AlertOctagon, Users, Database } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { IssuesTab, ActivityLogTab } from './InternalOpsModule'
 import ContractorModule from './ContractorModule'
+import DataSourcesTab from './DataSourcesTab'
 
 const MANAGER_ROLES = ['owner', 'ops_manager']
 const SALES_AGENT_ROLE = 'sales_agent'
@@ -158,29 +159,7 @@ function ModuleHeader({ departmentLabel }) {
   )
 }
 
-// ─── Data Sources placeholder tab (REPORTS-DEPT-1 Phase 4) ───────────────────
-
-function DataSourcesPlaceholder() {
-  return (
-    <div style={{ padding: '48px 28px', maxWidth: 560 }}>
-      <div style={{
-        background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 12,
-        padding: '28px 24px', textAlign: 'center',
-      }}>
-        <Database size={32} color={ds.teal} strokeWidth={1.5} style={{ marginBottom: 12 }} />
-        <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: ds.dark, margin: '0 0 8px' }}>
-          Data Sources — coming soon
-        </h3>
-        <p style={{ fontSize: 13, color: ds.gray, margin: 0, lineHeight: 1.6 }}>
-          This is where each department will connect an external source
-          (Google Sheet or CSV) for metrics Opsra doesn't track natively —
-          e.g. Sales revenue — and choose Opsra-native vs. external per
-          department. Not yet built.
-        </p>
-      </div>
-    </div>
-  )
-}
+// Data Sources tab now implemented in DataSourcesTab.jsx (REPORTS-DEPT-1 Phase 4)
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -215,7 +194,7 @@ export default function BusinessActivitiesModule({ user }) {
 
       {tabs.some(t => t.id === 'sources') && (
         <div style={{ display: activeTab === 'sources' ? 'block' : 'none' }}>
-          <DataSourcesPlaceholder />
+          <DataSourcesTab />
         </div>
       )}
     </div>

@@ -195,6 +195,56 @@ export async function importSalesSheets(url, confirm = false, selectedIndices = 
 }
 
 /**
+ * REPORTS-DEPT-1 Phase 4: upload a daily-aggregate sales sheet (one row
+ * per day per rep — Date/Sales Rep/Mattress Revenue/Pillow Revenue —
+ * not the named-customer shape importSalesExcel expects).
+ * @param {FormData} formData        — must contain field "file"
+ * @param {boolean}  confirm         — false = preview, true = insert
+ * @param {number[]} selectedIndices — indices of valid_rows to insert (null = all)
+ * @param {boolean}  fromBeginning   — ignore watermark
+ */
+export async function importDailyAggregateExcel(formData, confirm = false, selectedIndices = null, fromBeginning = false) {
+  const params = new URLSearchParams({ confirm })
+  if (fromBeginning) params.append('from_beginning', 'true')
+  if (selectedIndices && selectedIndices.length > 0) {
+    params.append('selected_indices', selectedIndices.join(','))
+  }
+  const r = await axios.post(
+    `${BASE}/api/v1/growth/direct-sales/import/daily-aggregate/excel?${params.toString()}`,
+    formData,
+    {
+      headers: {
+        ...(_h().headers),
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  )
+  return r.data.data
+}
+
+/**
+ * REPORTS-DEPT-1 Phase 4: same as importDailyAggregateExcel, pulling from
+ * a publicly shared Google Sheet instead.
+ * @param {string}   url              — full Google Sheets URL
+ * @param {boolean}  confirm          — false = preview, true = insert
+ * @param {number[]} selectedIndices  — indices of valid_rows to insert (null = all)
+ * @param {boolean}  fromBeginning    — ignore watermark
+ */
+export async function importDailyAggregateSheets(url, confirm = false, selectedIndices = null, fromBeginning = false) {
+  const r = await axios.post(
+    `${BASE}/api/v1/growth/direct-sales/import/daily-aggregate/sheets`,
+    {
+      url,
+      confirm,
+      from_beginning:   fromBeginning,
+      selected_indices: selectedIndices,
+    },
+    _h()
+  )
+  return r.data.data
+}
+
+/**
  * Reset the import watermark for a source so the next import starts from scratch.
  * @param {string}      sourceType — 'excel' | 'sheets'
  * @param {string|null} sheetUrl   — required for sheets, null for excel
