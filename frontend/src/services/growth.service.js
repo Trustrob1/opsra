@@ -288,6 +288,31 @@ export async function importDailyAggregateSheets(url, confirm = false, selectedI
 }
 
 /**
+ * REPORTS-DEPT-1 Phase 4b: upload a multi-sheet transaction workbook
+ * (one tab per region, e.g. Lagos/Abuja) — feeds Sales Record and
+ * Commissions. File upload only — no Google Sheet URL variant, since a
+ * live Sheet's CSV export only pulls one tab at a time.
+ * @param {FormData} formData — must contain field "file"
+ * @param {boolean}  confirm  — false = preview, true = insert
+ * @param {boolean}  fromBeginning — ignore watermark
+ */
+export async function importTransactionSalesExcel(formData, confirm = false, fromBeginning = false) {
+  const params = new URLSearchParams({ confirm })
+  if (fromBeginning) params.append('from_beginning', 'true')
+  const r = await axios.post(
+    `${BASE}/api/v1/growth/direct-sales/import/transactions/excel?${params.toString()}`,
+    formData,
+    {
+      headers: {
+        ...(_h().headers),
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  )
+  return r.data.data
+}
+
+/**
  * Reset the import watermark for a source so the next import starts from scratch.
  * @param {string}      sourceType — 'excel' | 'sheets'
  * @param {string|null} sheetUrl   — required for sheets, null for excel
