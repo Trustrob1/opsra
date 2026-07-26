@@ -34,11 +34,13 @@
  */
 
 import { useState } from 'react'
-import { ClipboardList, AlertOctagon, Users, Database } from 'lucide-react'
+import { ClipboardList, AlertOctagon, Users, Database, Table2, DollarSign } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { IssuesTab, ActivityLogTab } from './InternalOpsModule'
 import ContractorModule from './ContractorModule'
 import DataSourcesTab from './DataSourcesTab'
+import SalesRecordTab from './SalesRecordTab'
+import CommissionsTab from './CommissionsTab'
 
 const MANAGER_ROLES = ['owner', 'ops_manager']
 const SALES_AGENT_ROLE = 'sales_agent'
@@ -61,6 +63,17 @@ function buildTabs(role, departmentId) {
     tabs.push({ id: 'contractors', label: 'Contractors' })
   }
 
+  // Sales Record: owner/ops_manager only — matches list_direct_sales'
+  // backend gate exactly (_require_owner_or_ops). REPORTS-DEPT-1 Phase 4b.
+  if (isManager) {
+    tabs.push({ id: 'sales-record', label: 'Sales Record' })
+  }
+
+  // Commissions: EVERY role including sales_agent — full leaderboard
+  // transparency, client-confirmed. Matches list_commission_sales'
+  // broader backend gate (_require_owner_ops_or_agent).
+  tabs.push({ id: 'commissions', label: 'Commissions' })
+
   // Data Sources: owner/ops_manager, or a department-scoped lead managing
   // their own department's external source. REPORTS-DEPT-1 Phase 4.
   if (isManager || isDeptScoped) {
@@ -71,10 +84,12 @@ function buildTabs(role, departmentId) {
 }
 
 const TAB_ICONS = {
-  activity:    ClipboardList,
-  issues:      AlertOctagon,
-  contractors: Users,
-  sources:     Database,
+  activity:      ClipboardList,
+  issues:        AlertOctagon,
+  contractors:   Users,
+  'sales-record': Table2,
+  commissions:   DollarSign,
+  sources:       Database,
 }
 
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
@@ -189,6 +204,18 @@ export default function BusinessActivitiesModule({ user }) {
       {tabs.some(t => t.id === 'contractors') && (
         <div style={{ display: activeTab === 'contractors' ? 'block' : 'none' }}>
           <ContractorModule user={user} />
+        </div>
+      )}
+
+      {tabs.some(t => t.id === 'sales-record') && (
+        <div style={{ display: activeTab === 'sales-record' ? 'block' : 'none' }}>
+          <SalesRecordTab />
+        </div>
+      )}
+
+      {tabs.some(t => t.id === 'commissions') && (
+        <div style={{ display: activeTab === 'commissions' ? 'block' : 'none' }}>
+          <CommissionsTab user={user} />
         </div>
       )}
 
