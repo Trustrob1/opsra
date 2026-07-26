@@ -580,10 +580,10 @@ async def import_daily_aggregate_excel(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": "PARSE_ERROR", "message": str(exc)})
 
-    watermark_date = None if from_beginning else get_watermark(db, org["org_id"], "daily_aggregate_excel", None)
+    watermark_date = None if from_beginning else get_watermark(db, org["org_id"], "agg_excel", None)
 
     try:
-        result = validate_and_prepare_aggregate_sales_rows(rows, org["org_id"], db, "daily_aggregate_excel", watermark_date)
+        result = validate_and_prepare_aggregate_sales_rows(rows, org["org_id"], db, "agg_excel", watermark_date)
     except Exception as exc:
         logger.exception("Phase 4: validate_and_prepare_aggregate_sales_rows failed for excel import")
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
@@ -614,7 +614,7 @@ async def import_daily_aggregate_excel(
 
     if inserted:
         max_date = max(r["sale_date"] for r in rows_to_insert)
-        save_watermark(db, org["org_id"], "daily_aggregate_excel", None, max_date)
+        save_watermark(db, org["org_id"], "agg_excel", None, max_date)
 
     return _success({
         "inserted":          inserted,
@@ -649,11 +649,11 @@ def import_daily_aggregate_sheets(
 
     watermark_date = (
         None if body.from_beginning
-        else get_watermark(db, org["org_id"], "daily_aggregate_sheets", body.url)
+        else get_watermark(db, org["org_id"], "agg_sheets", body.url)
     )
 
     try:
-        result = validate_and_prepare_aggregate_sales_rows(rows, org["org_id"], db, "daily_aggregate_sheets", watermark_date)
+        result = validate_and_prepare_aggregate_sales_rows(rows, org["org_id"], db, "agg_sheets", watermark_date)
     except Exception as exc:
         logger.exception("Phase 4: validate_and_prepare_aggregate_sales_rows failed for sheets import")
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
@@ -684,7 +684,7 @@ def import_daily_aggregate_sheets(
 
     if inserted:
         max_date = max(r["sale_date"] for r in rows_to_insert)
-        save_watermark(db, org["org_id"], "daily_aggregate_sheets", body.url, max_date)
+        save_watermark(db, org["org_id"], "agg_sheets", body.url, max_date)
 
     return _success({
         "inserted":          inserted,

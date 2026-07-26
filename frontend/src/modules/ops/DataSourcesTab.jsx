@@ -149,7 +149,7 @@ export default function DataSourcesTab() {
   const handleResetWatermark = async () => {
     if (!window.confirm('Reset the sync point for this source? The next import will re-check every row from the beginning.')) return
     try {
-      const sourceType = mode === 'excel' ? 'daily_aggregate_excel' : 'daily_aggregate_sheets'
+      const sourceType = mode === 'excel' ? 'agg_excel' : 'agg_sheets'
       await resetImportWatermark(sourceType, mode === 'sheets' ? sheetUrl.trim() : null)
       reset()
     } catch {

@@ -591,8 +591,8 @@ def validate_and_prepare_aggregate_sales_rows(
     now_iso = datetime.now(timezone.utc).isoformat()
 
     valid_rows:         list[dict] = []
-    error_rows:         list[dict] = []
-    duplicate_warnings: list[dict] = []
+""    error_rows:         list[dict] = []
+""    duplicate_warnings: list[dict] = []
     already_imported:   list[dict] = []
 
     wm_date: Optional[date] = None
