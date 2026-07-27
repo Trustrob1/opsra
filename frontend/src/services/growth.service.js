@@ -317,6 +317,11 @@ export async function importTransactionSalesExcel(formData, confirm = false, fro
  * @param {string}      sourceType — 'excel' | 'sheets'
  * @param {string|null} sheetUrl   — required for sheets, null for excel
  */
+export async function clearImportedSales(importSource) {
+  const r = await axios.delete(`${BASE}/api/v1/growth/direct-sales/import/${importSource}/clear`, _h())
+  return r.data
+}
+
 export async function resetImportWatermark(sourceType, sheetUrl = null) {
   const r = await axios.delete(
     `${BASE}/api/v1/growth/direct-sales/import/watermark`,

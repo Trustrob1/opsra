@@ -834,6 +834,27 @@ async def import_transaction_sales_excel(
     }, f"{inserted} sale(s) imported successfully")
 
 
+@router.delete("/growth/direct-sales/import/{import_source}/clear", status_code=status.HTTP_200_OK)
+def clear_imported_sales(
+    import_source: str,
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    REPORTS-DEPT-1 Phase 4b: bulk-delete every direct_sales row that came
+    from a given import source, for this org. Needed when source data was
+    corrected after a bad import (e.g. malformed dates) — re-uploading a
+    fixed sheet on top of bad rows wouldn't just duplicate them (the
+    dates are different now, so duplicate-detection can't catch it), it
+    could also be silently skipped entirely if a garbage date poisoned
+    the watermark into the far future. This route only deletes; resetting
+    the watermark is a separate call the frontend makes right after.
+    """
+    _require_owner_or_ops(org)
+    db.table("direct_sales").delete().eq("org_id", org["org_id"]).eq("import_source", import_source).execute()
+    return _success(None, f"Cleared all sales imported from '{import_source}'")
+
+
 @router.delete("/growth/direct-sales/import/watermark", status_code=status.HTTP_200_OK)
 def reset_import_watermark(
     body: WatermarkResetBody,

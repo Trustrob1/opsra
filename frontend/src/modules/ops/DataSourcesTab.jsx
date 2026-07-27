@@ -31,6 +31,7 @@ import {
   importDailyAggregateSheets,
   importTransactionSalesExcel,
   resetImportWatermark,
+  clearImportedSales,
 } from '../../services/growth.service'
 
 const CARD = {
@@ -311,6 +312,17 @@ function SalesTransactionsCard() {
     }
   }
 
+  const handleClearAndReset = async () => {
+    if (!window.confirm('Delete every sale previously imported from this source, and reset its sync point? This cannot be undone — do this before re-uploading a corrected sheet.')) return
+    try {
+      await clearImportedSales('txn_excel')
+      await resetImportWatermark('txn_excel', null)
+      reset()
+    } catch {
+      setError('Failed to clear previously imported data.')
+    }
+  }
+
   return (
     <div style={CARD}>
       <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -375,9 +387,12 @@ function SalesTransactionsCard() {
         </div>
       )}
 
-      <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #F0F7FA' }}>
+      <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #F0F7FA', display: 'flex', gap: 8 }}>
         <button onClick={handleResetWatermark} style={{ ...BTN_OUTLINE, fontSize: 12.5, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
           <RotateCcw size={13} /> Reset sync point for this source
+        </button>
+        <button onClick={handleClearAndReset} style={{ ...BTN_OUTLINE, fontSize: 12.5, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6, color: '#DC2626', borderColor: '#DC2626' }}>
+          Clear previously imported data &amp; reset
         </button>
       </div>
     </div>
