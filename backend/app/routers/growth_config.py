@@ -863,8 +863,12 @@ def reset_import_watermark(
 ):
     """Reset the import watermark for a source so the next import starts from scratch."""
     _require_owner_or_ops(org)
-    if body.source_type not in ("excel", "sheets"):
-        raise HTTPException(status_code=422, detail={"code": "INVALID_SOURCE_TYPE", "message": "source_type must be 'excel' or 'sheets'"})
+    valid_source_types = ("excel", "sheets", "agg_excel", "agg_sheets", "txn_excel")
+    if body.source_type not in valid_source_types:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_SOURCE_TYPE", "message": f"source_type must be one of: {', '.join(valid_source_types)}"},
+        )
     reset_watermark(db, org["org_id"], body.source_type, body.sheet_url)
     return _success(None, f"Watermark reset for {body.source_type}")
 
