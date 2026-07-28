@@ -353,14 +353,19 @@ def list_direct_sales(
     page_size: int = Query(20, ge=1, le=100),
     date_from: Optional[str] = Query(None),
     date_to:   Optional[str] = Query(None),
-    rep_id:    Optional[str] = Query(None),
+    rep_name:  Optional[str] = Query(None),
     model:     Optional[str] = Query(None),
+    variant:   Optional[str] = Query(None),
     db=Depends(get_supabase),
     org: dict = Depends(get_current_org),
 ):
-    """REPORTS-DEPT-1 Phase 4b: date_from/date_to/rep_id/model are new,
-    optional filters for the Sales Record tab — all default to None,
-    identical behaviour to before for any existing caller that omits them."""
+    """
+    REPORTS-DEPT-1 Phase 4c: rep_name replaces rep_id — filtering now
+    matches the literal rep name typed in the source sheet (exact match,
+    since it's driven by a dropdown of distinct known values, not free
+    text), not the Opsra user _match_rep() happened to resolve it to.
+    variant is new, alongside the existing model filter.
+    """
     _require_owner_or_ops(org)
     offset = (page - 1) * page_size
     query = (
@@ -372,10 +377,12 @@ def list_direct_sales(
         query = query.gte("sale_date", date_from)
     if date_to:
         query = query.lte("sale_date", date_to)
-    if rep_id:
-        query = query.eq("recorded_by", rep_id)
+    if rep_name:
+        query = query.eq("rep_name", rep_name)
     if model:
-        query = query.ilike("model", f"%{model}%")
+        query = query.eq("model", model)
+    if variant:
+        query = query.eq("variant", variant)
     result = (
         query
         .order("sale_date", desc=True)
@@ -1096,6 +1103,70 @@ def delete_commission_rate(
     return _success({"commission_rates": new_rates}, "Commission rate removed")
 
 
+@router.get("/growth/direct-sales/filter-options")
+def get_direct_sales_filter_options(
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    REPORTS-DEPT-1 Phase 4c: distinct rep names and variants actually
+    present in this org's direct_sales, for the Rep and Variant filter
+    dropdowns. Deliberately NOT filtered by whatever's currently selected
+    in the UI — the dropdown options stay complete and stable regardless
+    of the current filter state, so a user can always see every option,
+    not just the ones matching today's filters.
+    """
+    _require_owner_or_ops(org)
+    result = (
+        db.table("direct_sales")
+        .select("rep_name, variant")
+        .eq("org_id", org["org_id"])
+        .execute()
+    )
+    rows = result.data or []
+    reps = sorted({r["rep_name"] for r in rows if r.get("rep_name")})
+    variants = sorted({r["variant"] for r in rows if r.get("variant")})
+    return _success({"reps": reps, "variants": variants})
+
+
+@router.get("/growth/direct-sales/summary")
+def get_direct_sales_summary(
+    date_from: Optional[str] = Query(None),
+    date_to:   Optional[str] = Query(None),
+    rep_name:  Optional[str] = Query(None),
+    model:     Optional[str] = Query(None),
+    variant:   Optional[str] = Query(None),
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    Unpaginated sales data for Sales Record's dashboard summary (KPIs,
+    region/model/status breakdowns, revenue-over-time chart). Same
+    filters and RBAC as list_direct_sales, but returns every matching row
+    (up to a safety cap) rather than one page — accurate totals need the
+    full filtered dataset, not one page of it.
+    REPORTS-DEPT-1 Phase 4c: rep_name (raw sheet text) replaces rep_id.
+    """
+    _require_owner_or_ops(org)
+    query = (
+        db.table("direct_sales")
+        .select("sale_date, region, model, variant, units, amount, reconciliation_status, rep_name")
+        .eq("org_id", org["org_id"])
+    )
+    if date_from:
+        query = query.gte("sale_date", date_from)
+    if date_to:
+        query = query.lte("sale_date", date_to)
+    if rep_name:
+        query = query.eq("rep_name", rep_name)
+    if model:
+        query = query.eq("model", model)
+    if variant:
+        query = query.eq("variant", variant)
+    result = query.order("sale_date", desc=False).limit(5000).execute()
+    return _success({"items": result.data or []})
+
+
 @router.get("/growth/direct-sales/commissions")
 def list_commission_sales(
     date_from: Optional[str] = Query(None),
@@ -1104,20 +1175,21 @@ def list_commission_sales(
     org: dict = Depends(get_current_org),
 ):
     """
-    REPORTS-DEPT-1 Phase 4b: commission-relevant sales for the Commissions
-    tab leaderboard. Broader access than list_direct_sales (owner/
-    ops_manager/sales_agent) but narrower field selection — deliberately
-    excludes customer_name/phone/notes so reps see commission data, not
-    customer PII, just because they're allowed to view earnings.
-    Only rows with a model set (i.e. from the transaction-level import —
-    daily-aggregate/named-customer rows have no model and can't be
-    commission-matched). Returns ALL matching rows, not paginated —
-    accurate totals need the full dataset.
+    REPORTS-DEPT-1 Phase 4b/4c: commission-relevant sales for the
+    Commissions tab leaderboard. Broader access than list_direct_sales
+    (owner/ops_manager/sales_agent) but narrower field selection —
+    deliberately excludes customer_name/phone/notes so reps see
+    commission data, not customer PII, just because they're allowed to
+    view earnings. Only rows with a model set. Returns ALL matching rows,
+    not paginated — accurate totals need the full dataset.
+
+    Phase 4c: rep_name is now stored directly on the row (the literal
+    sheet text) — no users-table join/lookup needed here any more.
     """
     _require_owner_ops_or_agent(org)
     query = (
         db.table("direct_sales")
-        .select("id, sale_date, recorded_by, model, units, amount, reconciliation_status, region")
+        .select("id, sale_date, rep_name, model, variant, units, amount, reconciliation_status, region")
         .eq("org_id", org["org_id"])
         .not_.is_("model", "null")
     )
@@ -1128,23 +1200,8 @@ def list_commission_sales(
     result = query.order("sale_date", desc=True).limit(5000).execute()
 
     rows = result.data or []
-    rep_ids = {r["recorded_by"] for r in rows if r.get("recorded_by")}
-    rep_names: dict = {}
-    if rep_ids:
-        try:
-            u_res = (
-                db.table("users")
-                .select("id, full_name")
-                .eq("org_id", org["org_id"])
-                .in_("id", list(rep_ids))
-                .execute()
-            )
-            rep_names = {u["id"]: u.get("full_name") for u in (u_res.data or [])}
-        except Exception:
-            logger.warning("list_commission_sales: rep name lookup failed — showing unnamed reps.")
-
     for r in rows:
-        r["rep_name"] = rep_names.get(r.get("recorded_by")) or "Unassigned"
+        r["rep_name"] = r.get("rep_name") or "Not recorded"
 
     return _success({"items": rows})
 

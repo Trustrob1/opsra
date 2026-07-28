@@ -1,30 +1,36 @@
 /**
  * frontend/src/modules/ops/CommissionsTab.jsx
- * REPORTS-DEPT-1 Phase 4b — Commissions tab inside Business Activities.
+ * REPORTS-DEPT-1 Phase 4c — Commissions tab inside Business Activities.
  *
  * Full leaderboard visible to every role that can reach this tab,
  * including sales_agent (client-confirmed: every rep sees everyone's
- * commission — full transparency, matching the reference
- * commission-dashboard.html tool this was modelled on).
+ * commission).
+ *
+ * Phase 4c changes:
+ *   - Date filtering is now the shared DateRangePresets control
+ *     (Today/Yesterday/Last 30 days/Last Month/Last Year/Custom),
+ *     defaulting to Today.
+ *   - rep_name grouping already worked off the backend's rep_name field —
+ *     no change needed here, since list_commission_sales now populates
+ *     that field from the raw sheet column directly instead of via an
+ *     Opsra-users join. Same field name, more accurate source.
+ *   - Variant is now a separate column in the expandable per-rep detail
+ *     table, alongside Model.
  *
  * Commission rates are managed HERE, not in Admin Dashboard (client
  * preference) — owner/ops_manager can add/edit/remove rates inline;
- * sales_agent sees the rates read-only (needs to see what produced the
- * numbers, but shouldn't be able to change what they're paid on).
+ * sales_agent sees the rates read-only.
  *
- * Commission calculation mirrors the reference tool exactly:
+ * Commission calculation mirrors the reference tool:
  *   commission = (rate matched against the sale's Model text) × units
- * Longest product-name match wins, so "Elite Cool" doesn't accidentally
- * match a sale actually named "Elite Cool Deluxe" if a more specific rate
- * exists for that longer name.
+ * Model is now a clean, controlled value (e.g. "Elite Cool", no variant
+ * baked in), so this match is effectively exact now, though substring
+ * matching is kept for robustness.
  *
  * Pattern 51: full rewrite if editing this file — never partial sed.
- *
- * Props:
- *   user — current user object, used only to gate rate editing
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Trophy, ChevronDown, ChevronUp, DollarSign } from 'lucide-react'
+import { Trophy, ChevronDown, ChevronUp } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import {
   getCommissionSales,
@@ -33,6 +39,7 @@ import {
   updateCommissionRate,
   deleteCommissionRate,
 } from '../../services/growth.service'
+import DateRangePresets from './DateRangePresets'
 
 const INP = {
   padding:      '8px 10px',
@@ -49,8 +56,6 @@ const BTN_PRIMARY = {
   padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
 }
 
-// ─── Commission math — mirrors the reference tool exactly ──────────────────
-
 function matchRate(rates, text) {
   if (!text) return 0
   const t = text.toLowerCase()
@@ -64,8 +69,6 @@ function commissionFor(rates, sale) {
   return matchRate(rates, sale.model || '') * units
 }
 
-// ─── KPI card ────────────────────────────────────────────────────────────────
-
 function Kpi({ label, value, accent }) {
   return (
     <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '16px 18px', flex: 1 }}>
@@ -75,8 +78,6 @@ function Kpi({ label, value, accent }) {
   )
 }
 
-// ─── Rate config table ──────────────────────────────────────────────────────
-
 function RateConfig({ rates, canEdit, onAdd, onUpdate, onDelete }) {
   const [newName, setNewName] = useState('')
   const [newRate, setNewRate] = useState('')
@@ -85,7 +86,7 @@ function RateConfig({ rates, canEdit, onAdd, onUpdate, onDelete }) {
     <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: 18, marginBottom: 20 }}>
       <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', margin: '0 0 4px' }}>Product commission rates</p>
       <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 12px' }}>
-        Matched against the Model text on each sale — e.g. a rate named "Elite Cool" matches "Elite Cool 6/7".
+        Matched against the Model on each sale — e.g. a rate named "Elite Cool" matches any variant of Elite Cool.
       </p>
       {rates.length === 0 ? (
         <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 12 }}>No rates set yet — commissions will show ₦0 until at least one is added.</p>
@@ -135,8 +136,6 @@ function RateConfig({ rates, canEdit, onAdd, onUpdate, onDelete }) {
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
-
 export default function CommissionsTab({ user, isActive }) {
   const canEdit = ['owner', 'ops_manager'].includes(user?.roles?.template)
 
@@ -169,8 +168,9 @@ export default function CommissionsTab({ user, isActive }) {
 
   useEffect(() => { load() }, [load])
 
-  // REPORTS-DEPT-1: same staleness fix as SalesRecordTab — refetch when
-  // this tab becomes visible again, not just once on first mount.
+  // REPORTS-DEPT-1: this tab stays mounted once opened (Pattern 26), so
+  // it never refetches after a new import unless the whole page is
+  // reloaded. Refetch when this tab becomes visible again.
   useEffect(() => { if (isActive) load() }, [isActive])
 
   const handleAddRate = async (name, rate) => {
@@ -202,7 +202,7 @@ export default function CommissionsTab({ user, isActive }) {
   const leaderboard = useMemo(() => {
     const byRep = {}
     for (const s of sales) {
-      const key = s.rep_name || 'Unassigned'
+      const key = s.rep_name || 'Not recorded'
       if (!byRep[key]) byRep[key] = { rep: key, total: 0, reconciled: 0, pending: 0, sales: [] }
       const commission = commissionFor(rates, s)
       byRep[key].total += commission
@@ -228,10 +228,8 @@ export default function CommissionsTab({ user, isActive }) {
 
       <RateConfig rates={rates} canEdit={canEdit} onAdd={handleAddRate} onUpdate={handleUpdateRate} onDelete={handleDeleteRate} />
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...INP, width: 'auto' }} />
-        <span style={{ color: '#9CA3AF', fontSize: 13, alignSelf: 'center' }}>to</span>
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...INP, width: 'auto' }} />
+      <div style={{ marginBottom: 16 }}>
+        <DateRangePresets onChange={({ dateFrom: f, dateTo: t }) => { setDateFrom(f); setDateTo(t) }} />
       </div>
 
       {loading ? (
@@ -280,7 +278,7 @@ export default function CommissionsTab({ user, isActive }) {
                       <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: '1px solid #F0F7FA' }}>
                         <thead>
                           <tr style={{ background: '#F8FBFC' }}>
-                            {['Date', 'Model', 'Units', 'Commission', 'Status'].map(h => (
+                            {['Date', 'Model', 'Variant', 'Units', 'Commission', 'Status'].map(h => (
                               <th key={h} style={{ textAlign: 'left', padding: '8px 18px', fontSize: 10.5, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase' }}>{h}</th>
                             ))}
                           </tr>
@@ -290,6 +288,7 @@ export default function CommissionsTab({ user, isActive }) {
                             <tr key={s.id} style={{ borderTop: '1px solid #F0F7FA' }}>
                               <td style={{ padding: '8px 18px', fontSize: 13 }}>{s.sale_date}</td>
                               <td style={{ padding: '8px 18px', fontSize: 13 }}>{s.model}</td>
+                              <td style={{ padding: '8px 18px', fontSize: 13 }}>{s.variant ?? '—'}</td>
                               <td style={{ padding: '8px 18px', fontSize: 13 }}>{s.units}</td>
                               <td style={{ padding: '8px 18px', fontSize: 13, fontWeight: 500 }}>₦{s.commission.toLocaleString()}</td>
                               <td style={{ padding: '8px 18px', fontSize: 12.5, color: s.reconciliation_status === 'Reconciled' ? '#059669' : '#92601A' }}>
