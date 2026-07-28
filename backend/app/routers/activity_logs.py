@@ -63,6 +63,7 @@ class ActivityLogBulkCreate(BaseModel):
     log_date:  str
     log_type:  str = "daily"
     entries:   list[ActivityEntry]
+    custom_metrics: Optional[dict] = None  # REPORTS-DEPT-1 Phase 5: {metric_id: value}
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -1281,11 +1282,12 @@ def submit_activity_log_bulk(
     existing_data = rows[0] if rows else None
 
     update_fields = {
-        "activities": activities_text,
-        "blockers":   blockers_text,
-        "plan":       plan_text,
-        "entries":    entries_json,
-        "updated_at": now,
+        "activities":     activities_text,
+        "blockers":       blockers_text,
+        "plan":           plan_text,
+        "entries":        entries_json,
+        "custom_metrics": payload.custom_metrics or {},
+        "updated_at":     now,
     }
 
     # Auto-create issues for any blocker entries — S14: one failure never stops the loop

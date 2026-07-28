@@ -797,6 +797,207 @@ def delete_department(
     return ok(data={"departments": departments}, message="Department deactivated")
 
 
+# ── Team Metrics — REPORTS-DEPT-1 Phase 5 ────────────────────────────────────
+# Configurable, per-team daily metrics (e.g. Sales: Leads Received, Calls
+# Made; Digital Marketing: Ad Spend, ROAS) — dynamic rather than a fixed
+# set, so any team's field list is admin-defined, not hardcoded per role.
+# Lives here (Admin panel, extending Departments & Teams), not in
+# growth_config.py like Commission Rates — client-confirmed this belongs
+# with the existing team-structure admin UI, not standalone.
+
+class TeamMetricCreate(BaseModel):
+    team_id: str
+    label: str = Field(..., min_length=1, max_length=100)
+    field_type: str = Field(..., pattern="^(number|text)$")
+    unit: Optional[str] = Field(None, max_length=20)
+
+
+class TeamMetricUpdate(BaseModel):
+    label: Optional[str] = None
+    field_type: Optional[str] = Field(None, pattern="^(number|text)$")
+    unit: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+def _require_team_metrics_manager(org: dict) -> None:
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can configure team metrics."},
+        )
+
+
+@router.get("/team-metrics")
+def get_team_metrics(
+    team_id: Optional[str] = None,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """No role restriction beyond authentication — a team member needs to
+    see their own team's metric definitions to log daily values against
+    them. Optional team_id filters to just that team (used by the daily
+    log form); omitted, returns every team's metrics (used by the admin
+    config panel)."""
+    result = (
+        db.table("organisations")
+        .select("team_metrics")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    metrics = (data or {}).get("team_metrics") or []
+    if team_id:
+        metrics = [m for m in metrics if m.get("team_id") == team_id]
+    return ok(data={"team_metrics": metrics})
+
+
+@router.post("/team-metrics", status_code=status.HTTP_201_CREATED)
+def create_team_metric(
+    payload: TeamMetricCreate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_team_metrics_manager(org)
+    result = (
+        db.table("organisations")
+        .select("team_metrics")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    metrics = (data or {}).get("team_metrics") or []
+
+    same_team = [m for m in metrics if m.get("team_id") == payload.team_id]
+    existing_names = {m.get("label", "").strip().lower() for m in same_team}
+    if payload.label.strip().lower() in existing_names:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "DUPLICATE_NAME", "message": "This team already has a metric with this name."},
+        )
+
+    new_metric = {
+        "id": str(uuid.uuid4()),
+        "team_id": payload.team_id,
+        "label": payload.label.strip(),
+        "field_type": payload.field_type,
+        "unit": payload.unit,
+        "sort_order": len(same_team),
+    }
+    metrics.append(new_metric)
+    db.table("organisations").update({
+        "team_metrics": metrics,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="team_metrics.created",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value=new_metric,
+    )
+    return ok(data={"team_metrics": metrics}, message="Metric added")
+
+
+@router.patch("/team-metrics/{metric_id}")
+def update_team_metric(
+    metric_id: str,
+    payload: TeamMetricUpdate,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_team_metrics_manager(org)
+    result = (
+        db.table("organisations")
+        .select("team_metrics")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    metrics = (data or {}).get("team_metrics") or []
+
+    found = False
+    for m in metrics:
+        if m.get("id") == metric_id:
+            found = True
+            if payload.label is not None:
+                m["label"] = payload.label
+            if payload.field_type is not None:
+                m["field_type"] = payload.field_type
+            if payload.unit is not None:
+                m["unit"] = payload.unit
+            if payload.sort_order is not None:
+                m["sort_order"] = payload.sort_order
+            break
+    if not found:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": "Metric not found"},
+        )
+
+    db.table("organisations").update({
+        "team_metrics": metrics,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="team_metrics.updated",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"metric_id": metric_id, **payload.model_dump(exclude_none=True)},
+    )
+    return ok(data={"team_metrics": metrics}, message="Metric updated")
+
+
+@router.delete("/team-metrics/{metric_id}", status_code=status.HTTP_200_OK)
+def delete_team_metric(
+    metric_id: str,
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """Hard delete — like commission rates, a removed metric definition
+    has no historical-reporting reason to be preserved; past submitted
+    values stay in activity_logs.custom_metrics regardless."""
+    _require_team_metrics_manager(org)
+    result = (
+        db.table("organisations")
+        .select("team_metrics")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    metrics = (data or {}).get("team_metrics") or []
+
+    new_metrics = [m for m in metrics if m.get("id") != metric_id]
+    if len(new_metrics) == len(metrics):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": "Metric not found"},
+        )
+
+    db.table("organisations").update({
+        "team_metrics": new_metrics,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", org["org_id"]).execute()
+    write_audit_log(
+        db=db, org_id=org["org_id"], user_id=org["id"],
+        action="team_metrics.deleted",
+        resource_type="organisation", resource_id=org["org_id"],
+        new_value={"metric_id": metric_id},
+    )
+    return ok(data={"team_metrics": new_metrics}, message="Metric removed")
+
+
 # ── Internal Issue Categories Config — OPS-1 ─────────────────────────────────
 
 _DEFAULT_INTERNAL_CATEGORIES = [

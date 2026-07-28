@@ -532,6 +532,24 @@ export const updateUserTeam = (userId, team) =>
   api.patch(`/api/v1/admin/users/${userId}`, { team })
     .then(r => r.data.data)
 
+// ── Team Metrics — REPORTS-DEPT-1 Phase 5 ────────────────────────────────────
+
+export const getTeamMetrics = (teamId) =>
+  api.get('/api/v1/admin/team-metrics', { params: teamId ? { team_id: teamId } : {} })
+    .then(r => r.data.data)
+
+export const createTeamMetric = (payload) =>
+  api.post('/api/v1/admin/team-metrics', payload)
+    .then(r => r.data.data)
+
+export const updateTeamMetric = (metricId, payload) =>
+  api.patch(`/api/v1/admin/team-metrics/${metricId}`, payload)
+    .then(r => r.data.data)
+
+export const deleteTeamMetric = (metricId) =>
+  api.delete(`/api/v1/admin/team-metrics/${metricId}`)
+    .then(r => r.data.data)
+
 // ── Departments Config — REPORTS-DEPT-1 Phase 1 ─────────────────────────────
 
 export const getDepartments = () =>

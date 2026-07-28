@@ -24,7 +24,7 @@ import {
   downloadInternalOpsReport, downloadActivityLogReport,
 } from '../../services/internal_ops.service'
 import { toggleOwnerAttention } from '../../services/performance.service'
-import { getTeams, getDepartments, getInternalIssueCategories, listUsers } from '../../services/admin.service'
+import { getTeams, getTeamMetrics, getDepartments, getInternalIssueCategories, listUsers } from '../../services/admin.service'
 
 const PRIORITIES  = ['critical', 'high', 'medium', 'low']
 const STATUSES    = ['open', 'in_progress', 'resolved']
@@ -329,7 +329,7 @@ const STAFF_ACTIVITY_TYPES = [
   'Design', 'Development', 'Strategy', 'Admin', 'Meeting', 'Sales', 'Other',
 ]
 
-function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
+function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose }) {
   const today = new Date().toISOString().split('T')[0]
   const getMonday = () => {
     const d = new Date(); const day = d.getDay()
@@ -338,6 +338,27 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
   }
 
   const isUpdate = !!existingLog
+
+  // REPORTS-DEPT-1 Phase 5: this team's configured daily metrics (e.g.
+  // Sales: "Leads Received"; Digital Marketing: "Ad Spend"). Resolved by
+  // matching userTeam (a name string, from users.team) against the org's
+  // teams list to find its id, then filtering team_metrics to that id —
+  // no new backend endpoint needed, both lists are already small.
+  const [teamMetrics, setTeamMetrics] = useState([])
+  const [metricValues, setMetricValues] = useState(() => existingLog?.custom_metrics || {})
+
+  useEffect(() => {
+    if (!userTeam) return
+    Promise.all([getTeams(), getTeamMetrics()]).then(([teamsData, metricsData]) => {
+      const allTeams = teamsData?.teams ?? []
+      const matchedTeam = allTeams.find(t => t.name === userTeam)
+      if (!matchedTeam) return
+      const relevant = (metricsData?.team_metrics ?? [])
+        .filter(m => m.team_id === matchedTeam.id)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      setTeamMetrics(relevant)
+    }).catch(() => {})
+  }, [userTeam])
 
   // Seed entries from existing log if updating
   const seedEntries = () => {
@@ -387,6 +408,7 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
           blocker_note:         e.has_blocker ? (e.blocker_note.trim() || null) : null,
           plan:                 e.plan.trim() || null,
         })),
+        custom_metrics: teamMetrics.length > 0 ? metricValues : undefined,
       })
       onSubmit(null, null, false) // trigger list reload
       onClose()
@@ -425,6 +447,31 @@ function LogActivityModal({ logType, existingLog, onSubmit, onClose }) {
             <span style={{ fontSize: 11, color: '#e67e22', fontWeight: 600, whiteSpace: 'nowrap' }}>Logging for past date</span>
           )}
         </div>
+
+        {/* REPORTS-DEPT-1 Phase 5: this team's configured daily metrics —
+            once per day, not per activity, so rendered separately above
+            the entries list. Nothing shown at all for a team with no
+            metrics configured. */}
+        {teamMetrics.length > 0 && (
+          <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#0369A1', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 10px' }}>
+              Today's {userTeam} numbers
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {teamMetrics.map(m => (
+                <div key={m.id}>
+                  <label style={LBL}>{m.label}{m.unit ? ` (${m.unit})` : ''}</label>
+                  <input
+                    type={m.field_type === 'number' ? 'number' : 'text'}
+                    value={metricValues[m.id] ?? ''}
+                    onChange={e => setMetricValues(prev => ({ ...prev, [m.id]: e.target.value }))}
+                    style={INP}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Entry count indicator */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -918,6 +965,7 @@ export function ActivityLogTab({ user }) {
   const [users, setUsers]             = useState([])
   const [teams, setTeams]             = useState([])         // REPORTS-DEPT-1 Phase 3
   const [departments, setDepartments] = useState([])         // REPORTS-DEPT-1 Phase 3
+  const [metrics, setMetrics]         = useState([])         // REPORTS-DEPT-1 Phase 5
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
   const [filterUser, setFilterUser]   = useState('')
@@ -963,16 +1011,18 @@ export function ActivityLogTab({ user }) {
       const params = {}
       if (filterUser) params.user_id_filter = filterUser
       if (filterType) params.log_type       = filterType
-      const [logsData, usersData, teamsData, deptsData] = await Promise.all([
+      const [logsData, usersData, teamsData, deptsData, metricsData] = await Promise.all([
         listActivityLogs(params),
         isManager ? listUsers() : Promise.resolve([]),
         isManager ? getTeams() : Promise.resolve(null),
         isManager ? getDepartments() : Promise.resolve(null),
+        getTeamMetrics(),
       ])
       setLogs(logsData?.items ?? [])
       setUsers(usersData ?? [])
       setTeams(teamsData?.teams ?? [])
       setDepartments(deptsData?.departments ?? [])
+      setMetrics(metricsData?.team_metrics ?? [])
     } catch {
       setError('Failed to load activity logs.')
     } finally { setLoading(false) }
@@ -998,6 +1048,14 @@ export function ActivityLogTab({ user }) {
   const visibleLogs = filterDepartment
     ? logs.filter(l => teamDeptName[l.team] === filterDepartment)
     : logs
+
+  // REPORTS-DEPT-1 Phase 5: metric_id -> {label, unit}, for rendering
+  // log.custom_metrics ({metric_id: value}) with real labels rather than
+  // opaque ids. Built org-wide (not filtered to the viewer's own team) —
+  // a manager viewing someone else's log still needs that entry's own
+  // team's metric labels resolved correctly.
+  const metricLabel = {}
+  metrics.forEach(m => { metricLabel[m.id] = { label: m.label, unit: m.unit } })
 
   const handleSubmit = async (payloadOrId, updatePayload, isUpdate) => {
     if (isUpdate) {
@@ -1283,6 +1341,17 @@ export function ActivityLogTab({ user }) {
                       )}
                       <Badge text={log.team || '—'} colours={{ bg: '#F0F9FF', text: '#0369A1' }} />
                       <Badge text={log.log_type} colours={{ bg: '#F5F3FF', text: '#6D28D9' }} />
+                      {Object.entries(log.custom_metrics || {}).map(([metricId, val]) => {
+                        const meta = metricLabel[metricId]
+                        if (!meta || val === '' || val == null) return null
+                        return (
+                          <Badge
+                            key={metricId}
+                            text={`${meta.label}: ${val}${meta.unit ? ` ${meta.unit}` : ''}`}
+                            colours={{ bg: '#ECFDF5', text: '#059669' }}
+                          />
+                        )
+                      })}
                       {log.blockers && (
                         (log.entries || []).filter(e => e.has_blocker).length > 0 &&
                         (log.entries || []).filter(e => e.has_blocker).every(e => e.blocker_issue_status === 'resolved')
@@ -1313,6 +1382,29 @@ export function ActivityLogTab({ user }) {
 
                 {isOpen && (
                   <div style={{ padding: '4px 18px 18px', background: '#F8FAFC', borderTop: '1px solid #F0F7FA' }}>
+
+                    {/* REPORTS-DEPT-1 Phase 5: full detail of the day's team
+                        metrics, shown once expanded, alongside the compact
+                        badges already visible in the collapsed header. */}
+                    {Object.keys(log.custom_metrics || {}).length > 0 && (
+                      <div style={{ background: '#F0FDF9', border: '1px solid #A7F3D0', borderRadius: 10, padding: '12px 16px', marginTop: 14 }}>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
+                          Daily numbers
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          {Object.entries(log.custom_metrics).map(([metricId, val]) => {
+                            const meta = metricLabel[metricId]
+                            if (!meta || val === '' || val == null) return null
+                            return (
+                              <div key={metricId} style={{ fontSize: 13 }}>
+                                <span style={{ color: '#4a7a8a' }}>{meta.label}: </span>
+                                <span style={{ color: '#0a1a24', fontWeight: 600 }}>{val}{meta.unit ? ` ${meta.unit}` : ''}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Structured entries — rendered as cards when entries JSONB exists */}
                     {log.entries?.length > 0 ? (
@@ -1425,6 +1517,7 @@ export function ActivityLogTab({ user }) {
         <LogActivityModal
           logType={logModal.logType}
           existingLog={logModal.existingLog}
+          userTeam={user?.team}
           onSubmit={handleSubmit}
           onClose={() => setLogModal(null)}
         />
