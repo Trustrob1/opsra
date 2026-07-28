@@ -1,20 +1,20 @@
 /**
  * frontend/src/modules/admin/TeamsConfig.jsx
- * OPS-1, extended REPORTS-DEPT-1 Phase 1 — Departments & Teams config panel.
+ * OPS-1, extended REPORTS-DEPT-1 Phase 1 + Phase 5 — Departments & Teams
+ * config panel, now including per-team daily metrics configuration.
  *
- * Was a flat string-list team editor. Now a two-level hierarchy:
- *   Departments (owner/ops_manager can add, rename, reorder, deactivate)
- *     -> Teams (assigned to a department, or left Unassigned)
+ * Departments (owner/ops_manager can add, rename, reorder, deactivate)
+ *   -> Teams (assigned to a department, or left Unassigned)
+ *     -> Metrics (configurable daily fields, e.g. Sales: "Leads Received",
+ *        Digital Marketing: "Ad Spend") — expandable per team row.
  *
- * Departments commit immediately per action (granular POST/PATCH/DELETE
- * routes). Teams stay local-only until "Save Teams" is clicked, because
- * the backend only exposes a bulk PATCH /api/v1/admin/teams (replace the
- * whole array) — same pattern the original file used, just extended.
+ * Departments and Metrics commit immediately per action (granular
+ * POST/PATCH/DELETE routes). Teams stay local-only until "Save Teams" is
+ * clicked, since the backend only exposes a bulk PATCH for teams.
  *
- * These names populate:
- *   - The Team dropdown in UserManagement (assigning users to teams)
- *   - The Team dropdown in InternalOpsModule (creating issues, filtering logs)
- *   - The department-scoped Reports hub (REPORTS-DEPT-1 Phase 3, later)
+ * Metrics config feeds LogActivityModal (InternalOpsModule.jsx): a team
+ * member logging their day sees exactly their team's configured fields,
+ * nothing hardcoded per role.
  *
  * users.team is UNCHANGED — still a plain string matched against
  * teams[].name at read time. This panel never writes to users directly.
@@ -27,6 +27,7 @@ import { ds } from '../../utils/ds'
 import {
   getTeams, updateTeams,
   getDepartments, createDepartment, updateDepartment, deleteDepartment,
+  getTeamMetrics, createTeamMetric, updateTeamMetric, deleteTeamMetric,
 } from '../../services/admin.service'
 
 const LABEL = {
@@ -66,13 +67,95 @@ function genLocalId() {
   return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+// ── Per-team metrics editor (expandable, inside a team row) ─────────────────
+
+function TeamMetricsEditor({ teamId, metrics, onAdd, onUpdate, onDelete }) {
+  const [newLabel, setNewLabel] = useState('')
+  const [newType, setNewType]   = useState('number')
+  const [newUnit, setNewUnit]   = useState('')
+
+  const handleAdd = () => {
+    if (!newLabel.trim()) return
+    onAdd(teamId, newLabel.trim(), newType, newUnit.trim() || null)
+    setNewLabel(''); setNewUnit('')
+  }
+
+  return (
+    <div style={{ background: '#F8FBFC', border: '1px solid #E3EEF2', borderRadius: 8, padding: '10px 12px', marginTop: 6 }}>
+      <p style={{ fontSize: 11, color: '#7A9BAD', margin: '0 0 8px' }}>
+        Daily fields this team sees when logging their day — e.g. "Leads Received" (Number) or "Ad Spend" (Number, unit ₦).
+      </p>
+      {metrics.length === 0 ? (
+        <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 8px' }}>No metrics configured for this team yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+          {metrics.map(m => (
+            <div key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                defaultValue={m.label}
+                onBlur={e => e.target.value.trim() && e.target.value !== m.label && onUpdate(m.id, { label: e.target.value.trim() })}
+                style={{ ...INPUT, flex: 1, fontSize: 12, padding: '5px 8px' }}
+              />
+              <select
+                defaultValue={m.field_type}
+                onChange={e => onUpdate(m.id, { field_type: e.target.value })}
+                style={{ ...INPUT, fontSize: 12, padding: '5px 6px' }}
+              >
+                <option value="number">Number</option>
+                <option value="text">Text</option>
+              </select>
+              <input
+                defaultValue={m.unit || ''}
+                placeholder="unit (optional)"
+                onBlur={e => onUpdate(m.id, { unit: e.target.value.trim() || null })}
+                style={{ ...INPUT, width: 100, fontSize: 12, padding: '5px 8px' }}
+              />
+              <button onClick={() => onDelete(m.id)} style={{ ...ICON_BTN, fontSize: 15, color: '#B0453A' }} title="Remove metric">×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          value={newLabel}
+          onChange={e => setNewLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd() } }}
+          placeholder="e.g. Leads Received"
+          style={{ ...INPUT, flex: 1, fontSize: 12, padding: '5px 8px' }}
+        />
+        <select value={newType} onChange={e => setNewType(e.target.value)} style={{ ...INPUT, fontSize: 12, padding: '5px 6px' }}>
+          <option value="number">Number</option>
+          <option value="text">Text</option>
+        </select>
+        <input
+          value={newUnit}
+          onChange={e => setNewUnit(e.target.value)}
+          placeholder="unit (optional)"
+          style={{ ...INPUT, width: 100, fontSize: 12, padding: '5px 8px' }}
+        />
+        <button
+          onClick={handleAdd}
+          disabled={!newLabel.trim()}
+          style={{
+            background: newLabel.trim() ? ds.teal : '#CBD5E1', color: 'white', border: 'none',
+            borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 600,
+            cursor: newLabel.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap',
+          }}
+        >
+          + Add
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Department card ──────────────────────────────────────────────────────────
 
 function DepartmentCard({
   dept, index, deptCount, teamsInDept,
   onRename, onMove, onDeactivate,
   onAddTeam, onRenameTeam, onMoveTeamDept, onToggleTeamActive, onRemoveTeam,
-  allDepartments,
+  allDepartments, metrics, onAddMetric, onUpdateMetric, onDeleteMetric,
 }) {
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft]      = useState(dept.name)
@@ -160,6 +243,10 @@ function DepartmentCard({
               onMoveDept={onMoveTeamDept}
               onToggleActive={onToggleTeamActive}
               onRemove={onRemoveTeam}
+              metrics={metrics.filter(m => m.team_id === team.id)}
+              onAddMetric={onAddMetric}
+              onUpdateMetric={onUpdateMetric}
+              onDeleteMetric={onDeleteMetric}
             />
           ))}
         </div>
@@ -198,9 +285,10 @@ function DepartmentCard({
 
 // ── Team row (used inside a department card, and in the Unassigned list) ────
 
-function TeamRow({ team, allDepartments, onRename, onMoveDept, onToggleActive, onRemove }) {
+function TeamRow({ team, allDepartments, onRename, onMoveDept, onToggleActive, onRemove, metrics, onAddMetric, onUpdateMetric, onDeleteMetric }) {
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft]      = useState(team.name)
+  const [metricsOpen, setMetricsOpen]  = useState(false)
 
   const commitName = () => {
     const trimmed = nameDraft.trim()
@@ -210,61 +298,81 @@ function TeamRow({ team, allDepartments, onRename, onMoveDept, onToggleActive, o
   }
 
   return (
-    <div style={{
-      display:      'flex',
-      alignItems:   'center',
-      gap:          8,
-      background:   'white',
-      border:       '1px solid #E3EEF2',
-      borderRadius: 8,
-      padding:      '8px 10px',
-      opacity:      team.is_active ? 1 : 0.5,
-    }}>
-      {editingName ? (
-        <input
-          autoFocus
-          value={nameDraft}
-          onChange={e => setNameDraft(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') { setNameDraft(team.name); setEditingName(false) } }}
-          style={{ ...INPUT, flex: 1, fontSize: 13, padding: '5px 8px' }}
-        />
-      ) : (
-        <span
-          onClick={() => setEditingName(true)}
-          style={{ flex: 1, fontSize: 13.5, color: '#0a1a24', cursor: 'text' }}
-          title="Click to rename"
+    <div>
+      <div style={{
+        display:      'flex',
+        alignItems:   'center',
+        gap:          8,
+        background:   'white',
+        border:       '1px solid #E3EEF2',
+        borderRadius: 8,
+        padding:      '8px 10px',
+        opacity:      team.is_active ? 1 : 0.5,
+      }}>
+        {editingName ? (
+          <input
+            autoFocus
+            value={nameDraft}
+            onChange={e => setNameDraft(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') { setNameDraft(team.name); setEditingName(false) } }}
+            style={{ ...INPUT, flex: 1, fontSize: 13, padding: '5px 8px' }}
+          />
+        ) : (
+          <span
+            onClick={() => setEditingName(true)}
+            style={{ flex: 1, fontSize: 13.5, color: '#0a1a24', cursor: 'text' }}
+            title="Click to rename"
+          >
+            {team.name}
+          </span>
+        )}
+
+        <select
+          value={team.department_id || ''}
+          onChange={e => onMoveDept(team.id, e.target.value || null)}
+          style={{ ...INPUT, fontSize: 12, padding: '5px 8px', maxWidth: 160 }}
         >
-          {team.name}
-        </span>
+          <option value="">Unassigned</option>
+          {allDepartments.map(d => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+
+        <button
+          onClick={() => setMetricsOpen(o => !o)}
+          style={{ ...ICON_BTN, fontSize: 11, whiteSpace: 'nowrap' }}
+          title="Configure this team's daily metrics"
+        >
+          Metrics ({metrics.length}) {metricsOpen ? '▲' : '▼'}
+        </button>
+
+        <button
+          onClick={() => onToggleActive(team.id)}
+          style={{ ...ICON_BTN, fontSize: 11 }}
+          title={team.is_active ? 'Deactivate team' : 'Reactivate team'}
+        >
+          {team.is_active ? 'Deactivate' : 'Reactivate'}
+        </button>
+
+        <button
+          onClick={() => onRemove(team.id)}
+          style={{ ...ICON_BTN, fontSize: 16, color: '#B0453A' }}
+          title="Remove team (only if never saved)"
+        >
+          ×
+        </button>
+      </div>
+
+      {metricsOpen && (
+        <TeamMetricsEditor
+          teamId={team.id}
+          metrics={metrics}
+          onAdd={onAddMetric}
+          onUpdate={onUpdateMetric}
+          onDelete={onDeleteMetric}
+        />
       )}
-
-      <select
-        value={team.department_id || ''}
-        onChange={e => onMoveDept(team.id, e.target.value || null)}
-        style={{ ...INPUT, fontSize: 12, padding: '5px 8px', maxWidth: 160 }}
-      >
-        <option value="">Unassigned</option>
-        {allDepartments.map(d => (
-          <option key={d.id} value={d.id}>{d.name}</option>
-        ))}
-      </select>
-
-      <button
-        onClick={() => onToggleActive(team.id)}
-        style={{ ...ICON_BTN, fontSize: 11 }}
-        title={team.is_active ? 'Deactivate team' : 'Reactivate team'}
-      >
-        {team.is_active ? 'Deactivate' : 'Reactivate'}
-      </button>
-
-      <button
-        onClick={() => onRemove(team.id)}
-        style={{ ...ICON_BTN, fontSize: 16, color: '#B0453A' }}
-        title="Remove team (only if never saved)"
-      >
-        ×
-      </button>
     </div>
   )
 }
@@ -274,6 +382,7 @@ function TeamRow({ team, allDepartments, onRename, onMoveDept, onToggleActive, o
 export default function TeamsConfig() {
   const [departments, setDepartments] = useState([])
   const [teams, setTeams]             = useState([])
+  const [metrics, setMetrics]         = useState([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
 
@@ -286,9 +395,10 @@ export default function TeamsConfig() {
     setLoading(true)
     setError(null)
     try {
-      const [deptData, teamData] = await Promise.all([getDepartments(), getTeams()])
+      const [deptData, teamData, metricsData] = await Promise.all([getDepartments(), getTeams(), getTeamMetrics()])
       setDepartments((deptData?.departments ?? []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)))
       setTeams(teamData?.teams ?? [])
+      setMetrics(metricsData?.team_metrics ?? [])
     } catch {
       setError('Failed to load departments and teams.')
     } finally {
@@ -357,9 +467,6 @@ export default function TeamsConfig() {
     try {
       const result = await deleteDepartment(id)
       setDepartments((result?.departments ?? []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)))
-      // Teams pointing at a now-inactive department fall back to Unassigned
-      // in the UI via the activeDepartments filter below — no local team
-      // mutation needed, department_id is left as-is until reassigned.
     } catch {
       setError('Failed to deactivate department.')
     }
@@ -417,6 +524,39 @@ export default function TeamsConfig() {
     }
   }
 
+  // ── Team metrics actions (commit immediately — no separate save step) ──────
+
+  const handleAddMetric = async (teamId, label, fieldType, unit) => {
+    setError(null)
+    try {
+      const result = await createTeamMetric({ team_id: teamId, label, field_type: fieldType, unit })
+      setMetrics(result?.team_metrics ?? [])
+    } catch (e) {
+      setError(e?.response?.data?.detail?.message ?? 'Failed to add metric.')
+    }
+  }
+
+  const handleUpdateMetric = async (metricId, payload) => {
+    setError(null)
+    try {
+      const result = await updateTeamMetric(metricId, payload)
+      setMetrics(result?.team_metrics ?? [])
+    } catch (e) {
+      setError(e?.response?.data?.detail?.message ?? 'Failed to update metric.')
+    }
+  }
+
+  const handleDeleteMetric = async (metricId) => {
+    if (!window.confirm('Remove this metric? Past logged values for it stay in existing activity logs.')) return
+    setError(null)
+    try {
+      const result = await deleteTeamMetric(metricId)
+      setMetrics(result?.team_metrics ?? [])
+    } catch {
+      setError('Failed to remove metric.')
+    }
+  }
+
   if (loading) {
     return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading departments and teams…</div>
   }
@@ -425,14 +565,14 @@ export default function TeamsConfig() {
   const unassignedTeams    = teams.filter(t => !t.department_id || !activeDepartments.some(d => d.id === t.department_id))
 
   return (
-    <div style={{ maxWidth: 640 }}>
+    <div style={{ maxWidth: 680 }}>
       <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: '0 0 6px' }}>
         Departments &amp; Teams
       </h2>
       <p style={{ fontSize: 13, color: '#7A9BAD', margin: '0 0 24px', lineHeight: 1.6 }}>
-        Group your teams under departments. This controls Reports hub tabs,
-        who sees which reports, and where daily activity gets logged.
-        Departments save immediately; team changes save when you click
+        Group your teams under departments, and configure each team's daily metrics — e.g. Sales tracks
+        "Leads Received," Digital Marketing tracks "Ad Spend." These show up automatically on that team's
+        daily log form. Departments and metrics save immediately; team changes save when you click
         "Save Teams" below.
       </p>
 
@@ -469,6 +609,10 @@ export default function TeamsConfig() {
           onMoveTeamDept={handleMoveTeamDept}
           onToggleTeamActive={handleToggleTeamActive}
           onRemoveTeam={handleRemoveTeam}
+          metrics={metrics}
+          onAddMetric={handleAddMetric}
+          onUpdateMetric={handleUpdateMetric}
+          onDeleteMetric={handleDeleteMetric}
         />
       ))}
 
@@ -526,6 +670,10 @@ export default function TeamsConfig() {
               onMoveDept={handleMoveTeamDept}
               onToggleActive={handleToggleTeamActive}
               onRemove={handleRemoveTeam}
+              metrics={metrics.filter(m => m.team_id === team.id)}
+              onAddMetric={handleAddMetric}
+              onUpdateMetric={handleUpdateMetric}
+              onDeleteMetric={handleDeleteMetric}
             />
           ))}
         </div>
