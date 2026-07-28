@@ -672,12 +672,17 @@ def list_issues(
     assigned_to: Optional[str] = None,
     reported_by: Optional[str] = None,
     priority: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
     """
     OPS-1: List issues. Non-managers scoped to own team.
-    Filterable by team, status, assigned_to, reported_by, priority.
+    Filterable by team, status, assigned_to, reported_by, priority, and
+    now date_from/date_to (against created_at) — REPORTS-DEPT-1 Phase 5.
+    Still fully unpaginated — every matching row returns in one response,
+    unchanged from before this edit.
     """
     org_id = org["org_id"]
     manager = _is_manager(org)
@@ -704,6 +709,12 @@ def list_issues(
         query = query.eq("reported_by", reported_by)
     if priority:
         query = query.eq("priority", priority)
+    if date_from:
+        query = query.gte("created_at", date_from)
+    if date_to:
+        # created_at is a full timestamp — extend to end-of-day so the
+        # selected day itself isn't excluded by an implicit midnight cutoff.
+        query = query.lte("created_at", f"{date_to}T23:59:59")
 
     result = query.execute()
     issues = result.data or []

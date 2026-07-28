@@ -25,6 +25,7 @@ import {
 } from '../../services/internal_ops.service'
 import { toggleOwnerAttention } from '../../services/performance.service'
 import { getTeams, getTeamMetrics, getDepartments, getInternalIssueCategories, listUsers } from '../../services/admin.service'
+import DateRangePresets from './DateRangePresets'
 
 const PRIORITIES  = ['critical', 'high', 'medium', 'low']
 const STATUSES    = ['open', 'in_progress', 'resolved']
@@ -383,6 +384,19 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
   const [entries,  setEntries]  = useState(seedEntries)
   const [saving,   setSaving]   = useState(false)
   const [err,      setErr]      = useState(null)
+
+  // General "log an issue while logging my day" — distinct from the
+  // existing per-activity blocker mechanism (_maybe_create_blocker_issues
+  // in activity_logs.py), which only fires when a specific activity is
+  // marked as blocked. This is for something not tied to any one task.
+  const [showIssueSection, setShowIssueSection] = useState(false)
+  const [issueCategories, setIssueCategories]   = useState([])
+  const [issueForm, setIssueForm] = useState({ title: '', description: '', category: '', priority: 'medium' })
+  const [issueErr, setIssueErr]   = useState(null)
+
+  useEffect(() => {
+    getInternalIssueCategories().then(data => setIssueCategories(data?.categories ?? [])).catch(() => {})
+  }, [])
   const [logDate,  setLogDate]  = useState(() => {
     if (existingLog?.log_date) return existingLog.log_date
     return logType === 'weekly' ? getMonday() : today
@@ -396,7 +410,19 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
 
   const handleSubmit = async () => {
     if (validEntries.length === 0) { setErr('At least one activity description is required.'); return }
-    setSaving(true); setErr(null)
+    if (showIssueSection && (!issueForm.title.trim() || !issueForm.category)) {
+      setIssueErr('Title and category are required to log an issue.')
+      return
+    }
+    if (showIssueSection && !userTeam) {
+      // Mirrors NewIssueModal's own "Team is required" check — here it's
+      // implicit (this user's own team) rather than a dropdown, so if it's
+      // ever missing there's nothing to fall back to except telling them
+      // plainly, rather than silently submitting an empty team string.
+      setIssueErr('Your profile has no team assigned, so this issue can\'t be logged from here. Ask an admin to set your team, or use the Issues tab directly.')
+      return
+    }
+    setSaving(true); setErr(null); setIssueErr(null)
     try {
       // Both new and update use bulk endpoint — upsert handles the rest
       await submitActivityLogBulk({
@@ -412,6 +438,28 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
         })),
         custom_metrics: teamMetrics.length > 0 ? metricValues : undefined,
       })
+
+      if (showIssueSection && issueForm.title.trim()) {
+        try {
+          await createIssue({
+            title:       issueForm.title.trim(),
+            description: issueForm.description.trim() || null,
+            team:        userTeam || '',
+            category:    issueForm.category,
+            priority:    issueForm.priority,
+            assigned_to: null,
+          })
+        } catch (issueEx) {
+          // The daily log itself already succeeded — don't lose that or
+          // pretend it failed. Reload the log list, but keep this modal
+          // open with a specific error so the issue isn't silently dropped.
+          onSubmit(null, null, false)
+          setIssueErr(issueEx?.response?.data?.detail?.message ?? 'Log saved, but the issue could not be created. Try adding it from the Issues tab.')
+          setSaving(false)
+          return
+        }
+      }
+
       onSubmit(null, null, false) // trigger list reload
       onClose()
     } catch (e) {
@@ -474,6 +522,56 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
             </div>
           </div>
         )}
+
+        {/* General "log an issue" section — optional, collapsed by default */}
+        <div style={{ border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+          <div
+            onClick={() => setShowIssueSection(o => !o)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#92400E' }}>
+              <AlertTriangle size={14} color="#92400E" /> Log an issue (optional)
+            </span>
+            <span style={{ color: '#92400E', fontSize: 14 }}>{showIssueSection ? '▲' : '▼'}</span>
+          </div>
+          {showIssueSection && (
+            <div style={{ marginTop: 12 }}>
+              <label style={LBL}>Title *</label>
+              <input
+                value={issueForm.title}
+                onChange={e => setIssueForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Brief description of the issue"
+                style={INP}
+              />
+              <label style={LBL}>Description</label>
+              <textarea
+                value={issueForm.description}
+                onChange={e => setIssueForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="More detail (optional)"
+                rows={2}
+                style={{ ...INP, resize: 'vertical' }}
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                <div>
+                  <label style={LBL}>Category *</label>
+                  <select value={issueForm.category} onChange={e => setIssueForm(f => ({ ...f, category: e.target.value }))} style={INP}>
+                    <option value="">Select category</option>
+                    {issueCategories.filter(c => c.enabled !== false).map(c => (
+                      <option key={c.key} value={c.key}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={LBL}>Priority</label>
+                  <select value={issueForm.priority} onChange={e => setIssueForm(f => ({ ...f, priority: e.target.value }))} style={INP}>
+                    {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+              {issueErr && <p style={{ color: '#DC2626', fontSize: 12, marginTop: 8 }}>{issueErr}</p>}
+            </div>
+          )}
+        </div>
 
         {/* Entry count indicator */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -582,6 +680,10 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
 // ── Issues Tab ────────────────────────────────────────────────────────────────
 export function IssuesTab({ user }) {
   const isManager = ['owner', 'ops_manager'].includes(user?.roles?.template)
+  const today = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  })()
   const [issues, setIssues]           = useState([])
   const [teams, setTeams]             = useState([])
   const [departments, setDepartments] = useState([])   // REPORTS-DEPT-1 Phase 3
@@ -592,6 +694,8 @@ export function IssuesTab({ user }) {
   const [filterTeam, setFilterTeam]   = useState('')
   const [filterDepartment, setFilterDepartment] = useState('')   // REPORTS-DEPT-1 Phase 3
   const [filterStatus, setFilterStatus] = useState('')
+  const [dateFrom, setDateFrom] = useState('')   // REPORTS-DEPT-1 Phase 5 — All Time default
+  const [dateTo, setDateTo]     = useState('')
   const [showNew, setShowNew]           = useState(false)
   const [selected, setSelected]         = useState(null)
   const [showDownload, setShowDownload] = useState(false)
@@ -609,6 +713,8 @@ export function IssuesTab({ user }) {
       const params = {}
       if (filterTeam)   params.team          = filterTeam
       if (filterStatus) params.status_filter = filterStatus
+      if (dateFrom)     params.date_from      = dateFrom
+      if (dateTo)       params.date_to        = dateTo
       const [issData, teamsData, deptsData, catsData, usersData] = await Promise.all([
         listIssues(params),
         getTeams(),
@@ -624,7 +730,7 @@ export function IssuesTab({ user }) {
     } catch {
       setError('Failed to load issues.')
     } finally { setLoading(false) }
-  }, [filterTeam, filterStatus])
+  }, [filterTeam, filterStatus, dateFrom, dateTo])
 
   useEffect(() => { load() }, [load])
 
@@ -845,8 +951,26 @@ export function IssuesTab({ user }) {
         </div>
       )}
 
+      {/* REPORTS-DEPT-1 Phase 5: KPI cards, computed from visibleIssues —
+          already respects whatever date/department/team/status filters
+          are currently active, same pattern as Sales Record's cards. */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Total Issues',        value: visibleIssues.length },
+          { label: 'Total Issues Today',  value: visibleIssues.filter(i => i.created_at?.slice(0, 10) === today).length },
+          { label: 'Total Pending',       value: visibleIssues.filter(i => i.status !== 'resolved').length, accent: '#92601A' },
+          { label: 'Total Resolved',      value: visibleIssues.filter(i => i.status === 'resolved').length, accent: '#059669' },
+        ].map(k => (
+          <div key={k.label} style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{k.label}</p>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: k.accent ?? '#0a1a24', margin: 0 }}>{k.value}</p>
+          </div>
+        ))}
+      </div>
+
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <DateRangePresets defaultPreset="All Time" onChange={({ dateFrom: f, dateTo: t }) => { setDateFrom(f); setDateTo(t) }} />
         {isManager && departments.length > 0 && (
           <select value={filterDepartment} onChange={e => setFilterDepartment(e.target.value)}
             style={{ ...INP, width: 'auto', padding: '7px 12px', fontSize: 13 }}>
@@ -973,6 +1097,8 @@ export function ActivityLogTab({ user }) {
   const [filterUser, setFilterUser]   = useState('')
   const [filterType, setFilterType]   = useState('')
   const [filterDepartment, setFilterDepartment] = useState('')   // REPORTS-DEPT-1 Phase 3
+  const [dateFrom, setDateFrom] = useState('')   // REPORTS-DEPT-1 Phase 5 — All Time default
+  const [dateTo, setDateTo]     = useState('')
   const [expanded, setExpanded]       = useState(null)
 
   // logModal: null | { logType: 'daily'|'weekly', existingLog: obj|null }
@@ -1013,6 +1139,8 @@ export function ActivityLogTab({ user }) {
       const params = {}
       if (filterUser) params.user_id_filter = filterUser
       if (filterType) params.log_type       = filterType
+      if (dateFrom)   params.date_from      = dateFrom
+      if (dateTo)     params.date_to        = dateTo
       const [logsData, usersData, teamsData, deptsData, metricsData] = await Promise.all([
         listActivityLogs(params),
         isManager ? listUsers() : Promise.resolve([]),
@@ -1028,7 +1156,7 @@ export function ActivityLogTab({ user }) {
     } catch {
       setError('Failed to load activity logs.')
     } finally { setLoading(false) }
-  }, [filterUser, filterType, isManager])
+  }, [filterUser, filterType, isManager, dateFrom, dateTo])
 
   useEffect(() => { load() }, [load])
 
@@ -1287,9 +1415,43 @@ export function ActivityLogTab({ user }) {
         </div>
       )}
 
+      {/* REPORTS-DEPT-1 Phase 5: KPI cards, computed from visibleLogs —
+          reactive to whatever date/department filters are currently
+          active, same convention as Sales Record and Issues.
+          "Staff Logged Today" needs org-wide visibility (users), so it's
+          manager-only — a non-manager only ever sees their own logs and
+          the metric wouldn't mean anything from that view. */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+        {isManager && (
+          <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Staff Logged Today</p>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#0a1a24', margin: 0 }}>
+              {new Set(visibleLogs.filter(l => l.log_type === 'daily' && l.log_date === today).map(l => l.user_id)).size} / {users.length}
+            </p>
+          </div>
+        )}
+        <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Total Logs</p>
+          <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#0a1a24', margin: 0 }}>{visibleLogs.length}</p>
+        </div>
+        <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Open Blockers</p>
+          <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#92601A', margin: 0 }}>
+            {visibleLogs.reduce((sum, l) => sum + (l.entries || []).filter(e => e.has_blocker && e.blocker_issue_status !== 'resolved').length, 0)}
+          </p>
+        </div>
+        <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Blockers Resolved</p>
+          <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#059669', margin: 0 }}>
+            {visibleLogs.reduce((sum, l) => sum + (l.entries || []).filter(e => e.has_blocker && e.blocker_issue_status === 'resolved').length, 0)}
+          </p>
+        </div>
+      </div>
+
       {/* Manager filters */}
       {isManager && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+          <DateRangePresets defaultPreset="All Time" onChange={({ dateFrom: f, dateTo: t }) => { setDateFrom(f); setDateTo(t) }} />
           {departments.length > 0 && (
             <select value={filterDepartment} onChange={e => setFilterDepartment(e.target.value)}
               style={{ ...INP, width: 'auto', padding: '7px 12px', fontSize: 13 }}>
