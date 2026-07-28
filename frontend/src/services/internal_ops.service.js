@@ -183,3 +183,19 @@ export async function downloadActivityLogReport(params = {}) {
   })
   return res.data
 }
+
+/**
+ * Download the cross-department Business Activities report as a PDF blob.
+ * Owner/ops_manager only. Rate limited to 10/hr per org, own bucket
+ * separate from the Issues and Activity Log report limits.
+ * @param {object} params — date_from, date_to (both optional, default to today)
+ * @returns {Blob} PDF blob for browser download
+ */
+export async function downloadBusinessActivitiesReport(params = {}) {
+  const res = await axios.get(`${BASE}/business-activities/report/download`, {
+    headers: { ...authHeaders(), Accept: 'application/pdf' },
+    params,
+    responseType: 'blob',
+  })
+  return res.data
+}

@@ -41,6 +41,8 @@ import ContractorModule from './ContractorModule'
 import DataSourcesTab from './DataSourcesTab'
 import SalesRecordTab from './SalesRecordTab'
 import CommissionsTab from './CommissionsTab'
+import DateRangePresets from './DateRangePresets'
+import { downloadBusinessActivitiesReport } from '../../services/internal_ops.service'
 
 const MANAGER_ROLES = ['owner', 'ops_manager']
 const SALES_AGENT_ROLE = 'sales_agent'
@@ -142,34 +144,104 @@ function TabBar({ active, onChange, tabs }) {
 
 // ─── Module header ────────────────────────────────────────────────────────────
 
-function ModuleHeader({ departmentLabel }) {
+function BusinessActivitiesReportModal({ onClose }) {
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo]     = useState('')
+  const [downloading, setDownloading] = useState(false)
+  const [error, setError]       = useState(null)
+
+  const handleDownload = async () => {
+    setDownloading(true); setError(null)
+    try {
+      const params = {}
+      if (dateFrom) params.date_from = dateFrom
+      if (dateTo)   params.date_to   = dateTo
+      const blob = await downloadBusinessActivitiesReport(params)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Business_Activities_Report_${dateFrom || 'today'}_to_${dateTo || 'today'}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      onClose()
+    } catch (e) {
+      const msg = e?.response?.status === 429
+        ? 'You can download up to 10 reports per hour.'
+        : (e?.response?.data?.detail?.message ?? 'Download failed. Please try again.')
+      setError(msg)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }} onClick={onClose}>
+      <div style={{ background: 'white', borderRadius: 16, padding: 28, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,0.18)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>Download Business Activities Report</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+        </div>
+        <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 16px' }}>
+          A single cross-department summary — activity logs, issues, team metrics, and Sales Record figures, segmented by department. Defaults to today.
+        </p>
+        <DateRangePresets defaultPreset="Today" onChange={({ dateFrom: f, dateTo: t }) => { setDateFrom(f); setDateTo(t) }} />
+        {error && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{error}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+          <button onClick={onClose} style={{ background: '#fff', color: '#0a1a24', border: '1.5px solid #D4E6EC', borderRadius: 9, padding: '10px 18px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            style={{ background: downloading ? '#aaa' : ds.teal, color: 'white', border: 'none', borderRadius: 9, padding: '10px 22px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: downloading ? 'not-allowed' : 'pointer' }}
+          >
+            {downloading ? 'Generating PDF…' : '⬇ Download PDF'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModuleHeader({ departmentLabel, onDownloadReport }) {
   return (
     <div style={{
       background:   ds.dark,
       padding:      '20px 28px',
       display:      'flex',
       alignItems:   'center',
+      justifyContent: 'space-between',
       gap:          16,
       borderBottom: '1px solid #1a2f3f',
     }}>
-      <div style={{
-        width: 40, height: 40, borderRadius: 10,
-        background: ds.teal, display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
-        fontFamily: ds.fontSyne, fontWeight: 800,
-        fontSize: 14, color: 'white', flexShrink: 0,
-      }}>
-        BA
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 10,
+          background: ds.teal, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          fontFamily: ds.fontSyne, fontWeight: 800,
+          fontSize: 14, color: 'white', flexShrink: 0,
+        }}>
+          BA
+        </div>
+        <div>
+          <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>
+            Business Activities
+          </h1>
+          <p style={{ fontSize: 12, color: '#6B8FA0', margin: '2px 0 0' }}>
+            Activity log &middot; Issues &middot; Contractors &middot; Data sources
+            {departmentLabel ? ` \u2014 ${departmentLabel}` : ''}
+          </p>
+        </div>
       </div>
-      <div>
-        <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>
-          Business Activities
-        </h1>
-        <p style={{ fontSize: 12, color: '#6B8FA0', margin: '2px 0 0' }}>
-          Activity log &middot; Issues &middot; Contractors &middot; Data sources
-          {departmentLabel ? ` \u2014 ${departmentLabel}` : ''}
-        </p>
-      </div>
+      <button
+        onClick={onDownloadReport}
+        style={{
+          background: 'transparent', color: 'white', border: '1.5px solid #2a4456',
+          borderRadius: 9, padding: '9px 16px', fontSize: 13, fontWeight: 500,
+          fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap',
+        }}
+      >
+        ⬇ Full Report
+      </button>
     </div>
   )
 }
@@ -182,12 +254,14 @@ export default function BusinessActivitiesModule({ user }) {
   const role         = user?.roles?.template || ''
   const departmentId = user?.roles?.department_id || null
   const tabs         = buildTabs(role, departmentId)
+  const isManager    = MANAGER_ROLES.includes(role)
 
   const [activeTab, setActiveTab] = useState(tabs[0]?.id || 'activity')
+  const [showReportModal, setShowReportModal] = useState(false)
 
   return (
     <div style={{ minHeight: 'calc(100vh - 60px)', background: ds.light }}>
-      <ModuleHeader />
+      <ModuleHeader onDownloadReport={isManager ? () => setShowReportModal(true) : undefined} />
       <TabBar active={activeTab} onChange={setActiveTab} tabs={tabs} />
 
       {/* Pattern 26: mount-and-hide — all panels stay in the DOM */}
@@ -223,6 +297,10 @@ export default function BusinessActivitiesModule({ user }) {
         <div style={{ display: activeTab === 'sources' ? 'block' : 'none' }}>
           <DataSourcesTab />
         </div>
+      )}
+
+      {showReportModal && (
+        <BusinessActivitiesReportModal onClose={() => setShowReportModal(false)} />
       )}
     </div>
   )
