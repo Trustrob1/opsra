@@ -192,6 +192,7 @@ from app.routers import performance_logs as performance_logs_router
 from app.routers import performance_hub as performance_hub_router
 from app.routers import public_performance as public_performance_router
 from app.routers import project_planner_router
+from app.routers import business_activities_report as business_activities_report_router
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -226,6 +227,7 @@ app.include_router(performance_logs_router.router,     prefix="/api/v1", tags=["
 app.include_router(performance_hub_router.router,      prefix="/api/v1", tags=["performance-hub"])
 app.include_router(public_performance_router.router,   prefix="/api/v1", tags=["public-performance"])
 app.include_router(project_planner_router.router,      prefix="/api/v1/project-planner", tags=["project-planner"])
+app.include_router(business_activities_report_router.router, prefix="/api/v1", tags=["business-activities-report"])
 
 
 # ---------------------------------------------------------------------------
