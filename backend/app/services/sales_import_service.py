@@ -234,19 +234,21 @@ def validate_and_prepare_transaction_sales_rows(
     day's total) for insertion into direct_sales, across multiple regions
     (one per sheet tab). Feeds the Sales Record and Commissions tabs.
 
+    REPORTS-DEPT-1 Phase 4c: rep_name_raw (the literal sheet text) is
+    stored directly as `rep_name` on the row and is what filtering/
+    display use. Opsra-user matching (_match_rep) still runs in the
+    background, populating recorded_by/source_team for future team/
+    department attribution, but nothing downstream depends on it
+    succeeding. `variant` is a new, separate field alongside `model`.
+
     Matches the reference commission-dashboard tool's own rules:
       - customer_name and rep are the meaningful identity of a row (a row
-        with neither is silently skipped, not an error — matches the
-        reference tool's own `r => r[keys.rep] || r[keys.customer]` filter)
-      - amount defaults to 0 if missing/unparseable (not an error) — the
-        reference tool does the same (matchRate() * units still yields a
-        meaningful commission even with a blank Amount column)
+        with neither is silently skipped, not an error)
+      - amount defaults to 0 if missing/unparseable (not an error)
       - reconciliation_status: any value starting with "rec" (case-
-        insensitive) -> "Reconciled", everything else -> "Pending",
-        matching the reference tool's exact rule. Missing Status column
-        entirely -> every row defaults to "Pending".
-      - model falls back to the Items Purchased column if Model is blank,
-        matching the reference tool's `row.model || row.items`.
+        insensitive) -> "Reconciled", everything else -> "Pending".
+        Missing Status column entirely -> every row defaults to "Pending".
+      - model falls back to the Items Purchased column if Model is blank.
     """
     from datetime import timezone
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -263,6 +265,10 @@ def validate_and_prepare_transaction_sales_rows(
         except Exception:
             pass
 
+    # Duplicate key uses the raw rep name text, not the matched Opsra
+    # user id — two different real reps who both failed to match
+    # (recorded_by=None) would previously have been falsely treated as
+    # potential duplicates of each other.
     existing_keys: set = set()
     try:
         res = (
@@ -294,47 +300,15 @@ def validate_and_prepare_transaction_sales_rows(
             rep_cache[key] = _match_rep(rep_name, org_id, db)
         return rep_cache[key]
 
-    model = (row.get("model") or "").strip() or (row.get("items") or "").strip() or None
+    row_num = 1  # global counter across all regions, 1-indexed after header
+    for region, rows in rows_by_region.items():
+        for row in rows:
+            row_num += 1
 
-            status_raw = (row.get("reconciliation_status") or "").strip().lower()
-            reconciliation_status = "Reconciled" if status_raw.startswith("rec") else "Pending"
-
-            rep_id, rep_team = _get_rep(rep_name_raw)
-
-            if wm_date:
-                try:
-                    row_date = datetime.strptime(sale_date, "%Y-%m-%d").date()
-                    if row_date <= wm_date:
-                        already_imported.append({"row": row_num, "region": region, "sale_date": sale_date})
-                except Exception:
-                    pass
-
-            dup_key = (rep_id, sale_date, (customer_name or "").lower(), (model or "").lower(), amount)
-            if dup_key in existing_keys:
-                duplicate_warnings.append({"row": row_num, "region": region, "sale_date": sale_date, "customer_name": customer_name})
-
-            notes = None
-            if rep_name_raw and not rep_id:
-                notes = f"Unmatched rep on sheet: {rep_name_raw}"
-
-            valid_rows.append({
-                "org_id":                org_id,
-                "customer_name":         customer_name,
-                "amount":                amount,
-                "currency":              "NGN",
-                "sale_date":             sale_date,
-                "channel":               "other",
-                "region":                region,
-                "model":                 model,
-                "units":                 units,
-                "reconciliation_status": reconciliation_status,
-                "source_team":           rep_team,
-                "recorded_by":           rep_id,
-                "notes":                 notes,
-                "import_source":         import_source,
-                "created_at":            now_iso,
-                "updated_at":            now_iso,
-            })
+            rep_name_raw = (row.get("rep_name_raw") or "").strip() or None
+            customer_name = (row.get("customer_name") or "").strip() or None
+            if not rep_name_raw and not customer_name:
+                continue  # matches reference tool: skip rows with neither
 
             raw_date = str(row.get("sale_date") or "").strip()
             sale_date = _parse_date(raw_date)
@@ -365,8 +339,6 @@ def validate_and_prepare_transaction_sales_rows(
             # quietly in the background (recorded_by/source_team, for
             # future team/department attribution) — but rep_name_raw, the
             # literal sheet text, is what filtering and display now use.
-            # A rep with no matching Opsra user still gets a fully usable
-            # row; nothing here depends on the match succeeding.
             rep_id, rep_team = _get_rep(rep_name_raw)
 
             if wm_date:
@@ -377,17 +349,13 @@ def validate_and_prepare_transaction_sales_rows(
                 except Exception:
                     pass
 
-            # Duplicate key now uses the raw rep name text, not the
-            # matched Opsra user id — two different real reps who both
-            # failed to match (recorded_by=None) would previously have
-            # been falsely treated as potential duplicates of each other.
             dup_key = ((rep_name_raw or "").lower(), sale_date, (customer_name or "").lower(), (model or "").lower(), amount)
             if dup_key in existing_keys:
                 duplicate_warnings.append({"row": row_num, "region": region, "sale_date": sale_date, "customer_name": customer_name})
 
             notes = None
             if rep_name_raw and not rep_id:
-                notes = f"No matching Opsra user for this rep — attribution unavailable, but the row is otherwise complete."
+                notes = "No matching Opsra user for this rep — attribution unavailable, but the row is otherwise complete."
 
             valid_rows.append({
                 "org_id":                org_id,
