@@ -519,6 +519,7 @@ async def me(org=Depends(get_current_org)) -> ApiResponse:
         "is_active": org.get("is_active"),
         "is_out_of_office": org.get("is_out_of_office", False),
         "notification_prefs": org.get("notification_prefs", {}),
+        "team": org.get("team"),
         "roles": org.get("roles"),
     }
     return ok(data=safe_user)

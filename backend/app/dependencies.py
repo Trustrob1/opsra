@@ -175,7 +175,7 @@ async def get_current_org(
             try:
                 result = (
                     supabase.table("users")
-                    .select("id, org_id, email, full_name, is_active, whatsapp_number, notification_prefs, roles(*)")
+                    .select("id, org_id, email, full_name, is_active, whatsapp_number, notification_prefs, team, roles(*)")
                     .eq("id", current_user.id)
                     .execute()
                 )
