@@ -48,10 +48,12 @@ const OVERLAY = {
   background: 'rgba(13,27,42,0.55)',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   zIndex: 200,
+  padding: 20, boxSizing: 'border-box',
 }
 const MODAL = {
-  background: '#fff', borderRadius: 16, padding: 32,
-  width: '100%', maxWidth: 560,
+  background: '#fff', borderRadius: 16,
+  padding: 'clamp(20px, 4vw, 36px)',
+  width: '100%', maxWidth: 720, boxSizing: 'border-box',
   boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
   maxHeight: '90vh', overflowY: 'auto',
 }
@@ -275,7 +277,7 @@ function NewIssueModal({ teams, categories, teamMembers, onCreate, onClose }) {
         <label style={LBL}>Description</label>
         <textarea value={form.description} onChange={e => set('description', e.target.value)} placeholder="More detail (optional)" rows={3} style={{ ...INP, resize: 'vertical' }} />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
           <div>
             <label style={LBL}>Team *</label>
             <select value={form.team} onChange={e => { set('team', e.target.value); set('assigned_to', '') }} style={INP}>
@@ -294,7 +296,7 @@ function NewIssueModal({ teams, categories, teamMembers, onCreate, onClose }) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
           <div>
             <label style={LBL}>Priority</label>
             <select value={form.priority} onChange={e => set('priority', e.target.value)} style={INP}>
@@ -457,7 +459,7 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
             <p style={{ fontSize: 11, fontWeight: 700, color: '#0369A1', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 10px' }}>
               Today's {userTeam} numbers
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
               {teamMetrics.map(m => (
                 <div key={m.id}>
                   <label style={LBL}>{m.label}{m.unit ? ` (${m.unit})` : ''}</label>
@@ -510,7 +512,7 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
               style={{ ...INP, resize: 'vertical', marginBottom: 10 }}
             />
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 10 }}>
               <div>
                 <label style={LBL}>Activity type</label>
                 <select value={entry.activity_type} onChange={e => updateEntry(i, 'activity_type', e.target.value)}
