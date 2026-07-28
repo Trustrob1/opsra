@@ -1,11 +1,21 @@
 /**
  * frontend/src/modules/ops/DateRangePresets.jsx
- * REPORTS-DEPT-1 Phase 4c — shared date-range control for Sales Record
- * and Commissions. Defaults to "Today". "Custom" reveals raw from/to
- * date inputs; every other preset computes the range internally.
+ * REPORTS-DEPT-1 Phase 4c/5 — shared date-range control, used by Sales
+ * Record, Commissions, Issues, and Activity Log.
+ *
+ * Defaults to "Today" UNLESS a defaultPreset prop is passed — Issues and
+ * Activity Log pass defaultPreset="All Time" (show everything, sorted
+ * most-recent-first, no date filter applied until the user picks one).
+ * Sales Record and Commissions don't pass this prop, so their existing
+ * "defaults to Today" behaviour is completely unchanged.
+ *
+ * "All Time" resolves to { dateFrom: '', dateTo: '' } — empty strings are
+ * already treated as "omit this filter" everywhere date_from/date_to are
+ * conditionally added to query params, so no caller-side changes needed
+ * beyond passing defaultPreset.
  *
  * Usage: <DateRangePresets onChange={({ dateFrom, dateTo }) => ...} />
- * Fires once on mount (Today) and again on every preset/custom change.
+ *        <DateRangePresets defaultPreset="All Time" onChange={...} />
  */
 import { useState, useEffect } from 'react'
 
@@ -19,7 +29,7 @@ const INP = {
   fontFamily:   'inherit',
 }
 
-const PRESETS = ['Today', 'Yesterday', 'Last 30 days', 'Last Month', 'Last Year', 'Custom']
+const PRESETS = ['All Time', 'Today', 'Yesterday', 'Last 30 days', 'Last Month', 'Last Year', 'Custom']
 
 function fmt(d) {
   return d.toISOString().slice(0, 10)
@@ -28,6 +38,8 @@ function fmt(d) {
 function computeRange(preset, customFrom, customTo) {
   const today = new Date()
   switch (preset) {
+    case 'All Time':
+      return { dateFrom: '', dateTo: '' }
     case 'Today':
       return { dateFrom: fmt(today), dateTo: fmt(today) }
     case 'Yesterday': {
@@ -59,8 +71,8 @@ function computeRange(preset, customFrom, customTo) {
   }
 }
 
-export default function DateRangePresets({ onChange }) {
-  const [preset, setPreset]         = useState('Today')
+export default function DateRangePresets({ onChange, defaultPreset }) {
+  const [preset, setPreset]         = useState(defaultPreset || 'Today')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo]     = useState('')
 

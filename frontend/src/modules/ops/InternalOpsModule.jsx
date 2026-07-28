@@ -678,7 +678,7 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
   
 
 // ── Issues Tab ────────────────────────────────────────────────────────────────
-export function IssuesTab({ user }) {
+export function IssuesTab({ user, isActive }) {
   const isManager = ['owner', 'ops_manager'].includes(user?.roles?.template)
   const today = (() => {
     const d = new Date()
@@ -732,7 +732,15 @@ export function IssuesTab({ user }) {
     } finally { setLoading(false) }
   }, [filterTeam, filterStatus, dateFrom, dateTo])
 
-  useEffect(() => { load() }, [load])
+  // Refetch whenever this tab becomes the visible one again — Issues and
+  // Activity Log are separate, independently-stateful components that
+  // both stay mounted (Pattern 26), so an issue created from inside the
+  // Activity Log modal has no other way to reach this tab's own state.
+  // Deliberately the ONLY load-trigger now (not also a separate mount
+  // effect) — Issues is the default active tab, so isActive is already
+  // true on first render, meaning this alone covers both "just mounted"
+  // and "switched back to this tab" without double-fetching either.
+  useEffect(() => { if (isActive) load() }, [isActive, load])
 
   const handleCreate = async (payload) => { await createIssue(payload); load() }
   const handleUpdate = async (id, payload) => { await updateIssue(id, payload); load() }
@@ -1285,13 +1293,13 @@ export function ActivityLogTab({ user }) {
               ⬇ Download Report
             </button>
           )}
-          <button onClick={() => setLogModal({ logType: 'daily', existingLog: null })}
+          <button onClick={() => setLogModal({ logType: 'daily', existingLog: todayLog || null })}
             style={{ ...BTN_OUTLINE, padding: '8px 16px', fontSize: 13 }}>
-            + Log Today
+            {todayLog ? 'Edit Today' : '+ Log Today'}
           </button>
-          <button onClick={() => setLogModal({ logType: 'weekly', existingLog: null })}
+          <button onClick={() => setLogModal({ logType: 'weekly', existingLog: weekLog || null })}
             style={{ ...BTN_PRIMARY, padding: '8px 16px', fontSize: 13 }}>
-            + Log This Week
+            {weekLog ? 'Edit This Week' : '+ Log This Week'}
           </button>
         </div>
       </div>
@@ -1744,7 +1752,7 @@ export default function InternalOpsModule({ user }) {
 
       {/* Pattern 26: mount-and-hide */}
       <div style={{ display: activeTab === 'issues'   ? 'block' : 'none' }}>
-        <IssuesTab user={user} />
+        <IssuesTab user={user} isActive={activeTab === 'issues'} />
       </div>
       <div style={{ display: activeTab === 'activity' ? 'block' : 'none' }}>
         <ActivityLogTab user={user} />
