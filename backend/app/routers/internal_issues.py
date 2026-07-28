@@ -89,22 +89,31 @@ def _is_manager(org: dict) -> bool:
 
 
 def _generate_reference(db, org_id: str) -> str:
-    """Generate next ISS-NNN reference for this org."""
+    """
+    Generate next ISS-NNN reference for this org.
+    Uses the MAXIMUM number across every existing reference for this org,
+    not just the most-recently-created row. The previous version assumed
+    "most recent row" and "highest number" always match — they don't
+    always: a soft-deleted-and-recreated row, an out-of-order timestamp,
+    or a retried request can make them drift apart, at which point the
+    old logic confidently regenerates a number that already exists,
+    failing every time with a 23505 constraint violation until someone
+    notices and manually intervenes (which is what just happened).
+    """
     result = (
         db.table("internal_issues")
         .select("reference")
         .eq("org_id", org_id)
-        .order("created_at", desc=True)
-        .limit(1)
         .execute()
     )
-    if result.data:
+    max_num = 0
+    for row in (result.data or []):
         try:
-            last_num = int(result.data[0]["reference"].split("-")[1])
-            return f"ISS-{str(last_num + 1).zfill(3)}"
-        except (IndexError, ValueError):
-            pass
-    return "ISS-001"
+            num = int(row["reference"].split("-")[1])
+            max_num = max(max_num, num)
+        except (IndexError, ValueError, KeyError, TypeError):
+            continue
+    return f"ISS-{str(max_num + 1).zfill(3)}"
 
 
 def _fetch_issue(db, issue_id: str, org_id: str) -> dict:
@@ -753,24 +762,45 @@ def create_issue(
             detail={"code": "VALIDATION_ERROR", "message": "Category is required"},
         )
 
-    reference = _generate_reference(db, org_id)
+    # Retry on reference collision — _generate_reference computes the
+    # next number from a read, then this insert commits it. Two requests
+    # landing close enough together can both read the same "next" number
+    # before either commits, so the second one's insert fails with a
+    # 23505 unique-constraint violation. Regenerating and retrying a
+    # couple of times resolves this without needing a DB-level sequence;
+    # each retry re-reads the table, which by then reflects the first
+    # request's successful insert.
+    result = None
+    last_exc = None
+    for attempt in range(3):
+        reference = _generate_reference(db, org_id)
+        row = {
+            "org_id":      org_id,
+            "reference":   reference,
+            "title":       payload.title.strip(),
+            "description": payload.description,
+            "team":        payload.team.strip(),
+            "category":    payload.category.strip(),
+            "priority":    payload.priority,
+            "status":      "open",
+            "reported_by": user_id,
+            "assigned_to": payload.assigned_to or None,
+            "created_at":  datetime.now(timezone.utc).isoformat(),
+            "updated_at":  datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            result = db.table("internal_issues").insert(row).execute()
+            break
+        except Exception as exc:
+            last_exc = exc
+            if "23505" in str(exc) and attempt < 2:
+                logger.warning(
+                    "create_issue: reference collision on %s (attempt %d/3) — retrying",
+                    reference, attempt + 1,
+                )
+                continue
+            raise
 
-    row = {
-        "org_id":      org_id,
-        "reference":   reference,
-        "title":       payload.title.strip(),
-        "description": payload.description,
-        "team":        payload.team.strip(),
-        "category":    payload.category.strip(),
-        "priority":    payload.priority,
-        "status":      "open",
-        "reported_by": user_id,
-        "assigned_to": payload.assigned_to or None,
-        "created_at":  datetime.now(timezone.utc).isoformat(),
-        "updated_at":  datetime.now(timezone.utc).isoformat(),
-    }
-
-    result = db.table("internal_issues").insert(row).execute()
     data = result.data
     if isinstance(data, list):
         data = data[0] if data else row
