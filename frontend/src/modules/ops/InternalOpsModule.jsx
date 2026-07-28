@@ -759,9 +759,6 @@ export function IssuesTab({ user, isActive }) {
     ? issues.filter(iss => teamDeptName[iss.team] === filterDepartment)
     : issues
 
-  if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading issues…</div>
-  if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span> <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
-
   return (
     <div style={{ padding: 28 }}>
       {/* Header */}
@@ -1000,8 +997,17 @@ export function IssuesTab({ user, isActive }) {
         </select>
       </div>
 
+      {error && (
+        <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 14 }}>
+          <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span>
+          {' '}<button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button>
+        </p>
+      )}
+
       {/* Table */}
-      {issues.length === 0 ? (
+      {loading ? (
+        <p style={{ color: '#7A9BAD', fontSize: 14, padding: '32px 0' }}>Loading issues…</p>
+      ) : issues.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '64px 32px', color: '#7A9BAD' }}>
           <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}><Construction size={40} color={ds.teal} strokeWidth={1.5} /></div>
           <p style={{ fontSize: 14 }}>No issues found. Create one to get started.</p>
@@ -1274,9 +1280,6 @@ export function ActivityLogTab({ user }) {
   }
 
 
-  if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading activity logs…</div>
-  if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span> <button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button></div>
-
   return (
     <div style={{ padding: 28 }}>
 
@@ -1483,8 +1486,17 @@ export function ActivityLogTab({ user }) {
 
       {/* intentionally empty — logging via header buttons above */}
 
+      {error && (
+        <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 14 }}>
+          <span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span>
+          {' '}<button onClick={load} style={{ ...BTN_OUTLINE, marginLeft: 10, padding: '5px 12px', fontSize: 12 }}>Retry</button>
+        </p>
+      )}
+
       {/* Log list */}
-      {visibleLogs.length === 0 ? (
+      {loading ? (
+        <p style={{ color: '#7A9BAD', fontSize: 14, padding: '32px 0' }}>Loading activity logs…</p>
+      ) : visibleLogs.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '64px 32px', color: '#7A9BAD' }}>
           <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}><CalendarDays size={40} color={ds.teal} strokeWidth={1.5} /></div>
           <p style={{ fontSize: 14 }}>No activity logs yet. Start by logging today's activities.</p>
