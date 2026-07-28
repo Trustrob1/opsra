@@ -197,7 +197,7 @@ export default function BusinessActivitiesModule({ user }) {
 
       {tabs.some(t => t.id === 'issues') && (
         <div style={{ display: activeTab === 'issues' ? 'block' : 'none' }}>
-          <IssuesTab user={user} />
+          <IssuesTab user={user} isActive={activeTab === 'issues'} />
         </div>
       )}
 
