@@ -266,7 +266,7 @@ export default function BusinessActivitiesModule({ user }) {
 
       {/* Pattern 26: mount-and-hide — all panels stay in the DOM */}
       <div style={{ display: activeTab === 'activity' ? 'block' : 'none' }}>
-        <ActivityLogTab user={user} />
+        <ActivityLogTab user={user} isActive={activeTab === 'activity'} />
       </div>
 
       {tabs.some(t => t.id === 'issues') && (
@@ -277,7 +277,7 @@ export default function BusinessActivitiesModule({ user }) {
 
       {tabs.some(t => t.id === 'contractors') && (
         <div style={{ display: activeTab === 'contractors' ? 'block' : 'none' }}>
-          <ContractorModule user={user} />
+          <ContractorModule user={user} isActive={activeTab === 'contractors'} />
         </div>
       )}
 

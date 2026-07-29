@@ -230,17 +230,18 @@ function TabBar({ active, onChange, tabs }) {
 // TAB 1 — SCORECARD
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ScorecardTab({ onSelectContractor }) {
+function ScorecardTab({ onSelectContractor, isActive }) {
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState('')
 
   useEffect(() => {
+    if (!isActive) return
     getContractorScorecard()
       .then(d => setData(d))
       .catch(() => setError('Could not load scorecard'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [isActive])
 
   if (loading) return <Spinner />
   if (error)   return <div style={{ padding: 32, color: '#c5221f', fontSize: 13 }}>{error}</div>
@@ -345,7 +346,7 @@ function ScorecardCard({ contractor: c, onSelect }) {
 // TAB 2 — CONTRACTORS LIST + DETAIL PANEL
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ContractorsTab({ user, onOpenCreate, refreshKey }) {
+function ContractorsTab({ user, onOpenCreate, refreshKey, isActive }) {
   const [contractors, setContractors] = useState([])
   const [loading, setLoading]         = useState(true)
   const [selected, setSelected]       = useState(null)
@@ -362,10 +363,10 @@ function ContractorsTab({ user, onOpenCreate, refreshKey }) {
   const [hasLoaded, setHasLoaded] = useState(false)
 
   useEffect(() => {
-    // Re-load whenever refreshKey changes OR first time this renders visible
+    if (!isActive) return
     load()
     setHasLoaded(true)
-  }, [refreshKey])
+  }, [refreshKey, isActive])
 
   const handleSelect = (c) => {
     setSelected(c)
@@ -2151,7 +2152,7 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
   )
 }
 
-export default function ContractorModule({ user }) {
+export default function ContractorModule({ user, isActive }) {
   const TABS = [
     { id: 'scorecard',   label: 'Scorecard',   Icon: ClipboardList },
     { id: 'contractors', label: 'Contractors',  Icon: Handshake },
@@ -2162,6 +2163,15 @@ export default function ContractorModule({ user }) {
   const [showCreate, setShowCreate]   = useState(false)
   const [refreshKey, setRefreshKey]   = useState(0)
   const [scorecardContractor, setScorecardContractor] = useState(null)
+
+  // A sub-tab only fetches when BOTH the outer Business Activities
+  // "Contractors" tab AND this module's own internal sub-tab are the
+  // active selection — otherwise every sub-tab's default view (Scorecard)
+  // would fetch the instant Business Activities itself mounts, regardless
+  // of which of its six tabs is actually being looked at.
+  const scorecardActive   = isActive && activeTab === 'scorecard'
+  const contractorsActive = isActive && activeTab === 'contractors'
+  const tasksActive       = isActive && activeTab === 'tasks'
 
   const handleCreated = () => {
     setShowCreate(false)
@@ -2181,7 +2191,7 @@ export default function ContractorModule({ user }) {
 
       {/* Pattern 26: mount-and-hide */}
       <div style={{ display: activeTab === 'scorecard' ? 'block' : 'none' }}>
-        <ScorecardTab onSelectContractor={handleScorecardSelect} />
+        <ScorecardTab onSelectContractor={handleScorecardSelect} isActive={scorecardActive} />
       </div>
 
       <div style={{ display: activeTab === 'contractors' ? 'block' : 'none' }}>
@@ -2190,11 +2200,12 @@ export default function ContractorModule({ user }) {
           onOpenCreate={() => setShowCreate(true)}
           refreshKey={refreshKey}
           initialSelected={scorecardContractor}
+          isActive={contractorsActive}
         />
       </div>
 
       <div style={{ display: activeTab === 'tasks' ? 'block' : 'none' }}>
-        <AllTasksTab refreshKey={refreshKey} isActive={activeTab === 'tasks'} />
+        <AllTasksTab refreshKey={refreshKey} isActive={tasksActive} />
       </div>
 
       {showCreate && (

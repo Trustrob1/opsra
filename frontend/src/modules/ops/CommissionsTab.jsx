@@ -166,12 +166,12 @@ export default function CommissionsTab({ user, isActive }) {
     }
   }, [dateFrom, dateTo])
 
-  useEffect(() => { load() }, [load])
-
   // REPORTS-DEPT-1: this tab stays mounted once opened (Pattern 26), so
   // it never refetches after a new import unless the whole page is
-  // reloaded. Refetch when this tab becomes visible again.
-  useEffect(() => { if (isActive) load() }, [isActive])
+  // reloaded. Refetch when this tab becomes visible again — this is now
+  // the ONLY load-trigger (the previous unconditional mount effect was
+  // redundant and fired regardless of whether this tab was even visible).
+  useEffect(() => { if (isActive) load() }, [isActive, load])
 
   const handleAddRate = async (name, rate) => {
     try {

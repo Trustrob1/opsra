@@ -1131,7 +1131,7 @@ export function IssuesTab({ user, isActive }) {
 }
 
 // ── Activity Log Tab ──────────────────────────────────────────────────────────
-export function ActivityLogTab({ user }) {
+export function ActivityLogTab({ user, isActive }) {
   const isManager = ['owner', 'ops_manager'].includes(user?.roles?.template)
   const [logs, setLogs]               = useState([])
   const [users, setUsers]             = useState([])
@@ -1204,15 +1204,13 @@ export function ActivityLogTab({ user }) {
     } finally { setLoading(false) }
   }, [filterUser, filterType, isManager, dateFrom, dateTo])
 
-  useEffect(() => { load() }, [load])
-
-  // Re-fetch when tab becomes visible — Pattern 26 keeps component mounted,
-  // so switching back to this tab won't trigger a mount re-fetch without this.
-  useEffect(() => {
-    const handleVisibility = () => { if (!document.hidden) load() }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [load])
+  // Refetch only when this tab actually becomes the visible one within
+  // Opsra — not on browser tab/window focus changes (the old
+  // visibilitychange listener fired on every alt-tab back to Chrome,
+  // regardless of anything happening in Opsra, and also fired
+  // unconditionally on mount alongside it, contributing to every Business
+  // Activities tab fetching simultaneously at once).
+  useEffect(() => { if (isActive) load() }, [isActive, load])
 
   // REPORTS-DEPT-1 Phase 3: same client-side derivation used in IssuesTab —
   // no new backend param, just a lookup over already-fetched teams/departments.
