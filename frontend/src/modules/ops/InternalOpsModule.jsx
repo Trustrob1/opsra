@@ -385,6 +385,23 @@ function LogActivityModal({ logType, existingLog, allLogs, currentUserId, userTe
   const [saving,   setSaving]   = useState(false)
   const [err,      setErr]      = useState(null)
 
+  // General "log an issue while logging my day" — distinct from the
+  // existing per-activity blocker mechanism (_maybe_create_blocker_issues
+  // in activity_logs.py), which only fires when a specific activity is
+  // marked as blocked. This is for something not tied to any one task.
+  const [showIssueSection, setShowIssueSection] = useState(false)
+  const [issueCategories, setIssueCategories]   = useState([])
+  const [issueForm, setIssueForm] = useState({ title: '', description: '', category: '', priority: 'medium' })
+  const [issueErr, setIssueErr]   = useState(null)
+
+  useEffect(() => {
+    getInternalIssueCategories().then(data => setIssueCategories(data?.categories ?? [])).catch(() => {})
+  }, [])
+  const [logDate,  setLogDate]  = useState(() => {
+    if (existingLog?.log_date) return existingLog.log_date
+    return logType === 'weekly' ? getMonday() : today
+  })
+
   // Re-seed whenever the selected date changes — the modal was only ever
   // told about a match for the date it opened WITH (from the header
   // buttons, which only check today/this-week). Changing the in-modal
@@ -416,23 +433,6 @@ function LogActivityModal({ logType, existingLog, allLogs, currentUserId, userTe
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logDate])
-
-  // General "log an issue while logging my day" — distinct from the
-  // existing per-activity blocker mechanism (_maybe_create_blocker_issues
-  // in activity_logs.py), which only fires when a specific activity is
-  // marked as blocked. This is for something not tied to any one task.
-  const [showIssueSection, setShowIssueSection] = useState(false)
-  const [issueCategories, setIssueCategories]   = useState([])
-  const [issueForm, setIssueForm] = useState({ title: '', description: '', category: '', priority: 'medium' })
-  const [issueErr, setIssueErr]   = useState(null)
-
-  useEffect(() => {
-    getInternalIssueCategories().then(data => setIssueCategories(data?.categories ?? [])).catch(() => {})
-  }, [])
-  const [logDate,  setLogDate]  = useState(() => {
-    if (existingLog?.log_date) return existingLog.log_date
-    return logType === 'weekly' ? getMonday() : today
-  })
 
   const addEntry    = () => setEntries(p => [...p, { activity_description: '', activity_type: 'General', duration_minutes: '', has_blocker: false, blocker_note: '', plan: '' }])
   const removeEntry = (i) => setEntries(p => p.filter((_, idx) => idx !== i))
