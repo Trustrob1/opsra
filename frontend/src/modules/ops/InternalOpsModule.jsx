@@ -332,7 +332,7 @@ const STAFF_ACTIVITY_TYPES = [
   'Design', 'Development', 'Strategy', 'Admin', 'Meeting', 'Sales', 'Other',
 ]
 
-function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose }) {
+function LogActivityModal({ logType, existingLog, allLogs, currentUserId, userTeam, onSubmit, onClose }) {
   const today = new Date().toISOString().split('T')[0]
   const getMonday = () => {
     const d = new Date(); const day = d.getDay()
@@ -384,6 +384,38 @@ function LogActivityModal({ logType, existingLog, userTeam, onSubmit, onClose })
   const [entries,  setEntries]  = useState(seedEntries)
   const [saving,   setSaving]   = useState(false)
   const [err,      setErr]      = useState(null)
+
+  // Re-seed whenever the selected date changes — the modal was only ever
+  // told about a match for the date it opened WITH (from the header
+  // buttons, which only check today/this-week). Changing the in-modal
+  // date picker to any other day had no way to know a log might already
+  // exist there, so the upsert silently overwrote it. This looks up the
+  // real current selection every time, not just at open-time.
+  useEffect(() => {
+    if (!allLogs || !currentUserId) return
+    const match = allLogs.find(
+      l => l.user_id === currentUserId && l.log_type === logType && l.log_date === logDate
+    )
+    if (match) {
+      if (match.entries?.length) {
+        setEntries(match.entries.map(e => ({
+          activity_description: e.activity_description || '',
+          activity_type:        e.activity_type || 'General',
+          duration_minutes:     e.duration_minutes || '',
+          has_blocker:          e.has_blocker || false,
+          blocker_note:         e.blocker_note || '',
+          plan:                 e.plan || '',
+        })))
+      } else {
+        setEntries([{ activity_description: match.activities || '', activity_type: 'General', duration_minutes: '', has_blocker: !!match.blockers, blocker_note: match.blockers || '', plan: match.plan || '' }])
+      }
+      setMetricValues(match.custom_metrics || {})
+    } else {
+      setEntries([{ activity_description: '', activity_type: 'General', duration_minutes: '', has_blocker: false, blocker_note: '', plan: '' }])
+      setMetricValues({})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logDate])
 
   // General "log an issue while logging my day" — distinct from the
   // existing per-activity blocker mechanism (_maybe_create_blocker_issues
@@ -1701,6 +1733,8 @@ export function ActivityLogTab({ user }) {
         <LogActivityModal
           logType={logModal.logType}
           existingLog={logModal.existingLog}
+          allLogs={logs}
+          currentUserId={user?.id}
           userTeam={user?.team}
           onSubmit={handleSubmit}
           onClose={() => setLogModal(null)}
