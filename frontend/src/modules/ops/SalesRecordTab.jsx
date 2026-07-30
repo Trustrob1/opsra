@@ -186,8 +186,7 @@ export default function SalesRecordTab({ isActive }) {
     }
   }, [page, filters])
 
-  useEffect(() => { load() }, [load])
-  useEffect(() => { if (isActive) load() }, [isActive])
+  useEffect(() => { if (isActive) load() }, [isActive, load])
 
   // Filter dropdown options — fetched once, independent of current filters
   useEffect(() => {

@@ -15,6 +15,15 @@
  * Sales transactions (per-sale workbook, one tab per region) is now the
  * single source feeding Sales Record and Commissions.
  *
+ * REPORTS-DEPT-1 Phase 4b (this update) — Live Google Sheet sync added
+ * alongside the existing file-upload card. Admin saves a sheet URL plus
+ * one {region name, tab GID} pair per region tab, then triggers a manual
+ * "Sync now" any time the sheet's been updated. GID is entered by hand
+ * (copied from the browser URL when that tab is open in Google Sheets) —
+ * no Google API key/auto-discovery, and deliberately no periodic/
+ * background schedule (opsra-celery-beat is not yet deployed, so a
+ * scheduled sync would silently never fire).
+ *
  * Rep -> team -> department attribution happens automatically (same
  * mechanism as REPORTS-DEPT-1 Phase 0) — this card doesn't ask which
  * department the import is "for".
@@ -22,16 +31,23 @@
  * NOT yet built, deliberately out of scope for this component:
  *   - Per-department native-vs-external source toggle
  *   - Manual lead-count entry
+ *   - Periodic/background sheet sync (needs opsra-celery-beat deployed first)
  *
  * Pattern 51: full rewrite if editing this file — never partial sed.
  */
-import { useState } from 'react'
-import { UploadCloud, RotateCcw, CheckCircle2, AlertTriangle, Loader2, Table2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import {
+  UploadCloud, RotateCcw, CheckCircle2, AlertTriangle, Loader2, Table2,
+  Link2, Plus, Trash2, RefreshCw,
+} from 'lucide-react'
 import { ds } from '../../utils/ds'
 import {
   importTransactionSalesExcel,
   resetImportWatermark,
   clearImportedSales,
+  getTransactionSheetSource,
+  saveTransactionSheetSource,
+  syncTransactionSalesSheets,
 } from '../../services/growth.service'
 
 const CARD = {
@@ -70,6 +86,14 @@ const BTN_OUTLINE = {
   fontFamily:   'inherit',
 }
 
+const INPUT = {
+  fontSize:     13,
+  padding:      '8px 10px',
+  border:       '1px solid #E4EEF2',
+  borderRadius: 6,
+  fontFamily:   'inherit',
+}
+
 function SourceBadge({ text, tone }) {
   const colours = {
     ok:   { bg: '#ECFDF5', text: '#059669' },
@@ -99,7 +123,7 @@ function PreviewErrors({ errors }) {
   )
 }
 
-// ─── Sales transactions (per-sale workbook, multi-region) ──────────────────
+// ─── Sales transactions (per-sale workbook, multi-region — file upload) ────
 
 function SalesTransactionsCard() {
   const [file, setFile]               = useState(null)
@@ -237,6 +261,257 @@ function SalesTransactionsCard() {
   )
 }
 
+// ─── Live Google Sheet sync (per-sale, multi-region — manual "Sync now") ──
+
+function SheetsSyncCard() {
+  const [loadingConfig, setLoadingConfig] = useState(true)
+  const [sheetUrl, setSheetUrl]       = useState('')
+  const [regions, setRegions]         = useState([{ name: '', gid: '' }])
+  const [savedSource, setSavedSource] = useState(null)
+  const [savingConfig, setSavingConfig] = useState(false)
+  const [configError, setConfigError] = useState(null)
+  const [configSaved, setConfigSaved] = useState(false)
+
+  const [fromBeginning, setFromBeginning] = useState(false)
+  const [preview, setPreview]         = useState(null)
+  const [result, setResult]           = useState(null)
+  const [loading, setLoading]         = useState(false)
+  const [error, setError]             = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const data = await getTransactionSheetSource()
+        if (cancelled) return
+        if (data?.source) {
+          setSavedSource(data.source)
+          setSheetUrl(data.source.sheet_url || '')
+          setRegions(data.source.regions?.length ? data.source.regions : [{ name: '', gid: '' }])
+        }
+      } catch {
+        // No saved source yet, or fetch failed — start from a blank config.
+      } finally {
+        if (!cancelled) setLoadingConfig(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  const resetSyncState = () => { setPreview(null); setResult(null); setError(null) }
+
+  const updateRegion = (idx, field, value) => {
+    setRegions(prev => prev.map((r, i) => (i === idx ? { ...r, [field]: value } : r)))
+  }
+  const addRegion = () => setRegions(prev => [...prev, { name: '', gid: '' }])
+  const removeRegion = (idx) => setRegions(prev => prev.filter((_, i) => i !== idx))
+
+  const handleSaveConfig = async () => {
+    setConfigError(null); setConfigSaved(false)
+    const cleanRegions = regions
+      .map(r => ({ name: (r.name || '').trim(), gid: (r.gid || '').trim() }))
+      .filter(r => r.name && r.gid)
+    if (!sheetUrl.trim()) { setConfigError('Paste the Google Sheet URL first.'); return }
+    if (cleanRegions.length === 0) { setConfigError('Add at least one region name + tab GID.'); return }
+    setSavingConfig(true)
+    try {
+      const data = await saveTransactionSheetSource(sheetUrl.trim(), cleanRegions)
+      setSavedSource(data.source)
+      setConfigSaved(true)
+      resetSyncState()
+    } catch (e) {
+      setConfigError(e?.response?.data?.detail?.message ?? 'Failed to save sheet source.')
+    } finally {
+      setSavingConfig(false)
+    }
+  }
+
+  const handlePreview = async () => {
+    setLoading(true); setError(null); setResult(null)
+    try {
+      const data = await syncTransactionSalesSheets(false, fromBeginning)
+      setPreview(data)
+    } catch (e) {
+      setError(e?.response?.data?.detail?.message ?? 'Failed to read the sheet. Check the source config and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleConfirm = async () => {
+    setLoading(true); setError(null)
+    try {
+      const data = await syncTransactionSalesSheets(true, fromBeginning)
+      setResult(data)
+      setPreview(null)
+    } catch (e) {
+      setError(e?.response?.data?.detail?.message ?? 'Sync failed. Nothing was saved — try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResetWatermark = async () => {
+    if (!window.confirm('Reset the sync point for this source? The next sync will re-check every row from the beginning.')) return
+    try {
+      await resetImportWatermark('txn_sheets', savedSource?.sheet_url ?? null)
+      resetSyncState()
+    } catch {
+      setError('Failed to reset sync point.')
+    }
+  }
+
+  const handleClearAndReset = async () => {
+    if (!window.confirm('Delete every sale previously synced from this source, and reset its sync point? This cannot be undone.')) return
+    try {
+      await clearImportedSales('txn_sheets')
+      await resetImportWatermark('txn_sheets', savedSource?.sheet_url ?? null)
+      resetSyncState()
+    } catch {
+      setError('Failed to clear previously synced data.')
+    }
+  }
+
+  if (loadingConfig) {
+    return (
+      <div style={CARD}>
+        <p style={{ fontSize: 13, color: '#7A9BAD' }}>Loading sheet source…</p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={CARD}>
+      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Link2 size={16} color={ds.teal} /> Live Google Sheet sync
+      </h3>
+      <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 16px' }}>
+        Link a live Google Sheet with one tab per region and sync it on demand — no need to re-upload a file each time.
+        Set the sheet to "Anyone with link can view", then paste its URL below along with each region tab's GID
+        (the number after <code>gid=</code> in the browser URL when that tab is open). There's no automatic
+        background sync yet — use "Sync now" whenever the sheet's been updated.
+      </p>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ display: 'block', fontSize: 12.5, color: '#4a7a8a', marginBottom: 6, fontWeight: 600 }}>
+          Google Sheet URL
+        </label>
+        <input
+          type="text"
+          value={sheetUrl}
+          onChange={e => setSheetUrl(e.target.value)}
+          placeholder="https://docs.google.com/spreadsheets/d/..."
+          style={{ ...INPUT, width: '100%' }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ display: 'block', fontSize: 12.5, color: '#4a7a8a', marginBottom: 6, fontWeight: 600 }}>
+          Region tabs
+        </label>
+        {regions.map((r, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              value={r.name}
+              onChange={e => updateRegion(idx, 'name', e.target.value)}
+              placeholder="Region name (e.g. Lagos Sales)"
+              style={{ ...INPUT, flex: 2 }}
+            />
+            <input
+              type="text"
+              value={r.gid}
+              onChange={e => updateRegion(idx, 'gid', e.target.value)}
+              placeholder="Tab GID (e.g. 123456789)"
+              style={{ ...INPUT, flex: 1 }}
+            />
+            {regions.length > 1 && (
+              <button
+                onClick={() => removeRegion(idx)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}
+                aria-label="Remove region"
+              >
+                <Trash2 size={15} color="#DC2626" />
+              </button>
+            )}
+          </div>
+        ))}
+        <button onClick={addRegion} style={{ ...BTN_OUTLINE, fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={13} /> Add another region tab
+        </button>
+      </div>
+
+      {configError && <p style={{ color: '#DC2626', fontSize: 13, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {configError}</p>}
+      {configSaved && !configError && <p style={{ color: '#059669', fontSize: 12.5, margin: '0 0 12px' }}>Sheet source saved.</p>}
+
+      <button onClick={handleSaveConfig} disabled={savingConfig} style={{ ...BTN_OUTLINE, opacity: savingConfig ? 0.6 : 1, marginBottom: 18 }}>
+        {savingConfig ? 'Saving…' : savedSource ? 'Update sheet source' : 'Save sheet source'}
+      </button>
+
+      <div style={{ paddingTop: 14, borderTop: '1px solid #F0F7FA' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#4a7a8a', marginBottom: 14, cursor: 'pointer' }}>
+          <input type="checkbox" checked={fromBeginning} onChange={e => { setFromBeginning(e.target.checked); resetSyncState() }} />
+          Start from the beginning (ignore what's already been synced)
+        </label>
+
+        {error && <p style={{ color: '#DC2626', fontSize: 13, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {error}</p>}
+
+        {!preview && !result && (
+          <button onClick={handlePreview} disabled={loading || !savedSource} style={{ ...BTN_PRIMARY, opacity: (loading || !savedSource) ? 0.6 : 1 }}>
+            {loading ? <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> : <RefreshCw size={15} />}
+            {loading ? 'Checking sheet…' : 'Sync now'}
+          </button>
+        )}
+        {!savedSource && <p style={{ fontSize: 12, color: '#7A9BAD', margin: '6px 0 0' }}>Save a sheet source above before syncing.</p>}
+
+        {preview && (
+          <div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+              <SourceBadge text={`${preview.total_valid} row${preview.total_valid !== 1 ? 's' : ''} ready`} tone="ok" />
+              {preview.regions?.length > 0 && <SourceBadge text={`Regions: ${preview.regions.join(', ')}`} tone="ok" />}
+              {preview.errors?.length > 0 && <SourceBadge text={`${preview.errors.length} skipped (errors)`} tone="err" />}
+              {preview.duplicate_warnings?.length > 0 && <SourceBadge text={`${preview.duplicate_warnings.length} possible duplicate${preview.duplicate_warnings.length !== 1 ? 's' : ''}`} tone="warn" />}
+              {preview.already_imported?.length > 0 && <SourceBadge text={`${preview.already_imported.length} already synced`} tone="warn" />}
+            </div>
+            <PreviewErrors errors={preview.errors} />
+            {preview.total_valid > 0 ? (
+              <button onClick={handleConfirm} disabled={loading} style={{ ...BTN_PRIMARY, opacity: loading ? 0.6 : 1 }}>
+                {loading ? 'Syncing…' : `Confirm — sync ${preview.total_valid} row${preview.total_valid !== 1 ? 's' : ''}`}
+              </button>
+            ) : (
+              <p style={{ fontSize: 13, color: '#7A9BAD' }}>Nothing new to sync from this sheet.</p>
+            )}
+          </div>
+        )}
+
+        {result && (
+          <div>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#059669', fontWeight: 600, margin: '0 0 4px' }}>
+              <CheckCircle2 size={16} /> {result.inserted} sale{result.inserted !== 1 ? 's' : ''} synced
+            </p>
+            {result.regions?.length > 0 && (
+              <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 4px' }}>Regions found: {result.regions.join(', ')}</p>
+            )}
+            <p style={{ fontSize: 12, color: '#7A9BAD', margin: 0 }}>
+              Synced through {result.watermark_date ?? 'today'}. Click "Sync now" any time — already-synced rows are skipped automatically.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #F0F7FA', display: 'flex', gap: 8 }}>
+        <button onClick={handleResetWatermark} style={{ ...BTN_OUTLINE, fontSize: 12.5, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <RotateCcw size={13} /> Reset sync point for this source
+        </button>
+        <button onClick={handleClearAndReset} style={{ ...BTN_OUTLINE, fontSize: 12.5, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6, color: '#DC2626', borderColor: '#DC2626' }}>
+          Clear previously synced data &amp; reset
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function DataSourcesTab() {
@@ -252,6 +527,7 @@ export default function DataSourcesTab() {
       </p>
 
       <SalesTransactionsCard />
+      <SheetsSyncCard />
     </div>
   )
 }

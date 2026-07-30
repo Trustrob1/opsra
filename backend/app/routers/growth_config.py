@@ -50,6 +50,7 @@ from app.services.sales_import_service import (
     parse_multi_sheet_xlsx,
     _txn_rows_to_dicts,
     validate_and_prepare_transaction_sales_rows,
+    fetch_transaction_sheets_multi_region,
 )
 
 logger = logging.getLogger(__name__)
@@ -170,6 +171,25 @@ class SheetsImportBody(BaseModel):
 class WatermarkResetBody(BaseModel):
     source_type: str           # 'excel' | 'sheets'
     sheet_url:   Optional[str] = None
+
+
+class SheetRegionConfig(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    gid:  str = Field(..., min_length=1, max_length=50)
+
+
+class TransactionSheetSourceBody(BaseModel):
+    """REPORTS-DEPT-1 Phase 4b — Live Sheets sync config. Empty regions
+    list is allowed at the model level; enforced non-empty in the route
+    itself (avoids relying on a specific pydantic version's list-length
+    constraint support)."""
+    sheet_url: str
+    regions:   List[SheetRegionConfig] = Field(default_factory=list)
+
+
+class TransactionSheetsSyncBody(BaseModel):
+    confirm:        bool = False
+    from_beginning: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -841,6 +861,174 @@ async def import_transaction_sales_excel(
     }, f"{inserted} sale(s) imported successfully")
 
 
+# ---------------------------------------------------------------------------
+# DIRECT SALES — live Google Sheet sync config + sync
+# (REPORTS-DEPT-1 Phase 4b — manual "Sync now" only, no periodic schedule)
+# ---------------------------------------------------------------------------
+
+@router.get("/growth/direct-sales/sheet-source")
+def get_transaction_sheet_source(
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    Return the saved Google Sheet source config (sheet URL + region/tab
+    GID mapping) for the transaction-level (multi-region) importer, if
+    one has been configured. Stored as JSONB on organisations.sheet_sources
+    — same pattern as commission_rates, no new table.
+    """
+    _require_owner_or_ops(org)
+    result = (
+        db.table("organisations")
+        .select("sheet_sources")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    sources = (data or {}).get("sheet_sources") or {}
+    return _success({"source": sources.get("transactions")})
+
+
+@router.put("/growth/direct-sales/sheet-source")
+def save_transaction_sheet_source(
+    payload: TransactionSheetSourceBody,
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    Save/update the sheet URL + region/tab GID mapping used by
+    sync_transaction_sales_sheets(). Each region tab's GID is entered
+    manually (copied from the sheet's URL when that tab is open) — no
+    Google API key/auto-discovery involved.
+    """
+    _require_owner_or_ops(org)
+    if not payload.regions:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "MISSING_REGIONS", "message": "At least one region/tab must be configured."},
+        )
+    result = (
+        db.table("organisations")
+        .select("sheet_sources")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    sources = (data or {}).get("sheet_sources") or {}
+    sources["transactions"] = {
+        "sheet_url": payload.sheet_url.strip(),
+        "regions":   [r.model_dump() for r in payload.regions],
+    }
+    db.table("organisations").update({
+        "sheet_sources": sources,
+        "updated_at":    _now_iso(),
+    }).eq("id", org["org_id"]).execute()
+    return _success({"source": sources["transactions"]}, "Sheet source saved")
+
+
+@router.post("/growth/direct-sales/import/transactions/sheets", status_code=status.HTTP_200_OK)
+def sync_transaction_sales_sheets(
+    body: TransactionSheetsSyncBody,
+    db=Depends(get_supabase),
+    org: dict = Depends(get_current_org),
+):
+    """
+    Sync the transaction-level (multi-region) sales from the saved live
+    Google Sheet source (organisations.sheet_sources["transactions"]).
+    Manual "Sync now" trigger only — no background/periodic schedule
+    (deliberately out of scope: opsra-celery-beat is not yet deployed).
+    Same preview/confirm + watermark flow as import_transaction_sales_excel,
+    watermark keyed under a separate "txn_sheets" source_type so it never
+    collides with the file-upload importer's own "txn_excel" watermark.
+    """
+    _require_owner_or_ops(org)
+
+    result = (
+        db.table("organisations")
+        .select("sheet_sources")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    sources = (data or {}).get("sheet_sources") or {}
+    txn_source = sources.get("transactions")
+
+    if not txn_source or not txn_source.get("sheet_url") or not txn_source.get("regions"):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "NO_SHEET_SOURCE", "message": "No Google Sheet source configured yet. Save a sheet URL and region tabs first."},
+        )
+
+    try:
+        rows_by_region = fetch_transaction_sheets_multi_region(
+            txn_source["sheet_url"], txn_source["regions"]
+        )
+    except Exception as exc:
+        logger.exception("Phase 4b: fetch_transaction_sheets_multi_region failed")
+        raise HTTPException(status_code=422, detail={"code": "FETCH_ERROR", "message": str(exc)})
+
+    watermark_date = (
+        None if body.from_beginning
+        else get_watermark(db, org["org_id"], "txn_sheets", txn_source["sheet_url"])
+    )
+
+    try:
+        result = validate_and_prepare_transaction_sales_rows(
+            rows_by_region, org["org_id"], db, "txn_sheets", watermark_date
+        )
+    except Exception as exc:
+        logger.exception("Phase 4b: validate_and_prepare_transaction_sales_rows failed for sheets sync")
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+    valid_rows         = result["valid_rows"]
+    error_rows         = result["error_rows"]
+    duplicate_warnings = result["duplicate_warnings"]
+    already_imported   = result["already_imported"]
+
+    if not body.confirm:
+        return _success({
+            "inserted":          0,
+            "skipped":           len(error_rows),
+            "errors":            error_rows,
+            "duplicate_warnings": duplicate_warnings,
+            "already_imported":  already_imported,
+            "preview":           valid_rows[:10],
+            "total_valid":       len(valid_rows),
+            "regions":           list(rows_by_region.keys()),
+            "watermark_date":    watermark_date,
+        }, "Preview ready — send confirm=true to sync")
+
+    inserted = 0
+    if valid_rows:
+        db.table("direct_sales").insert(valid_rows).execute()
+        inserted = len(valid_rows)
+
+    if inserted:
+        max_date = max(r["sale_date"] for r in valid_rows)
+        save_watermark(db, org["org_id"], "txn_sheets", txn_source["sheet_url"], max_date)
+
+    return _success({
+        "inserted":          inserted,
+        "skipped":           len(error_rows),
+        "errors":            error_rows,
+        "duplicate_warnings": duplicate_warnings,
+        "already_imported":  already_imported,
+        "preview":           [],
+        "total_valid":       len(valid_rows),
+        "regions":           list(rows_by_region.keys()),
+        "watermark_date":    watermark_date,
+    }, f"{inserted} sale(s) synced successfully")
+
+
 @router.delete("/growth/direct-sales/import/{import_source}/clear", status_code=status.HTTP_200_OK)
 def clear_imported_sales(
     import_source: str,
@@ -870,7 +1058,7 @@ def reset_import_watermark(
 ):
     """Reset the import watermark for a source so the next import starts from scratch."""
     _require_owner_or_ops(org)
-    valid_source_types = ("excel", "sheets", "agg_excel", "agg_sheets", "txn_excel")
+    valid_source_types = ("excel", "sheets", "agg_excel", "agg_sheets", "txn_excel", "txn_sheets")
     if body.source_type not in valid_source_types:
         raise HTTPException(
             status_code=422,

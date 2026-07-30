@@ -187,6 +187,89 @@ def parse_multi_sheet_xlsx(file_bytes: bytes) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# REPORTS-DEPT-1 Phase 4b — Live Google Sheet sync (manual "Sync now" only,
+# no periodic/background schedule — deliberately out of scope since
+# opsra-celery-beat is not yet deployed).
+#
+# A live Sheet's CSV export only returns one tab per request (gid=0 by
+# default), unlike an uploaded workbook where every tab is readable in one
+# pass. To cover multiple region tabs from one Sheet, each tab's GID
+# (entered manually by the admin, copied from the browser URL when that
+# tab is open — no Google API key/auto-discovery) is fetched separately
+# via its own CSV export URL, then normalised through the same
+# _txn_rows_to_dicts() used for the xlsx path — identical row shape
+# either way, so validate_and_prepare_transaction_sales_rows() needs no
+# changes to support this.
+# ---------------------------------------------------------------------------
+
+def fetch_google_sheet_tab_rows(sheet_url: str, gid: str) -> list:
+    """
+    Fetch one tab of a publicly-shared Google Sheet (identified by gid) as
+    CSV, returning raw rows as a list of tuples — the same shape
+    ws.iter_rows(values_only=True) produces for the xlsx path, so
+    _txn_rows_to_dicts() can process either source identically.
+    S14: raises ValueError on any fetch/parse failure.
+    """
+    match = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", sheet_url)
+    if not match:
+        raise ValueError(
+            "Invalid Google Sheets URL. Expected: "
+            "https://docs.google.com/spreadsheets/d/{id}/..."
+        )
+    export_url = (
+        f"https://docs.google.com/spreadsheets/d/{match.group(1)}"
+        f"/export?format=csv&gid={gid}"
+    )
+    try:
+        response = httpx.get(export_url, timeout=15.0, follow_redirects=True)
+    except httpx.RequestError as exc:
+        raise ValueError(f"Network error fetching Google Sheet tab: {exc}") from exc
+    except Exception as exc:
+        raise ValueError(f"Error fetching Google Sheet tab: {exc}") from exc
+
+    if response.status_code != 200:
+        raise ValueError(
+            f"Could not fetch sheet tab (HTTP {response.status_code}). "
+            "Make sure the sheet is set to 'Anyone with link can view' and "
+            "the tab GID is correct."
+        )
+    try:
+        rows = [tuple(r) for r in csv.reader(io.StringIO(response.text))]
+    except Exception as exc:
+        raise ValueError(f"Could not parse sheet tab as CSV: {exc}") from exc
+    return rows
+
+
+def fetch_transaction_sheets_multi_region(sheet_url: str, regions: list) -> dict:
+    """
+    Fetch every configured region tab from one live Google Sheet and
+    normalise each into transaction row dicts, tagged by region — mirrors
+    parse_multi_sheet_xlsx() + the per-sheet _txn_rows_to_dicts() loop in
+    import_transaction_sales_excel(), but sourced from a live Sheet
+    instead of an uploaded workbook.
+
+    regions: list of {"name": str, "gid": str} — as saved via the
+    /growth/direct-sales/sheet-source config route.
+    Returns {region_name: [row_dict, ...]}, ready for
+    validate_and_prepare_transaction_sales_rows().
+    S14: raises ValueError if no valid region tabs are configured/fetchable.
+    """
+    if not regions:
+        raise ValueError("No region tabs configured for this sheet source.")
+    result: dict = {}
+    for region in regions:
+        name = (region.get("name") or "").strip()
+        gid  = str(region.get("gid") or "").strip()
+        if not name or not gid:
+            continue
+        raw_rows = fetch_google_sheet_tab_rows(sheet_url, gid)
+        result[name] = _txn_rows_to_dicts(raw_rows, name)
+    if not result:
+        raise ValueError("No valid region tabs found in configuration.")
+    return result
+
+
 def _txn_rows_to_dicts(rows: list, region: str) -> list[dict]:
     """
     Maps raw rows from one sheet/tab into normalised transaction dicts,

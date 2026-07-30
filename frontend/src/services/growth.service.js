@@ -334,6 +334,48 @@ export async function importTransactionSalesExcel(formData, confirm = false, fro
 }
 
 /**
+ * REPORTS-DEPT-1 Phase 4b — live Sheets sync: fetch the saved sheet
+ * source config (sheet URL + region/tab GID mapping) for the
+ * transaction-level (multi-region) importer. Returns { source: null }
+ * shape if nothing has been saved yet.
+ */
+export async function getTransactionSheetSource() {
+  const r = await axios.get(`${BASE}/api/v1/growth/direct-sales/sheet-source`, _h())
+  return r.data.data
+}
+
+/**
+ * Save/update the sheet URL + region/tab GID mapping for the
+ * transaction-level (multi-region) importer.
+ * @param {string} sheetUrl
+ * @param {Array<{name: string, gid: string}>} regions
+ */
+export async function saveTransactionSheetSource(sheetUrl, regions) {
+  const r = await axios.put(
+    `${BASE}/api/v1/growth/direct-sales/sheet-source`,
+    { sheet_url: sheetUrl, regions },
+    _h()
+  )
+  return r.data.data
+}
+
+/**
+ * Sync the transaction-level (multi-region) sales from the saved live
+ * Google Sheet source. Manual "Sync now" trigger only — no
+ * background/periodic schedule.
+ * @param {boolean} confirm        — false = preview, true = insert
+ * @param {boolean} fromBeginning  — ignore watermark
+ */
+export async function syncTransactionSalesSheets(confirm = false, fromBeginning = false) {
+  const r = await axios.post(
+    `${BASE}/api/v1/growth/direct-sales/import/transactions/sheets`,
+    { confirm, from_beginning: fromBeginning },
+    _h()
+  )
+  return r.data.data
+}
+
+/**
  * Reset the import watermark for a source so the next import starts from scratch.
  * @param {string}      sourceType — 'excel' | 'sheets'
  * @param {string|null} sheetUrl   — required for sheets, null for excel
