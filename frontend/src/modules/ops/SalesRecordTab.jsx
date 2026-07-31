@@ -20,14 +20,37 @@
  *     chart on this page.
  *   - getDirectSales(): the existing paginated detail table underneath.
  *
- * Chart is hand-rolled SVG, matching GrowthDashboard.jsx's VelocitySection
- * pattern — no new charting library dependency.
+ * REPORTS-DEPT-1 Phase 4c (this update) — Revenue Over Time chart
+ * rebuilt from scratch. Previous version was hand-rolled SVG (matching
+ * GrowthDashboard.jsx's VelocitySection pattern) and had three real
+ * problems, not just cosmetic ones:
+ *   1. Date labels used date.slice(5) — dropping the YEAR entirely — so
+ *      two different weeks from different years could render an
+ *      IDENTICAL label (e.g. two weeks both showing "07-06"). Labels
+ *      now always include the year.
+ *   2. It summed every region into one blended line with no way to see
+ *      per-region contribution. Now a stacked bar chart, one segment
+ *      per region, so region comparison is the default view, not an
+ *      afterthought.
+ *   3. No title/axis context beyond "Revenue Over Time" and bare "12029k"
+ *      axis numbers — now has a subtitle stating the currency and
+ *      granularity (daily vs weekly), a y-axis label, and a custom
+ *      tooltip listing per-region + total.
+ * Switched to recharts (see frontend/package.json — pinned >=2.15.0,
+ * since earlier 2.x releases had a confirmed React 19 rendering bug).
+ * This is a deliberate, discussed departure from the "no new charting
+ * library" convention used elsewhere (e.g. GrowthDashboard.jsx) — that
+ * file was NOT touched by this change and still uses its own hand-rolled
+ * SVG charts.
  *
  * Owner/ops_manager only, matching backend RBAC.
  *
  * Pattern 51: full rewrite if editing this file — never partial sed.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import { ds } from '../../utils/ds'
 import { getDirectSales, getDirectSalesSummary, getDirectSalesFilterOptions, getCommissionRates } from '../../services/growth.service'
 import DateRangePresets from './DateRangePresets'
@@ -46,6 +69,10 @@ const CARD = {
   background: 'white', border: '1px solid #E4EEF2', borderRadius: 12,
   padding: '16px 18px',
 }
+
+// Fixed palette so a given region keeps the same colour across renders
+// (rather than reassigning colours as the region list changes shape).
+const REGION_COLORS = ['#0F6E7C', '#F59E0B', '#7C3AED', '#059669', '#DC2626', '#2563EB', '#B45309', '#0E7490']
 
 function Badge({ text, tone }) {
   const colours = {
@@ -95,46 +122,78 @@ function BreakdownCard({ title, rows, formatValue }) {
   )
 }
 
-function RevenueChart({ points }) {
-  if (!points || points.length === 0) {
+// Custom tooltip: lists each region's amount (in full ₦, not the
+// abbreviated axis units) plus a Total line, so the exact figures behind
+// a bar are never ambiguous.
+function RevenueTooltip({ active, payload, label, fmtCurrency }) {
+  if (!active || !payload || payload.length === 0) return null
+  const total = payload.reduce((s, p) => s + (Number(p.value) || 0), 0)
+  return (
+    <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 8, padding: '10px 12px', fontSize: 12, boxShadow: '0 2px 10px rgba(10,26,36,0.12)', minWidth: 180 }}>
+      <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#0a1a24' }}>{label}</p>
+      {payload.slice().reverse().map(p => (
+        <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, color: '#4a7a8a', padding: '2px 0' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color, display: 'inline-block', flexShrink: 0 }} />
+            {p.dataKey}
+          </span>
+          <span style={{ color: '#0a1a24', fontWeight: 500 }}>{fmtCurrency(p.value)}</span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 6, paddingTop: 6, borderTop: '1px solid #F0F7FA', fontWeight: 700, color: '#0a1a24' }}>
+        <span>Total</span>
+        <span>{fmtCurrency(total)}</span>
+      </div>
+    </div>
+  )
+}
+
+// Stacked bar chart, one segment per region, per day/week bucket.
+// Replaces the old hand-rolled SVG single blended line.
+function RevenueChart({ rows, regions, byWeek, fmtCurrency }) {
+  if (!rows || rows.length === 0) {
     return <div style={{ color: '#9CA3AF', fontSize: 13, padding: '24px 0' }}>No data for this period.</div>
   }
-  const max = Math.max(...points.map(p => p.amount), 1)
-  const svgW = 700, svgH = 160, pad = 36
-
-  const pts = points.map((p, i) => {
-    const x = pad + (i / Math.max(points.length - 1, 1)) * (svgW - pad * 2)
-    const y = svgH - pad - (p.amount / max) * (svgH - pad * 2)
-    return { x, y, ...p }
-  })
-
-  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  // Avoid a cluttered axis when there are many bars — show every label
+  // up to ~14 bars, otherwise thin them out evenly.
+  const tickInterval = rows.length <= 14 ? 0 : Math.ceil(rows.length / 10) - 1
 
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <svg viewBox={`0 0 ${svgW} ${svgH}`} style={{ width: '100%', maxWidth: svgW, display: 'block' }}>
-        {[0, 0.25, 0.5, 0.75, 1].map(f => {
-          const y = svgH - pad - f * (svgH - pad * 2)
-          return (
-            <g key={f}>
-              <line x1={pad} y1={y} x2={svgW - pad} y2={y} stroke="#f1f5f8" strokeWidth={1} />
-              <text x={pad - 6} y={y + 4} fontSize={9} fill="#94a3b8" textAnchor="end" fontFamily={ds.fontDm}>
-                {Math.round((f * max) / 1000)}k
-              </text>
-            </g>
-          )
-        })}
-        <path d={`${pathD} L ${pts[pts.length - 1].x} ${svgH - pad} L ${pts[0].x} ${svgH - pad} Z`} fill={`${ds.teal}18`} />
-        <path d={pathD} fill="none" stroke={ds.teal} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r={3.5} fill={ds.teal} stroke="white" strokeWidth={1.5} />
-            {(i === 0 || i === pts.length - 1 || i % Math.ceil(pts.length / 8) === 0) && (
-              <text x={p.x} y={svgH - 8} fontSize={9} fill="#94a3b8" textAnchor="middle" fontFamily={ds.fontDm}>{p.label}</text>
-            )}
-          </g>
-        ))}
-      </svg>
+    <div>
+      <p style={{ fontSize: 11.5, color: '#7A9BAD', margin: '0 0 12px' }}>
+        Revenue in Naira (₦), {byWeek ? 'grouped by week' : 'grouped by day'}, split by region. Hover a bar for exact figures.
+      </p>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={rows} margin={{ top: 8, right: 12, left: 4, bottom: byWeek ? 40 : 30 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f8" vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            interval={tickInterval}
+            angle={-30}
+            textAnchor="end"
+            height={byWeek ? 46 : 36}
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tickFormatter={(v) => `₦${Math.round(v / 1000)}k`}
+            width={56}
+            label={{ value: 'Revenue (₦, thousands)', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
+          />
+          <Tooltip content={<RevenueTooltip fmtCurrency={fmtCurrency} />} cursor={{ fill: '#F0F7FA' }} />
+          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+          {regions.map((region, i) => (
+            <Bar
+              key={region}
+              dataKey={region}
+              name={region}
+              stackId="revenue"
+              fill={REGION_COLORS[i % REGION_COLORS.length]}
+              radius={i === regions.length - 1 ? [3, 3, 0, 0] : 0}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   )
 }
@@ -239,12 +298,22 @@ export default function SalesRecordTab({ isActive }) {
     return Object.entries(byModel).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 5)
   }, [summary])
 
-  const chartPoints = useMemo(() => {
-    if (summary.length === 0) return []
+  // Rebuilt for the region-stacked chart. Buckets by week when the
+  // filtered range spans more than 60 days (same threshold as before),
+  // otherwise by day. Every bucket key carries its own per-region
+  // amounts, and every label is built from the FULL date (day, month,
+  // AND year) — never truncated — so two different weeks/days can never
+  // render an identical label regardless of how wide the date range is.
+  const chartData = useMemo(() => {
+    if (summary.length === 0) return { rows: [], regions: [], byWeek: false }
+
     const dates = summary.map(r => r.sale_date).filter(Boolean).sort()
     const spanDays = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000
     const byWeek = spanDays > 60
-    const buckets = {}
+
+    const regionSet = new Set()
+    const buckets = {} // bucket key (YYYY-MM-DD) -> { [region]: amount }
+
     for (const r of summary) {
       if (!r.sale_date) continue
       let key = r.sale_date
@@ -254,9 +323,27 @@ export default function SalesRecordTab({ isActive }) {
         d.setUTCDate(d.getUTCDate() - day + 1)
         key = d.toISOString().slice(0, 10)
       }
-      buckets[key] = (buckets[key] || 0) + (Number(r.amount) || 0)
+      const region = r.region || 'Not recorded'
+      regionSet.add(region)
+      if (!buckets[key]) buckets[key] = {}
+      buckets[key][region] = (buckets[key][region] || 0) + (Number(r.amount) || 0)
     }
-    return Object.entries(buckets).sort(([a], [b]) => a.localeCompare(b)).map(([date, amount]) => ({ amount, label: date.slice(5) }))
+
+    const regions = Array.from(regionSet).sort()
+    const sortedKeys = Object.keys(buckets).sort()
+
+    const rows = sortedKeys.map(key => {
+      const d = new Date(`${key}T00:00:00Z`)
+      const dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+      const label = byWeek ? `Wk of ${dateLabel}` : dateLabel
+      const row = { key, label }
+      for (const region of regions) {
+        row[region] = buckets[key][region] || 0
+      }
+      return row
+    })
+
+    return { rows, regions, byWeek }
   }, [summary])
 
   const fmtCurrency = (v) => `₦${Math.round(v).toLocaleString()}`
@@ -305,8 +392,13 @@ export default function SalesRecordTab({ isActive }) {
           </div>
 
           <div style={{ ...CARD, marginBottom: 24 }}>
-            <p style={{ fontSize: 12.5, fontWeight: 700, color: '#0a1a24', margin: '0 0 12px' }}>Revenue Over Time</p>
-            <RevenueChart points={chartPoints} />
+            <p style={{ fontSize: 12.5, fontWeight: 700, color: '#0a1a24', margin: '0 0 4px' }}>Revenue Over Time</p>
+            <RevenueChart
+              rows={chartData.rows}
+              regions={chartData.regions}
+              byWeek={chartData.byWeek}
+              fmtCurrency={fmtCurrency}
+            />
           </div>
 
           {sales.length === 0 ? (
