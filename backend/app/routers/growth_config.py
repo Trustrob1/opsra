@@ -174,16 +174,24 @@ class WatermarkResetBody(BaseModel):
 
 
 class SheetRegionConfig(BaseModel):
+    """gid is optional — only required for the live Sheets sync path
+    (fetching a specific tab by ID). An org that only ever uploads Excel
+    files can save just region names here and leave gid blank; this same
+    list is what import_transaction_sales_excel() now checks tab names
+    against, replacing the old hardcoded ALLOWED_REGIONS set."""
     name: str = Field(..., min_length=1, max_length=255)
-    gid:  str = Field(..., min_length=1, max_length=50)
+    gid:  Optional[str] = Field(default=None, max_length=50)
 
 
 class TransactionSheetSourceBody(BaseModel):
-    """REPORTS-DEPT-1 Phase 4b — Live Sheets sync config. Empty regions
-    list is allowed at the model level; enforced non-empty in the route
-    itself (avoids relying on a specific pydantic version's list-length
-    constraint support)."""
-    sheet_url: str
+    """REPORTS-DEPT-1 Phase 4b — shared region config for BOTH the Excel
+    upload path and the live Sheets sync path (previously Sheets-only).
+    sheet_url is optional: leave it blank if you only intend to upload
+    Excel workbooks — it's only required to actually run a live sync.
+    Empty regions list is allowed at the model level; enforced non-empty
+    in the route itself (avoids relying on a specific pydantic version's
+    list-length constraint support)."""
+    sheet_url: Optional[str] = None
     regions:   List[SheetRegionConfig] = Field(default_factory=list)
 
 
@@ -795,19 +803,55 @@ async def import_transaction_sales_excel(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": "PARSE_ERROR", "message": str(exc)})
 
-    # Only these two tabs are actual per-sale region logs — the workbook
-    # also contains summary/commission/per-rep tabs (Breakdown, Summary,
-    # ALL SALES, COMMISSIONS, MARYANN SALES, TOLU'SALE, Records) that
-    # don't share this row shape and would otherwise be misread as regions.
-    ALLOWED_REGIONS = {"lagos sales", "abuja sales"}
-    sheets = {name: rows for name, rows in all_sheets.items() if name.strip().lower() in ALLOWED_REGIONS}
+    # The workbook also contains summary/commission/per-rep tabs (Breakdown,
+    # Summary, ALL SALES, COMMISSIONS, MARYANN SALES, TOLU'SALE, Records)
+    # that don't share the per-sale row shape and would otherwise be
+    # misread as regions. Which tabs count as real region tabs is no
+    # longer a hardcoded set — it's read from the org's own saved config
+    # (organisations.sheet_sources.transactions.regions), the SAME list
+    # used by the live Sheets sync path. gid is irrelevant here (only the
+    # live sync needs it to fetch a specific tab) — only region NAMES
+    # matter for filtering an uploaded workbook's tabs.
+    config_result = (
+        db.table("organisations")
+        .select("sheet_sources")
+        .eq("id", org["org_id"])
+        .maybe_single()
+        .execute()
+    )
+    config_data = config_result.data
+    if isinstance(config_data, list):
+        config_data = config_data[0] if config_data else {}
+    config_sources = (config_data or {}).get("sheet_sources") or {}
+    configured_regions = (config_sources.get("transactions") or {}).get("regions") or []
+    allowed_region_names = {
+        (r.get("name") or "").strip().lower()
+        for r in configured_regions
+        if (r.get("name") or "").strip()
+    }
+
+    if not allowed_region_names:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "NO_REGIONS_CONFIGURED",
+                "message": (
+                    "No region tabs have been configured yet. Go to Data Sources > "
+                    "Live Google Sheet sync and add your region names (e.g. 'Lagos "
+                    "Sales', 'Abuja Sales') before uploading a workbook — Sheet URL "
+                    "and tab GID can be left blank if you're only using file upload."
+                ),
+            },
+        )
+
+    sheets = {name: rows for name, rows in all_sheets.items() if name.strip().lower() in allowed_region_names}
 
     if not sheets:
         raise HTTPException(
             status_code=422,
             detail={
                 "code": "NO_MATCHING_SHEETS",
-                "message": f"No 'Lagos Sales' or 'Abuja Sales' tab found. Sheets in this workbook: {', '.join(all_sheets.keys())}",
+                "message": f"No configured region tab found (expected one of: {', '.join(sorted(allowed_region_names))}). Sheets in this workbook: {', '.join(all_sheets.keys())}",
             },
         )
 
@@ -908,7 +952,14 @@ def save_transaction_sheet_source(
     if not payload.regions:
         raise HTTPException(
             status_code=422,
-            detail={"code": "MISSING_REGIONS", "message": "At least one region/tab must be configured."},
+            detail={
+                "code": "MISSING_REGIONS",
+                "message": (
+                    "At least one region/tab name must be configured — this list is "
+                    "required for Excel uploads too, not just live Sheets sync. "
+                    "Sheet URL and GID can be left blank if you only upload files."
+                ),
+            },
         )
     result = (
         db.table("organisations")
@@ -922,7 +973,7 @@ def save_transaction_sheet_source(
         data = data[0] if data else {}
     sources = (data or {}).get("sheet_sources") or {}
     sources["transactions"] = {
-        "sheet_url": payload.sheet_url.strip(),
+        "sheet_url": (payload.sheet_url or "").strip() or None,
         "regions":   [r.model_dump() for r in payload.regions],
     }
     db.table("organisations").update({
@@ -966,6 +1017,18 @@ def sync_transaction_sales_sheets(
         raise HTTPException(
             status_code=422,
             detail={"code": "NO_SHEET_SOURCE", "message": "No Google Sheet source configured yet. Save a sheet URL and region tabs first."},
+        )
+
+    # Regions may exist with a blank gid if they were only ever configured
+    # for the Excel path — live sync needs at least one region with a real
+    # gid to actually fetch anything.
+    if not any((r.get("gid") or "").strip() for r in txn_source["regions"]):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "NO_REGION_GIDS",
+                "message": "None of your configured regions have a tab GID set. Add at least one GID to enable live sync — file upload doesn't need this.",
+            },
         )
 
     try:
