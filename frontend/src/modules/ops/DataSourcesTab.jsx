@@ -15,14 +15,24 @@
  * Sales transactions (per-sale workbook, one tab per region) is now the
  * single source feeding Sales Record and Commissions.
  *
- * REPORTS-DEPT-1 Phase 4b (this update) — Live Google Sheet sync added
- * alongside the existing file-upload card. Admin saves a sheet URL plus
- * one {region name, tab GID} pair per region tab, then triggers a manual
+ * REPORTS-DEPT-1 Phase 4b — Live Google Sheet sync added alongside the
+ * existing file-upload card. Admin saves a sheet URL plus one
+ * {region name, tab GID} pair per region tab, then triggers a manual
  * "Sync now" any time the sheet's been updated. GID is entered by hand
  * (copied from the browser URL when that tab is open in Google Sheets) —
  * no Google API key/auto-discovery, and deliberately no periodic/
  * background schedule (opsra-celery-beat is not yet deployed, so a
  * scheduled sync would silently never fire).
+ *
+ * REPORTS-DEPT-1 Phase 4b (this update) — region config is no longer
+ * Sheets-only. The Excel upload route used to filter workbook tabs
+ * against a hardcoded ALLOWED_REGIONS set in the backend; that's gone
+ * now, replaced by reading the SAME region list saved here. Sheet URL
+ * and each region's GID are optional — they're only required to run a
+ * live Sync; an org that only ever uploads Excel files can save just
+ * region names and leave the rest blank. This card's save/validate flow
+ * was relaxed accordingly (previously required sheet URL + gid on every
+ * region before it would let you save anything).
  *
  * Rep -> team -> department attribution happens automatically (same
  * mechanism as REPORTS-DEPT-1 Phase 0) — this card doesn't ask which
@@ -193,7 +203,8 @@ function SalesTransactionsCard() {
       </h3>
       <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 16px' }}>
         Individual sales — one workbook, one tab per region (e.g. Lagos, Abuja). Expected columns: Date, Sales Rep,
-        Customer Name, Model, Units, Amount, Status. Feeds Sales Record and Commissions.
+        Customer Name, Model, Units, Amount, Status. Feeds Sales Record and Commissions. Region names must be
+        configured in the "Region tabs" card below first — an upload only reads tabs matching a saved region name.
       </p>
 
       <div style={{ marginBottom: 14 }}>
@@ -261,7 +272,17 @@ function SalesTransactionsCard() {
   )
 }
 
-// ─── Live Google Sheet sync (per-sale, multi-region — manual "Sync now") ──
+// ─── Region tabs + Live Google Sheet sync (shared config) ─────────────────
+//
+// This card's saved config (region name + optional tab GID, plus an
+// optional sheet URL) is now used by BOTH import paths:
+//   - SalesTransactionsCard's Excel upload filters workbook tabs against
+//     the region NAMES saved here (replacing the old backend-hardcoded
+//     ALLOWED_REGIONS set).
+//   - This card's own "Sync now" additionally needs a saved sheet URL and
+//     at least one region with a GID, to fetch that tab live.
+// An Excel-only org can save just region names and leave Sheet URL/GID
+// blank — "Sync now" simply won't be enabled until those are filled in.
 
 function SheetsSyncCard() {
   const [loadingConfig, setLoadingConfig] = useState(true)
@@ -307,21 +328,23 @@ function SheetsSyncCard() {
   const addRegion = () => setRegions(prev => [...prev, { name: '', gid: '' }])
   const removeRegion = (idx) => setRegions(prev => prev.filter((_, i) => i !== idx))
 
+  // Region names are the only hard requirement now — Sheet URL and each
+  // region's GID are optional, and only needed to enable live "Sync now".
   const handleSaveConfig = async () => {
     setConfigError(null); setConfigSaved(false)
     const cleanRegions = regions
       .map(r => ({ name: (r.name || '').trim(), gid: (r.gid || '').trim() }))
-      .filter(r => r.name && r.gid)
-    if (!sheetUrl.trim()) { setConfigError('Paste the Google Sheet URL first.'); return }
-    if (cleanRegions.length === 0) { setConfigError('Add at least one region name + tab GID.'); return }
+      .filter(r => r.name)
+      .map(r => ({ name: r.name, gid: r.gid || null }))
+    if (cleanRegions.length === 0) { setConfigError('Add at least one region name.'); return }
     setSavingConfig(true)
     try {
-      const data = await saveTransactionSheetSource(sheetUrl.trim(), cleanRegions)
+      const data = await saveTransactionSheetSource(sheetUrl.trim() || null, cleanRegions)
       setSavedSource(data.source)
       setConfigSaved(true)
       resetSyncState()
     } catch (e) {
-      setConfigError(e?.response?.data?.detail?.message ?? 'Failed to save sheet source.')
+      setConfigError(e?.response?.data?.detail?.message ?? 'Failed to save region config.')
     } finally {
       setSavingConfig(false)
     }
@@ -376,26 +399,31 @@ function SheetsSyncCard() {
   if (loadingConfig) {
     return (
       <div style={CARD}>
-        <p style={{ fontSize: 13, color: '#7A9BAD' }}>Loading sheet source…</p>
+        <p style={{ fontSize: 13, color: '#7A9BAD' }}>Loading region config…</p>
       </div>
     )
   }
 
+  // "Sync now" needs a saved sheet URL AND at least one region with a
+  // real GID — region names alone (the Excel-only case) aren't enough.
+  const canSync = !!(savedSource?.sheet_url) && (savedSource?.regions || []).some(r => (r.gid || '').trim())
+
   return (
     <div style={CARD}>
       <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Link2 size={16} color={ds.teal} /> Live Google Sheet sync
+        <Link2 size={16} color={ds.teal} /> Region tabs &amp; Live Google Sheet sync
       </h3>
       <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 16px' }}>
-        Link a live Google Sheet with one tab per region and sync it on demand — no need to re-upload a file each time.
-        Set the sheet to "Anyone with link can view", then paste its URL below along with each region tab's GID
-        (the number after <code>gid=</code> in the browser URL when that tab is open). There's no automatic
+        Region names saved here are used by BOTH the Excel upload above and live Sheets sync — an uploaded workbook
+        only reads tabs matching one of these names. Sheet URL and each region's tab GID (the number after
+        <code> gid=</code> in the browser URL when that tab is open) are optional — leave them blank if you only
+        upload Excel files. Set the sheet to "Anyone with link can view" to enable live sync. There's no automatic
         background sync yet — use "Sync now" whenever the sheet's been updated.
       </p>
 
       <div style={{ marginBottom: 14 }}>
         <label style={{ display: 'block', fontSize: 12.5, color: '#4a7a8a', marginBottom: 6, fontWeight: 600 }}>
-          Google Sheet URL
+          Google Sheet URL <span style={{ fontWeight: 400, color: '#9BB4C0' }}>(optional — required only for live sync)</span>
         </label>
         <input
           type="text"
@@ -421,9 +449,9 @@ function SheetsSyncCard() {
             />
             <input
               type="text"
-              value={r.gid}
+              value={r.gid || ''}
               onChange={e => updateRegion(idx, 'gid', e.target.value)}
-              placeholder="Tab GID (e.g. 123456789)"
+              placeholder="Tab GID (optional)"
               style={{ ...INPUT, flex: 1 }}
             />
             {regions.length > 1 && (
@@ -443,10 +471,10 @@ function SheetsSyncCard() {
       </div>
 
       {configError && <p style={{ color: '#DC2626', fontSize: 13, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {configError}</p>}
-      {configSaved && !configError && <p style={{ color: '#059669', fontSize: 12.5, margin: '0 0 12px' }}>Sheet source saved.</p>}
+      {configSaved && !configError && <p style={{ color: '#059669', fontSize: 12.5, margin: '0 0 12px' }}>Region config saved.</p>}
 
       <button onClick={handleSaveConfig} disabled={savingConfig} style={{ ...BTN_OUTLINE, opacity: savingConfig ? 0.6 : 1, marginBottom: 18 }}>
-        {savingConfig ? 'Saving…' : savedSource ? 'Update sheet source' : 'Save sheet source'}
+        {savingConfig ? 'Saving…' : savedSource ? 'Update region config' : 'Save region config'}
       </button>
 
       <div style={{ paddingTop: 14, borderTop: '1px solid #F0F7FA' }}>
@@ -458,12 +486,18 @@ function SheetsSyncCard() {
         {error && <p style={{ color: '#DC2626', fontSize: 13, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {error}</p>}
 
         {!preview && !result && (
-          <button onClick={handlePreview} disabled={loading || !savedSource} style={{ ...BTN_PRIMARY, opacity: (loading || !savedSource) ? 0.6 : 1 }}>
+          <button onClick={handlePreview} disabled={loading || !canSync} style={{ ...BTN_PRIMARY, opacity: (loading || !canSync) ? 0.6 : 1 }}>
             {loading ? <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> : <RefreshCw size={15} />}
             {loading ? 'Checking sheet…' : 'Sync now'}
           </button>
         )}
-        {!savedSource && <p style={{ fontSize: 12, color: '#7A9BAD', margin: '6px 0 0' }}>Save a sheet source above before syncing.</p>}
+        {!canSync && (
+          <p style={{ fontSize: 12, color: '#7A9BAD', margin: '6px 0 0' }}>
+            {savedSource
+              ? 'Add a Sheet URL and at least one region\'s tab GID above to enable live sync.'
+              : 'Save a region config above before syncing.'}
+          </p>
+        )}
 
         {preview && (
           <div>
