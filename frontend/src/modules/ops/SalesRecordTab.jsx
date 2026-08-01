@@ -20,28 +20,28 @@
  *     chart on this page.
  *   - getDirectSales(): the existing paginated detail table underneath.
  *
- * REPORTS-DEPT-1 Phase 4c (this update) — Revenue Over Time chart
- * rebuilt from scratch. Previous version was hand-rolled SVG (matching
- * GrowthDashboard.jsx's VelocitySection pattern) and had three real
- * problems, not just cosmetic ones:
- *   1. Date labels used date.slice(5) — dropping the YEAR entirely — so
- *      two different weeks from different years could render an
- *      IDENTICAL label (e.g. two weeks both showing "07-06"). Labels
- *      now always include the year.
- *   2. It summed every region into one blended line with no way to see
- *      per-region contribution. Now a stacked bar chart, one segment
- *      per region, so region comparison is the default view, not an
- *      afterthought.
- *   3. No title/axis context beyond "Revenue Over Time" and bare "12029k"
- *      axis numbers — now has a subtitle stating the currency and
- *      granularity (daily vs weekly), a y-axis label, and a custom
- *      tooltip listing per-region + total.
- * Switched to recharts (see frontend/package.json — pinned >=2.15.0,
- * since earlier 2.x releases had a confirmed React 19 rendering bug).
- * This is a deliberate, discussed departure from the "no new charting
- * library" convention used elsewhere (e.g. GrowthDashboard.jsx) — that
- * file was NOT touched by this change and still uses its own hand-rolled
- * SVG charts.
+ * REPORTS-DEPT-1 Phase 4c — Revenue Over Time chart history:
+ *   v1: hand-rolled SVG, single blended line, no region breakdown, date
+ *       labels truncated the year (bug — two different weeks/years could
+ *       render an identical label).
+ *   v2: rebuilt on recharts (pinned >=2.15.0 in package.json — earlier
+ *       2.x had a confirmed React 19 rendering bug) as a stacked bar
+ *       chart, one segment per region, year-inclusive labels, custom
+ *       tooltip with per-region + total, weekly/daily bucketing
+ *       threshold tuned to 14 days after feedback that a ~month view
+ *       still looked jagged at day-level granularity.
+ *   v3 (this update): replaced the stacked bars with a MULTI-LINE chart
+ *       — one line per region, plus a dashed "Average" benchmark line
+ *       (the mean of all regions' values at that bucket). Stacked bars
+ *       made it hard to read one specific region's trend in isolation,
+ *       since each region's segment sits on a shifting baseline stacked
+ *       on top of whatever's below it; separate lines give every region
+ *       its own flat, directly comparable baseline. The average line
+ *       lets you see at a glance whether a given region is over- or
+ *       under-performing the typical region that period.
+ * Deliberate, discussed departure from the "no new charting library"
+ * convention used elsewhere (e.g. GrowthDashboard.jsx, which was NOT
+ * touched and still uses its own hand-rolled SVG charts).
  *
  * Owner/ops_manager only, matching backend RBAC.
  *
@@ -49,7 +49,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { ds } from '../../utils/ds'
 import { getDirectSales, getDirectSalesSummary, getDirectSalesFilterOptions, getCommissionRates } from '../../services/growth.service'
@@ -73,6 +73,13 @@ const CARD = {
 // Fixed palette so a given region keeps the same colour across renders
 // (rather than reassigning colours as the region list changes shape).
 const REGION_COLORS = ['#0F6E7C', '#F59E0B', '#7C3AED', '#059669', '#DC2626', '#2563EB', '#B45309', '#0E7490']
+const AVERAGE_COLOR = '#94A3B8'
+const AVERAGE_KEY = '__average'
+
+// Buckets by week once the filtered range exceeds this many days,
+// otherwise by day. (Tuned to 14 after feedback that a ~month view
+// still looked jagged/noisy at day-level granularity.)
+const WEEKLY_BUCKET_THRESHOLD_DAYS = 14
 
 function Badge({ text, tone }) {
   const colours = {
@@ -123,15 +130,17 @@ function BreakdownCard({ title, rows, formatValue }) {
 }
 
 // Custom tooltip: lists each region's amount (in full ₦, not the
-// abbreviated axis units) plus a Total line, so the exact figures behind
-// a bar are never ambiguous.
+// abbreviated axis units), the Average benchmark, and a Total line
+// (sum of actual regions — excludes the average itself from that sum).
 function RevenueTooltip({ active, payload, label, fmtCurrency }) {
   if (!active || !payload || payload.length === 0) return null
-  const total = payload.reduce((s, p) => s + (Number(p.value) || 0), 0)
+  const regionEntries  = payload.filter(p => p.dataKey !== AVERAGE_KEY)
+  const averageEntry   = payload.find(p => p.dataKey === AVERAGE_KEY)
+  const total = regionEntries.reduce((s, p) => s + (Number(p.value) || 0), 0)
   return (
-    <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 8, padding: '10px 12px', fontSize: 12, boxShadow: '0 2px 10px rgba(10,26,36,0.12)', minWidth: 180 }}>
+    <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 8, padding: '10px 12px', fontSize: 12, boxShadow: '0 2px 10px rgba(10,26,36,0.12)', minWidth: 190 }}>
       <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#0a1a24' }}>{label}</p>
-      {payload.slice().reverse().map(p => (
+      {regionEntries.slice().reverse().map(p => (
         <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, color: '#4a7a8a', padding: '2px 0' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color, display: 'inline-block', flexShrink: 0 }} />
@@ -144,27 +153,59 @@ function RevenueTooltip({ active, payload, label, fmtCurrency }) {
         <span>Total</span>
         <span>{fmtCurrency(total)}</span>
       </div>
+      {averageEntry && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 4, color: '#7A9BAD' }}>
+          <span>Average (per region)</span>
+          <span>{fmtCurrency(averageEntry.value)}</span>
+        </div>
+      )}
     </div>
   )
 }
 
-// Stacked bar chart, one segment per region, per day/week bucket.
-// Replaces the old hand-rolled SVG single blended line.
+// Small dashed-line swatch for the "Average" legend entry, to visually
+// distinguish it from the solid-square region swatches (it's a
+// benchmark, not a real series).
+function DashSwatch() {
+  return (
+    <svg width="14" height="9" style={{ flexShrink: 0 }}>
+      <line x1="0" y1="4.5" x2="14" y2="4.5" stroke={AVERAGE_COLOR} strokeWidth="2" strokeDasharray="4 3" />
+    </svg>
+  )
+}
+
+// Multi-line chart: one line per region, plus a dashed Average benchmark
+// line (mean of all regions' values at that bucket). Replaces the
+// earlier stacked-bar version.
 function RevenueChart({ rows, regions, byWeek, fmtCurrency }) {
   if (!rows || rows.length === 0) {
     return <div style={{ color: '#9CA3AF', fontSize: 13, padding: '24px 0' }}>No data for this period.</div>
   }
-  // Avoid a cluttered axis when there are many bars — show every label
-  // up to ~14 bars, otherwise thin them out evenly.
+  // Avoid a cluttered axis when there are many points — show every
+  // label up to ~14 points, otherwise thin them out evenly.
   const tickInterval = rows.length <= 14 ? 0 : Math.ceil(rows.length / 10) - 1
 
   return (
     <div>
-      <p style={{ fontSize: 11.5, color: '#7A9BAD', margin: '0 0 12px' }}>
-        Revenue in Naira (₦), {byWeek ? 'grouped by week' : 'grouped by day'}, split by region. Hover a bar for exact figures.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <p style={{ fontSize: 11.5, color: '#7A9BAD', margin: 0 }}>
+          Revenue in Naira (₦), {byWeek ? 'grouped by week' : 'grouped by day'}, one line per region. Dashed line = average across regions. Hover a point for exact figures.
+        </p>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          {regions.map((region, i) => (
+            <span key={region} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#4a7a8a' }}>
+              <span style={{ width: 9, height: 9, borderRadius: 2, background: REGION_COLORS[i % REGION_COLORS.length], display: 'inline-block' }} />
+              {region}
+            </span>
+          ))}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#4a7a8a' }}>
+            <DashSwatch />
+            Average
+          </span>
+        </div>
+      </div>
       <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={rows} margin={{ top: 8, right: 12, left: 4, bottom: byWeek ? 40 : 30 }}>
+        <LineChart data={rows} margin={{ top: 8, right: 12, left: 4, bottom: byWeek ? 40 : 30 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f8" vertical={false} />
           <XAxis
             dataKey="label"
@@ -180,19 +221,30 @@ function RevenueChart({ rows, regions, byWeek, fmtCurrency }) {
             width={56}
             label={{ value: 'Revenue (₦, thousands)', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
           />
-          <Tooltip content={<RevenueTooltip fmtCurrency={fmtCurrency} />} cursor={{ fill: '#F0F7FA' }} />
-          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+          <Tooltip content={<RevenueTooltip fmtCurrency={fmtCurrency} />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '3 3' }} />
           {regions.map((region, i) => (
-            <Bar
+            <Line
               key={region}
+              type="monotone"
               dataKey={region}
               name={region}
-              stackId="revenue"
-              fill={REGION_COLORS[i % REGION_COLORS.length]}
-              radius={i === regions.length - 1 ? [3, 3, 0, 0] : 0}
+              stroke={REGION_COLORS[i % REGION_COLORS.length]}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              activeDot={{ r: 5 }}
             />
           ))}
-        </BarChart>
+          <Line
+            type="monotone"
+            dataKey={AVERAGE_KEY}
+            name="Average"
+            stroke={AVERAGE_COLOR}
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            dot={false}
+            activeDot={{ r: 4 }}
+          />
+        </LineChart>
       </ResponsiveContainer>
     </div>
   )
@@ -298,18 +350,19 @@ export default function SalesRecordTab({ isActive }) {
     return Object.entries(byModel).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 5)
   }, [summary])
 
-  // Rebuilt for the region-stacked chart. Buckets by week when the
-  // filtered range spans more than 60 days (same threshold as before),
-  // otherwise by day. Every bucket key carries its own per-region
-  // amounts, and every label is built from the FULL date (day, month,
-  // AND year) — never truncated — so two different weeks/days can never
-  // render an identical label regardless of how wide the date range is.
+  // Buckets by week when the filtered range spans more than
+  // WEEKLY_BUCKET_THRESHOLD_DAYS, otherwise by day. Every bucket key
+  // carries its own per-region amounts, and every label is built from
+  // the FULL date (day, month, AND year) — never truncated — so two
+  // different weeks/days can never render an identical label regardless
+  // of how wide the date range is. Also computes an __average field per
+  // row (mean of that row's region values) for the benchmark line.
   const chartData = useMemo(() => {
     if (summary.length === 0) return { rows: [], regions: [], byWeek: false }
 
     const dates = summary.map(r => r.sale_date).filter(Boolean).sort()
     const spanDays = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000
-    const byWeek = spanDays > 60
+    const byWeek = spanDays > WEEKLY_BUCKET_THRESHOLD_DAYS
 
     const regionSet = new Set()
     const buckets = {} // bucket key (YYYY-MM-DD) -> { [region]: amount }
@@ -337,9 +390,13 @@ export default function SalesRecordTab({ isActive }) {
       const dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
       const label = byWeek ? `Wk of ${dateLabel}` : dateLabel
       const row = { key, label }
+      let sum = 0
       for (const region of regions) {
-        row[region] = buckets[key][region] || 0
+        const val = buckets[key][region] || 0
+        row[region] = val
+        sum += val
       }
+      row[AVERAGE_KEY] = regions.length > 0 ? sum / regions.length : 0
       return row
     })
 
