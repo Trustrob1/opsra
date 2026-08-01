@@ -22,32 +22,43 @@
  *
  * REPORTS-DEPT-1 Phase 4c — Revenue Over Time chart history:
  *   v1: hand-rolled SVG, single blended line, no region breakdown, date
- *       labels truncated the year (bug — two different weeks/years could
- *       render an identical label).
- *   v2: rebuilt on recharts (pinned >=2.15.0 in package.json — earlier
- *       2.x had a confirmed React 19 rendering bug) as a stacked bar
- *       chart, one segment per region, year-inclusive labels, custom
- *       tooltip with per-region + total, weekly/daily bucketing
- *       threshold tuned to 14 days after feedback that a ~month view
- *       still looked jagged at day-level granularity.
- *   v3 (this update): replaced the stacked bars with a MULTI-LINE chart
- *       — one line per region, plus a dashed "Average" benchmark line
- *       (the mean of all regions' values at that bucket). Stacked bars
- *       made it hard to read one specific region's trend in isolation,
- *       since each region's segment sits on a shifting baseline stacked
- *       on top of whatever's below it; separate lines give every region
- *       its own flat, directly comparable baseline. The average line
- *       lets you see at a glance whether a given region is over- or
- *       under-performing the typical region that period.
- * Deliberate, discussed departure from the "no new charting library"
- * convention used elsewhere (e.g. GrowthDashboard.jsx, which was NOT
- * touched and still uses its own hand-rolled SVG charts).
+ *       labels truncated the year (bug).
+ *   v2: recharts stacked bar chart, one segment per region, year-
+ *       inclusive labels, weekly/daily bucketing threshold tuned to 14 days.
+ *   v3: replaced stacked bars with a multi-line chart — one line per
+ *       region, plus a dashed "Average" benchmark line (mean of all
+ *       regions' values at that bucket).
+ *
+ * REPORTS-DEPT-1 Phase 4c (this update) — Week-over-week / month-over-
+ * month comparison added:
+ *   - Two new blended KPI-style cards ("This week vs last week", "This
+ *     month vs last month") showing the current period's total revenue
+ *     and a +/-% badge vs the immediately preceding equivalent period.
+ *   - Per-region WoW%/MoM% badges added inside the existing "Revenue by
+ *     Region" breakdown card.
+ *   - IMPORTANT design decision: these comparisons fetch their OWN
+ *     independent 70-day trailing window (comparisonSummary state/
+ *     effect below), separate from whatever date range the page's main
+ *     DateRangePresets filter is currently set to. Reasoning: the main
+ *     filter defaults to "Today" and can be set arbitrarily narrow —
+ *     under that filter there would be no historical data at all to
+ *     compare "this week" against "last week". The comparison window
+ *     DOES still respect the Rep/Model/Variant filters (so a filtered
+ *     view stays internally consistent), just not the date filter,
+ *     since a fixed comparison needs a fixed window regardless of what
+ *     date range is being browsed elsewhere on the page.
+ *
+ * Switched to recharts (pinned >=2.15.0 in package.json — earlier 2.x
+ * had a confirmed React 19 rendering bug). Deliberate, discussed
+ * departure from the "no new charting library" convention used
+ * elsewhere (e.g. GrowthDashboard.jsx, NOT touched by this change).
  *
  * Owner/ops_manager only, matching backend RBAC.
  *
  * Pattern 51: full rewrite if editing this file — never partial sed.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { ArrowUp, ArrowDown } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -81,11 +92,25 @@ const AVERAGE_KEY = '__average'
 // still looked jagged/noisy at day-level granularity.)
 const WEEKLY_BUCKET_THRESHOLD_DAYS = 14
 
+// How far back the WoW/MoM comparison fetch reaches, independent of the
+// page's main date filter — see file header note above. 70 days safely
+// covers a full previous calendar month (max 31 days) plus the current
+// partial month, with margin.
+const COMPARISON_WINDOW_DAYS = 70
+
+const TONE_COLORS = {
+  up:   { bg: '#ECFDF5', text: '#059669' },
+  down: { bg: '#FEF2F2', text: '#DC2626' },
+  flat: { bg: '#F3F4F6', text: '#6B7280' },
+  new:  { bg: '#EFF6FF', text: '#2563EB' },
+}
+
 function Badge({ text, tone }) {
   const colours = {
     rec:  { bg: '#ECFDF5', text: '#059669' },
     pen:  { bg: '#FDF4E3', text: '#92601A' },
     none: { bg: '#F3F4F6', text: '#6B7280' },
+    ...TONE_COLORS,
   }[tone]
   return (
     <span style={{ background: colours.bg, color: colours.text, fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>
@@ -103,6 +128,23 @@ function Kpi({ label, value, accent }) {
   )
 }
 
+// Blended WoW/MoM comparison card — total revenue for the current
+// period plus a +/-% badge vs the prior equivalent period.
+function ComparisonKpi({ label, value, change, fmtCurrency }) {
+  const c = TONE_COLORS[change.tone] || TONE_COLORS.flat
+  return (
+    <div style={{ ...CARD, flex: 1 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
+      <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: '#0a1a24', margin: '0 0 8px' }}>{fmtCurrency(value)}</p>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: c.bg, color: c.text, fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20 }}>
+        {change.tone === 'up' && <ArrowUp size={12} />}
+        {change.tone === 'down' && <ArrowDown size={12} />}
+        {change.label}
+      </span>
+    </div>
+  )
+}
+
 function BreakdownCard({ title, rows, formatValue }) {
   const max = Math.max(...rows.map(r => r.value), 1)
   return (
@@ -114,9 +156,12 @@ function BreakdownCard({ title, rows, formatValue }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {rows.map(r => (
             <div key={r.label}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
                 <span style={{ color: '#0a1a24', fontWeight: 500 }}>{r.label}</span>
-                <span style={{ color: '#7A9BAD' }}>{formatValue(r.value)}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: '#7A9BAD' }}>{formatValue(r.value)}</span>
+                  {r.badges?.map(b => <Badge key={b.text} text={b.text} tone={b.tone} />)}
+                </span>
               </div>
               <div style={{ height: 6, borderRadius: 4, background: '#F0F7FA', overflow: 'hidden' }}>
                 <div style={{ width: `${(r.value / max) * 100}%`, height: '100%', background: r.color ?? ds.teal, borderRadius: 4 }} />
@@ -175,14 +220,11 @@ function DashSwatch() {
 }
 
 // Multi-line chart: one line per region, plus a dashed Average benchmark
-// line (mean of all regions' values at that bucket). Replaces the
-// earlier stacked-bar version.
+// line (mean of all regions' values at that bucket).
 function RevenueChart({ rows, regions, byWeek, fmtCurrency }) {
   if (!rows || rows.length === 0) {
     return <div style={{ color: '#9CA3AF', fontSize: 13, padding: '24px 0' }}>No data for this period.</div>
   }
-  // Avoid a cluttered axis when there are many points — show every
-  // label up to ~14 points, otherwise thin them out evenly.
   const tickInterval = rows.length <= 14 ? 0 : Math.ceil(rows.length / 10) - 1
 
   return (
@@ -250,6 +292,38 @@ function RevenueChart({ rows, regions, byWeek, fmtCurrency }) {
   )
 }
 
+// --- WoW/MoM date-boundary helpers (UTC, consistent with the chart's
+// own week-bucketing math elsewhere in this file) ---------------------
+
+function startOfWeekUTC(d) {
+  const copy = new Date(d)
+  const day = copy.getUTCDay() || 7 // Mon=1 .. Sun=7
+  copy.setUTCDate(copy.getUTCDate() - day + 1)
+  copy.setUTCHours(0, 0, 0, 0)
+  return copy
+}
+
+function startOfMonthUTC(d) {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
+}
+
+function isoDate(d) {
+  return d.toISOString().slice(0, 10)
+}
+
+// prev === 0 is handled as "New" (no baseline to compare against) rather
+// than a divide-by-zero, and curr === prev === 0 as flat "0%".
+function pctChange(curr, prev) {
+  if (prev === 0) {
+    if (curr === 0) return { pct: 0, tone: 'flat', label: '0%' }
+    return { pct: null, tone: 'new', label: 'New' }
+  }
+  const pct = ((curr - prev) / prev) * 100
+  const tone = pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat'
+  const sign = pct >= 0 ? '+' : ''
+  return { pct, tone, label: `${sign}${pct.toFixed(1)}%` }
+}
+
 export default function SalesRecordTab({ isActive }) {
   const [summary, setSummary]   = useState([])
   const [sales, setSales]       = useState([])
@@ -268,6 +342,11 @@ export default function SalesRecordTab({ isActive }) {
   const [repName, setRepName]   = useState('')
   const [model, setModel]       = useState('')
   const [variant, setVariant]   = useState('')
+
+  // Independent trailing-window fetch for WoW/MoM comparisons — see file
+  // header note. NOT tied to dateFrom/dateTo (those can be arbitrarily
+  // narrow, e.g. "Today"), but DOES respect rep/model/variant.
+  const [comparisonSummary, setComparisonSummary] = useState([])
 
   const filters = useMemo(() => {
     const f = {}
@@ -310,6 +389,32 @@ export default function SalesRecordTab({ isActive }) {
     }).catch(() => {})
   }, [])
 
+  // WoW/MoM comparison fetch — independent 70-day trailing window,
+  // re-fetched whenever rep/model/variant change (but not dateFrom/dateTo).
+  useEffect(() => {
+    if (!isActive) return
+    let cancelled = false
+    async function loadComparison() {
+      try {
+        const now = new Date()
+        const start = new Date(now)
+        start.setUTCDate(start.getUTCDate() - COMPARISON_WINDOW_DAYS)
+        const data = await getDirectSalesSummary({
+          ...(repName ? { rep_name: repName } : {}),
+          ...(model   ? { model }             : {}),
+          ...(variant ? { variant }           : {}),
+          date_from: isoDate(start),
+          date_to:   isoDate(now),
+        })
+        if (!cancelled) setComparisonSummary(data?.items ?? [])
+      } catch {
+        if (!cancelled) setComparisonSummary([])
+      }
+    }
+    loadComparison()
+    return () => { cancelled = true }
+  }, [isActive, repName, model, variant])
+
   const resetPage = () => setPage(1)
 
   const kpis = useMemo(() => {
@@ -320,14 +425,83 @@ export default function SalesRecordTab({ isActive }) {
     return { totalRevenue, totalUnits, totalTxns, avgSale }
   }, [summary])
 
+  // WoW/MoM comparisons — blended totals plus per-region breakdowns.
+  const comparisons = useMemo(() => {
+    const now = new Date()
+    const thisWeekStart  = startOfWeekUTC(now)
+    const lastWeekStart  = new Date(thisWeekStart); lastWeekStart.setUTCDate(lastWeekStart.getUTCDate() - 7)
+    const thisMonthStart = startOfMonthUTC(now)
+    const lastMonthStart = new Date(Date.UTC(thisMonthStart.getUTCFullYear(), thisMonthStart.getUTCMonth() - 1, 1))
+
+    const inRange = (dateStr, start, end) => {
+      const d = new Date(`${dateStr}T00:00:00Z`)
+      return d >= start && d < end
+    }
+
+    const thisWeekRows  = comparisonSummary.filter(r => r.sale_date && inRange(r.sale_date, thisWeekStart, now))
+    const lastWeekRows  = comparisonSummary.filter(r => r.sale_date && inRange(r.sale_date, lastWeekStart, thisWeekStart))
+    const thisMonthRows = comparisonSummary.filter(r => r.sale_date && inRange(r.sale_date, thisMonthStart, now))
+    const lastMonthRows = comparisonSummary.filter(r => r.sale_date && inRange(r.sale_date, lastMonthStart, thisMonthStart))
+
+    const sumTotal = rows => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const sumByRegion = rows => {
+      const map = {}
+      for (const r of rows) {
+        const key = r.region || 'Not recorded'
+        map[key] = (map[key] || 0) + (Number(r.amount) || 0)
+      }
+      return map
+    }
+
+    const thisWeekTotal  = sumTotal(thisWeekRows)
+    const lastWeekTotal  = sumTotal(lastWeekRows)
+    const thisMonthTotal = sumTotal(thisMonthRows)
+    const lastMonthTotal = sumTotal(lastMonthRows)
+
+    const thisWeekByRegion  = sumByRegion(thisWeekRows)
+    const lastWeekByRegion  = sumByRegion(lastWeekRows)
+    const thisMonthByRegion = sumByRegion(thisMonthRows)
+    const lastMonthByRegion = sumByRegion(lastMonthRows)
+
+    const allRegions = new Set([
+      ...Object.keys(thisWeekByRegion), ...Object.keys(lastWeekByRegion),
+      ...Object.keys(thisMonthByRegion), ...Object.keys(lastMonthByRegion),
+    ])
+    const byRegion = {}
+    for (const region of allRegions) {
+      byRegion[region] = {
+        wow: pctChange(thisWeekByRegion[region] || 0, lastWeekByRegion[region] || 0),
+        mom: pctChange(thisMonthByRegion[region] || 0, lastMonthByRegion[region] || 0),
+      }
+    }
+
+    return {
+      weekValue:  thisWeekTotal,
+      monthValue: thisMonthTotal,
+      week:  pctChange(thisWeekTotal, lastWeekTotal),
+      month: pctChange(thisMonthTotal, lastMonthTotal),
+      byRegion,
+    }
+  }, [comparisonSummary])
+
   const regionBreakdown = useMemo(() => {
     const byRegion = {}
     for (const r of summary) {
       const key = r.region || 'Not recorded'
       byRegion[key] = (byRegion[key] || 0) + (Number(r.amount) || 0)
     }
-    return Object.entries(byRegion).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
-  }, [summary])
+    return Object.entries(byRegion).map(([label, value]) => {
+      const cmp = comparisons.byRegion[label]
+      return {
+        label,
+        value,
+        badges: cmp ? [
+          { text: `WoW ${cmp.wow.label}`, tone: cmp.wow.tone },
+          { text: `MoM ${cmp.mom.label}`, tone: cmp.mom.tone },
+        ] : [],
+      }
+    }).sort((a, b) => b.value - a.value)
+  }, [summary, comparisons])
 
   const statusBreakdown = useMemo(() => {
     const byStatus = { Reconciled: 0, Pending: 0 }
@@ -353,10 +527,8 @@ export default function SalesRecordTab({ isActive }) {
   // Buckets by week when the filtered range spans more than
   // WEEKLY_BUCKET_THRESHOLD_DAYS, otherwise by day. Every bucket key
   // carries its own per-region amounts, and every label is built from
-  // the FULL date (day, month, AND year) — never truncated — so two
-  // different weeks/days can never render an identical label regardless
-  // of how wide the date range is. Also computes an __average field per
-  // row (mean of that row's region values) for the benchmark line.
+  // the FULL date (day, month, AND year) — never truncated. Also
+  // computes an __average field per row for the benchmark line.
   const chartData = useMemo(() => {
     if (summary.length === 0) return { rows: [], regions: [], byWeek: false }
 
@@ -435,11 +607,16 @@ export default function SalesRecordTab({ isActive }) {
         <p style={{ color: '#7A9BAD', fontSize: 14 }}>Loading…</p>
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
             <Kpi label="Total Revenue" value={fmtCurrency(kpis.totalRevenue)} accent={ds.teal} />
             <Kpi label="Total Units Sold" value={kpis.totalUnits.toLocaleString()} />
             <Kpi label="Total Transactions" value={kpis.totalTxns.toLocaleString()} />
             <Kpi label="Average Sale Value" value={fmtCurrency(kpis.avgSale)} />
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            <ComparisonKpi label="This week vs last week" value={comparisons.weekValue} change={comparisons.week} fmtCurrency={fmtCurrency} />
+            <ComparisonKpi label="This month vs last month" value={comparisons.monthValue} change={comparisons.month} fmtCurrency={fmtCurrency} />
           </div>
 
           <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
