@@ -26,27 +26,28 @@
  *   v2: recharts stacked bar chart, one segment per region, year-
  *       inclusive labels, weekly/daily bucketing threshold tuned to 14 days.
  *   v3: replaced stacked bars with a multi-line chart — one line per
- *       region, plus a dashed "Average" benchmark line (mean of all
- *       regions' values at that bucket).
+ *       region, plus a dashed "Average" benchmark line.
  *
- * REPORTS-DEPT-1 Phase 4c (this update) — Week-over-week / month-over-
- * month comparison added:
- *   - Two new blended KPI-style cards ("This week vs last week", "This
- *     month vs last month") showing the current period's total revenue
- *     and a +/-% badge vs the immediately preceding equivalent period.
- *   - Per-region WoW%/MoM% badges added inside the existing "Revenue by
- *     Region" breakdown card.
- *   - IMPORTANT design decision: these comparisons fetch their OWN
- *     independent 70-day trailing window (comparisonSummary state/
- *     effect below), separate from whatever date range the page's main
- *     DateRangePresets filter is currently set to. Reasoning: the main
- *     filter defaults to "Today" and can be set arbitrarily narrow —
- *     under that filter there would be no historical data at all to
- *     compare "this week" against "last week". The comparison window
- *     DOES still respect the Rep/Model/Variant filters (so a filtered
- *     view stays internally consistent), just not the date filter,
- *     since a fixed comparison needs a fixed window regardless of what
- *     date range is being browsed elsewhere on the page.
+ * REPORTS-DEPT-1 Phase 4c — comparison feature history:
+ *   v1: two fixed "This week vs last week" / "This month vs last month"
+ *       KPI cards, independent 70-day trailing fetch.
+ *   v2: switched to period-to-date (like-for-like elapsed days) after
+ *       feedback that day-1-of-month vs full-prior-month gave a
+ *       misleading "-100%".
+ *   v3 (this update): REPLACED entirely with a dynamic Compare toggle —
+ *       "vs Prev Period" / "vs Last Year" / "Off" — mirroring
+ *       ReportsModule.jsx's COMPARE_MODES/DeltaChip pattern exactly, for
+ *       visual and interaction consistency with Management Reports.
+ *       The comparison window is now derived from whatever date range
+ *       the page's existing DateRangePresets filter is currently set
+ *       to (not a fixed week/month) — e.g. if the main filter is "Last
+ *       30 days", "vs Prev Period" compares against the 30 days before
+ *       that; "vs Last Year" compares against the same calendar dates
+ *       one year earlier. Delta chips (▲/▼ %, same colours as Reports'
+ *       DeltaChip) now appear on all 4 top KPI cards and each region row
+ *       in "Revenue by Region". Reconciled/Pending and Top-Selling
+ *       Models deliberately do NOT have delta chips yet — not asked for,
+ *       kept out of scope for this pass.
  *
  * Switched to recharts (pinned >=2.15.0 in package.json — earlier 2.x
  * had a confirmed React 19 rendering bug). Deliberate, discussed
@@ -58,7 +59,6 @@
  * Pattern 51: full rewrite if editing this file — never partial sed.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowUp, ArrowDown } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -92,25 +92,19 @@ const AVERAGE_KEY = '__average'
 // still looked jagged/noisy at day-level granularity.)
 const WEEKLY_BUCKET_THRESHOLD_DAYS = 14
 
-// How far back the WoW/MoM comparison fetch reaches, independent of the
-// page's main date filter — see file header note above. 70 days safely
-// covers a full previous calendar month (max 31 days) plus the current
-// partial month, with margin.
-const COMPARISON_WINDOW_DAYS = 70
-
-const TONE_COLORS = {
-  up:   { bg: '#ECFDF5', text: '#059669' },
-  down: { bg: '#FEF2F2', text: '#DC2626' },
-  flat: { bg: '#F3F4F6', text: '#6B7280' },
-  new:  { bg: '#EFF6FF', text: '#2563EB' },
-}
+// Mirrors ReportsModule.jsx's COMPARE_MODES exactly (same labels/values)
+// for visual and interaction consistency across the app.
+const COMPARE_MODES = [
+  { value: 'previous_period', label: 'vs Prev Period' },
+  { value: 'year_on_year',    label: 'vs Last Year' },
+  { value: 'none',            label: 'Off' },
+]
 
 function Badge({ text, tone }) {
   const colours = {
     rec:  { bg: '#ECFDF5', text: '#059669' },
     pen:  { bg: '#FDF4E3', text: '#92601A' },
     none: { bg: '#F3F4F6', text: '#6B7280' },
-    ...TONE_COLORS,
   }[tone]
   return (
     <span style={{ background: colours.bg, color: colours.text, fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>
@@ -119,28 +113,48 @@ function Badge({ text, tone }) {
   )
 }
 
-function Kpi({ label, value, accent }) {
+// Mirrors ReportsModule.jsx's DeltaChip exactly (same colours, arrows,
+// and "—" fallback for flat/null) for visual consistency with
+// Management Reports' comparison chips.
+function DeltaChip({ deltaPct, direction }) {
+  if (direction === 'flat' || deltaPct == null) {
+    return (
+      <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7280',
+        background: '#F3F4F6', borderRadius: 12, padding: '2px 8px' }}>—</span>
+    )
+  }
+  const up   = direction === 'up'
+  const clr  = up ? '#16A34A' : '#DC2626'
+  const bg   = up ? '#F0FDF4' : '#FEF2F2'
+  const sign = Number(deltaPct) >= 0 ? '+' : ''
   return (
-    <div style={{ ...CARD, flex: 1 }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
-      <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: accent ?? '#0a1a24', margin: 0 }}>{value}</p>
-    </div>
+    <span style={{ fontSize: 11, fontWeight: 600, color: clr,
+      background: bg, borderRadius: 12, padding: '2px 8px' }}>
+      {up ? '▲' : '▼'} {sign}{Number(deltaPct).toFixed(1)}%
+    </span>
   )
 }
 
-// Blended WoW/MoM comparison card — total revenue for the current
-// period plus a +/-% badge vs the prior equivalent period.
-function ComparisonKpi({ label, value, change, fmtCurrency }) {
-  const c = TONE_COLORS[change.tone] || TONE_COLORS.flat
+// deltaPct/direction shape matches DeltaChip's props directly.
+// prev === 0 is treated as "no baseline" -> flat/null ("—"), same as
+// Reports' own metric rows do for a missing prior value, rather than a
+// divide-by-zero or a misleading Infinity%.
+function computeDelta(curr, prev) {
+  if (prev === 0) {
+    if (curr === 0) return { deltaPct: 0, direction: 'flat' }
+    return { deltaPct: null, direction: 'flat' }
+  }
+  const pct = ((curr - prev) / prev) * 100
+  const direction = pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat'
+  return { deltaPct: pct, direction }
+}
+
+function Kpi({ label, value, accent, delta }) {
   return (
     <div style={{ ...CARD, flex: 1 }}>
       <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
-      <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: '#0a1a24', margin: '0 0 8px' }}>{fmtCurrency(value)}</p>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: c.bg, color: c.text, fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20 }}>
-        {change.tone === 'up' && <ArrowUp size={12} />}
-        {change.tone === 'down' && <ArrowDown size={12} />}
-        {change.label}
-      </span>
+      <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: accent ?? '#0a1a24', margin: delta ? '0 0 8px' : 0 }}>{value}</p>
+      {delta && <DeltaChip deltaPct={delta.deltaPct} direction={delta.direction} />}
     </div>
   )
 }
@@ -156,11 +170,11 @@ function BreakdownCard({ title, rows, formatValue }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {rows.map(r => (
             <div key={r.label}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
                 <span style={{ color: '#0a1a24', fontWeight: 500 }}>{r.label}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ color: '#7A9BAD' }}>{formatValue(r.value)}</span>
-                  {r.badges?.map(b => <Badge key={b.text} text={b.text} tone={b.tone} />)}
+                  {r.delta && <DeltaChip deltaPct={r.delta.deltaPct} direction={r.delta.direction} />}
                 </span>
               </div>
               <div style={{ height: 6, borderRadius: 4, background: '#F0F7FA', overflow: 'hidden' }}>
@@ -292,36 +306,32 @@ function RevenueChart({ rows, regions, byWeek, fmtCurrency }) {
   )
 }
 
-// --- WoW/MoM date-boundary helpers (UTC, consistent with the chart's
-// own week-bucketing math elsewhere in this file) ---------------------
-
-function startOfWeekUTC(d) {
-  const copy = new Date(d)
-  const day = copy.getUTCDay() || 7 // Mon=1 .. Sun=7
-  copy.setUTCDate(copy.getUTCDate() - day + 1)
-  copy.setUTCHours(0, 0, 0, 0)
-  return copy
-}
-
-function startOfMonthUTC(d) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
-}
-
 function isoDate(d) {
   return d.toISOString().slice(0, 10)
 }
 
-// prev === 0 is handled as "New" (no baseline to compare against) rather
-// than a divide-by-zero, and curr === prev === 0 as flat "0%".
-function pctChange(curr, prev) {
-  if (prev === 0) {
-    if (curr === 0) return { pct: 0, tone: 'flat', label: '0%' }
-    return { pct: null, tone: 'new', label: 'New' }
+// Derives the comparison window from whatever date range is CURRENTLY
+// selected in the main filter — not a fixed week/month. Returns null
+// when comparison isn't possible/enabled (mode 'none', or no date range
+// selected yet).
+//   previous_period: same length, immediately preceding, non-overlapping.
+//   year_on_year:    same calendar dates, exactly one year earlier.
+function computeComparisonRange(dateFrom, dateTo, mode) {
+  if (!dateFrom || !dateTo || mode === 'none') return null
+  const start = new Date(`${dateFrom}T00:00:00Z`)
+  const end   = new Date(`${dateTo}T00:00:00Z`)
+
+  if (mode === 'year_on_year') {
+    const cStart = new Date(Date.UTC(start.getUTCFullYear() - 1, start.getUTCMonth(), start.getUTCDate()))
+    const cEnd   = new Date(Date.UTC(end.getUTCFullYear() - 1, end.getUTCMonth(), end.getUTCDate()))
+    return { from: isoDate(cStart), to: isoDate(cEnd) }
   }
-  const pct = ((curr - prev) / prev) * 100
-  const tone = pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat'
-  const sign = pct >= 0 ? '+' : ''
-  return { pct, tone, label: `${sign}${pct.toFixed(1)}%` }
+
+  // previous_period
+  const lengthMs = end.getTime() - start.getTime()
+  const cEnd   = new Date(start.getTime() - 86400000) // day before current start
+  const cStart = new Date(cEnd.getTime() - lengthMs)
+  return { from: isoDate(cStart), to: isoDate(cEnd) }
 }
 
 export default function SalesRecordTab({ isActive }) {
@@ -343,9 +353,7 @@ export default function SalesRecordTab({ isActive }) {
   const [model, setModel]       = useState('')
   const [variant, setVariant]   = useState('')
 
-  // Independent trailing-window fetch for WoW/MoM comparisons — see file
-  // header note. NOT tied to dateFrom/dateTo (those can be arbitrarily
-  // narrow, e.g. "Today"), but DOES respect rep/model/variant.
+  const [compareMode, setCompareMode] = useState('previous_period')
   const [comparisonSummary, setComparisonSummary] = useState([])
 
   const filters = useMemo(() => {
@@ -389,22 +397,26 @@ export default function SalesRecordTab({ isActive }) {
     }).catch(() => {})
   }, [])
 
-  // WoW/MoM comparison fetch — independent 70-day trailing window,
-  // re-fetched whenever rep/model/variant change (but not dateFrom/dateTo).
+  // Comparison window derived from the CURRENT date filter + compareMode
+  // (see computeComparisonRange above). Re-fetched whenever the main
+  // date range, compare mode, or rep/model/variant filters change.
+  const comparisonRange = useMemo(
+    () => computeComparisonRange(dateFrom, dateTo, compareMode),
+    [dateFrom, dateTo, compareMode]
+  )
+
   useEffect(() => {
     if (!isActive) return
+    if (!comparisonRange) { setComparisonSummary([]); return }
     let cancelled = false
     async function loadComparison() {
       try {
-        const now = new Date()
-        const start = new Date(now)
-        start.setUTCDate(start.getUTCDate() - COMPARISON_WINDOW_DAYS)
         const data = await getDirectSalesSummary({
+          date_from: comparisonRange.from,
+          date_to:   comparisonRange.to,
           ...(repName ? { rep_name: repName } : {}),
           ...(model   ? { model }             : {}),
           ...(variant ? { variant }           : {}),
-          date_from: isoDate(start),
-          date_to:   isoDate(now),
         })
         if (!cancelled) setComparisonSummary(data?.items ?? [])
       } catch {
@@ -413,7 +425,7 @@ export default function SalesRecordTab({ isActive }) {
     }
     loadComparison()
     return () => { cancelled = true }
-  }, [isActive, repName, model, variant])
+  }, [isActive, comparisonRange, repName, model, variant])
 
   const resetPage = () => setPage(1)
 
@@ -425,64 +437,23 @@ export default function SalesRecordTab({ isActive }) {
     return { totalRevenue, totalUnits, totalTxns, avgSale }
   }, [summary])
 
-  // WoW/MoM comparisons — blended totals plus per-region breakdowns.
-  const comparisons = useMemo(() => {
-    const now = new Date()
-    const thisWeekStart  = startOfWeekUTC(now)
-    const lastWeekStart  = new Date(thisWeekStart); lastWeekStart.setUTCDate(lastWeekStart.getUTCDate() - 7)
-    const thisMonthStart = startOfMonthUTC(now)
-    const lastMonthStart = new Date(Date.UTC(thisMonthStart.getUTCFullYear(), thisMonthStart.getUTCMonth() - 1, 1))
-
-    const inRange = (dateStr, start, end) => {
-      const d = new Date(`${dateStr}T00:00:00Z`)
-      return d >= start && d < end
-    }
-
-    const thisWeekRows  = comparisonSummary.filter(r => r.sale_date && inRange(r.sale_date, thisWeekStart, now))
-    const lastWeekRows  = comparisonSummary.filter(r => r.sale_date && inRange(r.sale_date, lastWeekStart, thisWeekStart))
-    const thisMonthRows = comparisonSummary.filter(r => r.sale_date && inRange(r.sale_date, thisMonthStart, now))
-    const lastMonthRows = comparisonSummary.filter(r => r.sale_date && inRange(r.sale_date, lastMonthStart, thisMonthStart))
-
-    const sumTotal = rows => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0)
-    const sumByRegion = rows => {
-      const map = {}
-      for (const r of rows) {
-        const key = r.region || 'Not recorded'
-        map[key] = (map[key] || 0) + (Number(r.amount) || 0)
-      }
-      return map
-    }
-
-    const thisWeekTotal  = sumTotal(thisWeekRows)
-    const lastWeekTotal  = sumTotal(lastWeekRows)
-    const thisMonthTotal = sumTotal(thisMonthRows)
-    const lastMonthTotal = sumTotal(lastMonthRows)
-
-    const thisWeekByRegion  = sumByRegion(thisWeekRows)
-    const lastWeekByRegion  = sumByRegion(lastWeekRows)
-    const thisMonthByRegion = sumByRegion(thisMonthRows)
-    const lastMonthByRegion = sumByRegion(lastMonthRows)
-
-    const allRegions = new Set([
-      ...Object.keys(thisWeekByRegion), ...Object.keys(lastWeekByRegion),
-      ...Object.keys(thisMonthByRegion), ...Object.keys(lastMonthByRegion),
-    ])
-    const byRegion = {}
-    for (const region of allRegions) {
-      byRegion[region] = {
-        wow: pctChange(thisWeekByRegion[region] || 0, lastWeekByRegion[region] || 0),
-        mom: pctChange(thisMonthByRegion[region] || 0, lastMonthByRegion[region] || 0),
-      }
-    }
-
-    return {
-      weekValue:  thisWeekTotal,
-      monthValue: thisMonthTotal,
-      week:  pctChange(thisWeekTotal, lastWeekTotal),
-      month: pctChange(thisMonthTotal, lastMonthTotal),
-      byRegion,
-    }
+  const comparisonKpis = useMemo(() => {
+    const totalRevenue = comparisonSummary.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const totalUnits   = comparisonSummary.reduce((s, r) => s + (Number(r.units) || 0), 0)
+    const totalTxns    = comparisonSummary.length
+    const avgSale      = totalTxns > 0 ? totalRevenue / totalTxns : 0
+    return { totalRevenue, totalUnits, totalTxns, avgSale }
   }, [comparisonSummary])
+
+  const kpiDeltas = useMemo(() => {
+    if (compareMode === 'none' || !comparisonRange) return null
+    return {
+      totalRevenue: computeDelta(kpis.totalRevenue, comparisonKpis.totalRevenue),
+      totalUnits:   computeDelta(kpis.totalUnits, comparisonKpis.totalUnits),
+      totalTxns:    computeDelta(kpis.totalTxns, comparisonKpis.totalTxns),
+      avgSale:      computeDelta(kpis.avgSale, comparisonKpis.avgSale),
+    }
+  }, [compareMode, comparisonRange, kpis, comparisonKpis])
 
   const regionBreakdown = useMemo(() => {
     const byRegion = {}
@@ -490,18 +461,21 @@ export default function SalesRecordTab({ isActive }) {
       const key = r.region || 'Not recorded'
       byRegion[key] = (byRegion[key] || 0) + (Number(r.amount) || 0)
     }
-    return Object.entries(byRegion).map(([label, value]) => {
-      const cmp = comparisons.byRegion[label]
-      return {
-        label,
-        value,
-        badges: cmp ? [
-          { text: `WoW ${cmp.wow.label}`, tone: cmp.wow.tone },
-          { text: `MoM ${cmp.mom.label}`, tone: cmp.mom.tone },
-        ] : [],
+    const comparisonByRegion = {}
+    if (compareMode !== 'none' && comparisonRange) {
+      for (const r of comparisonSummary) {
+        const key = r.region || 'Not recorded'
+        comparisonByRegion[key] = (comparisonByRegion[key] || 0) + (Number(r.amount) || 0)
       }
-    }).sort((a, b) => b.value - a.value)
-  }, [summary, comparisons])
+    }
+    return Object.entries(byRegion).map(([label, value]) => ({
+      label,
+      value,
+      delta: (compareMode !== 'none' && comparisonRange)
+        ? computeDelta(value, comparisonByRegion[label] || 0)
+        : null,
+    })).sort((a, b) => b.value - a.value)
+  }, [summary, comparisonSummary, compareMode, comparisonRange])
 
   const statusBreakdown = useMemo(() => {
     const byStatus = { Reconciled: 0, Pending: 0 }
@@ -525,9 +499,8 @@ export default function SalesRecordTab({ isActive }) {
   }, [summary])
 
   // Buckets by week when the filtered range spans more than
-  // WEEKLY_BUCKET_THRESHOLD_DAYS, otherwise by day. Every bucket key
-  // carries its own per-region amounts, and every label is built from
-  // the FULL date (day, month, AND year) — never truncated. Also
+  // WEEKLY_BUCKET_THRESHOLD_DAYS, otherwise by day. Every label is built
+  // from the FULL date (day, month, AND year) — never truncated. Also
   // computes an __average field per row for the benchmark line.
   const chartData = useMemo(() => {
     if (summary.length === 0) return { rows: [], regions: [], byWeek: false }
@@ -585,7 +558,7 @@ export default function SalesRecordTab({ isActive }) {
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <DateRangePresets onChange={({ dateFrom: f, dateTo: t }) => { setDateFrom(f); setDateTo(t); resetPage() }} />
         <select value={repName} onChange={e => { setRepName(e.target.value); resetPage() }} style={{ ...INP, width: 'auto' }}>
           <option value="">All reps</option>
@@ -601,22 +574,50 @@ export default function SalesRecordTab({ isActive }) {
         </select>
       </div>
 
+      {/* Compare mode toggle — mirrors ReportsModule.jsx's COMPARE_MODES */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: '#7A9BAD', fontWeight: 600 }}>Compare:</span>
+        {COMPARE_MODES.map(m => (
+          <button
+            key={m.value}
+            onClick={() => setCompareMode(m.value)}
+            style={{
+              padding: '6px 14px', borderRadius: 20, fontSize: 12.5, fontWeight: 600,
+              border: compareMode === m.value ? 'none' : '1px solid #D1D5DB',
+              background: compareMode === m.value ? ds.teal : 'white',
+              color: compareMode === m.value ? 'white' : '#4a7a8a',
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Comparison legend — mirrors ReportsModule.jsx's "Current: X · Compare: Y" line */}
+      {compareMode !== 'none' && comparisonRange && (
+        <div style={{ display: 'flex', gap: 16, marginBottom: 16, fontSize: 11.5, color: '#9CA3AF', flexWrap: 'wrap' }}>
+          <span>Current: <strong style={{ color: '#0a1a24' }}>{dateFrom} – {dateTo}</strong></span>
+          <span>Compare: <strong style={{ color: '#0a1a24' }}>{comparisonRange.from} – {comparisonRange.to}</strong></span>
+        </div>
+      )}
+      {compareMode !== 'none' && !comparisonRange && (
+        <p style={{ fontSize: 11.5, color: '#9CA3AF', marginBottom: 16 }}>
+          Select a date range above to enable comparison.
+        </p>
+      )}
+
       {error && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 14 }}>{error}</p>}
 
       {loading && summary.length === 0 ? (
         <p style={{ color: '#7A9BAD', fontSize: 14 }}>Loading…</p>
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-            <Kpi label="Total Revenue" value={fmtCurrency(kpis.totalRevenue)} accent={ds.teal} />
-            <Kpi label="Total Units Sold" value={kpis.totalUnits.toLocaleString()} />
-            <Kpi label="Total Transactions" value={kpis.totalTxns.toLocaleString()} />
-            <Kpi label="Average Sale Value" value={fmtCurrency(kpis.avgSale)} />
-          </div>
-
           <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-            <ComparisonKpi label="This week vs last week" value={comparisons.weekValue} change={comparisons.week} fmtCurrency={fmtCurrency} />
-            <ComparisonKpi label="This month vs last month" value={comparisons.monthValue} change={comparisons.month} fmtCurrency={fmtCurrency} />
+            <Kpi label="Total Revenue" value={fmtCurrency(kpis.totalRevenue)} accent={ds.teal} delta={kpiDeltas?.totalRevenue} />
+            <Kpi label="Total Units Sold" value={kpis.totalUnits.toLocaleString()} delta={kpiDeltas?.totalUnits} />
+            <Kpi label="Total Transactions" value={kpis.totalTxns.toLocaleString()} delta={kpiDeltas?.totalTxns} />
+            <Kpi label="Average Sale Value" value={fmtCurrency(kpis.avgSale)} delta={kpiDeltas?.avgSale} />
           </div>
 
           <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
