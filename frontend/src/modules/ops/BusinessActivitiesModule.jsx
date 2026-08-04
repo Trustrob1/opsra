@@ -34,13 +34,14 @@
  */
 
 import { useState } from 'react'
-import { ClipboardList, AlertOctagon, Users, Database, Table2, DollarSign } from 'lucide-react'
+import { ClipboardList, AlertOctagon, Users, Database, Table2, DollarSign, Megaphone } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { IssuesTab, ActivityLogTab } from './InternalOpsModule'
 import ContractorModule from './ContractorModule'
 import DataSourcesTab from './DataSourcesTab'
 import SalesRecordTab from './SalesRecordTab'
 import CommissionsTab from './CommissionsTab'
+import DigitalCampaignsTab from './DigitalCampaignsTab'
 import DateRangePresets from './DateRangePresets'
 import { downloadBusinessActivitiesReport } from '../../services/internal_ops.service'
 
@@ -76,6 +77,13 @@ function buildTabs(role, departmentId) {
   // broader backend gate (_require_owner_ops_or_agent).
   tabs.push({ id: 'commissions', label: 'Commissions' })
 
+  // Digital Campaigns: owner/ops_manager only — matches Sales Record's
+  // gate exactly. No dedicated "digital marketer" role exists yet.
+  // REPORTS-DEPT-1 Phase 4d.
+  if (isManager) {
+    tabs.push({ id: 'digital-campaigns', label: 'Digital Campaigns' })
+  }
+
   // Data Sources: owner/ops_manager, or a department-scoped lead managing
   // their own department's external source. REPORTS-DEPT-1 Phase 4.
   if (isManager || isDeptScoped) {
@@ -91,6 +99,7 @@ const TAB_ICONS = {
   contractors:   Users,
   'sales-record': Table2,
   commissions:   DollarSign,
+  'digital-campaigns': Megaphone,
   sources:       Database,
 }
 
@@ -290,6 +299,12 @@ export default function BusinessActivitiesModule({ user }) {
       {tabs.some(t => t.id === 'commissions') && (
         <div style={{ display: activeTab === 'commissions' ? 'block' : 'none' }}>
           <CommissionsTab user={user} isActive={activeTab === 'commissions'} />
+        </div>
+      )}
+
+      {tabs.some(t => t.id === 'digital-campaigns') && (
+        <div style={{ display: activeTab === 'digital-campaigns' ? 'block' : 'none' }}>
+          <DigitalCampaignsTab isActive={activeTab === 'digital-campaigns'} />
         </div>
       )}
 
