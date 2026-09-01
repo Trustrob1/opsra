@@ -2010,6 +2010,78 @@ async def reconnect_integration(
     }
 
 
+@router.get("/integrations/direct-sales/status")
+async def get_direct_sales_status(
+    org=Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """
+    Status for the Direct Sales (Business Activities > Sales Record)
+    query provider. No credentials involved — status only.
+    """
+    result = (
+        db.table("integrations").select("status, connected_at, last_verified_at")
+        .eq("org_id", org["org_id"]).eq("provider", "direct_sales")
+        .maybe_single().execute()
+    )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else None
+    connected = bool(data and data.get("status") == "connected")
+    return ok(data={"connected": connected, **(data or {})})
+
+
+@router.post("/integrations/direct-sales/connect")
+async def connect_direct_sales(
+    org=Depends(require_permission("manage_integrations")),
+    db=Depends(get_supabase),
+):
+    """
+    Enables the Direct Sales provider for owner-query/PDF reports.
+    Mutually exclusive with shopify/opsra_orders — rejects with 409
+    rather than silently disconnecting the other side.
+    """
+    from app.integrations.registry import find_conflicting_sales_channel
+
+    conflict = find_conflicting_sales_channel(db, org["org_id"], "direct_sales")
+    if conflict:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "SALES_CHANNEL_CONFLICT",
+                "message": (
+                    f"Direct Sales can't be enabled while '{conflict}' is "
+                    f"active — disconnect that first. Direct Sales and "
+                    f"Shopify/Opsra Orders represent the same underlying "
+                    f"sales data and can't both be on at once."
+                ),
+            },
+        )
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    db.table("integrations").upsert({
+        "org_id": org["org_id"],
+        "provider": "direct_sales",
+        "status": "connected",
+        "credentials": {},
+        "connected_at": now,
+        "updated_at": now,
+    }, on_conflict="org_id,provider").execute()
+    return ok(data={"connected": True}, message="Direct Sales connected")
+
+
+@router.delete("/integrations/direct-sales/disconnect")
+async def disconnect_direct_sales(
+    org=Depends(require_permission("manage_integrations")),
+    db=Depends(get_supabase),
+):
+    db.table("integrations").update(
+        {"status": "disconnected"}
+    ).eq("org_id", org["org_id"]).eq("provider", "direct_sales").execute()
+    return ok(data={"connected": False}, message="Direct Sales disconnected")
+
+
 # ============================================================
 # PAY-LINK-1 — Payment Link Config + Paystack Storefront
 # ============================================================

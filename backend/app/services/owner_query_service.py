@@ -319,6 +319,15 @@ Response: {{"action":"compare","providers":["paystack"],"period_a":{{"date_from"
 Question: "Show me unfulfilled orders"
 Response: {{"action":"search","providers":["shopify"],"search_query":"unfulfilled"}}
 
+Question: "What's my total sales revenue this month?"
+Response: {{"action":"get_summary","providers":["direct_sales"],"date_from":"{first_of_month}","date_to":"{today}"}}
+
+Question: "Which region is selling the most?"
+Response: {{"action":"get_summary","providers":["direct_sales"],"date_from":"{first_of_month}","date_to":"{today}"}}
+
+Question: "Show me sales pending reconciliation"
+Response: {{"action":"search","providers":["direct_sales"],"search_query":"pending"}}
+
 Question: "What is the weather?"
 Response: {{"action":"out_of_scope"}}
 
@@ -334,8 +343,11 @@ Provider disambiguation rules — use these to pick the right provider:
 - Questions about PAYMENTS, SUBSCRIPTIONS, MONEY RECEIVED, INVOICES → paystack or flutterwave
 - Questions about SHOPIFY STORE, SHOPIFY ORDERS, PRODUCTS, FULFILMENT, DELIVERY, TOP SELLERS → shopify
 - Questions about LEADS, PIPELINE, PROSPECTS, CONVERSION RATE, LEAD SOURCE, WHATSAPP ORDERS, UNFULFILLED ORDERS (non-Shopify) → opsra_orders
+- Questions about REP-LOGGED SALES, SALES RECORD, UNITS SOLD, REVENUE BY REGION, MODEL/VARIANT PERFORMANCE, RECONCILED/PENDING SALES → direct_sales
+- If a question mentions "revenue" or "sales" with no other qualifier, and BOTH direct_sales and paystack are connected, prefer direct_sales (sales of goods vs. subscription/payment revenue are different things even when both are connected)
 - If a question mentions unfulfilled orders and BOTH shopify and opsra_orders are connected, prefer shopify
-- If a question mentions leads or pipeline → always opsra_orders, never shopify or paystack
+- If a question mentions leads or pipeline → always opsra_orders, never shopify, direct_sales, or paystack
+- direct_sales and shopify/opsra_orders will never both be connected for the same org — if you see providers from both groups in the Connected providers list, something is misconfigured; prefer whichever the question's keywords most specifically match
 
 {security_block}
 """.strip()

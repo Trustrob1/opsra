@@ -31,6 +31,7 @@ from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok
 from app.routers.admin import write_audit_log
+from app.integrations.registry import find_conflicting_sales_channel
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,28 @@ def connect_shopify(
     """
     _require_owner(org)
 
+    # Mutual exclusivity — check BEFORE validating Shopify credentials,
+    # so a blocked connect doesn't cost an unnecessary Shopify API call.
+    conflict = find_conflicting_sales_channel(db, org["org_id"], "shopify")
+    if conflict:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "success": False,
+                "data": None,
+                "error": {
+                    "code": "SALES_CHANNEL_CONFLICT",
+                    "message": (
+                        f"Shopify can't be enabled while '{conflict}' is "
+                        f"active — disconnect that first. Shopify and "
+                        f"Direct Sales represent the same underlying sales "
+                        f"data and can't both be on at once."
+                    ),
+                    "field": None,
+                },
+            },
+        )
+
     # Normalise domain — strip https:// if user includes it
     shop_domain = payload.shop_domain.strip().lower()
     shop_domain = shop_domain.replace("https://", "").replace("http://", "").rstrip("/")
@@ -183,6 +206,25 @@ def connect_shopify(
         "shopify_connected":      True,
         "updated_at":             now,
     }).eq("id", org["org_id"]).execute()
+
+    # NEW — sync the integrations table so owner-query routing sees this.
+    # S14: separate try/except — if this fails, Shopify is still genuinely
+    # connected everywhere else; only WhatsApp ask-your-data routing is
+    # affected until this succeeds on retry.
+    try:
+        db.table("integrations").upsert({
+            "org_id":       org["org_id"],
+            "provider":     "shopify",
+            "status":       "connected",
+            "credentials":  {},  # real credentials live on organisations, not duplicated here
+            "connected_at": now,
+            "updated_at":   now,
+        }, on_conflict="org_id,provider").execute()
+    except Exception as exc:
+        logger.warning(
+            "connect_shopify: integrations table sync failed org=%s: %s",
+            org["org_id"], exc,
+        )
 
     write_audit_log(
         db=db, org_id=org["org_id"], user_id=org["id"],
@@ -274,6 +316,17 @@ def disconnect_shopify(
         "shopify_connected":      False,
         "updated_at":             now,
     }).eq("id", org["org_id"]).execute()
+
+    # NEW — keep integrations table in sync. S14: best-effort, logged only.
+    try:
+        db.table("integrations").update(
+            {"status": "disconnected", "updated_at": now}
+        ).eq("org_id", org["org_id"]).eq("provider", "shopify").execute()
+    except Exception as exc:
+        logger.warning(
+            "disconnect_shopify: integrations table sync failed org=%s: %s",
+            org["org_id"], exc,
+        )
 
     write_audit_log(
         db=db, org_id=org["org_id"], user_id=org["id"],

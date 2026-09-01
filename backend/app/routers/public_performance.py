@@ -166,6 +166,18 @@ _GUIDE_EXAMPLES = {
             "What's my fulfilment rate this month?",
         ],
     },
+    "direct_sales": {
+        "label": "Direct Sales (Business Activities)",
+        "emoji": "\U0001F4B5",
+        "examples": [
+            "What's my total sales revenue this month?",
+            "How many units did we sell this week?",
+            "Which region is performing best?",
+            "What are my top selling models?",
+            "How much revenue is pending reconciliation?",
+            "Show me sales for [rep name]",
+        ],
+    },
 }
 
 _COMPARISON_EXAMPLES = [

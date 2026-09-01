@@ -57,6 +57,11 @@ def _load_providers() -> dict[str, IntegrationProvider]:
         providers["opsra_orders"] = OpsraOrdersProvider()
     except Exception as exc:
         logger.warning("registry: failed to load opsra_orders provider — %s", exc)
+    try:
+        from app.services.direct_sales_provider_service import DirectSalesProvider
+        providers["direct_sales"] = DirectSalesProvider()
+    except Exception as exc:
+        logger.warning("registry: failed to load direct_sales provider — %s", exc)
     # Future providers added here:
     # from app.services.zoho_service import ZohoBooksProvider
     # providers["zoho_books"] = ZohoBooksProvider()
@@ -72,6 +77,87 @@ def _get_providers() -> dict[str, IntegrationProvider]:
     if _PROVIDERS is None:
         _PROVIDERS = _load_providers()
     return _PROVIDERS
+
+
+# ---------------------------------------------------------------------------
+# Sales-channel mutual exclusivity
+#
+# Some providers represent alternate ways of recording the SAME underlying
+# thing (an org's sales) — connecting more than one at once risks double-
+# counting revenue in summaries, comparisons, and PDF reports. Providers
+# in different groups can coexist freely; providers within the same list
+# entry are the ones designed to coexist (e.g. Shopify orders + the
+# opsra_orders leads/WhatsApp-commerce baseline).
+#
+# Enforced by the connect routes in app/routers/admin.py (direct_sales)
+# and app/routers/shopify.py (shopify), which must call
+# find_conflicting_sales_channel() before setting any group member to
+# 'connected'. This module only defines the groups and the check — it
+# does not touch the integrations table itself.
+# ---------------------------------------------------------------------------
+
+SALES_CHANNEL_GROUPS: list[set[str]] = [
+    {"shopify", "opsra_orders"},   # Group A — Commerce channel
+    {"direct_sales"},              # Group B — Direct Sales channel
+]
+
+
+def get_sales_channel_group(provider_name: str) -> set[str] | None:
+    """
+    Return the sales-channel group a provider belongs to, or None if
+    it isn't part of the mutual-exclusivity scheme at all (e.g. paystack,
+    which tracks payments, not sales-of-goods, and can coexist with
+    either group).
+    S14: returns None on any failure.
+    """
+    try:
+        for group in SALES_CHANNEL_GROUPS:
+            if provider_name in group:
+                return group
+        return None
+    except Exception as exc:
+        logger.warning(
+            "registry.get_sales_channel_group failed for '%s': %s",
+            provider_name, exc,
+        )
+        return None
+
+
+def find_conflicting_sales_channel(
+    db: Any, org_id: str, provider_name: str
+) -> str | None:
+    """
+    If provider_name belongs to a sales-channel group, check whether any
+    OTHER provider from a DIFFERENT sales-channel group is currently
+    connected for this org.
+
+    Returns the name of the conflicting connected provider if found,
+    otherwise None.
+
+    Callers should reject the connect attempt with a 409 when this
+    returns a value, rather than silently disconnecting the other side.
+
+    S14: returns None on any failure — never blocks a connect due to our
+    own error.
+    """
+    try:
+        my_group = get_sales_channel_group(provider_name)
+        if my_group is None:
+            return None
+        connected = get_connected_providers(db, org_id)
+        for name in connected:
+            if name == provider_name:
+                continue
+            other_group = get_sales_channel_group(name)
+            if other_group is not None and other_group != my_group:
+                return name
+        return None
+    except Exception as exc:
+        logger.warning(
+            "registry.find_conflicting_sales_channel failed org=%s provider=%s: %s",
+            org_id, provider_name, exc,
+        )
+        return None
 
 
 # ---------------------------------------------------------------------------
