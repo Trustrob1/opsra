@@ -288,6 +288,22 @@ export const triggerShopifySync = () =>
   api.post('/api/v1/admin/shopify/sync', {})
     .then(r => r.data)
 
+// ── Direct Sales Query Source (Business Activities > Sales Record) ─────────
+// Mutually exclusive with Shopify — see app/integrations/registry.py's
+// SALES_CHANNEL_GROUPS. Connect may return 409 if Shopify is connected.
+
+export const getDirectSalesStatus = () =>
+  api.get('/api/v1/admin/integrations/direct-sales/status')
+    .then(r => r.data.data)
+
+export const connectDirectSales = () =>
+  api.post('/api/v1/admin/integrations/direct-sales/connect', {})
+    .then(r => r.data.data)
+
+export const disconnectDirectSales = () =>
+  api.delete('/api/v1/admin/integrations/direct-sales/disconnect')
+    .then(r => r.data.data)
+
 // ── PAY-LINK-1: Payment Link Config + Paystack Storefront ───────────────────
 
 export const getPaymentLinkConfig = () =>

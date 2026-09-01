@@ -15,6 +15,10 @@
  *   Toggle button at top of sidebar. Sidebar state persisted in localStorage.
  *   Tabs grouped into logical sections for scannability.
  * UI-ICONS: Lucide React icons replace all emojis in sidebar nav.
+ * DIRECT-SALES-1: "Sales Data Source" tab added — DirectSalesQuerySource.
+ *   Lets admins toggle between Shopify and Direct Sales as the owner-query
+ *   / PDF report sales channel (mutually exclusive — see registry.py's
+ *   SALES_CHANNEL_GROUPS).
  *
  * LAZY MOUNT FIX: Tab components are only mounted when first visited.
  * Once mounted they stay mounted (display:none) to preserve state.
@@ -32,7 +36,7 @@ import {
   Layers, Tag, UsersRound, AlertCircle, Building2,
   ShoppingCart, ShoppingBag, Store, Bot, TrendingUp,
   DollarSign, MessageSquare, CalendarDays, Zap, Package,
-  ChevronLeft, ChevronRight, Settings, CreditCard,
+  ChevronLeft, ChevronRight, Settings, CreditCard, Radio,
 } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
@@ -71,6 +75,7 @@ import DemoSettings            from './DemoSettings'
 import CatalogConfig           from './CatalogConfig'
 import CatalogItems            from './CatalogItems'
 import PaymentLinkConfig       from './PaymentLinkConfig'
+import DirectSalesQuerySource  from './DirectSalesQuerySource'
 
 // ── Sidebar tab groups ────────────────────────────────────────────────────────
 const TAB_GROUPS = [
@@ -108,13 +113,14 @@ const TAB_GROUPS = [
   {
     section: 'Commerce',
     tabs: [
-      { id: 'catalog',      label: 'Catalog',     Icon: Package },
-      { id: 'sales-system', label: 'Sales System',Icon: ShoppingCart },
-      { id: 'shopify',      label: 'Shopify',     Icon: ShoppingBag },
-      { id: 'payment-links',label: 'Payment Links',Icon: CreditCard },
-      { id: 'commerce',     label: 'Commerce',    Icon: Store },
-      { id: 'sales-log',    label: 'Sales Log',   Icon: DollarSign },
-      { id: 'commission',   label: 'Commissions', Icon: Briefcase },
+      { id: 'catalog',              label: 'Catalog',            Icon: Package },
+      { id: 'sales-system',         label: 'Sales System',       Icon: ShoppingCart },
+      { id: 'shopify',              label: 'Shopify',            Icon: ShoppingBag },
+      { id: 'direct-sales-source',  label: 'Sales Data Source',  Icon: Radio },
+      { id: 'payment-links',        label: 'Payment Links',      Icon: CreditCard },
+      { id: 'commerce',             label: 'Commerce',           Icon: Store },
+      { id: 'sales-log',            label: 'Sales Log',          Icon: DollarSign },
+      { id: 'commission',           label: 'Commissions',        Icon: Briefcase },
     ],
   },
   {
@@ -454,6 +460,7 @@ export default function AdminModule({ user }) {
           </LazyTab>
 
           <LazyTab active={tab === 'shopify'}       visited={visited['shopify']}>       <ShopifyIntegration /></LazyTab>
+          <LazyTab active={tab === 'direct-sales-source'} visited={visited['direct-sales-source']}> <DirectSalesQuerySource /></LazyTab>
           <LazyTab active={tab === 'payment-links'} visited={visited['payment-links']}> <PaymentLinkConfig /></LazyTab>
           <LazyTab active={tab === 'commerce'}      visited={visited['commerce']}>      <CommerceSettings /></LazyTab>
           <LazyTab active={tab === 'whatsapp-numbers'} visited={visited['whatsapp-numbers']}> <WhatsAppNumbers /></LazyTab>
