@@ -97,9 +97,22 @@ def _get_providers() -> dict[str, IntegrationProvider]:
 # ---------------------------------------------------------------------------
 
 SALES_CHANNEL_GROUPS: list[set[str]] = [
-    {"shopify", "opsra_orders"},   # Group A — Commerce channel
-    {"direct_sales"},              # Group B — Direct Sales channel
+    {"shopify"},        # Group A — Commerce channel
+    {"direct_sales"},   # Group B — Direct Sales channel
 ]
+
+# opsra_orders is deliberately NOT in either group. It's the baseline
+# provider every org has connected by default (no connect/disconnect UI
+# exists for it), and its primary content — leads, pipeline, conversion
+# rate — never overlaps with either sales channel. Including it here
+# made direct_sales effectively unconnectable for any org, since
+# opsra_orders being "connected" is the normal, permanent state, not
+# an admin choice. Its narrow overlap case (wa_commerce_revenue_ngn,
+# which only populates when wa_sales_mode is 'bot'/'ai_agent') is a
+# real but much smaller risk than blocking the feature outright — if
+# it becomes a problem in practice, the fix belongs in the PDF/summary
+# aggregation logic (skip opsra_orders' commerce fields when
+# direct_sales is the active channel), not in this exclusivity gate.
 
 
 def get_sales_channel_group(provider_name: str) -> set[str] | None:
