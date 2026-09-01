@@ -1899,6 +1899,24 @@ async def update_routing_rules(
     return {"success": True, "data": inserted, "error": None}
 
 
+def _require_integrations_manager(org: dict) -> None:
+    """
+    Role-template check for integration connect/disconnect actions —
+    mirrors shopify.py's _require_owner() and this file's own
+    _require_dept_manager(). Used instead of require_permission(), which
+    depends on a 'manage_integrations' key in the role's permissions
+    JSONB that no role currently has set (confirmed via a real 403 on a
+    genuine owner account — the permission-key path for these routes
+    had apparently never been successfully exercised before).
+    """
+    _role = (org.get("roles") or {}).get("template", "").lower()
+    if _role not in ("owner", "ops_manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can manage integrations."},
+        )
+
+
 # ============================================================
 # INTEGRATION STATUS
 # ============================================================
@@ -2018,24 +2036,36 @@ async def get_direct_sales_status(
     """
     Status for the Direct Sales (Business Activities > Sales Record)
     query provider. No credentials involved — status only.
+
+    S14: .maybe_single().execute() returns bare None (not a response
+    object) when zero rows match — this is expected for any org that
+    has never connected this provider, not an error condition. Guard
+    against None before touching .data.
     """
-    result = (
-        db.table("integrations").select("status, connected_at, last_verified_at")
-        .eq("org_id", org["org_id"]).eq("provider", "direct_sales")
-        .maybe_single().execute()
-    )
-    data = result.data
-    if isinstance(data, list):
-        data = data[0] if data else None
-    connected = bool(data and data.get("status") == "connected")
-    return ok(data={"connected": connected, **(data or {})})
+    try:
+        result = (
+            db.table("integrations").select("status, connected_at, last_verified_at")
+            .eq("org_id", org["org_id"]).eq("provider", "direct_sales")
+            .maybe_single().execute()
+        )
+        data = result.data if result is not None else None
+        if isinstance(data, list):
+            data = data[0] if data else None
+        connected = bool(data and data.get("status") == "connected")
+        return ok(data={"connected": connected, **(data or {})})
+    except Exception as exc:
+        logger.warning(
+            "get_direct_sales_status failed org=%s: %s", org["org_id"], exc
+        )
+        return ok(data={"connected": False})
 
 
 @router.post("/integrations/direct-sales/connect")
 async def connect_direct_sales(
-    org=Depends(require_permission("manage_integrations")),
+    org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    _require_integrations_manager(org)
     """
     Enables the Direct Sales provider for owner-query/PDF reports.
     Mutually exclusive with shopify/opsra_orders — rejects with 409
@@ -2073,9 +2103,10 @@ async def connect_direct_sales(
 
 @router.delete("/integrations/direct-sales/disconnect")
 async def disconnect_direct_sales(
-    org=Depends(require_permission("manage_integrations")),
+    org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    _require_integrations_manager(org)
     db.table("integrations").update(
         {"status": "disconnected"}
     ).eq("org_id", org["org_id"]).eq("provider", "direct_sales").execute()
@@ -2152,24 +2183,35 @@ async def get_paystack_storefront_status(
     org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    result = (
-        db.table("integrations").select("status, connected_at, last_verified_at")
-        .eq("org_id", org["org_id"]).eq("provider", "paystack_storefront")
-        .maybe_single().execute()
-    )
-    data = result.data
-    if isinstance(data, list):
-        data = data[0] if data else None
-    connected = bool(data and data.get("status") == "connected")
-    return ok(data={"connected": connected, **(data or {})})
+    """
+    S14: .maybe_single().execute() returns bare None when zero rows
+    match — expected for any org that hasn't connected this provider.
+    """
+    try:
+        result = (
+            db.table("integrations").select("status, connected_at, last_verified_at")
+            .eq("org_id", org["org_id"]).eq("provider", "paystack_storefront")
+            .maybe_single().execute()
+        )
+        data = result.data if result is not None else None
+        if isinstance(data, list):
+            data = data[0] if data else None
+        connected = bool(data and data.get("status") == "connected")
+        return ok(data={"connected": connected, **(data or {})})
+    except Exception as exc:
+        logger.warning(
+            "get_paystack_storefront_status failed org=%s: %s", org["org_id"], exc
+        )
+        return ok(data={"connected": False})
 
 
 @router.post("/integrations/paystack-storefront/connect")
 async def connect_paystack_storefront(
     payload: PaystackStorefrontConnect,
-    org=Depends(require_permission("manage_integrations")),
+    org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    _require_integrations_manager(org)
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
     db.table("integrations").upsert({
@@ -2185,9 +2227,10 @@ async def connect_paystack_storefront(
 
 @router.delete("/integrations/paystack-storefront/disconnect")
 async def disconnect_paystack_storefront(
-    org=Depends(require_permission("manage_integrations")),
+    org=Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    _require_integrations_manager(org)
     db.table("integrations").update(
         {"status": "disconnected", "credentials": {}}
     ).eq("org_id", org["org_id"]).eq("provider", "paystack_storefront").execute()
