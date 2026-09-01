@@ -26,6 +26,7 @@ import {
   connectDirectSales,
   disconnectDirectSales,
   getShopifyStatus,
+  disconnectShopify,
 } from '../../services/admin.service'
 
 function StatusPill({ connected }) {
@@ -101,16 +102,21 @@ export default function DirectSalesQuerySource() {
   const [busy, setBusy]                 = useState(false)
   const [directSales, setDirectSales]   = useState({ connected: false })
   const [shopify, setShopify]           = useState({ connected: false })
+  const [showSwitchConfirm, setShowSwitchConfirm] = useState(false)
+  const [switching, setSwitching]       = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [dsStatus, shopifyStatus] = await Promise.all([
+      const [dsStatus, shopifyStatusResponse] = await Promise.all([
         getDirectSalesStatus(),
         getShopifyStatus(),
       ])
       setDirectSales(dsStatus || { connected: false })
-      setShopify(shopifyStatus || { connected: false })
+      // getShopifyStatus() returns the full {success, data, error} envelope
+      // (unlike getDirectSalesStatus(), which already unwraps to .data.data) —
+      // the real status fields are one level deeper, at .data.
+      setShopify(shopifyStatusResponse?.data || { connected: false })
     } catch (e) {
       setError(e?.response?.data?.error?.message ?? 'Could not load data source status.')
     } finally {
@@ -132,6 +138,26 @@ export default function DirectSalesQuerySource() {
       setActionError(msg)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleSwitchToDirectSales = async () => {
+    setSwitching(true); setActionError(null)
+    try {
+      await disconnectShopify()
+      await connectDirectSales()
+      setShowSwitchConfirm(false)
+      await load()
+    } catch (e) {
+      // Disconnect may have succeeded even if connect then failed — reload
+      // so the cards reflect real state rather than a stale assumption.
+      await load()
+      setActionError(
+        e?.response?.data?.error?.message ??
+        'Something went wrong switching channels. Check both cards\u2019 status below before trying again.'
+      )
+    } finally {
+      setSwitching(false)
     }
   }
 
@@ -219,16 +245,26 @@ export default function DirectSalesQuerySource() {
             >
               {busy ? 'Disconnecting…' : 'Disconnect Direct Sales'}
             </button>
+          ) : directSalesBlocked ? (
+            <button
+              onClick={() => setShowSwitchConfirm(true)}
+              style={{
+                background: 'white', color: ds.teal, border: `1.5px solid ${ds.teal}`,
+                borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600,
+                fontFamily: 'inherit', cursor: 'pointer',
+              }}
+            >
+              Switch to Direct Sales
+            </button>
           ) : (
             <button
               onClick={handleConnectDirectSales}
-              disabled={busy || directSalesBlocked}
+              disabled={busy}
               style={{
-                background: directSalesBlocked ? '#eef2f4' : ds.teal,
-                color: directSalesBlocked ? '#a0b4bd' : 'white',
+                background: ds.teal, color: 'white',
                 border: 'none', borderRadius: 8, padding: '8px 16px',
                 fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
-                cursor: (busy || directSalesBlocked) ? 'not-allowed' : 'pointer',
+                cursor: busy ? 'not-allowed' : 'pointer',
               }}
             >
               {busy ? 'Connecting…' : 'Connect Direct Sales'}
@@ -236,6 +272,45 @@ export default function DirectSalesQuerySource() {
           )}
         </ChannelCard>
       </div>
+
+      {showSwitchConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(13,27,42,0.55)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+        }} onClick={() => !switching && setShowSwitchConfirm(false)}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: 26, width: '100%', maxWidth: 420,
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: '#0a1a24', margin: '0 0 10px' }}>
+              Switch to Direct Sales?
+            </h3>
+            <p style={{ fontSize: 13, color: '#5a8a9f', lineHeight: 1.6, margin: '0 0 10px' }}>
+              This will disconnect Shopify — its shop domain and API credentials will
+              be cleared. If you switch back to Shopify later, you'll need to
+              re-enter your shop domain and API keys.
+            </p>
+            {actionError && (
+              <p style={{ fontSize: 12.5, color: '#B91C1C', margin: '0 0 10px' }}>{actionError}</p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+              <button
+                onClick={() => setShowSwitchConfirm(false)}
+                disabled={switching}
+                style={{ background: 'white', color: '#0a1a24', border: '1.5px solid #D4E6EC', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSwitchToDirectSales}
+                disabled={switching}
+                style={{ background: '#B91C1C', color: 'white', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: switching ? 'not-allowed' : 'pointer' }}
+              >
+                {switching ? 'Switching…' : 'Disconnect Shopify & Switch'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
