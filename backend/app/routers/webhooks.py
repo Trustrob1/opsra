@@ -1218,6 +1218,30 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 customer_id=customer_id, lead_id=lead_id,
             )
             return
+
+    # ── FUNNEL-1A: Event Funnel numbers ─────────────────────────────────
+    # Same early-return pattern as ai_agent above. The org is ALWAYS the
+    # number's own org — never the sender-lookup org (XORG-safe, spec F2).
+    if number_row and number_row.get("wa_sales_mode") == "event_funnel":
+        _funnel_org_id = number_row.get("org_id")
+        if _funnel_org_id:
+            if _is_org_owner(db, _funnel_org_id, sender_phone):
+                logger.info("[OQ] owner message org=%s — owner query handler (Event Funnel number)", _funnel_org_id)
+                from app.services.owner_query_service import handle_owner_query
+                handle_owner_query(
+                    db=db, org_id=_funnel_org_id,
+                    message_text=(content or ""),
+                    sender_number=sender_phone,
+                )
+                return
+            from app.services import funnel_service
+            funnel_service.handle_inbound(
+                db=db, number_row=number_row, sender_phone=sender_phone,
+                contact_name=contact_name, msg_type=msg_type, content=content,
+                msg_id=msg_id, interactive_payload=interactive_payload,
+                referral=message.get("referral") or {},
+            )
+            return
  
     # ── OWNER QUERY: check if sender is the org owner (path A — number in leads/customers) ──
     # Unlikely but safe: if owner's number happens to be in leads/customers table,
@@ -3737,6 +3761,12 @@ async def receive_paystack_storefront_webhook(request: Request, db=Depends(get_s
         except Exception as exc:
             logger.error("[PAYSTACK-STOREFRONT] mark_paid failed org=%s ref=%s: %s", org_id, reference, exc)
             _err = str(exc)[:500]
+        # FUNNEL-1A: seat the webinar buyer (no-op for non-funnel references). S14.
+        try:
+            from app.services import funnel_service
+            funnel_service.on_payment_confirmed(db=db, org_id=org_id, reference=reference)
+        except Exception as exc:
+            logger.error("[PAYSTACK-STOREFRONT] funnel hook failed org=%s ref=%s: %s", org_id, reference, exc)
 
     _log_webhook(
         db, route="/webhooks/payment/paystack-storefront", org_id=org_id,

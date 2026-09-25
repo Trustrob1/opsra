@@ -162,6 +162,7 @@ celery_app = Celery(
         "app.workers.health_score_worker",              # ← PERF-1C (registered now, worker built in PERF-1C)
         "app.workers.owner_report_worker",              # ← RPT-DAILY
         "app.workers.owner_pdf_worker",                  # ← OWNER-PDF-1
+        "app.workers.funnel_worker",                     # ← FUNNEL-1A
     ],
 )
 
@@ -540,6 +541,16 @@ celery_app.conf.beat_schedule = {
     "health-score-recalc": {
         "task": "app.workers.health_score_worker.run_health_score_recalc",
         "schedule": crontab(minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # funnel_sequence — Every 5 minutes  (FUNNEL-1A)                     #
+    # Worker: funnel_worker.py                                            #
+    # Event Funnel follow-ups + event reminders; stops on payment.       #
+    # ------------------------------------------------------------------ #
+    "funnel-sequence": {
+        "task": "app.workers.funnel_worker.run_funnel_sequence",
+        "schedule": crontab(minute="*/5"),
     },
 }
 

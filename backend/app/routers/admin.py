@@ -4712,7 +4712,7 @@ class WhatsAppNumberCreate(BaseModel):
     access_token: str = Field(..., min_length=1, max_length=500)
     waba_id: str = Field(..., min_length=1)
     label: str = Field(..., min_length=1, max_length=100)
-    wa_sales_mode: Literal["human", "bot", "ai_agent"] = "human"
+    wa_sales_mode: Literal["human", "bot", "ai_agent", "event_funnel"] = "human"
 
 
 @router.post("/whatsapp-numbers", status_code=status.HTTP_201_CREATED)
@@ -4787,7 +4787,7 @@ def create_whatsapp_number(
 
 class WhatsAppNumberUpdate(BaseModel):
     label: Optional[str] = Field(None, max_length=100)
-    wa_sales_mode: Optional[Literal["human", "bot", "ai_agent"]] = None
+    wa_sales_mode: Optional[Literal["human", "bot", "ai_agent", "event_funnel"]] = None
 
 
 @router.patch("/whatsapp-numbers/{number_id}")

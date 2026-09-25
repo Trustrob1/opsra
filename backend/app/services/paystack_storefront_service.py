@@ -376,6 +376,10 @@ def mark_paid(db: Any, org_id: str, reference: str) -> None:
             lead_d = lead_d[0] if lead_d else None
         lead_d = lead_d or {}
         phone_number = (lead_d.get("whatsapp") or lead_d.get("phone") or "").strip()
+        # FUNNEL-1A: funnel payments get the funnel's own confirmation instead
+        from app.services import funnel_service
+        if phone_number and funnel_service.is_funnel_reference(db, org_id, reference):
+            phone_number = ""
         if phone_number:
             from app.services import whatsapp_service
             balance_due = progress["balance_due"] or 0
