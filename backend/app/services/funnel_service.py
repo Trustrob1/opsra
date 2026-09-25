@@ -1050,7 +1050,9 @@ def execute_step(db, funnel: dict, number_row: dict, reg: dict, plan: StepPlan, 
             return "skipped"
         _update_reg(db, reg, {"done_steps": list(reg.get("done_steps") or []) + [key]})
         return "raced"
-    if not log_event(db, funnel["org_id"], funnel["id"], reg["id"], "step_sent", key, {"channel": plan.channel}):
+    # FUNNEL-1B: template sends get their own event type so the template budget can count them
+    sent_type = "template_sent" if plan.channel == "template" else "step_sent"
+    if not log_event(db, funnel["org_id"], funnel["id"], reg["id"], sent_type, key, {"channel": plan.channel}):
         _update_reg(db, reg, {"done_steps": list(reg.get("done_steps") or []) + [key]})
         return "raced"
     _update_reg(db, reg, {"done_steps": list(reg.get("done_steps") or []) + [key]})

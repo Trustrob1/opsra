@@ -123,6 +123,10 @@ class FunnelSettings(BaseModel):
     respect_quiet_hours: bool = True
     stale_after_minutes: int = Field(360, ge=15, le=48 * 60)
     convert_on_paid: bool = False
+    # FUNNEL-1B: dashboard pause flag + optional template budget cap
+    pause_spend_threshold: float = Field(10000, ge=0, le=100_000_000)
+    template_cost_estimate: Optional[float] = Field(None, gt=0, le=100_000)   # ₦ per template message
+    template_budget_cap: Optional[float] = Field(None, gt=0, le=100_000_000)  # ₦ total; cap is ON only when both are set
 
 
 class _FunnelBase(BaseModel):

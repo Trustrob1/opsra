@@ -34,6 +34,7 @@ load_dotenv()  # Pattern 29
 from app.workers.celery_app import celery_app  # noqa: E402
 from app.database import get_supabase  # noqa: E402
 from app.services import funnel_service  # noqa: E402
+from app.services import funnel_tools_service  # noqa: E402  (FUNNEL-1B)
 from app.utils.org_gates import is_org_active, is_quiet_hours  # noqa: E402
 from app.services.monitoring_service import write_worker_log  # noqa: E402
 
@@ -44,7 +45,7 @@ def _sent_counts_last_24h(db, funnel_id: str, now: datetime) -> dict[str, int]:
     since = (now - timedelta(hours=24)).isoformat()
     rows = funnel_service._fetch_all(
         lambda: db.table("funnel_events").select("registration_id")
-        .eq("funnel_id", funnel_id).eq("type", "step_sent").gte("created_at", since)
+        .eq("funnel_id", funnel_id).in_("type", ["step_sent", "template_sent"]).gte("created_at", since)
     )
     counts: dict[str, int] = {}
     for r in rows:
@@ -79,6 +80,7 @@ def process_funnel(db, funnel: dict, now: datetime) -> dict:
         return summary
     quiet = is_quiet_hours(org, now)
     sent_24h = _sent_counts_last_24h(db, funnel["id"], now)
+    budget = funnel_tools_service.TemplateBudget.load(db, funnel)   # FUNNEL-1B optional cap
 
     regs = funnel_service._fetch_all(
         lambda: db.table("funnel_registrations").select("*")
@@ -96,7 +98,12 @@ def process_funnel(db, funnel: dict, now: datetime) -> dict:
             if plan.action == "wait":
                 summary["waiting"] += 1
                 continue
+            if plan.action == "send" and plan.channel == "template" and not budget.allow():
+                plan = funnel_service.StepPlan("skip", plan.step, reason="budget_cap")
+                budget.notify_reached(db)
             result = funnel_service.execute_step(db, funnel, number_row, reg, plan, now)
+            if result == "sent" and plan.channel == "template":
+                budget.consume()
             if result == "sent":
                 summary["sent"] += 1
             elif result == "failed":
@@ -125,6 +132,14 @@ def run_funnel_sequence() -> dict:
             except Exception as exc:  # S14
                 total["failed"] += 1
                 logger.warning("funnel_worker: funnel %s failed: %s", funnel.get("id"), exc)
+            # FUNNEL-1B: ad-hoc broadcasts (own try — S14)
+            try:
+                b = funnel_tools_service.drain_broadcasts(db, funnel, datetime.now(timezone.utc))
+                total["sent"] += b["sent"]
+                total["failed"] += b["failed"]
+            except Exception as exc:
+                total["failed"] += 1
+                logger.warning("funnel_worker: broadcasts for funnel %s failed: %s", funnel.get("id"), exc)
         write_worker_log(
             db, worker_name="funnel_worker", status="passed",
             items_processed=total["sent"] + total["skipped"], items_failed=total["failed"],

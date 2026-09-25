@@ -196,6 +196,7 @@ from app.routers import business_activities_report as business_activities_report
 from app.routers import digital_campaigns as digital_campaigns_router
 from app.routers import funnels as funnels_router                  # FUNNEL-1
 from app.routers import public_funnels as public_funnels_router    # FUNNEL-1A
+from app.routers import funnel_tools as funnel_tools_router        # FUNNEL-1B
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -234,6 +235,7 @@ app.include_router(business_activities_report_router.router, prefix="/api/v1", t
 app.include_router(digital_campaigns_router.router, prefix="/api/v1", tags=["digital-campaigns"])
 app.include_router(funnels_router.router,        prefix="/api/v1", tags=["funnels"])          # FUNNEL-1
 app.include_router(public_funnels_router.router, prefix="",        tags=["public_funnels"])   # FUNNEL-1A — GET /f/{token}
+app.include_router(funnel_tools_router.router,   prefix="/api/v1", tags=["funnel_tools"])     # FUNNEL-1B
 
 
 # ---------------------------------------------------------------------------
