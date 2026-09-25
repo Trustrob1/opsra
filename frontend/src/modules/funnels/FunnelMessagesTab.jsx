@@ -136,7 +136,7 @@ export default function FunnelMessagesTab({ funnel, isActive, canEdit, isMobile,
   const allTemplateNames = templates.map((t) => t.name)
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 340px', gap: 20, alignItems: 'start', paddingBottom: dirty ? 70 : 0 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 340px', gap: 20, alignItems: 'start', paddingBottom: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
         <Card>
           <SectionTitle title="Placeholders" hint="Click a message box, then a placeholder to insert it. Lines whose placeholders are all empty (e.g. no bonus link) are dropped automatically." />
@@ -222,8 +222,8 @@ export default function FunnelMessagesTab({ funnel, isActive, canEdit, isMobile,
       </div>
 
       {dirty && canEdit && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, background: '#fff', borderTop: `1px solid ${T.line}`,
-          boxShadow: '0 -4px 16px rgba(10,26,36,.08)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
+        <div style={{ position: 'sticky', bottom: 12, gridColumn: '1 / -1', zIndex: 20, background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12,
+          boxShadow: '0 6px 24px rgba(10,26,36,.12)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: T.soft, marginRight: 'auto' }}>Unsaved changes</span>
           <Button onClick={() => { setDirty(false); setMsgs(funnel.effective_messages || {}); setSteps(funnel.effective_sequence || []) }}>Discard</Button>
           <Button variant="primary" icon={Save} loading={saving} onClick={save}>Save messages</Button>

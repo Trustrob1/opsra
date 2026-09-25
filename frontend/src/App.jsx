@@ -1068,7 +1068,7 @@ function AppShell() {
         {view === 'superadmin_health' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><HealthDashboard /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

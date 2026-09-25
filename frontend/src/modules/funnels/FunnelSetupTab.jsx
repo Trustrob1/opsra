@@ -136,7 +136,7 @@ export default function FunnelSetupTab({ funnel, isActive, canEdit, isMobile, sh
   const ro = !canEdit
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 320px', gap: 20, alignItems: 'start', paddingBottom: dirty ? 70 : 0 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 320px', gap: 20, alignItems: 'start', paddingBottom: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
         <Card>
           <SectionTitle title="Event" />
@@ -288,8 +288,8 @@ export default function FunnelSetupTab({ funnel, isActive, canEdit, isMobile, sh
       </div>
 
       {dirty && canEdit && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, background: '#fff', borderTop: `1px solid ${T.line}`,
-          boxShadow: '0 -4px 16px rgba(10,26,36,.08)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
+        <div style={{ position: 'sticky', bottom: 12, gridColumn: '1 / -1', zIndex: 20, background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12,
+          boxShadow: '0 6px 24px rgba(10,26,36,.12)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: T.soft, marginRight: 'auto' }}>Unsaved changes</span>
           <Button onClick={() => { setDirty(false); setV(fromFunnel(funnel)); setError(null) }}>Discard</Button>
           <Button variant="primary" icon={Save} loading={saving} onClick={save}>Save setup</Button>

@@ -68,7 +68,7 @@ export default function EventFunnelsModule({ user, onOpenLead }) {
 
   if (selectedId) {
     return (
-      <div className="fnl" style={{ fontFamily: 'inherit' }}>
+      <div className="fnl" style={{ fontFamily: 'inherit', padding: isMobile ? '16px 14px 24px' : '24px 28px 40px' }}>
         <FunnelDetail id={selectedId} canEdit={canEdit} isMobile={isMobile} showToast={showToast}
           onBack={() => { setSelectedId(null); loadList() }} onOpenLead={onOpenLead}
           onOpenFunnel={(fid) => setSelectedId(fid)} />
@@ -78,7 +78,7 @@ export default function EventFunnelsModule({ user, onOpenLead }) {
   }
 
   return (
-    <div className="fnl" style={{ fontFamily: 'inherit' }}>
+    <div className="fnl" style={{ fontFamily: 'inherit', padding: isMobile ? '16px 14px 24px' : '24px 28px 40px' }}>
       <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: isMobile ? 21 : 24, fontWeight: 700, color: T.ink }}>Event Funnels</h1>
