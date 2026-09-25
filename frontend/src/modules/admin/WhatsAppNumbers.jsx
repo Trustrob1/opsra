@@ -19,6 +19,7 @@ const MODE_LABELS = {
   human: { label: 'Human', color: '#0e6c7e', bg: '#f0f9fa' },
   bot: { label: 'Bot', color: '#7c3aed', bg: '#f5f3ff' },
   ai_agent: { label: 'AI Agent', color: '#d97706', bg: '#fffbeb' },
+  event_funnel: { label: 'Event Funnel', color: '#0f766e', bg: '#ecfdf5' },   // FUNNEL-1B
 }
 
 const inputStyle = {
@@ -255,6 +256,7 @@ export default function WhatsAppNumbers() {
               <option value="human">Human</option>
               <option value="bot">Bot</option>
               <option value="ai_agent">AI Agent</option>
+              <option value="event_funnel">Event Funnel</option>
             </select>
           </div>
           {form.wa_sales_mode === 'ai_agent' && (

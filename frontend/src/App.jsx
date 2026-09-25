@@ -64,11 +64,12 @@ import { _supabase } from './services/api'
 import PublicCatalogShell from './catalog/PublicCatalogShell'
 import ReportsModule from './modules/reports/ReportsModule'
 import PerformanceModule from './modules/performance/PerformanceModule'
+import EventFunnelsModule from './modules/funnels/EventFunnelsModule'   // FUNNEL-1B
 import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft, FolderKanban, Layers,
+  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 
@@ -94,6 +95,7 @@ const NAV = [
   { id: 'leads',    label: 'Lead Center', icon: 'leads', module: '01', active: true, group: 'sales_marketing' },
   { id: 'conversations', label: 'Conversations',      icon: 'conversations', module: '02',  active: true, group: 'sales_marketing' },
   { id: 'whatsapp', label: 'WhatsApp Engine',      icon: 'whatsapp', module: '03', active: true, group: 'sales_marketing' },
+  { id: 'event-funnels', label: 'Event Funnels', icon: 'event-funnels', module: '13', active: true, group: 'sales_marketing' },   // FUNNEL-1B
   { id: 'business-activities', label: 'Business Activities', icon: 'business-activities', module: '12', active: true, group: 'business_activities' },
   { id: 'support',  label: 'Support Tickets',      icon: 'support', module: '04', active: true, group: 'operations' },
   { id: 'renewal',  label: 'Client Subscription',     icon: 'renewal', module: '05', active: true, group: 'operations' },
@@ -127,6 +129,7 @@ const NAV_ICONS = {
   reports:       ClipboardList,
   'project-planner': FolderKanban,
   'business-activities': Layers,
+  'event-funnels': CalendarClock,   // FUNNEL-1B
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -607,6 +610,8 @@ function AppShell() {
   const _departmentId = user?.roles?.department_id ?? null
   const visibleNav = NAV.filter(item => {
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
+    // FUNNEL-1B: Event Funnels — owner / ops_manager (edit) and admin (read-only)
+    if (item.id === 'event-funnels' && !['owner', 'ops_manager', 'admin'].includes(_userTemplate)) return false
     if (item.id === 'reports' && !['owner', 'ops_manager'].includes(_userTemplate) && !_departmentId) return false
     // Project Planner: owner + ops_manager only — a planning tool for leadership, not day-to-day staff
     if (item.id === 'project-planner' && !['owner', 'ops_manager'].includes(_userTemplate)) return false
@@ -1030,6 +1035,9 @@ function AppShell() {
         )}
         {view === 'business-activities' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><BusinessActivitiesModule user={user} /></div>
+        )}
+        {view === 'event-funnels' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><EventFunnelsModule user={user} onOpenLead={openLeadProfile} /></div>
         )}
         {view === 'tasks' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} onOpenLead={(leadId) =>openLeadProfile(leadId)} /></div>
