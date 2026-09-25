@@ -388,7 +388,10 @@ async def provision_organisation(
         # ------------------------------------------------------------------
         # Step 6 — create users row
         # ------------------------------------------------------------------
-        db.table("users").insert({
+        # The on_auth_user_created DB trigger has already inserted a bare
+        # public.users row for this auth user (org_id null) — upsert fills it in
+        # instead of colliding on users_pkey. Same approach as admin.py create-user.
+        db.table("users").upsert({
             "id": auth_user_id,
             "org_id": org_id,
             "role_id": owner_role_id,
@@ -396,7 +399,7 @@ async def provision_organisation(
             "full_name": payload.owner_full_name,
             "whatsapp_number": payload.owner_whatsapp,
             "is_active": True,
-        }).execute()
+        }, on_conflict="id").execute()
 
         # ------------------------------------------------------------------
         # Step 7 — return
