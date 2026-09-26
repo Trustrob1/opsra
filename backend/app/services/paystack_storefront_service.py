@@ -136,7 +136,10 @@ def generate_payment_link(
         )
 
     lead = _get_lead_for_payment(db, org_id, lead_id)
-    email = (lead.get("email") or "").strip() or f"{lead_id[:8]}@opsra.placeholder"
+    # Paystack rejects unknown domain endings (e.g. ".placeholder") — use the reserved
+    # example.com domain for leads with no email yet. Unique per lead so Paystack
+    # keeps separate customer records.
+    email = (lead.get("email") or "").strip() or f"lead-{lead_id[:8]}@example.com"
     reference = f"opsra_{org_id[:8]}_{lead_id[:8]}_{uuid.uuid4().hex[:8]}"
 
     try:
