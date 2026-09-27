@@ -564,6 +564,11 @@ def _lookup_org_by_phone_number_id(db, phone_number_id: str) -> Optional[str]:
                 return row["id"]
     except Exception as exc:
         logger.warning("Org lookup by phone_number_id failed: %s", exc)
+    # Fallback: secondary numbers (AI Agent / Event Funnel / extra numbers)
+    # live only in whatsapp_numbers, not on organisations.whatsapp_phone_id.
+    number_row = _lookup_whatsapp_number(db, phone_number_id)
+    if number_row and number_row.get("org_id"):
+        return number_row["org_id"]
     return None
 
 
