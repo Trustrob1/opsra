@@ -501,6 +501,66 @@ def _get_org_wa_credentials(db, org_id: str) -> tuple:
  
 
 
+def _get_lead_wa_credentials(db, org_id: str, lead_id: Optional[str]) -> tuple:
+    """
+    WA-REPLY-NUMBER: Return (phone_id, access_token, waba_id) for the number a
+    lead is actually talking to, so manual replies go out on that number.
+
+    Today the only lead -> number link is an Event Funnel registration:
+    funnel_registrations.lead_id -> event_funnels.whatsapp_number_id -> whatsapp_numbers.
+    Anything else (no lead, no registration, number missing a token) falls back
+    to the org's main number via _get_org_wa_credentials.
+
+    S14: never raises.
+    """
+    if lead_id:
+        try:
+            reg = (
+                db.table("funnel_registrations")
+                .select("funnel_id, last_inbound_at")
+                .eq("org_id", org_id)
+                .eq("lead_id", str(lead_id))
+                .order("last_inbound_at", desc=True, nullsfirst=False)
+                .limit(1)
+                .execute()
+            )
+            reg_rows = reg.data or []
+            funnel_id = reg_rows[0].get("funnel_id") if reg_rows else None
+            if funnel_id:
+                fun = (
+                    db.table("event_funnels")
+                    .select("whatsapp_number_id")
+                    .eq("id", funnel_id)
+                    .eq("org_id", org_id)
+                    .limit(1)
+                    .execute()
+                )
+                fun_rows = fun.data or []
+                number_id = fun_rows[0].get("whatsapp_number_id") if fun_rows else None
+                if number_id:
+                    num = (
+                        db.table("whatsapp_numbers")
+                        .select("phone_id, access_token, waba_id")
+                        .eq("id", number_id)
+                        .eq("org_id", org_id)
+                        .limit(1)
+                        .execute()
+                    )
+                    num_rows = num.data or []
+                    if num_rows:
+                        n = num_rows[0]
+                        phone_id = (n.get("phone_id") or "").strip()
+                        token = (n.get("access_token") or "").strip()
+                        if phone_id and token:
+                            return phone_id, token, n.get("waba_id")
+        except Exception as exc:
+            logger.warning(
+                "_get_lead_wa_credentials failed org=%s lead=%s: %s — using org number",
+                org_id, lead_id, exc,
+            )
+    return _get_org_wa_credentials(db, org_id)
+
+
 def _call_meta_send(phone_id: str, meta_payload: dict, token: str | None = None) -> dict:
     """
     Send a WhatsApp message via Meta Cloud API.
@@ -850,7 +910,7 @@ def send_whatsapp_message(
         )
 
     # ── Resolve phone_id and token from org ───────────────────────────────
-    phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+    phone_id, access_token, _ = _get_lead_wa_credentials(db, org_id, payload.lead_id)
     phone_id = phone_id or ""
 
     # ── Resolve recipient WhatsApp number and name ───────────────────────
@@ -1938,7 +1998,7 @@ def _dispatch_outbox_row(
     now_ts         = _now_iso()
 
     # ── Resolve phone_id and token ────────────────────────────────────────
-    phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+    phone_id, access_token, _ = _get_lead_wa_credentials(db, org_id, lead_id_str)
     phone_id = phone_id or ""
 
     # ── Resolve recipient number ──────────────────────────────────────────
@@ -4208,7 +4268,7 @@ def send_whatsapp_media_message(
         )
 
     # ── Resolve org WhatsApp credentials ──────────────────────────────────
-    phone_id, access_token, _ = _get_org_wa_credentials(db, org_id)
+    phone_id, access_token, _ = _get_lead_wa_credentials(db, org_id, lead_id)
     phone_id = (phone_id or "").strip()
 
     # ── Resolve recipient number and name ──────────────────────────────────
