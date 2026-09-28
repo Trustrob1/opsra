@@ -366,7 +366,9 @@ function EditorView({ token, siteId, onBack, showToast }) {
         reliable way to do this without a JS resize listener.
       */}
       <style>{`
-        .bp-pane[data-active="false"]{display:none}
+        .bp-editor-shell{display:flex;flex-direction:column;gap:16px}
+        .bp-pane{display:none}
+        .bp-pane[data-active="true"]{display:flex;flex-direction:column;gap:16px}
         .bp-preview-pane{border:1px solid ${T.line};border-radius:10px;overflow:hidden;background:#fff}
         .bp-preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid ${T.line}}
         .bp-preview-frame-wrap{height:62vh;overflow:auto;background:#F6F8F9}
@@ -374,7 +376,7 @@ function EditorView({ token, siteId, onBack, showToast }) {
         @media (min-width:980px){
           .bp-editor-shell{display:grid;grid-template-columns:minmax(380px,1fr) minmax(360px,480px);align-items:start;gap:24px}
           .bp-mobile-tabs{display:none}
-          .bp-pane[data-active="false"]{display:block}
+          .bp-pane{display:flex !important;flex-direction:column;gap:16px}
           .bp-preview-pane{position:sticky;top:16px;max-height:calc(100vh - 32px)}
           .bp-preview-frame-wrap{height:calc(100vh - 190px)}
         }
@@ -402,8 +404,8 @@ function EditorView({ token, siteId, onBack, showToast }) {
           options={[{ value: 'edit', label: 'Edit' }, { value: 'preview', label: 'Preview' }]} ariaLabel="Edit or preview" />
       </div>
 
-      <div className="bp-editor-shell" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div className="bp-pane" data-active={mobileTab === 'edit'} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="bp-editor-shell">
+        <div className="bp-pane" data-active={mobileTab === 'edit'}>
           {/* Business and Hero start open (the two you touch almost every visit); the rest start
               collapsed so the form doesn't read as one very long scroll - click a title to open it. */}
           <BusinessCard content={content} setContent={setContent} defaultOpen />
