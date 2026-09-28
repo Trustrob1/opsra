@@ -199,7 +199,7 @@ def patch_settings(payload: dict, org=Depends(get_current_org), db=Depends(get_s
     updates = dict(payload or {})
     updates.pop("org_id", None)
     updates["updated_at"] = _now_iso()
-    existing = _one((db.table("site_builder_settings").select("id").eq("org_id", org["org_id"]).limit(1).execute()).data)
+    existing = _one((db.table("site_builder_settings").select("org_id").eq("org_id", org["org_id"]).limit(1).execute()).data)
     if existing:
         db.table("site_builder_settings").update(updates).eq("org_id", org["org_id"]).execute()
     else:
