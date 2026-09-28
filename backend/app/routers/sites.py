@@ -31,12 +31,14 @@ from app.models.common import ok
 from app.models.sites import (
     Recipe,
     SiteAssetCreate,
+    SiteBriefFormCreate,
     SiteContentPatch,
     SiteContentV1,
     SiteCreate,
     SitePresetCreate,
     SitePresetUpdate,
     SiteRecipePatch,
+    generate_form_token,
     slugify_business_name,
 )
 from app.services import site_renderer
@@ -509,3 +511,69 @@ async def upload_asset(
 def secrets_token() -> str:
     import secrets
     return secrets.token_hex(4)
+
+
+# ── Brief forms (internal by-hand creation — SITE-1B) ────────────────────
+# The WhatsApp-driven creation (builder replies FORM / NEW → option 1 or 2)
+# lives in services/site_chat_service.py and inserts the same row shape
+# directly; these routes are for Trust creating a link by hand ahead of a
+# closed deal, or re-listing/cancelling links from the (future) portal.
+
+import os as _os
+
+
+def _form_public_url(raw_token: str) -> str:
+    frontend_base = _os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    return f"{frontend_base}/f/{raw_token}"
+
+
+@router.get("/sites/forms")
+def list_forms(
+    builder_id: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    org=Depends(get_current_org), db=Depends(get_supabase),
+):
+    _require(org, _READ_ROLES)
+    org_id = org["org_id"]
+    q = (db.table("site_brief_forms")
+         .select("id, builder_id, site_id, audience, preset_id, status, expires_at, opened_at, last_saved_at, submitted_at, submit_count, client_label, created_at")
+         .eq("org_id", org_id))
+    if builder_id:
+        q = q.eq("builder_id", builder_id)
+    if status_filter:
+        q = q.eq("status", status_filter)
+    rows = q.order("created_at", desc=True).execute().data or []
+    return ok(data=rows)
+
+
+@router.post("/sites/forms", status_code=status.HTTP_201_CREATED)
+def create_form(payload: SiteBriefFormCreate, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _WRITE_ROLES)
+    org_id = org["org_id"]
+    builder = _one((db.table("site_builders").select("id, phone_number").eq("id", payload.builder_id).eq("org_id", org_id).execute()).data)
+    if not builder:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Builder not found"})
+    if payload.preset_id:
+        _get_preset(db, org_id, payload.preset_id)
+
+    raw_token, token_hash = generate_form_token()
+    row = {
+        "org_id": org_id, "builder_id": payload.builder_id, "audience": payload.audience,
+        "token_hash": token_hash, "preset_id": payload.preset_id, "answers": {},
+        "status": "open", "expires_at": (datetime.now(timezone.utc) + timedelta(days=14)).isoformat(),
+        "client_label": payload.client_label, "created_at": _now_iso(), "updated_at": _now_iso(),
+    }
+    res = db.table("site_brief_forms").insert(row).execute()
+    form = _one(res.data) or row
+    return ok(data={**form, "url": _form_public_url(raw_token)}, message="Form link created — this is the only time the link is shown in full.")
+
+
+@router.post("/sites/forms/{form_id}/revoke")
+def revoke_form(form_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _WRITE_ROLES)
+    org_id = org["org_id"]
+    existing = _one((db.table("site_brief_forms").select("id").eq("id", form_id).eq("org_id", org_id).execute()).data)
+    if not existing:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Form not found"})
+    db.table("site_brief_forms").update({"status": "revoked", "updated_at": _now_iso()}).eq("id", form_id).eq("org_id", org_id).execute()
+    return ok(data={"id": form_id, "status": "revoked"}, message="Link cancelled")

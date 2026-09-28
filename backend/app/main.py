@@ -200,6 +200,7 @@ from app.routers import public_funnels as public_funnels_router    # FUNNEL-1A
 from app.routers import funnel_tools as funnel_tools_router        # FUNNEL-1B
 from app.routers import sites as sites_router                      # SITE-1A
 from app.routers import public_sites as public_sites_router        # SITE-1A — GET /s/{slug}
+from app.routers import public_forms as public_forms_router        # SITE-1B — /api/v1/forms/{token}
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -241,6 +242,7 @@ app.include_router(public_funnels_router.router, prefix="",        tags=["public
 app.include_router(funnel_tools_router.router,   prefix="/api/v1", tags=["funnel_tools"])     # FUNNEL-1B
 app.include_router(sites_router.router,          prefix="/api/v1", tags=["sites"])             # SITE-1A
 app.include_router(public_sites_router.router,   prefix="",        tags=["public_sites"])      # SITE-1A — GET /s/{slug}
+app.include_router(public_forms_router.router,   prefix="/api/v1", tags=["public_forms"])      # SITE-1B — /forms/{token}
 
 
 # ---------------------------------------------------------------------------

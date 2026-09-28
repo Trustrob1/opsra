@@ -20,6 +20,7 @@ const MODE_LABELS = {
   bot: { label: 'Bot', color: '#7c3aed', bg: '#f5f3ff' },
   ai_agent: { label: 'AI Agent', color: '#d97706', bg: '#fffbeb' },
   event_funnel: { label: 'Event Funnel', color: '#0f766e', bg: '#ecfdf5' },   // FUNNEL-1B
+  site_builder: { label: 'Site Builder', color: '#0369a1', bg: '#eff6ff' },   // SITE-1B
 }
 
 const inputStyle = {
@@ -257,11 +258,17 @@ export default function WhatsAppNumbers() {
               <option value="bot">Bot</option>
               <option value="ai_agent">AI Agent</option>
               <option value="event_funnel">Event Funnel</option>
+              <option value="site_builder">Site Builder</option>
             </select>
           </div>
           {form.wa_sales_mode === 'ai_agent' && (
             <p style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', padding: '8px 10px', borderRadius: 8, margin: '0 0 10px' }}>
               AI Agent mode requires qualifying criteria to already be set in AI Agent Settings, or this will be rejected.
+            </p>
+          )}
+          {form.wa_sales_mode === 'site_builder' && (
+            <p style={{ fontSize: 12, color: '#075985', background: '#eff6ff', padding: '8px 10px', borderRadius: 8, margin: '0 0 10px' }}>
+              Site Builder mode routes inbound messages to the WhatsApp website-builder bot (Sites → Settings must be enabled for this org).
             </p>
           )}
           {error && <p style={{ color: ds.red, fontSize: 12, margin: '0 0 10px' }}>⚠ {error}</p>}

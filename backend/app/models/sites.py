@@ -284,3 +284,55 @@ def slugify_business_name(name: str) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     base = re.sub(r"-{2,}", "-", base)
     return (base or "site")[:40]
+
+
+# ─────────────────────────── Brief forms (site_brief_forms, SITE-1B) ──────────────────────
+
+import hashlib
+import secrets as _secrets
+
+FormAudience = Literal["builder", "client"]
+FormStatus = Literal["open", "submitted", "expired", "revoked"]
+
+
+def generate_form_token() -> tuple[str, str]:
+    """
+    Spec §18: form tokens are random, hashed, never stored raw.
+    Returns (raw_token, token_hash) — the raw token is only ever handed back to the
+    caller once (to build the `/f/{token}` link); only the SHA-256 hex digest is
+    persisted in site_brief_forms.token_hash.
+    """
+    raw = _secrets.token_urlsafe(32)
+    return raw, hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def hash_form_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+class SiteBriefFormCreate(BaseModel):
+    """Internal, by-hand form creation (routers/sites.py) — the WhatsApp-driven creation
+    in site_chat_service builds the same row shape directly."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    builder_id: str
+    audience: FormAudience = "builder"
+    preset_id: Optional[str] = None
+    client_label: Optional[str] = Field(None, max_length=120)
+
+
+class SiteBriefFormAnswersPatch(BaseModel):
+    """PATCH /api/v1/forms/{token} — autosave. Merged into answers, never replaced wholesale,
+    so an interrupted autosave never wipes earlier progress."""
+    answers: dict = Field(default_factory=dict)
+    preset_id: Optional[str] = None
+    # Honeypot — spec §18. Real users never see or fill this field; the public frontend
+    # renders it visually hidden. Any non-empty value here is treated as a bot and the
+    # request is accepted (200) but silently dropped server-side.
+    website: Optional[str] = Field(None, max_length=200)
+
+
+class SiteBriefFormSubmit(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    answers: dict = Field(default_factory=dict)
+    client_business_name: str = Field(..., min_length=1, max_length=255)
+    website: Optional[str] = Field(None, max_length=200)  # honeypot, see above

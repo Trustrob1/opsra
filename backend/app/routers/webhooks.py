@@ -1263,6 +1263,47 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             )
             return
 
+    # ── SITE-1B: Site Builder numbers ────────────────────────────────────
+    # Same early-return pattern as ai_agent/event_funnel above. The org is
+    # ALWAYS the number's own org — never the sender-lookup org (XORG-safe,
+    # spec F2). Member gate, menu, brief form links and chat questions all
+    # live in site_chat_service — this block only routes and returns.
+    if number_row and number_row.get("wa_sales_mode") == "site_builder":
+        _site_org_id = number_row.get("org_id")
+        if _site_org_id:
+            if _is_org_owner(db, _site_org_id, sender_phone):
+                logger.info("[OQ] owner message org=%s — owner query handler (Site Builder number)", _site_org_id)
+                from app.services.owner_query_service import handle_owner_query
+                handle_owner_query(
+                    db=db, org_id=_site_org_id,
+                    message_text=(content or ""),
+                    sender_number=sender_phone,
+                )
+                return
+            if msg_type == "text" and content:
+                if _handle_opt_keywords(db, content, sender_phone, _site_org_id, customer_id, lead_id):
+                    return
+            try:
+                from app.services import site_chat_service
+                site_chat_service.handle_inbound(
+                    db=db, number_row=number_row, sender_phone=sender_phone,
+                    contact_name=contact_name, msg_type=msg_type, content=content,
+                    msg_id=msg_id, interactive_payload=interactive_payload,
+                    image_media_id=(locals().get("_image_media_id") if msg_type == "image" else None),
+                    image_mime=(locals().get("_image_mime") if msg_type == "image" else None),
+                )
+            except Exception:
+                # S14: never let a site-builder bot bug break the webhook itself.
+                logger.exception("[SITE-1B] site_chat_service.handle_inbound failed org=%s phone=%s", _site_org_id, sender_phone)
+                from app.services.whatsapp_service import send_agent_text_message
+                send_agent_text_message(
+                    db=db, org_id=_site_org_id, phone_number=sender_phone, lead_id=lead_id,
+                    message="Sorry — something went wrong on our end. Please try again in a moment, or reply HUMAN to talk to someone.",
+                    phone_id=number_row.get("phone_id"),
+                    access_token=number_row.get("access_token"),
+                )
+            return
+
     # ── FUNNEL-1A: Event Funnel numbers ─────────────────────────────────
     # Same early-return pattern as ai_agent above. The org is ALWAYS the
     # number's own org — never the sender-lookup org (XORG-safe, spec F2).
