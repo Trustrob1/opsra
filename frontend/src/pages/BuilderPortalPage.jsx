@@ -1,0 +1,670 @@
+/**
+ * frontend/src/pages/BuilderPortalPage.jsx
+ * SITE-2B (frontend) — the builder web editor/portal. Spec §10.
+ *
+ * Standalone page — no AppShell, no sidebar, no staff auth. Registered in
+ * App.jsx via URL pattern match: `/b/*` (same family as SiteBriefFormPage's
+ * `/f/:token` and PublicLogPage's `/log/:token`).
+ *
+ * Entry point is always a magic link: `/b/login?t=<token>`. This component
+ * reads the `t` query param itself (no react-router in this app — see
+ * App.jsx's own routing comment), exchanges it once for a builder session,
+ * then owns every other screen (My sites / Editor / Account) as in-memory
+ * view state — a small self-contained SPA, the same shape as App.jsx's own
+ * Zustand-view-state pattern but scoped locally since nothing here needs to
+ * be shared outside this page.
+ *
+ * SECURITY (mirrors Technical Spec §11.1 for the staff app): the builder JWT
+ * lives in React state only, never localStorage/sessionStorage. A page
+ * refresh loses the session by design — same trade-off the staff app makes.
+ * Since the only way in is a fresh magic link, and links are single-use,
+ * a refreshed/bookmarked `/b/login` with no `t=` (or an already-used one)
+ * correctly lands on the "ask for a new link" error state rather than
+ * silently failing.
+ *
+ * Content-editing cards deliberately are NOT shared with
+ * modules/sites/SiteEditorPanel.jsx (the staff editor) — that file is already
+ * tested and deployed; duplicating its ~9 small card components here is a
+ * safer trade than refactoring it mid-flight. Both read/write the exact same
+ * `content`/`recipe` JSON shape (models/sites.py) so they stay compatible by
+ * construction, not by shared code.
+ */
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ArrowLeft, Building2, Eye, ExternalLink, ImagePlus, LogOut, Plus,
+  RefreshCw, Save, Trash2, Undo2, User,
+} from 'lucide-react'
+import {
+  exchangeBuilderToken, getMyAccount, updateMyAccount, listMySites, getMySite,
+  patchMySiteContent, patchMySiteRecipe, renderMySite, undoMySite, uploadMySiteAsset, errorMessage,
+} from '../services/builder_portal.service'
+import { T, INPUT, TEXTAREA, dateTime, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
+import { Card, Button, Badge, Notice, Spinner, Field, Segmented, Modal, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
+
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+export default function BuilderPortalPage() {
+  const [session, setSession] = useState(null)      // { token, builder }
+  const [stage, setStage] = useState('exchanging')   // exchanging | error | app
+  const [error, setError] = useState('')
+  const [view, setView] = useState('mysites')        // mysites | editor | account
+  const [selectedSiteId, setSelectedSiteId] = useState(null)
+  const [toast, showToast] = useToast()
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const t = q.get('t')
+    if (!t) {
+      setError("This link is missing its access code. Please open the exact link your team sent you.")
+      setStage('error')
+      return
+    }
+    exchangeBuilderToken(t)
+      .then((data) => {
+        setSession({ token: data.access_token, builder: data.builder })
+        setStage('app')
+      })
+      .catch((e) => {
+        setError(errorMessage(e, "This link isn't valid — ask for a new one."))
+        setStage('error')
+      })
+  }, [])
+
+  useEffect(() => {
+    if (document.getElementById('bp-keyframes')) return
+    const style = document.createElement('style')
+    style.id = 'bp-keyframes'
+    style.textContent = `
+      @keyframes bpspin { to { transform: rotate(360deg); } }
+      .spin { animation: bpspin 1s linear infinite; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    `
+    document.head.appendChild(style)
+  }, [])
+
+  function logOut() {
+    setSession(null)
+    setStage('error')
+    setError('You have been signed out. Ask your team for a fresh edit link when you need to come back.')
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#F5FAFB', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+      <Header builder={session?.builder} view={view} setView={setView} onBack={() => setSelectedSiteId(null)} onLogOut={logOut} showNav={stage === 'app'} />
+      <main style={{ maxWidth: 720, margin: '0 auto', padding: '20px 16px 60px' }}>
+        {stage === 'exchanging' && <Spinner label="Signing you in…" />}
+
+        {stage === 'error' && (
+          <Card style={{ marginTop: 12 }}>
+            <Notice tone="bad">{error}</Notice>
+          </Card>
+        )}
+
+        {stage === 'app' && view === 'mysites' && (
+          <MySitesView token={session.token} onOpen={(id) => { setSelectedSiteId(id); setView('editor') }} showToast={showToast} />
+        )}
+
+        {stage === 'app' && view === 'editor' && selectedSiteId && (
+          <EditorView token={session.token} siteId={selectedSiteId} onBack={() => setView('mysites')} showToast={showToast} />
+        )}
+
+        {stage === 'app' && view === 'account' && (
+          <AccountView token={session.token} builder={session.builder}
+            onUpdated={(b) => setSession((s) => ({ ...s, builder: b }))} showToast={showToast} />
+        )}
+      </main>
+      <Toast t={toast} />
+    </div>
+  )
+}
+
+function Header({ builder, view, setView, onBack, onLogOut, showNav }) {
+  return (
+    <header style={{ background: '#0a1f2e', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ fontFamily: "'Syne', system-ui, sans-serif", fontWeight: 800, fontSize: 17, color: '#1dc8a4', letterSpacing: '-0.4px' }}>
+        Opsra
+      </div>
+      <div style={{ fontSize: 12, color: '#9fb4c0' }}>Builder portal{builder?.full_name ? ` — ${builder.full_name}` : ''}</div>
+      {showNav && (
+        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+          <button type="button" onClick={() => { onBack(); setView('mysites') }}
+            style={navBtn(view === 'mysites')}>My sites</button>
+          <button type="button" onClick={() => setView('account')} style={navBtn(view === 'account')}>Account</button>
+          <button type="button" onClick={onLogOut}
+            style={{ ...navBtn(false), display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <LogOut size={13} aria-hidden="true" /> Sign out
+          </button>
+        </div>
+      )}
+    </header>
+  )
+}
+
+function navBtn(active) {
+  return {
+    border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+    background: active ? '#1dc8a4' : 'transparent', color: active ? '#0a1f2e' : '#c7d7de', fontFamily: 'inherit',
+  }
+}
+
+// ─────────────────────────────── My sites ───────────────────────────────
+
+function MySitesView({ token, onOpen, showToast }) {
+  const [sites, setSites] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    listMySites(token)
+      .then(setSites)
+      .catch((e) => setError(errorMessage(e, 'Could not load your sites.')))
+  }, [token])
+
+  if (error) return <Notice tone="bad">{error}</Notice>
+  if (sites === null) return <Spinner />
+
+  if (sites.length === 0) {
+    return (
+      <Card>
+        <Empty icon={Building2} title="No sites yet" text="Once a site has been started for one of your clients, it will show up here for you to edit." />
+      </Card>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {sites.map((s) => {
+        const st = SITE_STATUS[s.status] || SITE_STATUS.brief_in_progress
+        return (
+          <button key={s.id} type="button" onClick={() => onOpen(s.id)}
+            style={{ textAlign: 'left', background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12,
+              padding: 16, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.ink }}>{s.client_business_name}</p>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: T.muted }}>
+                {s.updated_at ? `Updated ${dateTime(s.updated_at)}` : null}
+              </p>
+            </div>
+            <Badge tone={st.tone}>{st.label}</Badge>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─────────────────────────────── Account ───────────────────────────────
+
+function AccountView({ token, builder, onUpdated, showToast }) {
+  const [fullName, setFullName] = useState(builder?.full_name || '')
+  const [businessName, setBusinessName] = useState(builder?.business_name || '')
+  const [email, setEmail] = useState(builder?.email || '')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      const row = await updateMyAccount(token, { full_name: fullName, business_name: businessName, email })
+      onUpdated(row)
+      showToast('Account updated')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not save your account.'), 'bad')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <SectionTitle title="Account" hint="Shown to your clients and used to reach you." />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Your name"><input style={INPUT} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
+        <Field label="Business name"><input style={INPUT} value={businessName} onChange={(e) => setBusinessName(e.target.value)} /></Field>
+        <Field label="Email"><input style={INPUT} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+        <Field label="Phone number" hint="Contact your team to change your WhatsApp number.">
+          <input style={{ ...INPUT, background: '#F5FAFB', color: T.muted }} value={builder?.phone_number || ''} disabled />
+        </Field>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <Button variant="primary" icon={User} loading={saving} onClick={save}>Save changes</Button>
+      </div>
+    </Card>
+  )
+}
+
+// ─────────────────────────────── Editor ───────────────────────────────
+
+function EditorView({ token, siteId, onBack, showToast }) {
+  const [site, setSite] = useState(null)
+  const [content, setContent] = useState(null)
+  const [recipe, setRecipe] = useState(null)
+  const [assetUrls, setAssetUrls] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [savingContent, setSavingContent] = useState(false)
+  const [savingRecipe, setSavingRecipe] = useState(false)
+  const [rendering, setRendering] = useState(false)
+  const [undoing, setUndoing] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const s = await getMySite(token, siteId)
+      setSite(s)
+      setContent(s.content)
+      setRecipe(s.recipe)
+      const urls = {}
+      for (const a of s.assets || []) urls[a.id] = a.public_url
+      setAssetUrls(urls)
+    } catch (e) {
+      setError(errorMessage(e, 'Could not load this site.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [token, siteId])
+
+  useEffect(() => { load() }, [load])
+
+  const saveContent = async () => {
+    setSavingContent(true)
+    try {
+      const s = await patchMySiteContent(token, siteId, content)
+      setSite(s)
+      showToast('Content saved — render to refresh the preview')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not save your changes.'), 'bad')
+    } finally {
+      setSavingContent(false)
+    }
+  }
+
+  const saveRecipe = async () => {
+    setSavingRecipe(true)
+    try {
+      const s = await patchMySiteRecipe(token, siteId, recipe)
+      setSite(s)
+      showToast('Design saved — render to refresh the preview')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not save your design.'), 'bad')
+    } finally {
+      setSavingRecipe(false)
+    }
+  }
+
+  const doRender = async () => {
+    setRendering(true)
+    try {
+      const s = await renderMySite(token, siteId)
+      setSite(s)
+      showToast('Preview rendered')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not render — check the fields above for errors.'), 'bad')
+    } finally {
+      setRendering(false)
+    }
+  }
+
+  const doUndo = async () => {
+    setUndoing(true)
+    try {
+      const s = await undoMySite(token, siteId)
+      setSite(s)
+      setContent(s.content)
+      setRecipe(s.recipe)
+      showToast('Last change undone')
+    } catch (e) {
+      showToast(errorMessage(e, 'Nothing to undo yet.'), 'bad')
+    } finally {
+      setUndoing(false)
+    }
+  }
+
+  const uploadFor = async (slot, file, onSet) => {
+    try {
+      const asset = await uploadMySiteAsset(token, siteId, slot, file)
+      setAssetUrls((m) => ({ ...m, [asset.id]: asset.public_url }))
+      onSet(asset.id)
+      showToast('Photo uploaded')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not upload this photo.'), 'bad')
+    }
+  }
+
+  if (loading) return <Spinner />
+  if (error) return (<><BackLink onBack={onBack} /><Notice tone="bad">{error}</Notice></>)
+  if (!site) return null
+  if (!content || !recipe) {
+    return (
+      <>
+        <BackLink onBack={onBack} />
+        <Notice tone="info">This site doesn't have its page content ready yet — check back once it's finished generating.</Notice>
+      </>
+    )
+  }
+
+  const st = SITE_STATUS[site.status] || SITE_STATUS.brief_in_progress
+  const previewUrl = `${BASE}/s/${site.slug}`
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <BackLink onBack={onBack} />
+      <header style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: T.ink }}>{site.client_business_name}</h1>
+        <Badge tone={st.tone}>{st.label}</Badge>
+      </header>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Button variant="secondary" icon={Eye} onClick={() => setPreviewOpen(true)} disabled={!site.rendered_html}>
+          {site.rendered_html ? 'View preview' : 'Render to preview'}
+        </Button>
+        <Button variant="secondary" icon={ExternalLink} onClick={() => window.open(previewUrl, '_blank', 'noopener')} disabled={!site.rendered_html}>
+          Open live preview
+        </Button>
+        <Button variant="primary" icon={RefreshCw} loading={rendering} onClick={doRender}>Render preview</Button>
+        <Button variant="secondary" icon={Undo2} loading={undoing} onClick={doUndo}>Undo last change</Button>
+      </div>
+      <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>
+        {site.updated_at ? `Last saved ${dateTime(site.updated_at)}` : null}
+      </p>
+
+      <BusinessCard content={content} setContent={setContent} />
+      <HeroCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />
+      <AboutCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />
+      <ItemsCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />
+      <CategoriesCard content={content} setContent={setContent} />
+      <ReviewsCard content={content} setContent={setContent} />
+      <HoursLocationCard content={content} setContent={setContent} />
+      <OrderSeoCard content={content} setContent={setContent} />
+
+      <div><Button variant="primary" icon={Save} loading={savingContent} onClick={saveContent}>Save content</Button></div>
+
+      <DesignCard recipe={recipe} setRecipe={setRecipe} />
+      <div><Button variant="primary" icon={Save} loading={savingRecipe} onClick={saveRecipe}>Save design</Button></div>
+
+      <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title="Preview" width={420}>
+        {site.rendered_html
+          ? <iframe title="Site preview" srcDoc={site.rendered_html} style={{ width: '100%', height: '70vh', border: `1px solid ${T.line}`, borderRadius: 8 }} />
+          : <p style={{ fontSize: 13, color: T.muted }}>Render the preview first.</p>}
+      </Modal>
+    </div>
+  )
+}
+
+function BackLink({ onBack }) {
+  return (
+    <button type="button" onClick={onBack}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 4px', border: 'none', background: 'none',
+        color: T.teal, fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>
+      <ArrowLeft size={15} aria-hidden="true" /> My sites
+    </button>
+  )
+}
+
+function PhotoField({ label, assetId, assetUrls, onPick }) {
+  const url = assetId ? assetUrls[assetId] : null
+  return (
+    <Field label={label}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {url
+          ? <img src={url} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', border: `1px solid ${T.line}` }} />
+          : <div style={{ width: 56, height: 56, borderRadius: 8, background: '#F1F6F8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ImagePlus size={18} color={T.muted} aria-hidden="true" />
+            </div>}
+        <label style={{ fontSize: 12.5, fontWeight: 600, color: T.teal, cursor: 'pointer' }}>
+          {assetId ? 'Replace photo' : 'Upload photo'}
+          <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPick(f) }} />
+        </label>
+      </div>
+    </Field>
+  )
+}
+
+function BusinessCard({ content, setContent }) {
+  const b = content.business
+  const set = (k) => (e) => setContent((c) => ({ ...c, business: { ...c.business, [k]: e.target.value } }))
+  return (
+    <Card>
+      <SectionTitle title="Business" />
+      <Grid2>
+        <Field label="Name"><input style={INPUT} value={b.name} onChange={set('name')} /></Field>
+        <Field label="City"><input style={INPUT} value={b.city} onChange={set('city')} /></Field>
+        <Field label="Tagline" style={{ gridColumn: '1 / -1' }}><input style={INPUT} value={b.tagline} onChange={set('tagline')} /></Field>
+        <Field label="WhatsApp number"><input style={INPUT} value={b.whatsapp_e164} onChange={set('whatsapp_e164')} /></Field>
+        <Field label="Phone (display)"><input style={INPUT} value={b.phone_display} onChange={set('phone_display')} /></Field>
+        <Field label="Instagram handle"><input style={INPUT} value={b.instagram} onChange={set('instagram')} /></Field>
+        <Field label="Delivery note"><input style={INPUT} value={b.delivery_note} onChange={set('delivery_note')} /></Field>
+      </Grid2>
+    </Card>
+  )
+}
+
+function HeroCard({ content, setContent, assetUrls, onUpload }) {
+  const h = content.hero
+  const set = (k) => (e) => setContent((c) => ({ ...c, hero: { ...c.hero, [k]: e.target.value } }))
+  return (
+    <Card>
+      <SectionTitle title="Hero" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Headline"><input style={INPUT} value={h.headline} onChange={set('headline')} /></Field>
+        <Field label="Subhead"><input style={INPUT} value={h.subhead} onChange={set('subhead')} /></Field>
+        <PhotoField label="Hero photo" assetId={h.image_asset_id} assetUrls={assetUrls}
+          onPick={(f) => onUpload('hero', f, (id) => setContent((c) => ({ ...c, hero: { ...c.hero, image_asset_id: id } })))} />
+      </div>
+    </Card>
+  )
+}
+
+function AboutCard({ content, setContent, assetUrls, onUpload }) {
+  const a = content.about
+  const set = (k) => (e) => setContent((c) => ({ ...c, about: { ...c.about, [k]: e.target.value } }))
+  return (
+    <Card>
+      <SectionTitle title="About" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Title"><input style={INPUT} value={a.title} onChange={set('title')} /></Field>
+        <Field label="Story" hint="One paragraph per line, up to 6">
+          <textarea style={TEXTAREA} value={a.body.join('\n')}
+            onChange={(e) => setContent((c) => ({ ...c, about: { ...c.about, body: e.target.value.split('\n').slice(0, 6) } }))} />
+        </Field>
+        <Field label="Owner name"><input style={INPUT} value={a.owner} onChange={set('owner')} /></Field>
+        <Field label="Pull quote"><input style={INPUT} value={a.pull_quote} onChange={set('pull_quote')} /></Field>
+        <PhotoField label="About photo" assetId={a.image_asset_id} assetUrls={assetUrls}
+          onPick={(f) => onUpload('about', f, (id) => setContent((c) => ({ ...c, about: { ...c.about, image_asset_id: id } })))} />
+      </div>
+    </Card>
+  )
+}
+
+function ItemsCard({ content, setContent, assetUrls, onUpload }) {
+  const items = content.items
+  const max = 60
+  const update = (i, patch) => setContent((c) => ({ ...c, items: c.items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)) }))
+  const add = () => { if (items.length < max) setContent((c) => ({ ...c, items: [...c.items, blankItem()] })) }
+  const remove = (i) => setContent((c) => ({ ...c, items: c.items.filter((_, idx) => idx !== i) }))
+  function blankItem() { return { name: '', desc: '', price_ngn: 0, price_style: 'exact', tag: null, image_asset_id: null } }
+
+  return (
+    <Card>
+      <SectionTitle title="Items / Shop" hint={`Up to ${max} items`}
+        right={items.length < max && <Button size="sm" variant="secondary" icon={Plus} onClick={add}>Add item</Button>} />
+      {items.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 12.5, color: T.muted }}>No items yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <Grid2>
+                <Field label="Name"><input style={INPUT} value={it.name} onChange={(e) => update(i, { name: e.target.value })} /></Field>
+                <Field label="Price (₦)"><input style={INPUT} type="number" min="0" step="0.01" value={it.price_ngn}
+                  onChange={(e) => update(i, { price_ngn: Number(e.target.value) || 0 })} /></Field>
+                <Field label="Description" style={{ gridColumn: '1 / -1' }}><input style={INPUT} value={it.desc}
+                  onChange={(e) => update(i, { desc: e.target.value })} /></Field>
+                <Field label="Price style">
+                  <select style={INPUT} value={it.price_style} onChange={(e) => update(i, { price_style: e.target.value })}>
+                    <option value="exact">Exact</option><option value="from">From</option><option value="on_request">On request</option>
+                  </select>
+                </Field>
+                <Field label="Tag (optional)"><input style={INPUT} value={it.tag || ''}
+                  onChange={(e) => update(i, { tag: e.target.value || null })} /></Field>
+              </Grid2>
+              <PhotoField label="Item photo" assetId={it.image_asset_id} assetUrls={assetUrls}
+                onPick={(f) => onUpload(`item_${i}`, f, (id) => update(i, { image_asset_id: id }))} />
+              <div><Button size="sm" variant="danger" icon={Trash2} onClick={() => remove(i)}>Remove</Button></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function CategoriesCard({ content, setContent }) {
+  const rows = content.categories
+  const update = (i, patch) => setContent((c) => ({ ...c, categories: c.categories.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) }))
+  const add = () => { if (rows.length < 20) setContent((c) => ({ ...c, categories: [...c.categories, { name: '', teaser: '' }] })) }
+  const remove = (i) => setContent((c) => ({ ...c, categories: c.categories.filter((_, idx) => idx !== i) }))
+  return (
+    <Card>
+      <SectionTitle title="Categories" right={<Button size="sm" variant="secondary" icon={Plus} onClick={add}>Add category</Button>} />
+      {rows.length === 0 ? <p style={{ margin: 0, fontSize: 12.5, color: T.muted }}>No categories yet.</p> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <Field label="Name" style={{ flex: 1, minWidth: 140 }}><input style={INPUT} value={r.name} onChange={(e) => update(i, { name: e.target.value })} /></Field>
+              <Field label="Teaser" style={{ flex: 2, minWidth: 160 }}><input style={INPUT} value={r.teaser} onChange={(e) => update(i, { teaser: e.target.value })} /></Field>
+              <Button size="sm" variant="danger" icon={Trash2} onClick={() => remove(i)}>Remove</Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function ReviewsCard({ content, setContent }) {
+  const rows = content.reviews
+  const update = (i, patch) => setContent((c) => ({ ...c, reviews: c.reviews.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) }))
+  const add = () => { if (rows.length < 20) setContent((c) => ({ ...c, reviews: [...c.reviews, { text: '', who: '' }] })) }
+  const remove = (i) => setContent((c) => ({ ...c, reviews: c.reviews.filter((_, idx) => idx !== i) }))
+  return (
+    <Card>
+      <SectionTitle title="Reviews" hint="Only ever your own words — never invented."
+        right={<Button size="sm" variant="secondary" icon={Plus} onClick={add}>Add review</Button>} />
+      {rows.length === 0 ? <p style={{ margin: 0, fontSize: 12.5, color: T.muted }}>No reviews yet.</p> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <Field label="Review text" style={{ flex: 2, minWidth: 200 }}><input style={INPUT} value={r.text} onChange={(e) => update(i, { text: e.target.value })} /></Field>
+              <Field label="Who" style={{ flex: 1, minWidth: 120 }}><input style={INPUT} value={r.who} onChange={(e) => update(i, { who: e.target.value })} /></Field>
+              <Button size="sm" variant="danger" icon={Trash2} onClick={() => remove(i)}>Remove</Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function HoursLocationCard({ content, setContent }) {
+  const hours = content.hours
+  const loc = content.location
+  const updateHour = (i, patch) => setContent((c) => ({ ...c, hours: c.hours.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) }))
+  const addHour = () => { if (hours.length < 7) setContent((c) => ({ ...c, hours: [...c.hours, { days: '', time: '' }] })) }
+  const removeHour = (i) => setContent((c) => ({ ...c, hours: c.hours.filter((_, idx) => idx !== i) }))
+  const setLoc = (k) => (e) => setContent((c) => ({ ...c, location: { ...c.location, [k]: e.target.value } }))
+
+  return (
+    <Card>
+      <SectionTitle title="Hours & location" right={hours.length < 7 && <Button size="sm" variant="secondary" icon={Plus} onClick={addHour}>Add hours row</Button>} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+        {hours.map((r, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <Field label="Days" style={{ flex: 1, minWidth: 120 }}><input style={INPUT} value={r.days} onChange={(e) => updateHour(i, { days: e.target.value })} /></Field>
+            <Field label="Time" style={{ flex: 1, minWidth: 120 }}><input style={INPUT} value={r.time} onChange={(e) => updateHour(i, { time: e.target.value })} /></Field>
+            <Button size="sm" variant="danger" icon={Trash2} onClick={() => removeHour(i)}>Remove</Button>
+          </div>
+        ))}
+      </div>
+      <Grid2>
+        <Field label="Address"><input style={INPUT} value={loc.address || ''} onChange={setLoc('address')} /></Field>
+        <Field label="Landmark"><input style={INPUT} value={loc.landmark || ''} onChange={setLoc('landmark')} /></Field>
+      </Grid2>
+    </Card>
+  )
+}
+
+function OrderSeoCard({ content, setContent }) {
+  const o = content.order_section
+  const seo = content.seo
+  return (
+    <Card>
+      <SectionTitle title="How to order & SEO" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Order section title"><input style={INPUT} value={o.title}
+          onChange={(e) => setContent((c) => ({ ...c, order_section: { ...c.order_section, title: e.target.value } }))} /></Field>
+        <Field label="Steps" hint="One per line, up to 6">
+          <textarea style={TEXTAREA} value={o.steps.join('\n')}
+            onChange={(e) => setContent((c) => ({ ...c, order_section: { ...c.order_section, steps: e.target.value.split('\n').slice(0, 6) } }))} />
+        </Field>
+        <Field label="SEO title"><input style={INPUT} value={seo.title}
+          onChange={(e) => setContent((c) => ({ ...c, seo: { ...c.seo, title: e.target.value } }))} /></Field>
+        <Field label="SEO description"><input style={INPUT} value={seo.description}
+          onChange={(e) => setContent((c) => ({ ...c, seo: { ...c.seo, description: e.target.value } }))} /></Field>
+      </div>
+    </Card>
+  )
+}
+
+function DesignCard({ recipe, setRecipe }) {
+  const sections = Object.keys(SECTION_LABELS)
+  const toggleHidden = (key) => setRecipe((r) => ({
+    ...r, hidden: r.hidden.includes(key) ? r.hidden.filter((x) => x !== key) : [...r.hidden, key],
+  }))
+
+  return (
+    <Card>
+      <SectionTitle title="Design" hint="Theme and colour palette. Uncheck a section to hide it without losing its content." />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Field label="Theme" group>
+          <Segmented value={recipe.theme} onChange={(v) => setRecipe((r) => ({ ...r, theme: v }))}
+            options={THEMES.map((t) => ({ value: t.value, label: t.label, hint: t.hint }))} ariaLabel="Theme" />
+        </Field>
+        <Field label="Palette" group>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {PALETTES.map((p) => (
+              <button key={p.value} type="button"
+                onClick={() => setRecipe((r) => ({ ...r, palette: p.value, custom_colour: null }))}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8,
+                  border: `1px solid ${recipe.palette === p.value ? T.teal : T.lineStrong}`, background: recipe.palette === p.value ? '#F0FAFB' : '#fff',
+                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: T.ink }}>
+                <span style={{ width: 14, height: 14, borderRadius: '50%', background: p.accent, display: 'inline-block' }} />
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Or a custom colour" hint="6-digit hex, e.g. #7A2E4A — overrides the palette above">
+          <input style={{ ...INPUT, maxWidth: 160 }} placeholder="#7A2E4A" value={recipe.custom_colour || ''}
+            onChange={(e) => setRecipe((r) => ({ ...r, custom_colour: e.target.value || null }))} />
+        </Field>
+        <Field label="Sections shown" group>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {sections.map((key) => (
+              <label key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
+                <input type="checkbox" checked={!recipe.hidden.includes(key)} onChange={() => toggleHidden(key)} />
+                {SECTION_LABELS[key] || key}
+              </label>
+            ))}
+          </div>
+        </Field>
+      </div>
+    </Card>
+  )
+}
+
+function Grid2({ children }) {
+  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>{children}</div>
+}

@@ -182,6 +182,14 @@ export default function App() {
     const SiteBriefFormPage = require('./pages/SiteBriefFormPage').default
     return <SiteBriefFormPage token={_formMatch[1]} />
   }
+  // SITE-2B — builder web editor/portal. Entry is always a magic link
+  // (`/b/login?t=<token>`); the page reads `t` itself and owns every other
+  // screen (My sites / Editor / Account) as in-memory view state, same
+  // standalone-page pattern as SiteBriefFormPage above.
+  if (window.location.pathname.startsWith('/b/')) {
+    const BuilderPortalPage = require('./pages/BuilderPortalPage').default
+    return <BuilderPortalPage />
+  }
   if (!token) return <LoginScreen onAuth={setAuth} />
   return (
     <ErrorBoundary>
