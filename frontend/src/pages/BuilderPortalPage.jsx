@@ -31,14 +31,15 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ArrowLeft, Building2, ChevronDown, Eye, ExternalLink, ImagePlus, LogOut, Plus,
-  RefreshCw, Save, Trash2, Undo2, User,
+  ArrowLeft, Building2, ChevronDown, CreditCard, Eye, ExternalLink, ImagePlus, LogOut, Plus,
+  RefreshCw, Save, ShoppingCart, Trash2, Undo2, User,
 } from 'lucide-react'
 import {
   exchangeBuilderToken, getMyAccount, updateMyAccount, listMySites, getMySite,
-  patchMySiteContent, patchMySiteRecipe, renderMySite, undoMySite, uploadMySiteAsset, errorMessage,
+  patchMySiteContent, patchMySiteRecipe, renderMySite, undoMySite, uploadMySiteAsset,
+  checkDomain, getQuote, checkout, errorMessage,
 } from '../services/builder_portal.service'
-import { T, INPUT, TEXTAREA, dateTime, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
+import { T, INPUT, TEXTAREA, money, dateTime, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -91,7 +92,7 @@ export default function BuilderPortalPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#F5FAFB', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <Header builder={session?.builder} view={view} setView={setView} onBack={() => setSelectedSiteId(null)} onLogOut={logOut} showNav={stage === 'app'} />
-      <main style={{ maxWidth: view === 'editor' ? 1320 : 720, margin: '0 auto', padding: '20px 16px 60px' }}>
+      <main style={{ maxWidth: view === 'editor' || view === 'checkout' ? 1320 : 720, margin: '0 auto', padding: '20px 16px 60px' }}>
         {stage === 'exchanging' && <Spinner label="Signing you in…" />}
 
         {stage === 'error' && (
@@ -105,7 +106,12 @@ export default function BuilderPortalPage() {
         )}
 
         {stage === 'app' && view === 'editor' && selectedSiteId && (
-          <EditorView token={session.token} siteId={selectedSiteId} onBack={() => setView('mysites')} showToast={showToast} />
+          <EditorView token={session.token} siteId={selectedSiteId} onBack={() => setView('mysites')}
+            onCheckout={() => setView('checkout')} showToast={showToast} />
+        )}
+
+        {stage === 'app' && view === 'checkout' && selectedSiteId && (
+          <CheckoutView token={session.token} siteId={selectedSiteId} onBack={() => setView('editor')} showToast={showToast} />
         )}
 
         {stage === 'app' && view === 'account' && (
@@ -234,7 +240,7 @@ function AccountView({ token, builder, onUpdated, showToast }) {
 
 // ─────────────────────────────── Editor ───────────────────────────────
 
-function EditorView({ token, siteId, onBack, showToast }) {
+function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   const [site, setSite] = useState(null)
   const [content, setContent] = useState(null)
   const [recipe, setRecipe] = useState(null)
@@ -394,6 +400,12 @@ function EditorView({ token, siteId, onBack, showToast }) {
         </Button>
         <Button variant="primary" icon={RefreshCw} loading={rendering} onClick={doRender}>Render preview</Button>
         <Button variant="secondary" icon={Undo2} loading={undoing} onClick={doUndo}>Undo last change</Button>
+        {site.status !== 'live' && (
+          <Button variant="primary" icon={ShoppingCart} onClick={onCheckout} disabled={!site.rendered_html}
+            style={{ marginLeft: 'auto' }}>
+            Check out &amp; go live
+          </Button>
+        )}
       </div>
       <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>
         {site.updated_at ? `Last saved ${dateTime(site.updated_at)}` : null}
@@ -443,6 +455,289 @@ function EditorView({ token, siteId, onBack, showToast }) {
   )
 }
 
+// ─────────────────────────────── Hosting checkout (SITE-3) ───────────────────────────────
+//
+// Concept C ("Docked summary") from the 3-mockup review: on a wide screen the
+// form sits on the left and a fixed-width price panel stays docked on the
+// right (always visible, no separate "review" step). Below 980px there's no
+// room for a 400px docked column, so it collapses to the SAME
+// stacked/sticky-bar shape the editor above already uses — the price
+// breakdown becomes an ordinary card in the normal flow (bp-checkout-summary-
+// inline), and a slim sticky bar pinned to the bottom of the viewport keeps
+// the total + Proceed button reachable while scrolling (borrowed from the
+// "Compare & confirm" mockup's sticky bottom bar), so the one thing every
+// screen size keeps is "you can always see the price and pay".
+//
+// Express is intentionally rendered as a locked/disabled second option
+// (spec §11.5 / SITE-3B) rather than omitted — quote_both_routes() already
+// returns express: null when it isn't enabled for the org, so the UI has a
+// stable branch to light up later with no layout change.
+
+function CheckoutView({ token, siteId, onBack, showToast }) {
+  const [domain, setDomain] = useState('')
+  const [domainCheck, setDomainCheck] = useState(null)
+  const [checkingDomain, setCheckingDomain] = useState(false)
+  const [backupDomain, setBackupDomain] = useState('')
+  const [backupCheck, setBackupCheck] = useState(null)
+  const [checkingBackup, setCheckingBackup] = useState(false)
+
+  const [quote, setQuote] = useState(null)
+  const [renewalQuote, setRenewalQuote] = useState(null)
+  const [quoting, setQuoting] = useState(false)
+  const [quoteError, setQuoteError] = useState(null)
+
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  const isDomainLike = (d) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test((d || '').trim())
+
+  // Auto-price as soon as the domain field looks like a complete domain —
+  // debounced so every keystroke doesn't fire a request.
+  useEffect(() => {
+    if (!isDomainLike(domain)) { setQuote(null); setRenewalQuote(null); setQuoteError(null); return }
+    const d = domain.trim().toLowerCase()
+    setQuoting(true)
+    const t = setTimeout(() => {
+      Promise.all([getQuote(token, d, 'initial'), getQuote(token, d, 'renewal')])
+        .then(([q, rq]) => { setQuote(q); setRenewalQuote(rq); setQuoteError(null) })
+        .catch((e) => { setQuote(null); setRenewalQuote(null); setQuoteError(errorMessage(e, 'Could not price this domain.')) })
+        .finally(() => setQuoting(false))
+    }, 500)
+    return () => clearTimeout(t)
+  }, [domain, token])
+
+  async function runCheck(value, setChecking, setResult) {
+    if (!isDomainLike(value)) { showToast('Enter a full domain, e.g. business.com.ng', 'bad'); return }
+    setChecking(true)
+    try {
+      const r = await checkDomain(token, value.trim().toLowerCase())
+      setResult(r)
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not check this domain.'), 'bad')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const standard = quote?.standard && !quote.standard.error ? quote.standard : null
+  const standardError = quote?.standard?.error || quoteError
+  const renewalStandard = renewalQuote?.standard && !renewalQuote.standard.error ? renewalQuote.standard : null
+
+  const domainOk = domainCheck?.domain === domain.trim().toLowerCase() && domainCheck?.status === 'available'
+  const backupOk = backupCheck?.domain === backupDomain.trim().toLowerCase() && backupCheck?.status === 'available'
+  const sameDomain = domain.trim() !== '' && domain.trim().toLowerCase() === backupDomain.trim().toLowerCase()
+  const detailsOk = fullName.trim() && email.trim() && phone.trim() && address.trim()
+  const canSubmit = Boolean(domainOk && backupOk && !sameDomain && standard && detailsOk && acceptedTerms && !submitting)
+
+  async function submit() {
+    if (!canSubmit) return
+    setSubmitting(true)
+    try {
+      const result = await checkout(token, {
+        site_id: siteId,
+        route: 'standard',
+        domain: domain.trim().toLowerCase(),
+        backup_domain: backupDomain.trim().toLowerCase(),
+        legal_owner: { full_name: fullName.trim(), email: email.trim(), phone: phone.trim(), address: address.trim() },
+        accepted_terms: true,
+      })
+      showToast('Redirecting to payment…')
+      window.location.href = result.checkout_url
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not start checkout.'), 'bad')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <style>{`
+        .bp-checkout-shell{display:flex;flex-direction:column;gap:20px}
+        .bp-checkout-summary-inline{display:block}
+        .bp-checkout-summary-docked{display:none}
+        .bp-checkout-sticky-bar{position:sticky;bottom:0;background:#fff;border-top:1px solid ${T.line};
+          padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+          margin:8px -16px -60px;box-shadow:0 -4px 16px rgba(10,26,36,.06);z-index:5}
+        @media (min-width:980px){
+          .bp-checkout-shell{display:grid;grid-template-columns:minmax(380px,1fr) 400px;align-items:start;gap:24px}
+          .bp-checkout-summary-inline{display:none}
+          .bp-checkout-summary-docked{display:block;position:sticky;top:16px}
+          .bp-checkout-sticky-bar{display:none}
+        }
+      `}</style>
+
+      <BackLink onBack={onBack} label="Back to editor" />
+      <header>
+        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: T.ink }}>Hosting checkout</h1>
+      </header>
+
+      <div className="bp-checkout-shell">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Card>
+            <SectionTitle title="Domain" hint="Confirm the domain and a backup, in case the first is taken." />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <DomainField label="Domain" value={domain} onChange={(v) => { setDomain(v); setDomainCheck(null) }}
+                checking={checkingDomain} result={domainCheck}
+                onCheck={() => runCheck(domain, setCheckingDomain, setDomainCheck)}
+                onPickAlt={(d) => { setDomain(d); setDomainCheck(null) }} />
+              <DomainField label="Backup domain" value={backupDomain} onChange={(v) => { setBackupDomain(v); setBackupCheck(null) }}
+                checking={checkingBackup} result={backupCheck}
+                onCheck={() => runCheck(backupDomain, setCheckingBackup, setBackupCheck)}
+                onPickAlt={(d) => { setBackupDomain(d); setBackupCheck(null) }} />
+              {sameDomain && <Notice tone="bad">The backup domain must be different from the main domain.</Notice>}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle title="Hosting route" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <Segmented value="standard" onChange={() => {}} ariaLabel="Hosting route"
+                options={[
+                  { value: 'standard', label: standard ? `Standard · ${money(standard.price.total)}` : 'Standard' },
+                  { value: 'express', label: 'Express (not enabled)' },
+                ]} />
+              <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>
+                Express hosting (automatic, live within minutes) isn't turned on for your team yet — it'll appear
+                here as a second option once it is.
+              </p>
+              {quoting && <Spinner label="Pricing this domain…" />}
+              {standardError && !quoting && <Notice tone="bad">{standardError}</Notice>}
+            </div>
+          </Card>
+
+          <div className="bp-checkout-summary-inline">
+            {standard && <SummaryCard quote={standard} renewalTotal={renewalStandard?.price?.total} />}
+          </div>
+
+          <Card>
+            <SectionTitle title="Client's legal-owner details" hint="Used only to register the domain — never shared beyond that." />
+            <Grid2>
+              <Field label="Full name"><input style={INPUT} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
+              <Field label="Email"><input style={INPUT} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+              <Field label="Phone"><input style={INPUT} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+              <Field label="Address"><input style={INPUT} value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
+            </Grid2>
+          </Card>
+
+          <Card>
+            <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+              <input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} style={{ marginTop: 3 }} />
+              <span style={{ fontSize: 12.5, color: T.soft, lineHeight: 1.55 }}>
+                I've read and accept the refund rule and renewal contact clause.
+              </span>
+            </label>
+          </Card>
+        </div>
+
+        <div className="bp-checkout-summary-docked">
+          {standard
+            ? <SummaryCard quote={standard} renewalTotal={renewalStandard?.price?.total} docked
+                onSubmit={submit} submitting={submitting} canSubmit={canSubmit} />
+            : <Card><p style={{ margin: 0, fontSize: 12.5, color: T.muted }}>Enter a domain above to see pricing.</p></Card>}
+        </div>
+      </div>
+
+      {standard && (
+        <div className="bp-checkout-sticky-bar">
+          <div>
+            <p style={{ margin: 0, fontSize: 10.5, color: T.muted, fontWeight: 600 }}>Total due today</p>
+            <p className="tnum" style={{ margin: 0, fontSize: 18, fontWeight: 700, color: T.ink }}>{money(standard.price.total)}</p>
+          </div>
+          <Button variant="primary" icon={CreditCard} loading={submitting} disabled={!canSubmit} onClick={submit}>
+            Proceed to payment
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DomainField({ label, value, onChange, checking, result, onCheck, onPickAlt }) {
+  const tone = result?.status === 'available' ? 'good' : result?.status === 'taken' ? 'bad' : result ? 'warn' : null
+  const statusLabel = result?.status === 'available' ? 'Available' : result?.status === 'taken' ? 'Taken' : 'Unknown';
+  return (
+    <Field label={label}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input style={INPUT} placeholder="business.com.ng" value={value} onChange={(e) => onChange(e.target.value)} />
+        <Button variant="secondary" loading={checking} onClick={onCheck} style={{ flexShrink: 0 }}>Check</Button>
+      </div>
+      {result && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div><Badge tone={tone}>{statusLabel}</Badge></div>
+          {result.status === 'taken' && (result.alternatives || []).length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {result.alternatives.filter((a) => a.available).map((a) => (
+                <button key={a.domain} type="button" onClick={() => onPickAlt(a.domain)}
+                  style={{ fontSize: 11.5, fontWeight: 600, color: T.teal, background: T.mint, border: 'none',
+                    borderRadius: 20, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {a.domain}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Field>
+  )
+}
+
+function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSubmit }) {
+  const p = quote.price
+  return (
+    <Card>
+      <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: '.8px' }}>
+        Order summary
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>Standard hosting</span>
+        <Badge tone="info">{quote.live_within_hours}h</Badge>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+        <SummaryRow label={`Domain (${quote.tld})`} value={money(p.domain)} />
+        {p.hosting > 0 && <SummaryRow label="Hosting bundle" value={money(p.hosting)} />}
+        {p.service_fee > 0 && <SummaryRow label="Service fee" value={money(p.service_fee)} />}
+      </div>
+      <div style={{ height: 1, background: T.line, margin: '16px 0' }} />
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 13, color: T.soft, fontWeight: 600 }}>Total, first year</span>
+        <span className="tnum" style={{ fontSize: 24, fontWeight: 700, color: T.ink }}>{money(p.total)}</span>
+      </div>
+      <p style={{ margin: '4px 0 0', fontSize: 11.5, color: T.muted }}>
+        then {renewalTotal != null ? money(renewalTotal) : '—'} each renewal
+      </p>
+      <div style={{ background: T.page, borderRadius: 10, padding: '12px 14px', marginTop: 14 }}>
+        <p style={{ margin: 0, fontSize: 11, color: T.soft }}>Suggested price to charge your client</p>
+        <p className="tnum" style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 700, color: T.teal }}>
+          ~{money(quote.suggested_client_price)}
+        </p>
+      </div>
+      {docked && (
+        <div style={{ marginTop: 20 }}>
+          <Button variant="primary" icon={CreditCard} loading={submitting} disabled={!canSubmit} onClick={onSubmit} style={{ width: '100%' }}>
+            Proceed to payment
+          </Button>
+          <p style={{ margin: '10px 0 0', fontSize: 11, color: T.muted, textAlign: 'center', lineHeight: 1.5 }}>
+            You'll be redirected to Paystack to pay {money(p.total)} securely.
+          </p>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+      <span style={{ color: T.muted }}>{label}</span>
+      <span className="tnum" style={{ color: T.ink, fontWeight: 600 }}>{value}</span>
+    </div>
+  )
+}
+
 function CollapseToggle({ open, onToggle }) {
   return (
     <button type="button" onClick={onToggle} aria-expanded={open}
@@ -454,12 +749,12 @@ function CollapseToggle({ open, onToggle }) {
   )
 }
 
-function BackLink({ onBack }) {
+function BackLink({ onBack, label = 'My sites' }) {
   return (
     <button type="button" onClick={onBack}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 4px', border: 'none', background: 'none',
         color: T.teal, fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>
-      <ArrowLeft size={15} aria-hidden="true" /> My sites
+      <ArrowLeft size={15} aria-hidden="true" /> {label}
     </button>
   )
 }

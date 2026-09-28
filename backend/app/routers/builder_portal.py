@@ -40,6 +40,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Requ
 from app.database import get_supabase
 from app.models.common import ok
 from app.models.sites import (
+    CheckoutRequest,
     DomainCheckRequest,
     QuoteRequest,
     Recipe,
@@ -48,7 +49,13 @@ from app.models.sites import (
     SiteRecipePatch,
     hash_form_token,
 )
-from app.services import builder_auth_service, domain_check_service, pricing_service, site_renderer
+from app.services import (
+    builder_auth_service,
+    domain_check_service,
+    pricing_service,
+    site_order_service,
+    site_renderer,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -392,3 +399,16 @@ def get_quote(payload: QuoteRequest, builder=Depends(get_current_builder), db=De
     except pricing_service.PricingError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     return ok(data=result)
+
+
+@router.post("/checkout")
+def checkout(payload: CheckoutRequest, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    try:
+        result = site_order_service.create_checkout(db, builder["org_id"], builder, payload)
+    except site_order_service.SiteNotFound as exc:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": str(exc)})
+    except site_order_service.CheckoutBlocked as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    except pricing_service.PricingError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    return ok(data=result, message="Payment link created")

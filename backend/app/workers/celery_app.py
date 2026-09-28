@@ -39,6 +39,15 @@ M01-10b additions:
     meta_token_worker added to include list.
     New beat entry:
       - meta_token_check (daily 07:00 WAT / 06:00 UTC — validate per-org Meta tokens)
+
+SITE-3 part 2 additions:
+    site_worker (already in the include list, SITE-1B §7.7) gains a second
+    task, run_hosting_job_sla_check — spec §11.4 step 4 (amber at 12h before
+    due, red + escalating alerts every 2h while overdue).
+    New beat entry:
+      - hosting-job-sla-check (every 15 minutes — mirrors sla_worker's own
+        15-minute ticket-SLA cadence; the 4-hourly site-builder-timers entry
+        below is too coarse for a 24h-SLA, 2h-escalation job)
 """
 
 import os
@@ -566,6 +575,16 @@ celery_app.conf.beat_schedule = {
     "site-builder-timers": {
         "task": "app.workers.site_worker.run_site_builder_timers",
         "schedule": crontab(minute=0, hour="*/4"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # hosting-job-sla-check — Every 15 minutes  (SITE-3 part 2)          #
+    # Worker: site_worker.py                                              #
+    # Amber at 12h before due, red + escalating alerts every 2h overdue. #
+    # ------------------------------------------------------------------ #
+    "hosting-job-sla-check": {
+        "task": "app.workers.site_worker.run_hosting_job_sla_check",
+        "schedule": crontab(minute="*/15"),
     },
 }
 

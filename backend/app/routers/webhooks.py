@@ -3856,6 +3856,13 @@ async def receive_paystack_storefront_webhook(request: Request, db=Depends(get_s
             funnel_service.on_payment_confirmed(db=db, org_id=org_id, reference=reference)
         except Exception as exc:
             logger.error("[PAYSTACK-STOREFRONT] funnel hook failed org=%s ref=%s: %s", org_id, reference, exc)
+        # SITE-3: move a site order to awaiting_approval/fulfilling and start the
+        # SLA clock (no-op for non-site-order references). S14.
+        try:
+            from app.services import site_order_service
+            site_order_service.on_payment_confirmed(db=db, org_id=org_id, reference=reference)
+        except Exception as exc:
+            logger.error("[PAYSTACK-STOREFRONT] site order hook failed org=%s ref=%s: %s", org_id, reference, exc)
 
     _log_webhook(
         db, route="/webhooks/payment/paystack-storefront", org_id=org_id,

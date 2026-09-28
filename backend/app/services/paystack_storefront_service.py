@@ -383,6 +383,12 @@ def mark_paid(db: Any, org_id: str, reference: str) -> None:
         from app.services import funnel_service
         if phone_number and funnel_service.is_funnel_reference(db, org_id, reference):
             phone_number = ""
+        # SITE-3 (D6): site orders get their own confirmation from
+        # site_order_service.on_payment_confirmed ("Payment received. Your site
+        # is being deployed...") — suppress this generic one for the same reference.
+        from app.services import site_order_service
+        if phone_number and site_order_service.is_site_order_reference(db, org_id, reference):
+            phone_number = ""
         if phone_number:
             from app.services import whatsapp_service
             balance_due = progress["balance_due"] or 0

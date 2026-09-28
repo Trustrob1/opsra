@@ -149,6 +149,10 @@ class TestExchange:
         assert resp.status_code == 401
 
     def test_missing_token_422(self, client):
+        # Pattern 3 — Depends(get_supabase) is resolved before the route body's
+        # own validation runs, so even a request that never reaches the DB
+        # still needs an override or FastAPI tries to build a real client.
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
         resp = client.post("/api/v1/builder/auth/exchange", json={})
         assert resp.status_code == 422
 
@@ -324,4 +328,80 @@ class TestDomainCheckAndQuotes:
     def test_quotes_requires_auth_401(self, client):
         app.dependency_overrides[get_supabase] = lambda: _db_mock()
         resp = client.post("/api/v1/builder/quotes", json={"domain": "adaezastyles.com"})
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# SITE-3 part 2 — checkout (site_order_service.create_checkout is mocked;
+# its own logic is covered by tests/unit/test_site_order_service.py).
+# accepted_terms/backup_domain validators are exercised for real here since
+# they live on the Pydantic model, not the service.
+# ---------------------------------------------------------------------------
+class TestCheckout:
+    _PAYLOAD = {
+        "site_id": SITE_ID, "route": "standard",
+        "domain": "adaezastyles.com.ng", "backup_domain": "adaezastyles.ng",
+        "legal_owner": {"full_name": "Chioma Adaeze", "email": "chioma@example.com",
+                         "phone": "+2348030000000", "address": "14 Adeola Odeku St, Lagos"},
+        "accepted_terms": True,
+    }
+
+    def test_checkout_creates_payment_link(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        monkeypatch.setattr(
+            builder_portal.site_order_service, "create_checkout",
+            lambda db, org_id, builder, payload: {
+                "checkout_url": "https://paystack.test/pay/abc", "reference": "opsra_xyz",
+                "order_id": "order-1", "amount": 79500,
+            },
+        )
+        resp = authed_client.post("/api/v1/builder/checkout", json=self._PAYLOAD)
+        assert resp.status_code == 200
+        assert resp.json()["data"]["checkout_url"] == "https://paystack.test/pay/abc"
+
+    def test_checkout_site_not_found_404(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+
+        def _raise(*a, **k):
+            raise builder_portal.site_order_service.SiteNotFound("Site not found")
+
+        monkeypatch.setattr(builder_portal.site_order_service, "create_checkout", _raise)
+        resp = authed_client.post("/api/v1/builder/checkout", json=self._PAYLOAD)
+        assert resp.status_code == 404
+
+    def test_checkout_blocked_422(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+
+        def _raise(*a, **k):
+            raise builder_portal.site_order_service.CheckoutBlocked("Paystack storefront is not connected.")
+
+        monkeypatch.setattr(builder_portal.site_order_service, "create_checkout", _raise)
+        resp = authed_client.post("/api/v1/builder/checkout", json=self._PAYLOAD)
+        assert resp.status_code == 422
+
+    def test_checkout_pricing_error_422(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+
+        def _raise(*a, **k):
+            raise builder_portal.pricing_service.UnsupportedDomain("'.xyz' isn't supported on the standard route.")
+
+        monkeypatch.setattr(builder_portal.site_order_service, "create_checkout", _raise)
+        resp = authed_client.post("/api/v1/builder/checkout", json=self._PAYLOAD)
+        assert resp.status_code == 422
+
+    def test_checkout_same_backup_domain_422(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        payload = dict(self._PAYLOAD, backup_domain=self._PAYLOAD["domain"])
+        resp = authed_client.post("/api/v1/builder/checkout", json=payload)
+        assert resp.status_code == 422
+
+    def test_checkout_terms_not_accepted_422(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        payload = dict(self._PAYLOAD, accepted_terms=False)
+        resp = authed_client.post("/api/v1/builder/checkout", json=payload)
+        assert resp.status_code == 422
+
+    def test_checkout_requires_auth_401(self, client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        resp = client.post("/api/v1/builder/checkout", json=self._PAYLOAD)
         assert resp.status_code == 401
