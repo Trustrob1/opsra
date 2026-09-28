@@ -53,9 +53,17 @@ export const undoMySite = (token, siteId) =>
 export const uploadMySiteAsset = (token, siteId, slot, file) => {
   const form = new FormData()
   form.append('file', file)
+  // Deliberately NOT setting Content-Type ourselves: axios/the browser needs
+  // to generate it (multipart/form-data; boundary=...) from the FormData
+  // object itself. Hard-coding 'multipart/form-data' here would send that
+  // header with no boundary, which the browser then honours as explicitly
+  // set rather than filling in — the request leaves with a body FastAPI
+  // can't parse as multipart, and fails before any response detail comes
+  // back (surfacing as the generic "Could not upload this photo" fallback
+  // rather than a real server error message).
   return unwrap(axios.post(`${BASE}/sites/${siteId}/assets`, form, {
     params: { slot },
-    headers: { ...authed(token).headers, 'Content-Type': 'multipart/form-data' },
+    headers: authed(token).headers,
   }))
 }
 
