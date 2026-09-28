@@ -286,11 +286,25 @@ def _finish_chat_brief(db, org_id: str, chat: dict, site: dict) -> None:
     business_name = (chat.get("draft_answers") or {}).get("business_name") or site.get("client_business_name")
     from app.services import site_renderer
     new_slug = site_renderer.generate_slug(business_name or "site")
+    brief = chat.get("draft_answers") or {}
     db.table("sites").update({
         "client_business_name": (business_name or "Untitled business")[:255],
         "slug": new_slug, "status": "brief_complete",
-        "brief": chat.get("draft_answers") or {}, "updated_at": _now_iso(),
+        "brief": brief, "updated_at": _now_iso(),
     }).eq("id", site["id"]).execute()
+
+    # SITE-2: generate content/recipe now that the brief (and any chat-path photos) are
+    # in. Own try/except — S14, must never break the chat flow that called us.
+    try:
+        from app.services import site_copy_service
+        preset = _one((db.table("site_presets").select("*").eq("id", site["preset_id"]).execute()).data)
+        full_site = _one((db.table("sites").select("*").eq("id", site["id"]).execute()).data)
+        if preset and full_site:
+            content, recipe, source = site_copy_service.generate_content_and_recipe(db, full_site, preset, org_id)
+            site_copy_service.apply_generated_content(db, site["id"], content, recipe, source)
+    except Exception:
+        logger.exception("[SITE-2] content generation failed site=%s", site.get("id"))
+
     _update_chat(db, chat, {"state": "reviewing", "step_key": None, "draft_preset_id": None, "draft_answers": {}})
 
 

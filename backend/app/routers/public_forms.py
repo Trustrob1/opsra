@@ -222,7 +222,7 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
 
     if not form.get("preset_id"):
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": "Please choose a business type before submitting."})
-    preset = _one((db.table("site_presets").select("id").eq("id", form["preset_id"]).execute()).data)
+    preset = _one((db.table("site_presets").select("*").eq("id", form["preset_id"]).execute()).data)
     if not preset:
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": "That business type is no longer available."})
 
@@ -254,6 +254,16 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
                 }).execute()
             except Exception:
                 logger.exception("[SITE-1B] submit_form: asset copy failed site=%s slot=%s", site["id"], slot)
+
+    # SITE-2: generate content/recipe from the brief now that photos are attached.
+    # Never allowed to fail the submission — falls back to builder_words internally.
+    try:
+        from app.services import site_copy_service
+        full_site = _one((db.table("sites").select("*").eq("id", site["id"]).execute()).data) or site
+        content, recipe, source = site_copy_service.generate_content_and_recipe(db, full_site, preset, form["org_id"])
+        site_copy_service.apply_generated_content(db, site["id"], content, recipe, source)
+    except Exception:
+        logger.exception("[SITE-2] content generation failed site=%s", site.get("id"))
 
     db.table("site_brief_forms").update({
         "site_id": site["id"], "status": "submitted", "answers": merged_answers,
