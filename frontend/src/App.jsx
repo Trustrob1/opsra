@@ -65,12 +65,11 @@ import PublicCatalogShell from './catalog/PublicCatalogShell'
 import ReportsModule from './modules/reports/ReportsModule'
 import PerformanceModule from './modules/performance/PerformanceModule'
 import EventFunnelsModule from './modules/funnels/EventFunnelsModule'   // FUNNEL-1B
-import SitesModule from './modules/sites/SitesModule'   // SITE-1A part 2
 import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe,
+  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 
@@ -97,7 +96,6 @@ const NAV = [
   { id: 'conversations', label: 'Conversations',      icon: 'conversations', module: '02',  active: true, group: 'sales_marketing' },
   { id: 'whatsapp', label: 'WhatsApp Engine',      icon: 'whatsapp', module: '03', active: true, group: 'sales_marketing' },
   { id: 'event-funnels', label: 'Event Funnels', icon: 'event-funnels', module: '13', active: true, group: 'sales_marketing' },   // FUNNEL-1B
-  { id: 'sites', label: 'Sites', icon: 'sites', module: '14', active: true, group: 'sales_marketing' },   // SITE-1A part 2
   { id: 'business-activities', label: 'Business Activities', icon: 'business-activities', module: '12', active: true, group: 'business_activities' },
   { id: 'support',  label: 'Support Tickets',      icon: 'support', module: '04', active: true, group: 'operations' },
   { id: 'renewal',  label: 'Client Subscription',     icon: 'renewal', module: '05', active: true, group: 'operations' },
@@ -132,7 +130,6 @@ const NAV_ICONS = {
   'project-planner': FolderKanban,
   'business-activities': Layers,
   'event-funnels': CalendarClock,   // FUNNEL-1B
-  sites:           Globe,           // SITE-1A part 2
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -174,6 +171,13 @@ export default function App() {
   if (_logMatch) {
     const PublicLogPage = require('./pages/PublicLogPage').default
     return <PublicLogPage token={_logMatch[1]} />
+  }
+  // SITE-1B — public brief-form link, spec §7.3. Tokens are secrets.token_urlsafe(32)
+  // (~43 URL-safe base64 chars, no padding); the range below is a safe margin.
+  const _formMatch = window.location.pathname.match(/^\/f\/([A-Za-z0-9_-]{20,80})$/)
+  if (_formMatch) {
+    const SiteBriefFormPage = require('./pages/SiteBriefFormPage').default
+    return <SiteBriefFormPage token={_formMatch[1]} />
   }
   if (!token) return <LoginScreen onAuth={setAuth} />
   return (
@@ -615,8 +619,6 @@ function AppShell() {
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
     // FUNNEL-1B: Event Funnels — owner / ops_manager (edit) and admin (read-only)
     if (item.id === 'event-funnels' && !['owner', 'ops_manager', 'admin'].includes(_userTemplate)) return false
-    // SITE-1A part 2: Sites — owner / ops_manager (edit) and admin (read-only)
-    if (item.id === 'sites' && !['owner', 'ops_manager', 'admin'].includes(_userTemplate)) return false
     if (item.id === 'reports' && !['owner', 'ops_manager'].includes(_userTemplate) && !_departmentId) return false
     // Project Planner: owner + ops_manager only — a planning tool for leadership, not day-to-day staff
     if (item.id === 'project-planner' && !['owner', 'ops_manager'].includes(_userTemplate)) return false
@@ -1044,9 +1046,6 @@ function AppShell() {
         {view === 'event-funnels' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><EventFunnelsModule user={user} onOpenLead={openLeadProfile} /></div>
         )}
-        {view === 'sites' && (
-          <div style={{ animation: 'fadeIn 0.25s ease' }}><SitesModule user={user} /></div>
-        )}
         {view === 'tasks' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} onOpenLead={(leadId) =>openLeadProfile(leadId)} /></div>
         )}
@@ -1076,7 +1075,7 @@ function AppShell() {
         {view === 'superadmin_health' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><HealthDashboard /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>
