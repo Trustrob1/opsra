@@ -336,3 +336,63 @@ class SiteBriefFormSubmit(BaseModel):
     answers: dict = Field(default_factory=dict)
     client_business_name: str = Field(..., min_length=1, max_length=255)
     website: Optional[str] = Field(None, max_length=200)  # honeypot, see above
+
+
+# ─────────────────────────── Hosting checkout (SITE-3, spec §11/§12/§17) ──────────────────
+
+RouteChoice = Literal["standard", "express"]
+QuoteKind = Literal["initial", "renewal"]
+
+
+class DomainCheckRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    domain: str = Field(..., min_length=3, max_length=253)
+
+
+class QuoteRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    domain: str = Field(..., min_length=3, max_length=253)
+    kind: QuoteKind = "initial"
+
+
+class LegalOwnerDetails(BaseModel):
+    """spec §11.3 — the client's legal-owner details, used only for domain
+    registration (spec §18, NDPR: never used for anything else)."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    full_name: str = Field(..., min_length=1, max_length=200)
+    email: str = Field(..., min_length=3, max_length=200)
+    phone: str = Field(..., min_length=8, max_length=20)
+    address: str = Field(..., min_length=1, max_length=300)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        v = v.strip()
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("legal_owner.email must be a valid email address")
+        return v
+
+
+class CheckoutRequest(BaseModel):
+    """spec §11.3 — the builder chooses a route, confirms domain + backup,
+    confirms the client's legal-owner details, and accepts the terms."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    site_id: str
+    route: RouteChoice
+    domain: str = Field(..., min_length=3, max_length=253)
+    backup_domain: str = Field(..., min_length=3, max_length=253)
+    legal_owner: LegalOwnerDetails
+    accepted_terms: bool
+
+    @field_validator("accepted_terms")
+    @classmethod
+    def _must_accept(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("The refund rule and renewal contact clause must be accepted to check out.")
+        return v
+
+    @model_validator(mode="after")
+    def _backup_differs(self):
+        if self.domain.strip().lower() == self.backup_domain.strip().lower():
+            raise ValueError("The backup domain must be different from the main domain.")
+        return self

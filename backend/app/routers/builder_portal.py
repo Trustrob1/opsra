@@ -40,13 +40,15 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Requ
 from app.database import get_supabase
 from app.models.common import ok
 from app.models.sites import (
+    DomainCheckRequest,
+    QuoteRequest,
     Recipe,
     SiteAssetCreate,
     SiteContentPatch,
     SiteRecipePatch,
     hash_form_token,
 )
-from app.services import builder_auth_service, site_renderer
+from app.services import builder_auth_service, domain_check_service, pricing_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -368,3 +370,25 @@ def _sniff_image(file_bytes: bytes, declared_mime: str) -> bool:
 def _token_hex() -> str:
     import secrets
     return secrets.token_hex(4)
+
+
+# ─────────────────────────────── Hosting checkout — domains & quotes (SITE-3) ───────────────
+
+@router.post("/domains/check")
+def check_domain(payload: DomainCheckRequest, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    try:
+        result = domain_check_service.check_domain(db, builder["org_id"], builder["id"], payload.domain)
+    except domain_check_service.RateLimited as exc:
+        raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": str(exc)})
+    except domain_check_service.InvalidDomain as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    return ok(data=result)
+
+
+@router.post("/quotes")
+def get_quote(payload: QuoteRequest, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    try:
+        result = pricing_service.quote_both_routes(db, builder["org_id"], payload.domain, payload.kind)
+    except pricing_service.PricingError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    return ok(data=result)

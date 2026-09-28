@@ -243,3 +243,85 @@ class TestAccount:
         app.dependency_overrides[get_supabase] = lambda: _db_mock()
         resp = client.get("/api/v1/builder/me")
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# SITE-3 — domain check + quotes (services are mocked; their own unit tests
+# in tests/unit/test_domain_check_service.py and test_pricing_service.py
+# cover the RDAP/WHOIS/pricing logic itself)
+# ---------------------------------------------------------------------------
+class TestDomainCheckAndQuotes:
+    def test_domain_check_available(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        monkeypatch.setattr(
+            builder_portal.domain_check_service, "check_domain",
+            lambda db, org_id, builder_id, domain: {"domain": domain, "status": "available", "available": True},
+        )
+        resp = authed_client.post("/api/v1/builder/domains/check", json={"domain": "adaezastyles.com"})
+        assert resp.status_code == 200
+        assert resp.json()["data"]["status"] == "available"
+
+    def test_domain_check_taken_returns_alternatives(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        monkeypatch.setattr(
+            builder_portal.domain_check_service, "check_domain",
+            lambda db, org_id, builder_id, domain: {
+                "domain": domain, "status": "taken", "available": False,
+                "alternatives": [{"domain": "adaezastyles.ng", "status": "available", "available": True}],
+            },
+        )
+        resp = authed_client.post("/api/v1/builder/domains/check", json={"domain": "adaezastyles.com"})
+        assert resp.status_code == 200
+        assert resp.json()["data"]["alternatives"][0]["domain"] == "adaezastyles.ng"
+
+    def test_domain_check_rate_limited_429(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+
+        def _raise(*a, **k):
+            raise builder_portal.domain_check_service.RateLimited("Too many domain checks this hour — try again later.")
+
+        monkeypatch.setattr(builder_portal.domain_check_service, "check_domain", _raise)
+        resp = authed_client.post("/api/v1/builder/domains/check", json={"domain": "adaezastyles.com"})
+        assert resp.status_code == 429
+
+    def test_domain_check_invalid_domain_422(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+
+        def _raise(*a, **k):
+            raise builder_portal.domain_check_service.InvalidDomain("'xyz' isn't a supported ending.")
+
+        monkeypatch.setattr(builder_portal.domain_check_service, "check_domain", _raise)
+        resp = authed_client.post("/api/v1/builder/domains/check", json={"domain": "adaezastyles.xyz"})
+        assert resp.status_code == 422
+
+    def test_domain_check_missing_domain_422(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        resp = authed_client.post("/api/v1/builder/domains/check", json={})
+        assert resp.status_code == 422
+
+    def test_quotes_returns_both_routes(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        fake_quote = {"route": "standard", "price": {"total": 79500}}
+        monkeypatch.setattr(
+            builder_portal.pricing_service, "quote_both_routes",
+            lambda db, org_id, domain, kind="initial": {"standard": fake_quote, "express": None},
+        )
+        resp = authed_client.post("/api/v1/builder/quotes", json={"domain": "adaezastyles.com.ng"})
+        assert resp.status_code == 200
+        assert resp.json()["data"]["standard"]["price"]["total"] == 79500
+        assert resp.json()["data"]["express"] is None
+
+    def test_quotes_unsupported_domain_422(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+
+        def _raise(*a, **k):
+            raise builder_portal.pricing_service.UnsupportedDomain("'.xyz' isn't supported on the standard route.")
+
+        monkeypatch.setattr(builder_portal.pricing_service, "quote_both_routes", _raise)
+        resp = authed_client.post("/api/v1/builder/quotes", json={"domain": "adaezastyles.xyz"})
+        assert resp.status_code == 422
+
+    def test_quotes_requires_auth_401(self, client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        resp = client.post("/api/v1/builder/quotes", json={"domain": "adaezastyles.com"})
+        assert resp.status_code == 401
