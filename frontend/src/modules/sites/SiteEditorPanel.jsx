@@ -99,7 +99,19 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
 
   if (loading) return <Spinner />
   if (error) return (<><BackLink onBack={onBack} /><Notice tone="bad">{error}</Notice></>)
-  if (!site || !content || !recipe) return null
+  if (!site) return null
+  if (!content || !recipe) {
+    return (
+      <>
+        <BackLink onBack={onBack} />
+        <Notice tone="info">
+          This site came in through a brief form and doesn't have page content yet — that's built by the
+          AI copy step, which isn't switched on here yet. The submitted brief is saved; check back once
+          that's live.
+        </Notice>
+      </>
+    )
+  }
 
   const st = SITE_STATUS[site.status] || SITE_STATUS.brief_in_progress
   const previewUrl = `${BASE}/s/${site.slug}`
