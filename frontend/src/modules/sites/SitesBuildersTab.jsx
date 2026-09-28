@@ -5,8 +5,8 @@
  * The WhatsApp bot itself (SITE-1B) isn't built yet — this is roster management only.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Plus, Upload, UserPlus, Users } from 'lucide-react'
-import { listBuilders, createBuilder, updateBuilder, importBuilders, errorMessage } from '../../services/sites.service'
+import { Plus, Upload, UserPlus, Users, Link2 } from 'lucide-react'
+import { listBuilders, createBuilder, updateBuilder, importBuilders, createBriefForm, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Drawer } from './sitesUi'
 import { T, INPUT, dateOnly, BUILDER_STATUS } from './sitesKit'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -18,6 +18,7 @@ export default function SitesBuildersTab({ isActive, canEdit, showToast }) {
   const [error, setError] = useState(null)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [formLinkFor, setFormLinkFor] = useState(null)
   const fileRef = useRef(null)
 
   const load = useCallback(async () => {
@@ -84,7 +85,14 @@ export default function SitesBuildersTab({ isActive, canEdit, showToast }) {
                       <Td>{b.business_name || '—'}</Td>
                       <Td><Badge tone={st.tone}>{st.label}</Badge></Td>
                       <Td className="tnum">{dateOnly(b.joined_at)}</Td>
-                      <Td>{canEdit && <Button size="sm" variant="ghost" onClick={() => setEditing(b)}>Edit</Button>}</Td>
+                      <Td>
+                        {canEdit && (
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <Button size="sm" variant="ghost" icon={Link2} onClick={() => setFormLinkFor(b)}>Get form link</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditing(b)}>Edit</Button>
+                          </div>
+                        )}
+                      </Td>
                     </tr>
                   )
                 })}
@@ -98,7 +106,74 @@ export default function SitesBuildersTab({ isActive, canEdit, showToast }) {
         onCreated={() => { setCreating(false); showToast('Builder added'); load() }} showToast={showToast} />
       <EditBuilderDrawer builder={editing} isMobile={isMobile} onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); load() }} showToast={showToast} />
+      <GetFormLinkModal builder={formLinkFor} onClose={() => setFormLinkFor(null)} showToast={showToast} />
     </div>
+  )
+}
+
+function GetFormLinkModal({ builder, onClose, showToast }) {
+  const [audience, setAudience] = useState('builder')
+  const [clientLabel, setClientLabel] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [url, setUrl] = useState(null)
+
+  useEffect(() => { if (builder) { setAudience('builder'); setClientLabel(''); setUrl(null) } }, [builder])
+
+  if (!builder) return null
+
+  const generate = async () => {
+    setSaving(true)
+    try {
+      const res = await createBriefForm({
+        builder_id: builder.id, audience,
+        client_label: audience === 'client' ? (clientLabel.trim() || null) : null,
+      })
+      setUrl(res.url)
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not create a form link.'), 'bad')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); showToast('Link copied') }
+    catch (_) { showToast('Could not copy — select and copy the link by hand', 'bad') }
+  }
+
+  return (
+    <Modal open={!!builder} onClose={onClose} title={`Form link for ${builder.full_name}`}
+      footer={url
+        ? <Button onClick={onClose}>Done</Button>
+        : <><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={generate}>Create link</Button></>}>
+      {!url ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Field label="Who's filling it in?">
+            <select style={INPUT} value={audience} onChange={(e) => setAudience(e.target.value)}>
+              <option value="builder">The builder themselves</option>
+              <option value="client">Their client (no Opsra branding, no pricing shown)</option>
+            </select>
+          </Field>
+          {audience === 'client' && (
+            <Field label="Client label (optional)" hint="Just for your own reference in the list">
+              <input style={INPUT} value={clientLabel} onChange={(e) => setClientLabel(e.target.value)} placeholder="e.g. Adaeze's Boutique" />
+            </Field>
+          )}
+          <p style={{ fontSize: 12, color: T.muted, margin: 0 }}>
+            The link works for 14 days. It doesn't ask them to choose a business type yet —
+            they'll pick one as the first step on the form.
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ fontSize: 13, color: T.ink, margin: 0 }}>Here's the link — this is the only time it's shown in full, so copy it now:</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input readOnly style={{ ...INPUT, fontFamily: 'monospace', fontSize: 12.5 }} value={url} onFocus={(e) => e.target.select()} />
+            <Button variant="secondary" onClick={copy}>Copy</Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   )
 }
 

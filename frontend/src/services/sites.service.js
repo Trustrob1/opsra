@@ -34,6 +34,12 @@ export const importBuilders = (file) => {
   return unwrap(api.post('/api/v1/sites/builders/import', form, { headers: { 'Content-Type': 'multipart/form-data' } }))
 }
 
+// ── Brief forms (SITE-1B — by-hand link creation) ───────────────────────────
+export const listBriefForms = (params) => unwrap(api.get('/api/v1/sites/forms', { params }))
+/** payload: { builder_id, audience: 'builder'|'client', preset_id?, client_label? } */
+export const createBriefForm = (payload) => unwrap(api.post('/api/v1/sites/forms', payload))
+export const revokeBriefForm = (id) => unwrap(api.post(`/api/v1/sites/forms/${id}/revoke`))
+
 // ── Sites ────────────────────────────────────────────────────────────────
 export const listSites = (params) => unwrap(api.get('/api/v1/sites', { params }))
 export const createSite = (payload) => unwrap(api.post('/api/v1/sites', payload))
