@@ -163,6 +163,7 @@ celery_app = Celery(
         "app.workers.owner_report_worker",              # ← RPT-DAILY
         "app.workers.owner_pdf_worker",                  # ← OWNER-PDF-1
         "app.workers.funnel_worker",                     # ← FUNNEL-1A
+        "app.workers.site_worker",                       # ← SITE-1B §7.7
     ],
 )
 
@@ -551,6 +552,20 @@ celery_app.conf.beat_schedule = {
     "funnel-sequence": {
         "task": "app.workers.funnel_worker.run_funnel_sequence",
         "schedule": crontab(minute="*/5"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # site-builder-timers — Every 4 hours  (SITE-1B §7.7)                #
+    # Worker: site_worker.py                                              #
+    # Brief/form reminders + form/preview expiry. Every 4h (not more     #
+    # often) is the minimum cadence that still lands the 20h brief       #
+    # reminder inside the 24h free-messaging window — coarser than that  #
+    # risks missing it and forcing a paid template send instead. Costs   #
+    # nothing extra either way: same worker dyno, no new Render service. #
+    # ------------------------------------------------------------------ #
+    "site-builder-timers": {
+        "task": "app.workers.site_worker.run_site_builder_timers",
+        "schedule": crontab(minute=0, hour="*/4"),
     },
 }
 
