@@ -480,7 +480,23 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filen
         return None, None
 
 
-def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+def _lookup_record_by_phone(
+    db, phone: str, org_id: Optional[str] = None,
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """
+    XORG-1: when org_id is given (the org that owns the RECEIVING WhatsApp
+    number), every query below is scoped with .eq("org_id", org_id) — a
+    sender who happens to be a lead/customer of a DIFFERENT org can never
+    be resolved into that other org here (spec F2). Scoping also bounds
+    each query to one org's rows instead of scanning the whole table
+    across every org (spec F10) — idx_customers_org_id, idx_leads_org_id
+    and idx_customer_contacts_org_id (new, XORG-1 migration) cover the
+    .eq("org_id", ...) filter.
+    When org_id is None (the caller doesn't know the receiving org — should
+    only happen for a very old number with no whatsapp_numbers row and no
+    organisations.whatsapp_phone_id match), falls back to the previous
+    unscoped global scan so that edge case's behaviour is unchanged.
+    """
     clean = phone.replace(" ", "").replace("-", "")
     variants = {clean}
     if clean.startswith("+"):
@@ -488,12 +504,14 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
     else:
         variants.add("+" + clean)
     try:
-        cust_result = (
+        cust_q = (
             db.table("customers")
             .select("id, org_id, whatsapp, phone, assigned_to")
             .is_("deleted_at", "null")
-            .execute()
         )
+        if org_id:
+            cust_q = cust_q.eq("org_id", org_id)
+        cust_result = cust_q.execute()
         for row in (cust_result.data or []):
             wa = (row.get("whatsapp") or "").replace(" ", "").replace("-", "")
             ph = (row.get("phone") or "").replace(" ", "").replace("-", "")
@@ -505,12 +523,14 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
     except Exception as exc:
         logger.warning("Customer phone lookup failed: %s", exc)
     try:
-        cc_result = (
+        cc_q = (
             db.table("customer_contacts")
             .select("org_id, customer_id, phone_number")
             .eq("status", "active")
-            .execute()
         )
+        if org_id:
+            cc_q = cc_q.eq("org_id", org_id)
+        cc_result = cc_q.execute()
         for row in (cc_result.data or []):
             cc_ph = (row.get("phone_number") or "").replace(" ", "").replace("-", "")
             if cc_ph in variants:
@@ -531,12 +551,14 @@ def _lookup_record_by_phone(db, phone: str) -> tuple[Optional[str], Optional[str
     except Exception as exc:
         logger.warning("Customer contacts phone lookup failed: %s", exc)
     try:
-        lead_result = (
+        lead_q = (
             db.table("leads")
             .select("id, org_id, whatsapp, phone, assigned_to")
             .is_("deleted_at", "null")
-            .execute()
         )
+        if org_id:
+            lead_q = lead_q.eq("org_id", org_id)
+        lead_result = lead_q.execute()
         for row in (lead_result.data or []):
             wa = (row.get("whatsapp") or "").replace(" ", "").replace("-", "")
             ph = (row.get("phone") or "").replace(" ", "").replace("-", "")
@@ -993,7 +1015,9 @@ def _route_to_ai_agent(
                 detail = getattr(exc, "detail", {}) or {}
                 code = detail.get("code", "") if isinstance(detail, dict) else str(detail)
                 if code == ErrorCode.DUPLICATE_DETECTED:
-                    _, _, lead_id, _ = _lookup_record_by_phone(db, sender_phone)
+                    # XORG-1: scope to this function's own org_id (the
+                    # receiving number's org) — never an unscoped global scan.
+                    _, _, lead_id, _ = _lookup_record_by_phone(db, sender_phone, org_id=org_id)
                 else:
                     logger.error("_route_to_ai_agent: lead creation failed org=%s: %s", org_id, exc)
                     return
@@ -1186,7 +1210,18 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     interactive_payload = message.get("interactive") if msg_type == "interactive" else None
     logger.info("[WH] msg_type=%s content=%r from=%s", msg_type, content, sender_phone)
 
-    org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
+    # ── XORG-1: resolve the RECEIVING number's org before the sender lookup ──
+    # The org that owns phone_number_id must be known first, so the
+    # customers/leads/customer_contacts lookup below can be scoped to it
+    # (spec F2): a sender who is already a lead/customer of a DIFFERENT org
+    # must never be resolved into that other org just because their phone
+    # number happens to also exist there.
+    number_row = _lookup_whatsapp_number(db, phone_number_id)
+    _receiving_org_id = (number_row or {}).get("org_id") or _lookup_org_by_phone_number_id(db, phone_number_id)
+
+    org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(
+        db, sender_phone, org_id=_receiving_org_id,
+    )
     logger.info("[WH] lookup result: org_id=%s customer_id=%s lead_id=%s", org_id, customer_id, lead_id)
 
     # ── AI-AGENT-1B: per-number mode check ──────────────────────────────
@@ -1196,9 +1231,13 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     # unchanged below — this block only intercepts numbers explicitly set
     # to 'ai_agent', and returns early so none of the existing triage/
     # qualification/bot/pre-qualified-lead code paths run for them.
-    number_row = _lookup_whatsapp_number(db, phone_number_id)
     if number_row and number_row.get("wa_sales_mode") == "ai_agent":
-        _agent_org_id = org_id or number_row.get("org_id")
+        # XORG-1: always the RECEIVING number's org — never the sender's org
+        # from the phone lookup (matches the Event Funnel block below, which
+        # already got this right). The scoped lookup above means org_id can
+        # no longer disagree with this, but this is the explicit, correct
+        # source of truth per SITE-0 spec F2.
+        _agent_org_id = number_row.get("org_id")
         if _agent_org_id:
             if _is_org_owner(db, _agent_org_id, sender_phone):
                 logger.info(
@@ -1462,7 +1501,11 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 code   = detail.get("code", "") if isinstance(detail, dict) else str(detail)
                 if code == ErrorCode.DUPLICATE_DETECTED:
                     logger.info("Duplicate on auto-create for %s — re-looking up", sender_phone)
-                    org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(db, sender_phone)
+                    # XORG-1: scope to the already-resolved receiving org_id,
+                    # never an unscoped global scan.
+                    org_id, customer_id, lead_id, assigned_to = _lookup_record_by_phone(
+                        db, sender_phone, org_id=org_id,
+                    )
                     if not lead_id and not customer_id:
                         logger.warning("Re-lookup after duplicate also found nothing for %s", sender_phone)
                         return

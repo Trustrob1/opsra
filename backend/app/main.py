@@ -145,7 +145,8 @@ _CSP = (
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["Content-Security-Policy"]   = _CSP
+        if "Content-Security-Policy" not in response.headers:
+            response.headers["Content-Security-Policy"] = _CSP
         response.headers["X-Frame-Options"]            = "DENY"
         response.headers["X-Content-Type-Options"]     = "nosniff"
         response.headers["Referrer-Policy"]            = "strict-origin-when-cross-origin"
@@ -197,6 +198,8 @@ from app.routers import digital_campaigns as digital_campaigns_router
 from app.routers import funnels as funnels_router                  # FUNNEL-1
 from app.routers import public_funnels as public_funnels_router    # FUNNEL-1A
 from app.routers import funnel_tools as funnel_tools_router        # FUNNEL-1B
+from app.routers import sites as sites_router                      # SITE-1A
+from app.routers import public_sites as public_sites_router        # SITE-1A — GET /s/{slug}
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -236,6 +239,8 @@ app.include_router(digital_campaigns_router.router, prefix="/api/v1", tags=["dig
 app.include_router(funnels_router.router,        prefix="/api/v1", tags=["funnels"])          # FUNNEL-1
 app.include_router(public_funnels_router.router, prefix="",        tags=["public_funnels"])   # FUNNEL-1A — GET /f/{token}
 app.include_router(funnel_tools_router.router,   prefix="/api/v1", tags=["funnel_tools"])     # FUNNEL-1B
+app.include_router(sites_router.router,          prefix="/api/v1", tags=["sites"])             # SITE-1A
+app.include_router(public_sites_router.router,   prefix="",        tags=["public_sites"])      # SITE-1A — GET /s/{slug}
 
 
 # ---------------------------------------------------------------------------
