@@ -593,12 +593,21 @@ def _render_body(content: dict, recipe: dict, preset: dict, assets: "_Assets") -
     hidden = set(recipe.get("hidden") or [])
     b = content["business"]
 
+    # `variants.get(key, default)` only falls back when the key is ABSENT, not
+    # when it's present with value None — and every recipe's `variants` here
+    # comes from the Recipe Pydantic model (SectionVariants), whose fields
+    # default to None but are still serialized as explicit `null` keys, never
+    # omitted. So the `, default` form silently never applied: every section
+    # was always rendering its "variant is None" fallback branch (for hero,
+    # that branch shows no photo at all, even when one was uploaded) instead
+    # of the intended default variant. `or default` treats None the same as
+    # "key missing", which is what was actually meant here.
     renderers = {
-        "hero": lambda: _hero(content, variants.get("hero", "fullbleed"), assets),
-        "categories": lambda: _categories(content, variants.get("categories", "tiles"), assets, wa_msgs),
-        "items": lambda: _items(content, variants.get("items", "grid"), assets, labels, wa_msgs),
-        "about": lambda: _about(content, variants.get("about", "left"), assets),
-        "reviews": lambda: _reviews(content, variants.get("reviews", "cards")),
+        "hero": lambda: _hero(content, variants.get("hero") or "fullbleed", assets),
+        "categories": lambda: _categories(content, variants.get("categories") or "tiles", assets, wa_msgs),
+        "items": lambda: _items(content, variants.get("items") or "grid", assets, labels, wa_msgs),
+        "about": lambda: _about(content, variants.get("about") or "left", assets),
+        "reviews": lambda: _reviews(content, variants.get("reviews") or "cards"),
         "order": lambda: _order(content, b, labels, wa_msgs),
     }
     parts = [_nav(content, labels, wa_msgs)]
