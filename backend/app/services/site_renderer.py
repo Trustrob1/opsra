@@ -516,6 +516,7 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 .hero-fullbleed{{position:relative;min-height:560px;display:flex;align-items:flex-end}}
 .hero-fullbleed .ph-hero,.hero-fullbleed .photo{{position:absolute;inset:0;border-radius:0}}
 .hero-fullbleed .ph-hero{{background:linear-gradient(160deg,var(--ph1),var(--ph2) 55%,var(--ink));padding:24px;justify-content:flex-start;align-items:flex-end}}
+.hero-fullbleed .photo img{{object-position:50% 20%}}
 .hero-over{{position:relative;color:#fff;padding-top:120px;padding-bottom:64px;width:100%}}
 .hero-over .eyebrow{{color:#fff;opacity:.85}} .hero-over .lead{{color:#fff;opacity:.9}}
 .hero-collage{{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:center;padding-top:40px;padding-bottom:72px}}
