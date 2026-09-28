@@ -293,7 +293,7 @@ def _hero(c: dict, variant: str, assets: "_Assets") -> str:
     b = c["business"]
     img = assets.img_or_placeholder(h.get("image_asset_id"), h.get("headline", b["name"]), "ph-hero")
     if variant == "fullbleed":
-        return (f'<section class="hero hero-fullbleed">{img}'
+        return (f'<section class="hero hero-fullbleed">{img}<div class="hero-scrim" aria-hidden="true"></div>'
                 f'<div class="hero-over wrap"><p class="eyebrow">{esc(b.get("city",""))}{" &middot; " + esc(b["delivery_note"]) if b.get("delivery_note") else ""}</p>'
                 f'<h1>{esc(h["headline"])}</h1><p class="lead">{esc(h.get("subhead",""))}</p>'
                 f'<div class="row">{btn_wa(b, "Chat on WhatsApp", DEFAULT_WA_MESSAGES["browse"])}'
@@ -517,7 +517,8 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 .hero-fullbleed .ph-hero,.hero-fullbleed .photo{{position:absolute;inset:0;border-radius:0}}
 .hero-fullbleed .ph-hero{{background:linear-gradient(160deg,var(--ph1),var(--ph2) 55%,var(--ink));padding:24px;justify-content:flex-start;align-items:flex-end}}
 .hero-fullbleed .photo img{{object-position:50% 20%}}
-.hero-over{{position:relative;color:#fff;padding-top:120px;padding-bottom:64px;width:100%}}
+.hero-scrim{{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 25%,rgba(0,0,0,.35) 60%,rgba(0,0,0,.72) 100%)}}
+.hero-over{{position:relative;color:#fff;padding-top:120px;padding-bottom:64px;width:100%;text-shadow:0 1px 3px rgba(0,0,0,.35)}}
 .hero-over .eyebrow{{color:#fff;opacity:.85}} .hero-over .lead{{color:#fff;opacity:.9}}
 .hero-collage{{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:center;padding-top:40px;padding-bottom:72px}}
 .chip{{display:inline-block;background:var(--pop);color:var(--ink);font-weight:800;font-size:.78rem;padding:6px 12px;border-radius:999px;margin-bottom:18px;text-transform:uppercase;letter-spacing:.08em}}
