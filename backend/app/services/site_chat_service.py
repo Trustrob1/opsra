@@ -14,8 +14,12 @@ Not in this pass (see SITE-1B_Edits.md):
   • §7.7 timers (beat jobs) — a later pass, once celery_app.py is touched.
   • DESIGN / HOST — depend on SITE-2 (AI design) / SITE-3 (checkout), not
     built yet; both reply with a short "not yet" message.
-  • EDIT (a fresh editor link) — depends on SITE-2B's builder portal.
   • Free-text change requests while `reviewing` going to a classifier — SITE-2.
+
+SITE-2B (this pass): EDIT mints a site_editor_tokens magic link and sends it
+— see _send_editor_link(). The link opens the builder portal, whose own auth
+and routes live entirely in routers/builder_portal.py / services/
+builder_auth_service.py, not here.
 
 S14: this module must never raise past handle_inbound(); the caller
 (webhooks.py) also wraps the call, but every DB/network step here is its
@@ -215,6 +219,35 @@ def _send_form_link(db, org_id: str, number_row: dict, sender_phone: str, builde
         text = (
             "Here's your form link — fill it in whenever you're ready, it saves as you go:\n\n" + url
         )
+    _send_text(db, org_id, number_row, sender_phone, text, lead_id=builder.get("lead_id"))
+
+
+# ─────────────────────────────── Editor magic link (SITE-2B) ───────────────────────────────
+
+_EDITOR_LINK_EXPIRY_DAYS = 7   # spec §10
+
+
+def _editor_url(raw_token: str) -> str:
+    import os
+    frontend_base = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    return f"{frontend_base}/b/login?t={raw_token}"
+
+
+def _send_editor_link(db, org_id: str, number_row: dict, sender_phone: str, builder: dict) -> None:
+    """EDIT — mints a single-use, 7-day site_editor_tokens row (same hashed-token
+    shape as brief forms, spec §18) and sends the builder-portal magic link."""
+    if builder.get("status") != "active":
+        _send_text(db, org_id, number_row, sender_phone,
+                    "Your account isn't active right now — reply HUMAN to talk to someone.", lead_id=builder.get("lead_id"))
+        return
+    raw_token, token_hash = generate_form_token()
+    db.table("site_editor_tokens").insert({
+        "org_id": org_id, "builder_id": builder["id"], "token_hash": token_hash,
+        "expires_at": (_now() + timedelta(days=_EDITOR_LINK_EXPIRY_DAYS)).isoformat(),
+        "created_at": _now_iso(), "updated_at": _now_iso(),
+    }).execute()
+    url = _editor_url(raw_token)
+    text = f"Here's your editor link — it works for 7 days and signs you in automatically:\n\n{url}"
     _send_text(db, org_id, number_row, sender_phone, text, lead_id=builder.get("lead_id"))
 
 
@@ -522,7 +555,10 @@ def _handle_command(cmd: str, db, org_id: str, number_row: dict, sender_phone: s
         _update_chat(db, chat, {"opted_out": False, "state": "menu"})
         _send_text(db, org_id, number_row, sender_phone, "Welcome back!\n\n" + _menu_text(builder), lead_id)
         return True
-    if cmd in ("DESIGN", "EDIT", "HOST"):
+    if cmd == "EDIT":
+        _send_editor_link(db, org_id, number_row, sender_phone, builder)
+        return True
+    if cmd in ("DESIGN", "HOST"):
         _send_text(db, org_id, number_row, sender_phone,
                     "That's not switched on here yet — our team can help with this for now. Reply HUMAN to talk to someone.", lead_id)
         return True

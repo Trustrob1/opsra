@@ -41,6 +41,9 @@ from app.models.sites import (
     generate_form_token,
     slugify_business_name,
 )
+# generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
+# for editor magic links below (site_editor_tokens.token_hash is the same shape
+# as site_brief_forms.token_hash, spec §18).
 from app.services import site_renderer
 
 logger = logging.getLogger(__name__)
@@ -577,3 +580,36 @@ def revoke_form(form_id: str, org=Depends(get_current_org), db=Depends(get_supab
         raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Form not found"})
     db.table("site_brief_forms").update({"status": "revoked", "updated_at": _now_iso()}).eq("id", form_id).eq("org_id", org_id).execute()
     return ok(data={"id": form_id, "status": "revoked"}, message="Link cancelled")
+
+
+# ── Builder editor magic links (SITE-2B) ───────────────────────────────
+# Internal, by-hand link creation — mirrors the "Get form link" pattern above.
+# Normally the builder gets this by replying EDIT on WhatsApp (see
+# site_chat_service.py), but D4 (the site_builder WhatsApp number) isn't
+# supplied yet, so this button is today's only way to mint one for testing.
+
+
+def _editor_public_url(raw_token: str) -> str:
+    frontend_base = _os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    return f"{frontend_base}/b/login?t={raw_token}"
+
+
+@router.post("/sites/builders/{builder_id}/edit-link", status_code=status.HTTP_201_CREATED)
+def create_edit_link(builder_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _WRITE_ROLES)
+    org_id = org["org_id"]
+    builder = _one((db.table("site_builders").select("id, full_name, status").eq("id", builder_id).eq("org_id", org_id).execute()).data)
+    if not builder:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Builder not found"})
+    if builder.get("status") != "active":
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "This builder isn't active"})
+
+    raw_token, token_hash = generate_form_token()   # spec §10: 7-day, single-use, hashed — never stored raw
+    row = {
+        "org_id": org_id, "builder_id": builder_id, "token_hash": token_hash,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "created_at": _now_iso(), "updated_at": _now_iso(),
+    }
+    db.table("site_editor_tokens").insert(row).execute()
+    return ok(data={"url": _editor_public_url(raw_token), "expires_at": row["expires_at"]},
+               message="Edit link created — this is the only time the link is shown in full.")

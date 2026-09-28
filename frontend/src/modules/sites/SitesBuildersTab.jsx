@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Upload, UserPlus, Users, Link2 } from 'lucide-react'
-import { listBuilders, createBuilder, updateBuilder, importBuilders, createBriefForm, errorMessage } from '../../services/sites.service'
+import { listBuilders, createBuilder, updateBuilder, importBuilders, createBriefForm, createEditorLink, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Drawer } from './sitesUi'
 import { T, INPUT, dateOnly, BUILDER_STATUS } from './sitesKit'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -19,6 +19,7 @@ export default function SitesBuildersTab({ isActive, canEdit, showToast }) {
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(null)
   const [formLinkFor, setFormLinkFor] = useState(null)
+  const [editLinkFor, setEditLinkFor] = useState(null)
   const fileRef = useRef(null)
 
   const load = useCallback(async () => {
@@ -89,6 +90,7 @@ export default function SitesBuildersTab({ isActive, canEdit, showToast }) {
                         {canEdit && (
                           <div style={{ display: 'flex', gap: 4 }}>
                             <Button size="sm" variant="ghost" icon={Link2} onClick={() => setFormLinkFor(b)}>Get form link</Button>
+                            <Button size="sm" variant="ghost" icon={Link2} onClick={() => setEditLinkFor(b)}>Get edit link</Button>
                             <Button size="sm" variant="ghost" onClick={() => setEditing(b)}>Edit</Button>
                           </div>
                         )}
@@ -107,7 +109,56 @@ export default function SitesBuildersTab({ isActive, canEdit, showToast }) {
       <EditBuilderDrawer builder={editing} isMobile={isMobile} onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); load() }} showToast={showToast} />
       <GetFormLinkModal builder={formLinkFor} onClose={() => setFormLinkFor(null)} showToast={showToast} />
+      <GetEditLinkModal builder={editLinkFor} onClose={() => setEditLinkFor(null)} showToast={showToast} />
     </div>
+  )
+}
+
+function GetEditLinkModal({ builder, onClose, showToast }) {
+  const [saving, setSaving] = useState(false)
+  const [url, setUrl] = useState(null)
+
+  useEffect(() => { if (builder) setUrl(null) }, [builder])
+
+  if (!builder) return null
+
+  const generate = async () => {
+    setSaving(true)
+    try {
+      const res = await createEditorLink(builder.id)
+      setUrl(res.url)
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not create an edit link.'), 'bad')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); showToast('Link copied') }
+    catch (_) { showToast('Could not copy — select and copy the link by hand', 'bad') }
+  }
+
+  return (
+    <Modal open={!!builder} onClose={onClose} title={`Edit link for ${builder.full_name}`}
+      footer={url
+        ? <Button onClick={onClose}>Done</Button>
+        : <><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={generate}>Create link</Button></>}>
+      {!url ? (
+        <p style={{ fontSize: 13, color: T.ink, margin: 0 }}>
+          Opens the site editor and signs {builder.full_name} in automatically. Works for 7 days, single use —
+          this is the stand-in for the WhatsApp EDIT command until the site-builder number is live.
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ fontSize: 13, color: T.ink, margin: 0 }}>Here's the link — this is the only time it's shown in full, so copy it now:</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input readOnly style={{ ...INPUT, fontFamily: 'monospace', fontSize: 12.5 }} value={url} onFocus={(e) => e.target.select()} />
+            <Button variant="secondary" onClick={copy}>Copy</Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   )
 }
 

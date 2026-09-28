@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
     ALLOWED_ORIGINS: str = "http://localhost:5173"
 
+    # SITE-2B — separate signing secret for builder-portal sessions (aud="builder").
+    # Deliberately isolated from SECRET_KEY: a leaked builder JWT secret must never
+    # let anyone forge a staff session, and vice versa. If unset, builder_auth_service
+    # falls back to a salted derivative of SECRET_KEY so existing deploys don't break —
+    # set this in Render for real isolation before builder logins go live.
+    BUILDER_JWT_SECRET: str = ""
+
     # Super-admin provisioning
     SUPERADMIN_SECRET: str = ""
 

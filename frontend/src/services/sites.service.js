@@ -40,6 +40,10 @@ export const listBriefForms = (params) => unwrap(api.get('/api/v1/sites/forms', 
 export const createBriefForm = (payload) => unwrap(api.post('/api/v1/sites/forms', payload))
 export const revokeBriefForm = (id) => unwrap(api.post(`/api/v1/sites/forms/${id}/revoke`))
 
+// ── Editor magic links (SITE-2B — by-hand link creation, stand-in for the
+// WhatsApp EDIT command until D4's site_builder number is supplied) ────────
+export const createEditorLink = (builderId) => unwrap(api.post(`/api/v1/sites/builders/${builderId}/edit-link`))
+
 // ── Sites ────────────────────────────────────────────────────────────────
 export const listSites = (params) => unwrap(api.get('/api/v1/sites', { params }))
 export const createSite = (payload) => unwrap(api.post('/api/v1/sites', payload))

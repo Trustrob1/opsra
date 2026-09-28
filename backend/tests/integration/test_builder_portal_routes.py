@@ -1,0 +1,245 @@
+"""
+tests/integration/test_builder_portal_routes.py
+SITE-2B — integration tests for routers/builder_portal.py (prefix /api/v1/builder).
+
+Pattern references (see tests/integration/test_ticket_routes.py for the
+originals this file mirrors):
+  Pattern 1  : lazy get_supabase factory — never module-level
+  Pattern 3  : every test class overrides get_supabase
+  Pattern 4  : class-scoped fixtures restore only their own overrides
+  Pattern 6  : 4xx tests assert status_code only, never resp.json()["success"]
+  Pattern 8  : insert chain.insert.return_value = insert_chain
+
+/auth/exchange has NO get_current_builder dependency (it's how a session is
+obtained in the first place) — those tests mock get_supabase only and hit
+the route with a plain token in the body. Every other route is exercised
+with get_current_builder overridden directly, since that dependency lives
+in this router module, not app.dependencies.
+"""
+from __future__ import annotations
+
+import hashlib
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.database import get_supabase
+from app.main import app
+from app.routers import builder_portal
+
+BUILDER_ID = "00000000-0000-0000-0000-000000001111"
+ORG_ID = "00000000-0000-0000-0000-000000002222"
+OTHER_BUILDER_ID = "00000000-0000-0000-0000-000000009999"
+SITE_ID = "00000000-0000-0000-0000-000000003333"
+PRESET_ID = "00000000-0000-0000-0000-000000004444"
+
+_FAKE_BUILDER = {
+    "id": BUILDER_ID, "org_id": ORG_ID, "phone_number": "+2348000000001",
+    "full_name": "Ada Builder", "business_name": "Ada Web Co", "email": "ada@example.com",
+    "status": "active",
+}
+
+_FAKE_SITE = {
+    "id": SITE_ID, "org_id": ORG_ID, "builder_id": BUILDER_ID, "preset_id": PRESET_ID,
+    "client_business_name": "Adaeze Styles", "slug": "adaeze-styles-abc123", "status": "preview_ready",
+    "content": {"business": {"name": "Adaeze Styles", "whatsapp_e164": "+2348000000002"},
+                "hero": {"headline": "Welcome"}},
+    "recipe": {"theme": "atelier", "palette": "berry", "order": ["hero"], "hidden": []},
+    "revision_count": 0, "design_rolls": 0, "deleted_at": None,
+}
+
+_FAKE_PRESET = {"id": PRESET_ID, "org_id": ORG_ID, "key": "boutique", "allowed_themes": ["atelier"]}
+
+
+def _chain(data=None) -> MagicMock:
+    result = MagicMock()
+    result.data = data if data is not None else []
+    m = MagicMock()
+    for method in ("select", "insert", "update", "delete", "eq", "neq", "is_", "order",
+                   "range", "limit", "maybe_single", "filter", "in_"):
+        getattr(m, method).return_value = m
+    m.execute.return_value = result
+    return m
+
+
+def _db_mock(**kwargs) -> MagicMock:
+    db = MagicMock()
+    db.table.side_effect = lambda name: kwargs.get(name, _chain())
+    return db
+
+
+@pytest.fixture
+def client():
+    original = app.dependency_overrides.copy()
+    yield TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides.clear()
+    app.dependency_overrides.update(original)
+
+
+@pytest.fixture
+def authed_client(client):
+    app.dependency_overrides[builder_portal.get_current_builder] = lambda: _FAKE_BUILDER
+    yield client
+    app.dependency_overrides.pop(builder_portal.get_current_builder, None)
+
+
+# ---------------------------------------------------------------------------
+# /auth/exchange
+# ---------------------------------------------------------------------------
+class TestExchange:
+    def test_valid_token_issues_session(self, client):
+        raw_token = "a" * 43  # url-safe base64, shape doesn't matter for this mock
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        row = {
+            "id": "tok-1", "org_id": ORG_ID, "builder_id": BUILDER_ID, "token_hash": token_hash,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+            "revoked_at": None, "last_used_at": None,
+        }
+        db = _db_mock(
+            site_editor_tokens=_chain([row]),
+            site_builders=_chain([_FAKE_BUILDER]),
+        )
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = client.post("/api/v1/builder/auth/exchange", json={"token": raw_token})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["access_token"]
+        assert body["data"]["builder"]["id"] == BUILDER_ID
+        # Single-use: the token row must be revoked in the same request.
+        db.table("site_editor_tokens").update.assert_called()
+
+    def test_unknown_token_401(self, client):
+        db = _db_mock(site_editor_tokens=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = client.post("/api/v1/builder/auth/exchange", json={"token": "does-not-exist"})
+        assert resp.status_code == 401
+
+    def test_already_revoked_token_401(self, client):
+        row = {"id": "tok-1", "org_id": ORG_ID, "builder_id": BUILDER_ID,
+               "token_hash": hashlib.sha256(b"used").hexdigest(),
+               "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+               "revoked_at": "2026-01-01T00:00:00+00:00"}
+        db = _db_mock(site_editor_tokens=_chain([row]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = client.post("/api/v1/builder/auth/exchange", json={"token": "used"})
+        assert resp.status_code == 401
+
+    def test_expired_token_401(self, client):
+        row = {"id": "tok-1", "org_id": ORG_ID, "builder_id": BUILDER_ID,
+               "token_hash": hashlib.sha256(b"stale").hexdigest(),
+               "expires_at": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+               "revoked_at": None}
+        db = _db_mock(site_editor_tokens=_chain([row]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = client.post("/api/v1/builder/auth/exchange", json={"token": "stale"})
+        assert resp.status_code == 401
+
+    def test_suspended_builder_401(self, client):
+        row = {"id": "tok-1", "org_id": ORG_ID, "builder_id": BUILDER_ID,
+               "token_hash": hashlib.sha256(b"ok").hexdigest(),
+               "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+               "revoked_at": None}
+        suspended = dict(_FAKE_BUILDER, status="suspended")
+        db = _db_mock(site_editor_tokens=_chain([row]), site_builders=_chain([suspended]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = client.post("/api/v1/builder/auth/exchange", json={"token": "ok"})
+        assert resp.status_code == 401
+
+    def test_missing_token_422(self, client):
+        resp = client.post("/api/v1/builder/auth/exchange", json={})
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# My sites / ownership scoping
+# ---------------------------------------------------------------------------
+class TestMySites:
+    def test_list_my_sites(self, authed_client):
+        db = _db_mock(sites=_chain([_FAKE_SITE]), site_domains=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.get("/api/v1/builder/sites")
+        assert resp.status_code == 200
+        assert resp.json()["data"][0]["id"] == SITE_ID
+
+    def test_get_site_not_mine_404(self, authed_client):
+        # _get_site filters .eq("builder_id", builder_id) server-side; the mock
+        # simulates that filter finding nothing for a site owned by someone else.
+        db = _db_mock(sites=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Editor: content/recipe patch snapshots a revision first
+# ---------------------------------------------------------------------------
+class TestEditor:
+    def test_patch_content_saves_and_snapshots_revision(self, authed_client):
+        revisions_chain = _chain([])
+        db = _db_mock(sites=_chain([_FAKE_SITE]), site_revisions=revisions_chain, site_events=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        new_content = dict(_FAKE_SITE["content"])
+        new_content["hero"] = {"headline": "New headline", "subhead": "", "image_asset_id": None}
+        resp = authed_client.patch(f"/api/v1/builder/sites/{SITE_ID}/content", json={"content": new_content})
+        assert resp.status_code == 200
+        revisions_chain.insert.assert_called()  # pre-change snapshot was pushed
+
+    def test_patch_recipe_rejects_unknown_theme(self, authed_client):
+        db = _db_mock(sites=_chain([_FAKE_SITE]), site_presets=_chain([_FAKE_PRESET]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        bad_recipe = {"theme": "not-a-real-theme", "palette": "berry", "order": ["hero"], "hidden": []}
+        resp = authed_client.patch(f"/api/v1/builder/sites/{SITE_ID}/recipe", json={"recipe": bad_recipe})
+        assert resp.status_code == 422
+
+    def test_undo_restores_previous_snapshot_and_removes_it(self, authed_client):
+        older_content = {"business": {"name": "Old Name", "whatsapp_e164": "+2348000000002"},
+                          "hero": {"headline": "Old headline"}}
+        older_recipe = {"theme": "atelier", "palette": "berry", "order": ["hero"], "hidden": []}
+        revision_row = {"id": "rev-1", "site_id": SITE_ID, "content": older_content, "recipe": older_recipe}
+        db = _db_mock(
+            sites=_chain([_FAKE_SITE]),
+            site_revisions=_chain([revision_row]),
+            site_presets=_chain([_FAKE_PRESET]),
+            site_assets=_chain([]),
+            site_events=_chain([]),
+        )
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/undo")
+        assert resp.status_code == 200
+        assert resp.json()["data"]["content"]["business"]["name"] == "Old Name"
+
+    def test_undo_nothing_to_undo_404(self, authed_client):
+        db = _db_mock(sites=_chain([_FAKE_SITE]), site_revisions=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/undo")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Account
+# ---------------------------------------------------------------------------
+class TestAccount:
+    def test_get_me(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        resp = authed_client.get("/api/v1/builder/me")
+        assert resp.status_code == 200
+        assert resp.json()["data"]["id"] == BUILDER_ID
+
+    def test_patch_me_updates_allowed_fields_only(self, authed_client):
+        updated = dict(_FAKE_BUILDER, full_name="Ada B. Updated")
+        db = _db_mock(site_builders=_chain([updated]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.patch("/api/v1/builder/me", json={"full_name": "Ada B. Updated", "status": "owner"})
+        assert resp.status_code == 200
+        # 'status' is not in the allowed set — only full_name should have been written.
+        called_kwargs = db.table("site_builders").update.call_args[0][0]
+        assert "status" not in called_kwargs
+        assert called_kwargs["full_name"] == "Ada B. Updated"
+
+    def test_no_auth_header_401(self, client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        resp = client.get("/api/v1/builder/me")
+        assert resp.status_code == 401
