@@ -643,6 +643,8 @@ def recheck_domain(db: Any, org_id: str, job_id: str, user_id: str) -> dict:
             "status": "in_progress" if job["status"] == "queued" else job["status"], "updated_at": now,
         }).eq("id", job["id"]).eq("org_id", org_id).execute()
         message = f"{normalised} is still available."
+        if domain_check_service.is_unconfirmed_tld(normalised):
+            message += " (DNS check only — the registrar gives the final answer when you register it.)"
     else:
         db.table("site_hosting_jobs").update({"domain_rechecked_at": now, "updated_at": now}) \
             .eq("id", job["id"]).eq("org_id", org_id).execute()

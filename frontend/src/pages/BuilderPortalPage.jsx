@@ -527,7 +527,7 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
   const standardError = quote?.standard?.error || quoteError
   const renewalStandard = renewalQuote?.standard && !renewalQuote.standard.error ? renewalQuote.standard : null
 
-  const domainOk = domainCheck?.domain === domain.trim().toLowerCase() && domainCheck?.status === 'available'
+  const domainOk = domainCheck?.domain === domain.trim().toLowerCase() && domainCheck?.status === 'available'  // .ng names come back available but unconfirmed — that is allowed
   const backupOk = backupCheck?.domain === backupDomain.trim().toLowerCase() && backupCheck?.status === 'available'
   const sameDomain = domain.trim() !== '' && domain.trim().toLowerCase() === backupDomain.trim().toLowerCase()
   const detailsOk = fullName.trim() && email.trim() && phone.trim() && address.trim()
@@ -658,7 +658,9 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
 
 function DomainField({ label, value, onChange, checking, result, onCheck, onPickAlt }) {
   const tone = result?.status === 'available' ? 'good' : result?.status === 'taken' ? 'bad' : result ? 'warn' : null
-  const statusLabel = result?.status === 'available' ? 'Available' : result?.status === 'taken' ? 'Taken' : 'Unknown';
+  const unconfirmed = result?.status === 'available' && result?.confirmed === false
+  const statusLabel = result?.status === 'available' ? (unconfirmed ? 'Available (unconfirmed)' : 'Available')
+    : result?.status === 'taken' ? 'Taken' : 'Could not check';
   return (
     <Field label={label}>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -668,6 +670,14 @@ function DomainField({ label, value, onChange, checking, result, onCheck, onPick
       {result && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div><Badge tone={tone}>{statusLabel}</Badge></div>
+          {unconfirmed && (
+            <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
+              This name looks free, but we'll confirm it again just before we register it. If it's gone, we'll use your backup domain.
+            </p>
+          )}
+          {result.status === 'unknown' && (
+            <p style={{ margin: 0, fontSize: 12, color: T.muted }}>We couldn't check this name right now. Try again in a moment.</p>
+          )}
           {result.status === 'taken' && (result.alternatives || []).length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {result.alternatives.filter((a) => a.available).map((a) => (

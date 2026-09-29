@@ -9,14 +9,14 @@ SITE-3 — domain availability checks (spec §11.1).
       - gTLDs (.com, .net, .org, ...) via RDAP, through the public rdap.org
         bootstrap redirector (itself backed by the IANA bootstrap registry —
         spec explicitly calls out "via the IANA bootstrap").
-      - .ng / .com.ng via NiRA's WHOIS (NiRA does not publish a public RDAP
-        endpoint at time of writing; a raw WHOIS query to whois.nic.net.ng is
-        used instead — spec §11.1 covers this under "NiRA's WHOIS/RDAP").
-        NOTE FOR TRUST: the "taken" / "available" string match below
-        (_NG_AVAILABLE_MARKERS / _NG_TAKEN_MARKERS) should be confirmed
-        against one real registered .ng domain and one real available one
-        before this is relied on for a live checkout — WHOIS response text
-        varies by registry and isn't as strictly standardised as RDAP.
+      - .ng / .com.ng via a DNS lookup (NS records) over DNS-over-HTTPS.
+        NiRA has no public RDAP, and its WHOIS server (whois.nic.net.ng:43)
+        times out from Render, so port 43 is no longer used for the check.
+        Nameservers present  => the name is delegated => TAKEN (reliable).
+        Name does not exist  => "available", but UNCONFIRMED: a registered
+        name can lack nameservers (parked, on hold, in redemption, reserved).
+        The result carries confirmed=False; the staff domain re-check and the
+        registrar itself give the final answer before anything is bought.
   • Express (SITE-3B) additionally checks Hostinger's own availability API —
     not implemented here yet (Express isn't enabled for any org yet).
   • Caching: 10 minutes, in-process (same non-durable pattern as the other
@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import logging
 import re
-import socket
 import time
 from collections import defaultdict
 from typing import Any, Optional
@@ -58,10 +57,15 @@ _TLD_PREFERENCE_ORDER = [".ng", ".com.ng", ".com"]   # spec §11.1 order
 _PREFIXES = ["shop", "get"]
 
 _RDAP_UNIVERSAL = "https://rdap.org/domain/{domain}"
-_NG_WHOIS_HOST = "whois.nic.net.ng"
-_NG_WHOIS_PORT = 43
-_NG_AVAILABLE_MARKERS = ("no match", "not found", "no entries found", "no data found", "is available")
-_NG_TAKEN_MARKERS = ("domain name:", "registrant", "creation date", "registered on")
+_NG_TLDS = (".ng", ".com.ng")   # checked by DNS, not a registry — an "available" answer is unconfirmed
+_DOH_RESOLVERS = (
+    "https://cloudflare-dns.com/dns-query",
+    "https://dns.google/resolve",
+)
+_DOH_TIMEOUT_S = 4
+_DNS_TYPE_NS = 2
+_DNS_NOERROR = 0
+_DNS_NXDOMAIN = 3
 
 # In-process, non-durable — mirrors routers/builder_portal.py's _exchange_hits pattern.
 _rate_hits: dict[str, list[float]] = defaultdict(list)
@@ -162,31 +166,49 @@ def _check_rdap_gtld(domain: str) -> Optional[bool]:
         return None
 
 
-def _check_whois_ng(domain: str) -> Optional[bool]:
+def _doh_ns_query(resolver: str, domain: str) -> Optional[tuple[int, bool]]:
+    """One DNS-over-HTTPS NS query. Returns (rcode, has_ns_answer), or None if this resolver failed."""
     try:
-        with socket.create_connection((_NG_WHOIS_HOST, _NG_WHOIS_PORT), timeout=6) as sock:
-            sock.sendall((domain + "\r\n").encode("ascii"))
-            chunks = []
-            while True:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-        text = b"".join(chunks).decode(errors="ignore").lower()
-        if any(m in text for m in _NG_AVAILABLE_MARKERS):
-            return True
-        if any(m in text for m in _NG_TAKEN_MARKERS):
-            return False
-        logger.warning("NiRA WHOIS response for %s didn't match a known pattern — treating as unknown", domain)
-        return None
+        with httpx.Client(timeout=_DOH_TIMEOUT_S) as client:
+            resp = client.get(resolver, params={"name": domain, "type": "NS"},
+                              headers={"accept": "application/dns-json"})
+        if resp.status_code != 200:
+            logger.warning("DoH %s returned %s for %s", resolver, resp.status_code, domain)
+            return None
+        data = resp.json()
+        rcode = int(data.get("Status", -1))
+        has_ns = any(int(a.get("type", 0)) == _DNS_TYPE_NS for a in (data.get("Answer") or []))
+        return rcode, has_ns
     except Exception as exc:
-        logger.warning("NiRA WHOIS check failed for %s: %s", domain, exc)
+        logger.warning("DoH %s failed for %s: %s", resolver, domain, exc)
         return None
+
+
+def _check_dns_ng(domain: str) -> Optional[bool]:
+    """True = no such name in DNS (available, unconfirmed); False = has nameservers (taken); None = can't tell."""
+    for resolver in _DOH_RESOLVERS:
+        answer = _doh_ns_query(resolver, domain)
+        if answer is None:
+            continue
+        rcode, has_ns = answer
+        if rcode == _DNS_NOERROR and has_ns:
+            return False
+        if rcode == _DNS_NXDOMAIN:
+            return True
+        logger.warning("DNS check for %s gave rcode=%s ns=%s — treating as unknown", domain, rcode, has_ns)
+        return None
+    return None
+
+
+def is_unconfirmed_tld(domain_or_tld: str) -> bool:
+    """True for endings we can only check through DNS (.ng / .com.ng)."""
+    d = (domain_or_tld or "").strip().lower().rstrip(".")
+    return any(d.endswith(t) for t in _NG_TLDS)
 
 
 def _lookup_availability(domain: str, tld: str) -> Optional[bool]:
-    if tld in (".ng", ".com.ng"):
-        return _check_whois_ng(domain)
+    if tld in _NG_TLDS:
+        return _check_dns_ng(domain)
     return _check_rdap_gtld(domain)
 
 
@@ -200,6 +222,8 @@ def _check_one(domain: str, tld: str) -> dict:
         "domain": domain,
         "status": "available" if available is True else ("taken" if available is False else "unknown"),
         "available": bool(available) if available is not None else None,
+        # Only an "available" answer from a DNS-only ending is unconfirmed; "taken" is reliable.
+        "confirmed": not (available is True and tld in _NG_TLDS),
     }
     _cache_set(domain, result)
     return result
@@ -279,6 +303,7 @@ def check_domain(db: Any, org_id: str, builder_id: str, domain: str) -> dict:
     Returns:
       {
         "domain", "status": "available"|"taken"|"unknown", "available": bool|None,
+        "confirmed": bool   # False = available per DNS only (.ng / .com.ng); confirmed again before buying
         "alternatives": [ {"domain", "status", "available"}, ... ]  # only when taken
       }
     Raises RateLimited / InvalidDomain — router converts to 429/422.
@@ -295,7 +320,9 @@ def check_domain(db: Any, org_id: str, builder_id: str, domain: str) -> dict:
     normalised = f"{label}{tld}"
 
     result = _check_one(normalised, tld)
-    if result["status"] != "available":
+    # Suggestions only make sense for a name that is definitely taken. On "unknown" a lookup
+    # problem would just repeat for every candidate and make the request slow.
+    if result["status"] == "taken":
         result = dict(result)
         result["alternatives"] = _suggest_alternatives(label, tld, supported_tlds)
     return result
