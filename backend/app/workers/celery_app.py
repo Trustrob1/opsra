@@ -58,6 +58,11 @@ SITE-4 part A:
     site_worker gains run_renewal_cycle — renewal reminders / lapse handling.
     New beat entry:
       - site-renewal-cycle (daily 06:30 UTC = 07:30 WAT)
+
+SITE-4 part B:
+    site_worker gains run_care_cycle and run_asset_cleanup. New beat entries:
+      - site-care-cycle    (daily 06:45 UTC = 07:45 WAT)
+      - site-asset-cleanup (daily 03:00 UTC = 04:00 WAT)
 """
 
 import os
@@ -618,6 +623,25 @@ celery_app.conf.beat_schedule = {
     "site-renewal-cycle": {
         "task": "app.workers.site_worker.run_renewal_cycle",
         "schedule": crontab(minute=30, hour=6),
+    },
+
+    # ------------------------------------------------------------------ #
+    # site-care-cycle — Daily 06:45 UTC = 07:45 WAT  (SITE-4B)           #
+    # Care plans: active -> grace -> ended; one payment link per period.  #
+    # ------------------------------------------------------------------ #
+    "site-care-cycle": {
+        "task": "app.workers.site_worker.run_care_cycle",
+        "schedule": crontab(minute=45, hour=6),
+    },
+
+    # ------------------------------------------------------------------ #
+    # site-asset-cleanup — Daily 03:00 UTC = 04:00 WAT  (SITE-4B)        #
+    # Deletes uploaded images 90 days after a site is cancelled or its   #
+    # domain lapsed; warns managers 7 days before. Text is kept.         #
+    # ------------------------------------------------------------------ #
+    "site-asset-cleanup": {
+        "task": "app.workers.site_worker.run_asset_cleanup",
+        "schedule": crontab(minute=0, hour=3),
     },
 }
 

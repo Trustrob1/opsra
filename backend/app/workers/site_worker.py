@@ -47,6 +47,13 @@ SITE-4 part A — a FOURTH task in this file:
     renewal is still unpaid, and alerts once when a domain lapses. All the logic
     lives in services/site_renewal_service.py.
 
+SITE-4 part B — two more tasks in this file (services/site_care_plan_service.py):
+
+  • run_care_cycle   — daily 06:45 UTC (07:45 WAT). Care plans move active -> grace -> ended, and a plan
+    within 5 days of its end gets one payment link by WhatsApp (retried like renewals).
+  • run_asset_cleanup — daily 03:00 UTC. Uploaded images of sites cancelled, or lapsed, for 90 days are
+    deleted (storage + site_assets rows; text and the site record stay). Managers are warned 7 days before.
+
 Deliberately NOT built here (spec lists it, but nothing exists yet for it
 to act on — building it now would be dead code):
   • Renewal reminders — needs hosting/domain renewal dates (SITE-3/SITE-5).
@@ -470,6 +477,46 @@ def run_renewal_cycle() -> dict:
     write_worker_log(
         db, worker_name="site_worker.renewal_cycle", status="failed" if total["failed"] else "passed",
         items_processed=total["checked"], items_failed=total["failed"], started_at=started,
+        run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return total
+
+
+@celery_app.task(name="app.workers.site_worker.run_care_cycle")
+def run_care_cycle() -> dict:
+    from app.services import site_care_plan_service
+    db = get_supabase()
+    started = _now()
+    total = {"checked": 0, "status_updates": 0, "reminders": 0, "ended": 0, "needs_attention": 0, "failed": 0}
+    try:
+        org_active, _ = _org_cache(db)
+        total = site_care_plan_service.run_cycle(db, started, org_active)
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] care cycle failed: %s", exc)
+    write_worker_log(
+        db, worker_name="site_worker.care_cycle", status="failed" if total["failed"] else "passed",
+        items_processed=total["checked"], items_failed=total["failed"], started_at=started,
+        run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return total
+
+
+@celery_app.task(name="app.workers.site_worker.run_asset_cleanup")
+def run_asset_cleanup() -> dict:
+    from app.services import site_care_plan_service
+    db = get_supabase()
+    started = _now()
+    total = {"checked": 0, "warned": 0, "cleaned_sites": 0, "files_removed": 0, "failed": 0}
+    try:
+        org_active, _ = _org_cache(db)
+        total = site_care_plan_service.run_cleanup(db, started, org_active)
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] asset cleanup failed: %s", exc)
+    write_worker_log(
+        db, worker_name="site_worker.asset_cleanup", status="failed" if total["failed"] else "passed",
+        items_processed=total["cleaned_sites"], items_failed=total["failed"], started_at=started,
         run_duration_ms=int((_now() - started).total_seconds() * 1000),
     )
     return total

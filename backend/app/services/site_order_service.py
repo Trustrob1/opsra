@@ -230,14 +230,48 @@ def _message_builder(db: Any, org_id: str, order: dict, text: str) -> None:
     )
 
 
+def _handle_care_payment(db: Any, org_id: str, order: dict, now: datetime) -> bool:
+    """Care plans and extra-edit packs have nothing to fulfil: paid means live. S14 — never raises."""
+    try:
+        sla_due_at = (now + timedelta(hours=_SLA_HOURS)).isoformat()    # keeps "paid time = sla_due_at - 24h" true for the KPIs
+        claim = (db.table("site_orders").update({"status": "live", "sla_due_at": sla_due_at, "updated_at": now.isoformat()})
+                 .eq("id", order["id"]).eq("status", "pending_payment").execute())
+        if not claim.data:
+            return True
+        try:
+            from app.services import site_care_plan_service
+            site_care_plan_service.on_paid(db, org_id, order, now)
+        except Exception as exc:
+            logger.warning("site_order: care payment activation failed order=%s: %s", order["id"], exc)
+            try:
+                from app.services import funnel_service
+                funnel_service.notify_managers(
+                    db, org_id, "Care payment needs a hand",
+                    f"A {order.get('kind')} payment (₦{float(order.get('amount') or 0):,.0f}) was received but couldn't be applied "
+                    "automatically. Check the site's plan.", "site_order_late_payment", None)
+            except Exception:
+                pass
+        try:
+            from app.services import funnel_service
+            funnel_service.notify_managers(
+                db, org_id, "Care plan paid" if order.get("kind") == "care_plan" else "Extra edits paid",
+                f"₦{float(order.get('amount') or 0):,.0f}", "site_order_paid", None)
+        except Exception as exc:
+            logger.warning("site_order: care manager notify failed order=%s: %s", order["id"], exc)
+        return True
+    except Exception as exc:
+        logger.warning("site_order._handle_care_payment failed order=%s: %s", order.get("id"), exc)
+        return True
+
+
 def _alert_late_payment(db: Any, org_id: str, order: dict) -> None:
     """A payment landed on an order we had already expired (a newer renewal replaced it). S14."""
     try:
         from app.services import funnel_service
         funnel_service.notify_managers(
             db, org_id, f"Payment received on a closed order: {order.get('domain')}",
-            "This renewal order had been closed, but the client paid its link. Check Paystack and "
-            "renew the domain, or refund the payment.", "site_order_late_payment", None,
+            "This order had been closed, but its payment link was paid. Check Paystack and "
+            "either apply it by hand or refund the payment.", "site_order_late_payment", None,
         )
     except Exception as exc:
         logger.warning("site_order: late-payment alert failed order=%s: %s", order.get("id"), exc)
@@ -260,6 +294,9 @@ def on_payment_confirmed(db: Any, org_id: str, reference: str, now: Optional[dat
             if order.get("status") == "expired":
                 _alert_late_payment(db, org_id, order)
             return True  # idempotent — a prior webhook delivery already processed this
+
+        if order.get("kind") in ("care_plan", "edit_pack"):
+            return _handle_care_payment(db, org_id, order, now)
 
         approval_required = bool(order.get("approval_required"))
         new_status = "awaiting_approval" if approval_required else "fulfilling"

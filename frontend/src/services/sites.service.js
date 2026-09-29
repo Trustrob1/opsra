@@ -79,6 +79,9 @@ export const markJobRenewed = (id) => unwrap(api.post(`/api/v1/sites/hosting-job
 /** SITE-4 — (re)creates the renewal payment link for a domain and WhatsApps it to the builder. */
 export const sendRenewalLink = (domainId) => unwrap(api.post(`/api/v1/sites/domains/${domainId}/renewal-link`))
 
+/** SITE-4B — staff: what = 'plan' | 'pack'. → { checkout_url, amount, kind, sent } */
+export const sendCareLink = (siteId, what) => unwrap(api.post(`/api/v1/sites/${siteId}/care-link`, { what }))
+
 export const listSiteDomains = (params) => unwrap(api.get('/api/v1/sites/domains', { params }))
 
 /** spec §8.6 — built in memory on the server; saved through a temporary link. */

@@ -53,6 +53,7 @@ from app.services import (
     builder_auth_service,
     domain_check_service,
     pricing_service,
+    site_care_plan_service,
     site_order_service,
     site_renewal_service,
     site_renderer,
@@ -261,6 +262,12 @@ def list_my_sites(builder=Depends(get_current_builder), db=Depends(get_supabase)
         r["hosting_status"] = d["status"] if d else None
         r["renews_on"] = d["renews_on"] if d else None
         r.update(site_renewal_service.builder_view(d, today))
+    try:
+        views = site_care_plan_service.summaries(db, builder["org_id"], [r["id"] for r in rows])
+        for r in rows:
+            r.update(site_care_plan_service.list_fields(views[r["id"]]))
+    except Exception as exc:  # S14
+        logger.warning("care plan: list summaries failed: %s", exc)
     return ok(data=rows)
 
 
@@ -278,6 +285,12 @@ def get_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(g
 def patch_my_content(site_id: str, payload: SiteContentPatch, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     org_id = builder["org_id"]
     site = _get_site(db, org_id, builder["id"], site_id)
+    try:
+        site_care_plan_service.consume_edit(db, org_id, site)
+    except site_care_plan_service.EditLimitReached as exc:
+        raise HTTPException(402, detail={"code": "EDIT_LIMIT_REACHED", "message": str(exc), "offer": exc.offer})
+    except Exception as exc:  # fail open — a bug in the allowance code must never stop a builder saving
+        logger.warning("care plan: consume_edit failed site=%s: %s", site_id, exc)
     _snapshot_for_undo(db, org_id, site)
     updates = {"content": payload.content.model_dump(mode="json"), "updated_at": _now_iso(),
                "revision_count": (site.get("revision_count") or 0) + 1}
@@ -429,3 +442,36 @@ def renewal_checkout(site_id: str, builder=Depends(get_current_builder), db=Depe
     except pricing_service.PricingError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     return ok(data=result, message="Renewal link created")
+
+
+# ─────────────────────────────── Care plans & extra edits (SITE-4B) ───────────────────────────────
+
+def _care_errors(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except site_care_plan_service.CarePlanNotFound as exc:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": str(exc)})
+    except site_care_plan_service.CarePlanError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+
+@router.get("/sites/{site_id}/care-plan")
+def get_care_plan(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    _get_site(db, builder["org_id"], builder["id"], site_id)
+    return ok(data=site_care_plan_service.site_allowance(db, builder["org_id"], site_id))
+
+
+@router.post("/sites/{site_id}/care-plan/checkout")
+def care_plan_checkout(site_id: str, payload: dict, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    what = (payload or {}).get("what")
+    result = _care_errors(site_care_plan_service.create_checkout, db, builder["org_id"], builder, site_id, what)
+    result.pop("order", None)
+    return ok(data=result, message="Payment link created")
+
+
+@router.post("/sites/{site_id}/care-plan/cancel")
+def care_plan_cancel(site_id: str, payload: dict, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    cancel = bool((payload or {}).get("cancel", True))
+    view = _care_errors(site_care_plan_service.set_cancel, db, builder["org_id"], builder, site_id, cancel)
+    return ok(data=view, message="Cancellation saved" if cancel else "Cancellation withdrawn")
+

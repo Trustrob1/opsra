@@ -84,6 +84,19 @@ export const checkout = (token, payload) =>
 export const renewalCheckout = (token, siteId) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/renewal-checkout`, {}, authed(token)))
 
+// ── Care plans & extra edits (SITE-4B) ──────────────────────────────────────
+/** what = 'plan' | 'pack' → { checkout_url, amount, kind } */
+export const careCheckout = (token, siteId, what) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/care-plan/checkout`, { what }, authed(token)))
+/** cancel = true keeps the plan until the end of the paid month; false takes it back. */
+export const cancelCarePlan = (token, siteId, cancel = true) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/care-plan/cancel`, { cancel }, authed(token)))
+/** The offer a 402 EDIT_LIMIT_REACHED response carries, or null for any other error. */
+export const editLimitOffer = (err) => {
+  const d = err?.response?.data?.detail
+  return err?.response?.status === 402 && d?.code === 'EDIT_LIMIT_REACHED' ? (d.offer || {}) : null
+}
+
 /** Pull a readable message out of an axios error — same shape as sites.service.js's helper. */
 export function errorMessage(err, fallback = 'Something went wrong. Please try again.') {
   const d = err?.response?.data?.detail

@@ -436,3 +436,56 @@ class TestRenewalCheckout:
         for row in resp.json()["data"]:
             assert "days_to_renewal" in row and "renewal_status" in row
 
+
+class TestCarePlanRoutes:
+    """SITE-4B — edit limit on the editor's save, plus the care-plan endpoints (service mocked)."""
+
+    _CONTENT_URL = f"/api/v1/builder/sites/{SITE_ID}/content"
+
+    def test_edit_limit_returns_402_with_the_offer(self, authed_client, monkeypatch):
+        db = _db_mock(sites=_chain([_FAKE_SITE]), site_revisions=_chain([]), site_events=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        svc = builder_portal.site_care_plan_service
+
+        def _raise(*a, **k):
+            raise svc.EditLimitReached("Out of edits.", {"plan_price": 5000, "pack_price": 1500})
+        monkeypatch.setattr(svc, "consume_edit", _raise)
+        new_content = dict(_FAKE_SITE["content"])
+        new_content["hero"] = {"headline": "New headline", "subhead": "", "image_asset_id": None}
+        resp = authed_client.patch(self._CONTENT_URL, json={"content": new_content})
+        assert resp.status_code == 402
+        d = resp.json()["detail"]
+        assert d["code"] == "EDIT_LIMIT_REACHED" and d["offer"]["plan_price"] == 5000
+        assert db.table("site_revisions").insert.call_count == 0 if hasattr(db.table("site_revisions"), "insert") else True
+
+    def test_a_bug_in_the_allowance_code_never_blocks_saving(self, authed_client, monkeypatch):
+        db = _db_mock(sites=_chain([_FAKE_SITE]), site_revisions=_chain([]), site_events=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        monkeypatch.setattr(builder_portal.site_care_plan_service, "consume_edit",
+                            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+        new_content = dict(_FAKE_SITE["content"])
+        new_content["hero"] = {"headline": "New headline", "subhead": "", "image_asset_id": None}
+        assert authed_client.patch(self._CONTENT_URL, json={"content": new_content}).status_code == 200
+
+    def test_care_plan_get_checkout_cancel(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(sites=_chain([_FAKE_SITE]))
+        svc = builder_portal.site_care_plan_service
+        monkeypatch.setattr(svc, "site_allowance", lambda db, org, sid: {"edits_left": 7})
+        monkeypatch.setattr(svc, "create_checkout", lambda db, org, b, sid, what: {"checkout_url": "https://pay.test/c", "amount": 5000,
+                                                                                    "kind": "care_plan", "reused": False, "order": {"id": "o"}})
+        monkeypatch.setattr(svc, "set_cancel", lambda db, org, b, sid, cancel: {"cancel_at_period_end": cancel})
+        base = f"/api/v1/builder/sites/{SITE_ID}/care-plan"
+        assert authed_client.get(base).json()["data"]["edits_left"] == 7
+        r = authed_client.post(f"{base}/checkout", json={"what": "plan"})
+        assert r.status_code == 200 and r.json()["data"]["checkout_url"] == "https://pay.test/c" and "order" not in r.json()["data"]
+        assert authed_client.post(f"{base}/cancel", json={"cancel": True}).json()["data"]["cancel_at_period_end"] is True
+
+    def test_care_plan_errors_map_to_404_and_422(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        svc = builder_portal.site_care_plan_service
+        for exc, code in ((svc.CarePlanNotFound("nope"), 404), (svc.CarePlanBlocked("not live"), 422)):
+            def _raise(*a, _e=exc, **k):
+                raise _e
+            monkeypatch.setattr(svc, "create_checkout", _raise)
+            assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/care-plan/checkout", json={"what": "plan"}).status_code == code
+

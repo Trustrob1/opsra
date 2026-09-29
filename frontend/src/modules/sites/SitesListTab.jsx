@@ -6,9 +6,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, Search, Globe } from 'lucide-react'
-import { listSites, createSite, listPresets, listBuilders, errorMessage } from '../../services/sites.service'
+import { listSites, createSite, listPresets, listBuilders, sendCareLink, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal } from './sitesUi'
-import { T, INPUT, dateOnly, SITE_STATUS } from './sitesKit'
+import { T, INPUT, dateOnly, money, SITE_STATUS } from './sitesKit'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import SiteEditorPanel from './SiteEditorPanel'
 
@@ -23,6 +23,7 @@ export default function SitesListTab({ isActive, canEdit, enabled, showToast }) 
   const [presets, setPresets] = useState([])
   const [builders, setBuilders] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  const [careFor, setCareFor] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -74,8 +75,8 @@ export default function SitesListTab({ isActive, canEdit, enabled, showToast }) 
       ) : (
         <Card pad={0}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 640 }}>
-              <thead><tr>{['Business', 'Slug', 'Status', 'Updated', ''].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 760 }}>
+              <thead><tr>{['Business', 'Slug', 'Status', 'Care plan', 'Updated', ''].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
               <tbody>
                 {rows.map((s) => {
                   const st = SITE_STATUS[s.status] || SITE_STATUS.brief_in_progress
@@ -84,8 +85,14 @@ export default function SitesListTab({ isActive, canEdit, enabled, showToast }) 
                       <Td>{s.client_business_name}</Td>
                       <Td><code style={{ fontSize: 12 }}>{s.slug}</code></Td>
                       <Td><Badge tone={st.tone}>{st.label}</Badge></Td>
+                      <Td><CareCell s={s} /></Td>
                       <Td className="tnum">{dateOnly(s.updated_at)}</Td>
-                      <Td><Button size="sm" variant="ghost" onClick={() => setSelectedId(s.id)}>Open</Button></Td>
+                      <Td>
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedId(s.id)}>Open</Button>
+                        {canEdit && s.care_plan_status !== undefined && ['live', 'renewal_due', 'lapsed'].includes(s.status) && (
+                          <Button size="sm" variant="ghost" onClick={() => setCareFor(s)}>Care link</Button>
+                        )}
+                      </Td>
                     </tr>
                   )
                 })}
@@ -96,9 +103,60 @@ export default function SitesListTab({ isActive, canEdit, enabled, showToast }) 
         </Card>
       )}
 
+      <CareLinkModal site={careFor} onClose={() => setCareFor(null)} showToast={showToast} />
       <CreateSiteModal open={creating} presets={presets} builders={builders} onClose={() => setCreating(false)}
         onCreated={(site) => { setCreating(false); showToast('Site created'); setSelectedId(site.id) }} showToast={showToast} />
     </div>
+  )
+}
+
+function CareCell({ s }) {
+  const st = s.care_plan_status
+  const left = s.edits_left
+  if (st === undefined) return <span style={{ color: T.muted }}>—</span>
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      {st === 'active' && <Badge tone="good">Active{s.care_plan_ends ? ` · to ${dateOnly(s.care_plan_ends)}` : ''}</Badge>}
+      {st === 'grace' && <Badge tone="warn">Grace</Badge>}
+      {(st === 'ended' || st === 'none' || !st) && <Badge tone="neutral">No plan</Badge>}
+      {left != null && <span className="tnum" style={{ fontSize: 12, color: T.muted }}>{left} edit{left === 1 ? '' : 's'} left</span>}
+    </span>
+  )
+}
+
+function CareLinkModal({ site, onClose, showToast }) {
+  const [busy, setBusy] = useState('')
+  const [link, setLink] = useState(null)
+  const [err, setErr] = useState(null)
+  useEffect(() => { setLink(null); setErr(null); setBusy('') }, [site])
+  if (!site) return null
+  const send = async (what) => {
+    setBusy(what); setErr(null)
+    try {
+      const res = await sendCareLink(site.id, what)
+      setLink(res)
+      showToast(res?.sent ? 'Care link sent to the builder' : 'Care link ready')
+    } catch (e) {
+      setErr(errorMessage(e, 'Could not create the care link.'))
+    } finally { setBusy('') }
+  }
+  return (
+    <Modal open onClose={onClose} title={`Care link · ${site.client_business_name}`}
+      footer={<Button onClick={onClose}>Close</Button>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p style={{ margin: 0, fontSize: 13, color: T.muted }}>Create a payment link for the builder. It is sent on WhatsApp when possible.</p>
+        {err && <Notice tone="bad">{err}</Notice>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button variant="primary" loading={busy === 'plan'} disabled={!!busy} onClick={() => send('plan')}>
+            Care plan{site.plan_price != null ? ` · ${money(site.plan_price)}/month` : ''}
+          </Button>
+          <Button loading={busy === 'pack'} disabled={!!busy} onClick={() => send('pack')}>
+            Extra edits{site.pack_price != null ? ` · ${money(site.pack_price)}` : ''}
+          </Button>
+        </div>
+        {link?.checkout_url && <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{link.checkout_url}</code>}
+      </div>
+    </Modal>
   )
 }
 

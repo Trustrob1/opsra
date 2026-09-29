@@ -245,6 +245,29 @@ class TestRenewalRoutes(_JobBase):
             assert c.post(f"{BASE}/domains/nope/renewal-link").status_code == 404
 
 
+class TestCareLinkRoute(_Base):
+    def test_care_link_roles_and_errors(self, monkeypatch):
+        from app.services import site_care_plan_service as care
+        monkeypatch.setattr(care, "send_care_link", lambda db, org, sid, what: {"checkout_url": "https://pay.test/c", "amount": 5000,
+                                                                                  "kind": "care_plan", "sent": True})
+        with _c() as c:
+            r = c.post(f"{BASE}/site-1/care-link", json={"what": "plan"})
+            assert r.status_code == 200 and r.json()["data"]["checkout_url"] == "https://pay.test/c"
+            self.template = "admin"
+            assert c.post(f"{BASE}/site-1/care-link", json={"what": "plan"}).status_code == 403
+            self.template = "owner"
+
+            def _blocked(*a, **k):
+                raise care.CarePlanBlocked("not live")
+            monkeypatch.setattr(care, "send_care_link", _blocked)
+            assert c.post(f"{BASE}/site-1/care-link", json={"what": "plan"}).status_code == 422
+
+    def test_staff_site_list_carries_care_columns(self):
+        with _c() as c:
+            items = c.get(f"{BASE}").json()["data"]["items"]
+        assert items and all("edits_left" in i and "care_plan_status" in i for i in items)
+
+
 # ═══════════════════════════ Domains ═══════════════════════════
 
 class TestDomainsRoutes(_Base):

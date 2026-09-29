@@ -49,7 +49,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_ops_service, site_renderer
+from app.services import site_care_plan_service, site_ops_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -397,7 +397,14 @@ def list_sites(
         rows = [r for r in rows if s in (r.get("client_business_name") or "").lower() or s in (r.get("slug") or "")]
     total = len(rows)
     start = (page - 1) * page_size
-    return ok(data={"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size})
+    items = rows[start:start + page_size]
+    try:
+        views = site_care_plan_service.summaries(db, org_id, [r["id"] for r in items])
+        for r in items:
+            r.update(site_care_plan_service.list_fields(views[r["id"]]))
+    except Exception as exc:  # S14 — the list still works without the care-plan columns
+        logger.warning("care plan: staff list summaries failed: %s", exc)
+    return ok(data={"items": items, "total": total, "page": page, "page_size": page_size})
 
 
 @router.post("/sites", status_code=status.HTTP_201_CREATED)
@@ -540,6 +547,18 @@ def mark_job_renewed(job_id: str, org=Depends(get_current_org), db=Depends(get_s
 def send_domain_renewal_link(domain_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
     org_id = _ops_org(org, db, _WRITE_ROLES)
     return ok(data=_ops(site_ops_service.send_renewal_link, db, org_id, domain_id, org["id"]))
+
+
+@router.post("/sites/{site_id}/care-link")
+def send_care_link(site_id: str, payload: dict, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    try:
+        result = site_care_plan_service.send_care_link(db, org_id, site_id, (payload or {}).get("what"))
+    except site_care_plan_service.CarePlanNotFound as exc:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": str(exc)})
+    except site_care_plan_service.CarePlanError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    return ok(data=result, message="Link sent to the builder" if result["sent"] else "Link created — WhatsApp could not deliver it, copy it below")
 
 
 @router.get("/sites/domains")

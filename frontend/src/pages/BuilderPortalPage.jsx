@@ -35,7 +35,7 @@ import {
   RefreshCw, Save, ShoppingCart, Trash2, Undo2, User,
 } from 'lucide-react'
 import {
-  exchangeBuilderToken, renewalCheckout, getMyAccount, updateMyAccount, listMySites, getMySite,
+  exchangeBuilderToken, renewalCheckout, careCheckout, cancelCarePlan, editLimitOffer, getMyAccount, updateMyAccount, listMySites, getMySite,
   patchMySiteContent, patchMySiteRecipe, renderMySite, undoMySite, uploadMySiteAsset,
   checkDomain, getQuote, checkout, errorMessage,
 } from '../services/builder_portal.service'
@@ -159,6 +159,31 @@ function MySitesView({ token, onOpen, showToast }) {
   const [sites, setSites] = useState(null)
   const [error, setError] = useState(null)
   const [renewing, setRenewing] = useState(null)
+  const [careBusy, setCareBusy] = useState(null)
+
+  async function buy(site, what) {
+    setCareBusy(`${site.id}:${what}`)
+    try {
+      const res = await careCheckout(token, site.id, what)
+      window.location.assign(res.checkout_url)
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not create the payment link.'), 'bad')
+      setCareBusy(null)
+    }
+  }
+
+  async function toggleCancel(site) {
+    setCareBusy(`${site.id}:cancel`)
+    try {
+      const view = await cancelCarePlan(token, site.id, !site.cancel_at_period_end)
+      setSites((rows) => rows.map((r) => (r.id === site.id ? { ...r, cancel_at_period_end: view.cancel_at_period_end } : r)))
+      showToast(view.cancel_at_period_end ? 'Your plan will end on its renewal date' : 'Cancellation withdrawn')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not change the plan.'), 'bad')
+    } finally {
+      setCareBusy(null)
+    }
+  }
 
   async function renew(site) {
     setRenewing(site.id)
@@ -206,6 +231,29 @@ function MySitesView({ token, onOpen, showToast }) {
             </div>
             <Badge tone={st.tone}>{st.label}</Badge>
           </button>
+          {['live', 'renewal_due', 'lapsed'].includes(s.status) && s.edits_left !== undefined && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '0 4px' }}>
+              <span style={{ fontSize: 12.5, color: s.edits_left === 0 ? T.bad : T.muted }}>
+                {s.edits_left} edit{s.edits_left === 1 ? '' : 's'} left
+                {s.care_plan_status === 'active' && ` · Care plan until ${dateOnly(s.care_plan_ends)}${s.cancel_at_period_end ? ' (ending)' : ''}`}
+                {s.care_plan_status === 'grace' && ` · Care plan expired ${dateOnly(s.care_plan_ends)} — renew to keep your ${s.edits_per_month} monthly edits`}
+              </span>
+              <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {['active', 'grace'].includes(s.care_plan_status) ? (
+                  <Button variant="ghost" loading={careBusy === `${s.id}:cancel`} onClick={() => toggleCancel(s)}>
+                    {s.cancel_at_period_end ? 'Keep my plan' : 'Cancel plan'}
+                  </Button>
+                ) : (
+                  <Button loading={careBusy === `${s.id}:plan`} onClick={() => buy(s, 'plan')}>
+                    Add care plan · {money(s.plan_price)}/month
+                  </Button>
+                )}
+                <Button variant="ghost" loading={careBusy === `${s.id}:pack`} onClick={() => buy(s, 'pack')}>
+                  Buy {s.pack_edits} edits · {money(s.pack_price)}
+                </Button>
+              </span>
+            </div>
+          )}
           {s.renews_on && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '0 4px' }}>
               <span style={{ fontSize: 12.5, color: s.renewal_status === 'lapsed' ? T.bad : T.muted }}>
@@ -275,6 +323,8 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   const [savingRecipe, setSavingRecipe] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [undoing, setUndoing] = useState(false)
+  const [limitOffer, setLimitOffer] = useState(null)      // set when a save is refused for lack of edits
+  const [careBusy, setCareBusy] = useState(null)
   // Mobile-only: which pane is showing (Edit vs Preview) since a phone screen
   // has no room for both side by side. Ignored at desktop widths, where the
   // CSS below forces both panes visible at once â see the <style> block in
@@ -306,11 +356,25 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
     try {
       const s = await patchMySiteContent(token, siteId, content)
       setSite(s)
+      setLimitOffer(null)
       showToast('Content saved — render to refresh the preview')
     } catch (e) {
-      showToast(errorMessage(e, 'Could not save your changes.'), 'bad')
+      const offer = editLimitOffer(e)
+      if (offer) setLimitOffer(offer)
+      else showToast(errorMessage(e, 'Could not save your changes.'), 'bad')
     } finally {
       setSavingContent(false)
+    }
+  }
+
+  const buyEdits = async (what) => {
+    setCareBusy(what)
+    try {
+      const res = await careCheckout(token, siteId, what)
+      window.location.assign(res.checkout_url)
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not create the payment link.'), 'bad')
+      setCareBusy(null)
     }
   }
 
@@ -453,6 +517,23 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           <HoursLocationCard content={content} setContent={setContent} />
           <OrderSeoCard content={content} setContent={setContent} />
 
+          {limitOffer && (
+            <div role="alert" style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 13.5, color: T.ink }}>{limitOffer.message || "You've used all the edits for this site."}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {limitOffer.plan_price != null && (
+                  <Button variant="primary" loading={careBusy === 'plan'} disabled={!!careBusy} onClick={() => buyEdits('plan')}>
+                    Add care plan · {money(limitOffer.plan_price)}/month ({limitOffer.edits_per_month} edits)
+                  </Button>
+                )}
+                {limitOffer.pack_price != null && (
+                  <Button loading={careBusy === 'pack'} disabled={!!careBusy} onClick={() => buyEdits('pack')}>
+                    Buy {limitOffer.pack_edits} extra edits · {money(limitOffer.pack_price)}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
           <div><Button variant="primary" icon={Save} loading={savingContent} onClick={saveContent}>Save content</Button></div>
 
           <DesignCard recipe={recipe} setRecipe={setRecipe} />

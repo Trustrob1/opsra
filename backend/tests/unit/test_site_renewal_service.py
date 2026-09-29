@@ -252,6 +252,39 @@ def test_builder_without_lead_is_flagged_not_crashed(env):
     assert r["failed"] == 1 and env["tpl"] == []
 
 
+# ── retries (a failed send must not burn the reminder) ──────────────────────
+
+def test_failed_reminder_is_retried_next_day_and_stops_once_delivered(env):
+    env["ok"] = False
+    db = _db([_domain(days=30)])
+    _run(db); _payment_link_row(db)
+    assert len(env["tpl"]) == 1
+    env["ok"] = True                                                    # the number/template got fixed
+    r = _run(db)
+    assert r["reminders"] == 1 and len(env["tpl"]) == 2
+    assert _run(db)["reminders"] == 0 and len(env["tpl"]) == 2          # delivered -> done
+
+
+def test_gives_up_after_three_failures_and_alerts_first_and_last_only(env):
+    env["ok"] = False
+    db = _db([_domain(days=30)])
+    for _ in range(5):
+        _run(db); _payment_link_row(db)
+    assert len(env["tpl"]) == rs.MAX_SEND_ATTEMPTS
+    alerts = [n for n in env["notify"] if "not delivered" in n[0]]
+    assert len(alerts) == 2 and "will retry" in alerts[0][1] and "giving up" in alerts[1][1]
+
+
+def test_failed_client_notice_retries_but_creates_one_task(env):
+    env["ok"] = False
+    db = _db([_domain(days=4)])
+    for _ in range(3):
+        _run(db); _payment_link_row(db)
+    assert len(db.rows("tasks")) == 1
+    env["ok"] = True
+    _run(db)                                                            # tries used up -> no fourth attempt
+    assert len([t for t in env["tpl"] if t[1] == "site_renewal_client_notice"]) == rs.MAX_SEND_ATTEMPTS
+
 # ── builder "Renew now" ─────────────────────────────────────────────────────
 
 def test_builder_can_renew_within_60_days(env):

@@ -28,6 +28,7 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 REMINDER_BRACKETS = (30, 14, 7)        # days before expiry (spec §14)
+MAX_SEND_ATTEMPTS = 3                  # a failed reminder / client notice is retried on the next daily run
 CLIENT_CONTACT_DAYS = 5                # L19 — Opsra may contact the client directly 5 days before expiry
 BUILDER_RENEW_WINDOW_DAYS = 60         # the builder portal offers "Renew now" this early, or after a lapse
 _WHATSAPP_WINDOW_HOURS = 23            # a little inside Meta's 24h free-messaging window
@@ -166,10 +167,21 @@ def _log_event(db: Any, org_id: str, site_id: Optional[str], actor: str, event: 
         logger.warning("site_renewal: site_events insert failed event=%s: %s", event, exc)
 
 
-def _already_logged(db: Any, org_id: str, site_id: str, event: str, expiry_iso: str) -> bool:
+def _send_state(db: Any, org_id: str, site_id: str, event: str, expiry_iso: str) -> tuple:
+    """(done, attempts) for one reminder/notice and one expiry date. `done` = it was delivered, or we have
+    used up MAX_SEND_ATTEMPTS. Only a delivered message (or the last failed try) stops the retries."""
     rows = (db.table("site_events").select("id, detail").eq("org_id", org_id).eq("site_id", site_id)
             .eq("event", event).execute()).data or []
-    return any((r.get("detail") or {}).get("expiry") == expiry_iso for r in rows)   # Pattern 33: filter in Python
+    mine = [r for r in rows if (r.get("detail") or {}).get("expiry") == expiry_iso]   # Pattern 33: filter in Python
+    delivered = any((r.get("detail") or {}).get("sent") is True for r in mine)
+    return (delivered or len(mine) >= MAX_SEND_ATTEMPTS), len(mine)
+
+
+def _already_logged(db: Any, org_id: str, site_id: str, event: str, expiry_iso: str) -> bool:
+    """For one-off events that are not sends (e.g. the lapse alert)."""
+    rows = (db.table("site_events").select("id, detail").eq("org_id", org_id).eq("site_id", site_id)
+            .eq("event", event).execute()).data or []
+    return any((r.get("detail") or {}).get("expiry") == expiry_iso for r in rows)
 
 
 def _notify_managers(db: Any, org_id: str, title: str, body: str, notif_type: str) -> None:
@@ -418,33 +430,44 @@ def _process_domain(db: Any, row: dict, now: datetime, org_active: Callable[[str
     site, builder = _load_site_and_builder(db, org_id, row)
 
     bracket = bracket_for(days)
-    if bracket and not _already_logged(db, org_id, row["site_id"], f"renewal_reminder_{bracket}", expiry_iso):
-        link = get_or_create_renewal_link(db, org_id, row)     # raises -> counted as failed, retried tomorrow
-        sent = send_builder_reminder(db, org_id, builder, site, row, link["checkout_url"], link["amount"], days, now)
-        if not sent:
-            result["needs_attention"] += 1
-            _notify_managers(db, org_id, f"Renewal reminder not delivered: {domain}",
-                             f"{domain} renews {days_text(days)}. Couldn't message {builder.get('full_name') or 'the builder'} — "
-                             f"send them this link: {link['checkout_url']}", "site_renewal_attention")
-        _log_event(db, org_id, row["site_id"], "system", f"renewal_reminder_{bracket}",
-                   {"expiry": expiry_iso, "days": days, "sent": bool(sent)}, (link["order"] or {}).get("id"))
-        result["reminders"] += 1
+    if bracket:
+        event = f"renewal_reminder_{bracket}"
+        done, attempts = _send_state(db, org_id, row["site_id"], event, expiry_iso)
+        if not done:
+            link = get_or_create_renewal_link(db, org_id, row)     # raises -> counted as failed, retried tomorrow
+            sent = send_builder_reminder(db, org_id, builder, site, row, link["checkout_url"], link["amount"], days, now)
+            attempt = attempts + 1
+            if not sent and attempt in (1, MAX_SEND_ATTEMPTS):     # alert on the first failure and when we give up
+                result["needs_attention"] += 1
+                _notify_managers(db, org_id, f"Renewal reminder not delivered: {domain}",
+                                 f"{domain} renews {days_text(days)}. Couldn't message {builder.get('full_name') or 'the builder'}"
+                                 f" (try {attempt} of {MAX_SEND_ATTEMPTS}"
+                                 f"{'; giving up' if attempt == MAX_SEND_ATTEMPTS else '; will retry tomorrow'}) — "
+                                 f"send them this link: {link['checkout_url']}", "site_renewal_attention")
+            _log_event(db, org_id, row["site_id"], "system", event,
+                       {"expiry": expiry_iso, "days": days, "sent": bool(sent), "attempt": attempt}, (link["order"] or {}).get("id"))
+            result["reminders"] += 1 if sent else 0
 
-    if days <= CLIENT_CONTACT_DAYS and not _already_logged(db, org_id, row["site_id"], "renewal_client_contact", expiry_iso):
-        sent, reason = send_client_notice(db, org_id, builder, site, row)
-        if not sent:
-            owner = site.get("legal_owner") or {}
-            owner = owner if isinstance(owner, dict) else {}
-            detail = (f"{domain} renews {days_text(days)} and isn't paid. Contact the client: "
-                      f"{owner.get('full_name') or site.get('client_business_name') or 'unknown'} · "
-                      f"{owner.get('phone') or 'no phone'} · {owner.get('email') or 'no email'} "
-                      f"(builder: {builder.get('full_name') or builder.get('business_name')}). Reason: {reason}.")
-            _create_task(db, org_id, f"Contact client about renewal: {domain}", detail, row["id"])
-            _notify_managers(db, org_id, f"Contact the client: {domain}", detail, "site_renewal_attention")
-            result["needs_attention"] += 1
-        _log_event(db, org_id, row["site_id"], "system", "renewal_client_contact",
-                   {"expiry": expiry_iso, "days": days, "sent": bool(sent), "reason": reason})
-        result["client_contacts"] += 1
+    if days <= CLIENT_CONTACT_DAYS:
+        done, attempts = _send_state(db, org_id, row["site_id"], "renewal_client_contact", expiry_iso)
+        if not done:
+            sent, reason = send_client_notice(db, org_id, builder, site, row)
+            attempt = attempts + 1
+            if not sent and attempt in (1, MAX_SEND_ATTEMPTS):
+                owner = site.get("legal_owner") or {}
+                owner = owner if isinstance(owner, dict) else {}
+                detail = (f"{domain} renews {days_text(days)} and isn't paid. Contact the client: "
+                          f"{owner.get('full_name') or site.get('client_business_name') or 'unknown'} · "
+                          f"{owner.get('phone') or 'no phone'} · {owner.get('email') or 'no email'} "
+                          f"(builder: {builder.get('full_name') or builder.get('business_name')}). Reason: {reason}. "
+                          f"(try {attempt} of {MAX_SEND_ATTEMPTS})")
+                if attempt == 1:
+                    _create_task(db, org_id, f"Contact client about renewal: {domain}", detail, row["id"])
+                _notify_managers(db, org_id, f"Contact the client: {domain}", detail, "site_renewal_attention")
+                result["needs_attention"] += 1
+            _log_event(db, org_id, row["site_id"], "system", "renewal_client_contact",
+                       {"expiry": expiry_iso, "days": days, "sent": bool(sent), "reason": reason, "attempt": attempt})
+            result["client_contacts"] += 1 if sent else 0
 
 
 def run_cycle(db: Any, now: datetime, org_active: Callable[[str], bool]) -> dict:
