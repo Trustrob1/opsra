@@ -514,7 +514,7 @@ def _tick(checklist, key: str, done: bool) -> list:
 
 def _enrich_jobs(db: Any, org_id: str, jobs: list, now: datetime) -> list:
     orders = _by_id(db, "site_orders", org_id, [j.get("order_id") for j in jobs],
-                    "id, domain, backup_domain, route, amount, status, builder_id")
+                    "id, domain, backup_domain, route, amount, status, builder_id, kind")
     sites = _by_id(db, "sites", org_id, [j.get("site_id") for j in jobs], "id, client_business_name, slug, live_url")
     users = _by_id(db, "users", org_id, [j.get("assigned_to") for j in jobs], "id, full_name")
     out = []
@@ -525,7 +525,7 @@ def _enrich_jobs(db: Any, org_id: str, jobs: list, now: datetime) -> list:
         j = dict(j)
         j.update({
             "domain": o.get("domain"), "backup_domain": o.get("backup_domain"), "route": o.get("route"),
-            "order_status": o.get("status"), "order_amount": o.get("amount"),
+            "order_status": o.get("status"), "order_amount": o.get("amount"), "order_kind": o.get("kind") or "initial",
             "client_business_name": s.get("client_business_name"), "site_slug": s.get("slug"),
             "live_url": s.get("live_url"),
             "assigned_name": (users.get(j.get("assigned_to")) or {}).get("full_name"),
@@ -787,6 +787,108 @@ def _record_domain(db: Any, org_id: str, order: dict, domain: str, now: datetime
     except Exception as exc:  # S14 — the site is already live; a missing register row is recoverable by hand
         logger.warning("site_ops: site_domains insert failed order=%s: %s", order.get("id"), exc)
         return None
+
+
+def _close_other_renewal_orders(db: Any, org_id: str, order: dict, domain: str) -> int:
+    """After a renewal is done, any other unpaid renewal order for the same domain is stale."""
+    closed = 0
+    try:
+        rows = (db.table("site_orders").select("id, domain").eq("org_id", org_id).eq("site_id", order["site_id"])
+                .eq("kind", "renewal").eq("status", "pending_payment").execute()).data or []
+        for r in rows:
+            if r["id"] != order["id"] and (r.get("domain") or "").lower() == domain:
+                db.table("site_orders").update({"status": "expired", "updated_at": _iso()}) \
+                    .eq("id", r["id"]).eq("org_id", org_id).eq("status", "pending_payment").execute()
+                closed += 1
+    except Exception as exc:  # S14
+        logger.warning("site_ops: closing stale renewal orders failed order=%s: %s", order.get("id"), exc)
+    return closed
+
+
+def mark_renewed(db: Any, org_id: str, job_id: str, user_id: str, now: Optional[datetime] = None) -> dict:
+    """SITE-4 — finishes a renewal job. Both registrar steps must be ticked; the renewal dates move a year
+    on from whichever is later, today or the current date, so an early renewal never loses paid time."""
+    from app.services import pricing_service
+    now = now or _now()
+    job, order = _job_and_order(db, org_id, job_id)
+    if order.get("kind") != "renewal":
+        raise Conflict("This is not a renewal job — use Mark live.")
+    if order["status"] != "fulfilling":
+        raise Conflict(f"The order is '{order['status']}', so it can't be marked renewed.")
+    if not (_step_done(job, "renew_domain") and _step_done(job, "renew_hosting")):
+        raise ValidationFailed("Tick both 'Renew the domain' and 'Renew the hosting package' first.")
+
+    domain = (order.get("domain") or "").lower()
+    domain_row = _one((db.table("site_domains").select("*").eq("org_id", org_id).eq("site_id", order["site_id"])
+                       .eq("domain", domain).limit(1).execute()).data)
+    if not domain_row:
+        raise NotFound("The domain register has no entry for this domain.")
+
+    today = now.date()
+    new_domain_date = _add_year(max(_parse_date(domain_row.get("renews_on")) or today, today))
+    new_hosting_date = _add_year(max(_parse_date(domain_row.get("hosting_renews_on")) or today, today))
+
+    ts = _iso(now)
+    claim = (db.table("site_orders").update({"status": "live", "updated_at": ts})
+             .eq("id", order["id"]).eq("org_id", org_id).eq("status", "fulfilling").execute())
+    if not claim.data:
+        raise Conflict("This order was just handled by someone else.")
+
+    updates = {"renews_on": new_domain_date.isoformat(), "hosting_renews_on": new_hosting_date.isoformat(),
+               "status": "active", "updated_at": ts}
+    try:
+        q = pricing_service.quote(db, org_id, domain, order.get("route") or "standard", "renewal")
+        updates["registrar_cost_renewal"] = q["cost"]["domain"]
+        updates["hosting_cost_renewal"] = q["cost"]["hosting"]
+    except Exception as exc:  # S14 — keep the old cost figures
+        logger.warning("site_ops: renewal cost refresh failed domain=%s: %s", domain, exc)
+    db.table("site_domains").update(updates).eq("id", domain_row["id"]).eq("org_id", org_id).execute()
+
+    db.table("site_hosting_jobs").update({
+        "status": "done", "completed_at": ts, "checklist": _tick(job.get("checklist"), "confirm_site", True),
+        "updated_at": ts,
+    }).eq("id", job["id"]).eq("org_id", org_id).execute()
+    try:
+        db.table("sites").update({"status": "live", "updated_at": ts}).eq("id", order["site_id"]) \
+            .eq("org_id", org_id).in_("status", ["live", "renewal_due", "lapsed"]).execute()
+    except Exception as exc:  # S14
+        logger.warning("site_ops: site status reset failed site=%s: %s", order.get("site_id"), exc)
+
+    _close_other_renewal_orders(db, org_id, order, domain)
+    _complete_tasks(db, org_id, job["id"], f"Renewed until {new_domain_date.isoformat()}")
+    _message_builder(db, org_id, order, f"{domain} is renewed until {new_domain_date.day} {new_domain_date.strftime('%b %Y')}.")
+    _log_event(db, org_id, order.get("site_id"), f"user:{user_id}", "renewal_completed",
+               {"domain": domain, "renews_on": new_domain_date.isoformat(),
+                "hosting_renews_on": new_hosting_date.isoformat()}, order["id"])
+    return {"order_status": "live", "renews_on": new_domain_date.isoformat(),
+            "hosting_renews_on": new_hosting_date.isoformat(), "job": _job_view(db, org_id, job_id)}
+
+
+def send_renewal_link(db: Any, org_id: str, domain_id: str, user_id: str) -> dict:
+    """Staff button in the Domains tab: (re)creates the renewal link and WhatsApps it to the builder."""
+    from app.services import site_renewal_service as renewal
+    domain_row = _one((db.table("site_domains").select("*").eq("id", domain_id).eq("org_id", org_id).limit(1).execute()).data)
+    if not domain_row:
+        raise NotFound("Domain not found")
+    try:
+        link = renewal.get_or_create_renewal_link(db, org_id, domain_row)
+        site, builder = renewal._load_site_and_builder(db, org_id, domain_row)
+    except renewal.RenewalNotFound as exc:
+        raise NotFound(str(exc))
+    except renewal.RenewalBlocked as exc:
+        raise Conflict(str(exc))
+    except pricing_errors() as exc:
+        raise ValidationFailed(str(exc))
+    days = renewal.days_left(domain_row, renewal.lagos_today()) or 0
+    sent = renewal.send_builder_reminder(db, org_id, builder, site, domain_row, link["checkout_url"], link["amount"], days)
+    _log_event(db, org_id, site["id"], f"user:{user_id}", "renewal_link_sent",
+               {"domain": domain_row.get("domain"), "sent": bool(sent)}, (link["order"] or {}).get("id"))
+    return {"checkout_url": link["checkout_url"], "amount": link["amount"], "sent": bool(sent), "reused": link["reused"]}
+
+
+def pricing_errors():
+    from app.services import pricing_service
+    return pricing_service.PricingError
 
 
 # ---------------------------------------------------------------------------

@@ -53,6 +53,11 @@ SITE-3 leftover:
     site_worker gains run_approval_summary — spec §6.2 morning summary.
     New beat entry:
       - site-approval-summary (daily 07:00 UTC = 08:00 WAT)
+
+SITE-4 part A:
+    site_worker gains run_renewal_cycle — renewal reminders / lapse handling.
+    New beat entry:
+      - site-renewal-cycle (daily 06:30 UTC = 07:30 WAT)
 """
 
 import os
@@ -602,6 +607,17 @@ celery_app.conf.beat_schedule = {
     "site-approval-summary": {
         "task": "app.workers.site_worker.run_approval_summary",
         "schedule": crontab(minute=0, hour=7),
+    },
+
+    # ------------------------------------------------------------------ #
+    # site-renewal-cycle — Daily 06:30 UTC = 07:30 WAT  (SITE-4)         #
+    # Worker: site_worker.py                                              #
+    # Domain/site status, builder reminders at 30/14/7 days with a pay    #
+    # link, client WhatsApp at <=5 days, one-off alert on lapse.          #
+    # ------------------------------------------------------------------ #
+    "site-renewal-cycle": {
+        "task": "app.workers.site_worker.run_renewal_cycle",
+        "schedule": crontab(minute=30, hour=6),
     },
 }
 

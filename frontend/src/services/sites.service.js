@@ -74,6 +74,11 @@ export const recheckJobDomain = (id) => unwrap(api.post(`/api/v1/sites/hosting-j
 export const switchToBackupDomain = (id) => unwrap(api.post(`/api/v1/sites/hosting-jobs/${id}/use-backup`))
 export const markJobLive = (id, liveUrl) => unwrap(api.post(`/api/v1/sites/hosting-jobs/${id}/mark-live`, { live_url: liveUrl }))
 
+/** SITE-4 — finishes a renewal job (both registrar steps must be ticked). */
+export const markJobRenewed = (id) => unwrap(api.post(`/api/v1/sites/hosting-jobs/${id}/mark-renewed`))
+/** SITE-4 — (re)creates the renewal payment link for a domain and WhatsApps it to the builder. */
+export const sendRenewalLink = (domainId) => unwrap(api.post(`/api/v1/sites/domains/${domainId}/renewal-link`))
+
 export const listSiteDomains = (params) => unwrap(api.get('/api/v1/sites/domains', { params }))
 
 /** spec §8.6 — built in memory on the server; saved through a temporary link. */

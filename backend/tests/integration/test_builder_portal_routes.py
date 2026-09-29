@@ -405,3 +405,34 @@ class TestCheckout:
         app.dependency_overrides[get_supabase] = lambda: _db_mock()
         resp = client.post("/api/v1/builder/checkout", json=self._PAYLOAD)
         assert resp.status_code == 401
+
+
+class TestRenewalCheckout:
+    """SITE-4 — POST /builder/sites/{id}/renewal-checkout (service mocked; the rules are unit-tested)."""
+
+    def test_creates_link(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        monkeypatch.setattr(
+            builder_portal.site_renewal_service, "builder_renewal_checkout",
+            lambda db, org_id, builder, site_id: {"checkout_url": "https://pay.test/r", "amount": 50000,
+                                                  "domain": "adaezastyles.com.ng", "expires_on": "2026-11-01", "reused": False},
+        )
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/renewal-checkout")
+        assert resp.status_code == 200 and resp.json()["data"]["checkout_url"] == "https://pay.test/r"
+
+    def test_not_found_404_and_blocked_422(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        svc = builder_portal.site_renewal_service
+        for exc, code in ((svc.RenewalNotFound("Site not found"), 404), (svc.RenewalBlocked("Too early"), 422)):
+            def _raise(*a, _e=exc, **k):
+                raise _e
+            monkeypatch.setattr(svc, "builder_renewal_checkout", _raise)
+            assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/renewal-checkout").status_code == code
+
+    def test_my_sites_list_carries_renewal_fields(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        resp = authed_client.get("/api/v1/builder/sites")
+        assert resp.status_code == 200
+        for row in resp.json()["data"]:
+            assert "days_to_renewal" in row and "renewal_status" in row
+

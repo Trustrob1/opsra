@@ -230,6 +230,19 @@ def _message_builder(db: Any, org_id: str, order: dict, text: str) -> None:
     )
 
 
+def _alert_late_payment(db: Any, org_id: str, order: dict) -> None:
+    """A payment landed on an order we had already expired (a newer renewal replaced it). S14."""
+    try:
+        from app.services import funnel_service
+        funnel_service.notify_managers(
+            db, org_id, f"Payment received on a closed order: {order.get('domain')}",
+            "This renewal order had been closed, but the client paid its link. Check Paystack and "
+            "renew the domain, or refund the payment.", "site_order_late_payment", None,
+        )
+    except Exception as exc:
+        logger.warning("site_order: late-payment alert failed order=%s: %s", order.get("id"), exc)
+
+
 # ---------------------------------------------------------------------------
 # on_payment_confirmed — spec §11.6, called from the Paystack storefront webhook
 # ---------------------------------------------------------------------------
@@ -244,6 +257,8 @@ def on_payment_confirmed(db: Any, org_id: str, reference: str, now: Optional[dat
         if not order:
             return False
         if order.get("status") != "pending_payment":
+            if order.get("status") == "expired":
+                _alert_late_payment(db, org_id, order)
             return True  # idempotent — a prior webhook delivery already processed this
 
         approval_required = bool(order.get("approval_required"))
@@ -260,16 +275,19 @@ def on_payment_confirmed(db: Any, org_id: str, reference: str, now: Optional[dat
 
         # spec §11.4 step 1 — this message goes out unconditionally on payment,
         # regardless of whether the order then waits for approval.
+        is_renewal = order.get("kind") == "renewal"
         try:
             _message_builder(db, org_id, order,
-                "Payment received. Your site is being deployed and will be live within 24 hours.")
+                f"Payment received. Your renewal of {order.get('domain')} is being processed." if is_renewal
+                else "Payment received. Your site is being deployed and will be live within 24 hours.")
         except Exception as exc:
             logger.warning("site_order.on_payment_confirmed: builder message failed order=%s: %s", order["id"], exc)
 
         try:
             from app.services import funnel_service
             funnel_service.notify_managers(
-                db, org_id, f"Site order paid: {order.get('domain')}",
+                db, org_id,
+                (f"Renewal paid: {order.get('domain')}" if is_renewal else f"Site order paid: {order.get('domain')}"),
                 f"NGN {float(order['amount']):,.2f} · {order.get('route')} · "
                 + ("awaiting your approval" if approval_required else "fulfilling now"),
                 "site_order_paid", None,
@@ -314,13 +332,23 @@ def create_hosting_job(db: Any, org_id: str, order: dict) -> dict:
         return existing
 
     now = _now_iso()
+    is_renewal = order.get("kind") == "renewal"
     sla_due_at = order.get("sla_due_at") or (_now() + timedelta(hours=_SLA_HOURS)).isoformat()
+    if is_renewal:
+        # Renewals get 72h from payment (the order keeps its 24h clock for the KPI maths).
+        base = _parse_iso(sla_due_at) or _now()
+        sla_due_at = (base + timedelta(hours=48)).isoformat()
+    if is_renewal:
+        from app.services.site_renewal_service import RENEWAL_CHECKLIST
+        checklist = [dict(item) for item in RENEWAL_CHECKLIST]
+    else:
+        checklist = [dict(item) for item in _HOSTING_CHECKLIST]
     job_row = {
         "org_id": org_id,
         "order_id": order["id"],
         "site_id": order["site_id"],
         "status": "queued",
-        "checklist": [dict(item) for item in _HOSTING_CHECKLIST],
+        "checklist": checklist,
         "sla_due_at": sla_due_at,
         "alerted_12h": False,
         "alerted_overdue": False,
@@ -341,9 +369,12 @@ def create_hosting_job(db: Any, org_id: str, order: dict) -> dict:
     try:
         db.table("tasks").insert({
             "org_id": org_id,
-            "title": f"Deploy hosting: {order.get('domain') or order['site_id']}",
-            "description": "Standard hosting job — re-check the domain, register it, buy hosting, "
-                            "upload the export, turn on SSL, then paste the live URL into Opsra.",
+            "title": (f"Renew hosting: {order.get('domain') or order['site_id']}" if is_renewal
+                      else f"Deploy hosting: {order.get('domain') or order['site_id']}"),
+            "description": ("Renewal job — renew the domain and the hosting package, confirm the site loads, "
+                            "then click Mark renewed in Opsra." if is_renewal else
+                            "Standard hosting job — re-check the domain, register it, buy hosting, "
+                            "upload the export, turn on SSL, then paste the live URL into Opsra."),
             "task_type": "hosting_job",
             "source_module": "site_hosting",
             "source_record_id": job.get("id"),
@@ -361,7 +392,7 @@ def create_hosting_job(db: Any, org_id: str, order: dict) -> dict:
     try:
         from app.services import funnel_service
         funnel_service.notify_managers(
-            db, org_id, "New hosting job queued",
+            db, org_id, "New renewal job queued" if is_renewal else "New hosting job queued",
             f"{order.get('domain')} · due {sla_due_at}", "hosting_job_created", None,
         )
     except Exception as exc:

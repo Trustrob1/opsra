@@ -79,6 +79,11 @@ export const getQuote = (token, domain, kind = 'initial') =>
 export const checkout = (token, payload) =>
   unwrap(axios.post(`${BASE}/checkout`, payload, authed(token)))
 
+// ── Renewals (SITE-4) ───────────────────────────────────────────────────────
+/** → { checkout_url, amount, domain, expires_on, reused } (422 when it is too early to renew) */
+export const renewalCheckout = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/renewal-checkout`, {}, authed(token)))
+
 /** Pull a readable message out of an axios error — same shape as sites.service.js's helper. */
 export function errorMessage(err, fallback = 'Something went wrong. Please try again.') {
   const d = err?.response?.data?.detail

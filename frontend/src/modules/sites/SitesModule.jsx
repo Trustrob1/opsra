@@ -114,7 +114,7 @@ export default function SitesModule({ user }) {
         <SitesListTab isActive={tab === 'sites'} canEdit={canEdit} enabled={!!enabled} showToast={showToast} />
       </Panel>
       <Panel on={tab === 'domains'}>
-        <SitesDomainsTab isActive={tab === 'domains'} showToast={showToast} />
+        <SitesDomainsTab isActive={tab === 'domains'} canEdit={canEdit} showToast={showToast} />
       </Panel>
       <Panel on={tab === 'builders'}>
         <SitesBuildersTab isActive={tab === 'builders'} canEdit={canEdit} showToast={showToast} />

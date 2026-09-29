@@ -39,6 +39,14 @@ SITE-3 leftover — a THIRD task in this file:
     are there. Nothing is sent when nothing is waiting. A 20-hour dedup guard
     stops a beat restart from sending it twice.
 
+SITE-4 part A — a FOURTH task in this file:
+
+  • run_renewal_cycle — daily at 06:30 UTC (07:30 WAT). Persists domain/site
+    status (active / expiring / lapsed), sends the builder's 30/14/7-day renewal
+    reminders with a payment link, WhatsApps the client at <= 5 days when the
+    renewal is still unpaid, and alerts once when a domain lapses. All the logic
+    lives in services/site_renewal_service.py.
+
 Deliberately NOT built here (spec lists it, but nothing exists yet for it
 to act on — building it now would be dead code):
   • Renewal reminders — needs hosting/domain renewal dates (SITE-3/SITE-5).
@@ -440,6 +448,28 @@ def run_approval_summary() -> dict:
     write_worker_log(
         db, worker_name="site_worker.approval_summary", status="failed" if total["failed"] else "passed",
         items_processed=total["orders"], items_failed=total["failed"], started_at=started,
+        run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return total
+
+
+@celery_app.task(name="app.workers.site_worker.run_renewal_cycle")
+def run_renewal_cycle() -> dict:
+    from app.services import site_renewal_service
+    db = get_supabase()
+    started = _now()
+    total = {"checked": 0, "status_updates": 0, "reminders": 0, "client_contacts": 0,
+             "lapsed": 0, "needs_attention": 0, "failed": 0}
+    try:
+        org_active, _ = _org_cache(db)
+        total = site_renewal_service.run_cycle(db, started, org_active)
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] renewal cycle failed: %s", exc)
+
+    write_worker_log(
+        db, worker_name="site_worker.renewal_cycle", status="failed" if total["failed"] else "passed",
+        items_processed=total["checked"], items_failed=total["failed"], started_at=started,
         run_duration_ms=int((_now() - started).total_seconds() * 1000),
     )
     return total

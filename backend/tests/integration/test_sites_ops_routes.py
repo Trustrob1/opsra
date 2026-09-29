@@ -230,6 +230,21 @@ class TestHostingRoutes(_JobBase):
         assert self.db.rows("site_orders")[0]["status"] == "fulfilling"
 
 
+# ═══════════════════════════ Renewals (SITE-4) ═══════════════════════════
+
+class TestRenewalRoutes(_JobBase):
+    def test_mark_renewed_rejects_non_renewal_job_and_checks_roles(self):
+        with _c() as c:
+            r = c.post(f"{BASE}/hosting-jobs/job-1/mark-renewed")
+            assert r.status_code == 409 and "not a renewal" in r.json()["detail"]["message"]
+            self.template = "admin"
+            assert c.post(f"{BASE}/hosting-jobs/job-1/mark-renewed").status_code == 403
+            assert c.post(f"{BASE}/domains/d-1/renewal-link").status_code == 403
+            self.template = "owner"
+            assert c.post(f"{BASE}/hosting-jobs/nope/mark-renewed").status_code == 404
+            assert c.post(f"{BASE}/domains/nope/renewal-link").status_code == 404
+
+
 # ═══════════════════════════ Domains ═══════════════════════════
 
 class TestDomainsRoutes(_Base):

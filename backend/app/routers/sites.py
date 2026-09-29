@@ -529,6 +529,19 @@ def mark_job_live(job_id: str, payload: MarkLiveRequest, org=Depends(get_current
               message="Marked live — the builder has been told")
 
 
+@router.post("/sites/hosting-jobs/{job_id}/mark-renewed")
+def mark_job_renewed(job_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    return ok(data=_ops(site_ops_service.mark_renewed, db, org_id, job_id, org["id"]),
+              message="Marked renewed — the builder has been told")
+
+
+@router.post("/sites/domains/{domain_id}/renewal-link")
+def send_domain_renewal_link(domain_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    return ok(data=_ops(site_ops_service.send_renewal_link, db, org_id, domain_id, org["id"]))
+
+
 @router.get("/sites/domains")
 def list_site_domains(
     expiring_within: Optional[int] = Query(None, ge=0, le=365),

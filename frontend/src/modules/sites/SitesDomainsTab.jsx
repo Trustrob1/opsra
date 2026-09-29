@@ -2,13 +2,13 @@
  * frontend/src/modules/sites/SitesDomainsTab.jsx
  * SITE-3 part 3 — Domains & renewals (spec §13): every client domain with its registrar,
  * renewal dates, cost at renewal and status, filterable by "expiring in 30 / 14 / 7 days".
- * Read-only: renewals are billed and reminded in SITE-4.
+ * SITE-4: the daily renewal cycle reminds builders; "Send renewal link" sends one on demand.
  *
  * Pattern 26: stays mounted; fetches only while `isActive`.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Search, Globe, CalendarClock, TriangleAlert, Wallet, ExternalLink } from 'lucide-react'
-import { listSiteDomains, errorMessage } from '../../services/sites.service'
+import { Search, Globe, CalendarClock, TriangleAlert, Wallet, ExternalLink, Send } from 'lucide-react'
+import { listSiteDomains, sendRenewalLink, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Kpi, Notice, Spinner, Empty, Segmented } from './sitesUi'
 import { Th, Td, Fact } from './sitesOpsUi'
 import { T, INPUT, money, num, dateOnly, DOMAIN_STATUS } from './sitesKit'
@@ -33,8 +33,9 @@ function daysText(d) {
   return `in ${d} day${d === 1 ? '' : 's'}`
 }
 
-export default function SitesDomainsTab({ isActive, showToast }) {
+export default function SitesDomainsTab({ isActive, canEdit, showToast }) {
   const isMobile = useIsMobile()
+  const [sending, setSending] = useState(null)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -55,6 +56,21 @@ export default function SitesDomainsTab({ isActive, showToast }) {
   }, [showToast])
 
   useEffect(() => { if (isActive) { setLoading(true); load() } }, [isActive, load])
+
+  const sendLink = useCallback(async (row) => {
+    setSending(row.id)
+    try {
+      const res = await sendRenewalLink(row.id)
+      showToast?.(res.sent ? 'Renewal link sent to the builder' : 'Link created, but WhatsApp could not deliver it — managers were alerted', res.sent ? undefined : 'bad')
+      if (!res.sent && res.checkout_url && navigator.clipboard) navigator.clipboard.writeText(res.checkout_url).catch(() => {})
+    } catch (e) {
+      showToast?.(errorMessage(e, 'Could not create the renewal link.'), 'bad')
+    } finally {
+      setSending(null)
+    }
+  }, [showToast])
+
+  const canSend = (r) => canEdit && r.effective_status !== 'transferred'
 
   const stats = useMemo(() => {
     const soon = rows.filter((r) => r.effective_status === 'expiring')
@@ -109,14 +125,14 @@ export default function SitesDomainsTab({ isActive, showToast }) {
         </Card>
       ) : isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {visible.map((r) => <DomainCard key={r.id} row={r} />)}
+          {visible.map((r) => <DomainCard key={r.id} row={r} canSend={canSend(r)} sending={sending === r.id} onSend={() => sendLink(r)} />)}
         </div>
       ) : (
         <Card pad={0}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1020 }}>
               <thead><tr>
-                <Th>Domain</Th><Th>Client · Builder</Th><Th>Registrar</Th><Th>Registered</Th><Th>Domain renews</Th><Th>Hosting renews</Th><Th align="right">Cost at renewal</Th><Th>Status</Th>
+                <Th>Domain</Th><Th>Client · Builder</Th><Th>Registrar</Th><Th>Registered</Th><Th>Domain renews</Th><Th>Hosting renews</Th><Th align="right">Cost at renewal</Th><Th>Status</Th><Th><span className="sr-only">Actions</span></Th>
               </tr></thead>
               <tbody>
                 {visible.map((r) => {
@@ -134,6 +150,7 @@ export default function SitesDomainsTab({ isActive, showToast }) {
                         <Badge tone={st.tone}>{st.label}</Badge>
                         <span className="tnum" style={{ display: 'block', fontSize: 11.5, color: T.muted, marginTop: 3 }}>{daysText(r.days_to_renewal)}</span>
                       </Td>
+                      <Td>{canSend(r) && <Button icon={Send} loading={sending === r.id} onClick={() => sendLink(r)}>Send renewal link</Button>}</Td>
                     </tr>
                   )
                 })}
@@ -158,7 +175,7 @@ function DomainName({ row }) {
   )
 }
 
-function DomainCard({ row }) {
+function DomainCard({ row, canSend, sending, onSend }) {
   const st = DOMAIN_STATUS[row.effective_status] || DOMAIN_STATUS.active
   return (
     <Card pad={14}>
@@ -176,6 +193,7 @@ function DomainCard({ row }) {
         <Fact label="Registrar">{REGISTRAR[row.registrar] || row.registrar}</Fact>
       </div>
       <p className="tnum" style={{ margin: '10px 0 0', fontSize: 12, color: T.muted }}>Renewal {daysText(row.days_to_renewal)}</p>
+      {canSend && <div style={{ marginTop: 10 }}><Button icon={Send} loading={sending} onClick={onSend}>Send renewal link</Button></div>}
     </Card>
   )
 }

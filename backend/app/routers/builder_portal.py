@@ -54,6 +54,7 @@ from app.services import (
     domain_check_service,
     pricing_service,
     site_order_service,
+    site_renewal_service,
     site_renderer,
 )
 
@@ -251,12 +252,15 @@ def list_my_sites(builder=Depends(get_current_builder), db=Depends(get_supabase)
             .select("id, client_business_name, slug, status, live_url, preview_expires_at, created_at, updated_at")
             .eq("org_id", builder["org_id"]).eq("builder_id", builder["id"])
             .is_("deleted_at", "null").order("created_at", desc=True).execute()).data or []
-    domains = (db.table("site_domains").select("site_id, renews_on, status").eq("org_id", builder["org_id"]).execute()).data or []
+    domains = (db.table("site_domains").select("site_id, renews_on, hosting_renews_on, status")
+               .eq("org_id", builder["org_id"]).execute()).data or []
     domains_by_site = {d["site_id"]: d for d in domains}
+    today = site_renewal_service.lagos_today()
     for r in rows:
         d = domains_by_site.get(r["id"])
         r["hosting_status"] = d["status"] if d else None
         r["renews_on"] = d["renews_on"] if d else None
+        r.update(site_renewal_service.builder_view(d, today))
     return ok(data=rows)
 
 
@@ -412,3 +416,16 @@ def checkout(payload: CheckoutRequest, builder=Depends(get_current_builder), db=
     except pricing_service.PricingError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     return ok(data=result, message="Payment link created")
+
+
+@router.post("/sites/{site_id}/renewal-checkout")
+def renewal_checkout(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    try:
+        result = site_renewal_service.builder_renewal_checkout(db, builder["org_id"], builder, site_id)
+    except site_renewal_service.RenewalNotFound as exc:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": str(exc)})
+    except site_renewal_service.RenewalError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    except pricing_service.PricingError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    return ok(data=result, message="Renewal link created")

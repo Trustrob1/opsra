@@ -35,11 +35,11 @@ import {
   RefreshCw, Save, ShoppingCart, Trash2, Undo2, User,
 } from 'lucide-react'
 import {
-  exchangeBuilderToken, getMyAccount, updateMyAccount, listMySites, getMySite,
+  exchangeBuilderToken, renewalCheckout, getMyAccount, updateMyAccount, listMySites, getMySite,
   patchMySiteContent, patchMySiteRecipe, renderMySite, undoMySite, uploadMySiteAsset,
   checkDomain, getQuote, checkout, errorMessage,
 } from '../services/builder_portal.service'
-import { T, INPUT, TEXTAREA, money, dateTime, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
+import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -158,6 +158,18 @@ function navBtn(active) {
 function MySitesView({ token, onOpen, showToast }) {
   const [sites, setSites] = useState(null)
   const [error, setError] = useState(null)
+  const [renewing, setRenewing] = useState(null)
+
+  async function renew(site) {
+    setRenewing(site.id)
+    try {
+      const res = await renewalCheckout(token, site.id)
+      window.location.assign(res.checkout_url)
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not start the renewal.'), 'bad')
+      setRenewing(null)
+    }
+  }
 
   useEffect(() => {
     listMySites(token)
@@ -181,7 +193,8 @@ function MySitesView({ token, onOpen, showToast }) {
       {sites.map((s) => {
         const st = SITE_STATUS[s.status] || SITE_STATUS.brief_in_progress
         return (
-          <button key={s.id} type="button" onClick={() => onOpen(s.id)}
+          <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <button type="button" onClick={() => onOpen(s.id)}
             style={{ textAlign: 'left', background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12,
               padding: 16, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center',
               justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -193,6 +206,17 @@ function MySitesView({ token, onOpen, showToast }) {
             </div>
             <Badge tone={st.tone}>{st.label}</Badge>
           </button>
+          {s.renews_on && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '0 4px' }}>
+              <span style={{ fontSize: 12.5, color: s.renewal_status === 'lapsed' ? T.bad : T.muted }}>
+                {s.renewal_status === 'lapsed' ? 'Hosting lapsed' : 'Hosting renews'} {dateOnly(s.renews_on)}
+              </span>
+              {(s.renewal_status === 'lapsed' || (s.days_to_renewal != null && s.days_to_renewal <= 60)) && (
+                <Button loading={renewing === s.id} onClick={() => renew(s)}>Renew now</Button>
+              )}
+            </div>
+          )}
+          </div>
         )
       })}
     </div>

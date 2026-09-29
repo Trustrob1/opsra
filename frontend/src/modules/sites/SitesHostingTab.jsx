@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, RefreshCw, ArrowLeftRight, Rocket, UserPlus, UserMinus, Server, Clock, TriangleAlert } from 'lucide-react'
 import {
-  listHostingJobs, patchHostingJob, recheckJobDomain, switchToBackupDomain, markJobLive, downloadSiteExport, errorMessage,
+  listHostingJobs, patchHostingJob, recheckJobDomain, switchToBackupDomain, markJobLive, markJobRenewed, downloadSiteExport, errorMessage,
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Segmented, Toggle } from './sitesUi'
 import { Fact } from './sitesOpsUi'
@@ -108,6 +108,7 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
   const st = JOB_STATUS[job.status] || JOB_STATUS.queued
   const done = job.status === 'done'
   const waitingOnBuilder = job.order_status === 'needs_builder_choice'
+  const isRenewal = job.order_kind === 'renewal'
   const locked = !canEdit || done || waitingOnBuilder
   const steps = job.checklist || []
   const stepsDone = steps.filter((s) => s.done).length
@@ -136,6 +137,7 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
   const toggleStep = (step) => run(`step:${step.key}`, () => patchHostingJob(job.id, { step: step.key, step_done: !step.done }))
   const assign = (uid) => run('assign', () => patchHostingJob(job.id, { assigned_to: uid }), uid ? 'Job assigned to you' : 'Job unassigned')
   const saveNotes = () => { if (!locked && notes !== (job.notes || '')) run('notes', () => patchHostingJob(job.id, { notes })) }
+  const renewed = () => run('renewed', () => markJobRenewed(job.id), 'Marked renewed — the builder has been told')
   const recheck = () => run('recheck', () => recheckJobDomain(job.id))
   const backup = async () => { const res = await run('backup', () => switchToBackupDomain(job.id)); if (res) onReload() }
   const zip = async () => {
@@ -158,6 +160,7 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
               {done ? 'Done' : `${sla.label} · ${formatCountdown(secondsLeft)}`}
             </Badge>
             <Badge tone={st.tone}>{st.label}</Badge>
+            {isRenewal && <Badge tone="info">Renewal</Badge>}
           </div>
         </div>
 
@@ -206,12 +209,13 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {canEdit && !mine && <Button icon={UserPlus} loading={busy === 'assign'} onClick={() => assign(user?.id)}>Take job</Button>}
             {canEdit && job.assigned_to && <Button variant="ghost" icon={UserMinus} loading={busy === 'assign'} onClick={() => assign(null)}>Unassign</Button>}
-            <Button icon={Download} loading={busy === 'zip'} onClick={zip}>Download zip</Button>
-            {canEdit && !waitingOnBuilder && !registered && (<>
+            {!isRenewal && <Button icon={Download} loading={busy === 'zip'} onClick={zip}>Download zip</Button>}
+            {canEdit && !waitingOnBuilder && !registered && !isRenewal && (<>
               <Button icon={RefreshCw} loading={busy === 'recheck'} onClick={recheck}>Re-check domain</Button>
               {job.backup_domain && !usingBackup && <Button icon={ArrowLeftRight} loading={busy === 'backup'} onClick={backup}>Use backup domain</Button>}
             </>)}
-            {canEdit && !waitingOnBuilder && <Button variant="primary" icon={Rocket} onClick={onMarkLive}>Mark live</Button>}
+            {canEdit && !waitingOnBuilder && !isRenewal && <Button variant="primary" icon={Rocket} onClick={onMarkLive}>Mark live</Button>}
+            {canEdit && isRenewal && <Button variant="primary" icon={Rocket} loading={busy === 'renewed'} onClick={renewed}>Mark renewed</Button>}
           </div>
         )}
         {done && job.live_url && (
