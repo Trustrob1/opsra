@@ -72,7 +72,8 @@ _BRIEF_REMINDER_AFTER_HOURS = 20
 _FORM_REMINDER_AFTER_DAYS = 3
 _SLA_AMBER_BEFORE_HOURS = 12   # spec §11.4 — "turns amber at 12 hours" == 12h before the 24h SLA is due
 _SLA_ESCALATE_EVERY_HOURS = 2  # spec §11.4 — "escalation continues every 2 hours while it stays overdue"
-_OPEN_JOB_STATUSES_EXCLUDE = ("completed", "cancelled")
+# site_hosting_jobs.status CHECK allows only queued / in_progress / blocked / done — a finished job is "done".
+_OPEN_JOB_STATUSES_EXCLUDE = ("done",)
 
 
 def _now() -> datetime:

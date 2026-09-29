@@ -117,6 +117,65 @@ export const BUILDER_STATUS = {
   suspended: { tone: 'bad', label: 'Suspended' },
 }
 
+export const ORDER_STATUS = {
+  pending_payment: { tone: 'neutral', label: 'Awaiting payment' },
+  awaiting_approval: { tone: 'warn', label: 'Needs approval' },
+  fulfilling: { tone: 'info', label: 'Being set up' },
+  live: { tone: 'good', label: 'Live' },
+  rejected: { tone: 'bad', label: 'Rejected' },
+  refund_pending: { tone: 'warn', label: 'Refund due' },
+  refunded: { tone: 'neutral', label: 'Refunded' },
+  needs_builder_choice: { tone: 'warn', label: 'Needs a new domain' },
+  expired: { tone: 'neutral', label: 'Expired' },
+}
+
+export const JOB_STATUS = {
+  queued: { tone: 'neutral', label: 'Queued' },
+  in_progress: { tone: 'info', label: 'In progress' },
+  blocked: { tone: 'warn', label: 'Blocked' },
+  done: { tone: 'good', label: 'Done' },
+}
+
+/** Hosting-job clock: green → amber 12 h before due → red once overdue (spec §11.4). */
+export const SLA = {
+  green: { tone: 'good', label: 'On track' },
+  amber: { tone: 'warn', label: 'Due soon' },
+  red: { tone: 'bad', label: 'Overdue' },
+  done: { tone: 'neutral', label: 'Done' },
+  none: { tone: 'neutral', label: 'No deadline' },
+}
+
+export const DOMAIN_STATUS = {
+  active: { tone: 'good', label: 'Active' },
+  expiring: { tone: 'warn', label: 'Expiring' },
+  lapsed: { tone: 'bad', label: 'Lapsed' },
+  transferred: { tone: 'neutral', label: 'Transferred' },
+}
+
+/** 84_300 → "23h 25m left" · -7_500 → "2h 05m overdue". */
+export function formatCountdown(seconds) {
+  if (seconds === null || seconds === undefined) return '—'
+  const overdue = seconds < 0
+  const total = Math.abs(Math.floor(seconds))
+  const d = Math.floor(total / 86400)
+  const h = Math.floor((total % 86400) / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const text = d > 0 ? `${d}d ${h}h` : `${h}h ${String(m).padStart(2, '0')}m`
+  return overdue ? `${text} overdue` : `${text} left`
+}
+
+/** Re-renders on an interval while `active` — drives the live SLA countdowns. */
+export function useNow(active, everyMs = 30000) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return undefined
+    const kick = setTimeout(() => setNow(Date.now()), 0) // refresh straight away when the tab is opened
+    const t = setInterval(() => setNow(Date.now()), everyMs)
+    return () => { clearTimeout(kick); clearInterval(t) }
+  }, [active, everyMs])
+  return now
+}
+
 /** Toast state. const [toast, show] = useToast(); show('Saved') / show('Failed', 'bad'); render <Toast t={toast} /> */
 export function useToast() {
   const [t, setT] = useState(null)

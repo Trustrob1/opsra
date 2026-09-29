@@ -396,3 +396,36 @@ class CheckoutRequest(BaseModel):
         if self.domain.strip().lower() == self.backup_domain.strip().lower():
             raise ValueError("The backup domain must be different from the main domain.")
         return self
+
+
+# ─────────────────── Staff dashboard actions (SITE-3 part 3, spec §13 / §17) ───────────────────
+
+class OrderRejectRequest(BaseModel):
+    """Reject an awaiting_approval order, or refund a needs_builder_choice one."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    reason: str = Field(..., min_length=3, max_length=1000)
+
+
+class RefundRecordedRequest(BaseModel):
+    """The refund was already sent by hand in Paystack (v1, spec §11.8). Amount defaults to the computed refund."""
+    amount: Optional[float] = Field(None, gt=0, le=100_000_000)
+
+
+class OrderDomainChoice(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    domain: str = Field(..., min_length=3, max_length=253)
+
+
+class HostingJobPatch(BaseModel):
+    """Only the fields the caller sends are changed (model_dump(exclude_unset=True))."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    assigned_to: Optional[str] = Field(None, max_length=64)
+    status: Optional[Literal["queued", "in_progress", "blocked"]] = None
+    notes: Optional[str] = Field(None, max_length=5000)
+    step: Optional[str] = Field(None, max_length=40)
+    step_done: bool = True
+
+
+class MarkLiveRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    live_url: str = Field(..., min_length=8, max_length=500)

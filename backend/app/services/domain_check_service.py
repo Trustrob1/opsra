@@ -299,3 +299,20 @@ def check_domain(db: Any, org_id: str, builder_id: str, domain: str) -> dict:
         result = dict(result)
         result["alternatives"] = _suggest_alternatives(label, tld, supported_tlds)
     return result
+
+
+def check_availability_fresh(db: Any, org_id: str, domain: str) -> tuple[str, Optional[bool]]:
+    """
+    Staff-side re-check (SITE-3 hosting queue, spec §11.1 "checked again just before anyone buys").
+    Bypasses the 10-minute cache and the per-builder rate limit — it is not a builder action.
+    Returns (normalised_domain, available) where available is True / False / None (couldn't tell).
+    Raises InvalidDomain for a malformed domain or an unsupported ending.
+    """
+    settings = pricing_service.get_settings(db, org_id)
+    supported_tlds = _supported_tlds(settings)
+    if not supported_tlds:
+        raise InvalidDomain("No domain endings are configured for this organisation yet.")
+    label, tld = _split_label_tld(domain, supported_tlds)
+    _validate_format(label, tld, supported_tlds)
+    normalised = f"{label}{tld}"
+    return normalised, _lookup_availability(normalised, tld)

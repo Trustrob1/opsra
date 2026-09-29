@@ -23,13 +23,18 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 
 from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok
 from app.models.sites import (
+    HostingJobPatch,
+    MarkLiveRequest,
+    OrderDomainChoice,
+    OrderRejectRequest,
     Recipe,
+    RefundRecordedRequest,
     SiteAssetCreate,
     SiteBriefFormCreate,
     SiteContentPatch,
@@ -44,7 +49,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_renderer
+from app.services import site_ops_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -178,12 +183,17 @@ def sites_overview(org=Depends(get_current_org), db=Depends(get_supabase)):
     for s in sites:
         by_status[s["status"]] = by_status.get(s["status"], 0) + 1
     builders_count = len((db.table("site_builders").select("id").eq("org_id", org_id).execute()).data or [])
+    try:  # orders / revenue / renewals / hosting jobs (spec §13 Overview) — never let these break the overview
+        orders_kpis = site_ops_service.order_kpis(db, org_id, len(sites))
+    except Exception:
+        logger.exception("sites_overview: order KPIs failed org=%s", org_id)
+        orders_kpis = None
     return ok(data={
+        "orders": orders_kpis,
         "sites_total": len(sites),
         "sites_by_status": by_status,
         "previews_shared": by_status.get("preview_ready", 0) + by_status.get("revising", 0),
         "builders_total": builders_count,
-        # revenue / conversion / renewals / orders-waiting land with SITE-3 (payments don't exist yet).
     })
 
 
@@ -423,10 +433,111 @@ def create_site(payload: SiteCreate, org=Depends(get_current_org), db=Depends(ge
     return ok(data=site, message="Site created")
 
 
-@router.get("/sites/{site_id}")
-def get_site(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
-    _require(org, _READ_ROLES)
-    return ok(data=_get_site(db, org["org_id"], site_id))
+# ── SITE-3: staff dashboard — orders, hosting queue, domains (spec §13, §17) ──
+# Static paths (/sites/orders, /sites/hosting-jobs, /sites/domains) must be declared before
+# /sites/{site_id} (Pattern 53). Logic lives in services/site_ops_service.py.
+
+_OWNER_ONLY = ("owner",)   # spec §17: approve / reject / refund-recorded are "org, owner"
+
+
+def _ops(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except site_ops_service.SiteOpsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+
+
+def _ops_org(org, db, roles):
+    _require(org, roles)
+    _require_enabled(db, org["org_id"])
+    return org["org_id"]
+
+
+@router.get("/sites/orders")
+def list_orders(
+    status_filter: Optional[str] = Query(None, alias="status", max_length=30),
+    search: Optional[str] = Query(None, max_length=100),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    org=Depends(get_current_org), db=Depends(get_supabase),
+):
+    org_id = _ops_org(org, db, _READ_ROLES)
+    return ok(data=site_ops_service.list_orders(db, org_id, status_filter, search, page, page_size))
+
+
+@router.post("/sites/orders/{order_id}/approve")
+def approve_order(order_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _OWNER_ONLY)
+    return ok(data=_ops(site_ops_service.approve_order, db, org_id, order_id, org["id"]), message="Order approved")
+
+
+@router.post("/sites/orders/{order_id}/reject")
+def reject_order(order_id: str, payload: OrderRejectRequest, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _OWNER_ONLY)
+    return ok(data=_ops(site_ops_service.reject_order, db, org_id, order_id, org["id"], payload.reason),
+              message="Order rejected — a refund task was created")
+
+
+@router.post("/sites/orders/{order_id}/refund-recorded")
+def refund_recorded(order_id: str, payload: RefundRecordedRequest, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _OWNER_ONLY)
+    return ok(data=_ops(site_ops_service.record_refund, db, org_id, order_id, org["id"], payload.amount),
+              message="Refund recorded")
+
+
+@router.post("/sites/orders/{order_id}/set-domain")
+def set_order_domain(order_id: str, payload: OrderDomainChoice, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    return ok(data=_ops(site_ops_service.resolve_domain_choice, db, org_id, order_id, org["id"], payload.domain),
+              message="Domain updated — the job is back in the queue")
+
+
+@router.get("/sites/hosting-jobs")
+def list_hosting_jobs(
+    mine: bool = Query(False),
+    include_done: bool = Query(False),
+    org=Depends(get_current_org), db=Depends(get_supabase),
+):
+    org_id = _ops_org(org, db, _READ_ROLES)
+    return ok(data=site_ops_service.list_hosting_jobs(db, org_id, assigned_to=org["id"] if mine else None,
+                                                      include_done=include_done))
+
+
+@router.patch("/sites/hosting-jobs/{job_id}")
+def patch_hosting_job(job_id: str, payload: HostingJobPatch, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    return ok(data=_ops(site_ops_service.patch_hosting_job, db, org_id, job_id, org["id"],
+                        payload.model_dump(exclude_unset=True)))
+
+
+@router.post("/sites/hosting-jobs/{job_id}/recheck-domain")
+def recheck_job_domain(job_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    return ok(data=_ops(site_ops_service.recheck_domain, db, org_id, job_id, org["id"]))
+
+
+@router.post("/sites/hosting-jobs/{job_id}/use-backup")
+def use_job_backup_domain(job_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    return ok(data=_ops(site_ops_service.use_backup_domain, db, org_id, job_id, org["id"]))
+
+
+@router.post("/sites/hosting-jobs/{job_id}/mark-live")
+def mark_job_live(job_id: str, payload: MarkLiveRequest, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    return ok(data=_ops(site_ops_service.mark_live, db, org_id, job_id, org["id"], payload.live_url),
+              message="Marked live — the builder has been told")
+
+
+@router.get("/sites/domains")
+def list_site_domains(
+    expiring_within: Optional[int] = Query(None, ge=0, le=365),
+    status_filter: Optional[str] = Query(None, alias="status", max_length=20),
+    search: Optional[str] = Query(None, max_length=100),
+    org=Depends(get_current_org), db=Depends(get_supabase),
+):
+    org_id = _ops_org(org, db, _READ_ROLES)
+    return ok(data=site_ops_service.list_domains(db, org_id, expiring_within, status_filter, search))
 
 
 @router.patch("/sites/{site_id}/content")
@@ -613,3 +724,19 @@ def create_edit_link(builder_id: str, org=Depends(get_current_org), db=Depends(g
     db.table("site_editor_tokens").insert(row).execute()
     return ok(data={"url": _editor_public_url(raw_token), "expires_at": row["expires_at"]},
                message="Edit link created — this is the only time the link is shown in full.")
+
+
+@router.get("/sites/{site_id}")
+def get_site(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _READ_ROLES)
+    return ok(data=_get_site(db, org["org_id"], site_id))
+
+
+@router.get("/sites/{site_id}/export.zip")
+def export_site_zip(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """spec §8.6 — internal only; built in memory, never stored."""
+    org_id = _ops_org(org, db, _READ_ROLES)
+    data, filename = _ops(site_ops_service.build_export_zip, db, org_id, site_id)
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "export_downloaded")
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})

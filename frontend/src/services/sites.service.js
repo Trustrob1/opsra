@@ -59,6 +59,36 @@ export const uploadSiteAsset = (id, slot, file) => {
   }))
 }
 
+// ── SITE-3: Orders, Hosting queue, Domains & renewals (spec §13/§17) ─────────
+export const listOrders = (params) => unwrap(api.get('/api/v1/sites/orders', { params }))
+export const approveOrder = (id) => unwrap(api.post(`/api/v1/sites/orders/${id}/approve`))
+export const rejectOrder = (id, reason) => unwrap(api.post(`/api/v1/sites/orders/${id}/reject`, { reason }))
+/** amount is optional — the server defaults to the computed refund (amount paid − service fee). */
+export const recordRefund = (id, amount) => unwrap(api.post(`/api/v1/sites/orders/${id}/refund-recorded`, amount ? { amount } : {}))
+export const setOrderDomain = (id, domain) => unwrap(api.post(`/api/v1/sites/orders/${id}/set-domain`, { domain }))
+
+export const listHostingJobs = (params) => unwrap(api.get('/api/v1/sites/hosting-jobs', { params }))
+/** Only the keys you send change. assigned_to: user id | null · status · notes · step + step_done. */
+export const patchHostingJob = (id, payload) => unwrap(api.patch(`/api/v1/sites/hosting-jobs/${id}`, payload))
+export const recheckJobDomain = (id) => unwrap(api.post(`/api/v1/sites/hosting-jobs/${id}/recheck-domain`))
+export const switchToBackupDomain = (id) => unwrap(api.post(`/api/v1/sites/hosting-jobs/${id}/use-backup`))
+export const markJobLive = (id, liveUrl) => unwrap(api.post(`/api/v1/sites/hosting-jobs/${id}/mark-live`, { live_url: liveUrl }))
+
+export const listSiteDomains = (params) => unwrap(api.get('/api/v1/sites/domains', { params }))
+
+/** spec §8.6 — built in memory on the server; saved through a temporary link. */
+export const downloadSiteExport = async (siteId, slug) => {
+  const r = await api.get(`/api/v1/sites/${siteId}/export.zip`, { responseType: 'blob' })
+  const url = URL.createObjectURL(r.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${(slug || 'site').replace(/[^\w-]+/g, '') || 'site'}-export.zip`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 /** Pull a readable message out of an axios error ({detail:{message}} or FastAPI 422 list). */
 export function errorMessage(err, fallback = 'Something went wrong. Please try again.') {
   const d = err?.response?.data?.detail
