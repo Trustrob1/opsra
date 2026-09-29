@@ -29,6 +29,16 @@ file (same domain owner, different required cadence):
     the 4-hourly run_site_builder_timers below, so it's registered as its
     own beat entry rather than folded into that sweep.
 
+SITE-3 leftover — a THIRD task in this file:
+
+  • run_approval_summary — spec §6.2 / §19. At 08:00 WAT (07:00 UTC) every
+    managers-level user gets ONE in-app notification plus a push listing the
+    orders still waiting in `awaiting_approval` (count, total, domains, and
+    how long until the earliest 24h SLA deadline). Orders paid between 23:00
+    and 08:00 wait for the approval window, and this is what tells Trust they
+    are there. Nothing is sent when nothing is waiting. A 20-hour dedup guard
+    stops a beat restart from sending it twice.
+
 Deliberately NOT built here (spec lists it, but nothing exists yet for it
 to act on — building it now would be dead code):
   • Renewal reminders — needs hosting/domain renewal dates (SITE-3/SITE-5).
@@ -48,6 +58,7 @@ Pattern 29: load_dotenv() at module level. Pattern 1: get_supabase() inside the 
 Dry-run (Windows CMD, one line each):
   python -c "from dotenv import load_dotenv; load_dotenv(); from app.workers.site_worker import run_site_builder_timers; print(run_site_builder_timers())"
   python -c "from dotenv import load_dotenv; load_dotenv(); from app.workers.site_worker import run_hosting_job_sla_check; print(run_hosting_job_sla_check())"
+  python -c "from dotenv import load_dotenv; load_dotenv(); from app.workers.site_worker import run_approval_summary; print(run_approval_summary())"
 """
 from __future__ import annotations
 
@@ -215,6 +226,15 @@ def _expire_previews(db, now: datetime) -> int:
     return len(res.data or [])
 
 
+def _push(db, user_id: str, title: str, body: str) -> None:
+    """PWA push to one user (PWA-1). S14: never raises, and a missing push token is simply a no-op."""
+    try:
+        from app.routers.push_notifications import send_push_notification
+        send_push_notification(db=db, user_id=user_id, title=title[:200], body=body[:500])
+    except Exception:  # S14
+        logger.exception("[site_worker] push failed user=%s", user_id)
+
+
 # ─────────────────────────────── Hosting job SLA (SITE-3 part 2, spec §11.4 step 4) ───────────────────────────────
 
 def _notify_hosting_job(db, org_id: str, job: dict, title: str, body: str, notif_type: str) -> None:
@@ -233,6 +253,7 @@ def _notify_hosting_job(db, org_id: str, job: dict, title: str, body: str, notif
             }).execute()
         except Exception:  # S14
             logger.exception("[site_worker] hosting job notify failed job=%s user=%s", job.get("id"), uid)
+        _push(db, uid, title, body)
 
 
 def _check_hosting_job_sla(db, now: datetime) -> int:
@@ -307,6 +328,118 @@ def run_hosting_job_sla_check() -> dict:
     write_worker_log(
         db, worker_name="site_worker.hosting_job_sla", status="failed" if total["failed"] else "passed",
         items_processed=total["alerted"], items_failed=total["failed"], started_at=started,
+        run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return total
+
+
+# ─────────────────────────────── Morning approval summary (SITE-3 leftover, spec §6.2 / §19) ───────────────────────────────
+
+_APPROVAL_SUMMARY_TYPE = "site_approval_summary"
+_APPROVAL_SUMMARY_DEDUP_HOURS = 20      # a daily job: a beat restart inside this window must not send it twice
+_SUMMARY_MAX_DOMAINS_LISTED = 3
+
+
+def _naira(n) -> str:
+    try:
+        return f"\u20a6{round(float(n)):,}"
+    except (TypeError, ValueError):
+        return "\u20a60"
+
+
+def _summarise_waiting_orders(orders: list, now: datetime) -> tuple[str, str]:
+    """(title, body) for the orders sitting in awaiting_approval."""
+    count = len(orders)
+    total = sum(float(o.get("amount") or 0) for o in orders)
+    title = f"{count} order{'s' if count != 1 else ''} waiting for approval"
+
+    domains = [o.get("domain") for o in orders if o.get("domain")]
+    listed = ", ".join(domains[:_SUMMARY_MAX_DOMAINS_LISTED])
+    if len(domains) > _SUMMARY_MAX_DOMAINS_LISTED:
+        listed += f" +{len(domains) - _SUMMARY_MAX_DOMAINS_LISTED} more"
+
+    parts = [f"{_naira(total)} paid"]
+    if listed:
+        parts.append(listed)
+
+    dues = [d for d in (_parse_iso(o.get("sla_due_at")) for o in orders) if d]
+    if dues:
+        earliest = min(dues)
+        if earliest <= now:
+            parts.append("the earliest is already past its 24h deadline")
+        else:
+            mins = int((earliest - now).total_seconds() // 60)
+            parts.append(f"earliest deadline in {mins // 60}h {mins % 60:02d}m")
+
+    body = ". ".join(parts) + ". Open Sites \u2192 Orders to approve."
+    return title, body
+
+
+def _send_approval_summary(db, now: datetime) -> dict:
+    """
+    One summary per org that has orders in awaiting_approval, to every manager (in-app + push).
+    Returns {"orgs": orgs notified, "orders": orders summarised, "failed": orgs that errored}.
+    """
+    rows = (
+        db.table("site_orders").select("id, org_id, domain, amount, sla_due_at, created_at")
+        .eq("status", "awaiting_approval").execute()
+    ).data or []
+    result = {"orgs": 0, "orders": 0, "failed": 0}
+    if not rows:
+        return result
+
+    by_org: dict[str, list] = {}
+    for row in rows:
+        by_org.setdefault(row["org_id"], []).append(row)
+
+    org_active, _ = _org_cache(db)
+    cutoff = (now - timedelta(hours=_APPROVAL_SUMMARY_DEDUP_HOURS)).isoformat()
+    now_iso = _now_iso()
+
+    for org_id, orders in by_org.items():
+        try:
+            if not org_active(org_id):
+                continue
+            already = (
+                db.table("notifications").select("id").eq("org_id", org_id)
+                .eq("type", _APPROVAL_SUMMARY_TYPE).gte("created_at", cutoff).limit(1).execute()
+            ).data
+            if already:
+                continue
+            orders.sort(key=lambda o: str(o.get("sla_due_at") or "9999"))
+            title, body = _summarise_waiting_orders(orders, now)
+            for uid in set(_get_manager_ids(db, org_id)):
+                try:
+                    db.table("notifications").insert({
+                        "org_id": org_id, "user_id": uid, "title": title[:200], "body": body[:1000],
+                        "type": _APPROVAL_SUMMARY_TYPE, "resource_type": "site_order",
+                        "resource_id": orders[0]["id"], "is_read": False, "created_at": now_iso,
+                    }).execute()
+                except Exception:  # S14
+                    logger.exception("[site_worker] approval summary notify failed org=%s user=%s", org_id, uid)
+                _push(db, uid, title, body)
+            result["orgs"] += 1
+            result["orders"] += len(orders)
+        except Exception:  # S14 — one org failing never stops the others
+            result["failed"] += 1
+            logger.exception("[site_worker] approval summary failed org=%s", org_id)
+    return result
+
+
+@celery_app.task(name="app.workers.site_worker.run_approval_summary")
+def run_approval_summary() -> dict:
+    db = get_supabase()
+    started = _now()
+    total = {"orgs": 0, "orders": 0, "failed": 0}
+    try:
+        total = _send_approval_summary(db, started)
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] approval summary failed: %s", exc)
+
+    write_worker_log(
+        db, worker_name="site_worker.approval_summary", status="failed" if total["failed"] else "passed",
+        items_processed=total["orders"], items_failed=total["failed"], started_at=started,
         run_duration_ms=int((_now() - started).total_seconds() * 1000),
     )
     return total

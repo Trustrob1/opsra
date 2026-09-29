@@ -48,6 +48,11 @@ SITE-3 part 2 additions:
       - hosting-job-sla-check (every 15 minutes — mirrors sla_worker's own
         15-minute ticket-SLA cadence; the 4-hourly site-builder-timers entry
         below is too coarse for a 24h-SLA, 2h-escalation job)
+
+SITE-3 leftover:
+    site_worker gains run_approval_summary — spec §6.2 morning summary.
+    New beat entry:
+      - site-approval-summary (daily 07:00 UTC = 08:00 WAT)
 """
 
 import os
@@ -585,6 +590,18 @@ celery_app.conf.beat_schedule = {
     "hosting-job-sla-check": {
         "task": "app.workers.site_worker.run_hosting_job_sla_check",
         "schedule": crontab(minute="*/15"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # site-approval-summary — Daily 07:00 UTC = 08:00 WAT  (SITE-3)      #
+    # Worker: site_worker.py                                              #
+    # Morning push + in-app summary of orders waiting for approval        #
+    # (spec §6.2). Orders paid 23:00-08:00 wait for the approval window;  #
+    # this tells Trust they are there. Silent when nothing is waiting.    #
+    # ------------------------------------------------------------------ #
+    "site-approval-summary": {
+        "task": "app.workers.site_worker.run_approval_summary",
+        "schedule": crontab(minute=0, hour=7),
     },
 }
 
