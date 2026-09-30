@@ -128,6 +128,9 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
         <h2 style={{ margin: 0, fontSize: isMobile ? 18 : 21, fontWeight: 700, color: T.ink }}>{site.client_business_name}</h2>
         <Badge tone={st.tone}>{st.label}</Badge>
         <code style={{ fontSize: 12, color: T.muted }}>/s/{site.slug}</code>
+        <span style={{ fontSize: 12, color: T.muted }} title={preset ? (preset.sections || []).map((k) => SECTION_LABELS[k] || k).join(' · ') : undefined}>
+          Template: <strong style={{ color: T.soft }}>{preset ? preset.name : 'not found'}</strong>
+        </span>
       </header>
 
       {!canEdit && <Notice tone="info">Read-only — only an owner or ops manager can edit sites.</Notice>}

@@ -4,7 +4,7 @@
  * The WhatsApp brief flow is SITE-1B; this is how Trust builds and previews a site
  * directly (spec §22 "Trust can build and preview sites by hand").
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Globe } from 'lucide-react'
 import { listSites, createSite, listPresets, listBuilders, sendCareLink, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal } from './sitesUi'
@@ -40,11 +40,16 @@ export default function SitesListTab({ isActive, canEdit, enabled, showToast }) 
   }, [search])
 
   useEffect(() => { if (isActive) load() }, [isActive, load])
+  // SITE-1C-3b: templates load with the tab (not just for the create modal) so each row can name its template.
+  useEffect(() => {
+    if (!isActive) return
+    listPresets().then(setPresets).catch(() => {})
+  }, [isActive])
   useEffect(() => {
     if (!isActive || !creating) return
-    listPresets().then(setPresets).catch(() => {})
     listBuilders().then(setBuilders).catch(() => {})
   }, [isActive, creating])
+  const presetName = useMemo(() => Object.fromEntries(presets.map((p) => [p.id, p.name])), [presets])
 
   if (selectedId) {
     return <SiteEditorPanel siteId={selectedId} canEdit={canEdit} isMobile={isMobile} showToast={showToast}
@@ -75,8 +80,8 @@ export default function SitesListTab({ isActive, canEdit, enabled, showToast }) 
       ) : (
         <Card pad={0}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 760 }}>
-              <thead><tr>{['Business', 'Slug', 'Status', 'Care plan', 'Updated', ''].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 860 }}>
+              <thead><tr>{['Business', 'Slug', 'Template', 'Status', 'Care plan', 'Updated', ''].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
               <tbody>
                 {rows.map((s) => {
                   const st = SITE_STATUS[s.status] || SITE_STATUS.brief_in_progress
@@ -84,6 +89,7 @@ export default function SitesListTab({ isActive, canEdit, enabled, showToast }) 
                     <tr key={s.id} className="sts-row" style={{ borderTop: `1px solid ${T.line}` }}>
                       <Td>{s.client_business_name}</Td>
                       <Td><code style={{ fontSize: 12 }}>{s.slug}</code></Td>
+                      <Td>{presetName[s.preset_id] || <span style={{ color: T.muted }}>{presets.length ? 'Removed template' : '—'}</span>}</Td>
                       <Td><Badge tone={st.tone}>{st.label}</Badge></Td>
                       <Td><CareCell s={s} /></Td>
                       <Td className="tnum">{dateOnly(s.updated_at)}</Td>
