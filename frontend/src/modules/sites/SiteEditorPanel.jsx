@@ -12,8 +12,8 @@ import {
   getSite, patchSiteContent, patchSiteRecipe, renderSite, uploadSiteAsset, getPreset, errorMessage,
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, Modal, SectionTitle } from './sitesUi'
-import { T, INPUT, TEXTAREA, dateTime, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS } from './sitesKit'
-import DesignStyleFields from './DesignStyleFields'
+import { T, INPUT, TEXTAREA, dateTime, THEMES, SECTION_LABELS, SITE_STATUS } from './sitesKit'
+import LookPickerField from './LookPicker'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -154,7 +154,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
         <div><Button variant="primary" icon={Save} loading={savingContent} onClick={saveContent}>Save content</Button></div>
       )}
 
-      <DesignCard recipe={recipe} setRecipe={setRecipe} canEdit={canEdit} preset={preset} />
+      <DesignCard recipe={recipe} setRecipe={setRecipe} canEdit={canEdit} preset={preset} isMobile={isMobile} />
       {canEdit && (
         <div><Button variant="primary" icon={Save} loading={savingRecipe} onClick={saveRecipe}>Save design</Button></div>
       )}
@@ -399,7 +399,7 @@ function OrderSeoCard({ content, setContent, canEdit }) {
   )
 }
 
-function DesignCard({ recipe, setRecipe, canEdit, preset }) {
+function DesignCard({ recipe, setRecipe, canEdit, preset, isMobile }) {
   const allowedThemes = preset?.allowed_themes?.length ? THEMES.filter((t) => preset.allowed_themes.includes(t.value)) : THEMES
   const sections = preset?.sections || Object.keys(SECTION_LABELS)
   const toggleHidden = (key) => setRecipe((r) => ({
@@ -414,25 +414,9 @@ function DesignCard({ recipe, setRecipe, canEdit, preset }) {
           <Segmented value={recipe.theme} onChange={(v) => canEdit && setRecipe((r) => ({ ...r, theme: v }))}
             options={allowedThemes.map((t) => ({ value: t.value, label: t.label, hint: t.hint }))} ariaLabel="Theme" />
         </Field>
-        <Field label="Palette" group>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {PALETTES.map((p) => (
-              <button key={p.value} type="button" disabled={!canEdit}
-                onClick={() => setRecipe((r) => ({ ...r, palette: p.value, custom_colour: null }))}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8,
-                  border: `1px solid ${recipe.palette === p.value ? T.teal : T.lineStrong}`, background: recipe.palette === p.value ? '#F0FAFB' : '#fff',
-                  cursor: canEdit ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: T.ink }}>
-                <span style={{ width: 14, height: 14, borderRadius: '50%', background: p.accent, display: 'inline-block' }} />
-                {p.label}
-              </button>
-            ))}
-          </div>
+        <Field label="Colour, fonts and style" group>
+          <LookPickerField recipe={recipe} setRecipe={setRecipe} preset={preset} canEdit={canEdit} isMobile={isMobile} />
         </Field>
-        <Field label="Or a custom colour" hint="6-digit hex, e.g. #7A2E4A — overrides the palette above">
-          <input style={{ ...INPUT, maxWidth: 160 }} disabled={!canEdit} placeholder="#7A2E4A" value={recipe.custom_colour || ''}
-            onChange={(e) => setRecipe((r) => ({ ...r, custom_colour: e.target.value || null }))} />
-        </Field>
-        <DesignStyleFields recipe={recipe} setRecipe={setRecipe} canEdit={canEdit} preset={preset} />
         <Field label="Sections shown" group>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             {sections.map((key) => (

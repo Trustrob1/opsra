@@ -51,3 +51,27 @@ def test_tokens_match():
         key, opts = m.groups()
         assert re.findall(r"value: '([a-z_]+)'", opts) == list(reg.TOKENS[key]), key
     assert set(re.findall(r"key: '([a-z_]+)'", body)) == set(reg.TOKENS)
+
+
+LOOK_KIT = KIT.parent / "lookKit.js"
+
+
+def test_theme_font_groups_and_default_fonts_match():
+    src = LOOK_KIT.read_text(encoding="utf-8")
+    groups = re.search(r"THEME_FONT_GROUPS = \{(.*?)\}\n", src, re.S).group(1)
+    for theme, meta in reg.THEME_META.items():
+        m = re.search(theme + r": \[([^\]]*)\]", groups)
+        assert m, theme
+        assert re.findall(r"'([a-z]+)'", m.group(1)) == list(meta["font_groups"]), theme
+    defaults = re.search(r"THEME_DEFAULT_FONT = \{(.*?)\}", src, re.S).group(1)
+    for theme, meta in reg.THEME_META.items():
+        assert re.search(theme + r": '" + meta["default_pairing"] + "'", defaults), theme
+
+
+def test_looks_use_valid_palettes_fonts_and_options():
+    src = LOOK_KIT.read_text(encoding="utf-8")
+    block = src[src.index("export const LOOKS"):src.index("/** What an option tile draws")]
+    for pal, font in re.findall(r"pal: '([a-z_]+)', font: '([a-z_]+)'", block):
+        assert pal in reg.PALETTES and font in reg.FONT_PAIRINGS
+    for token, option in re.findall(r"(radius|density|button|heading_case|image_style|divider|background|bands|cards): '([a-z_]+)'", block):
+        assert option in reg.TOKENS[token], (token, option)

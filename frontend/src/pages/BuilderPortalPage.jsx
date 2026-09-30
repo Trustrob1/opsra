@@ -39,9 +39,10 @@ import {
   patchMySiteContent, patchMySiteRecipe, renderMySite, undoMySite, uploadMySiteAsset,
   checkDomain, getQuote, checkout, errorMessage,
 } from '../services/builder_portal.service'
-import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
+import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
-import DesignStyleFields from '../modules/sites/DesignStyleFields'
+import LookPickerField from '../modules/sites/LookPicker'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -537,7 +538,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           )}
           <div><Button variant="primary" icon={Save} loading={savingContent} onClick={saveContent}>Save content</Button></div>
 
-          <DesignCard recipe={recipe} setRecipe={setRecipe} />
+          <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} />
           <div><Button variant="primary" icon={Save} loading={savingRecipe} onClick={saveRecipe}>Save design</Button></div>
         </div>
 
@@ -1131,7 +1132,8 @@ function OrderSeoCard({ content, setContent, defaultOpen }) {
   )
 }
 
-function DesignCard({ recipe, setRecipe, defaultOpen }) {
+function DesignCard({ recipe, setRecipe, defaultOpen, designOptions }) {
+  const isMobile = useIsMobile()
   const [open, setOpen] = useState(!!defaultOpen)
   const sections = Object.keys(SECTION_LABELS)
   const toggleHidden = (key) => setRecipe((r) => ({
@@ -1148,25 +1150,9 @@ function DesignCard({ recipe, setRecipe, defaultOpen }) {
             <Segmented value={recipe.theme} onChange={(v) => setRecipe((r) => ({ ...r, theme: v }))}
               options={THEMES.map((t) => ({ value: t.value, label: t.label, hint: t.hint }))} ariaLabel="Theme" />
           </Field>
-          <Field label="Palette" group>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {PALETTES.map((p) => (
-                <button key={p.value} type="button"
-                  onClick={() => setRecipe((r) => ({ ...r, palette: p.value, custom_colour: null }))}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8,
-                    border: `1px solid ${recipe.palette === p.value ? T.teal : T.lineStrong}`, background: recipe.palette === p.value ? '#F0FAFB' : '#fff',
-                    cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: T.ink }}>
-                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: p.accent, display: 'inline-block' }} />
-                  {p.label}
-                </button>
-              ))}
-            </div>
+          <Field label="Colour, fonts and style" group>
+            <LookPickerField recipe={recipe} setRecipe={setRecipe} preset={designOptions} isMobile={isMobile} />
           </Field>
-          <Field label="Or a custom colour" hint="6-digit hex, e.g. #7A2E4A — overrides the palette above">
-            <input style={{ ...INPUT, maxWidth: 160 }} placeholder="#7A2E4A" value={recipe.custom_colour || ''}
-              onChange={(e) => setRecipe((r) => ({ ...r, custom_colour: e.target.value || null }))} />
-          </Field>
-          <DesignStyleFields recipe={recipe} setRecipe={setRecipe} />
           <Field label="Sections shown" group>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {sections.map((key) => (

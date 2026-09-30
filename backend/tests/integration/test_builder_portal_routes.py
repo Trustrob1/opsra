@@ -168,6 +168,24 @@ class TestMySites:
         assert resp.status_code == 200
         assert resp.json()["data"][0]["id"] == SITE_ID
 
+    def test_get_site_returns_only_the_templates_design_options(self, authed_client):
+        preset = {**_FAKE_PRESET, "allowed_fonts": ["bodoni_jost"], "token_options": {"cards": ["lifted"]},
+                  "ai_tone": "SECRET TONE", "brief_questions": [{"q": "secret"}]}
+        db = _db_mock(sites=_chain([dict(_FAKE_SITE)]), site_assets=_chain([]), site_presets=_chain([preset]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}")
+        assert resp.status_code == 200
+        opts = resp.json()["data"]["design_options"]
+        assert opts == {"allowed_themes": ["atelier"], "allowed_fonts": ["bodoni_jost"], "token_options": {"cards": ["lifted"]}}
+        assert "SECRET TONE" not in resp.text and "brief_questions" not in resp.text
+
+    def test_get_site_still_works_when_the_template_is_missing(self, authed_client):
+        db = _db_mock(sites=_chain([dict(_FAKE_SITE)]), site_assets=_chain([]), site_presets=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}")
+        assert resp.status_code == 200
+        assert "design_options" not in resp.json()["data"]
+
     def test_get_site_not_mine_404(self, authed_client):
         # _get_site filters .eq("builder_id", builder_id) server-side; the mock
         # simulates that filter finding nothing for a site owned by someone else.

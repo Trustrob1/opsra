@@ -175,3 +175,26 @@ export function lookSummary(value) {
   if (!p && !f && !o) return 'Nothing narrowed: new sites may use every colour, font and option.'
   return `${p} colour${p === 1 ? '' : 's'} \u00b7 ${f} font pairing${f === 1 ? '' : 's'} \u00b7 ${o} look option${o === 1 ? '' : 's'} ticked`
 }
+
+// ---- shared look-picker pieces (used by LookStudio and LookPicker) ----
+export const TEAL = '#0d7f8a'
+export const LABEL_STYLE = { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#7A9BAD', marginBottom: 8 }
+export const tileStyle = (on) => ({
+  position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+  minWidth: 88, padding: '12px 10px', borderRadius: 10, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#0a1a24', fontFamily: 'inherit',
+  background: on ? '#e6f4f5' : '#fff', border: `1.5px solid ${on ? TEAL : '#d5dbe3'}`,
+})
+
+// Mirrors site_design_registry.THEME_META (a parity test keeps them in step).
+export const THEME_FONT_GROUPS = { atelier: ['elegant', 'editorial'], market: ['bold', 'friendly'], studio: ['minimal', 'friendly', 'editorial'] }
+export const THEME_DEFAULT_FONT = { atelier: 'bodoni_jost', market: 'anton_manrope', studio: 'fraunces_karla' }
+// What a theme looks like when a site sets no design option (approximate, for the preview only).
+export const THEME_DEFAULT_TOKENS = { atelier: { radius: 'sharp' }, market: { radius: 'pill', heading_case: 'upper' }, studio: { radius: 'soft' } }
+
+/** The `cur` the mini-preview needs, from a saved recipe. */
+export function curFromRecipe(recipe) {
+  const theme = recipe.theme || 'atelier'
+  const tok = { ...DEFAULT_TOKENS, ...(THEME_DEFAULT_TOKENS[theme] || {}) }
+  Object.entries(recipe.tokens || {}).forEach(([k, v]) => { if (v) tok[k] = v })
+  return { entry: recipe.custom_colour || recipe.palette || 'berry', font: recipe.fonts || THEME_DEFAULT_FONT[theme] || 'bodoni_jost', tok }
+}

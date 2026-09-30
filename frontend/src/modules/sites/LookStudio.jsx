@@ -12,26 +12,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Check, Shuffle } from 'lucide-react'
 import { Button } from './sitesUi'
 import { T, PALETTES, FONT_PAIRINGS, FONT_GROUP_LABELS, TOKENS, THEME_TOKEN_EXCLUSIONS } from './sitesKit'
-import { LOOKS, DEFAULT_TOKENS, coloursOf, tokenGlyph, previewStyles, ensureLookFonts, isHex, contrast } from './lookKit'
+import { LOOKS, DEFAULT_TOKENS, coloursOf, tokenGlyph, previewStyles, ensureLookFonts, isHex, contrast, TEAL, LABEL_STYLE, tileStyle } from './lookKit'
 import LookPreview from './LookPreview'
+import LookTick from './LookTick'
 
-const TEAL = '#0d7f8a'
 const MAX_COLOURS = 30
-const LABEL = { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: T.muted, marginBottom: 8 }
-
-function Tick() {
-  return (
-    <span style={{ position: 'absolute', top: -7, right: -7, width: 20, height: 20, borderRadius: '50%', background: TEAL, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Check size={13} strokeWidth={3.5} aria-hidden="true" />
-    </span>
-  )
-}
-
-const tileStyle = (on) => ({
-  position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
-  minWidth: 88, padding: '12px 10px', borderRadius: 10, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: T.ink, fontFamily: 'inherit',
-  background: on ? '#e6f4f5' : '#fff', border: `1.5px solid ${on ? TEAL : '#d5dbe3'}`,
-})
+const LABEL = LABEL_STYLE
 
 export default function LookStudio({ value, onChange, nicheKey, isMobile }) {
   const palettes = value.default_palettes || []
@@ -158,7 +144,7 @@ export default function LookStudio({ value, onChange, nicheKey, isMobile }) {
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 800 }}>{look.name}</span>
                 <span style={{ fontSize: 11.5, color: T.muted, fontWeight: 500 }}>{look.blurb}</span>
-                {on && <Tick />}
+                {on && <LookTick />}
               </button>
             )
           })}
@@ -213,7 +199,7 @@ export default function LookStudio({ value, onChange, nicheKey, isMobile }) {
                         <span style={{ fontFamily: `'${f.heading}', serif`, fontSize: 21, lineHeight: 1.1, color: T.ink, fontWeight: 600 }}>Adaeze Styles</span>
                         <span style={{ fontFamily: `'${f.body}', sans-serif`, fontSize: 12.5, color: T.soft, fontWeight: 400 }}>Ankara and corporate wear, made to order.</span>
                         <span style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>{f.label}</span>
-                        {on && <Tick />}
+                        {on && <LookTick />}
                       </button>
                     )
                   })}
@@ -236,7 +222,7 @@ export default function LookStudio({ value, onChange, nicheKey, isMobile }) {
                       <button key={o.value} type="button" aria-pressed={on} onClick={() => toggleToken(t.key, o.value)} onMouseEnter={() => peekTok(t.key, o.value)} style={tileStyle(on)}>
                         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 34 }}><span style={gl.style}>{gl.text}</span></span>
                         <span>{o.label}</span>
-                        {on && <Tick />}
+                        {on && <LookTick />}
                       </button>
                     )
                   })}

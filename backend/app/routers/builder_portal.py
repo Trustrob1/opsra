@@ -276,6 +276,17 @@ def get_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(g
     site = _get_site(db, builder["org_id"], builder["id"], site_id)
     assets = (db.table("site_assets").select("id, slot, public_url").eq("site_id", site_id).execute()).data or []
     site["assets"] = assets
+    # SITE-1C-1c: only the design choices the template allows (so the visual look picker can
+    # narrow itself); never the rest of the preset. Fails open: no options = everything shown.
+    try:
+        preset = _get_preset(db, builder["org_id"], site["preset_id"])
+        site["design_options"] = {
+            "allowed_themes": preset.get("allowed_themes") or [],
+            "allowed_fonts": preset.get("allowed_fonts") or [],
+            "token_options": preset.get("token_options") or {},
+        }
+    except Exception as exc:
+        logger.warning("builder_portal: design options unavailable site=%s: %s", site_id, exc)
     return ok(data=site)
 
 
