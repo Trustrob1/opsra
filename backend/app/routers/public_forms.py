@@ -159,7 +159,10 @@ def autosave_form(token: str, payload: SiteBriefFormAnswersPatch, db=Depends(get
         return ok(data={"saved": True})
 
     merged = dict(form.get("answers") or {})
-    merged.update(payload.answers or {})
+    # `_photos` is server-owned (the upload route stores full file records there). The page only keeps
+    # picture URLs for display, and merging those back used to overwrite the records, so photos were
+    # lost at submit. Never accept it from the client.
+    merged.update({k: v for k, v in (payload.answers or {}).items() if k != "_photos"})
     updates = {"answers": merged, "last_saved_at": _now_iso(), "updated_at": _now_iso()}
     if payload.preset_id and not form.get("preset_id"):
         updates["preset_id"] = payload.preset_id
@@ -206,6 +209,20 @@ async def upload_form_asset(
     return ok(data={"slot": slot, "public_url": public_url}, message="Photo uploaded")
 
 
+def _photo_record(entry) -> Optional[dict]:
+    """A stored photo record, or one rebuilt from a bare public URL (forms autosaved before the `_photos`
+    fix hold URLs instead of records). None if it can't be read."""
+    if isinstance(entry, dict) and entry.get("storage_path") and entry.get("public_url"):
+        return entry
+    if isinstance(entry, str) and "/site-assets/" in entry:
+        path = entry.split("/site-assets/", 1)[1].split("?", 1)[0]
+        ext = path.rsplit(".", 1)[-1].lower()
+        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext)
+        if path and mime:
+            return {"storage_path": path, "public_url": entry, "mime_type": mime, "bytes": 0}
+    return None
+
+
 # ─────────────────────────────── Submit ───────────────────────────────
 
 @router.post("/forms/{token}/submit")
@@ -229,7 +246,7 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": "That business type is no longer available."})
 
     merged_answers = dict(form.get("answers") or {})
-    merged_answers.update(payload.answers or {})
+    merged_answers.update({k: v for k, v in (payload.answers or {}).items() if k != "_photos"})  # see autosave
     photos = merged_answers.pop("_photos", {})
 
     slug = site_renderer.generate_slug(payload.client_business_name)
@@ -248,6 +265,10 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
 
     for slot, uploads in (photos or {}).items():
         for u in uploads:
+            u = _photo_record(u)
+            if not u:
+                logger.warning("[SITE-1B] submit_form: skipped an unreadable photo entry site=%s slot=%s", site["id"], slot)
+                continue
             try:
                 db.table("site_assets").insert({
                     "site_id": site["id"], "slot": slot, "storage_path": u["storage_path"],

@@ -90,6 +90,11 @@ const S = {
   honeypot: { position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' },
 }
 
+// Photo records belong to the server (the upload route stores them); the page must never send them back.
+function withoutPhotos(answers) {
+  return Object.fromEntries(Object.entries(answers || {}).filter(([k]) => k !== '_photos'))
+}
+
 function debounce(fn, ms) {
   let t
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms) }
@@ -125,7 +130,7 @@ export default function SiteBriefFormPage({ token }) {
   useEffect(() => { load() }, [load])
 
   const doAutosave = useRef(debounce(async (t, ans) => {
-    try { setSaving(true); await autosaveBriefForm(t, { answers: ans }); }
+    try { setSaving(true); await autosaveBriefForm(t, { answers: withoutPhotos(ans) }); }
     catch (_) { /* best-effort — next change or the submit will retry */ }
     finally { setSaving(false) }
   }, 1200)).current
@@ -187,7 +192,7 @@ export default function SiteBriefFormPage({ token }) {
     setSubmitting(true)
     try {
       const res = await submitBriefForm(token, {
-        answers: answersRef.current, client_business_name: businessName, website,
+        answers: withoutPhotos(answersRef.current), client_business_name: businessName, website,
       })
       setForm(f => ({ ...f, message: res.message }))
       setState('submitted')
@@ -312,7 +317,7 @@ function Question({ q, value, answers, onChange, onPhoto, onAddItem, onUpdateIte
     return (
       <Field label={q.prompt} required={q.required} skippable={skippable} onSkip={() => setSkipped(true)}>
         <div style={S.photoGrid}>
-          {urls.map((u, i) => <img key={i} src={u} alt="" style={S.photoThumb} />)}
+          {urls.map((u, i) => <img key={i} src={(u && u.public_url) || u} alt="" style={S.photoThumb} />)}
           {urls.length < maxItems && (
             <label style={S.photoAdd}>
               +
