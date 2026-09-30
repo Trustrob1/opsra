@@ -35,7 +35,10 @@ TOKENS: dict[str, tuple[str, ...]] = {
     # The first option of each is "no change" (renders exactly as before).
     "background": ("match", "white", "grey", "ivory"),
     "bands": ("plain", "wash"),
-    "cards": ("flat", "bordered", "lifted"),
+    # SITE-1C-3e: "tile" = soft filled card with padded text (text no longer touches the photo's edge).
+    "cards": ("flat", "bordered", "lifted", "tile"),
+    # SITE-1C-3e: how tall a Full photo hero is. Never picked at random (a template opts in, like "finish").
+    "hero_height": ("standard", "tall"),
     # SITE-1C-3d: "Refined look" — display-scale type, roomier spacing, a floating header, photo hover,
     # a dark story band and a floating WhatsApp button, all CSS-only. "standard" renders as before.
     # The picker never chooses it at random: a template opts in by narrowing this token to ["refined"].
@@ -53,6 +56,7 @@ TOKEN_LABELS: dict[str, str] = {
     "bands": "Section bands",
     "cards": "Cards",
     "finish": "Refined look",
+    "hero_height": "Hero height",
 }
 
 # ---------------------------------------------------------------- section layouts (SITE-1C-2)

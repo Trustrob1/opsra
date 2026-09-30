@@ -133,3 +133,66 @@ class TestPickerAndValidation:
 
     def test_registry_labels(self):
         assert reg.TOKENS["finish"] == ("standard", "refined") and reg.TOKEN_LABELS["finish"] == "Refined look"
+
+
+class TestHeroHeightAndTileCards:
+    """SITE-1C-3e: a choosable tall Full photo hero, and a padded 'tile' card style."""
+
+    def test_tall_hero_css_only_for_a_full_photo_hero(self):
+        tall = _recipe(tokens={"hero_height": "tall"}, variants={"hero": "fullbleed"})
+        css = _style(_render(tall))
+        assert ".hero-fullbleed{min-height:88vh;min-height:min(92svh,900px)}" in css
+        assert "@media (max-width:760px){.hero-fullbleed{min-height:86vh;min-height:min(86svh,760px)}}" in css
+        for v in ("centered", "collage"):
+            assert "92svh" not in _style(_render(_recipe(tokens={"hero_height": "tall"}, variants={"hero": v})))
+
+    def test_standard_hero_height_changes_nothing(self):
+        rec = _recipe(variants={"hero": "fullbleed"})
+        assert "svh" not in _style(_render({**rec, "tokens": {"hero_height": "standard"}}))
+
+    def test_tall_hero_is_independent_of_the_refined_look(self):
+        assert "svh" in _style(_render(_recipe(tokens={"hero_height": "tall"}, variants={"hero": "fullbleed"})))
+        assert "position:sticky" not in _style(_render(_recipe(tokens={"hero_height": "tall"})))
+
+    def test_tile_cards_pad_the_text_and_fill_the_card(self):
+        css = _style(_render(_recipe(tokens={"cards": "tile"})))
+        assert ".card{background:var(--soft);border-radius:var(--r)}" in css
+        assert ".card-body{padding:18px 18px 22px;gap:8px}" in css
+        assert "@media (max-width:760px){.grid{gap:18px}.card-body{padding:14px 14px 18px}}" in css
+
+    def test_flat_cards_stay_as_they_were(self):
+        for tokens in (None, {"cards": "flat"}):
+            css = _style(_render(_recipe(tokens=tokens) if tokens else _recipe()))
+            assert "padding:18px 18px 22px" not in css
+
+    def test_refined_turns_flat_cards_into_tiles_but_keeps_an_explicit_style(self):
+        assert "padding:18px 18px 22px" in _style(_render(_refined()))
+        assert "padding:18px 18px 22px" in _style(_render(_refined(cards="flat")))
+        assert "padding:18px 18px 22px" not in _style(_render(_refined(cards="bordered")))
+        assert "padding:18px 18px 22px" not in _style(_render(_refined(cards="lifted")))
+
+    def test_tile_keeps_the_arch_photo_shape(self):
+        css = _style(_render(_recipe(tokens={"cards": "tile", "image_style": "arch"})))
+        assert ".card .ph,.card .photo{border-radius" not in css
+
+    def test_css_is_balanced(self):
+        css = _style(_render(_recipe(tokens={"cards": "tile", "hero_height": "tall"}, variants={"hero": "fullbleed"})))
+        assert css.count("{") == css.count("}")
+
+    def test_picker_never_picks_a_tall_hero_unless_the_template_asks(self):
+        for i in range(30):
+            assert picker.pick_recipe(PRESET, f"h-{i}")["tokens"]["hero_height"] == "standard"
+        preset = {**PRESET, "token_options": {"hero_height": ["tall"]}}
+        for i in range(30):
+            assert picker.pick_recipe(preset, f"h-{i}")["tokens"]["hero_height"] == "tall"
+        both = {**PRESET, "token_options": {"hero_height": ["standard", "tall"]}}
+        assert picker.pick_recipe(both, "h-1")["tokens"]["hero_height"] == "standard"
+
+    def test_picker_can_choose_tile_cards(self):
+        seen = {picker.pick_recipe(PRESET, f"t-{i}")["tokens"]["cards"] for i in range(80)}
+        assert "tile" in seen and seen == set(reg.TOKENS["cards"])
+
+    def test_model_and_labels(self):
+        from app.models.sites import Recipe
+        rec = Recipe(theme="atelier", palette="berry", order=["hero"], tokens={"hero_height": "tall", "cards": "tile"})
+        assert rec.tokens.hero_height == "tall" and reg.TOKEN_LABELS["hero_height"] == "Hero height"

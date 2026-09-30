@@ -138,8 +138,10 @@ export const TOKENS = [
   // SITE-1C-1b: page background, alternating section bands, card style (first option = no change).
   { key: 'background', label: 'Page background', options: [{ value: 'match', label: 'Match colour' }, { value: 'white', label: 'White' }, { value: 'grey', label: 'Soft grey' }, { value: 'ivory', label: 'Warm ivory' }] },
   { key: 'bands', label: 'Section bands', options: [{ value: 'plain', label: 'Plain' }, { value: 'wash', label: 'Tinted bands' }] },
-  { key: 'cards', label: 'Cards', options: [{ value: 'flat', label: 'Flat' }, { value: 'bordered', label: 'Bordered' }, { value: 'lifted', label: 'Lifted' }] },
+  { key: 'cards', label: 'Cards', options: [{ value: 'flat', label: 'Flat' }, { value: 'bordered', label: 'Bordered' }, { value: 'lifted', label: 'Lifted' }, { value: 'tile', label: 'Tile' }] },
   // SITE-1C-3d: big light headings, roomier spacing, floating header, photo hover, dark story band, floating WhatsApp button.
+  // SITE-1C-3e: how tall a Full photo hero is (only affects the Full photo layout).
+  { key: 'hero_height', label: 'Hero height', options: [{ value: 'standard', label: 'Standard' }, { value: 'tall', label: 'Nearly full screen' }] },
   { key: 'finish', label: 'Refined look', options: [{ value: 'standard', label: 'Standard' }, { value: 'refined', label: 'Refined' }] },
 ]
 export const THEME_TOKEN_EXCLUSIONS = { atelier: { radius: ['pill'] } }

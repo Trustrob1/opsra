@@ -31,7 +31,7 @@ class TestRegistry:
         assert reg.TOKENS["cards"][0] == "flat"
         assert reg.TOKENS["background"] == ("match", "white", "grey", "ivory")
         assert reg.TOKENS["bands"] == ("plain", "wash")
-        assert reg.TOKENS["cards"] == ("flat", "bordered", "lifted")
+        assert reg.TOKENS["cards"] == ("flat", "bordered", "lifted", "tile")
 
     def test_labels_exist(self):
         for t in ("background", "bands", "cards"):

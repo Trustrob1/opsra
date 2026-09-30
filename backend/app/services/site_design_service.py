@@ -125,6 +125,9 @@ def _variant_pool(preset: dict, section: str, ctx: Optional[dict]) -> list[str]:
 
 # ---------------------------------------------------------------- candidate generation
 
+OPT_IN_TOKENS = {"finish": "refined", "hero_height": "tall"}
+
+
 def _candidate(preset: dict, seed: str, colour_answer, personality: Optional[str], ctx: Optional[dict]) -> dict:
     p = reg.PERSONALITIES.get(personality) if personality else None
     themes = [t for t in (preset.get("allowed_themes") or []) if t in site_renderer.THEMES] or ["atelier"]
@@ -152,9 +155,10 @@ def _candidate(preset: dict, seed: str, colour_answer, personality: Optional[str
     # still change it per site in the Design card; personalities no longer steer this one token.
     if "white" in reg.allowed_token_options(preset, theme, "background"):
         tokens["background"] = "white"
-    # SITE-1C-3d: the Refined look is never picked at random. A template turns it on for all its new
-    # sites by narrowing "Refined look" to that one option; otherwise sites start standard.
-    tokens["finish"] = "refined" if (preset.get("token_options") or {}).get("finish") == ["refined"] else "standard"
+    # SITE-1C-3d/3e: opt-in tokens are never picked at random. A template turns one on for all its new
+    # sites by narrowing it to that one option in the Look studio; otherwise sites start standard.
+    for tok, opt_in in OPT_IN_TOKENS.items():
+        tokens[tok] = opt_in if (preset.get("token_options") or {}).get(tok) == [opt_in] else reg.TOKENS[tok][0]
 
     order = list(preset.get("sections") or ["hero", "about", "items", "order"])
     variants = {sec: _wchoose(seed, f"variant:{sec}", _variant_pool(preset, sec, ctx), (p["variants"].get(sec, ()) if p else ()))

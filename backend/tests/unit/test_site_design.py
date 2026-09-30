@@ -153,9 +153,9 @@ class TestRegistry:
             assert pair["heading_weight"] == ("400" if t["upper_headings"] else "600")
             assert pair["group"] in meta["font_groups"]
 
-    def test_ten_tokens_with_at_least_two_options(self):
+    def test_eleven_tokens_with_at_least_two_options(self):
         assert set(reg.TOKENS) == {"radius", "density", "button", "heading_case", "image_style", "divider",
-                                   "background", "bands", "cards", "finish"}
+                                   "background", "bands", "cards", "finish", "hero_height"}
         assert all(len(v) >= 2 for v in reg.TOKENS.values())
 
     def test_palette_meta_covers_every_palette_and_only_those(self):
@@ -365,7 +365,7 @@ class TestPicker:
         assert len({x["palette"] for x in recipes}) >= 10
         assert len({x["fonts"] for x in recipes}) >= 6
         for token, options in reg.TOKENS.items():
-            if token in ("background", "finish"):  # SITE-1C-3c/3d: always start white / standard
+            if token in ("background", "finish", "hero_height"):  # SITE-1C-3c/3d/3e: always start white / standard
                 continue
             assert len({x["tokens"][token] for x in recipes}) >= 2, token
 

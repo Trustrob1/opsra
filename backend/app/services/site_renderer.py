@@ -766,7 +766,17 @@ def _token_css(tokens, palette=None, heavy: bool = False) -> str:
                 else "box-shadow:0 14px 34px -16px rgba(20,20,30,.35),0 2px 6px rgba(20,20,30,.06)")
         out.append(f".card,.prow,.rev{{background:#FFFFFF;{edge}}}"
                    ".card{padding:12px;border-radius:var(--r)}.card-body{padding:14px 4px 6px}")
-    if tk.get("finish") == "refined":
+    refined = tk.get("finish") == "refined"
+    # SITE-1C-3e: the "tile" card style. The Refined look turns plain (flat) cards into tiles too.
+    if cards == "tile" or (refined and cards in (None, "flat")):
+        out.append(".card{background:var(--soft);border-radius:var(--r)}"
+                   + (".card .ph,.card .photo{border-radius:var(--r) var(--r) 0 0}" if img in (None, "square") else "")
+                   + ".card-body{padding:18px 18px 22px;gap:8px}"
+                   "@media (max-width:760px){.grid{gap:18px}.card-body{padding:14px 14px 18px}}")
+    if tk.get("hero_height") == "tall":  # SITE-1C-3e: a Full photo hero that nearly fills the screen
+        out.append(".hero-fullbleed{min-height:88vh;min-height:min(92svh,900px)}"
+                   "@media (max-width:760px){.hero-fullbleed{min-height:86vh;min-height:min(86svh,760px)}}")
+    if refined:
         out.append(_refined_css(tk, heavy))
     return "".join(out)
 

@@ -55,7 +55,7 @@ export function coloursOf(entry) {
   return { accent: p.accent, ground: p.ground, label: p.label, custom: false }
 }
 
-export const DEFAULT_TOKENS = { radius: 'sharp', density: 'regular', button: 'solid', heading_case: 'normal', image_style: 'square', divider: 'line', background: 'match', bands: 'plain', cards: 'flat', finish: 'standard' }
+export const DEFAULT_TOKENS = { radius: 'sharp', density: 'regular', button: 'solid', heading_case: 'normal', image_style: 'square', divider: 'line', background: 'match', bands: 'plain', cards: 'flat', hero_height: 'standard', finish: 'standard' }
 
 export const LOOKS = [
   { key: 'elegant', name: 'Elegant boutique', blurb: 'Fine lines, arches, airy', pal: 'berry', font: 'bodoni_jost', tok: { radius: 'sharp', density: 'airy', button: 'outline', heading_case: 'spaced_upper', image_style: 'arch', divider: 'ornament', background: 'ivory', bands: 'wash', cards: 'bordered' } },
@@ -98,6 +98,9 @@ export function tokenGlyph(tokenKey, opt, accent, fontKey) {
     const fill = opt === 'match' ? mixHex(accent, '#FFFFFF', 0.9) : BACKGROUNDS[opt]
     return { style: { width: 40, height: 28, borderRadius: 5, border: '1px solid #b9c2ce', background: fill }, text: '' }
   }
+  if (tokenKey === 'hero_height') {
+    return { style: { width: 40, height: opt === 'tall' ? 32 : 18, borderRadius: 4, background: `${accent}99`, border: `1.5px solid ${accent}` }, text: '' }
+  }
   if (tokenKey === 'finish') {
     const fine = opt === 'refined'
     return { style: { fontFamily: `'${font.heading}', serif`, fontSize: 20, fontWeight: fine ? 400 : 700, letterSpacing: fine ? '-.03em' : 0, color: ink }, text: 'Aa' }
@@ -108,6 +111,7 @@ export function tokenGlyph(tokenKey, opt, accent, fontKey) {
   }
   if (tokenKey === 'cards') {
     if (opt === 'bordered') return { style: { width: 34, height: 26, borderRadius: 5, border: '1.5px solid #8c97a6', background: '#fff' }, text: '' }
+    if (opt === 'tile') return { style: { width: 34, height: 26, borderRadius: 5, background: '#e3e8ee', boxShadow: 'inset 0 0 0 5px #e3e8ee, inset 0 0 0 11px #fff' }, text: '' }
     if (opt === 'lifted') return { style: { width: 34, height: 26, borderRadius: 5, background: '#fff', boxShadow: '0 7px 10px -3px rgba(20,30,50,.4), 0 1px 2px rgba(20,30,50,.15)' }, text: '' }
     return { style: { width: 34, height: 26, borderRadius: 5, background: '#e3e8ee' }, text: '' }
   }
@@ -139,6 +143,7 @@ export function previewStyles(cur) {
   const wash = washColour(accent)
   const line = mixHex(accent, '#FFFFFF', 0.78)
   const card = t.cards === 'bordered' ? { background: '#fff', border: `1px solid ${line}`, borderRadius: cr, padding: 10 }
+    : t.cards === 'tile' ? { background: `${accent}14`, borderRadius: cr, padding: 12 }
     : t.cards === 'lifted' ? { background: '#fff', borderRadius: cr, padding: 10, boxShadow: '0 14px 30px -16px rgba(20,20,30,.35), 0 2px 6px rgba(20,20,30,.06)' }
       : { padding: 0 }
   const washed = t.bands === 'wash'
