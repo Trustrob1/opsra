@@ -119,7 +119,7 @@ class TestCss:
 class TestPicker:
     def test_picker_chooses_the_new_tokens_and_varies_them(self):
         recipes = [picker.pick_recipe(PRESET, f"bg-{i}") for i in range(80)]
-        for t in ("background", "bands", "cards"):
+        for t in ("bands", "cards"):
             assert {x["tokens"][t] for x in recipes} == set(reg.TOKENS[t]), t
 
     def test_picks_render(self):
@@ -171,3 +171,20 @@ class TestTemplateCustomColours:
         from app.services import site_copy_service as sc
         rc = sc._build_recipe({**PRESET, "default_palettes": ["#0E6B8A"]}, None)
         assert rc["custom_colour"] == "#0E6B8A" and rc["palette"] is None
+
+
+class TestWhiteByDefault:
+    """SITE-1C-3c: every new site starts on a white page, whatever the template or personality."""
+
+    def test_picker_always_starts_white(self):
+        for i in range(40):
+            assert picker.pick_recipe(PRESET, f"w-{i}")["tokens"]["background"] == "white"
+
+    def test_white_even_when_the_template_narrowed_other_backgrounds(self):
+        preset = {**PRESET, "token_options": {"background": ["ivory", "grey", "white"]}}
+        for i in range(20):
+            assert picker.pick_recipe(preset, f"n-{i}", personality="elegant")["tokens"]["background"] == "white"
+
+    def test_it_renders_a_white_page(self):
+        html = _render(picker.pick_recipe(PRESET, "w-1"))
+        assert ":root{--ground:#FFFFFF}" in html

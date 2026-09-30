@@ -204,6 +204,7 @@ function CreateSiteModal({ open, presets, builders, onClose, onCreated, showToas
       palette: preset.default_palettes?.[0] || 'berry',
       order: preset.sections,
       hidden: [],
+      tokens: { background: 'white' }, // SITE-1C-3c: new sites start on a white page
     }
 
     setSaving(true)

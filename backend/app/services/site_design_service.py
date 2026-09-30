@@ -148,6 +148,10 @@ def _candidate(preset: dict, seed: str, colour_answer, personality: Optional[str
 
     tokens = {t: _wchoose(seed, f"token:{t}", reg.allowed_token_options(preset, theme, t), (p["tokens"].get(t, ()) if p else ()))
               for t in reg.TOKENS}
+    # SITE-1C-3c: every new site starts on a white page, whatever its palette. Staff or the builder can
+    # still change it per site in the Design card; personalities no longer steer this one token.
+    if "white" in reg.allowed_token_options(preset, theme, "background"):
+        tokens["background"] = "white"
 
     order = list(preset.get("sections") or ["hero", "about", "items", "order"])
     variants = {sec: _wchoose(seed, f"variant:{sec}", _variant_pool(preset, sec, ctx), (p["variants"].get(sec, ()) if p else ()))

@@ -27,7 +27,6 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
   const [preview, setPreview] = useState(null) // { preset, html, recipe }
   const [stats, setStats] = useState({})
   const [usage, setUsage] = useState({ byPreset: {}, total: 0 }) // SITE-1C-3b: which sites use which template
-  const [openUsed, setOpenUsed] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -37,7 +36,7 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
       presetLookStats().then((s) => setStats(s || {})).catch(() => setStats({})) // informational only
       listSites({ page_size: 200 }).then((res) => { // informational only
         const byPreset = {}
-        for (const s of res.items || []) (byPreset[s.preset_id] ||= []).push(s)
+        for (const s of res.items || []) byPreset[s.preset_id] = (byPreset[s.preset_id] || 0) + 1
         setUsage({ byPreset, total: res.total || 0 })
       }).catch(() => setUsage({ byPreset: {}, total: 0 }))
     } catch (e) {
@@ -90,8 +89,7 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
               <p style={{ margin: '10px 0', fontSize: 12.5, color: T.soft }}>
                 {(p.sections || []).map((s) => SECTION_LABELS[s] || s).join(' · ')}
               </p>
-              <UsedBy sites={usage.byPreset[p.id] || []} partial={usage.total > 200} open={openUsed === p.id}
-                onToggle={() => setOpenUsed(openUsed === p.id ? null : p.id)} />
+              <UsedBy count={usage.byPreset[p.id] || 0} partial={usage.total > 200} />
               <LookStatsLine stat={stats[p.id]} />
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
                 {(p.allowed_themes || []).map((t) => <Badge key={t} tone="info">{THEMES.find((x) => x.value === t)?.label || t}</Badge>)}
@@ -138,22 +136,12 @@ function describeRecipe(recipe) {
   return [theme, palette, fonts, ...tokens].filter(Boolean).join(' · ')
 }
 
-// SITE-1C-3b: how many sites were built from this template, and which ones.
-function UsedBy({ sites, partial, open, onToggle }) {
-  const n = sites.length
-  if (!n) return <p style={{ margin: '0 0 10px', fontSize: 12, color: T.muted }}>Not used by any site yet</p>
+// SITE-1C-3b: how many sites were built from this template (a count only, so it stays short as sites grow).
+function UsedBy({ count, partial }) {
   return (
-    <div style={{ margin: '0 0 10px' }}>
-      <button type="button" onClick={onToggle} aria-expanded={open}
-        style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: T.ink, textDecoration: 'underline' }}>
-        Used by {n}{partial ? '+' : ''} site{n === 1 ? '' : 's'} {open ? '▴' : '▾'}
-      </button>
-      {open && (
-        <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12, color: T.soft, maxHeight: 160, overflowY: 'auto' }}>
-          {sites.map((s) => <li key={s.id}>{s.client_business_name} <code style={{ color: T.muted }}>/s/{s.slug}</code></li>)}
-        </ul>
-      )}
-    </div>
+    <p style={{ margin: '0 0 10px', fontSize: 12, color: T.muted }}>
+      {count ? `Used by ${count}${partial ? '+' : ''} site${count === 1 ? '' : 's'}` : 'Not used by any site yet'}
+    </p>
   )
 }
 

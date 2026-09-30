@@ -365,6 +365,8 @@ class TestPicker:
         assert len({x["palette"] for x in recipes}) >= 10
         assert len({x["fonts"] for x in recipes}) >= 6
         for token, options in reg.TOKENS.items():
+            if token == "background":  # SITE-1C-3c: always starts white
+                continue
             assert len({x["tokens"][token] for x in recipes}) >= 2, token
 
     def test_every_pick_is_valid_and_renders(self):
