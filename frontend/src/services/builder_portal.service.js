@@ -46,6 +46,10 @@ export const patchMySiteContent = (token, siteId, content) =>
   unwrap(axios.patch(`${BASE}/sites/${siteId}/content`, { content }, authed(token)))
 export const patchMySiteRecipe = (token, siteId, recipe) =>
   unwrap(axios.patch(`${BASE}/sites/${siteId}/recipe`, { recipe }, authed(token)))
+export const suggestMyDesigns = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/design/suggest`, null, authed(token)))
+export const applyMyDesign = (token, siteId, recipe) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/design/apply`, { recipe }, authed(token)))
 export const renderMySite = (token, siteId) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/render`, null, authed(token)))
 export const undoMySite = (token, siteId) =>

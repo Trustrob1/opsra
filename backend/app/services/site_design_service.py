@@ -301,3 +301,52 @@ def look_stats(db, org_id: str, days: int = NICHE_DAYS) -> dict:
         if r.get("preset_id") and isinstance(r.get("recipe"), dict) and r["recipe"].get("theme"):
             by.setdefault(r["preset_id"], []).append(fingerprint(r["recipe"]))
     return {pid: {"sites": len(fps), "distinct": len(set(fps)), "repeats": len(fps) - len(set(fps))} for pid, fps in by.items()}
+
+
+# ---------------------------------------------------------------- "suggest another design" (SITE-1C-2b)
+DESIGN_SUGGESTION_CAP = 5    # free suggestion rounds per site before it goes live (builders); staff are uncapped
+SUGGESTIONS_PER_ROUND = 4
+
+
+def suggestions_used(db, org_id: str, site_id: str) -> int:
+    """How many suggestion rounds this site has had (counted from `design_suggested` site_events, so no schema change)."""
+    try:
+        rows = (db.table("site_events").select("id").eq("org_id", org_id).eq("site_id", site_id)
+                .eq("event", "design_suggested").limit(500).execute()).data or []
+        return len(rows)
+    except Exception as exc:
+        logger.warning("[SITE-1C] suggestions_used failed site=%s: %s", site_id, exc)
+        return 0
+
+
+def suggest_for_site(db, org_id: str, site: dict, preset: dict, round_no: int, count: int = SUGGESTIONS_PER_ROUND) -> list[dict]:
+    """A fresh set of valid looks for an existing site: never the current look, never a recent one, same
+    personality and the same brand colour if it set its own. Keeps the site's section order and hidden
+    sections. Each round uses a new seed, so pressing the button again gives different looks."""
+    current = site.get("recipe") if isinstance(site.get("recipe"), dict) else {}
+    content = site.get("content") if isinstance(site.get("content"), dict) else {}
+    try:
+        photos = len((db.table("site_assets").select("id").eq("site_id", site["id"]).execute()).data or [])
+    except Exception:
+        photos = 0
+    ctx = {"photos": photos, "items": len(content.get("items") or []), "reviews": len(content.get("reviews") or [])}
+    personality = reg.personality_from_answer((site.get("brief") or {}).get(reg.PERSONALITY_KEY))
+    recents = recent_looks(db, org_id, site.get("builder_id"), site.get("preset_id"), site.get("id"))
+    if current.get("theme"):
+        recents = [current] + recents
+    colour = current.get("custom_colour") or None
+    pool = design_shortlist(preset, f"{site['id']}#suggest{round_no}", colour, personality, recents, ctx, size=count + 2)
+    cur_fp = fingerprint(current) if current.get("theme") else None
+    out = []
+    for r in pool:
+        if fingerprint(r) == cur_fp:
+            continue
+        r = {**r, "order": list(current.get("order") or r["order"]), "hidden": list(current.get("hidden") or [])}
+        try:
+            site_renderer.validate_recipe(preset, r)
+        except Exception:
+            continue
+        out.append({"recipe": r, "summary": describe(r), "fingerprint": fingerprint(r)})
+        if len(out) >= count:
+            break
+    return out

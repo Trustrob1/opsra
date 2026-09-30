@@ -54,6 +54,7 @@ from app.services import (
     domain_check_service,
     pricing_service,
     site_care_plan_service,
+    site_design_service,
     site_order_service,
     site_renewal_service,
     site_renderer,
@@ -328,6 +329,57 @@ def patch_my_recipe(site_id: str, payload: SiteRecipePatch, builder=Depends(get_
     site.update(updates)
     _log_event(db, org_id, site_id, builder["id"], "recipe_updated")
     return ok(data=site, message="Saved — call render to refresh the preview")
+
+
+# ─────────────────── Suggest another design (SITE-1C-2b) ───────────────────
+# Before the site goes live: DESIGN_SUGGESTION_CAP free suggestion rounds. Once live (a counting
+# status), browsing suggestions is free but APPLYING one counts as an edit, exactly like a content save.
+
+def _is_live_site(site: dict) -> bool:
+    return site.get("status") in site_care_plan_service.COUNTING_SITE_STATUSES
+
+
+@router.post("/sites/{site_id}/design/suggest")
+def suggest_my_designs(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _get_site(db, org_id, builder["id"], site_id)
+    preset = _get_preset(db, org_id, site["preset_id"])
+    live = _is_live_site(site)
+    used = site_design_service.suggestions_used(db, org_id, site_id)
+    cap = site_design_service.DESIGN_SUGGESTION_CAP
+    if not live and used >= cap:
+        raise HTTPException(429, detail={"code": "DESIGN_SUGGEST_LIMIT",
+                                          "message": f"You've used the {cap} free design suggestions for this preview. You can still change the design yourself."})
+    suggestions = site_design_service.suggest_for_site(db, org_id, site, preset, used)
+    _log_event(db, org_id, site_id, builder["id"], "design_suggested", {"round": used + 1, "shown": len(suggestions)})
+    return ok(data={"suggestions": suggestions, "used": used + 1, "cap": None if live else cap,
+                    "remaining": None if live else max(0, cap - used - 1), "counts_as_edit": live})
+
+
+@router.post("/sites/{site_id}/design/apply")
+def apply_my_design(site_id: str, payload: SiteRecipePatch, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _get_site(db, org_id, builder["id"], site_id)
+    preset = _get_preset(db, org_id, site["preset_id"])
+    recipe = payload.recipe.model_dump(mode="json")
+    try:
+        site_renderer.validate_recipe(preset, recipe)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    counted = False
+    if _is_live_site(site):
+        try:
+            counted = bool(site_care_plan_service.consume_edit(db, org_id, site).get("counted"))
+        except site_care_plan_service.EditLimitReached as exc:
+            raise HTTPException(402, detail={"code": "EDIT_LIMIT_REACHED", "message": str(exc), "offer": exc.offer})
+        except Exception as exc:  # fail open, same as a content save
+            logger.warning("care plan: consume_edit failed (design apply) site=%s: %s", site_id, exc)
+    _snapshot_for_undo(db, org_id, site)
+    updates = {"recipe": recipe, "updated_at": _now_iso(), "design_rolls": (site.get("design_rolls") or 0) + 1}
+    db.table("sites").update(updates).eq("id", site_id).eq("org_id", org_id).execute()
+    site.update(updates)
+    _log_event(db, org_id, site_id, builder["id"], "design_applied", {"fingerprint": site_design_service.fingerprint(recipe), "counted_as_edit": counted})
+    return ok(data=site, message="Design applied — call render to refresh the preview")
 
 
 @router.post("/sites/{site_id}/render")

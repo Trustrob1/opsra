@@ -19,6 +19,7 @@ export const updateSiteSettings = (payload) => unwrap(api.patch('/api/v1/sites/s
 
 // ── Presets (Templates tab) ─────────────────────────────────────────────
 export const listPresets = () => unwrap(api.get('/api/v1/sites/presets'))
+export const suggestDesigns = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/design/suggest`))
 export const presetLookStats = () => unwrap(api.get('/api/v1/sites/presets/look-stats'))
 export const createPreset = (payload) => unwrap(api.post('/api/v1/sites/presets', payload))
 export const getPreset = (id) => unwrap(api.get(`/api/v1/sites/presets/${id}`))

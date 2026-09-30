@@ -32,14 +32,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, Building2, ChevronDown, CreditCard, Eye, ExternalLink, ImagePlus, LogOut, Plus,
-  RefreshCw, Save, ShoppingCart, Trash2, Undo2, User,
+  RefreshCw, Save, Shuffle, ShoppingCart, Trash2, Undo2, User,
 } from 'lucide-react'
 import {
   exchangeBuilderToken, renewalCheckout, careCheckout, cancelCarePlan, editLimitOffer, getMyAccount, updateMyAccount, listMySites, getMySite,
-  patchMySiteContent, patchMySiteRecipe, renderMySite, undoMySite, uploadMySiteAsset,
+  patchMySiteContent, patchMySiteRecipe, suggestMyDesigns, applyMyDesign, renderMySite, undoMySite, uploadMySiteAsset,
   checkDomain, getQuote, checkout, errorMessage,
 } from '../services/builder_portal.service'
 import SectionTiles from '../modules/sites/SectionTiles'
+import DesignSuggestModal from '../modules/sites/DesignSuggestModal'
 import ThemePicker from '../modules/sites/ThemePicker'
 import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
@@ -395,6 +396,24 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
     }
   }
 
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const fetchSuggestions = useCallback(() => suggestMyDesigns(token, siteId), [token, siteId])
+  // Applying a suggested design saves it straight away. Once the site is live the server counts it as one edit.
+  const applySuggested = async (r) => {
+    try {
+      const s = await applyMyDesign(token, siteId, r)
+      setSite(s)
+      setRecipe(s.recipe)
+      setLimitOffer(null)
+      setSuggestOpen(false)
+      showToast('New design applied — render to refresh the preview')
+    } catch (e) {
+      const offer = editLimitOffer(e)
+      if (offer) { setLimitOffer(offer); setSuggestOpen(false) }
+      else showToast(errorMessage(e, 'Could not apply that design.'), 'bad')
+    }
+  }
+
   const doRender = async () => {
     setRendering(true)
     try {
@@ -540,7 +559,9 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           )}
           <div><Button variant="primary" icon={Save} loading={savingContent} onClick={saveContent}>Save content</Button></div>
 
-          <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} />
+          <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} onSuggest={() => setSuggestOpen(true)} />
+          <DesignSuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} fetchSuggestions={fetchSuggestions}
+            errorText={(e) => errorMessage(e, 'Could not get design suggestions.')} onUse={applySuggested} />
           <div><Button variant="primary" icon={Save} loading={savingRecipe} onClick={saveRecipe}>Save design</Button></div>
         </div>
 
@@ -1134,7 +1155,7 @@ function OrderSeoCard({ content, setContent, defaultOpen }) {
   )
 }
 
-function DesignCard({ recipe, setRecipe, defaultOpen, designOptions }) {
+function DesignCard({ recipe, setRecipe, defaultOpen, designOptions, onSuggest }) {
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(!!defaultOpen)
   const sections = Object.keys(SECTION_LABELS)
@@ -1147,7 +1168,7 @@ function DesignCard({ recipe, setRecipe, defaultOpen, designOptions }) {
   return (
     <Card>
       <SectionTitle title="Design" hint="Theme, colours, fonts and style. Pick a layout for each section, or hide one without losing its content."
-        right={<CollapseToggle open={open} onToggle={() => setOpen((v) => !v)} />} />
+        right={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>{onSuggest && <Button size="sm" variant="secondary" icon={Shuffle} onClick={onSuggest}>Suggest another design</Button>}<CollapseToggle open={open} onToggle={() => setOpen((v) => !v)} /></span>} />
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Field label="Theme" group>

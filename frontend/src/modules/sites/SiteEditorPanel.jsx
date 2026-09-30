@@ -7,12 +7,13 @@
  * own separation (routers/sites.py) so a half-finished edit never auto-publishes.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Plus, Trash2, Save, RefreshCw, Eye, ImagePlus, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, RefreshCw, Eye, ImagePlus, ExternalLink, Shuffle } from 'lucide-react'
 import {
-  getSite, patchSiteContent, patchSiteRecipe, renderSite, uploadSiteAsset, getPreset, errorMessage,
+  getSite, patchSiteContent, patchSiteRecipe, suggestDesigns, renderSite, uploadSiteAsset, getPreset, errorMessage,
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Field, Modal, SectionTitle } from './sitesUi'
 import SectionTiles from './SectionTiles'
+import DesignSuggestModal from './DesignSuggestModal'
 import ThemePicker from './ThemePicker'
 import { T, INPUT, TEXTAREA, dateTime, THEMES, SECTION_LABELS, SITE_STATUS } from './sitesKit'
 import LookPickerField from './LookPicker'
@@ -156,7 +157,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
         <div><Button variant="primary" icon={Save} loading={savingContent} onClick={saveContent}>Save content</Button></div>
       )}
 
-      <DesignCard recipe={recipe} setRecipe={setRecipe} canEdit={canEdit} preset={preset} isMobile={isMobile} />
+      <DesignCard recipe={recipe} setRecipe={setRecipe} canEdit={canEdit} preset={preset} isMobile={isMobile} siteId={siteId} showToast={showToast} />
       {canEdit && (
         <div><Button variant="primary" icon={Save} loading={savingRecipe} onClick={saveRecipe}>Save design</Button></div>
       )}
@@ -401,7 +402,9 @@ function OrderSeoCard({ content, setContent, canEdit }) {
   )
 }
 
-function DesignCard({ recipe, setRecipe, canEdit, preset, isMobile }) {
+function DesignCard({ recipe, setRecipe, canEdit, preset, isMobile, siteId, showToast }) {
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const fetchSuggestions = useCallback(() => suggestDesigns(siteId), [siteId])
   const allowedThemes = preset?.allowed_themes?.length ? THEMES.filter((t) => preset.allowed_themes.includes(t.value)) : THEMES
   const sections = preset?.sections || Object.keys(SECTION_LABELS)
   const toggleHidden = (key) => setRecipe((r) => ({
@@ -412,7 +415,11 @@ function DesignCard({ recipe, setRecipe, canEdit, preset, isMobile }) {
 
   return (
     <Card>
-      <SectionTitle title="Design" hint="Theme, colours, fonts and style. Pick a layout for each section, or hide one without losing its content." />
+      <SectionTitle title="Design" hint="Theme, colours, fonts and style. Pick a layout for each section, or hide one without losing its content."
+        right={canEdit && <Button size="sm" variant="secondary" icon={Shuffle} onClick={() => setSuggestOpen(true)}>Suggest another design</Button>} />
+      <DesignSuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} fetchSuggestions={fetchSuggestions}
+        errorText={(e) => errorMessage(e, 'Could not get design suggestions.')}
+        onUse={(r) => { setRecipe(r); setSuggestOpen(false); showToast('Design chosen — press Save design to keep it') }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="Theme" group>
           <ThemePicker themes={allowedThemes} value={recipe.theme} onChange={(v) => setRecipe((r) => ({ ...r, theme: v }))} recipe={recipe} disabled={!canEdit} />

@@ -629,6 +629,19 @@ def patch_recipe(site_id: str, payload: SiteRecipePatch, org=Depends(get_current
     return ok(data=site, message="Design updated — call render to refresh the preview")
 
 
+@router.post("/sites/{site_id}/design/suggest")
+def suggest_designs(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """SITE-1C-2b: a fresh set of looks for this site (staff: uncapped, applying is the normal free Save design)."""
+    _require(org, _WRITE_ROLES)
+    org_id = org["org_id"]
+    site = _get_site(db, org_id, site_id)
+    preset = _get_preset(db, org_id, site["preset_id"])
+    used = site_design_service.suggestions_used(db, org_id, site_id)
+    suggestions = site_design_service.suggest_for_site(db, org_id, site, preset, used)
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "design_suggested", {"round": used + 1, "shown": len(suggestions)})
+    return ok(data={"suggestions": suggestions, "used": used + 1, "cap": None, "remaining": None, "counts_as_edit": False})
+
+
 @router.post("/sites/{site_id}/render")
 def render_site(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
     _require(org, _WRITE_ROLES)
