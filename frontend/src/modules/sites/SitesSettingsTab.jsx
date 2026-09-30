@@ -49,6 +49,21 @@ export default function SitesSettingsTab({ isActive, canEdit, showToast, onEnabl
     }
   }
 
+  const toggleOpenSignup = async (checked) => {
+    if (!canEdit) return
+    setSaving(true)
+    try {
+      // Open sign-up ON means members_only OFF.
+      const row = await updateSiteSettings({ members_only: !checked })
+      setSettings(row)
+      showToast(checked ? 'Open sign-up turned on' : 'Open sign-up turned off')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not save.'), 'bad')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const savePricing = async () => {
     setJsonError(null)
     let parsed
@@ -79,6 +94,15 @@ export default function SitesSettingsTab({ isActive, canEdit, showToast, onEnabl
         <SectionTitle title="Site engine" hint="Ships for this org only for now (spec L1). While off, Sites list still shows what's there, but building or rendering a new site is blocked." />
         <Toggle checked={!!settings?.enabled} onChange={toggleEnabled} disabled={!canEdit || saving}
           label={settings?.enabled ? 'On — builders can build and preview sites' : 'Off — building is blocked'} />
+        {!canEdit && <p style={{ margin: '10px 0 0', fontSize: 12, color: T.muted }}>Only an owner or ops manager can change this.</p>}
+      </Card>
+
+      <Card>
+        <SectionTitle title="Who can start building" hint="Controls what happens when a new number messages the Site Builder WhatsApp (for example from the Start building button on /sites)." />
+        <Toggle checked={settings?.members_only === false} onChange={toggleOpenSignup} disabled={!canEdit || saving}
+          label={settings?.members_only === false
+            ? 'Open sign-up — anyone who messages is registered and can start building straight away'
+            : 'Invite only — new numbers wait for your approval and get the join-link reply'} />
         {!canEdit && <p style={{ margin: '10px 0 0', fontSize: 12, color: T.muted }}>Only an owner or ops manager can change this.</p>}
       </Card>
 
