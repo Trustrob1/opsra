@@ -254,7 +254,9 @@ def _send_editor_link(db, org_id: str, number_row: dict, sender_phone: str, buil
 # ─────────────────────────────── Chat-question backup path ───────────────────────────────
 
 def _steps_for_preset(preset: dict) -> list[dict]:
-    return [_SYNTHETIC_NAME_STEP] + list(preset.get("brief_questions") or [])
+    # SITE-1C-2: the personality question is added for every template that doesn't define its own.
+    from app.services import site_design_registry
+    return [_SYNTHETIC_NAME_STEP] + site_design_registry.with_personality_question(preset.get("brief_questions"))
 
 
 def _find_step(steps: list[dict], key: Optional[str]) -> Optional[dict]:

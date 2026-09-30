@@ -1,27 +1,44 @@
 """
 app/services/site_design_service.py
 ------------------------------------
-SITE-1C-1 — the seeded recipe picker (spec SITE-1C §8, first slice).
+SITE-1C — the recipe picker.
 
-Before this, `site_copy_service._build_recipe` always used the FIRST allowed theme and the
-FIRST default palette, so almost every generated site started identical. `pick_recipe`
-chooses a theme, palette, font pairing and design tokens from what the preset allows,
-deterministically from a seed (the site id): the same site always gets the same look, and
-different sites get different ones.
+SITE-1C-1: chooses theme, palette, fonts and tokens from what a preset allows, deterministically
+from a seed (the site id), so different sites look different and the same site is stable.
 
-Not in this slice (SITE-1C-2): the brand-personality answer, org-wide "avoid recent looks"
-fingerprints, and section variants (variants need photo-count awareness first).
+SITE-1C-2 adds:
+  * the client's brand PERSONALITY (registry.PERSONALITIES) weights every axis;
+  * section LAYOUTS (recipe.variants), limited by the preset's `allowed_variants` and by what the
+    site actually has (a collage needs photos and items);
+  * ANTI-SAMENESS: candidates are scored against looks used recently (the same builder's last 3
+    sites, and the same niche across the org in the last 30 days) and an exact repeat is avoided;
+  * a SHORTLIST of ~6 valid candidates; the AI copy call may choose one (by number), and the
+    deterministic top pick is always the fallback;
+  * a fingerprint, logged as a `design_pick` site_event.
+
+Never raises out of pick_recipe: any problem falls back to the pre-1C behaviour.
 """
 from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.services import site_design_registry as reg
 from app.services import site_renderer
 
 logger = logging.getLogger(__name__)
+
+CANDIDATES = 48          # generated per site
+SHORTLIST_SIZE = 6       # offered to the AI / returned
+PREFERRED_WEIGHT = 4     # a personality-preferred option is this many times likelier than another
+BUILDER_RECENT = 3       # same builder: avoid their last N looks
+NICHE_DAYS = 30          # same niche in the org: avoid looks used in the last N days
+NICHE_RECENT_MAX = 40
+
+# The section layouts the picker sets (the renderer knows these six).
+VARIANT_SECTIONS = ("hero", "items", "about", "reviews", "categories")
 
 
 def _h(seed: str, axis: str) -> int:
@@ -32,26 +49,84 @@ def _choose(seed: str, axis: str, options: list):
     return options[_h(seed, axis) % len(options)]
 
 
+def _wchoose(seed: str, axis: str, options: list, preferred=()):
+    """Deterministic weighted choice: preferred options count PREFERRED_WEIGHT times."""
+    if not options:
+        raise ValueError(f"no options for {axis}")
+    pool: list = []
+    for o in options:
+        pool.extend([o] * (PREFERRED_WEIGHT if o in preferred else 1))
+    return pool[_h(seed, axis) % len(pool)]
+
+
 def _palette_pool(preset: dict) -> list[str]:
     chosen = [p for p in (preset.get("default_palettes") or []) if p in reg.PALETTES or reg.is_hex(p)]
     return chosen or reg.palettes_for_niche(preset.get("key")) or ["berry"]
 
 
-def pick_recipe(preset: dict, seed: str, colour_answer=None) -> dict:
-    """Returns a recipe dict that already passes site_renderer.validate_recipe for this preset.
-    Never raises: on any problem it falls back to the pre-1C-1 behaviour (first theme, first palette)."""
-    try:
-        recipe = _pick(preset, str(seed), colour_answer)
-        site_renderer.validate_recipe(preset, recipe)
-        return recipe
-    except Exception as exc:  # a picker bug must never stop a site being built
-        logger.warning("[SITE-1C] pick_recipe failed, using first-choice recipe: %s", exc)
-        return first_choice_recipe(preset, colour_answer)
+# ---------------------------------------------------------------- fingerprints
+
+def fingerprint(recipe: dict) -> str:
+    """A short hash of what a visitor would see as 'the look': theme, colour, fonts, tokens, layouts, order."""
+    tokens = recipe.get("tokens") or {}
+    variants = recipe.get("variants") or {}
+    parts = [recipe.get("theme") or "", recipe.get("custom_colour") or recipe.get("palette") or "", recipe.get("fonts") or ""]
+    parts += [f"{k}={tokens[k]}" for k in sorted(tokens) if tokens[k]]
+    parts += [f"{k}={variants[k]}" for k in sorted(variants) if variants[k]]
+    parts.append(",".join(recipe.get("order") or []))
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
 
 
-def _pick(preset: dict, seed: str, colour_answer) -> dict:
+def _axes(recipe: dict) -> dict:
+    """Flat axis -> value map used to measure how different two looks are."""
+    ax = {"theme": recipe.get("theme"), "colour": recipe.get("custom_colour") or recipe.get("palette"), "fonts": recipe.get("fonts")}
+    for k, v in (recipe.get("tokens") or {}).items():
+        ax[f"t:{k}"] = v
+    for k, v in (recipe.get("variants") or {}).items():
+        ax[f"v:{k}"] = v
+    return ax
+
+
+def distance(a: dict, b: dict) -> int:
+    """How many axes differ between two recipes (theme, colour and fonts count double: they change the feel most)."""
+    x, y = _axes(a), _axes(b)
+    d = 0
+    for k in set(x) | set(y):
+        if x.get(k) != y.get(k):
+            d += 2 if k in ("theme", "colour", "fonts") else 1
+    return d
+
+
+# ---------------------------------------------------------------- site context (what a layout needs)
+
+def _layout_ok(section: str, variant: str, ctx: Optional[dict]) -> bool:
+    """Photo/content awareness: a layout is skipped when the site can't fill it. ctx=None (template
+    previews, Shuffle) means anything goes."""
+    if not ctx:
+        return True
+    photos, items, reviews = int(ctx.get("photos") or 0), int(ctx.get("items") or 0), int(ctx.get("reviews") or 0)
+    if section == "hero" and variant == "collage":
+        return items >= 3 and photos >= 3
+    if section == "items" and variant == "featured":
+        return items >= 3 and photos >= 1
+    if section == "about" and variant in ("left", "right"):
+        return photos >= 1
+    if section == "reviews" and variant == "spotlight":
+        return reviews >= 1
+    return True
+
+
+def _variant_pool(preset: dict, section: str, ctx: Optional[dict]) -> list[str]:
+    pool = [v for v in reg.allowed_variants(preset, section) if _layout_ok(section, v, ctx)]
+    return pool or [reg.allowed_variants(preset, section)[0]]
+
+
+# ---------------------------------------------------------------- candidate generation
+
+def _candidate(preset: dict, seed: str, colour_answer, personality: Optional[str], ctx: Optional[dict]) -> dict:
+    p = reg.PERSONALITIES.get(personality) if personality else None
     themes = [t for t in (preset.get("allowed_themes") or []) if t in site_renderer.THEMES] or ["atelier"]
-    theme = _choose(seed, "theme", themes)
+    theme = _wchoose(seed, "theme", themes, p["themes"] if p else ())
 
     palettes = _palette_pool(preset)
     palette, custom = None, None
@@ -60,19 +135,91 @@ def _pick(preset: dict, seed: str, colour_answer) -> dict:
         if reg.is_hex(v):
             custom = v.upper()
         else:
-            named = next((p for p in palettes if p.lower() == v.lower()), None)
-            palette = named
+            palette = next((x for x in palettes if x.lower() == v.lower()), None)
     if not custom and not palette:
-        palette, custom = reg.palette_fields(_choose(seed, "palette", palettes))
+        tagged = tuple(k for k in palettes if p and personality in reg.PALETTE_META.get(k, {}).get("personality", ()))
+        palette, custom = reg.palette_fields(_wchoose(seed, "palette", palettes, tagged))
 
-    fonts = _choose(seed, "fonts", reg.allowed_pairings(preset, theme))
-    tokens = {t: _choose(seed, f"token:{t}", reg.allowed_token_options(preset, theme, t)) for t in reg.TOKENS}
+    pairings = reg.allowed_pairings(preset, theme)
+    grouped = tuple(k for k in pairings if p and reg.FONT_PAIRINGS[k]["group"] in p["font_groups"])
+    fonts = _wchoose(seed, "fonts", pairings, grouped)
 
-    return {
-        "theme": theme, "palette": palette, "custom_colour": custom,
-        "fonts": fonts, "tokens": tokens,
-        "order": preset.get("sections") or ["hero", "about", "items", "order"], "hidden": [],
-    }
+    tokens = {t: _wchoose(seed, f"token:{t}", reg.allowed_token_options(preset, theme, t), (p["tokens"].get(t, ()) if p else ()))
+              for t in reg.TOKENS}
+
+    order = list(preset.get("sections") or ["hero", "about", "items", "order"])
+    variants = {sec: _wchoose(seed, f"variant:{sec}", _variant_pool(preset, sec, ctx), (p["variants"].get(sec, ()) if p else ()))
+                for sec in VARIANT_SECTIONS if sec in order}
+
+    return {"theme": theme, "palette": palette, "custom_colour": custom, "fonts": fonts, "tokens": tokens,
+            "variants": variants, "order": order, "hidden": []}
+
+
+def _fit(recipe: dict, personality: Optional[str]) -> float:
+    """0..1: how many personality preferences the recipe honours."""
+    p = reg.PERSONALITIES.get(personality) if personality else None
+    if not p:
+        return 0.0
+    hits = total = 0
+    total += 1; hits += recipe["theme"] in p["themes"]
+    total += 1; hits += reg.FONT_PAIRINGS.get(recipe.get("fonts") or "", {}).get("group") in p["font_groups"]
+    total += 1; hits += personality in reg.PALETTE_META.get(recipe.get("palette") or "", {}).get("personality", ())
+    for k, prefs in p["tokens"].items():
+        total += 1; hits += (recipe.get("tokens") or {}).get(k) in prefs
+    for k, prefs in p["variants"].items():
+        if k in (recipe.get("variants") or {}):
+            total += 1; hits += recipe["variants"][k] in prefs
+    return hits / total if total else 0.0
+
+
+def _score(recipe: dict, recents: list[dict], personality: Optional[str]) -> tuple:
+    """Higher is better. (not an exact repeat, distance to the nearest recent look, personality fit)."""
+    fp = fingerprint(recipe)
+    if recents:
+        repeat = any(fingerprint(r) == fp for r in recents)
+        nearest = min(distance(recipe, r) for r in recents)
+    else:
+        repeat, nearest = False, 99
+    return (0 if repeat else 1, min(nearest, 12), round(_fit(recipe, personality), 3))
+
+
+def design_shortlist(preset: dict, seed: str, colour_answer=None, personality: Optional[str] = None,
+                     recents: Optional[list] = None, ctx: Optional[dict] = None, size: int = SHORTLIST_SIZE) -> list[dict]:
+    """Up to `size` distinct, valid recipes, best first. The first one is the deterministic pick."""
+    seed = str(seed)
+    recents = [r for r in (recents or []) if isinstance(r, dict)]
+    seen, scored = set(), []
+    for i in range(CANDIDATES):
+        try:
+            cand = _candidate(preset, f"{seed}#{i}", colour_answer, personality, ctx)
+            site_renderer.validate_recipe(preset, cand)
+        except Exception as exc:  # a bad combination is skipped, never fatal
+            logger.debug("[SITE-1C] candidate %s rejected: %s", i, exc)
+            continue
+        fp = fingerprint(cand)
+        if fp in seen:
+            continue
+        seen.add(fp)
+        scored.append((_score(cand, recents, personality), -_h(seed, f"tie:{fp}"), cand))
+    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    return [c for _, _, c in scored[:size]]
+
+
+def pick_recipe(preset: dict, seed: str, colour_answer=None, personality: Optional[str] = None,
+                recents: Optional[list] = None, ctx: Optional[dict] = None, choice: Optional[int] = None) -> dict:
+    """Returns a recipe dict that already passes site_renderer.validate_recipe for this preset.
+    `choice` (0-based index into the shortlist, e.g. the AI's pick) is honoured when valid.
+    Never raises: on any problem it falls back to the pre-1C-1 behaviour (first theme, first palette)."""
+    try:
+        short = design_shortlist(preset, str(seed), colour_answer, personality, recents, ctx)
+        if not short:
+            raise ValueError("empty shortlist")
+        recipe = short[choice] if isinstance(choice, int) and 0 <= choice < len(short) else short[0]
+        site_renderer.validate_recipe(preset, recipe)
+        return recipe
+    except Exception as exc:
+        logger.warning("[SITE-1C] pick_recipe failed, using first-choice recipe: %s", exc)
+        return first_choice_recipe(preset, colour_answer)
 
 
 def first_choice_recipe(preset: dict, colour_answer=None) -> dict:
@@ -88,3 +235,69 @@ def first_choice_recipe(preset: dict, colour_answer=None) -> dict:
             palette = next(p for p in palettes if p.lower() == v.lower())
     return {"theme": themes[0], "palette": palette, "custom_colour": custom,
             "order": preset.get("sections") or ["hero", "about", "items", "order"], "hidden": []}
+
+
+# ---------------------------------------------------------------- describing looks (for the AI shortlist)
+
+def describe(recipe: dict) -> str:
+    """One plain-English line for a candidate, used in the AI prompt and the staff view."""
+    t = recipe.get("tokens") or {}
+    v = recipe.get("variants") or {}
+    bits = [f"{recipe.get('theme')} theme", f"{recipe.get('custom_colour') or recipe.get('palette')} colour",
+            f"{reg.FONT_PAIRINGS.get(recipe.get('fonts') or '', {}).get('label', 'theme')} fonts"]
+    for k in ("radius", "image_style", "cards", "background"):
+        if t.get(k):
+            bits.append(f"{k.replace('_', ' ')} {t[k]}")
+    for k in ("hero", "items", "about"):
+        if v.get(k):
+            bits.append(f"{k} {v[k]}")
+    return ", ".join(bits)
+
+
+# ---------------------------------------------------------------- recents + logging (I/O)
+
+def recent_looks(db, org_id: str, builder_id: Optional[str], preset_id: Optional[str], exclude_site_id: Optional[str] = None) -> list[dict]:
+    """Recipes of recent sites to steer away from: this builder's last few, plus the same template's
+    sites in the org over the last 30 days. Best effort: any failure returns []."""
+    try:
+        out: list[dict] = []
+        if builder_id:
+            rows = (db.table("sites").select("id, recipe").eq("org_id", org_id).eq("builder_id", builder_id)
+                    .order("created_at", desc=True).limit(BUILDER_RECENT + 1).execute()).data or []
+            out += [r["recipe"] for r in rows if r.get("id") != exclude_site_id and isinstance(r.get("recipe"), dict)][:BUILDER_RECENT]
+        if preset_id:
+            since = (datetime.now(timezone.utc) - timedelta(days=NICHE_DAYS)).isoformat()
+            rows = (db.table("sites").select("id, recipe").eq("org_id", org_id).eq("preset_id", preset_id)
+                    .gte("created_at", since).order("created_at", desc=True).limit(NICHE_RECENT_MAX + 1).execute()).data or []
+            out += [r["recipe"] for r in rows if r.get("id") != exclude_site_id and isinstance(r.get("recipe"), dict)][:NICHE_RECENT_MAX]
+        return [r for r in out if r.get("theme")]
+    except Exception as exc:
+        logger.warning("[SITE-1C] recent_looks failed: %s", exc)
+        return []
+
+
+def log_design_pick(db, org_id: str, site_id: Optional[str], recipe: dict, personality: Optional[str],
+                    chosen_by: str, shortlist_size: int) -> None:
+    """site_events `design_pick` (spec §8). Best effort (S14)."""
+    try:
+        db.table("site_events").insert({
+            "org_id": org_id, "site_id": site_id, "order_id": None, "actor": "system", "event": "design_pick",
+            "detail": {"fingerprint": fingerprint(recipe), "personality": personality, "chosen_by": chosen_by,
+                       "shortlist_size": shortlist_size, "theme": recipe.get("theme"),
+                       "colour": recipe.get("custom_colour") or recipe.get("palette"), "fonts": recipe.get("fonts")},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception as exc:
+        logger.warning("[SITE-1C] design_pick event failed: %s", exc)
+
+
+def look_stats(db, org_id: str, days: int = NICHE_DAYS) -> dict:
+    """Per template: how many sites were made in the last `days` days and how many distinct looks
+    (fingerprints) they used, so staff can spot a thin pool. {preset_id: {sites, distinct, repeats}}."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = (db.table("sites").select("preset_id, recipe").eq("org_id", org_id).gte("created_at", since).limit(2000).execute()).data or []
+    by: dict[str, list[str]] = {}
+    for r in rows:
+        if r.get("preset_id") and isinstance(r.get("recipe"), dict) and r["recipe"].get("theme"):
+            by.setdefault(r["preset_id"], []).append(fingerprint(r["recipe"]))
+    return {pid: {"sites": len(fps), "distinct": len(set(fps)), "repeats": len(fps) - len(set(fps))} for pid, fps in by.items()}

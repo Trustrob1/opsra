@@ -9,7 +9,7 @@ import { TEAL } from './lookKit'
 import SectionThumb from './SectionThumb'
 import LookTick from './LookTick'
 
-export default function SectionTiles({ mode, keys, selected, onToggle, variants, onVariant, disabled = false }) {
+export default function SectionTiles({ mode, keys, selected, onToggle, variants, onVariant, allowed, disabled = false }) {
   const tile = (on) => ({
     position: 'relative', width: 214, padding: 10, boxSizing: 'border-box', borderRadius: 12, background: on ? '#f4fbfb' : '#fafbfc',
     border: `2px solid ${on ? TEAL : '#d5dbe3'}`, opacity: on ? 1 : 0.75, textAlign: 'left', fontFamily: 'inherit',
@@ -17,9 +17,11 @@ export default function SectionTiles({ mode, keys, selected, onToggle, variants,
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
       {keys.map((key) => {
-        const layouts = SECTION_LAYOUTS[key] || []
+        const every = SECTION_LAYOUTS[key] || []
+        const cur = variants?.[key] || every[0]?.value
+        // A template may narrow the layouts; the one the site already uses always stays visible.
+        const layouts = every.filter((l) => !(allowed?.[key] || []).length || allowed[key].includes(l.value) || l.value === cur)
         const on = selected.includes(key)
-        const cur = variants?.[key] || layouts[0]?.value
         const head = (
           <>
             <SectionThumb section={key} variant={cur} width={192} active={on} />

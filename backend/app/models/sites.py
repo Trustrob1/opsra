@@ -237,6 +237,7 @@ class SitePresetCreate(BaseModel):
     default_palettes: list[str] = Field(default_factory=list, max_length=30)
     allowed_fonts: list[str] = Field(default_factory=list, max_length=20)
     token_options: dict[str, list[str]] = Field(default_factory=dict)
+    allowed_variants: dict[str, list[str]] = Field(default_factory=dict)
     ai_tone: str = Field("", max_length=300)
     max_items: int = Field(20, ge=1, le=60)
     is_active: bool = True
@@ -260,6 +261,7 @@ class SitePresetUpdate(BaseModel):
     default_palettes: Optional[list[str]] = Field(None, max_length=30)
     allowed_fonts: Optional[list[str]] = Field(None, max_length=20)
     token_options: Optional[dict[str, list[str]]] = None
+    allowed_variants: Optional[dict[str, list[str]]] = None
     ai_tone: Optional[str] = Field(None, max_length=300)
     max_items: Optional[int] = Field(None, ge=1, le=60)
     is_active: Optional[bool] = None

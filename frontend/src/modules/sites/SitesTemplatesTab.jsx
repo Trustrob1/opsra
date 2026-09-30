@@ -7,9 +7,10 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, Eye, LayoutTemplate, Shuffle, Palette } from 'lucide-react'
-import { listPresets, createPreset, updatePreset, previewPreset, errorMessage } from '../../services/sites.service'
+import { presetLookStats, listPresets, createPreset, updatePreset, previewPreset, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Drawer, Toggle } from './sitesUi'
 import SectionTiles from './SectionTiles'
+import LayoutAllowance from './LayoutAllowance'
 import ThemePicker from './ThemePicker'
 import { T, INPUT, THEMES, PALETTES, FONT_PAIRINGS, TOKENS, SECTION_KEYS, SECTION_LABELS } from './sitesKit'
 import LookStudio from './LookStudio'
@@ -24,12 +25,14 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(null)
   const [preview, setPreview] = useState(null) // { preset, html, recipe }
+  const [stats, setStats] = useState({})
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       setRows(await listPresets())
+      presetLookStats().then((s) => setStats(s || {})).catch(() => setStats({})) // informational only
     } catch (e) {
       setError(errorMessage(e, 'Could not load templates.'))
     } finally {
@@ -80,6 +83,7 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
               <p style={{ margin: '10px 0', fontSize: 12.5, color: T.soft }}>
                 {(p.sections || []).map((s) => SECTION_LABELS[s] || s).join(' · ')}
               </p>
+              <LookStatsLine stat={stats[p.id]} />
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
                 {(p.allowed_themes || []).map((t) => <Badge key={t} tone="info">{THEMES.find((x) => x.value === t)?.label || t}</Badge>)}
               </div>
@@ -125,6 +129,18 @@ function describeRecipe(recipe) {
   return [theme, palette, fonts, ...tokens].filter(Boolean).join(' · ')
 }
 
+// SITE-1C-2: how varied were the last 30 days of sites from this template? A thin pool = many repeats.
+function LookStatsLine({ stat }) {
+  if (!stat || !stat.sites) return null
+  const thin = stat.sites >= 5 && stat.distinct / stat.sites < 0.7
+  return (
+    <p style={{ margin: '0 0 10px', fontSize: 12, color: thin ? T.warn : T.muted }}>
+      {stat.sites} site{stat.sites === 1 ? '' : 's'} in 30 days &middot; {stat.distinct} different look{stat.distinct === 1 ? '' : 's'}
+      {thin ? ' — repeating; allow more colours, fonts or layouts.' : ''}
+    </p>
+  )
+}
+
 function SectionCheckboxes({ value, onChange }) {
   const toggle = (key) => onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
   return <SectionTiles mode="select" keys={SECTION_KEYS} selected={value} onToggle={toggle} />
@@ -164,7 +180,7 @@ function CreateTemplateModal({ open, isMobile, onClose, onCreated, showToast }) 
   useEffect(() => { if (open) setForm(blankForm()) }, [open])
 
   function blankForm() {
-    return { key: '', name: '', sections: ['hero', 'items', 'about', 'order'], allowed_themes: ['atelier'], default_palettes: ['berry'], allowed_fonts: [], token_options: {}, ai_tone: '', max_items: 20 }
+    return { key: '', name: '', sections: ['hero', 'items', 'about', 'order'], allowed_themes: ['atelier'], default_palettes: ['berry'], allowed_fonts: [], token_options: {}, allowed_variants: {}, ai_tone: '', max_items: 20 }
   }
 
   const submit = async () => {
@@ -192,6 +208,9 @@ function CreateTemplateModal({ open, isMobile, onClose, onCreated, showToast }) 
         <Field label="Name"><input style={INPUT} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
         <Field label="Sections" group><SectionCheckboxes value={form.sections} onChange={(v) => setForm((f) => ({ ...f, sections: v }))} /></Field>
         <Field label="Allowed themes" group><ThemeCheckboxes value={form.allowed_themes} onChange={(v) => setForm((f) => ({ ...f, allowed_themes: v }))} /></Field>
+        <Field label="Allowed layouts" group hint="Which section layouts new sites may use. Leave a section with none ticked to allow them all.">
+          <LayoutAllowance sections={form.sections} value={form.allowed_variants || {}} onChange={(v) => setForm((f) => ({ ...f, allowed_variants: v }))} />
+        </Field>
         <Field label="Colours, fonts and look" group>
           <LookField nicheKey={form.key.trim().toLowerCase()} isMobile={isMobile} onChange={(v) => setForm((f) => ({ ...f, ...v }))}
             value={{ default_palettes: form.default_palettes, allowed_fonts: form.allowed_fonts, token_options: form.token_options }} />
@@ -212,7 +231,7 @@ function EditTemplateDrawer({ preset, isMobile, onClose, onSaved, showToast }) {
   useEffect(() => {
     if (preset) setForm({
       name: preset.name, sections: preset.sections || [], allowed_themes: preset.allowed_themes || [],
-      default_palettes: preset.default_palettes || [], allowed_fonts: preset.allowed_fonts || [], token_options: preset.token_options || {},
+      default_palettes: preset.default_palettes || [], allowed_fonts: preset.allowed_fonts || [], token_options: preset.token_options || {}, allowed_variants: preset.allowed_variants || {},
       ai_tone: preset.ai_tone || '', max_items: preset.max_items ?? 20,
       is_active: preset.is_active !== false,
     })
@@ -239,6 +258,9 @@ function EditTemplateDrawer({ preset, isMobile, onClose, onSaved, showToast }) {
         <Field label="Name"><input style={INPUT} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
         <Field label="Sections" group><SectionCheckboxes value={form.sections} onChange={(v) => setForm((f) => ({ ...f, sections: v }))} /></Field>
         <Field label="Allowed themes" group><ThemeCheckboxes value={form.allowed_themes} onChange={(v) => setForm((f) => ({ ...f, allowed_themes: v }))} /></Field>
+        <Field label="Allowed layouts" group hint="Which section layouts new sites may use. Leave a section with none ticked to allow them all.">
+          <LayoutAllowance sections={form.sections} value={form.allowed_variants || {}} onChange={(v) => setForm((f) => ({ ...f, allowed_variants: v }))} />
+        </Field>
         <Field label="Colours, fonts and look" group>
           <LookField nicheKey={preset.key} isMobile={isMobile} onChange={(v) => setForm((f) => ({ ...f, ...v }))}
             value={{ default_palettes: form.default_palettes, allowed_fonts: form.allowed_fonts, token_options: form.token_options }} />

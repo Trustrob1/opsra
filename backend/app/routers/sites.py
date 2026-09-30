@@ -238,7 +238,8 @@ def create_preset(payload: SitePresetCreate, org=Depends(get_current_org), db=De
         if theme not in site_renderer.THEMES:
             raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": f"Unknown theme: {theme}"})
     try:
-        site_design_registry.validate_preset_design_fields(payload.allowed_fonts, payload.token_options, payload.default_palettes)
+        site_design_registry.validate_preset_design_fields(
+            payload.allowed_fonts, payload.token_options, payload.default_palettes, payload.allowed_variants)
     except ValueError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     data = payload.model_dump(mode="json")
@@ -248,6 +249,17 @@ def create_preset(payload: SitePresetCreate, org=Depends(get_current_org), db=De
         raise HTTPException(409, detail={"code": "CONFLICT", "message": f"A preset with key '{payload.key}' already exists"})
     res = db.table("site_presets").insert(data).execute()
     return ok(data=_one(res.data) or data, message="Preset created")
+
+
+@router.get("/sites/presets/look-stats")
+def preset_look_stats(org=Depends(get_current_org), db=Depends(get_supabase)):
+    """SITE-1C-2: recent sites per template and how many distinct looks they used (thin-pool warning in the Templates tab)."""
+    _require(org, _READ_ROLES)
+    try:
+        return ok(data=site_design_service.look_stats(db, org["org_id"]))
+    except Exception as exc:  # informational only
+        logger.warning("look stats failed: %s", exc)
+        return ok(data={})
 
 
 @router.get("/sites/presets/{preset_id}")
@@ -267,7 +279,8 @@ def update_preset(preset_id: str, payload: SitePresetUpdate, org=Depends(get_cur
                 raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": f"Unknown theme: {theme}"})
     try:
         site_design_registry.validate_preset_design_fields(
-            updates.get("allowed_fonts"), updates.get("token_options"), updates.get("default_palettes"))
+            updates.get("allowed_fonts"), updates.get("token_options"), updates.get("default_palettes"),
+            updates.get("allowed_variants"))
     except ValueError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     updates["updated_at"] = _now_iso()

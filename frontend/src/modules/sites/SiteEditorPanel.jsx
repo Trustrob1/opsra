@@ -422,7 +422,7 @@ function DesignCard({ recipe, setRecipe, canEdit, preset, isMobile }) {
         </Field>
         <Field label="Sections and layouts" group>
           <SectionTiles mode="show" keys={sections} selected={sections.filter((k) => !recipe.hidden.includes(k))} onToggle={toggleHidden}
-            variants={recipe.variants} onVariant={setVariant} disabled={!canEdit} />
+            variants={recipe.variants} onVariant={setVariant} allowed={preset?.allowed_variants} disabled={!canEdit} />
         </Field>
       </div>
     </Card>

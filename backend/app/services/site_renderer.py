@@ -37,7 +37,7 @@ from urllib.parse import quote
 # SITE-1C-1: palettes, font pairings, tokens and theme rules live in the design registry.
 # `PALETTES` is re-exported here under its old name so existing imports keep working.
 from app.services.site_design_registry import (  # noqa: F401
-    FONT_PAIRINGS, PALETTES, THEME_META, TOKENS, validate_fonts_and_tokens,
+    FONT_PAIRINGS, PALETTES, SECTION_VARIANTS as _REG_SECTION_VARIANTS, THEME_META, TOKENS, validate_fonts_and_tokens,
 )
 
 # ---------------------------------------------------------------- themes / palettes (code, §5.1)
@@ -68,14 +68,7 @@ THEMES = {
 
 # PALETTES: see site_design_registry (imported above).
 
-SECTION_VARIANTS = {
-    "hero": ("fullbleed", "collage", "centered"),
-    "items": ("grid", "rows", "featured"),
-    "about": ("left", "right", "quote"),
-    "reviews": ("cards", "spotlight", "list"),
-    "categories": ("tiles", "chips"),
-    "order": ("steps",),
-}
+SECTION_VARIANTS = _REG_SECTION_VARIANTS  # SITE-1C-2: canonical list lives in the design registry
 
 DEFAULT_LABELS = {"items": "Shop", "item": "Item", "price_style": "exact", "cta": "Order on WhatsApp"}
 DEFAULT_WA_MESSAGES = {
@@ -221,6 +214,9 @@ def validate_recipe(preset: dict, recipe: dict) -> None:
         variant = (recipe.get("variants") or {}).get(sec)
         if variant is not None and variant not in SECTION_VARIANTS[sec]:
             raise ValueError(f"unknown variant {variant!r} for section {sec!r}")
+        narrowed = ((preset.get("allowed_variants") or {}).get(sec)) or []
+        if variant is not None and narrowed and variant not in narrowed:
+            raise ValueError(f"variant {variant!r} for section {sec!r} is not allowed for preset {preset.get('key')!r}")
 
     # SITE-1C-1: font pairing + design tokens (a recipe with neither is always valid).
     validate_fonts_and_tokens(preset, recipe)

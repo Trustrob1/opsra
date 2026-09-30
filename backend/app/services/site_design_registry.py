@@ -50,6 +50,18 @@ TOKEN_LABELS: dict[str, str] = {
     "cards": "Cards",
 }
 
+# ---------------------------------------------------------------- section layouts (SITE-1C-2)
+# Canonical list; site_renderer.SECTION_VARIANTS is this same object. The FIRST layout of each
+# section is its default (what a recipe with no `variants` renders).
+SECTION_VARIANTS: dict[str, tuple[str, ...]] = {
+    "hero": ("fullbleed", "collage", "centered"),
+    "items": ("grid", "rows", "featured"),
+    "about": ("left", "right", "quote"),
+    "reviews": ("cards", "spotlight", "list"),
+    "categories": ("tiles", "chips"),
+    "order": ("steps",),
+}
+
 # ---------------------------------------------------------------- font pairings (spec SITE-1C §4)
 # `heading_weight` keeps each pairing's display face at a weight it actually ships.
 # The first three are the original theme pairings, unchanged (see THEMES in site_renderer).
@@ -250,9 +262,98 @@ def allowed_token_options(preset: dict, theme: str, token: str) -> list[str]:
     return narrowed or options
 
 
+def allowed_variants(preset: dict, section: str) -> list[str]:
+    """Layouts the picker may use for a section. A preset with no `allowed_variants[section]`
+    (every preset before SITE-1C-2) allows all of them."""
+    every = list(SECTION_VARIANTS[section])
+    narrowed = [v for v in ((preset.get("allowed_variants") or {}).get(section) or []) if v in every]
+    return narrowed or every
+
+
+# ---------------------------------------------------------------- brand personality (spec SITE-1C §6)
+# The client's answer to "How should your website feel?". Labels are what they see (web form and
+# WhatsApp list); D1C-2 (final wording) is open, so they live here in ONE place.
+# Each personality steers the picker: which font groups, token options, layouts and theme it
+# leans towards. Preferences only weight the choice — nothing outside a preset's allowed pool is
+# ever picked, and a skipped answer leaves every axis unweighted.
+
+PERSONALITY_KEY = "personality"
+PERSONALITY_PROMPT = "How should your website feel?"
+
+PERSONALITIES: dict[str, dict] = {
+    "elegant": {
+        "label": "Elegant and refined",
+        "font_groups": ("elegant", "editorial"), "themes": ("atelier",),
+        "tokens": {"radius": ("sharp", "soft"), "heading_case": ("spaced_upper", "normal"), "image_style": ("arch", "framed"),
+                   "divider": ("ornament", "line"), "density": ("airy",), "button": ("outline", "underline"), "cards": ("bordered", "flat"), "background": ("ivory", "match")},
+        "variants": {"hero": ("fullbleed", "centered"), "about": ("quote", "left"), "reviews": ("spotlight",), "items": ("grid", "featured")},
+    },
+    "bold": {
+        "label": "Bold and confident",
+        "font_groups": ("bold",), "themes": ("market",),
+        "tokens": {"radius": ("sharp", "pill"), "heading_case": ("upper",), "image_style": ("square",), "divider": ("none", "line"),
+                   "density": ("compact", "regular"), "button": ("solid",), "cards": ("lifted", "bordered"), "bands": ("wash",)},
+        "variants": {"hero": ("fullbleed", "collage"), "items": ("featured", "grid"), "reviews": ("cards",), "about": ("left", "right")},
+    },
+    "playful": {
+        "label": "Playful and fun",
+        "font_groups": ("friendly", "bold"), "themes": ("market", "studio"),
+        "tokens": {"radius": ("pill", "soft"), "image_style": ("rounded", "arch"), "divider": ("dot", "none"), "button": ("solid",),
+                   "cards": ("lifted",), "bands": ("wash",), "density": ("regular",)},
+        "variants": {"hero": ("collage", "centered"), "items": ("grid", "rows"), "reviews": ("cards", "list"), "about": ("right", "left")},
+    },
+    "minimal": {
+        "label": "Clean and minimal",
+        "font_groups": ("minimal",), "themes": ("studio",),
+        "tokens": {"radius": ("sharp", "soft"), "heading_case": ("normal",), "image_style": ("square",), "divider": ("none", "line"),
+                   "density": ("airy",), "button": ("underline", "outline"), "cards": ("flat",), "background": ("white", "grey"), "bands": ("plain",)},
+        "variants": {"hero": ("centered", "fullbleed"), "items": ("rows", "grid"), "reviews": ("list",), "about": ("quote", "left")},
+    },
+    "warm": {
+        "label": "Warm and friendly",
+        "font_groups": ("friendly", "editorial"), "themes": ("studio", "atelier"),
+        "tokens": {"radius": ("soft",), "image_style": ("rounded",), "divider": ("dot", "line"), "density": ("regular", "airy"),
+                   "button": ("solid",), "cards": ("bordered", "lifted"), "background": ("ivory",)},
+        "variants": {"hero": ("collage", "fullbleed"), "about": ("left", "right"), "reviews": ("cards", "spotlight"), "items": ("grid", "rows")},
+    },
+}
+
+
+def personality_from_answer(answer) -> Optional[str]:
+    """Maps a brief answer (the label the client picked, or the key) to a personality key; None if skipped/unknown."""
+    if not isinstance(answer, str):
+        return None
+    v = answer.strip().lower()
+    if not v:
+        return None
+    for key, meta in PERSONALITIES.items():
+        if v == key or v == meta["label"].lower():
+            return key
+    return None
+
+
+def personality_question() -> dict:
+    """The brief question every preset gets (unless it already defines its own `personality` question)."""
+    return {
+        "key": PERSONALITY_KEY, "prompt": PERSONALITY_PROMPT, "type": "choice",
+        "choices": [m["label"] for m in PERSONALITIES.values()],
+        "required": False, "skip_ok": True,
+    }
+
+
+def with_personality_question(questions) -> list[dict]:
+    """Adds the personality question to a preset's brief questions without changing the stored preset.
+    It goes before the first photos/items step (so photo uploads stay last), otherwise at the end."""
+    qs = list(questions or [])
+    if any(isinstance(q, dict) and q.get("key") == PERSONALITY_KEY for q in qs):
+        return qs
+    at = next((i for i, q in enumerate(qs) if isinstance(q, dict) and q.get("type") in ("photos", "items")), len(qs))
+    return qs[:at] + [personality_question()] + qs[at:]
+
+
 # ---------------------------------------------------------------- validation
 
-def validate_preset_design_fields(allowed_fonts, token_options, default_palettes=None) -> None:
+def validate_preset_design_fields(allowed_fonts, token_options, default_palettes=None, allowed_variants=None) -> None:
     """Called by the preset create/update routes. Raises ValueError with a plain message."""
     for f in allowed_fonts or []:
         if f not in FONT_PAIRINGS:
@@ -265,6 +366,16 @@ def validate_preset_design_fields(allowed_fonts, token_options, default_palettes
         for o in options:
             if o not in TOKENS[token]:
                 raise ValueError(f"Unknown option {o!r} for {token}")
+    if allowed_variants is not None and not isinstance(allowed_variants, dict):
+        raise ValueError("allowed_variants must be an object")
+    for section, layouts in (allowed_variants or {}).items():
+        if section not in SECTION_VARIANTS:
+            raise ValueError(f"Unknown section: {section}")
+        if not isinstance(layouts, (list, tuple)):
+            raise ValueError(f"Layouts for {section} must be a list")
+        for v in layouts:
+            if v not in SECTION_VARIANTS[section]:
+                raise ValueError(f"Unknown layout {v!r} for {section}")
     for p in default_palettes or []:
         # A template may list named palettes and/or its own custom colours (6-digit hex).
         if p not in PALETTES and not is_hex(p):

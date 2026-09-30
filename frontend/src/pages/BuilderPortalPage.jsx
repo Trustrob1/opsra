@@ -1158,7 +1158,7 @@ function DesignCard({ recipe, setRecipe, defaultOpen, designOptions }) {
           </Field>
           <Field label="Sections and layouts" group>
             <SectionTiles mode="show" keys={sections} selected={sections.filter((k) => !recipe.hidden.includes(k))} onToggle={toggleHidden}
-              variants={recipe.variants} onVariant={setVariant} />
+              variants={recipe.variants} onVariant={setVariant} allowed={designOptions?.allowed_variants} />
           </Field>
         </div>
       )}

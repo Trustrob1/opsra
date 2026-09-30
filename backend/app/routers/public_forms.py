@@ -37,7 +37,7 @@ from app.models.sites import (
     SiteBriefFormSubmit,
     hash_form_token,
 )
-from app.services import site_renderer
+from app.services import site_design_registry, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -120,6 +120,8 @@ def get_form(token: str, db=Depends(get_supabase)):
     if form.get("preset_id"):
         preset = _one((db.table("site_presets").select("id, key, name, labels, brief_questions, max_items")
                        .eq("id", form["preset_id"]).execute()).data)
+        if preset:  # SITE-1C-2: every form asks how the site should feel (added here, not stored per template)
+            preset["brief_questions"] = site_design_registry.with_personality_question(preset.get("brief_questions"))
 
     presets = []
     if not preset:

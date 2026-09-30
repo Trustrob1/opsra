@@ -52,7 +52,7 @@ from typing import Optional
 from app.models.sites import Recipe, SiteContentV1
 from app.services.ai_service import HAIKU, call_claude, sanitise_for_prompt
 
-from app.services import site_design_registry
+from app.services import site_design_registry, site_design_service
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +121,11 @@ def _factual_fields(brief: dict, questions: list[dict]) -> dict:
         "reviews": _parse_reviews(brief.get("reviews")),
         "offer_text": str(brief.get(offer_key) or "")[:300] if offer_key else "",
         "story_text": str(brief.get("story") or "")[:600],
+        "personality": site_design_registry.personality_from_answer(brief.get(site_design_registry.PERSONALITY_KEY)),
     }
 
 
-def _ai_prompt(facts: dict, preset: dict) -> tuple[str, str]:
+def _ai_prompt(facts: dict, preset: dict, shortlist: Optional[list] = None) -> tuple[str, str]:
     labels = preset.get("labels") or {}
     tone = preset.get("ai_tone") or "clear, friendly, professional"
     system = (
@@ -138,12 +139,21 @@ def _ai_prompt(facts: dict, preset: dict) -> tuple[str, str]:
         f'This business sells "{labels.get("items", "items")}" (singular: '
         f'"{labels.get("item", "item")}")."'
     )
+    pick = ""
+    if shortlist and len(shortlist) > 1:
+        # SITE-1C-2: the model picks a look by NUMBER from looks we already validated; it never composes one.
+        system += (" Also add a key design_pick: the number of the look from <looks> that best suits this "
+                   "business and its personality (a whole number).")
+        lines = "\n".join(f"{i + 1}. {site_design_service.describe(r)}" for i, r in enumerate(shortlist))
+        pick = (f"personality: {sanitise_for_prompt(facts.get('personality') or 'not given', 60)}\n"
+                f"<looks>\n{lines}\n</looks>\n")
     prompt = (
         "<brief>\n"
         f"business_name: {sanitise_for_prompt(facts['name'], 200)}\n"
         f"city: {sanitise_for_prompt(facts['city'], 150)}\n"
         f"what_they_offer: {sanitise_for_prompt(facts['offer_text'], 400)}\n"
         f"story: {sanitise_for_prompt(facts['story_text'], 700)}\n"
+        f"{pick}"
         "</brief>\n\nReturn only the JSON object, no other text."
     )
     return system, prompt
@@ -247,6 +257,31 @@ def _assign_photos(content: dict, assets: list[dict]) -> dict:
     return content
 
 
+def _design_candidates(db, site: dict, preset: dict, org_id: str, brief: dict, facts: dict):
+    """(default recipe, shortlist, personality). The default is the shortlist's top pick, i.e. the
+    deterministic fallback. Never raises: any problem gives the plain seeded recipe and no shortlist."""
+    personality = facts.get("personality")
+    try:
+        assets = _site_assets_for(db, site["id"])
+        ctx = {"photos": len(assets), "items": len(facts.get("items") or []), "reviews": len(facts.get("reviews") or [])}
+        recents = site_design_service.recent_looks(db, org_id, site.get("builder_id"), site.get("preset_id"), site.get("id"))
+        short = site_design_service.design_shortlist(preset, str(site.get("id")), brief.get("colour"), personality, recents, ctx)
+        if short:
+            return short[0], short, personality
+    except Exception as exc:
+        logger.warning("[SITE-1C] shortlist unavailable site=%s: %s", site.get("id"), exc)
+    return _build_recipe(preset, brief.get("colour"), seed=site.get("id")), [], personality
+
+
+def _ai_design_choice(copy: dict, shortlist: list) -> Optional[int]:
+    """The model's `design_pick` (1-based) as a 0-based shortlist index; None unless it is valid."""
+    try:
+        n = int(copy.get("design_pick"))
+    except (TypeError, ValueError):
+        return None
+    return n - 1 if shortlist and 1 <= n <= len(shortlist) else None
+
+
 def generate_content_and_recipe(db, site: dict, preset: dict, org_id: str) -> tuple[dict, dict, str]:
     """
     Never raises. Returns (content_dict, recipe_dict, content_source) where
@@ -256,14 +291,15 @@ def generate_content_and_recipe(db, site: dict, preset: dict, org_id: str) -> tu
     brief = site.get("brief") or {}
     questions = preset.get("brief_questions") or []
     facts = _factual_fields(brief, questions)
-    recipe_dict = _build_recipe(preset, brief.get("colour"), seed=site.get("id"))
+    recipe_dict, shortlist, personality = _design_candidates(db, site, preset, org_id, brief, facts)
+    design_by = "seed"
 
     content_source = "builder_words"
     content_dict = _build_content(_builder_words_copy(facts), facts)
 
     for attempt in range(2):  # spec: retry once
         try:
-            system, prompt = _ai_prompt(facts, preset)
+            system, prompt = _ai_prompt(facts, preset, shortlist)
             raw = call_claude(prompt, model=HAIKU, max_tokens=900, system=system, system_cache=True,
                                org_id=org_id, db=db, function_name="site_copy")
             copy = _parse_ai_json(raw)
@@ -272,6 +308,9 @@ def generate_content_and_recipe(db, site: dict, preset: dict, org_id: str) -> tu
             candidate = _build_content(copy, facts)
             SiteContentV1.model_validate(candidate)  # raises on invalid shape
             content_dict, content_source = candidate, "ai"
+            chosen = _ai_design_choice(copy, shortlist)
+            if chosen is not None:
+                recipe_dict, design_by = shortlist[chosen], "ai"
             break
         except Exception as exc:
             logger.warning("[SITE-2] site_copy attempt %s failed site=%s: %s", attempt + 1, site.get("id"), exc)
@@ -283,6 +322,11 @@ def generate_content_and_recipe(db, site: dict, preset: dict, org_id: str) -> tu
         recipe_dict = {"theme": (preset.get("allowed_themes") or ["atelier"])[0],
                         "palette": _pal, "custom_colour": _custom,
                         "order": preset.get("sections") or ["hero", "about", "items", "order"], "hidden": []}
+
+    try:
+        site_design_service.log_design_pick(db, org_id, site.get("id"), recipe_dict, personality, design_by, len(shortlist))
+    except Exception:
+        pass
 
     try:
         assets = _site_assets_for(db, site["id"])
