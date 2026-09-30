@@ -60,6 +60,14 @@ SECTION_VARIANTS: dict[str, tuple[str, ...]] = {
     "reviews": ("cards", "spotlight", "list"),
     "categories": ("tiles", "chips"),
     "order": ("steps",),
+    # SITE-1C-3: extra sections (a template opts in by listing them in its `sections`).
+    "announcement": ("bar",),
+    "faq": ("list", "columns"),
+    "menu": ("list", "columns"),
+    "visit": ("split", "card"),
+    "process": ("numbered", "timeline"),
+    "team": ("cards", "list"),
+    "gallery": ("grid", "masonry"),
 }
 
 # ---------------------------------------------------------------- font pairings (spec SITE-1C §4)

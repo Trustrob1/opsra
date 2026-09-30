@@ -12,7 +12,7 @@ import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Drawer, Togg
 import SectionTiles from './SectionTiles'
 import LayoutAllowance from './LayoutAllowance'
 import ThemePicker from './ThemePicker'
-import { T, INPUT, THEMES, PALETTES, FONT_PAIRINGS, TOKENS, SECTION_KEYS, SECTION_LABELS } from './sitesKit'
+import { T, INPUT, THEMES, PALETTES, FONT_PAIRINGS, TOKENS, SECTION_KEYS, SECTION_LABELS, insertSection } from './sitesKit'
 import LookStudio from './LookStudio'
 import { lookSummary } from './lookKit'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -142,7 +142,7 @@ function LookStatsLine({ stat }) {
 }
 
 function SectionCheckboxes({ value, onChange }) {
-  const toggle = (key) => onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
+  const toggle = (key) => onChange(value.includes(key) ? value.filter((x) => x !== key) : insertSection(value, key))
   return <SectionTiles mode="select" keys={SECTION_KEYS} selected={value} onToggle={toggle} />
 }
 

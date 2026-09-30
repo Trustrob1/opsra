@@ -28,6 +28,19 @@ function shapes(section, variant) {
     case 'categories:tiles': return [0, 1, 2].flatMap((i) => [R(5 + i * 25, 7, 22, 30, IMG, 3), R(8 + i * 25, 41, 16, 2.6, INK, 1.3)])
     case 'categories:chips': return [R(6, 14, 20, 8, IMG, 4), R(30, 14, 24, 8, SOFT, 4), R(58, 14, 16, 8, SOFT, 4), R(6, 28, 26, 8, SOFT, 4), R(36, 28, 18, 8, SOFT, 4)]
     case 'order:steps': return [<line key="ln" x1="16" y1="24" x2="64" y2="24" stroke={SOFT} strokeWidth="2" />, ...[0, 1, 2].flatMap((i) => [<circle key={`s${i}`} cx={16 + i * 24} cy="24" r="8" fill={i === 0 ? DARK : IMG} />, R(9 + i * 24, 38, 14, 2.4, INK, 1.2)])]
+    case 'announcement:bar': return [R(3, 4, 74, 8, DARK, 2), R(20, 6.6, 40, 2.6, '#fff', 1.3), R(6, 19, 18, 3, INK, 1.5), R(52, 19, 22, 3, SOFT, 1.5), R(3, 28, 74, 20, SOFT, 3)]
+    case 'faq:list': return [0, 1, 2].flatMap((i) => [R(6, 9 + i * 14, 52, 2.6, INK, 1.3), R(64, 9.2 + i * 14, 8, 1.6, IMG, 0.8), R(67.2, 6 + i * 14, 1.6, 8, IMG, 0.8), R(6, 16.5 + i * 14, 68, 0.9, SOFT, 0.4)])
+    case 'faq:columns': return [0, 1].flatMap((c) => [0, 1].flatMap((r) => [R(6 + c * 36, 8 + r * 22, 26, 2.8, INK, 1.4), R(6 + c * 36, 14 + r * 22, 30, 2.4, SOFT, 1.2), R(6 + c * 36, 19 + r * 22, 22, 2.4, SOFT, 1.2)]))
+    case 'menu:list': return [0, 1, 2, 3].flatMap((i) => [R(8, 8 + i * 11, 22, 2.6, INK, 1.3), <line key={`d${i}`} x1="34" y1={9.3 + i * 11} x2="60" y2={9.3 + i * 11} stroke={INK} strokeWidth="1" strokeDasharray="1.5 2" />, R(62, 8 + i * 11, 10, 2.6, DARK, 1.3)])
+    case 'menu:columns': return [0, 1].flatMap((c) => [R(6 + c * 37, 6, 30, 2.8, DARK, 1.4), ...[0, 1, 2].flatMap((i) => [R(6 + c * 37, 14 + i * 11, 16, 2.4, INK, 1.2), R(26 + c * 37, 14 + i * 11, 10, 2.4, DARK, 1.2)])])
+    case 'visit:split': return [...[0, 1, 2].flatMap((i) => [R(6, 10 + i * 10, 14, 2.6, INK, 1.3), R(26, 10 + i * 10, 12, 2.6, SOFT, 1.3)]), R(46, 8, 28, 3, INK, 1.5), R(46, 15, 24, 2.4, SOFT, 1.2), R(46, 22, 18, 6, IMG, 3)]
+    case 'visit:card': return [R(12, 5, 56, 42, SOFT, 4), R(20, 12, 20, 2.6, INK, 1.3), R(20, 18, 34, 2.4, INK, 1.2), R(20, 24, 28, 2.4, INK, 1.2), R(20, 34, 22, 6, IMG, 3)]
+    case 'process:numbered': return [0, 1, 2].flatMap((i) => [R(5 + i * 25, 8, 22, 34, SOFT, 3), <circle key={`n${i}`} cx={11 + i * 25} cy="16" r="3.6" fill={i === 0 ? DARK : IMG} />, R(8 + i * 25, 25, 16, 2.6, INK, 1.3), R(8 + i * 25, 31, 12, 2.4, SOFT, 1.2)])
+    case 'process:timeline': return [<line key="tl" x1="14" y1="8" x2="14" y2="44" stroke={SOFT} strokeWidth="2" />, ...[0, 1, 2].flatMap((i) => [<circle key={`t${i}`} cx="14" cy={11 + i * 14} r="3.4" fill={i === 0 ? DARK : IMG} />, R(24, 9 + i * 14, 34, 2.6, INK, 1.3), R(24, 15 + i * 14, 46, 2.4, SOFT, 1.2)])]
+    case 'team:cards': return [0, 1, 2].flatMap((i) => [R(6 + i * 24, 8, 20, 22, IMG, 3), R(6 + i * 24, 34, 16, 2.8, INK, 1.4), R(6 + i * 24, 40, 12, 2.4, SOFT, 1.2)])
+    case 'team:list': return [0, 1, 2].flatMap((i) => [<circle key={`a${i}`} cx="14" cy={12 + i * 14} r="5" fill={IMG} />, R(24, 9 + i * 14, 26, 2.8, INK, 1.4), R(24, 15 + i * 14, 44, 2.4, SOFT, 1.2)])
+    case 'gallery:grid': return [0, 1, 2].flatMap((c) => [0, 1].map((r) => R(5 + c * 25, 5 + r * 22, 22, 19, (c + r) % 2 ? DARK : IMG, 2, `g${c}${r}`)))
+    case 'gallery:masonry': return [R(5, 5, 22, 26, IMG, 2), R(5, 34, 22, 13, DARK, 2), R(29, 5, 22, 14, DARK, 2), R(29, 22, 22, 25, IMG, 2), R(53, 5, 22, 20, IMG, 2), R(53, 28, 22, 19, DARK, 2)]
     default: return [R(6, 6, 68, 40, SOFT, 3)]
   }
 }

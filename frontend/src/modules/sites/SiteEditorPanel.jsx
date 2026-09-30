@@ -15,8 +15,9 @@ import { Card, Button, Badge, Notice, Spinner, Field, Modal, SectionTitle } from
 import SectionTiles from './SectionTiles'
 import DesignSuggestModal from './DesignSuggestModal'
 import ThemePicker from './ThemePicker'
-import { T, INPUT, TEXTAREA, dateTime, THEMES, SECTION_LABELS, SITE_STATUS } from './sitesKit'
+import { T, INPUT, TEXTAREA, dateTime, THEMES, SECTION_LABELS, SITE_STATUS, insertSection } from './sitesKit'
 import LookPickerField from './LookPicker'
+import ExtraSectionCards from './ExtraSectionCards'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -150,6 +151,8 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
       <ItemsCard content={content} setContent={setContent} canEdit={canEdit} preset={preset} assetUrls={assetUrls} onUpload={uploadFor} />
       <CategoriesCard content={content} setContent={setContent} canEdit={canEdit} />
       <ReviewsCard content={content} setContent={setContent} canEdit={canEdit} />
+      <ExtraSectionCards content={content} setContent={setContent} canEdit={canEdit} assetUrls={assetUrls} onUpload={uploadFor}
+        offered={[...(preset?.sections || []), ...(recipe.order || [])]} />
       <HoursLocationCard content={content} setContent={setContent} canEdit={canEdit} />
       <OrderSeoCard content={content} setContent={setContent} canEdit={canEdit} />
 
@@ -416,9 +419,12 @@ function DesignCard({ recipe, setRecipe, canEdit, preset, isMobile, siteId, show
   const fetchSuggestions = useCallback(() => suggestDesigns(siteId), [siteId])
   const allowedThemes = preset?.allowed_themes?.length ? THEMES.filter((t) => preset.allowed_themes.includes(t.value)) : THEMES
   const sections = preset?.sections || Object.keys(SECTION_LABELS)
-  const toggleHidden = (key) => setRecipe((r) => ({
-    ...r, hidden: r.hidden.includes(key) ? r.hidden.filter((x) => x !== key) : [...r.hidden, key],
-  }))
+  // A section the template offers but this site's design does not list yet is added at its natural
+  // place when switched on (SITE-1C-3); otherwise the tile just shows/hides it.
+  const toggleHidden = (key) => setRecipe((r) => {
+    if (!(r.order || []).includes(key)) return { ...r, order: insertSection(r.order || [], key), hidden: (r.hidden || []).filter((x) => x !== key) }
+    return { ...r, hidden: r.hidden.includes(key) ? r.hidden.filter((x) => x !== key) : [...r.hidden, key] }
+  })
 
   const setVariant = (key, value) => setRecipe((r) => ({ ...r, variants: { ...(r.variants || {}), [key]: value } }))
 
@@ -437,7 +443,7 @@ function DesignCard({ recipe, setRecipe, canEdit, preset, isMobile, siteId, show
           <LookPickerField recipe={recipe} setRecipe={setRecipe} preset={preset} canEdit={canEdit} isMobile={isMobile} />
         </Field>
         <Field label="Sections and layouts" group>
-          <SectionTiles mode="show" keys={sections} selected={sections.filter((k) => !recipe.hidden.includes(k))} onToggle={toggleHidden}
+          <SectionTiles mode="show" keys={sections} selected={sections.filter((k) => (recipe.order || []).includes(k) && !recipe.hidden.includes(k))} onToggle={toggleHidden}
             variants={recipe.variants} onVariant={setVariant} allowed={preset?.allowed_variants} disabled={!canEdit} />
         </Field>
       </div>

@@ -141,9 +141,20 @@ export const TOKENS = [
 ]
 export const THEME_TOKEN_EXCLUSIONS = { atelier: { radius: ['pill'] } }
 
-export const SECTION_KEYS = ['hero', 'about', 'items', 'categories', 'reviews', 'order']
+// SITE-1C-3: the list is also the natural page order (announcement bar first, hours & location last).
+export const SECTION_KEYS = ['announcement', 'hero', 'about', 'process', 'items', 'menu', 'categories', 'gallery', 'team', 'reviews', 'faq', 'order', 'visit']
 export const SECTION_LABELS = {
   hero: 'Hero', about: 'About', items: 'Items / Shop', categories: 'Categories', reviews: 'Reviews', order: 'How to order',
+  announcement: 'Announcement bar', faq: 'FAQ', menu: 'Price list', visit: 'Hours & location', process: 'How we work', team: 'Team', gallery: 'Gallery',
+}
+/** Add a section to a template's list at its natural place, without reordering what is already there
+ *  (a template keeps whatever order it was saved with; new tiles slot in after the closest earlier section). */
+export function insertSection(list, key) {
+  if (list.includes(key)) return list
+  const at = SECTION_KEYS.indexOf(key)
+  let pos = 0
+  list.forEach((k, i) => { if (SECTION_KEYS.indexOf(k) < at) pos = i + 1 })
+  return [...list.slice(0, pos), key, ...list.slice(pos)]
 }
 export const SECTION_HINTS = {
   hero: 'The big opening banner with your headline and button.',
@@ -152,6 +163,13 @@ export const SECTION_HINTS = {
   categories: 'Browse by type, so people jump straight to what they want.',
   reviews: 'What happy customers say about you.',
   order: 'How to order, in simple numbered steps.',
+  announcement: 'One short line in a bar above the menu: a promo or delivery cut-off.',
+  faq: 'Questions customers keep asking, with your answers.',
+  menu: 'A price list or menu: groups of priced lines.',
+  visit: 'Opening hours, address and an ask-for-directions button.',
+  process: 'How a job goes from first message to done, step by step.',
+  team: 'The people behind the business, with photos.',
+  gallery: 'A grid of photos of your work.',
 }
 // site_renderer.SECTION_VARIANTS, mirrored (the first layout of each section is the default).
 // tests/unit/test_site_design_frontend_parity.py keeps this in step with the server.
@@ -162,6 +180,13 @@ export const SECTION_LAYOUTS = {
   reviews: [{ value: 'cards', label: 'Cards' }, { value: 'spotlight', label: 'Spotlight' }, { value: 'list', label: 'List' }],
   categories: [{ value: 'tiles', label: 'Tiles' }, { value: 'chips', label: 'Chips' }],
   order: [{ value: 'steps', label: 'Steps' }],
+  announcement: [{ value: 'bar', label: 'Bar' }],
+  faq: [{ value: 'list', label: 'Accordion' }, { value: 'columns', label: 'Columns' }],
+  menu: [{ value: 'list', label: 'List' }, { value: 'columns', label: 'Columns' }],
+  visit: [{ value: 'split', label: 'Split' }, { value: 'card', label: 'Card' }],
+  process: [{ value: 'numbered', label: 'Numbered' }, { value: 'timeline', label: 'Timeline' }],
+  team: [{ value: 'cards', label: 'Cards' }, { value: 'list', label: 'List' }],
+  gallery: [{ value: 'grid', label: 'Grid' }, { value: 'masonry', label: 'Masonry' }],
 }
 
 export const SITE_STATUS = {

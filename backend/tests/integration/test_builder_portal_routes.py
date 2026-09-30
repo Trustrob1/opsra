@@ -176,7 +176,8 @@ class TestMySites:
         resp = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}")
         assert resp.status_code == 200
         opts = resp.json()["data"]["design_options"]
-        assert opts == {"allowed_themes": ["atelier"], "allowed_fonts": ["bodoni_jost"], "token_options": {"cards": ["lifted"]}, "allowed_variants": {}}
+        assert opts == {"allowed_themes": ["atelier"], "allowed_fonts": ["bodoni_jost"], "token_options": {"cards": ["lifted"]}, "allowed_variants": {},
+                        "sections": _FAKE_PRESET.get("sections") or []}   # SITE-1C-3: which sections the template offers
         assert "SECRET TONE" not in resp.text and "brief_questions" not in resp.text
 
     def test_get_site_still_works_when_the_template_is_missing(self, authed_client):

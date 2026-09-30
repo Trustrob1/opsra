@@ -76,6 +76,7 @@ DEFAULT_WA_MESSAGES = {
     "order":    "Hello! I'd like to order the {item}.",
     "category": "Hello! Please show me your {item}.",
     "start":    "Hello! I would like to start an order.",
+    "directions": "Hello! Please share directions to your location.",
 }
 
 
@@ -438,10 +439,129 @@ def _order(c: dict, b: dict, labels: dict, wa_msgs: dict) -> str:
             f'<div class="row">{btn_wa(b, labels["cta"], msg)}</div></section>')
 
 
-def _footer(c: dict) -> str:
+# ---------------------------------------------------------------- SITE-1C-3: extra sections
+# Every string goes through esc(); there is no script and no user-supplied href. Each renderer
+# returns "" when its content is empty, so a template can offer a section a site has not filled.
+
+def _announcement(c: dict) -> str:
+    text = ((c.get("announcement") or {}).get("text") or "").strip()
+    if not text:
+        return ""
+    return f'<div class="announce" role="note"><p>{esc(text)}</p></div>'
+
+
+def _faq(c: dict, variant: str) -> str:
+    faqs = [f for f in (c.get("faqs") or []) if f.get("q") and f.get("a")]
+    if not faqs:
+        return ""
+    head = '<p class="eyebrow">FAQ</p><h2>Questions, answered</h2>'
+    if variant == "columns":
+        cols = "".join(f'<div class="faq-col"><h3>{esc(f["q"])}</h3><p>{esc(f["a"])}</p></div>' for f in faqs)
+        return f'<section class="sec wrap" id="faq">{head}<div class="faq-cols">{cols}</div></section>'
+    rows = "".join(f'<details class="faq-item"><summary>{esc(f["q"])}</summary><p>{esc(f["a"])}</p></details>' for f in faqs)
+    return f'<section class="sec wrap" id="faq">{head}<div class="faq-list">{rows}</div></section>'
+
+
+def _menu_price(line: dict, price_style: str) -> str:
+    """Own class names (not .price/.desc) so the new CSS never matches the older sections' markup."""
+    style = line.get("price_style") or price_style
+    if style == "on_request":
+        return '<span class="menu-price">Price on request</span>'
+    amount = naira(line.get("price_ngn", 0))
+    return f'<span class="menu-price">{"From " if style == "from" else ""}{amount}</span>'
+
+
+def _menu(c: dict, variant: str, labels: dict) -> str:
+    groups = [g for g in (c.get("menu") or []) if g.get("name") and g.get("lines")]
+    if not groups:
+        return ""
+    price_style = labels.get("price_style", "exact")
+    blocks = []
+    for g in groups:
+        lines = "".join(
+            f'<li><div class="menu-line"><span class="menu-name">{esc(ln["name"])}</span><span class="menu-dots" aria-hidden="true"></span>'
+            f'{_menu_price(ln, price_style)}</div>'
+            + (f'<p class="menu-desc">{esc(ln["desc"])}</p>' if ln.get("desc") else "") + '</li>'
+            for ln in g["lines"])
+        blocks.append(f'<div class="menu-group"><h3>{esc(g["name"])}</h3><ul>{lines}</ul></div>')
+    cls = "menu-cols" if variant == "columns" else "menu-list"
+    return (f'<section class="sec wrap" id="menu"><p class="eyebrow">Prices</p><h2>Price list</h2>'
+            f'<div class="menu-wrap {cls}">{"".join(blocks)}</div></section>')
+
+
+def _visit(c: dict, variant: str, wa_msgs: dict) -> str:
+    hours = [h for h in (c.get("hours") or []) if h.get("days") and h.get("time")]
+    loc = c.get("location") or {}
+    address, landmark = (loc.get("address") or "").strip(), (loc.get("landmark") or "").strip()
+    if not (hours or address or landmark):
+        return ""
+    blocks = []
+    if hours:
+        rows = "".join(f'<li><span>{esc(h["days"])}</span><span>{esc(h["time"])}</span></li>' for h in hours)
+        blocks.append(f'<div class="visit-block"><h3>Opening hours</h3><ul class="hours-list">{rows}</ul></div>')
+    if address or landmark:
+        b = c["business"]
+        lines = (f'<p>{esc(address)}</p>' if address else "") + (f'<p>{esc(landmark)}</p>' if landmark else "")
+        msg = wa_msgs.get("directions", DEFAULT_WA_MESSAGES["directions"])
+        blocks.append(f'<div class="visit-block"><h3>Find us</h3>{lines}'
+                      f'<div class="row">{btn_wa(b, "Ask for directions", msg)}</div></div>')
+    head = '<p class="eyebrow">Visit us</p><h2>Hours &amp; location</h2>'
+    if variant == "card":
+        return f'<section class="sec wrap" id="visit">{head}<div class="visit-card">{"".join(blocks)}</div></section>'
+    return f'<section class="sec wrap" id="visit">{head}<div class="visit-grid">{"".join(blocks)}</div></section>'
+
+
+def _process(c: dict, variant: str) -> str:
+    p = c.get("process") or {}
+    steps = [s for s in (p.get("steps") or []) if s.get("title")]
+    if not steps:
+        return ""
+    title = esc(p.get("title") or "How we work")
+    if variant == "timeline":
+        rows = "".join(f'<li><h3>{esc(s["title"])}</h3>' + (f'<p>{esc(s["text"])}</p>' if s.get("text") else "") + '</li>' for s in steps)
+        return f'<section class="sec wrap" id="process"><p class="eyebrow">Process</p><h2>{title}</h2><ol class="proc-line">{rows}</ol></section>'
+    rows = "".join(f'<li><span class="n">{i}</span><h3>{esc(s["title"])}</h3>' + (f'<p>{esc(s["text"])}</p>' if s.get("text") else "") + '</li>'
+                   for i, s in enumerate(steps, 1))
+    return f'<section class="sec wrap" id="process"><p class="eyebrow">Process</p><h2>{title}</h2><ol class="proc">{rows}</ol></section>'
+
+
+def _team(c: dict, variant: str, assets: "_Assets") -> str:
+    members = [m for m in (c.get("team") or []) if m.get("name")]
+    if not members:
+        return ""
+    head = '<p class="eyebrow">Team</p><h2>Meet the team</h2>'
+    if variant == "list":
+        rows = "".join(
+            f'<div class="member-row">{assets.img_or_placeholder(m.get("image_asset_id"), m["name"], "ph-team")}<div>'
+            f'<h3>{esc(m["name"])}</h3>' + (f'<p class="m-role">{esc(m["role"])}</p>' if m.get("role") else "")
+            + (f'<p class="desc">{esc(m["bio"])}</p>' if m.get("bio") else "") + '</div></div>' for m in members)
+        return f'<section class="sec wrap" id="team">{head}<div class="team-list">{rows}</div></section>'
+    cards = "".join(
+        f'<article class="member">{assets.img_or_placeholder(m.get("image_asset_id"), m["name"], "ph-team")}'
+        f'<h3>{esc(m["name"])}</h3>' + (f'<p class="m-role">{esc(m["role"])}</p>' if m.get("role") else "")
+        + (f'<p class="desc">{esc(m["bio"])}</p>' if m.get("bio") else "") + '</article>' for m in members)
+    return f'<section class="sec wrap" id="team">{head}<div class="team">{cards}</div></section>'
+
+
+def _gallery(c: dict, variant: str, assets: "_Assets") -> str:
+    shots = c.get("gallery") or []
+    if not shots:
+        return ""
+    masonry = variant == "masonry"
+    figs = []
+    for i, g in enumerate(shots):
+        cap = (g.get("caption") or "").strip()
+        shape = (" ph-gal-t" if i % 3 == 0 else " ph-gal-s" if i % 3 == 1 else "") if masonry else ""
+        figs.append(f'<figure>{assets.img_or_placeholder(g.get("image_asset_id"), cap or "Photo", "ph-gal" + shape)}'
+                    + (f'<figcaption>{esc(cap)}</figcaption>' if cap else "") + '</figure>')
+    cls = "gal gal-masonry" if masonry else "gal"
+    return f'<section class="sec wrap" id="gallery"><p class="eyebrow">Gallery</p><h2>Our work</h2><div class="{cls}">{"".join(figs)}</div></section>'
+
+
+def _footer(c: dict, visit_shown: bool = False) -> str:
     b = c["business"]
-    hours = c.get("hours") or []
-    location = c.get("location") or {}
+    hours = [] if visit_shown else (c.get("hours") or [])
+    location = {} if visit_shown else (c.get("location") or {})
     hours_html = ""
     if hours:
         rows = "".join(f'<p>{esc(h["days"])}: {esc(h["time"])}</p>' for h in hours)
@@ -566,7 +686,7 @@ def _token_css(tokens, palette=None) -> str:
     elif img == "rounded":
         out.append(".ph,.photo{border-radius:20px}")
     elif img == "arch":
-        out.append(".ph-cat,.ph-card,.ph-about,.ph-mini,.ph-strip,.ph-row{border-radius:999px 999px var(--r) var(--r)}")
+        out.append(".ph-cat,.ph-card,.ph-about,.ph-mini,.ph-strip,.ph-row,.ph-team{border-radius:999px 999px var(--r) var(--r)}")
     elif img == "framed":
         out.append(".ph,.photo{box-shadow:0 0 0 5px var(--ground),0 0 0 6.5px var(--ink)}"
                    ".hero-fullbleed .ph,.hero-fullbleed .photo{box-shadow:none}")
@@ -703,6 +823,51 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 .steps{{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:20px}}
 .steps li{{display:flex;flex-direction:column;gap:10px;border-top:2px solid var(--ink);padding-top:16px}}
 .n{{font-family:{disp};font-size:2rem;color:var(--accent)}}
+.announce{{background:var(--accent);color:var(--on-accent);text-align:center;font-size:.88rem;font-weight:600;padding:10px 24px}}
+.announce p{{margin:0}}
+.faq-list{{max-width:820px}}
+.faq-item{{border-top:1px solid var(--line)}} .faq-item:last-child{{border-bottom:1px solid var(--line)}}
+.faq-item summary{{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 0;min-height:44px;font-family:{disp};font-size:1.2rem}}
+.faq-item summary::-webkit-details-marker{{display:none}}
+.faq-item summary::after{{content:"+";font-size:1.6rem;line-height:1;color:var(--accent);flex:none}}
+.faq-item[open] summary::after{{content:"\\2212"}}
+.faq-item p{{color:var(--muted);padding:0 0 22px;max-width:44em}}
+.faq-cols{{display:grid;grid-template-columns:1fr 1fr;gap:32px 56px}}
+.faq-col h3{{font-size:1.15rem;margin-bottom:8px}} .faq-col p{{color:var(--muted)}}
+.menu-wrap{{display:grid;gap:40px 56px}} .menu-list{{grid-template-columns:1fr;max-width:820px}} .menu-cols{{grid-template-columns:1fr 1fr}}
+.menu-group h3{{margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid var(--ink)}}
+.menu-group ul{{list-style:none}}
+.menu-group li{{padding:12px 0;border-bottom:1px solid var(--line)}}
+.menu-line{{display:flex;align-items:baseline;gap:12px}}
+.menu-name{{font-weight:700}}
+.menu-dots{{flex:1;min-width:16px;border-bottom:2px dotted var(--line);transform:translateY(-4px)}}
+.menu-price{{font-weight:700;white-space:nowrap}}
+.menu-desc{{margin-top:2px;font-size:.9rem;color:var(--muted)}}
+.visit-grid{{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}}
+.visit-card{{max-width:680px;background:var(--soft);border:1px solid var(--line);border-radius:var(--r);padding:36px;display:flex;flex-direction:column;gap:28px}}
+.visit-block h3{{margin-bottom:12px}} .visit-block p{{color:var(--muted)}}
+.hours-list{{list-style:none;max-width:440px}}
+.hours-list li{{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line)}}
+.hours-list span:first-child{{font-weight:700}}
+.proc{{list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px}}
+.proc li{{background:var(--soft);border:1px solid var(--line);border-radius:var(--r);padding:26px;display:flex;flex-direction:column;gap:8px}}
+.proc h3{{font-size:1.2rem}} .proc p,.proc-line p{{color:var(--muted);font-size:.95rem}}
+.proc-line{{list-style:none;max-width:760px;margin-left:9px;border-left:2px solid var(--line)}}
+.proc-line li{{position:relative;padding:0 0 32px 32px}} .proc-line li:last-child{{padding-bottom:0}}
+.proc-line li::before{{content:"";position:absolute;left:-9px;top:5px;width:16px;height:16px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 5px var(--ground)}}
+.proc-line h3{{font-size:1.2rem;margin-bottom:4px}}
+.team{{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}}
+.member{{display:flex;flex-direction:column;gap:8px}} .ph-team{{aspect-ratio:1/1}}
+.member h3,.member-row h3{{font-size:1.2rem}} .m-role{{color:var(--accent);font-weight:600;font-size:.9rem}}
+.team-list{{max-width:820px}}
+.member-row{{display:grid;grid-template-columns:96px 1fr;gap:20px;align-items:center;padding:20px 0;border-bottom:1px solid var(--line)}}
+.member-row .ph-team{{border-radius:999px;min-height:0}}
+.gal{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}}
+.gal figure{{display:flex;flex-direction:column;gap:8px}} .gal figcaption{{font-size:.88rem;color:var(--muted)}}
+.ph-gal{{aspect-ratio:4/3}}
+.gal-masonry{{display:block;column-count:3;column-gap:16px}}
+.gal-masonry figure{{break-inside:avoid;margin-bottom:16px}}
+.ph-gal-t{{aspect-ratio:3/4}} .ph-gal-s{{aspect-ratio:1/1}}
 .foot{{background:var(--ink);color:var(--ground);padding-top:48px;padding-bottom:48px}}
 .foot-in{{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}} .foot p{{opacity:.8;font-size:.92rem}}
 @media (max-width:760px){{
@@ -715,6 +880,9 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
  .revs,.steps{{grid-template-columns:1fr}} .more ul{{grid-template-columns:1fr}}
  .rlist li{{grid-template-columns:1fr}} .rlist span{{text-align:left}}
  .hero-fullbleed{{min-height:520px}} .btn-line{{padding:12px 10px;font-size:.85rem}}
+ .faq-cols,.menu-cols,.visit-grid,.proc{{grid-template-columns:1fr}} .visit-card{{padding:24px}}
+ .team{{grid-template-columns:1fr 1fr;gap:16px}} .member-row{{grid-template-columns:72px 1fr;gap:14px}}
+ .gal{{grid-template-columns:1fr 1fr;gap:10px}} .gal-masonry{{column-count:2;column-gap:10px}} .gal-masonry figure{{margin-bottom:10px}}
 }}
 """
     return base + _token_css(tokens, palette)
@@ -745,13 +913,27 @@ def _render_body(content: dict, recipe: dict, preset: dict, assets: "_Assets") -
         "about": lambda: _about(content, variants.get("about") or "left", assets),
         "reviews": lambda: _reviews(content, variants.get("reviews") or "cards"),
         "order": lambda: _order(content, b, labels, wa_msgs),
+        # SITE-1C-3
+        "faq": lambda: _faq(content, variants.get("faq") or "list"),
+        "menu": lambda: _menu(content, variants.get("menu") or "list", labels),
+        "visit": lambda: _visit(content, variants.get("visit") or "split", wa_msgs),
+        "process": lambda: _process(content, variants.get("process") or "numbered"),
+        "team": lambda: _team(content, variants.get("team") or "cards", assets),
+        "gallery": lambda: _gallery(content, variants.get("gallery") or "grid", assets),
     }
-    parts = [_nav(content, labels, wa_msgs)]
-    for sec in recipe.get("order", []):
+    order = recipe.get("order", [])
+    # The announcement bar always sits above the menu, wherever the template listed it.
+    bar = _announcement(content) if ("announcement" in order and "announcement" not in hidden) else ""
+    parts = [bar, _nav(content, labels, wa_msgs)]
+    visit_shown = False
+    for sec in order:
         if sec in hidden or sec not in renderers:
             continue
-        parts.append(renderers[sec]())
-    parts.append(_footer(content))
+        html = renderers[sec]()
+        if sec == "visit" and html:
+            visit_shown = True
+        parts.append(html)
+    parts.append(_footer(content, visit_shown))
     return "\n".join(p for p in parts if p)
 
 

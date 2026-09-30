@@ -134,6 +134,66 @@ class SiteOrderSection(BaseModel):
         return v
 
 
+class SiteAnnouncement(BaseModel):
+    """SITE-1C-3: one short line shown in a bar above the menu (a promo, a delivery cut-off)."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    text: str = Field("", max_length=140)
+
+
+class SiteFaq(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    q: str = Field(..., min_length=1, max_length=140)
+    a: str = Field(..., min_length=1, max_length=600)
+
+
+class SiteMenuLine(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    name: str = Field(..., min_length=1, max_length=100)
+    desc: str = Field("", max_length=200)
+    price_ngn: float = Field(0, ge=0, le=100_000_000)
+    price_style: PriceStyle = "exact"
+
+    @field_validator("price_ngn")
+    @classmethod
+    def _two_dp(cls, v: float) -> float:
+        if round(v, 2) != v:
+            raise ValueError("price_ngn allows at most 2 decimal places")
+        return v
+
+
+class SiteMenuGroup(BaseModel):
+    """A heading with its priced lines: a price list or a menu (SITE-1C-3)."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    name: str = Field(..., min_length=1, max_length=60)
+    lines: list[SiteMenuLine] = Field(default_factory=list, max_length=15)
+
+
+class SiteProcessStep(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    title: str = Field(..., min_length=1, max_length=80)
+    text: str = Field("", max_length=300)
+
+
+class SiteProcess(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    title: str = Field("", max_length=100)
+    steps: list[SiteProcessStep] = Field(default_factory=list, max_length=6)
+
+
+class SiteTeamMember(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    name: str = Field(..., min_length=1, max_length=80)
+    role: str = Field("", max_length=80)
+    bio: str = Field("", max_length=300)
+    image_asset_id: Optional[str] = None
+
+
+class SiteGalleryImage(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    caption: str = Field("", max_length=100)
+    image_asset_id: Optional[str] = None
+
+
 class SiteSeo(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     title: str = Field("", max_length=70)
@@ -156,6 +216,15 @@ class SiteContentV1(BaseModel):
     hours: list[SiteHours] = Field(default_factory=list, max_length=7)
     location: SiteLocation = Field(default_factory=SiteLocation)
     order_section: SiteOrderSection = Field(default_factory=SiteOrderSection)
+    # SITE-1C-3: optional extra sections. Every field has an empty default, so content saved
+    # before this phase stays valid and renders exactly as before. Hours and location (already
+    # above) feed the new "visit" section.
+    announcement: SiteAnnouncement = Field(default_factory=SiteAnnouncement)
+    faqs: list[SiteFaq] = Field(default_factory=list, max_length=12)
+    menu: list[SiteMenuGroup] = Field(default_factory=list, max_length=8)
+    process: SiteProcess = Field(default_factory=SiteProcess)
+    team: list[SiteTeamMember] = Field(default_factory=list, max_length=6)
+    gallery: list[SiteGalleryImage] = Field(default_factory=list, max_length=9)
     seo: SiteSeo = Field(default_factory=SiteSeo)
 
 
@@ -170,6 +239,14 @@ class SectionVariants(BaseModel):
     reviews: Optional[str] = None
     categories: Optional[str] = None
     order: Optional[str] = None
+    # SITE-1C-3
+    announcement: Optional[str] = None
+    faq: Optional[str] = None
+    menu: Optional[str] = None
+    visit: Optional[str] = None
+    process: Optional[str] = None
+    team: Optional[str] = None
+    gallery: Optional[str] = None
 
 
 class RecipeTokens(BaseModel):
@@ -195,8 +272,8 @@ class Recipe(BaseModel):
     fonts: Optional[str] = Field(None, max_length=60)
     tokens: Optional[RecipeTokens] = None
     variants: SectionVariants = Field(default_factory=SectionVariants)
-    order: list[str] = Field(..., min_length=1, max_length=12)
-    hidden: list[str] = Field(default_factory=list, max_length=12)
+    order: list[str] = Field(..., min_length=1, max_length=16)
+    hidden: list[str] = Field(default_factory=list, max_length=16)
 
     @model_validator(mode="after")
     def _palette_or_custom(self):
@@ -229,7 +306,7 @@ class SitePresetCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     key: str = Field(..., max_length=50)
     name: str = Field(..., min_length=1, max_length=100)
-    sections: list[str] = Field(..., min_length=1, max_length=12)
+    sections: list[str] = Field(..., min_length=1, max_length=16)
     labels: PresetLabels = Field(default_factory=PresetLabels)
     brief_questions: list[dict] = Field(default_factory=list, max_length=40)
     wa_messages: dict[str, str] = Field(default_factory=dict)
@@ -253,7 +330,7 @@ class SitePresetCreate(BaseModel):
 class SitePresetUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    sections: Optional[list[str]] = Field(None, min_length=1, max_length=12)
+    sections: Optional[list[str]] = Field(None, min_length=1, max_length=16)
     labels: Optional[PresetLabels] = None
     brief_questions: Optional[list[dict]] = Field(None, max_length=40)
     wa_messages: Optional[dict[str, str]] = None

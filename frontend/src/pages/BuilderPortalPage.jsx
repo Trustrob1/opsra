@@ -42,9 +42,10 @@ import {
 import SectionTiles from '../modules/sites/SectionTiles'
 import DesignSuggestModal from '../modules/sites/DesignSuggestModal'
 import ThemePicker from '../modules/sites/ThemePicker'
-import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
+import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, SECTION_LABELS, SITE_STATUS, useToast, insertSection } from '../modules/sites/sitesKit'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
 import LookPickerField from '../modules/sites/LookPicker'
+import ExtraSectionCards from '../modules/sites/ExtraSectionCards'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -560,6 +561,8 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           <ItemsCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />
           <CategoriesCard content={content} setContent={setContent} />
           <ReviewsCard content={content} setContent={setContent} />
+          <ExtraSectionCards content={content} setContent={setContent} collapsible assetUrls={assetUrls} onUpload={uploadFor}
+            offered={[...(site?.design_options?.sections || []), ...(recipe?.order || [])]} />
           <HoursLocationCard content={content} setContent={setContent} />
           <OrderSeoCard content={content} setContent={setContent} />
 
@@ -1190,12 +1193,16 @@ function OrderSeoCard({ content, setContent, defaultOpen }) {
 function DesignCard({ recipe, setRecipe, defaultOpen, designOptions, onSuggest }) {
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(!!defaultOpen)
-  const sections = Object.keys(SECTION_LABELS)
+  // Only the sections this site's template offers (design_options.sections), else the ones it renders.
+  const sections = (designOptions?.sections?.length ? designOptions.sections : recipe.order || []).filter((k) => SECTION_LABELS[k])
   const allowedThemes = designOptions?.allowed_themes?.length ? THEMES.filter((t) => designOptions.allowed_themes.includes(t.value)) : THEMES
   const setVariant = (key, value) => setRecipe((r) => ({ ...r, variants: { ...(r.variants || {}), [key]: value } }))
-  const toggleHidden = (key) => setRecipe((r) => ({
-    ...r, hidden: r.hidden.includes(key) ? r.hidden.filter((x) => x !== key) : [...r.hidden, key],
-  }))
+  // A section the template offers but this site's design does not list yet is added at its natural
+  // place when switched on (SITE-1C-3); otherwise the tile just shows/hides it.
+  const toggleHidden = (key) => setRecipe((r) => {
+    if (!(r.order || []).includes(key)) return { ...r, order: insertSection(r.order || [], key), hidden: (r.hidden || []).filter((x) => x !== key) }
+    return { ...r, hidden: r.hidden.includes(key) ? r.hidden.filter((x) => x !== key) : [...r.hidden, key] }
+  })
 
   return (
     <Card>
@@ -1210,7 +1217,7 @@ function DesignCard({ recipe, setRecipe, defaultOpen, designOptions, onSuggest }
             <LookPickerField recipe={recipe} setRecipe={setRecipe} preset={designOptions} isMobile={isMobile} />
           </Field>
           <Field label="Sections and layouts" group>
-            <SectionTiles mode="show" keys={sections} selected={sections.filter((k) => !recipe.hidden.includes(k))} onToggle={toggleHidden}
+            <SectionTiles mode="show" keys={sections} selected={sections.filter((k) => (recipe.order || []).includes(k) && !recipe.hidden.includes(k))} onToggle={toggleHidden}
               variants={recipe.variants} onVariant={setVariant} allowed={designOptions?.allowed_variants} />
           </Field>
         </div>

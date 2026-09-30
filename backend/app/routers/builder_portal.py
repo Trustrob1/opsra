@@ -286,6 +286,7 @@ def get_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(g
             "allowed_fonts": preset.get("allowed_fonts") or [],
             "token_options": preset.get("token_options") or {},
             "allowed_variants": preset.get("allowed_variants") or {},
+            "sections": preset.get("sections") or [],
         }
     except Exception as exc:
         logger.warning("builder_portal: design options unavailable site=%s: %s", site_id, exc)

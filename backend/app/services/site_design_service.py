@@ -37,8 +37,10 @@ BUILDER_RECENT = 3       # same builder: avoid their last N looks
 NICHE_DAYS = 30          # same niche in the org: avoid looks used in the last N days
 NICHE_RECENT_MAX = 40
 
-# The section layouts the picker sets (the renderer knows these six).
-VARIANT_SECTIONS = ("hero", "items", "about", "reviews", "categories")
+# The section layouts the picker sets. The SITE-1C-3 sections come last on purpose: every choice is
+# hashed per axis, so adding names here never changes what a template without them picks.
+VARIANT_SECTIONS = ("hero", "items", "about", "reviews", "categories",
+                    "faq", "menu", "visit", "process", "team", "gallery")
 
 
 def _h(seed: str, axis: str) -> int:
