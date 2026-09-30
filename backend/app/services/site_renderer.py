@@ -318,15 +318,21 @@ def _hero(c: dict, variant: str, assets: "_Assets") -> str:
                 f'<a class="btn btn-outline" href="#shop">Browse all</a></div></div>'
                 f'<div class="collage">{tiles}</div></section>')
     # centered
-    if h.get("image_asset_id"):
+    hero_photo = bool(h.get("image_asset_id"))
+    strip_items = c.get("items", [])[:4]
+    if hero_photo:
         below = f'<div class="hero-banner">{img}</div>'
-    else:
-        strip = "".join(assets.img_or_placeholder(it.get("image_asset_id"), it["name"], "ph-strip") for it in c.get("items", [])[:4])
+    elif any(it.get("image_asset_id") for it in strip_items):
+        strip = "".join(assets.img_or_placeholder(it.get("image_asset_id"), it["name"], "ph-strip") for it in strip_items)
         below = f'<div class="strip">{strip}</div>'
-    return (f'<section class="hero hero-centered wrap"><p class="eyebrow">{esc(b.get("tagline",""))}</p>'
+    else:
+        below = ""   # no photos at all: the coloured band below stands on its own
+    body = (f'<section class="hero hero-centered{"" if hero_photo else " hero-tint"} wrap"><p class="eyebrow">{esc(b.get("tagline",""))}</p>'
             f'<h1>{esc(h["headline"])}</h1><p class="lead">{esc(h.get("subhead",""))}</p>'
             f'<div class="row row-center">{btn_wa(b, "Chat on WhatsApp", DEFAULT_WA_MESSAGES["browse"])}</div>'
             f'{below}</section>')
+    # No hero photo: the hero becomes a full-width coloured band (like the theme preview cards).
+    return body if hero_photo else f'<div class="hero-tint-bar">{body}</div>'
 
 
 def _categories(c: dict, variant: str, assets: "_Assets", wa_msgs: dict) -> str:
@@ -550,7 +556,7 @@ def _token_css(tokens, palette=None) -> str:
             out.append(".btn-accent{background:transparent;color:var(--btn-accent);border-color:transparent;"
                        "border-bottom:2px solid var(--btn-accent);border-radius:0;padding-left:4px;padding-right:4px}")
         # The main hero button sits on a photo: it always stays solid so it stays readable.
-        out.append(".hero-over .btn-accent{background:var(--btn-accent);color:var(--on-accent);"
+        out.append(".hero-over .btn-accent,.hero-tint .btn-accent{background:var(--btn-accent);color:var(--on-accent);"
                    "border:1.5px solid transparent;border-radius:var(--br);padding:14px 22px}")
     if tk.get("heading_case") in ("upper", "spaced_upper"):
         out.append("h1,h2{overflow-wrap:break-word}")
@@ -646,6 +652,11 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 .collage{{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:220px 220px;gap:14px}}
 .ph-col-0{{grid-row:span 2}}
 .hero-centered{{text-align:center;padding-top:88px;padding-bottom:40px}}
+.hero-tint-bar{{background:linear-gradient(rgba(0,0,0,.22),rgba(0,0,0,.22)),linear-gradient(160deg,var(--accent),var(--ink));color:#fff}}
+.hero-tint{{padding-top:96px;padding-bottom:96px}}
+.hero-tint .eyebrow,.hero-tint .lead{{color:#fff;opacity:.88}} .hero-tint h1{{color:#fff}}
+.hero-tint .btn-accent{{background:var(--btn-accent);color:var(--on-accent)}}
+.hero-tint .strip{{margin-top:48px}}
 .hero-banner{{margin-top:56px}} .hero-banner .photo,.hero-banner .ph{{aspect-ratio:16/8;width:100%}} .hero-banner .photo img{{width:100%;height:100%;object-fit:cover;object-position:50% 25%}}
 .hero-centered .lead{{margin-left:auto;margin-right:auto}}
 .strip{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:56px}} .ph-strip{{aspect-ratio:3/4}}

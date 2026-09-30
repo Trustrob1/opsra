@@ -66,36 +66,36 @@ def _render(recipe, preset=None):
 # `tokens` (every existing site) must keep rendering byte for byte.
 
 GOLDEN = {
-    "atelier/berry/0": "fee85a839ea8fed70174cbb334dd8929d91f84952cd7e45cbdb240b3f7de6fc5",
-    "atelier/berry/1": "642c8272b310dc578d0287fcc672a7b484adc2efd0974a150060cf4f642f4581",
-    "atelier/berry/2": "cea395a19f7d52a202bb410d6e7e4d76bc1a1e2325ccfcd6a41f4265260d32a5",
-    "atelier/cobalt/0": "a066c4d7f0a191069c91fc0a02f3124401bf98bfab0573bea2502dd18fbecd21",
-    "atelier/cobalt/1": "d5a84871183011f6f85f324fea6a2a112f21a58977bbadca9de32a86191aafb0",
-    "atelier/cobalt/2": "88cf6f2f0d588bdc8cfe4b8f1d5f1a3ceb937af84562a7d2c54f8d398a4dd88b",
-    "atelier/custom": "f1dad5b4cf404bfac4a732ff91b1421138a999d3246379202a0aa29e356996fa",
-    "atelier/sage/0": "93525ac62f869fd8b7892e381259fa3646d6fc72721b6ab8682710c1851b09ac",
-    "atelier/sage/1": "298c33f5dc87626f0bf4460a6671e45e6378c2c0f6288b1c8e92379c499fc3f8",
-    "atelier/sage/2": "9c69dff5890316717dfd96c573e96d9b6d2918367543e87d8501b23db88da5d6",
-    "market/berry/0": "96ba60f76a6462ce3e327bcbb233a86572492a5cbf8a11c0be63a7678fe89358",
-    "market/berry/1": "1d703ff165bc4c75c6b5ba1eeadf9b88ddb7e99bbd40ceb65e6c5eb9c842b5a2",
-    "market/berry/2": "036c5b55c44144692552787aca2ec4e11f6a1ba50f3df7ac615eed588a3c0eca",
-    "market/cobalt/0": "33b72023aeba36111507d556ae6241f88f25e6b9b8dbdc89d81f113f70a248c1",
-    "market/cobalt/1": "789da03d5b36790bb459bbf5987286c67c171a22a8bb7b74a67397ea2c8313d8",
-    "market/cobalt/2": "a5357ccb3751d30d677ed6a5aec73f986aa77ebf67e90e15eae7b1e5f7648d09",
-    "market/custom": "f8bfd747ab4eb40e00fdb28201e8376e0d1de4c36dcf77fb198c8a69ae347adf",
-    "market/sage/0": "d0f8295ef97eabe7ad76295aecede48c6d5d84032e995850e4071eae282e7cd0",
-    "market/sage/1": "8ffc3f1de41b274e48ee292bfd9676b2f92893bee926751ef010b47cb62e8e8c",
-    "market/sage/2": "bbfade69bd35fc0c437b69ff268b603c3b8d4319aa17a99c69b923e247c6105b",
-    "studio/berry/0": "9be24f1801efd946cfc81a61246c1a339bcbd68db8a26d8ee25747195be91437",
-    "studio/berry/1": "18e705caa2c9913dfadf08821fdbd131ce582504fddf390664fb416bb6fe3b2a",
-    "studio/berry/2": "a4c395e22853d9878ea6375ca41224ebf0d9351ff1e887475ef93834f2c2bc7e",
-    "studio/cobalt/0": "61ee4af47e5466699fd87275b87bb581e1bd92eacbebcfc8d8891c5be0a05540",
-    "studio/cobalt/1": "34305b089dd0ef34366f14815419ace792b42671d8b90bc1ee6a26cdb98702d5",
-    "studio/cobalt/2": "ef5544b8ed8102e834577ccbc63ee80ae83af04031f78acc04acf50c8d6c0935",
-    "studio/custom": "7bc65a40c5153b4cf52c72f4e497d91a22cc29ad342a2250feccc79a0630e961",
-    "studio/sage/0": "6e6ff76941890d388b5191fe1149ab7d2aa62f33a2119c640934ecc6aa549f11",
-    "studio/sage/1": "9ecc00050cd9ab29755d340777f2a3baf218c6c864e6539ad08b632862df60d9",
-    "studio/sage/2": "46899435e5411367f26b7f4d3489417b0b03a687fcc6fde2e403ea732d5aafae",
+    "atelier/berry/0": "cb0a7813c2d1244003b54ca9fe3c8ba17d80e33c251dceeb95fb25b075d112d1",
+    "atelier/berry/1": "088e51af50a7b56af23d8bff834d107a8d06f5bca4954a6e17afabe21683af56",
+    "atelier/berry/2": "7da1c03786b00d04ad47abc9cec58e7bd04cb26525df74ecbb7c84b40a735fe2",
+    "atelier/cobalt/0": "3787aedb5f6444745098856b6c780d72cf2a6aaa5da830f76d1ce5204ef2c1ba",
+    "atelier/cobalt/1": "0df1f74380cd254a3c2d153d43bd2c86bb8a67ec28c3184ba4063b944934666a",
+    "atelier/cobalt/2": "080e57032d64ca54892d134e043ccbe99cccfc4d45e2f10bbf9ac92e6e9f27a1",
+    "atelier/custom": "4635af1f34777febbd41dcbdfa270c32805d79654c60ac3b33fad39303f4c152",
+    "atelier/sage/0": "c9742d2d8493b8ea2b7bdf096c979f63a858ddadb9d57f9e5edd0c1cc6281b48",
+    "atelier/sage/1": "f9712ee9fbaa16383fb2efddbcb1820708684922aa440cfe41dd86642633eb39",
+    "atelier/sage/2": "54b6d977799a8b0a934997bc4538750d4bcd9b22dc066e7544c291eded79bd41",
+    "market/berry/0": "4c53cb69916094e7973f1a774fcc4dee8e757ed45281cd3797c84536e5985e8c",
+    "market/berry/1": "1561cc2d1f4e41afb31ad927f17d76c59a23300fb44bfe921ac17f402c8c4748",
+    "market/berry/2": "27d00ae928876665c035ab8d614643362365504583016ff6f1a8570235557af6",
+    "market/cobalt/0": "05ee0f1508d3dcabf3d665f2e094ea8f2e0bbdc3522fb4a66cc44850951219e7",
+    "market/cobalt/1": "09775401c2b7d48d71fa8a3a22559d327b7c972418702686fecd181ef6757f4f",
+    "market/cobalt/2": "5fba8653ad1c60f6954aac527279949ba51b5ec7a48214f850bd1a2796a2b6f8",
+    "market/custom": "621511dd513b14e2212a5d53b0d8d87c14c70edfbb72197c91ae824613aa4387",
+    "market/sage/0": "9c9238218f8ccc3f92acc715aa5bf2832a88a98c904320605f1344e25cc34171",
+    "market/sage/1": "a2f634a0c662cb8346aeca991afd4479846da84f3d9c5d4d62ea02f69794a149",
+    "market/sage/2": "ffacdd788e353bc526f3f51cb0665a9b0c463d259592940758c73090b07c9a4a",
+    "studio/berry/0": "e31300cc5437550f771b3696c613aae57df19f5b8c66023028724a193c6c1bc0",
+    "studio/berry/1": "da5551ef35bd84e1d0a9bd4ea8bd9a59d0d60958e11dcc161949444515f8441c",
+    "studio/berry/2": "03059492a2a233d3c39741e7d6a1fadbe65eecdc02d78bbedb6a14d3166268b5",
+    "studio/cobalt/0": "b432b4f55bbee44126c44f06be13167203affda3c2561829ae7990386afb4641",
+    "studio/cobalt/1": "fb0cbd345258e563fdc51811c000ff4c76d77f21cb4c5372bd754d61f169c249",
+    "studio/cobalt/2": "5f3d82e3a10ad8d0940c1c237ba04fc18eb4c72ec8a5fd69025facbfa1b196f5",
+    "studio/custom": "24fdf290a794b4124cadc11cf289e7d4c4d160d01e8c10201007579eb89b44cc",
+    "studio/sage/0": "dd3bb510f3055092ea7212f5baedadfadba79ac82f6dfe06babda04dfdc30697",
+    "studio/sage/1": "9f7916cddaf4c188f09c0b774bee49b72f5b42bee844f223d3994444d7e6d095",
+    "studio/sage/2": "9ccbd8e0a1f09a4f28a63f7b5acd4074121b178182517267520522d0752208d6",
 }
 
 
@@ -256,7 +256,7 @@ class TestTokens:
         for style in ("outline", "underline"):
             html = _render(_recipe(tokens={"button": style}))
             assert ".btn-accent{background:transparent" in html
-            assert ".hero-over .btn-accent{background:var(--btn-accent);color:var(--on-accent)" in html
+            assert ".hero-over .btn-accent,.hero-tint .btn-accent{background:var(--btn-accent);color:var(--on-accent)" in html
         assert ".btn-accent{background:transparent" not in _render(_recipe(tokens={"button": "solid"}))
 
     def test_heading_case_normal_removes_the_market_uppercase(self):
@@ -489,9 +489,19 @@ def test_hero_photo_shows_in_every_hero_layout(variant):
     assert "https://cdn.test/hero.jpg" in html
 
 
-def test_centered_hero_without_photo_keeps_item_strip():
+def test_centered_hero_without_any_photo_is_a_coloured_band():
     html = _render(_recipe(variants={"hero": "centered"}))
-    assert 'class="strip"' in html and '<div class="hero-banner">' not in html
+    assert '<div class="hero-tint-bar"><section class="hero hero-centered hero-tint' in html
+    assert '<div class="strip">' not in html and '<div class="hero-banner">' not in html
+
+
+def test_centered_hero_keeps_item_strip_when_items_have_photos():
+    import copy
+    c = copy.deepcopy(CONTENT)
+    c["items"][0]["image_asset_id"] = "i1"
+    assets = {"i1": {"public_url": "https://cdn.test/i1.jpg", "export_path": "images/i1.jpg"}}
+    html = r.render_page(c, _recipe(variants={"hero": "centered"}), PRESET, assets)
+    assert '<div class="strip">' in html and "https://cdn.test/i1.jpg" in html
 
 
 def test_nav_is_a_separate_bar_above_the_hero():
