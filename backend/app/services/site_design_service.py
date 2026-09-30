@@ -152,6 +152,9 @@ def _candidate(preset: dict, seed: str, colour_answer, personality: Optional[str
     # still change it per site in the Design card; personalities no longer steer this one token.
     if "white" in reg.allowed_token_options(preset, theme, "background"):
         tokens["background"] = "white"
+    # SITE-1C-3d: the Refined look is never picked at random. A template turns it on for all its new
+    # sites by narrowing "Refined look" to that one option; otherwise sites start standard.
+    tokens["finish"] = "refined" if (preset.get("token_options") or {}).get("finish") == ["refined"] else "standard"
 
     order = list(preset.get("sections") or ["hero", "about", "items", "order"])
     variants = {sec: _wchoose(seed, f"variant:{sec}", _variant_pool(preset, sec, ctx), (p["variants"].get(sec, ()) if p else ()))

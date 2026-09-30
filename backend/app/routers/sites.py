@@ -49,7 +49,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_design_registry, site_design_service, site_ops_service, site_renderer
+from app.services import site_care_plan_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -689,17 +689,17 @@ async def upload_asset(
     if not _sniff_image(file_bytes, file.content_type):
         raise HTTPException(400, detail="File content doesn't match its declared type.")
 
-    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[file.content_type]
-    storage_path = f"{site_id}/{slot}-{secrets_token()}.{ext}"
+    file_bytes, mime = site_image_service.optimise(file_bytes, file.content_type)  # SITE-1C-3d: web-sized, EXIF stripped
+    storage_path = f"{site_id}/{slot}-{secrets_token()}.{site_image_service.extension_for(mime)}"
     db.storage.from_("site-assets").upload(
         path=storage_path, file=file_bytes,
-        file_options={"content-type": file.content_type, "upsert": "true"},
+        file_options={"content-type": mime, "upsert": "true"},
     )
     public_url = db.storage.from_("site-assets").get_public_url(storage_path)
 
     row = {
         "site_id": site_id, "slot": slot, "storage_path": storage_path, "public_url": public_url,
-        "mime_type": file.content_type, "bytes": len(file_bytes), "source": "editor",
+        "mime_type": mime, "bytes": len(file_bytes), "source": "editor",
         "created_at": _now_iso(), "updated_at": _now_iso(),
     }
     res = db.table("site_assets").insert(row).execute()

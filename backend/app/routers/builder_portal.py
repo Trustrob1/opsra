@@ -55,6 +55,7 @@ from app.services import (
     pricing_service,
     site_care_plan_service,
     site_design_service,
+    site_image_service,
     site_order_service,
     site_renewal_service,
     site_renderer,
@@ -431,15 +432,15 @@ async def upload_my_asset(
     if not _sniff_image(file_bytes, file.content_type):
         raise HTTPException(400, detail="File content doesn't match its declared type.")
 
-    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[file.content_type]
-    storage_path = f"{site_id}/{slot}-{_token_hex()}.{ext}"
+    file_bytes, mime = site_image_service.optimise(file_bytes, file.content_type)  # SITE-1C-3d
+    storage_path = f"{site_id}/{slot}-{_token_hex()}.{site_image_service.extension_for(mime)}"
     db.storage.from_("site-assets").upload(path=storage_path, file=file_bytes,
-                                            file_options={"content-type": file.content_type, "upsert": "true"})
+                                            file_options={"content-type": mime, "upsert": "true"})
     public_url = db.storage.from_("site-assets").get_public_url(storage_path)
 
     row = {
         "site_id": site_id, "slot": slot, "storage_path": storage_path, "public_url": public_url,
-        "mime_type": file.content_type, "bytes": len(file_bytes), "source": "builder_portal",
+        "mime_type": mime, "bytes": len(file_bytes), "source": "builder_portal",
         "created_at": _now_iso(), "updated_at": _now_iso(),
     }
     res = db.table("site_assets").insert(row).execute()

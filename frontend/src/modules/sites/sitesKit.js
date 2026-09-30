@@ -117,6 +117,7 @@ export const FONT_PAIRINGS = [
   { value: 'fraunces_karla', label: 'Fraunces + Karla', group: 'editorial', heading: 'Fraunces', body: 'Karla' },
   { value: 'playfair_lato', label: 'Playfair + Lato', group: 'elegant', heading: 'Playfair Display', body: 'Lato' },
   { value: 'cormorant_jost', label: 'Cormorant + Jost', group: 'elegant', heading: 'Cormorant Garamond', body: 'Jost' },
+  { value: 'cormorant_dmsans', label: 'Cormorant + DM Sans', group: 'elegant', heading: 'Cormorant Garamond', body: 'DM Sans' },
   { value: 'dmserif_dmsans', label: 'DM Serif + DM Sans', group: 'editorial', heading: 'DM Serif Display', body: 'DM Sans' },
   { value: 'archivo_worksans', label: 'Archivo Black + Work Sans', group: 'bold', heading: 'Archivo Black', body: 'Work Sans' },
   { value: 'syne_dmsans', label: 'Syne + DM Sans', group: 'bold', heading: 'Syne', body: 'DM Sans' },
@@ -138,6 +139,8 @@ export const TOKENS = [
   { key: 'background', label: 'Page background', options: [{ value: 'match', label: 'Match colour' }, { value: 'white', label: 'White' }, { value: 'grey', label: 'Soft grey' }, { value: 'ivory', label: 'Warm ivory' }] },
   { key: 'bands', label: 'Section bands', options: [{ value: 'plain', label: 'Plain' }, { value: 'wash', label: 'Tinted bands' }] },
   { key: 'cards', label: 'Cards', options: [{ value: 'flat', label: 'Flat' }, { value: 'bordered', label: 'Bordered' }, { value: 'lifted', label: 'Lifted' }] },
+  // SITE-1C-3d: big light headings, roomier spacing, floating header, photo hover, dark story band, floating WhatsApp button.
+  { key: 'finish', label: 'Refined look', options: [{ value: 'standard', label: 'Standard' }, { value: 'refined', label: 'Refined' }] },
 ]
 export const THEME_TOKEN_EXCLUSIONS = { atelier: { radius: ['pill'] } }
 

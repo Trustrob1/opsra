@@ -36,6 +36,10 @@ TOKENS: dict[str, tuple[str, ...]] = {
     "background": ("match", "white", "grey", "ivory"),
     "bands": ("plain", "wash"),
     "cards": ("flat", "bordered", "lifted"),
+    # SITE-1C-3d: "Refined look" — display-scale type, roomier spacing, a floating header, photo hover,
+    # a dark story band and a floating WhatsApp button, all CSS-only. "standard" renders as before.
+    # The picker never chooses it at random: a template opts in by narrowing this token to ["refined"].
+    "finish": ("standard", "refined"),
 }
 
 TOKEN_LABELS: dict[str, str] = {
@@ -48,6 +52,7 @@ TOKEN_LABELS: dict[str, str] = {
     "background": "Page background",
     "bands": "Section bands",
     "cards": "Cards",
+    "finish": "Refined look",
 }
 
 # ---------------------------------------------------------------- section layouts (SITE-1C-2)
@@ -108,6 +113,12 @@ FONT_PAIRINGS: dict[str, dict] = {
         "font_url": _GF + "Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600&display=swap",
         "display_fallback": "Georgia, 'Times New Roman', serif", "body_fallback": "'Helvetica Neue', Arial, sans-serif",
         "heading_weight": "600",
+    },
+    "cormorant_dmsans": {
+        "label": "Cormorant + DM Sans", "group": "elegant", "fonts": ("Cormorant Garamond", "DM Sans"),
+        "font_url": _GF + "Cormorant+Garamond:wght@400;500;600&family=DM+Sans:wght@400;500;700&display=swap",
+        "display_fallback": "Georgia, 'Times New Roman', serif", "body_fallback": "'Helvetica Neue', Arial, sans-serif",
+        "heading_weight": "500",
     },
     "dmserif_dmsans": {
         "label": "DM Serif + DM Sans", "group": "editorial", "fonts": ("DM Serif Display", "DM Sans"),

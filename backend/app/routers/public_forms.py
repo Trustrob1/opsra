@@ -37,7 +37,7 @@ from app.models.sites import (
     SiteBriefFormSubmit,
     hash_form_token,
 )
-from app.services import site_design_registry, site_renderer
+from app.services import site_design_registry, site_image_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -196,13 +196,13 @@ async def upload_form_asset(
     if not _sniff_image(file_bytes, file.content_type):
         raise HTTPException(status_code=400, detail="File content doesn't match its declared type.")
 
-    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[file.content_type]
-    storage_path = f"forms/{form['token_hash'][:16]}/{slot}-{secrets.token_hex(4)}.{ext}"
+    file_bytes, mime = site_image_service.optimise(file_bytes, file.content_type)  # SITE-1C-3d
+    storage_path = f"forms/{form['token_hash'][:16]}/{slot}-{secrets.token_hex(4)}.{site_image_service.extension_for(mime)}"
     db.storage.from_("site-assets").upload(path=storage_path, file=file_bytes,
-                                            file_options={"content-type": file.content_type, "upsert": "true"})
+                                            file_options={"content-type": mime, "upsert": "true"})
     public_url = db.storage.from_("site-assets").get_public_url(storage_path)
 
-    photos.setdefault(slot, []).append({"storage_path": storage_path, "public_url": public_url, "mime_type": file.content_type, "bytes": len(file_bytes)})
+    photos.setdefault(slot, []).append({"storage_path": storage_path, "public_url": public_url, "mime_type": mime, "bytes": len(file_bytes)})
     answers = dict(form.get("answers") or {})
     answers["_photos"] = photos
     db.table("site_brief_forms").update({"answers": answers, "last_saved_at": _now_iso(), "updated_at": _now_iso()}).eq("id", form["id"]).execute()

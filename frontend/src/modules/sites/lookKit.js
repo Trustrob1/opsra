@@ -8,7 +8,7 @@
  */
 import { PALETTES, FONT_PAIRINGS } from './sitesKit'
 
-export const GOOGLE_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Bodoni+Moda:wght@500;600&family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;700&family=DM+Serif+Display&family=Fraunces:wght@500;600&family=Inter:wght@400;500&family=Jost:wght@400;500;600&family=Karla:wght@400;600&family=Lato:wght@400;700&family=Lora:wght@500;600&family=Manrope:wght@500;600;700&family=Nunito:wght@400;600&family=Playfair+Display:wght@500;600&family=Plus+Jakarta+Sans:wght@500;700&family=Poppins:wght@500;600&family=Sora:wght@500;600&family=Syne:wght@600;700&family=Work+Sans:wght@400;500&display=swap'
+export const GOOGLE_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Bodoni+Moda:wght@500;600&family=Cormorant+Garamond:wght@400;500;600&family=DM+Sans:wght@400;500;700&family=DM+Serif+Display&family=Fraunces:wght@500;600&family=Inter:wght@400;500&family=Jost:wght@400;500;600&family=Karla:wght@400;600&family=Lato:wght@400;700&family=Lora:wght@500;600&family=Manrope:wght@500;600;700&family=Nunito:wght@400;600&family=Playfair+Display:wght@500;600&family=Plus+Jakarta+Sans:wght@500;700&family=Poppins:wght@500;600&family=Sora:wght@500;600&family=Syne:wght@600;700&family=Work+Sans:wght@400;500&display=swap'
 
 /** Loads the pairing fonts once so the font cards and preview show real type. */
 export function ensureLookFonts() {
@@ -55,7 +55,7 @@ export function coloursOf(entry) {
   return { accent: p.accent, ground: p.ground, label: p.label, custom: false }
 }
 
-export const DEFAULT_TOKENS = { radius: 'sharp', density: 'regular', button: 'solid', heading_case: 'normal', image_style: 'square', divider: 'line', background: 'match', bands: 'plain', cards: 'flat' }
+export const DEFAULT_TOKENS = { radius: 'sharp', density: 'regular', button: 'solid', heading_case: 'normal', image_style: 'square', divider: 'line', background: 'match', bands: 'plain', cards: 'flat', finish: 'standard' }
 
 export const LOOKS = [
   { key: 'elegant', name: 'Elegant boutique', blurb: 'Fine lines, arches, airy', pal: 'berry', font: 'bodoni_jost', tok: { radius: 'sharp', density: 'airy', button: 'outline', heading_case: 'spaced_upper', image_style: 'arch', divider: 'ornament', background: 'ivory', bands: 'wash', cards: 'bordered' } },
@@ -98,6 +98,10 @@ export function tokenGlyph(tokenKey, opt, accent, fontKey) {
     const fill = opt === 'match' ? mixHex(accent, '#FFFFFF', 0.9) : BACKGROUNDS[opt]
     return { style: { width: 40, height: 28, borderRadius: 5, border: '1px solid #b9c2ce', background: fill }, text: '' }
   }
+  if (tokenKey === 'finish') {
+    const fine = opt === 'refined'
+    return { style: { fontFamily: `'${font.heading}', serif`, fontSize: 20, fontWeight: fine ? 400 : 700, letterSpacing: fine ? '-.03em' : 0, color: ink }, text: 'Aa' }
+  }
   if (tokenKey === 'bands') {
     const wash = washColour(accent)
     return { style: { width: 40, height: 28, borderRadius: 5, border: '1px solid #b9c2ce', background: opt === 'wash' ? `linear-gradient(to bottom, #fff 0 33%, ${wash} 33% 66%, #fff 66%)` : '#fff' }, text: '' }
@@ -123,7 +127,8 @@ export function previewStyles(cur) {
   const pad = { airy: 30, regular: 22, compact: 13 }[t.density]
   const hf = `'${font.heading}', ${SERIF_HEADINGS.has(font.heading) ? 'serif' : 'sans-serif'}`
   const bf = `'${font.body}', sans-serif`
-  const head = { fontFamily: hf, fontWeight: HEADING_WEIGHT[font.heading] || 600, textTransform: t.heading_case === 'normal' ? 'none' : 'uppercase', letterSpacing: t.heading_case === 'spaced_upper' ? '.16em' : 0, margin: 0 }
+  const refined = t.finish === 'refined' && !['bold', 'friendly'].includes(font.group)  // SITE-1C-3d: light, tight headings
+  const head = { fontFamily: hf, fontWeight: refined ? 400 : (HEADING_WEIGHT[font.heading] || 600), textTransform: t.heading_case === 'normal' ? 'none' : 'uppercase', letterSpacing: t.heading_case === 'spaced_upper' ? '.16em' : (refined && t.heading_case === 'normal' ? '-.02em' : 0), margin: 0 }
   const btnBase = { font: `600 11px ${bf}`, padding: '8px 16px', borderRadius: r, display: 'inline-block' }
   const btn = t.button === 'solid' ? { ...btnBase, background: accent, color: onA, border: `1.5px solid ${accent}` }
     : t.button === 'outline' ? { ...btnBase, background: 'transparent', color: accent, border: `1.5px solid ${accent}` }
@@ -146,7 +151,7 @@ export function previewStyles(cur) {
     btn,
     hero: { padding: `${Math.round(pad * 1.7)}px ${pad}px`, color: '#fff', display: 'flex', flexDirection: 'column', gap: 11, background: `linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.66)), linear-gradient(135deg, ${accent}, ${accent}77)` },
     eyebrow: { font: `600 10px ${bf}`, letterSpacing: '.14em', textTransform: 'uppercase', opacity: 0.9 },
-    h1: { ...head, fontSize: 28, lineHeight: 1.12, color: '#fff' },
+    h1: { ...head, fontSize: t.finish === 'refined' ? 34 : 28, lineHeight: t.finish === 'refined' ? 1 : 1.12, color: '#fff' },
     sub: { margin: 0, font: `400 12.5px ${bf}`, opacity: 0.92, maxWidth: 340 },
     btn1: { ...btnBase, background: accent, color: onA, border: `1.5px solid ${accent}` },
     btn2: t.button === 'underline' ? { ...btnBase, color: '#fff', borderBottom: '2px solid #fff', borderRadius: 0, padding: '8px 2px' } : { ...btnBase, color: '#fff', border: '1.5px solid #ffffffd0' },

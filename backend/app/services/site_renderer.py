@@ -600,7 +600,7 @@ def _prune_css(css_text: str, body: str) -> str:
     text = re.sub(r"\s*\n\s*", "", text)
     out, i = [], 0
     while i < len(text):
-        if text.startswith("@media", i):
+        if text.startswith(("@media", "@supports"), i):
             start = text.index("{", i)
             depth, j = 1, start + 1
             while depth:
@@ -609,6 +609,14 @@ def _prune_css(css_text: str, body: str) -> str:
             inner = prune_rules(text[start + 1:j - 1])
             if inner:
                 out.append(text[i:start + 1] + inner + "}")
+            i = j
+        elif text.startswith("@keyframes", i):  # SITE-1C-3d: copied whole (its selectors are from/to)
+            start = text.index("{", i)
+            depth, j = 1, start + 1
+            while depth:
+                depth += {"{": 1, "}": -1}.get(text[j], 0)
+                j += 1
+            out.append(text[i:j])
             i = j
         else:
             j = text.index("}", i) + 1
@@ -652,7 +660,48 @@ def _wash_colour(palette: dict) -> str:
     return _mix(accent, "#FFFFFF", 0.97)
 
 
-def _token_css(tokens, palette=None) -> str:
+_THEME_GROUP = {"atelier": "elegant", "market": "bold", "studio": "editorial"}
+
+
+def _refined_css(tk: dict, heavy: bool) -> str:
+    """SITE-1C-3d 'Refined look' — appended only when tokens.finish == 'refined'. Pure CSS (no script):
+    display-scale headings, roomier spacing, a floating translucent header, photo hover, a dark story
+    band, a floating WhatsApp button, and a scroll fade-in that only runs where the browser supports
+    scroll-driven animation and the visitor has not asked for reduced motion. `heavy` = a bold or
+    friendly font pairing: those keep their weight and letter-spacing and only get the bigger scale."""
+    out = []
+    upper = tk.get("heading_case") in ("upper", "spaced_upper")
+    if heavy:
+        out.append("h1{font-size:clamp(2.8rem,7vw,5.2rem);line-height:.98}h2{font-size:clamp(2rem,4.6vw,3.3rem)}")
+    else:
+        ls1, ls2 = ("", "") if upper else ("letter-spacing:-.03em;", "letter-spacing:-.02em;")
+        out.append(f"h1{{font-size:clamp(3rem,8vw,6.5rem);line-height:.92;font-weight:400;{ls1}}}"
+                   f"h2{{font-size:clamp(2.2rem,5vw,4rem);line-height:1;font-weight:400;{ls2}}}")
+    out.append(".eyebrow{font-size:.7rem;font-weight:500;letter-spacing:.24em}")
+    if tk.get("density") != "compact":
+        out.append("@media (min-width:761px){.sec{padding-top:112px;padding-bottom:112px}}"
+                   "@media (max-width:760px){.sec{padding-top:72px;padding-bottom:72px}}")
+    out.append(".nav-bar{position:sticky;top:0;z-index:30;background:var(--ground);border-bottom-color:transparent}"
+               ".nav-bar{background:color-mix(in srgb,var(--ground) 93%,transparent);"
+               "-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}"
+               "[id]{scroll-margin-top:84px}")
+    out.append(".about-band{background:var(--ink);color:var(--ground)}")
+    out.append(".photo img{transition:transform .7s cubic-bezier(.2,.7,.2,1)}.photo:hover img{transform:scale(1.04)}"
+               ".btn{transition:transform .25s ease,background-color .25s ease,color .25s ease}.btn:hover{transform:translateY(-2px)}")
+    out.append(".wa-fab{position:fixed;right:18px;bottom:18px;z-index:40;width:56px;height:56px;border-radius:50%;"
+               "display:grid;place-items:center;background:var(--btn-accent);color:var(--on-accent);"
+               "box-shadow:0 12px 30px rgba(0,0,0,.22)}.wa-fab .wa-i{width:26px;height:26px}"
+               "@media (max-width:760px){.wa-fab{right:14px;bottom:14px}}")
+    out.append("@keyframes rise{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}"
+               "@supports (animation-timeline:view()){.sec,.about-band{animation:rise linear both;"
+               "animation-timeline:view();animation-range:entry 0% entry 30%}}"
+               "@media (prefers-reduced-motion:reduce){.sec,.about-band{animation:none}"
+               ".photo img,.btn{transition:none}.photo:hover img,.btn:hover{transform:none}}"
+               "@media print{.sec,.about-band{animation:none}}")
+    return "".join(out)
+
+
+def _token_css(tokens, palette=None, heavy: bool = False) -> str:
     """CSS overrides for the tokens that are set. Appended after the base CSS, so a recipe with
     no tokens gets no extra CSS at all (byte-identical to before). Heading case is handled in
     _css itself because it changes several existing rules."""
@@ -717,6 +766,8 @@ def _token_css(tokens, palette=None) -> str:
                 else "box-shadow:0 14px 34px -16px rgba(20,20,30,.35),0 2px 6px rgba(20,20,30,.06)")
         out.append(f".card,.prow,.rev{{background:#FFFFFF;{edge}}}"
                    ".card{padding:12px;border-radius:var(--r)}.card-body{padding:14px 4px 6px}")
+    if tk.get("finish") == "refined":
+        out.append(_refined_css(tk, heavy))
     return "".join(out)
 
 
@@ -885,7 +936,8 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
  .gal{{grid-template-columns:1fr 1fr;gap:10px}} .gal-masonry{{column-count:2;column-gap:10px}} .gal-masonry figure{{margin-bottom:10px}}
 }}
 """
-    return base + _token_css(tokens, palette)
+    heavy = (pair.get("group") or _THEME_GROUP.get(theme_key, "elegant")) in ("bold", "friendly")
+    return base + _token_css(tokens, palette, heavy)
 
 
 # ---------------------------------------------------------------- top-level render
@@ -934,6 +986,9 @@ def _render_body(content: dict, recipe: dict, preset: dict, assets: "_Assets") -
             visit_shown = True
         parts.append(html)
     parts.append(_footer(content, visit_shown))
+    if (recipe.get("tokens") or {}).get("finish") == "refined":  # SITE-1C-3d: floating WhatsApp button
+        parts.append(f'<a class="wa-fab" href="{wa(b, wa_msgs.get("browse", DEFAULT_WA_MESSAGES["browse"]))}" '
+                     f'target="_blank" rel="noopener" aria-label="{esc(labels["cta"])}">{WA_ICON}</a>')
     return "\n".join(p for p in parts if p)
 
 

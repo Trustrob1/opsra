@@ -127,8 +127,8 @@ class TestBackwardCompatibility:
 # ───────────────────────────── registry ─────────────────────────────
 
 class TestRegistry:
-    def test_twelve_font_pairings_in_known_groups(self):
-        assert len(reg.FONT_PAIRINGS) == 12
+    def test_thirteen_font_pairings_in_known_groups(self):
+        assert len(reg.FONT_PAIRINGS) == 13
         for key, p in reg.FONT_PAIRINGS.items():
             assert p["group"] in reg.FONT_GROUPS, key
             assert len(p["fonts"]) == 2, key
@@ -153,9 +153,9 @@ class TestRegistry:
             assert pair["heading_weight"] == ("400" if t["upper_headings"] else "600")
             assert pair["group"] in meta["font_groups"]
 
-    def test_nine_tokens_with_at_least_two_options(self):
+    def test_ten_tokens_with_at_least_two_options(self):
         assert set(reg.TOKENS) == {"radius", "density", "button", "heading_case", "image_style", "divider",
-                                   "background", "bands", "cards"}
+                                   "background", "bands", "cards", "finish"}
         assert all(len(v) >= 2 for v in reg.TOKENS.values())
 
     def test_palette_meta_covers_every_palette_and_only_those(self):
@@ -365,7 +365,7 @@ class TestPicker:
         assert len({x["palette"] for x in recipes}) >= 10
         assert len({x["fonts"] for x in recipes}) >= 6
         for token, options in reg.TOKENS.items():
-            if token == "background":  # SITE-1C-3c: always starts white
+            if token in ("background", "finish"):  # SITE-1C-3c/3d: always start white / standard
                 continue
             assert len({x["tokens"][token] for x in recipes}) >= 2, token
 

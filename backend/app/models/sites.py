@@ -262,6 +262,7 @@ class RecipeTokens(BaseModel):
     background: Optional[str] = Field(None, max_length=20)
     bands: Optional[str] = Field(None, max_length=20)
     cards: Optional[str] = Field(None, max_length=20)
+    finish: Optional[str] = Field(None, max_length=20)   # SITE-1C-3d: "standard" | "refined"
 
 
 class Recipe(BaseModel):

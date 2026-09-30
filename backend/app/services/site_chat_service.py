@@ -35,6 +35,7 @@ from typing import Optional
 import httpx
 
 from app.models.sites import generate_form_token, slugify_business_name
+from app.services import site_image_service
 
 logger = logging.getLogger(__name__)
 
@@ -468,9 +469,9 @@ def _download_meta_media(access_token: str, media_id: str) -> tuple[Optional[byt
 def _store_site_photo(db, org_id: str, site_id: str, slot: str, file_bytes: bytes, mime: str) -> Optional[dict]:
     if mime not in _ALLOWED_IMAGE_MIME or len(file_bytes) > _MAX_ASSET_BYTES:
         return None
-    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
+    file_bytes, mime = site_image_service.optimise(file_bytes, mime)  # SITE-1C-3d
     import secrets as _s
-    storage_path = f"{site_id}/{slot}-{_s.token_hex(4)}.{ext}"
+    storage_path = f"{site_id}/{slot}-{_s.token_hex(4)}.{site_image_service.extension_for(mime)}"
     try:
         db.storage.from_("site-assets").upload(path=storage_path, file=file_bytes,
                                                 file_options={"content-type": mime, "upsert": "true"})
