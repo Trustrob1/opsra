@@ -34,6 +34,12 @@ import secrets
 from html import escape
 from urllib.parse import quote
 
+# SITE-1C-1: palettes, font pairings, tokens and theme rules live in the design registry.
+# `PALETTES` is re-exported here under its old name so existing imports keep working.
+from app.services.site_design_registry import (  # noqa: F401
+    FONT_PAIRINGS, PALETTES, THEME_META, TOKENS, validate_fonts_and_tokens,
+)
+
 # ---------------------------------------------------------------- themes / palettes (code, §5.1)
 
 THEMES = {
@@ -60,11 +66,7 @@ THEMES = {
     },
 }
 
-PALETTES = {
-    "berry":  {"ground": "#F4F0EE", "ink": "#2B1D24", "muted": "#6E5A63", "accent": "#7A2E4A", "on_accent": "#FFFFFF", "soft": "#E9DDE0", "line": "#D9C8CD", "photo": ("#D8C3C8", "#B99AA3")},
-    "cobalt": {"ground": "#FFFFFF", "ink": "#101935", "muted": "#4A5372", "accent": "#1F3FD1", "on_accent": "#FFFFFF", "soft": "#EEF1FB", "line": "#D5DBF2", "pop": "#FFB400", "photo": ("#C9D2F3", "#8C9BE0")},
-    "sage":   {"ground": "#F2F4EF", "ink": "#1C2620", "muted": "#56645B", "accent": "#35664A", "on_accent": "#FFFFFF", "soft": "#E3E9E0", "line": "#CBD5C7", "photo": ("#D3DDCF", "#A9BCA6")},
-}
+# PALETTES: see site_design_registry (imported above).
 
 SECTION_VARIANTS = {
     "hero": ("fullbleed", "collage", "centered"),
@@ -213,6 +215,9 @@ def validate_recipe(preset: dict, recipe: dict) -> None:
         variant = (recipe.get("variants") or {}).get(sec)
         if variant is not None and variant not in SECTION_VARIANTS[sec]:
             raise ValueError(f"unknown variant {variant!r} for section {sec!r}")
+
+    # SITE-1C-1: font pairing + design tokens (a recipe with neither is always valid).
+    validate_fonts_and_tokens(preset, recipe)
 
 
 # ---------------------------------------------------------------- helpers
@@ -477,21 +482,96 @@ def _prune_css(css_text: str, body: str) -> str:
     return "".join(out)
 
 
-def _css(theme_key: str, palette: dict) -> str:
+# ---- SITE-1C-1: fonts + design tokens ------------------------------------------------------
+
+HEADING_CASE_CSS = {
+    "normal": "",
+    "upper": "text-transform:uppercase;letter-spacing:.01em;",
+    "spaced_upper": "text-transform:uppercase;letter-spacing:.06em;",
+}
+RADIUS_VALUES = {"sharp": ("0", "0"), "soft": ("8px", "8px"), "pill": ("14px", "999px")}
+DENSITY = {"airy": (104, 72, 32), "compact": (56, 40, 16)}  # desktop padding, mobile padding, grid gap (px)
+
+
+def resolve_pairing(theme_key: str, fonts_key=None) -> dict:
+    """The font pairing a recipe renders with: its own `fonts` choice, else the theme's own pair
+    (so recipes created before SITE-1C-1 render exactly as they did)."""
+    if fonts_key and fonts_key in FONT_PAIRINGS:
+        return FONT_PAIRINGS[fonts_key]
     t = THEMES[theme_key]
-    disp = f"'{t['fonts'][0]}', {t['display_fallback']}"
-    body = f"'{t['fonts'][1]}', {t['body_fallback']}"
-    up = "text-transform:uppercase;letter-spacing:.01em;" if t["upper_headings"] else ""
+    return {"fonts": t["fonts"], "font_url": t["font_url"], "display_fallback": t["display_fallback"],
+            "body_fallback": t["body_fallback"], "heading_weight": "400" if t["upper_headings"] else "600"}
+
+
+def _token_css(tokens) -> str:
+    """CSS overrides for the tokens that are set. Appended after the base CSS, so a recipe with
+    no tokens gets no extra CSS at all (byte-identical to before). Heading case is handled in
+    _css itself because it changes several existing rules."""
+    tk = {k: v for k, v in (tokens or {}).items() if v}
+    if not tk:
+        return ""
+    out = []
+    if tk.get("radius") in RADIUS_VALUES:
+        r, br = RADIUS_VALUES[tk["radius"]]
+        out.append(f":root{{--r:{r};--br:{br}}}")
+    dens = DENSITY.get(tk.get("density"))
+    if dens:
+        desk, mob, gap = dens
+        out.append(f"@media (min-width:761px){{.sec{{padding-top:{desk}px;padding-bottom:{desk}px}}.grid{{gap:{gap}px}}}}")
+        out.append(f"@media (max-width:760px){{.sec{{padding-top:{mob}px;padding-bottom:{mob}px}}}}")
+    btn = tk.get("button")
+    if btn in ("outline", "underline"):
+        if btn == "outline":
+            out.append(".btn-accent{background:transparent;color:var(--btn-accent);border-color:var(--btn-accent)}")
+        else:
+            out.append(".btn-accent{background:transparent;color:var(--btn-accent);border-color:transparent;"
+                       "border-bottom:2px solid var(--btn-accent);border-radius:0;padding-left:4px;padding-right:4px}")
+        # The main hero button sits on a photo: it always stays solid so it stays readable.
+        out.append(".hero-over .btn-accent{background:var(--btn-accent);color:var(--on-accent);"
+                   "border:1.5px solid transparent;border-radius:var(--br);padding:14px 22px}")
+    if tk.get("heading_case") in ("upper", "spaced_upper"):
+        out.append("h1,h2{overflow-wrap:break-word}")
+    img = tk.get("image_style")
+    if img == "square":
+        out.append(".ph,.photo{border-radius:0}")
+    elif img == "rounded":
+        out.append(".ph,.photo{border-radius:20px}")
+    elif img == "arch":
+        out.append(".ph-cat,.ph-card,.ph-about,.ph-mini,.ph-strip,.ph-row{border-radius:999px 999px var(--r) var(--r)}")
+    elif img == "framed":
+        out.append(".ph,.photo{box-shadow:0 0 0 5px var(--ground),0 0 0 6.5px var(--ink)}"
+                   ".hero-fullbleed .ph,.hero-fullbleed .photo{box-shadow:none}")
+    div = tk.get("divider")
+    if div == "line":
+        out.append('.sec h2::after{content:"";display:block;width:48px;height:2px;background:var(--accent);margin-top:14px}')
+    elif div == "dot":
+        out.append('.sec h2::after{content:"";display:block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:16px}')
+    elif div == "ornament":
+        out.append('.sec h2::after{content:"";display:block;width:64px;height:12px;margin-top:14px;'
+                   'background:linear-gradient(var(--accent),var(--accent)) 0 50%/22px 1.5px no-repeat,'
+                   'linear-gradient(var(--accent),var(--accent)) 100% 50%/22px 1.5px no-repeat,'
+                   'radial-gradient(circle,var(--accent) 3px,transparent 3.5px) 50% 50%/12px 12px no-repeat}')
+    return "".join(out)
+
+
+def _css(theme_key: str, palette: dict, fonts_key=None, tokens=None) -> str:
+    t = THEMES[theme_key]
+    pair = resolve_pairing(theme_key, fonts_key)
+    disp = f"'{pair['fonts'][0]}', {pair['display_fallback']}"
+    body = f"'{pair['fonts'][1]}', {pair['body_fallback']}"
+    case = (tokens or {}).get("heading_case") or ("upper" if t["upper_headings"] else "normal")
+    up = HEADING_CASE_CSS.get(case, "")
+    weight = pair["heading_weight"]
     pop = palette.get("pop", palette.get("_accent_for_buttons", palette["accent"]))
     btn_accent = palette.get("_accent_for_buttons", palette["accent"])
-    return f"""
+    base = f"""
 :root{{--ground:{palette['ground']};--ink:{palette['ink']};--muted:{palette['muted']};--accent:{palette['accent']};--btn-accent:{btn_accent};--on-accent:{palette['on_accent']};--soft:{palette['soft']};--line:{palette['line']};--pop:{pop};--ph1:{palette['photo'][0]};--ph2:{palette['photo'][1]};--r:{t['radius']};--br:{t['btn_radius']}}}
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:{body};color:var(--ink);background:var(--ground);line-height:1.6;-webkit-font-smoothing:antialiased}}
 a{{color:inherit;text-decoration:none}}
 img{{display:block;max-width:100%;height:auto}}
 .wrap{{max-width:1160px;margin:0 auto;padding-left:24px;padding-right:24px}}
-h1,h2,h3{{font-family:{disp};font-weight:{'400' if t['upper_headings'] else '600'};line-height:1.05;{up}}}
+h1,h2,h3{{font-family:{disp};font-weight:{weight};line-height:1.05;{up}}}
 h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);margin-bottom:28px}} h3{{font-size:1.35rem}}
 .eyebrow{{font-size:.76rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:12px}}
 .lead{{font-size:1.1rem;color:var(--muted);max-width:34em;margin-top:16px}}
@@ -584,6 +664,7 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
  .hero-fullbleed{{min-height:520px}} .btn-line{{padding:12px 10px;font-size:.85rem}}
 }}
 """
+    return base + _token_css(tokens)
 
 
 # ---------------------------------------------------------------- top-level render
@@ -633,11 +714,12 @@ def _render_page(content: dict, recipe: dict, preset: dict, assets: "_Assets", p
     description = seo.get("description") or ""
     meta_desc = f'<meta name="description" content="{esc(description)}">' if description else ""
     robots = '<meta name="robots" content="noindex, nofollow">' if preview_bar else ""
-    css_text = _prune_css(_css(recipe["theme"], palette), body)
+    pairing = resolve_pairing(recipe["theme"], recipe.get("fonts"))
+    css_text = _prune_css(_css(recipe["theme"], palette, recipe.get("fonts"), recipe.get("tokens")), body)
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'{robots}{meta_desc}<title>{esc(title)}</title>'
-            f'<link rel="stylesheet" href="{theme["font_url"]}">'
+            f'<link rel="stylesheet" href="{pairing["font_url"]}">'
             f'<style>{css_text}</style></head>'
             f'<body>{bar}{body}</body></html>')
 

@@ -13,6 +13,7 @@ import {
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, Modal, SectionTitle } from './sitesUi'
 import { T, INPUT, TEXTAREA, dateTime, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS } from './sitesKit'
+import DesignStyleFields from './DesignStyleFields'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -407,7 +408,7 @@ function DesignCard({ recipe, setRecipe, canEdit, preset }) {
 
   return (
     <Card>
-      <SectionTitle title="Design" hint="Theme and colour palette. Uncheck a section to hide it from this site without losing its content." />
+      <SectionTitle title="Design" hint="Theme, colours, fonts and style. Uncheck a section to hide it from this site without losing its content." />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="Theme" group>
           <Segmented value={recipe.theme} onChange={(v) => canEdit && setRecipe((r) => ({ ...r, theme: v }))}
@@ -431,6 +432,7 @@ function DesignCard({ recipe, setRecipe, canEdit, preset }) {
           <input style={{ ...INPUT, maxWidth: 160 }} disabled={!canEdit} placeholder="#7A2E4A" value={recipe.custom_colour || ''}
             onChange={(e) => setRecipe((r) => ({ ...r, custom_colour: e.target.value || null }))} />
         </Field>
+        <DesignStyleFields recipe={recipe} setRecipe={setRecipe} canEdit={canEdit} preset={preset} />
         <Field label="Sections shown" group>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             {sections.map((key) => (

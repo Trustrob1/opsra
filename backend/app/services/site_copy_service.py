@@ -210,7 +210,16 @@ def _build_content(copy: dict, facts: dict) -> dict:
     }
 
 
-def _build_recipe(preset: dict, colour_answer) -> dict:
+def _build_recipe(preset: dict, colour_answer, seed: Optional[str] = None) -> dict:
+    # SITE-1C-1: with a seed (the site id) the look is chosen by the seeded picker, so sites differ.
+    # Without one — or if the picker ever fails — the original first-theme / first-palette
+    # recipe below is used.
+    if seed:
+        try:
+            from app.services import site_design_service
+            return site_design_service.pick_recipe(preset, str(seed), colour_answer)
+        except Exception as exc:
+            logger.warning("[SITE-1C] picker unavailable, using first-choice recipe: %s", exc)
     themes = preset.get("allowed_themes") or ["atelier"]
     palettes = preset.get("default_palettes") or ["berry"]
     palette, custom = palettes[0], None
@@ -245,7 +254,7 @@ def generate_content_and_recipe(db, site: dict, preset: dict, org_id: str) -> tu
     brief = site.get("brief") or {}
     questions = preset.get("brief_questions") or []
     facts = _factual_fields(brief, questions)
-    recipe_dict = _build_recipe(preset, brief.get("colour"))
+    recipe_dict = _build_recipe(preset, brief.get("colour"), seed=site.get("id"))
 
     content_source = "builder_words"
     content_dict = _build_content(_builder_words_copy(facts), facts)

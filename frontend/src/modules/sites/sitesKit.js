@@ -84,11 +84,58 @@ export const THEMES = [
   { value: 'studio', label: 'Studio', hint: 'Minimal — clean sans, generous space' },
 ]
 
+// site_design_registry.py's palettes, mirrored (tests/unit/test_site_design.py checks they stay in step).
 export const PALETTES = [
-  { value: 'berry', label: 'Berry', accent: '#7A2E4A', ground: '#F4F0EE' },
-  { value: 'cobalt', label: 'Cobalt', accent: '#1F3FD1', ground: '#FFFFFF' },
-  { value: 'sage', label: 'Sage', accent: '#35664A', ground: '#F2F4EF' },
+  { value: 'berry', label: 'Berry', accent: '#7A2E4A', ground: '#F4F0EE', niches: ['boutique', 'salon'], personality: ['elegant', 'warm'] },
+  { value: 'cobalt', label: 'Cobalt', accent: '#1F3FD1', ground: '#FFFFFF', niches: ['services', 'restaurant', 'boutique'], personality: ['bold', 'minimal'] },
+  { value: 'sage', label: 'Sage', accent: '#35664A', ground: '#F2F4EF', niches: ['salon', 'services', 'boutique'], personality: ['minimal', 'warm'] },
+  { value: 'terracotta', label: 'Terracotta', accent: '#B4441F', ground: '#FAF3EC', niches: ['restaurant', 'boutique', 'salon'], personality: ['warm', 'playful'] },
+  { value: 'midnight', label: 'Midnight', accent: '#1E3A5F', ground: '#F7F5F0', niches: ['services', 'boutique', 'salon'], personality: ['elegant', 'minimal'] },
+  { value: 'emerald', label: 'Emerald', accent: '#0F6B4F', ground: '#F1F7F4', niches: ['restaurant', 'services', 'salon'], personality: ['warm', 'elegant'] },
+  { value: 'gold', label: 'Gold', accent: '#8A6414', ground: '#FBF8F1', niches: ['boutique', 'salon', 'restaurant'], personality: ['elegant'] },
+  { value: 'blush', label: 'Blush', accent: '#B03A5B', ground: '#FDF3F3', niches: ['salon', 'boutique', 'restaurant'], personality: ['playful', 'elegant', 'warm'] },
+  { value: 'plum', label: 'Plum', accent: '#5B2A86', ground: '#F6F1F7', niches: ['boutique', 'salon', 'services'], personality: ['elegant', 'bold'] },
+  { value: 'coral', label: 'Coral', accent: '#C03434', ground: '#FFF7F3', niches: ['restaurant', 'boutique', 'salon'], personality: ['playful', 'bold'] },
+  { value: 'teal', label: 'Teal', accent: '#0E6B78', ground: '#F0F7F7', niches: ['services', 'salon', 'restaurant'], personality: ['minimal', 'playful'] },
+  { value: 'mustard', label: 'Mustard', accent: '#8A5A00', ground: '#FFFBF0', niches: ['restaurant', 'boutique', 'services'], personality: ['warm', 'bold'] },
+  { value: 'charcoal', label: 'Charcoal', accent: '#222222', ground: '#F5F5F3', niches: ['boutique', 'services', 'salon'], personality: ['minimal', 'elegant'] },
+  { value: 'royal', label: 'Royal', accent: '#B3122A', ground: '#FFFFFF', niches: ['services', 'restaurant', 'boutique'], personality: ['bold', 'elegant'] },
+  { value: 'forest', label: 'Forest', accent: '#2F5D1F', ground: '#F3F5EE', niches: ['restaurant', 'services', 'salon'], personality: ['warm', 'minimal'] },
+  { value: 'sky', label: 'Sky', accent: '#1D6FB8', ground: '#F4F9FD', niches: ['services', 'salon', 'boutique'], personality: ['minimal', 'playful'] },
+  { value: 'rose_gold', label: 'Rose Gold', accent: '#A2544B', ground: '#FBF4F1', niches: ['salon', 'boutique', 'restaurant'], personality: ['elegant', 'warm'] },
+  { value: 'sunset', label: 'Sunset', accent: '#C2410C', ground: '#FFF9F2', niches: ['restaurant', 'boutique', 'salon'], personality: ['bold', 'playful'] },
+  { value: 'olive', label: 'Olive', accent: '#5F6B1B', ground: '#F6F5EC', niches: ['restaurant', 'services', 'salon'], personality: ['warm', 'minimal'] },
+  { value: 'mist', label: 'Mist', accent: '#4B4BA8', ground: '#F5F5F9', niches: ['services', 'salon', 'boutique'], personality: ['minimal', 'elegant'] },
+  { value: 'cocoa', label: 'Cocoa', accent: '#6B3E26', ground: '#F8F2EC', niches: ['restaurant', 'boutique', 'salon'], personality: ['warm', 'elegant'] },
 ]
+
+// SITE-1C-1: font pairings, grouped by personality (mirrors site_design_registry.FONT_PAIRINGS).
+export const FONT_GROUP_LABELS = { elegant: 'Elegant', editorial: 'Editorial', bold: 'Bold', friendly: 'Friendly', minimal: 'Minimal' }
+export const FONT_PAIRINGS = [
+  { value: 'bodoni_jost', label: 'Bodoni + Jost', group: 'elegant', heading: 'Bodoni Moda', body: 'Jost' },
+  { value: 'anton_manrope', label: 'Anton + Manrope', group: 'bold', heading: 'Anton', body: 'Manrope' },
+  { value: 'fraunces_karla', label: 'Fraunces + Karla', group: 'editorial', heading: 'Fraunces', body: 'Karla' },
+  { value: 'playfair_lato', label: 'Playfair + Lato', group: 'elegant', heading: 'Playfair Display', body: 'Lato' },
+  { value: 'cormorant_jost', label: 'Cormorant + Jost', group: 'elegant', heading: 'Cormorant Garamond', body: 'Jost' },
+  { value: 'dmserif_dmsans', label: 'DM Serif + DM Sans', group: 'editorial', heading: 'DM Serif Display', body: 'DM Sans' },
+  { value: 'archivo_worksans', label: 'Archivo Black + Work Sans', group: 'bold', heading: 'Archivo Black', body: 'Work Sans' },
+  { value: 'syne_dmsans', label: 'Syne + DM Sans', group: 'bold', heading: 'Syne', body: 'DM Sans' },
+  { value: 'poppins_nunito', label: 'Poppins + Nunito', group: 'friendly', heading: 'Poppins', body: 'Nunito' },
+  { value: 'lora_nunito', label: 'Lora + Nunito', group: 'friendly', heading: 'Lora', body: 'Nunito' },
+  { value: 'jakarta_inter', label: 'Plus Jakarta + Inter', group: 'minimal', heading: 'Plus Jakarta Sans', body: 'Inter' },
+  { value: 'sora_karla', label: 'Sora + Karla', group: 'minimal', heading: 'Sora', body: 'Karla' },
+]
+
+// SITE-1C-1: design tokens (mirrors site_design_registry.TOKENS) and the options a theme does not support.
+export const TOKENS = [
+  { key: 'radius', label: 'Corners', options: [{ value: 'sharp', label: 'Sharp' }, { value: 'soft', label: 'Soft' }, { value: 'pill', label: 'Pill' }] },
+  { key: 'density', label: 'Spacing', options: [{ value: 'airy', label: 'Airy' }, { value: 'regular', label: 'Regular' }, { value: 'compact', label: 'Compact' }] },
+  { key: 'button', label: 'Buttons', options: [{ value: 'solid', label: 'Solid' }, { value: 'outline', label: 'Outline' }, { value: 'underline', label: 'Underline' }] },
+  { key: 'heading_case', label: 'Headings', options: [{ value: 'normal', label: 'Normal' }, { value: 'upper', label: 'UPPERCASE' }, { value: 'spaced_upper', label: 'SPACED UPPERCASE' }] },
+  { key: 'image_style', label: 'Photos', options: [{ value: 'square', label: 'Square' }, { value: 'rounded', label: 'Rounded' }, { value: 'arch', label: 'Arch' }, { value: 'framed', label: 'Framed' }] },
+  { key: 'divider', label: 'Section divider', options: [{ value: 'none', label: 'None' }, { value: 'line', label: 'Line' }, { value: 'dot', label: 'Dot' }, { value: 'ornament', label: 'Ornament' }] },
+]
+export const THEME_TOKEN_EXCLUSIONS = { atelier: { radius: ['pill'] } }
 
 export const SECTION_KEYS = ['hero', 'about', 'items', 'categories', 'reviews', 'order']
 export const SECTION_LABELS = {

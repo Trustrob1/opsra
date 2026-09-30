@@ -6,10 +6,10 @@
  * Preview renders the preset with built-in sample data (POST /presets/{id}/preview).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Eye, LayoutTemplate } from 'lucide-react'
+import { Plus, Eye, LayoutTemplate, Shuffle } from 'lucide-react'
 import { listPresets, createPreset, updatePreset, previewPreset, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Drawer, Toggle } from './sitesUi'
-import { T, INPUT, THEMES, PALETTES, SECTION_KEYS, SECTION_LABELS } from './sitesKit'
+import { T, INPUT, THEMES, PALETTES, FONT_PAIRINGS, FONT_GROUP_LABELS, TOKENS, SECTION_KEYS, SECTION_LABELS } from './sitesKit'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
@@ -19,7 +19,7 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
   const [error, setError] = useState(null)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [previewHtml, setPreviewHtml] = useState(null)
+  const [preview, setPreview] = useState(null) // { preset, html, recipe }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -35,12 +35,15 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
 
   useEffect(() => { if (isActive) load() }, [isActive, load])
 
+  // SITE-1C-1: previews use the same seeded picker new sites use, so 'Shuffle look' shows the range
+  // of looks this template's allowed themes / palettes / fonts / options will produce.
   const doPreview = async (preset) => {
     const theme = preset.allowed_themes?.[0] || 'atelier'
     const palette = preset.default_palettes?.[0] || 'berry'
+    const seed = Math.random().toString(36).slice(2, 10)
     try {
-      const res = await previewPreset(preset.id, { theme, palette, order: preset.sections, hidden: [] })
-      setPreviewHtml(res.html)
+      const res = await previewPreset(preset.id, { theme, palette, order: preset.sections, hidden: [] }, seed)
+      setPreview({ preset, html: res.html, recipe: res.recipe })
     } catch (e) {
       showToast(errorMessage(e, 'Could not render a preview.'), 'bad')
     }
@@ -90,14 +93,32 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
       <EditTemplateDrawer preset={editing} isMobile={isMobile} onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); load() }} showToast={showToast} />
 
-      <Modal open={!!previewHtml} onClose={() => setPreviewHtml(null)} title="Template preview" width={420}>
-        {previewHtml && (
-          <iframe title="Template preview" srcDoc={previewHtml}
-            style={{ width: '100%', height: '70vh', border: `1px solid ${T.line}`, borderRadius: 8 }} />
+      <Modal open={!!preview} onClose={() => setPreview(null)} title="Template preview" width={420}>
+        {preview && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: T.muted, lineHeight: 1.5 }}>{describeRecipe(preview.recipe)}</span>
+              <Button size="sm" variant="secondary" icon={Shuffle} onClick={() => doPreview(preview.preset)}>Shuffle look</Button>
+            </div>
+            <iframe title="Template preview" srcDoc={preview.html}
+              style={{ width: '100%', height: '70vh', border: `1px solid ${T.line}`, borderRadius: 8 }} />
+          </div>
         )}
       </Modal>
     </div>
   )
+}
+
+function describeRecipe(recipe) {
+  if (!recipe) return ''
+  const theme = THEMES.find((t) => t.value === recipe.theme)?.label || recipe.theme
+  const palette = recipe.custom_colour || PALETTES.find((p) => p.value === recipe.palette)?.label || recipe.palette
+  const fonts = FONT_PAIRINGS.find((f) => f.value === recipe.fonts)?.label
+  const tokens = TOKENS.map((t) => {
+    const v = recipe.tokens?.[t.key]
+    return v ? `${t.label}: ${t.options.find((o) => o.value === v)?.label || v}` : null
+  }).filter(Boolean)
+  return [theme, palette, fonts, ...tokens].filter(Boolean).join(' · ')
 }
 
 function SectionCheckboxes({ value, onChange }) {
@@ -132,19 +153,81 @@ function ThemeCheckboxes({ value, onChange }) {
   )
 }
 
-function PaletteCheckboxes({ value, onChange }) {
+function PaletteCheckboxes({ value, onChange, nicheKey }) {
+  const toggle = (key) => {
+    onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
+  }
+  const suggested = PALETTES.filter((p) => p.niches.includes(nicheKey)).map((p) => p.value)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {PALETTES.map((p) => (
+          <label key={p.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
+            <input type="checkbox" checked={value.includes(p.value)} onChange={() => toggle(p.value)} />
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: p.accent, display: 'inline-block', border: `1px solid ${T.line}` }} />
+            {p.label}
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {suggested.length > 0 && (
+          <Button size="sm" variant="secondary" onClick={() => onChange(suggested)}>Use the {suggested.length} suggested for this niche</Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => onChange(PALETTES.map((p) => p.value))}>Tick all</Button>
+        <Button size="sm" variant="ghost" onClick={() => onChange([])}>Clear</Button>
+      </div>
+      <span style={{ fontSize: 11.5, color: T.muted }}>New sites pick a palette from the ticked ones.</span>
+    </div>
+  )
+}
+
+function FontCheckboxes({ value, onChange }) {
   const toggle = (key) => {
     onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
   }
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-      {PALETTES.map((p) => (
-        <label key={p.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
-          <input type="checkbox" checked={value.includes(p.value)} onChange={() => toggle(p.value)} />
-          <span style={{ width: 12, height: 12, borderRadius: '50%', background: p.accent, display: 'inline-block', border: `1px solid ${T.line}` }} />
-          {p.label}
-        </label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {Object.keys(FONT_GROUP_LABELS).map((g) => (
+        <div key={g}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
+            {FONT_GROUP_LABELS[g]}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {FONT_PAIRINGS.filter((f) => f.group === g).map((f) => (
+              <label key={f.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
+                <input type="checkbox" checked={value.includes(f.value)} onChange={() => toggle(f.value)} />
+                {f.label}
+              </label>
+            ))}
+          </div>
+        </div>
       ))}
+      <span style={{ fontSize: 11.5, color: T.muted }}>Leave all unticked to allow every pairing that suits the theme.</span>
+    </div>
+  )
+}
+
+function TokenOptionChecks({ value, onChange }) {
+  const toggle = (key, opt) => {
+    const cur = value[key] || []
+    onChange({ ...value, [key]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt] })
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {TOKENS.map((t) => (
+        <div key={t.key}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>{t.label}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {t.options.map((o) => (
+              <label key={o.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
+                <input type="checkbox" checked={(value[t.key] || []).includes(o.value)} onChange={() => toggle(t.key, o.value)} />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <span style={{ fontSize: 11.5, color: T.muted }}>Leave a row unticked to allow every option for it.</span>
     </div>
   )
 }
@@ -156,7 +239,7 @@ function CreateTemplateModal({ open, onClose, onCreated, showToast }) {
   useEffect(() => { if (open) setForm(blankForm()) }, [open])
 
   function blankForm() {
-    return { key: '', name: '', sections: ['hero', 'items', 'about', 'order'], allowed_themes: ['atelier'], default_palettes: ['berry'], ai_tone: '', max_items: 20 }
+    return { key: '', name: '', sections: ['hero', 'items', 'about', 'order'], allowed_themes: ['atelier'], default_palettes: ['berry'], allowed_fonts: [], token_options: {}, ai_tone: '', max_items: 20 }
   }
 
   const submit = async () => {
@@ -184,7 +267,9 @@ function CreateTemplateModal({ open, onClose, onCreated, showToast }) {
         <Field label="Name"><input style={INPUT} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
         <Field label="Sections" group><SectionCheckboxes value={form.sections} onChange={(v) => setForm((f) => ({ ...f, sections: v }))} /></Field>
         <Field label="Allowed themes" group><ThemeCheckboxes value={form.allowed_themes} onChange={(v) => setForm((f) => ({ ...f, allowed_themes: v }))} /></Field>
-        <Field label="Default palettes" group><PaletteCheckboxes value={form.default_palettes} onChange={(v) => setForm((f) => ({ ...f, default_palettes: v }))} /></Field>
+        <Field label="Default palettes" group><PaletteCheckboxes nicheKey={form.key.trim().toLowerCase()} value={form.default_palettes} onChange={(v) => setForm((f) => ({ ...f, default_palettes: v }))} /></Field>
+        <Field label="Font pairings" group><FontCheckboxes value={form.allowed_fonts} onChange={(v) => setForm((f) => ({ ...f, allowed_fonts: v }))} /></Field>
+        <Field label="Look options" group><TokenOptionChecks value={form.token_options} onChange={(v) => setForm((f) => ({ ...f, token_options: v }))} /></Field>
         <Field label="Max items"><input style={INPUT} type="number" min="1" max="60" value={form.max_items} onChange={(e) => setForm((f) => ({ ...f, max_items: e.target.value }))} /></Field>
         <Field label="AI tone (optional)" hint="Guides SITE-2's AI copy generation for this niche">
           <input style={INPUT} value={form.ai_tone} onChange={(e) => setForm((f) => ({ ...f, ai_tone: e.target.value }))} />
@@ -201,7 +286,8 @@ function EditTemplateDrawer({ preset, isMobile, onClose, onSaved, showToast }) {
   useEffect(() => {
     if (preset) setForm({
       name: preset.name, sections: preset.sections || [], allowed_themes: preset.allowed_themes || [],
-      default_palettes: preset.default_palettes || [], ai_tone: preset.ai_tone || '', max_items: preset.max_items ?? 20,
+      default_palettes: preset.default_palettes || [], allowed_fonts: preset.allowed_fonts || [], token_options: preset.token_options || {},
+      ai_tone: preset.ai_tone || '', max_items: preset.max_items ?? 20,
       is_active: preset.is_active !== false,
     })
   }, [preset])
@@ -227,7 +313,9 @@ function EditTemplateDrawer({ preset, isMobile, onClose, onSaved, showToast }) {
         <Field label="Name"><input style={INPUT} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
         <Field label="Sections" group><SectionCheckboxes value={form.sections} onChange={(v) => setForm((f) => ({ ...f, sections: v }))} /></Field>
         <Field label="Allowed themes" group><ThemeCheckboxes value={form.allowed_themes} onChange={(v) => setForm((f) => ({ ...f, allowed_themes: v }))} /></Field>
-        <Field label="Default palettes" group><PaletteCheckboxes value={form.default_palettes} onChange={(v) => setForm((f) => ({ ...f, default_palettes: v }))} /></Field>
+        <Field label="Default palettes" group><PaletteCheckboxes nicheKey={preset.key} value={form.default_palettes} onChange={(v) => setForm((f) => ({ ...f, default_palettes: v }))} /></Field>
+        <Field label="Font pairings" group><FontCheckboxes value={form.allowed_fonts} onChange={(v) => setForm((f) => ({ ...f, allowed_fonts: v }))} /></Field>
+        <Field label="Look options" group><TokenOptionChecks value={form.token_options} onChange={(v) => setForm((f) => ({ ...f, token_options: v }))} /></Field>
         <Field label="Max items"><input style={INPUT} type="number" min="1" max="60" value={form.max_items} onChange={(e) => setForm((f) => ({ ...f, max_items: e.target.value }))} /></Field>
         <Field label="AI tone"><input style={INPUT} value={form.ai_tone} onChange={(e) => setForm((f) => ({ ...f, ai_tone: e.target.value }))} /></Field>
         <Field label="Active" group><Toggle checked={form.is_active} onChange={(v) => setForm((f) => ({ ...f, is_active: v }))} label={form.is_active ? 'Builders can use this template' : 'Hidden from builders'} /></Field>

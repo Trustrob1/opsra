@@ -172,12 +172,25 @@ class SectionVariants(BaseModel):
     order: Optional[str] = None
 
 
+class RecipeTokens(BaseModel):
+    """SITE-1C-1 design tokens. Values are checked against site_design_registry.TOKENS by
+    site_renderer.validate_recipe (so the option lists live in one place). Unknown keys -> 422."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    radius: Optional[str] = Field(None, max_length=20)
+    density: Optional[str] = Field(None, max_length=20)
+    button: Optional[str] = Field(None, max_length=20)
+    heading_case: Optional[str] = Field(None, max_length=20)
+    image_style: Optional[str] = Field(None, max_length=20)
+    divider: Optional[str] = Field(None, max_length=20)
+
+
 class Recipe(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     theme: str = Field(..., max_length=40)
     palette: Optional[str] = Field(None, max_length=40)
     custom_colour: Optional[str] = Field(None, max_length=20)
     fonts: Optional[str] = Field(None, max_length=60)
+    tokens: Optional[RecipeTokens] = None
     variants: SectionVariants = Field(default_factory=SectionVariants)
     order: list[str] = Field(..., min_length=1, max_length=12)
     hidden: list[str] = Field(default_factory=list, max_length=12)
@@ -218,7 +231,9 @@ class SitePresetCreate(BaseModel):
     brief_questions: list[dict] = Field(default_factory=list, max_length=40)
     wa_messages: dict[str, str] = Field(default_factory=dict)
     allowed_themes: list[str] = Field(..., min_length=1, max_length=10)
-    default_palettes: list[str] = Field(default_factory=list, max_length=10)
+    default_palettes: list[str] = Field(default_factory=list, max_length=30)
+    allowed_fonts: list[str] = Field(default_factory=list, max_length=20)
+    token_options: dict[str, list[str]] = Field(default_factory=dict)
     ai_tone: str = Field("", max_length=300)
     max_items: int = Field(20, ge=1, le=60)
     is_active: bool = True
@@ -239,7 +254,9 @@ class SitePresetUpdate(BaseModel):
     brief_questions: Optional[list[dict]] = Field(None, max_length=40)
     wa_messages: Optional[dict[str, str]] = None
     allowed_themes: Optional[list[str]] = Field(None, min_length=1, max_length=10)
-    default_palettes: Optional[list[str]] = Field(None, max_length=10)
+    default_palettes: Optional[list[str]] = Field(None, max_length=30)
+    allowed_fonts: Optional[list[str]] = Field(None, max_length=20)
+    token_options: Optional[dict[str, list[str]]] = None
     ai_tone: Optional[str] = Field(None, max_length=300)
     max_items: Optional[int] = Field(None, ge=1, le=60)
     is_active: Optional[bool] = None

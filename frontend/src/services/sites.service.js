@@ -22,7 +22,9 @@ export const listPresets = () => unwrap(api.get('/api/v1/sites/presets'))
 export const createPreset = (payload) => unwrap(api.post('/api/v1/sites/presets', payload))
 export const getPreset = (id) => unwrap(api.get(`/api/v1/sites/presets/${id}`))
 export const updatePreset = (id, payload) => unwrap(api.patch(`/api/v1/sites/presets/${id}`, payload))
-export const previewPreset = (id, recipe) => unwrap(api.post(`/api/v1/sites/presets/${id}/preview`, recipe))
+// `seed` (SITE-1C-1): let the server pick the look with the same seeded picker new sites use — returns { html, recipe }.
+export const previewPreset = (id, recipe, seed) =>
+  unwrap(api.post(`/api/v1/sites/presets/${id}/preview`, recipe, seed ? { params: { seed } } : undefined))
 
 // ── Builders ─────────────────────────────────────────────────────────────
 export const listBuilders = () => unwrap(api.get('/api/v1/sites/builders'))

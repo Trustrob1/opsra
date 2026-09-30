@@ -41,6 +41,7 @@ import {
 } from '../services/builder_portal.service'
 import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, PALETTES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
+import DesignStyleFields from '../modules/sites/DesignStyleFields'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -1139,7 +1140,7 @@ function DesignCard({ recipe, setRecipe, defaultOpen }) {
 
   return (
     <Card>
-      <SectionTitle title="Design" hint="Theme and colour palette. Uncheck a section to hide it without losing its content."
+      <SectionTitle title="Design" hint="Theme, colours, fonts and style. Uncheck a section to hide it without losing its content."
         right={<CollapseToggle open={open} onToggle={() => setOpen((v) => !v)} />} />
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1165,6 +1166,7 @@ function DesignCard({ recipe, setRecipe, defaultOpen }) {
             <input style={{ ...INPUT, maxWidth: 160 }} placeholder="#7A2E4A" value={recipe.custom_colour || ''}
               onChange={(e) => setRecipe((r) => ({ ...r, custom_colour: e.target.value || null }))} />
           </Field>
+          <DesignStyleFields recipe={recipe} setRecipe={setRecipe} />
           <Field label="Sections shown" group>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {sections.map((key) => (

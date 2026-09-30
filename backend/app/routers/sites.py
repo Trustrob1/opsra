@@ -49,7 +49,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_ops_service, site_renderer
+from app.services import site_care_plan_service, site_design_registry, site_design_service, site_ops_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -237,6 +237,10 @@ def create_preset(payload: SitePresetCreate, org=Depends(get_current_org), db=De
     for theme in payload.allowed_themes:
         if theme not in site_renderer.THEMES:
             raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": f"Unknown theme: {theme}"})
+    try:
+        site_design_registry.validate_preset_design_fields(payload.allowed_fonts, payload.token_options, payload.default_palettes)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     data = payload.model_dump(mode="json")
     data.update({"org_id": org["org_id"], "created_at": _now_iso(), "updated_at": _now_iso()})
     existing = (db.table("site_presets").select("id").eq("org_id", org["org_id"]).eq("key", payload.key).execute()).data
@@ -261,21 +265,30 @@ def update_preset(preset_id: str, payload: SitePresetUpdate, org=Depends(get_cur
         for theme in updates["allowed_themes"]:
             if theme not in site_renderer.THEMES:
                 raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": f"Unknown theme: {theme}"})
+    try:
+        site_design_registry.validate_preset_design_fields(
+            updates.get("allowed_fonts"), updates.get("token_options"), updates.get("default_palettes"))
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     updates["updated_at"] = _now_iso()
     db.table("site_presets").update(updates).eq("id", preset_id).eq("org_id", org["org_id"]).execute()
     return ok(data=_get_preset(db, org["org_id"], preset_id), message="Preset updated")
 
 
 @router.post("/sites/presets/{preset_id}/preview")
-def preview_preset(preset_id: str, recipe: Recipe, org=Depends(get_current_org), db=Depends(get_supabase)):
-    """Renders the preset with built-in sample data — used by the Templates tab (§13)."""
+def preview_preset(preset_id: str, recipe: Recipe, seed: Optional[str] = Query(None, max_length=60),
+                   org=Depends(get_current_org), db=Depends(get_supabase)):
+    """Renders the preset with built-in sample data — used by the Templates tab (§13).
+    With ?seed=..., the look is chosen by the same seeded picker new sites use (SITE-1C-1), so
+    staff can shuffle through what this preset's settings will produce; the recipe is returned."""
     _require(org, _READ_ROLES)
     preset = _get_preset(db, org["org_id"], preset_id)
+    recipe_dict = site_design_service.pick_recipe(preset, seed) if seed else recipe.model_dump(mode="json")
     try:
-        html = site_renderer.render_page(_SAMPLE_CONTENT, recipe.model_dump(mode="json"), preset, {})
+        html = site_renderer.render_page(_SAMPLE_CONTENT, recipe_dict, preset, {})
     except ValueError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
-    return ok(data={"html": html})
+    return ok(data={"html": html, "recipe": recipe_dict})
 
 
 # ── Builders ─────────────────────────────────────────────────────────────
