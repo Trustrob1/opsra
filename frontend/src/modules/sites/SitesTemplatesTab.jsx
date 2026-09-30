@@ -194,6 +194,7 @@ function LookField({ value, nicheKey, isMobile, onChange }) {
 const START_ON = [
   { key: 'finish', on: 'refined', base: 'standard', label: 'Refined look', hint: 'Sharper type, a see-through sticky menu, subtle motion and a floating WhatsApp button.' },
   { key: 'hero_height', on: 'tall', base: 'standard', label: 'Tall hero photo', hint: 'The top photo fills nearly the whole screen. Applies to the Full photo layout.' },
+  { key: 'image_fit', on: 'top', base: 'center', extra: ['whole'], label: 'Keep faces in view', hint: 'When a photo has to be cropped, keep its top (heads) visible instead of the middle.' },
   { key: 'mobile_cols', on: 'one', base: 'two', label: 'One card per row on phones', hint: 'Cards stack full-width on phones instead of sitting two across.' },
 ]
 
@@ -201,7 +202,7 @@ function StartOptions({ tokenOptions, onChange }) {
   const cur = tokenOptions || {}
   const set = (o, v) => {
     const next = { ...cur }
-    if (v) next[o.key] = [o.on, o.base]; else delete next[o.key]
+    if (v) next[o.key] = [o.on, o.base, ...(o.extra || [])]; else delete next[o.key]
     onChange({ token_options: next })
   }
   return (

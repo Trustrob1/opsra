@@ -127,7 +127,7 @@ def _variant_pool(preset: dict, section: str, ctx: Optional[dict]) -> list[str]:
 
 # ---------------------------------------------------------------- candidate generation
 
-OPT_IN_TOKENS = {"finish": "refined", "hero_height": "tall", "mobile_cols": "one"}
+OPT_IN_TOKENS = {"finish": "refined", "hero_height": "tall", "mobile_cols": "one", "image_fit": "top"}
 # Layouts the picker never chooses at random. Staff/builders can still pick them for any site, and a
 # template makes one its default by listing it under "Allowed layouts" (SITE-1C-3f).
 OPT_IN_VARIANTS = {("items", "scroll"), ("gallery", "tiles")}

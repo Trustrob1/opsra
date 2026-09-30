@@ -11,7 +11,7 @@
 import { useState } from 'react'
 import { Plus, Trash2, ImagePlus, ChevronDown } from 'lucide-react'
 import { Card, Button, Field, SectionTitle } from './sitesUi'
-import { T, INPUT, TEXTAREA } from './sitesKit'
+import { T, INPUT, TEXTAREA, photoHint } from './sitesKit'
 
 const EXTRA_LIMITS = { faqs: 12, menuGroups: 8, menuLines: 15, steps: 6, team: 6, gallery: 9 }
 
@@ -47,10 +47,10 @@ const Rows = ({ children }) => <div style={{ display: 'flex', flexDirection: 'co
 const Box = ({ children }) => <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>{children}</div>
 const Grid2 = ({ children }) => <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>{children}</div>
 
-function Photo({ label, assetId, assetUrls, canEdit, onPick, onRemove }) {
+function Photo({ label, slot, assetId, assetUrls, canEdit, onPick, onRemove }) {
   const url = assetId ? assetUrls?.[assetId] : null
   return (
-    <Field label={label}>
+    <Field label={label} hint={photoHint(slot)}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {url
           ? <img src={url} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', border: `1px solid ${T.line}` }} />
@@ -206,7 +206,7 @@ function TeamCard({ content, setContent, canEdit, collapsible, assetUrls, onUplo
                 <Field label="Role"><input style={INPUT} value={m.role || ''} maxLength={80} disabled={!canEdit} onChange={(e) => update(i, { role: e.target.value })} /></Field>
               </Grid2>
               <Field label="Short bio" count={(m.bio || '').length} max={300}><textarea style={TEXTAREA} value={m.bio || ''} maxLength={300} disabled={!canEdit} onChange={(e) => update(i, { bio: e.target.value })} /></Field>
-              <Photo label="Photo" assetId={m.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
+              <Photo label="Photo" slot="team" assetId={m.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
                 onPick={(f) => onUpload(`team_${i}`, f, (id) => update(i, { image_asset_id: id }))} onRemove={() => update(i, { image_asset_id: null })} />
               {canEdit && <div><Button size="sm" variant="danger" icon={Trash2} onClick={() => remove(i)}>Remove</Button></div>}
             </Box>
@@ -226,7 +226,7 @@ function GalleryCard({ content, setContent, canEdit, collapsible, assetUrls, onU
         <Rows>
           {rows.map((g, i) => (
             <Box key={i}>
-              <Photo label="Photo" assetId={g.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
+              <Photo label="Photo" slot="gallery" assetId={g.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
                 onPick={(f) => onUpload(`gallery_${i}`, f, (id) => update(i, { image_asset_id: id }))} onRemove={() => update(i, { image_asset_id: null })} />
               <Field label="Caption (optional)" count={(g.caption || '').length} max={100}>
                 <input style={INPUT} value={g.caption || ''} maxLength={100} disabled={!canEdit} onChange={(e) => update(i, { caption: e.target.value })} />
@@ -251,7 +251,7 @@ function BannerCard({ content, setContent, canEdit, collapsible, assetUrls, onUp
           <Field label="Headline" count={(b.headline || '').length} max={100}><input style={INPUT} value={b.headline || ''} maxLength={100} disabled={!canEdit} placeholder="Ready when you are." onChange={(e) => set({ headline: e.target.value })} /></Field>
           <Field label="Short text (optional)" count={(b.text || '').length} max={300}><textarea style={TEXTAREA} value={b.text || ''} maxLength={300} disabled={!canEdit} onChange={(e) => set({ text: e.target.value })} /></Field>
           <Field label="Button text (optional)" count={(b.button_text || '').length} max={40}><input style={INPUT} value={b.button_text || ''} maxLength={40} disabled={!canEdit} placeholder="Chat with us" onChange={(e) => set({ button_text: e.target.value })} /></Field>
-          <Photo label="Background photo" assetId={b.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
+          <Photo label="Background photo" slot="banner" assetId={b.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
             onPick={(f) => onUpload('banner_0', f, (id) => set({ image_asset_id: id }))} onRemove={() => set({ image_asset_id: null })} />
         </Box>
       </Rows>

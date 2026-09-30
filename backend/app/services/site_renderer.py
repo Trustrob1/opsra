@@ -801,6 +801,12 @@ def _token_css(tokens, palette=None, heavy: bool = False) -> str:
                    "@media (max-width:760px){.grid{gap:18px}.card-body{padding:14px 14px 18px}}")
     if tk.get("mobile_cols") == "one":  # SITE-1C-3f: one card per row on phones (roomier)
         out.append("@media (max-width:760px){.grid,.minis,.cats{grid-template-columns:1fr;gap:20px}}")
+    fit = tk.get("image_fit")  # SITE-1C-3g: photo framing
+    if fit == "top":    # keep the top of portrait photos (faces) in view when a photo is cropped
+        out.append(".photo img,.hero-fullbleed .photo img,.hero-banner .photo img{object-position:50% 10%}")
+    elif fit == "whole":  # never crop: the whole photo is shown, with soft margins if the shapes differ
+        out.append(".photo{background:var(--soft)}.photo img{object-fit:contain}.hero-fullbleed .photo{background:var(--ink)}"
+                   ".gal-tile .photo img,.banner .photo img{object-fit:cover}")
     if tk.get("hero_height") == "tall":  # SITE-1C-3e: a Full photo hero that nearly fills the screen
         out.append(".hero-fullbleed{min-height:88vh;min-height:min(92svh,900px)}"
                    "@media (max-width:760px){.hero-fullbleed{min-height:86vh;min-height:min(86svh,760px)}}")

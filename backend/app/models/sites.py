@@ -277,6 +277,7 @@ class RecipeTokens(BaseModel):
     finish: Optional[str] = Field(None, max_length=20)   # SITE-1C-3d: "standard" | "refined"
     hero_height: Optional[str] = Field(None, max_length=20)   # SITE-1C-3e: "standard" | "tall"
     mobile_cols: Optional[str] = Field(None, max_length=20)   # SITE-1C-3f: "two" | "one"
+    image_fit: Optional[str] = Field(None, max_length=20)     # SITE-1C-3g: "center" | "top" | "whole"
 
 
 class Recipe(BaseModel):

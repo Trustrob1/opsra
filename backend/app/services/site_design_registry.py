@@ -41,6 +41,7 @@ TOKENS: dict[str, tuple[str, ...]] = {
     "hero_height": ("standard", "tall"),
     # SITE-1C-3f: cards per row on phones for grid-style sections (Items grid, Featured, Categories tiles).
     "mobile_cols": ("two", "one"),
+    "image_fit": ("center", "top", "whole"),   # SITE-1C-3g: how photos are framed in their boxes
     # SITE-1C-3d: "Refined look" — display-scale type, roomier spacing, a floating header, photo hover,
     # a dark story band and a floating WhatsApp button, all CSS-only. "standard" renders as before.
     # The picker never chooses it at random: a template opts in by narrowing this token to ["refined"].
@@ -60,6 +61,7 @@ TOKEN_LABELS: dict[str, str] = {
     "finish": "Refined look",
     "hero_height": "Hero height",
     "mobile_cols": "Cards on phones",
+    "image_fit": "Photo framing",
 }
 
 # ---------------------------------------------------------------- section layouts (SITE-1C-2)

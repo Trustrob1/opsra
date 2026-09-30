@@ -288,3 +288,29 @@ class TestMobileCols:
         css = _style(_render(_recipe(tokens={"mobile_cols": "one"})))
         assert "grid-template-columns:1fr;gap:20px" in css
         assert "grid-template-columns:1fr;gap:20px" not in _style(_render(_recipe(tokens={"mobile_cols": "two"})))
+
+
+# ───────────────────────── SITE-1C-3g: photo framing ─────────────────────────
+def _photo_html(**tok):
+    c = deepcopy(CONTENT)
+    c["hero"]["image_asset_id"] = "a1"
+    assets = {"a1": {"public_url": "https://abc.supabase.co/storage/v1/object/public/site-assets/a.jpg"}}
+    return r.render_page(c, _recipe(tokens=tok), PRESET, assets)
+
+
+class TestPhotoFraming:
+    def test_default_adds_nothing(self):
+        assert "object-position:50% 10%" not in _photo_html() and "object-fit:contain" not in _photo_html(image_fit="center")
+
+    def test_top_keeps_faces_in_view(self):
+        css = _style(_photo_html(image_fit="top"))
+        assert ".photo img,.hero-fullbleed .photo img" in css and "object-position:50% 10%" in css
+
+    def test_whole_shows_the_full_photo(self):
+        css = _style(_photo_html(image_fit="whole"))
+        assert "object-fit:contain" in css and css.count("{") == css.count("}")
+
+    def test_picker_never_random_and_template_can_default_it(self):
+        assert all(picker.pick_recipe(PRESET, f"p-{i}")["tokens"]["image_fit"] == "center" for i in range(30))
+        on = {**PRESET, "token_options": {"image_fit": ["top", "center", "whole"]}}
+        assert picker.pick_recipe(on, "p-1")["tokens"]["image_fit"] == "top"

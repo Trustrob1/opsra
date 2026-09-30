@@ -144,11 +144,26 @@ export const TOKENS = [
   { key: 'hero_height', label: 'Hero height', options: [{ value: 'standard', label: 'Standard' }, { value: 'tall', label: 'Nearly full screen' }] },
   // SITE-1C-3f: cards per row on phones (Two = side by side, One = a full-width card each).
   { key: 'mobile_cols', label: 'Cards on phones', options: [{ value: 'two', label: 'Two per row' }, { value: 'one', label: 'One per row' }] },
+  // SITE-1C-3g: how photos sit in their boxes. Centred crop / keep the top (faces) / show the whole photo.
+  { key: 'image_fit', label: 'Photo framing', options: [{ value: 'center', label: 'Centred crop' }, { value: 'top', label: 'Keep tops in view' }, { value: 'whole', label: 'Show whole photo' }] },
   { key: 'finish', label: 'Refined look', options: [{ value: 'standard', label: 'Standard' }, { value: 'refined', label: 'Refined' }] },
 ]
 export const THEME_TOKEN_EXCLUSIONS = { atelier: { radius: ['pill'] } }
 
 // SITE-1C-3: the list is also the natural page order (announcement bar first, hours & location last).
+// Recommended photo sizes per upload slot (what the site crops each photo to). Shown under every upload button.
+const PH = (shape, px) => `Best as ${shape}, about ${px} px. Phone photos work. Keep the subject in the middle so a crop never cuts it.`
+export const PHOTO_HINTS = {
+  hero: 'Best as a wide landscape (16:9), at least 1600 x 900 px. Keep people and the main subject in the middle. A very tall photo gets cropped on the top and bottom.',
+  about: PH('portrait (4:5)', '1000 x 1250'),
+  item: 'Best as portrait (4:5), about 1000 x 1250 px. The Rows layout shows a square, and the first Featured item is a little wider (5:4).',
+  category: PH('portrait (4:5)', '800 x 1000'),
+  team: PH('a square (1:1) headshot', '800 x 800'),
+  gallery: PH('landscape (4:3)', '1200 x 900') + ' Tiles are cropped wide, Masonry keeps mixed shapes.',
+  banner: 'Best as a wide landscape (16:9), at least 1600 x 900 px. Text sits over a dark overlay, so a calm background works best.',
+}
+export const photoHint = (slot) => PHOTO_HINTS[String(slot || '').replace(/_\d+$/, '')] || ''
+
 export const SECTION_KEYS = ['announcement', 'hero', 'about', 'process', 'items', 'menu', 'categories', 'gallery', 'team', 'reviews', 'faq', 'order', 'visit', 'banner']
 export const SECTION_LABELS = {
   hero: 'Hero', about: 'About', items: 'Items / Shop', categories: 'Categories', reviews: 'Reviews', order: 'How to order',
