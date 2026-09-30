@@ -91,8 +91,7 @@ export default function BuilderPortalPage() {
 
   function logOut() {
     setSession(null)
-    setStage('error')
-    setError('You have been signed out. Ask your team for a fresh edit link when you need to come back.')
+    window.location.href = '/sites#signin'   // SITE-LANDING: sign back in from the landing page
   }
 
   return (
@@ -104,6 +103,9 @@ export default function BuilderPortalPage() {
         {stage === 'error' && (
           <Card style={{ marginTop: 12 }}>
             <Notice tone="bad">{error}</Notice>
+            <div style={{ marginTop: 12 }}>
+              <a href="/sites#signin" style={{ color: '#0E7C66', fontWeight: 600, fontSize: 14 }}>Get a new sign-in link</a>
+            </div>
           </Card>
         )}
 

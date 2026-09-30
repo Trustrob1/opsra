@@ -508,3 +508,72 @@ class TestCarePlanRoutes:
             monkeypatch.setattr(svc, "create_checkout", _raise)
             assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/care-plan/checkout", json={"what": "plan"}).status_code == code
 
+
+
+# ---------------------------------------------------------------------------
+# /auth/request-link  (public landing-page sign-in)
+# ---------------------------------------------------------------------------
+class TestRequestLink:
+    @pytest.fixture(autouse=True)
+    def _fresh_limits(self):
+        builder_portal._request_link_ip_hits.clear()
+        builder_portal._request_link_phone_hits.clear()
+
+    def test_same_reply_for_any_number_and_task_is_queued(self, client, monkeypatch):
+        from app.services import builder_login_service as svc
+        sent = []
+        monkeypatch.setattr(svc, "send_login_link", lambda phone: sent.append(phone))
+        a = client.post("/api/v1/builder/auth/request-link", json={"phone": "0803 123 4567"})
+        b = client.post("/api/v1/builder/auth/request-link", json={"phone": "+2348099999999"})
+        assert a.status_code == b.status_code == 200
+        assert a.json()["message"] == b.json()["message"]
+        assert a.json()["data"] == b.json()["data"] == {"sent": True}
+        assert sent == ["2348031234567", "2348099999999"]
+
+    @pytest.mark.parametrize("bad", ["", "abc", "123", None])
+    def test_rejects_non_phone(self, client, bad):
+        assert client.post("/api/v1/builder/auth/request-link", json={"phone": bad}).status_code == 422
+
+    def test_rate_limited_per_phone(self, client, monkeypatch):
+        from app.services import builder_login_service as svc
+        monkeypatch.setattr(svc, "send_login_link", lambda phone: None)
+        codes = [client.post("/api/v1/builder/auth/request-link", json={"phone": "08031234567"}).status_code for _ in range(4)]
+        assert codes == [200, 200, 200, 429]
+
+
+class TestLoginLinkService:
+    def test_unknown_number_sends_nothing(self, monkeypatch):
+        from app.services import builder_login_service as svc
+        db = _db_mock(site_builders=_chain([]))
+        monkeypatch.setattr("app.database.get_supabase", lambda: db)
+        sent = []
+        monkeypatch.setattr(svc, "_send_whatsapp", lambda *a, **k: sent.append("wa"))
+        monkeypatch.setattr(svc, "_send_email", lambda *a, **k: sent.append("mail"))
+        svc.send_login_link("08031234567")
+        assert sent == []
+        db.table("site_editor_tokens").insert.assert_not_called()
+
+    def test_active_builder_gets_hashed_one_hour_token_on_both_channels(self, monkeypatch):
+        from app.services import builder_login_service as svc
+        tokens = _chain([])
+        db = _db_mock(site_builders=_chain([_FAKE_BUILDER]), site_editor_tokens=tokens)
+        monkeypatch.setattr("app.database.get_supabase", lambda: db)
+        sent = []
+        monkeypatch.setattr(svc, "_send_whatsapp", lambda db_, b, text: sent.append(("wa", text)))
+        monkeypatch.setattr(svc, "_send_email", lambda to, url, first: sent.append(("mail", url)))
+        svc.send_login_link("+2348000000001")
+        row = tokens.insert.call_args[0][0]
+        assert row["builder_id"] == BUILDER_ID and len(row["token_hash"]) == 64
+        assert [c for c, _ in sent] == ["wa", "mail"]
+        raw = sent[1][1].split("t=")[1]
+        assert hashlib.sha256(raw.encode()).hexdigest() == row["token_hash"]
+        assert "t=" + raw not in row["token_hash"]
+
+    def test_channel_failure_does_not_raise(self, monkeypatch):
+        from app.services import builder_login_service as svc
+        db = _db_mock(site_builders=_chain([_FAKE_BUILDER]), site_editor_tokens=_chain([]))
+        monkeypatch.setattr("app.database.get_supabase", lambda: db)
+        def boom(*a, **k): raise RuntimeError("meta down")
+        monkeypatch.setattr(svc, "_send_whatsapp", boom)
+        monkeypatch.setattr(svc, "_send_email", boom)
+        svc.send_login_link("+2348000000001")   # must not raise

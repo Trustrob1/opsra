@@ -114,3 +114,8 @@ export function errorMessage(err, fallback = 'Something went wrong. Please try a
   }
   return fallback
 }
+
+/** Landing-page sign-in: asks the server to send a magic link to the builder's own
+ * WhatsApp/email. The reply never says whether the number exists. */
+export const requestBuilderLink = (phone) =>
+  unwrap(axios.post(`${BASE}/auth/request-link`, { phone }))

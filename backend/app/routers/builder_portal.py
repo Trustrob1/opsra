@@ -35,7 +35,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, Query, Request, UploadFile, status
 
 from app.database import get_supabase
 from app.models.common import ok
@@ -142,6 +142,31 @@ def exchange_token(payload: dict, request: Request, db=Depends(get_supabase)):
         "builder": {"id": builder["id"], "full_name": builder["full_name"],
                     "business_name": builder.get("business_name"), "email": builder.get("email")},
     }, message="Signed in")
+
+
+_REQUEST_LINK_PER_IP_HOUR = 10
+_REQUEST_LINK_PER_PHONE_HOUR = 3
+_request_link_ip_hits: dict[str, list[float]] = defaultdict(list)
+_request_link_phone_hits: dict[str, list[float]] = defaultdict(list)
+
+
+@router.post("/auth/request-link")
+def request_login_link(payload: dict, request: Request, background_tasks: BackgroundTasks):
+    """Public landing-page sign-in. The reply is the same whether or not the number is a
+    registered builder; the link goes only to the builder's own WhatsApp/email (never the browser)."""
+    from app.services import builder_login_service
+    variants = builder_login_service.phone_variants(str((payload or {}).get("phone") or ""))
+    if not variants:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Enter the WhatsApp number you registered with."})
+
+    ip = request.client.host if request.client else "unknown"
+    if (_rate_limited(_request_link_ip_hits, ip, _REQUEST_LINK_PER_IP_HOUR, 3600.0)
+            or _rate_limited(_request_link_phone_hits, variants[1], _REQUEST_LINK_PER_PHONE_HOUR, 3600.0)):
+        raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many requests — please try again in an hour."})
+
+    background_tasks.add_task(builder_login_service.send_login_link, variants[1])
+    return ok(data={"sent": True},
+              message="If that number is registered, a sign-in link is on its way to your WhatsApp and email.")
 
 
 # ─────────────────────────────── get_current_builder ───────────────────────────────

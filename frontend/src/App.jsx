@@ -73,6 +73,7 @@ import {
   ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
+import SiteLandingPage from './pages/SiteLandingPage'   // SITE-LANDING
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -186,6 +187,15 @@ export default function App() {
   // (`/b/login?t=<token>`); the page reads `t` itself and owns every other
   // screen (My sites / Editor / Account) as in-memory view state, same
   // standalone-page pattern as SiteBriefFormPage above.
+  // SITE-LANDING — public builder landing page + sign-in. `/b/*` with no magic-link
+  // token (bookmarked, or the link was already used) lands here instead of a dead end.
+  if (
+    window.location.pathname === '/sites' ||
+    window.location.pathname === '/builders' ||
+    (window.location.pathname.startsWith('/b/') && !new URLSearchParams(window.location.search).get('t'))
+  ) {
+    return <SiteLandingPage />
+  }
   if (window.location.pathname.startsWith('/b/')) {
     const BuilderPortalPage = require('./pages/BuilderPortalPage').default
     return <BuilderPortalPage />
