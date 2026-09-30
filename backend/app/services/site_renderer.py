@@ -290,9 +290,9 @@ def tag_html(item: dict) -> str:
 def _nav(c: dict, labels: dict, wa_msgs: dict) -> str:
     b = c["business"]
     msg = wa_msgs.get("browse", DEFAULT_WA_MESSAGES["browse"])
-    return (f'<header class="nav wrap"><div class="brand">{esc(b["name"])}</div>'
+    return (f'<div class="nav-bar"><header class="nav wrap"><div class="brand">{esc(b["name"])}</div>'
             f'<nav class="nav-links"><a href="#shop">{esc(labels["items"])}</a><a href="#about">Our story</a><a href="#order">How to order</a></nav>'
-            f'{btn_wa(b, labels["cta"], msg, "btn btn-small btn-accent")}</header>')
+            f'{btn_wa(b, labels["cta"], msg, "btn btn-small btn-accent")}</header></div>')
 
 
 def _hero(c: dict, variant: str, assets: "_Assets") -> str:
@@ -306,8 +306,11 @@ def _hero(c: dict, variant: str, assets: "_Assets") -> str:
                 f'<div class="row">{btn_wa(b, "Chat on WhatsApp", DEFAULT_WA_MESSAGES["browse"])}'
                 f'<a class="btn btn-ghost-light" href="#shop">See more</a></div></div></section>')
     if variant == "collage":
+        # The hero photo (when there is one) is the big first tile; item photos fill the rest.
         items = c.get("items", [])[:3]
-        tiles = "".join(assets.img_or_placeholder(it.get("image_asset_id"), it["name"], f"ph-col ph-col-{i}") for i, it in enumerate(items))
+        tile_src = [(h.get("image_asset_id"), h.get("headline", b["name"]))] if h.get("image_asset_id") else []
+        tile_src += [(it.get("image_asset_id"), it["name"]) for it in items]
+        tiles = "".join(assets.img_or_placeholder(aid, lbl, f"ph-col ph-col-{i}") for i, (aid, lbl) in enumerate(tile_src[:3]))
         return (f'<section class="hero hero-collage wrap"><div class="collage-text">'
                 f'<p class="chip">{esc(b.get("city",""))}</p><h1>{esc(h["headline"])}</h1>'
                 f'<p class="lead">{esc(h.get("subhead",""))}</p><div class="row">'
@@ -315,11 +318,15 @@ def _hero(c: dict, variant: str, assets: "_Assets") -> str:
                 f'<a class="btn btn-outline" href="#shop">Browse all</a></div></div>'
                 f'<div class="collage">{tiles}</div></section>')
     # centered
-    strip = "".join(assets.img_or_placeholder(it.get("image_asset_id"), it["name"], "ph-strip") for it in c.get("items", [])[:4])
+    if h.get("image_asset_id"):
+        below = f'<div class="hero-banner">{img}</div>'
+    else:
+        strip = "".join(assets.img_or_placeholder(it.get("image_asset_id"), it["name"], "ph-strip") for it in c.get("items", [])[:4])
+        below = f'<div class="strip">{strip}</div>'
     return (f'<section class="hero hero-centered wrap"><p class="eyebrow">{esc(b.get("tagline",""))}</p>'
             f'<h1>{esc(h["headline"])}</h1><p class="lead">{esc(h.get("subhead",""))}</p>'
             f'<div class="row row-center">{btn_wa(b, "Chat on WhatsApp", DEFAULT_WA_MESSAGES["browse"])}</div>'
-            f'<div class="strip">{strip}</div></section>')
+            f'{below}</section>')
 
 
 def _categories(c: dict, variant: str, assets: "_Assets", wa_msgs: dict) -> str:
@@ -618,6 +625,7 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 .wa-i{{width:18px;height:18px;flex:none}}
 .text-link{{color:var(--accent);font-weight:600;font-size:.9rem}}
 .sec{{padding-top:80px;padding-bottom:80px}}
+.nav-bar{{border-bottom:1px solid var(--line);background:var(--ground)}}
 .nav{{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:20px;padding-bottom:20px}}
 .brand{{font-family:{disp};font-size:1.5rem;{up}}}
 .nav-links{{display:flex;gap:28px;font-size:.92rem;color:var(--muted)}}
@@ -633,11 +641,12 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 .hero-scrim{{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 25%,rgba(0,0,0,.35) 60%,rgba(0,0,0,.72) 100%)}}
 .hero-over{{position:relative;color:#fff;padding-top:120px;padding-bottom:64px;width:100%;text-shadow:0 1px 3px rgba(0,0,0,.35)}}
 .hero-over .eyebrow{{color:#fff;opacity:.85}} .hero-over .lead{{color:#fff;opacity:.9}}
-.hero-collage{{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:center;padding-top:40px;padding-bottom:72px}}
+.hero-collage{{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:center;padding-top:64px;padding-bottom:72px}}
 .chip{{display:inline-block;background:var(--pop);color:var(--ink);font-weight:800;font-size:.78rem;padding:6px 12px;border-radius:999px;margin-bottom:18px;text-transform:uppercase;letter-spacing:.08em}}
 .collage{{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:220px 220px;gap:14px}}
 .ph-col-0{{grid-row:span 2}}
-.hero-centered{{text-align:center;padding-top:72px;padding-bottom:40px}}
+.hero-centered{{text-align:center;padding-top:88px;padding-bottom:40px}}
+.hero-banner{{margin-top:56px}} .hero-banner .photo,.hero-banner .ph{{aspect-ratio:16/8;width:100%}} .hero-banner .photo img{{width:100%;height:100%;object-fit:cover;object-position:50% 25%}}
 .hero-centered .lead{{margin-left:auto;margin-right:auto}}
 .strip{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:56px}} .ph-strip{{aspect-ratio:3/4}}
 .cats{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}}

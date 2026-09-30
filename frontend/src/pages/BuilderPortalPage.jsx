@@ -356,13 +356,30 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
 
   useEffect(() => { load() }, [load])
 
+  // Saving changes the stored site; the preview is a separate rendered page. Refresh it straight
+  // after every save so what the builder sees always matches what they just changed.
+  const refreshAfterSave = async (saved, doneText) => {
+    setSite(saved)
+    try {
+      const rendered = await renderMySite(token, siteId)
+      setSite(rendered)
+      showToast(`${doneText} — preview updated`)
+    } catch (e) {
+      showToast(`${doneText}, but the preview could not refresh: ${errorMessage(e, 'try Refresh preview')}`, 'bad')
+    }
+  }
+
+  const contentDirty = !!site && !!content && JSON.stringify(content) !== JSON.stringify(site.content)
+  const recipeDirty = !!site && !!recipe && JSON.stringify(recipe) !== JSON.stringify(site.recipe)
+  const unsaved = contentDirty || recipeDirty
+
   const saveContent = async () => {
     setSavingContent(true)
     try {
-      const s = await patchMySiteContent(token, siteId, content)
-      setSite(s)
+      const saved = await patchMySiteContent(token, siteId, content)
+      setContent(saved.content)
       setLimitOffer(null)
-      showToast('Content saved — render to refresh the preview')
+      await refreshAfterSave(saved, 'Content saved')
     } catch (e) {
       const offer = editLimitOffer(e)
       if (offer) setLimitOffer(offer)
@@ -386,9 +403,9 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   const saveRecipe = async () => {
     setSavingRecipe(true)
     try {
-      const s = await patchMySiteRecipe(token, siteId, recipe)
-      setSite(s)
-      showToast('Design saved — render to refresh the preview')
+      const saved = await patchMySiteRecipe(token, siteId, recipe)
+      setRecipe(saved.recipe)
+      await refreshAfterSave(saved, 'Design saved')
     } catch (e) {
       showToast(errorMessage(e, 'Could not save your design.'), 'bad')
     } finally {
@@ -401,12 +418,11 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   // Applying a suggested design saves it straight away. Once the site is live the server counts it as one edit.
   const applySuggested = async (r) => {
     try {
-      const s = await applyMyDesign(token, siteId, r)
-      setSite(s)
-      setRecipe(s.recipe)
+      const saved = await applyMyDesign(token, siteId, r)
+      setRecipe(saved.recipe)
       setLimitOffer(null)
       setSuggestOpen(false)
-      showToast('New design applied — render to refresh the preview')
+      await refreshAfterSave(saved, 'New design applied')
     } catch (e) {
       const offer = editLimitOffer(e)
       if (offer) { setLimitOffer(offer); setSuggestOpen(false) }
@@ -414,14 +430,21 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
     }
   }
 
+  // "Refresh preview" also saves any unsaved design or content changes first, so the preview can never
+  // show an older version than the form.
   const doRender = async () => {
     setRendering(true)
     try {
+      if (recipeDirty) { const sv = await patchMySiteRecipe(token, siteId, recipe); setRecipe(sv.recipe); setSite(sv) }
+      if (contentDirty) { const sv = await patchMySiteContent(token, siteId, content); setContent(sv.content); setSite(sv) }
+      setLimitOffer(null)
       const s = await renderMySite(token, siteId)
       setSite(s)
-      showToast('Preview rendered')
+      showToast('Preview updated')
     } catch (e) {
-      showToast(errorMessage(e, 'Could not render — check the fields above for errors.'), 'bad')
+      const offer = editLimitOffer(e)
+      if (offer) setLimitOffer(offer)
+      else showToast(errorMessage(e, 'Could not refresh — check the fields above for errors.'), 'bad')
     } finally {
       setRendering(false)
     }
@@ -509,7 +532,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
         <Button variant="secondary" icon={ExternalLink} onClick={() => window.open(previewUrl, '_blank', 'noopener')} disabled={!site.rendered_html}>
           Open live preview
         </Button>
-        <Button variant="primary" icon={RefreshCw} loading={rendering} onClick={doRender}>Render preview</Button>
+        <Button variant="primary" icon={RefreshCw} loading={rendering} onClick={doRender}>{unsaved ? 'Save changes and refresh preview' : 'Refresh preview'}</Button>
         <Button variant="secondary" icon={Undo2} loading={undoing} onClick={doUndo}>Undo last change</Button>
         {site.status !== 'live' && (
           <Button variant="primary" icon={ShoppingCart} onClick={onCheckout} disabled={!site.rendered_html}
@@ -570,13 +593,13 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: T.ink }}>
               <Eye size={14} aria-hidden="true" /> Live preview
             </span>
-            <span style={{ fontSize: 11, color: T.muted }}>Updates after Render preview</span>
+            <span style={{ fontSize: 11, color: unsaved ? T.warn : T.muted }}>{unsaved ? 'You have unsaved changes — press Save changes and refresh preview' : 'Preview is up to date'}</span>
           </div>
           <div className="bp-preview-frame-wrap">
             {site.rendered_html
               ? <iframe title="Site preview" srcDoc={site.rendered_html} style={{ width: '100%', height: '100%', minHeight: '60vh', border: 'none', display: 'block' }} />
               : <div style={{ padding: 24 }}>
-                  <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>Click <strong>Render preview</strong> above to see how your site looks.</p>
+                  <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>Click <strong>Refresh preview</strong> above to see how your site looks.</p>
                 </div>}
           </div>
         </div>
@@ -899,7 +922,7 @@ function BackLink({ onBack, label = 'My sites' }) {
   )
 }
 
-function PhotoField({ label, assetId, assetUrls, onPick }) {
+function PhotoField({ label, assetId, assetUrls, onPick, onRemove }) {
   const url = assetId ? assetUrls[assetId] : null
   return (
     <Field label={label}>
@@ -914,6 +937,12 @@ function PhotoField({ label, assetId, assetUrls, onPick }) {
           <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPick(f) }} />
         </label>
+        {assetId && onRemove && (
+          <button type="button" onClick={onRemove}
+            style={{ fontSize: 12.5, fontWeight: 600, color: T.bad || '#B42318', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Remove photo
+          </button>
+        )}
       </div>
     </Field>
   )
@@ -953,7 +982,8 @@ function HeroCard({ content, setContent, assetUrls, onUpload, defaultOpen }) {
           <Field label="Headline"><input style={INPUT} value={h.headline} onChange={set('headline')} /></Field>
           <Field label="Subhead"><input style={INPUT} value={h.subhead} onChange={set('subhead')} /></Field>
           <PhotoField label="Hero photo" assetId={h.image_asset_id} assetUrls={assetUrls}
-            onPick={(f) => onUpload('hero', f, (id) => setContent((c) => ({ ...c, hero: { ...c.hero, image_asset_id: id } })))} />
+            onPick={(f) => onUpload('hero', f, (id) => setContent((c) => ({ ...c, hero: { ...c.hero, image_asset_id: id } })))}
+            onRemove={() => setContent((c) => ({ ...c, hero: { ...c.hero, image_asset_id: null } }))} />
         </div>
       )}
     </Card>
@@ -977,7 +1007,8 @@ function AboutCard({ content, setContent, assetUrls, onUpload, defaultOpen }) {
           <Field label="Owner name"><input style={INPUT} value={a.owner} onChange={set('owner')} /></Field>
           <Field label="Pull quote"><input style={INPUT} value={a.pull_quote} onChange={set('pull_quote')} /></Field>
           <PhotoField label="About photo" assetId={a.image_asset_id} assetUrls={assetUrls}
-            onPick={(f) => onUpload('about', f, (id) => setContent((c) => ({ ...c, about: { ...c.about, image_asset_id: id } })))} />
+            onPick={(f) => onUpload('about', f, (id) => setContent((c) => ({ ...c, about: { ...c.about, image_asset_id: id } })))}
+            onRemove={() => setContent((c) => ({ ...c, about: { ...c.about, image_asset_id: null } }))} />
         </div>
       )}
     </Card>
@@ -1023,7 +1054,8 @@ function ItemsCard({ content, setContent, assetUrls, onUpload, defaultOpen }) {
                   onChange={(e) => update(i, { tag: e.target.value || null })} /></Field>
               </Grid2>
               <PhotoField label="Item photo" assetId={it.image_asset_id} assetUrls={assetUrls}
-                onPick={(f) => onUpload(`item_${i}`, f, (id) => update(i, { image_asset_id: id }))} />
+                onPick={(f) => onUpload(`item_${i}`, f, (id) => update(i, { image_asset_id: id }))}
+                onRemove={() => update(i, { image_asset_id: null })} />
               <div><Button size="sm" variant="danger" icon={Trash2} onClick={() => remove(i)}>Remove</Button></div>
             </div>
           ))}

@@ -181,7 +181,7 @@ function BackLink({ onBack }) {
   )
 }
 
-function PhotoField({ label, assetId, assetUrls, canEdit, onPick }) {
+function PhotoField({ label, assetId, assetUrls, canEdit, onPick, onRemove }) {
   const url = assetId ? assetUrls[assetId] : null
   return (
     <Field label={label}>
@@ -197,6 +197,12 @@ function PhotoField({ label, assetId, assetUrls, canEdit, onPick }) {
             <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPick(f) }} />
           </label>
+        )}
+        {assetId && onRemove && canEdit && (
+          <button type="button" onClick={onRemove}
+            style={{ fontSize: 12.5, fontWeight: 600, color: T.bad || '#B42318', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Remove photo
+          </button>
         )}
       </div>
     </Field>
@@ -232,7 +238,8 @@ function HeroCard({ content, setContent, canEdit, assetUrls, onUpload }) {
         <Field label="Headline"><input style={INPUT} value={h.headline} disabled={!canEdit} onChange={set('headline')} /></Field>
         <Field label="Subhead"><input style={INPUT} value={h.subhead} disabled={!canEdit} onChange={set('subhead')} /></Field>
         <PhotoField label="Hero photo" assetId={h.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
-          onPick={(f) => onUpload('hero', f, (id) => setContent((c) => ({ ...c, hero: { ...c.hero, image_asset_id: id } })))} />
+          onPick={(f) => onUpload('hero', f, (id) => setContent((c) => ({ ...c, hero: { ...c.hero, image_asset_id: id } })))}
+            onRemove={() => setContent((c) => ({ ...c, hero: { ...c.hero, image_asset_id: null } }))} />
       </div>
     </Card>
   )
@@ -253,7 +260,8 @@ function AboutCard({ content, setContent, canEdit, assetUrls, onUpload }) {
         <Field label="Owner name"><input style={INPUT} value={a.owner} disabled={!canEdit} onChange={set('owner')} /></Field>
         <Field label="Pull quote"><input style={INPUT} value={a.pull_quote} disabled={!canEdit} onChange={set('pull_quote')} /></Field>
         <PhotoField label="About photo" assetId={a.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
-          onPick={(f) => onUpload('about', f, (id) => setContent((c) => ({ ...c, about: { ...c.about, image_asset_id: id } })))} />
+          onPick={(f) => onUpload('about', f, (id) => setContent((c) => ({ ...c, about: { ...c.about, image_asset_id: id } })))}
+            onRemove={() => setContent((c) => ({ ...c, about: { ...c.about, image_asset_id: null } }))} />
       </div>
     </Card>
   )
@@ -295,7 +303,8 @@ function ItemsCard({ content, setContent, canEdit, preset, assetUrls, onUpload }
                   onChange={(e) => update(i, { tag: e.target.value || null })} /></Field>
               </Grid2>
               <PhotoField label={`${itemLabel} photo`} assetId={it.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
-                onPick={(f) => onUpload(`item_${i}`, f, (id) => update(i, { image_asset_id: id }))} />
+                onPick={(f) => onUpload(`item_${i}`, f, (id) => update(i, { image_asset_id: id }))}
+                onRemove={() => update(i, { image_asset_id: null })} />
               {canEdit && <div><Button size="sm" variant="danger" icon={Trash2} onClick={() => remove(i)}>Remove</Button></div>}
             </div>
           ))}
