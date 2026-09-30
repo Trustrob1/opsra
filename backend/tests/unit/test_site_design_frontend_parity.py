@@ -75,3 +75,25 @@ def test_looks_use_valid_palettes_fonts_and_options():
         assert pal in reg.PALETTES and font in reg.FONT_PAIRINGS
     for token, option in re.findall(r"(radius|density|button|heading_case|image_style|divider|background|bands|cards): '([a-z_]+)'", block):
         assert option in reg.TOKENS[token], (token, option)
+
+
+def test_section_layouts_match_renderer():
+    from app.services.site_renderer import SECTION_VARIANTS
+
+    src = KIT.read_text(encoding="utf-8")
+    m = re.search(r"export const SECTION_LAYOUTS\s*=\s*\{(.*?)\n\}", src, re.S)
+    assert m, "SECTION_LAYOUTS missing"
+    found = {}
+    for line in m.group(1).splitlines():
+        km = re.match(r"\s*([a-z]+):\s*\[(.*)\],?\s*$", line)
+        if km:
+            found[km.group(1)] = re.findall(r"value: '([a-z_]+)'", km.group(2))
+    assert found == {k: list(v) for k, v in SECTION_VARIANTS.items()}
+
+
+def test_section_keys_match_renderer():
+    from app.services.site_renderer import SECTION_VARIANTS
+
+    src = KIT.read_text(encoding="utf-8")
+    m = re.search(r"export const SECTION_KEYS = \[(.*?)\]", src)
+    assert re.findall(r"'([a-z]+)'", m.group(1)) == list(SECTION_VARIANTS.keys()) or set(re.findall(r"'([a-z]+)'", m.group(1))) == set(SECTION_VARIANTS)

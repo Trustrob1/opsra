@@ -9,6 +9,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus, Eye, LayoutTemplate, Shuffle, Palette } from 'lucide-react'
 import { listPresets, createPreset, updatePreset, previewPreset, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Drawer, Toggle } from './sitesUi'
+import SectionTiles from './SectionTiles'
+import ThemePicker from './ThemePicker'
 import { T, INPUT, THEMES, PALETTES, FONT_PAIRINGS, TOKENS, SECTION_KEYS, SECTION_LABELS } from './sitesKit'
 import LookStudio from './LookStudio'
 import { lookSummary } from './lookKit'
@@ -124,35 +126,12 @@ function describeRecipe(recipe) {
 }
 
 function SectionCheckboxes({ value, onChange }) {
-  const toggle = (key) => {
-    onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
-  }
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-      {SECTION_KEYS.map((key) => (
-        <label key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
-          <input type="checkbox" checked={value.includes(key)} onChange={() => toggle(key)} />
-          {SECTION_LABELS[key]}
-        </label>
-      ))}
-    </div>
-  )
+  const toggle = (key) => onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
+  return <SectionTiles mode="select" keys={SECTION_KEYS} selected={value} onToggle={toggle} />
 }
 
 function ThemeCheckboxes({ value, onChange }) {
-  const toggle = (key) => {
-    onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
-  }
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-      {THEMES.map((t) => (
-        <label key={t.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }} title={t.hint}>
-          <input type="checkbox" checked={value.includes(t.value)} onChange={() => toggle(t.value)} />
-          {t.label}
-        </label>
-      ))}
-    </div>
-  )
+  return <ThemePicker multi value={value} onChange={onChange} recipe={{ palette: 'berry' }} />
 }
 
 function LookField({ value, nicheKey, isMobile, onChange }) {

@@ -39,6 +39,8 @@ import {
   patchMySiteContent, patchMySiteRecipe, renderMySite, undoMySite, uploadMySiteAsset,
   checkDomain, getQuote, checkout, errorMessage,
 } from '../services/builder_portal.service'
+import SectionTiles from '../modules/sites/SectionTiles'
+import ThemePicker from '../modules/sites/ThemePicker'
 import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, SECTION_LABELS, SITE_STATUS, useToast } from '../modules/sites/sitesKit'
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
 import LookPickerField from '../modules/sites/LookPicker'
@@ -1136,32 +1138,27 @@ function DesignCard({ recipe, setRecipe, defaultOpen, designOptions }) {
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(!!defaultOpen)
   const sections = Object.keys(SECTION_LABELS)
+  const allowedThemes = designOptions?.allowed_themes?.length ? THEMES.filter((t) => designOptions.allowed_themes.includes(t.value)) : THEMES
+  const setVariant = (key, value) => setRecipe((r) => ({ ...r, variants: { ...(r.variants || {}), [key]: value } }))
   const toggleHidden = (key) => setRecipe((r) => ({
     ...r, hidden: r.hidden.includes(key) ? r.hidden.filter((x) => x !== key) : [...r.hidden, key],
   }))
 
   return (
     <Card>
-      <SectionTitle title="Design" hint="Theme, colours, fonts and style. Uncheck a section to hide it without losing its content."
+      <SectionTitle title="Design" hint="Theme, colours, fonts and style. Pick a layout for each section, or hide one without losing its content."
         right={<CollapseToggle open={open} onToggle={() => setOpen((v) => !v)} />} />
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Field label="Theme" group>
-            <Segmented value={recipe.theme} onChange={(v) => setRecipe((r) => ({ ...r, theme: v }))}
-              options={THEMES.map((t) => ({ value: t.value, label: t.label, hint: t.hint }))} ariaLabel="Theme" />
+            <ThemePicker themes={allowedThemes} value={recipe.theme} onChange={(v) => setRecipe((r) => ({ ...r, theme: v }))} recipe={recipe} />
           </Field>
           <Field label="Colour, fonts and style" group>
             <LookPickerField recipe={recipe} setRecipe={setRecipe} preset={designOptions} isMobile={isMobile} />
           </Field>
-          <Field label="Sections shown" group>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {sections.map((key) => (
-                <label key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
-                  <input type="checkbox" checked={!recipe.hidden.includes(key)} onChange={() => toggleHidden(key)} />
-                  {SECTION_LABELS[key] || key}
-                </label>
-              ))}
-            </div>
+          <Field label="Sections and layouts" group>
+            <SectionTiles mode="show" keys={sections} selected={sections.filter((k) => !recipe.hidden.includes(k))} onToggle={toggleHidden}
+              variants={recipe.variants} onVariant={setVariant} />
           </Field>
         </div>
       )}

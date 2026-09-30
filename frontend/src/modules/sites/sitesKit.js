@@ -145,6 +145,24 @@ export const SECTION_KEYS = ['hero', 'about', 'items', 'categories', 'reviews', 
 export const SECTION_LABELS = {
   hero: 'Hero', about: 'About', items: 'Items / Shop', categories: 'Categories', reviews: 'Reviews', order: 'How to order',
 }
+export const SECTION_HINTS = {
+  hero: 'The big opening banner with your headline and button.',
+  about: 'Your story, in a few lines.',
+  items: 'Your products or services, with prices and an order button.',
+  categories: 'Browse by type, so people jump straight to what they want.',
+  reviews: 'What happy customers say about you.',
+  order: 'How to order, in simple numbered steps.',
+}
+// site_renderer.SECTION_VARIANTS, mirrored (the first layout of each section is the default).
+// tests/unit/test_site_design_frontend_parity.py keeps this in step with the server.
+export const SECTION_LAYOUTS = {
+  hero: [{ value: 'fullbleed', label: 'Full photo' }, { value: 'collage', label: 'Collage' }, { value: 'centered', label: 'Centred' }],
+  items: [{ value: 'grid', label: 'Grid' }, { value: 'rows', label: 'Rows' }, { value: 'featured', label: 'Featured' }],
+  about: [{ value: 'left', label: 'Photo left' }, { value: 'right', label: 'Photo right' }, { value: 'quote', label: 'Quote' }],
+  reviews: [{ value: 'cards', label: 'Cards' }, { value: 'spotlight', label: 'Spotlight' }, { value: 'list', label: 'List' }],
+  categories: [{ value: 'tiles', label: 'Tiles' }, { value: 'chips', label: 'Chips' }],
+  order: [{ value: 'steps', label: 'Steps' }],
+}
 
 export const SITE_STATUS = {
   brief_in_progress: { tone: 'neutral', label: 'Brief in progress' },

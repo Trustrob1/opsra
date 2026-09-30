@@ -11,7 +11,9 @@ import { ArrowLeft, Plus, Trash2, Save, RefreshCw, Eye, ImagePlus, ExternalLink 
 import {
   getSite, patchSiteContent, patchSiteRecipe, renderSite, uploadSiteAsset, getPreset, errorMessage,
 } from '../../services/sites.service'
-import { Card, Button, Badge, Notice, Spinner, Field, Segmented, Modal, SectionTitle } from './sitesUi'
+import { Card, Button, Badge, Notice, Spinner, Field, Modal, SectionTitle } from './sitesUi'
+import SectionTiles from './SectionTiles'
+import ThemePicker from './ThemePicker'
 import { T, INPUT, TEXTAREA, dateTime, THEMES, SECTION_LABELS, SITE_STATUS } from './sitesKit'
 import LookPickerField from './LookPicker'
 
@@ -406,26 +408,21 @@ function DesignCard({ recipe, setRecipe, canEdit, preset, isMobile }) {
     ...r, hidden: r.hidden.includes(key) ? r.hidden.filter((x) => x !== key) : [...r.hidden, key],
   }))
 
+  const setVariant = (key, value) => setRecipe((r) => ({ ...r, variants: { ...(r.variants || {}), [key]: value } }))
+
   return (
     <Card>
-      <SectionTitle title="Design" hint="Theme, colours, fonts and style. Uncheck a section to hide it from this site without losing its content." />
+      <SectionTitle title="Design" hint="Theme, colours, fonts and style. Pick a layout for each section, or hide one without losing its content." />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="Theme" group>
-          <Segmented value={recipe.theme} onChange={(v) => canEdit && setRecipe((r) => ({ ...r, theme: v }))}
-            options={allowedThemes.map((t) => ({ value: t.value, label: t.label, hint: t.hint }))} ariaLabel="Theme" />
+          <ThemePicker themes={allowedThemes} value={recipe.theme} onChange={(v) => setRecipe((r) => ({ ...r, theme: v }))} recipe={recipe} disabled={!canEdit} />
         </Field>
         <Field label="Colour, fonts and style" group>
           <LookPickerField recipe={recipe} setRecipe={setRecipe} preset={preset} canEdit={canEdit} isMobile={isMobile} />
         </Field>
-        <Field label="Sections shown" group>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            {sections.map((key) => (
-              <label key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
-                <input type="checkbox" disabled={!canEdit} checked={!recipe.hidden.includes(key)} onChange={() => toggleHidden(key)} />
-                {SECTION_LABELS[key] || key}
-              </label>
-            ))}
-          </div>
+        <Field label="Sections and layouts" group>
+          <SectionTiles mode="show" keys={sections} selected={sections.filter((k) => !recipe.hidden.includes(k))} onToggle={toggleHidden}
+            variants={recipe.variants} onVariant={setVariant} disabled={!canEdit} />
         </Field>
       </div>
     </Card>
