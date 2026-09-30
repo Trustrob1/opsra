@@ -468,6 +468,7 @@ class QuoteRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     domain: str = Field(..., min_length=3, max_length=253)
     kind: QuoteKind = "initial"
+    discount_code: Optional[str] = Field(None, max_length=40)
 
 
 class LegalOwnerDetails(BaseModel):
@@ -498,6 +499,7 @@ class CheckoutRequest(BaseModel):
     backup_domain: str = Field(..., min_length=3, max_length=253)
     legal_owner: LegalOwnerDetails
     accepted_terms: bool
+    discount_code: Optional[str] = Field(None, max_length=40)   # SITE-DISCOUNT — re-validated server-side
 
     @field_validator("accepted_terms")
     @classmethod

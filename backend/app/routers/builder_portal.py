@@ -506,6 +506,14 @@ def get_quote(payload: QuoteRequest, builder=Depends(get_current_builder), db=De
         result = pricing_service.quote_both_routes(db, builder["org_id"], payload.domain, payload.kind)
     except pricing_service.PricingError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    # SITE-DISCOUNT — codes apply to initial orders only; a bad code never breaks pricing.
+    if payload.discount_code and payload.kind == "initial":
+        from app.services import site_discount_service
+        try:
+            site_discount_service.apply_to_quotes(db, builder["org_id"], builder["id"], payload.discount_code, result)
+        except Exception:
+            logger.exception("quote: discount code check failed")
+            result["discount_error"] = "We couldn't check that code. Try again."
     return ok(data=result)
 
 

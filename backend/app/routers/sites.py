@@ -49,7 +49,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_renderer
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -211,6 +211,42 @@ def sites_overview(org=Depends(get_current_org), db=Depends(get_supabase)):
         "previews_shared": by_status.get("preview_ready", 0) + by_status.get("revising", 0),
         "builders_total": builders_count,
     })
+
+
+# ── Discount codes (SITE-DISCOUNT) ───────────────────────────────────────
+
+def _discount_call(fn, *args):
+    try:
+        return fn(*args)
+    except site_discount_service.DiscountError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+
+@router.get("/sites/discount-codes")
+def list_discount_codes(org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _READ_ROLES)
+    return ok(data=site_discount_service.list_codes(db, org["org_id"]))
+
+
+@router.post("/sites/discount-codes")
+def create_discount_code(payload: dict, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _WRITE_ROLES)
+    row = _discount_call(site_discount_service.create_code, db, org["org_id"], payload)
+    return ok(data=row, message="Code created")
+
+
+@router.patch("/sites/discount-codes/{code_id}")
+def update_discount_code(code_id: str, payload: dict, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _WRITE_ROLES)
+    row = _discount_call(site_discount_service.update_code, db, org["org_id"], code_id, payload)
+    return ok(data=row, message="Code saved")
+
+
+@router.delete("/sites/discount-codes/{code_id}")
+def delete_discount_code(code_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _WRITE_ROLES)
+    _discount_call(site_discount_service.delete_code, db, org["org_id"], code_id)
+    return ok(data={"id": code_id}, message="Code removed")
 
 
 # ── Settings ─────────────────────────────────────────────────────────────

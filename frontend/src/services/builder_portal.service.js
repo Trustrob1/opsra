@@ -76,8 +76,8 @@ export const uploadMySiteAsset = (token, siteId, slot, file) => {
 export const checkDomain = (token, domain) =>
   unwrap(axios.post(`${BASE}/domains/check`, { domain }, authed(token)))
 /** { domain, kind } → { standard: {...}|{error}, express: {...}|null|{error} } */
-export const getQuote = (token, domain, kind = 'initial') =>
-  unwrap(axios.post(`${BASE}/quotes`, { domain, kind }, authed(token)))
+export const getQuote = (token, domain, kind = 'initial', discountCode) =>
+  unwrap(axios.post(`${BASE}/quotes`, { domain, kind, ...(discountCode ? { discount_code: discountCode } : {}) }, authed(token)))
 /** payload: { site_id, route, domain, backup_domain, legal_owner, accepted_terms }
  * → { checkout_url, reference, order_id, amount } */
 export const checkout = (token, payload) =>

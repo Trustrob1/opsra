@@ -17,6 +17,12 @@ export const getSitesOverview = () => unwrap(api.get('/api/v1/sites/overview'))
 export const getSiteSettings = () => unwrap(api.get('/api/v1/sites/settings'))
 export const updateSiteSettings = (payload) => unwrap(api.patch('/api/v1/sites/settings', payload))
 
+// ── Discount codes (SITE-DISCOUNT) ─────────────────────────────────────────
+export const listDiscountCodes = () => unwrap(api.get('/api/v1/sites/discount-codes'))
+export const createDiscountCode = (payload) => unwrap(api.post('/api/v1/sites/discount-codes', payload))
+export const updateDiscountCode = (id, payload) => unwrap(api.patch(`/api/v1/sites/discount-codes/${id}`, payload))
+export const deleteDiscountCode = (id) => unwrap(api.delete(`/api/v1/sites/discount-codes/${id}`))
+
 // ── Presets (Templates tab) ─────────────────────────────────────────────
 export const listPresets = () => unwrap(api.get('/api/v1/sites/presets'))
 export const suggestDesigns = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/design/suggest`))

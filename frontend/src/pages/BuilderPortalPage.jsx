@@ -643,6 +643,9 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
   const [renewalQuote, setRenewalQuote] = useState(null)
   const [quoting, setQuoting] = useState(false)
   const [quoteError, setQuoteError] = useState(null)
+  const [codeInput, setCodeInput] = useState('')       // what the builder typed
+  const [appliedCode, setAppliedCode] = useState('')   // the code we're pricing with
+  const [codeError, setCodeError] = useState(null)
 
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -660,13 +663,13 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
     const d = domain.trim().toLowerCase()
     setQuoting(true)
     const t = setTimeout(() => {
-      Promise.all([getQuote(token, d, 'initial'), getQuote(token, d, 'renewal')])
-        .then(([q, rq]) => { setQuote(q); setRenewalQuote(rq); setQuoteError(null) })
+      Promise.all([getQuote(token, d, 'initial', appliedCode), getQuote(token, d, 'renewal')])
+        .then(([q, rq]) => { setQuote(q); setRenewalQuote(rq); setQuoteError(null); setCodeError(q?.discount_error || null) })
         .catch((e) => { setQuote(null); setRenewalQuote(null); setQuoteError(errorMessage(e, 'Could not price this domain.')) })
         .finally(() => setQuoting(false))
     }, 500)
     return () => clearTimeout(t)
-  }, [domain, token])
+  }, [domain, token, appliedCode])
 
   async function runCheck(value, setChecking, setResult) {
     if (!isDomainLike(value)) { showToast('Enter a full domain, e.g. business.com.ng', 'bad'); return }
@@ -684,6 +687,7 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
   const standard = quote?.standard && !quote.standard.error ? quote.standard : null
   const standardError = quote?.standard?.error || quoteError
   const renewalStandard = renewalQuote?.standard && !renewalQuote.standard.error ? renewalQuote.standard : null
+  const amountDue = standard ? (standard.amount_due ?? standard.price.total) : null
 
   const domainOk = domainCheck?.domain === domain.trim().toLowerCase() && domainCheck?.status === 'available'  // .ng names come back available but unconfirmed — that is allowed
   const backupOk = backupCheck?.domain === backupDomain.trim().toLowerCase() && backupCheck?.status === 'available'
@@ -702,6 +706,7 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
         backup_domain: backupDomain.trim().toLowerCase(),
         legal_owner: { full_name: fullName.trim(), email: email.trim(), phone: phone.trim(), address: address.trim() },
         accepted_terms: true,
+        ...(standard?.discount && appliedCode ? { discount_code: appliedCode } : {}),
       })
       showToast('Redirecting to payment…')
       window.location.href = result.checkout_url
@@ -755,7 +760,7 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <Segmented value="standard" onChange={() => {}} ariaLabel="Hosting route"
                 options={[
-                  { value: 'standard', label: standard ? `Standard · ${money(standard.price.total)}` : 'Standard' },
+                  { value: 'standard', label: standard ? `Standard · ${money(amountDue)}` : 'Standard' },
                   { value: 'express', label: 'Express (not enabled)' },
                 ]} />
               <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>
@@ -765,6 +770,29 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
               {quoting && <Spinner label="Pricing this domain…" />}
               {standardError && !quoting && <Notice tone="bad">{standardError}</Notice>}
             </div>
+          </Card>
+
+          <Card>
+            <SectionTitle title="Discount code" hint="Got a code? It takes money off your first order." />
+            {standard?.discount ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, color: T.ink }}>
+                  <strong>{standard.discount.code}</strong> applied — you save {money(standard.discount.discount)}
+                </span>
+                <Button size="sm" onClick={() => { setAppliedCode(''); setCodeInput(''); setCodeError(null) }}>Remove</Button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                  <input style={INPUT} value={codeInput} maxLength={40} aria-label="Discount code" placeholder="Enter code"
+                    onChange={(e) => { setCodeInput(e.target.value.toUpperCase().replace(/\s/g, '')); setCodeError(null) }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && codeInput) setAppliedCode(codeInput) }} />
+                </div>
+                <Button disabled={!codeInput || !domain} onClick={() => setAppliedCode(codeInput)}>Apply</Button>
+              </div>
+            )}
+            {codeError && <p role="alert" style={{ margin: '8px 0 0', fontSize: 12, color: T.bad }}>{codeError}</p>}
+            {!domain && !standard && <p style={{ margin: '8px 0 0', fontSize: 11.5, color: T.muted }}>Enter your domain first, then apply the code.</p>}
           </Card>
 
           <div className="bp-checkout-summary-inline">
@@ -868,11 +896,12 @@ function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSub
         <SummaryRow label={`Domain (${quote.tld})`} value={money(p.domain)} />
         {p.hosting > 0 && <SummaryRow label="Hosting bundle" value={money(p.hosting)} />}
         {p.service_fee > 0 && <SummaryRow label="Service fee" value={money(p.service_fee)} />}
+        {quote.discount && <SummaryRow label={`Code ${quote.discount.code}`} value={`−${money(quote.discount.discount)}`} />}
       </div>
       <div style={{ height: 1, background: T.line, margin: '16px 0' }} />
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 13, color: T.soft, fontWeight: 600 }}>Total, first year</span>
-        <span className="tnum" style={{ fontSize: 24, fontWeight: 700, color: T.ink }}>{money(p.total)}</span>
+        <span className="tnum" style={{ fontSize: 24, fontWeight: 700, color: T.ink }}>{money(quote.amount_due ?? p.total)}</span>
       </div>
       <p style={{ margin: '4px 0 0', fontSize: 11.5, color: T.muted }}>
         then {renewalTotal != null ? money(renewalTotal) : '—'} each renewal
@@ -889,7 +918,7 @@ function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSub
             Proceed to payment
           </Button>
           <p style={{ margin: '10px 0 0', fontSize: 11, color: T.muted, textAlign: 'center', lineHeight: 1.5 }}>
-            You'll be redirected to Paystack to pay {money(p.total)} securely.
+            You'll be redirected to Paystack to pay {money(quote.amount_due ?? p.total)} securely.
           </p>
         </div>
       )}

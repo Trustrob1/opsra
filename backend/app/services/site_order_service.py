@@ -134,6 +134,20 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
     quoted = pricing_service.quote(db, org_id, payload.domain, payload.route, "initial", settings=settings)
     amount = quoted["price"]["total"]
 
+    # SITE-DISCOUNT — re-validate the code here (never trust the quote the client saw).
+    # The discount is stored in the order's quote; it only counts as a use once the order is PAID.
+    discount = None
+    code_text = getattr(payload, "discount_code", None)
+    if code_text and str(code_text).strip():
+        from app.services import site_discount_service
+        try:
+            discount = site_discount_service.validate(db, org_id, builder["id"], code_text, amount)
+        except site_discount_service.DiscountError as exc:
+            raise CheckoutBlocked(str(exc))
+        quoted = {**quoted, "discount": {k: discount[k] for k in ("code_id", "code", "kind", "value", "discount")},
+                  "amount_due": discount["amount_due"]}
+        amount = discount["amount_due"]
+
     # spec §11.7 — "their FIRST order is created" is decided before the insert below.
     is_first_order = not ((db.table("site_orders").select("id").eq("org_id", org_id)
                             .eq("builder_id", builder["id"]).limit(1).execute()).data or [])
@@ -161,7 +175,7 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
         "quote": quoted,
         "amount": amount,
         "cost_snapshot": quoted["cost"],
-        "expected_profit": quoted["profit"],
+        "expected_profit": round(float(quoted["profit"]) - (discount["discount"] if discount else 0.0), 2),
         "payment_link_id": link.get("payment_link_id"),
         "payment_reference": link["reference"],
         "status": "pending_payment",
@@ -309,6 +323,13 @@ def on_payment_confirmed(db: Any, org_id: str, reference: str, now: Optional[dat
         if not claim.data:
             return True  # another delivery already claimed it
         order = {**order, "status": new_status, "sla_due_at": sla_due_at}
+
+        # SITE-DISCOUNT — the order is paid, so the code now counts as used (S14: never raises).
+        try:
+            from app.services import site_discount_service
+            site_discount_service.record_redemption(db, org_id, order)
+        except Exception as exc:
+            logger.warning("site_order.on_payment_confirmed: discount redemption failed order=%s: %s", order["id"], exc)
 
         # spec §11.4 step 1 — this message goes out unconditionally on payment,
         # regardless of whether the order then waits for approval.
