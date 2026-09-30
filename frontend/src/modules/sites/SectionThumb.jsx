@@ -39,6 +39,9 @@ function shapes(section, variant) {
     case 'process:timeline': return [<line key="tl" x1="14" y1="8" x2="14" y2="44" stroke={SOFT} strokeWidth="2" />, ...[0, 1, 2].flatMap((i) => [<circle key={`t${i}`} cx="14" cy={11 + i * 14} r="3.4" fill={i === 0 ? DARK : IMG} />, R(24, 9 + i * 14, 34, 2.6, INK, 1.3), R(24, 15 + i * 14, 46, 2.4, SOFT, 1.2)])]
     case 'team:cards': return [0, 1, 2].flatMap((i) => [R(6 + i * 24, 8, 20, 22, IMG, 3), R(6 + i * 24, 34, 16, 2.8, INK, 1.4), R(6 + i * 24, 40, 12, 2.4, SOFT, 1.2)])
     case 'team:list': return [0, 1, 2].flatMap((i) => [<circle key={`a${i}`} cx="14" cy={12 + i * 14} r="5" fill={IMG} />, R(24, 9 + i * 14, 26, 2.8, INK, 1.4), R(24, 15 + i * 14, 44, 2.4, SOFT, 1.2)])
+    case 'items:scroll': return [R(5, 8, 26, 32, IMG, 3), R(34, 8, 26, 32, SOFT, 3), R(63, 8, 14, 32, IMG, 3), R(5, 44, 34, 2.6, INK, 1.3), R(44, 44, 10, 2.6, DARK, 1.3)]
+    case 'gallery:tiles': return [R(5, 5, 46, 20, IMG, 2), R(54, 5, 21, 20, DARK, 2), R(5, 28, 21, 19, DARK, 2), R(29, 28, 46, 19, IMG, 2), R(8, 20, 18, 2.4, '#fff', 1.2), R(32, 42, 18, 2.4, '#fff', 1.2)]
+    case 'banner:photo': return [R(4, 6, 72, 40, DARK, 3), R(14, 18, 34, 4, '#fff', 2), R(14, 26, 24, 2.6, '#fff', 1.3), R(14, 34, 18, 6, IMG, 3)]
     case 'gallery:grid': return [0, 1, 2].flatMap((c) => [0, 1].map((r) => R(5 + c * 25, 5 + r * 22, 22, 19, (c + r) % 2 ? DARK : IMG, 2, `g${c}${r}`)))
     case 'gallery:masonry': return [R(5, 5, 22, 26, IMG, 2), R(5, 34, 22, 13, DARK, 2), R(29, 5, 22, 14, DARK, 2), R(29, 22, 22, 25, IMG, 2), R(53, 5, 22, 20, IMG, 2), R(53, 28, 22, 19, DARK, 2)]
     default: return [R(6, 6, 68, 40, SOFT, 3)]

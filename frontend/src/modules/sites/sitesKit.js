@@ -142,15 +142,17 @@ export const TOKENS = [
   // SITE-1C-3d: big light headings, roomier spacing, floating header, photo hover, dark story band, floating WhatsApp button.
   // SITE-1C-3e: how tall a Full photo hero is (only affects the Full photo layout).
   { key: 'hero_height', label: 'Hero height', options: [{ value: 'standard', label: 'Standard' }, { value: 'tall', label: 'Nearly full screen' }] },
+  // SITE-1C-3f: cards per row on phones (Two = side by side, One = a full-width card each).
+  { key: 'mobile_cols', label: 'Cards on phones', options: [{ value: 'two', label: 'Two per row' }, { value: 'one', label: 'One per row' }] },
   { key: 'finish', label: 'Refined look', options: [{ value: 'standard', label: 'Standard' }, { value: 'refined', label: 'Refined' }] },
 ]
 export const THEME_TOKEN_EXCLUSIONS = { atelier: { radius: ['pill'] } }
 
 // SITE-1C-3: the list is also the natural page order (announcement bar first, hours & location last).
-export const SECTION_KEYS = ['announcement', 'hero', 'about', 'process', 'items', 'menu', 'categories', 'gallery', 'team', 'reviews', 'faq', 'order', 'visit']
+export const SECTION_KEYS = ['announcement', 'hero', 'about', 'process', 'items', 'menu', 'categories', 'gallery', 'team', 'reviews', 'faq', 'order', 'visit', 'banner']
 export const SECTION_LABELS = {
   hero: 'Hero', about: 'About', items: 'Items / Shop', categories: 'Categories', reviews: 'Reviews', order: 'How to order',
-  announcement: 'Announcement bar', faq: 'FAQ', menu: 'Price list', visit: 'Hours & location', process: 'How we work', team: 'Team', gallery: 'Gallery',
+  announcement: 'Announcement bar', faq: 'FAQ', menu: 'Price list', visit: 'Hours & location', process: 'How we work', team: 'Team', gallery: 'Gallery', banner: 'Closing banner',
 }
 /** Add a section to a template's list at its natural place, without reordering what is already there
  *  (a template keeps whatever order it was saved with; new tiles slot in after the closest earlier section). */
@@ -175,12 +177,13 @@ export const SECTION_HINTS = {
   process: 'How a job goes from first message to done, step by step.',
   team: 'The people behind the business, with photos.',
   gallery: 'A grid of photos of your work.',
+  banner: 'A full-width photo with a headline and a chat button, to close the page.',
 }
 // site_renderer.SECTION_VARIANTS, mirrored (the first layout of each section is the default).
 // tests/unit/test_site_design_frontend_parity.py keeps this in step with the server.
 export const SECTION_LAYOUTS = {
   hero: [{ value: 'fullbleed', label: 'Full photo' }, { value: 'collage', label: 'Collage' }, { value: 'centered', label: 'Centred' }],
-  items: [{ value: 'grid', label: 'Grid' }, { value: 'rows', label: 'Rows' }, { value: 'featured', label: 'Featured' }],
+  items: [{ value: 'grid', label: 'Grid' }, { value: 'rows', label: 'Rows' }, { value: 'featured', label: 'Featured' }, { value: 'scroll', label: 'Swipe row' }],
   about: [{ value: 'left', label: 'Photo left' }, { value: 'right', label: 'Photo right' }, { value: 'quote', label: 'Quote' }],
   reviews: [{ value: 'cards', label: 'Cards' }, { value: 'spotlight', label: 'Spotlight' }, { value: 'list', label: 'List' }],
   categories: [{ value: 'tiles', label: 'Tiles' }, { value: 'chips', label: 'Chips' }],
@@ -191,7 +194,8 @@ export const SECTION_LAYOUTS = {
   visit: [{ value: 'split', label: 'Split' }, { value: 'card', label: 'Card' }],
   process: [{ value: 'numbered', label: 'Numbered' }, { value: 'timeline', label: 'Timeline' }],
   team: [{ value: 'cards', label: 'Cards' }, { value: 'list', label: 'List' }],
-  gallery: [{ value: 'grid', label: 'Grid' }, { value: 'masonry', label: 'Masonry' }],
+  gallery: [{ value: 'grid', label: 'Grid' }, { value: 'masonry', label: 'Masonry' }, { value: 'tiles', label: 'Feature tiles' }],
+  banner: [{ value: 'photo', label: 'Photo' }],
 }
 
 export const SITE_STATUS = {

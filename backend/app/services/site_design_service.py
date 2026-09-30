@@ -119,13 +119,18 @@ def _layout_ok(section: str, variant: str, ctx: Optional[dict]) -> bool:
 
 
 def _variant_pool(preset: dict, section: str, ctx: Optional[dict]) -> list[str]:
-    pool = [v for v in reg.allowed_variants(preset, section) if _layout_ok(section, v, ctx)]
+    listed = (preset.get("allowed_variants") or {}).get(section) or []
+    pool = [v for v in reg.allowed_variants(preset, section)
+            if _layout_ok(section, v, ctx) and ((section, v) not in OPT_IN_VARIANTS or v in listed)]
     return pool or [reg.allowed_variants(preset, section)[0]]
 
 
 # ---------------------------------------------------------------- candidate generation
 
-OPT_IN_TOKENS = {"finish": "refined", "hero_height": "tall"}
+OPT_IN_TOKENS = {"finish": "refined", "hero_height": "tall", "mobile_cols": "one"}
+# Layouts the picker never chooses at random. Staff/builders can still pick them for any site, and a
+# template makes one its default by listing it under "Allowed layouts" (SITE-1C-3f).
+OPT_IN_VARIANTS = {("items", "scroll"), ("gallery", "tiles")}
 
 
 def _candidate(preset: dict, seed: str, colour_answer, personality: Optional[str], ctx: Optional[dict]) -> dict:
@@ -157,8 +162,11 @@ def _candidate(preset: dict, seed: str, colour_answer, personality: Optional[str
         tokens["background"] = "white"
     # SITE-1C-3d/3e: opt-in tokens are never picked at random. A template turns one on for all its new
     # sites by narrowing it to that one option in the Look studio; otherwise sites start standard.
+    # "Starts on" = the opt-in option is listed FIRST (the template editor writes [opt_in, standard], which
+    # keeps the standard option available per site; ["refined"] alone also works and locks it on).
     for tok, opt_in in OPT_IN_TOKENS.items():
-        tokens[tok] = opt_in if (preset.get("token_options") or {}).get(tok) == [opt_in] else reg.TOKENS[tok][0]
+        listed = (preset.get("token_options") or {}).get(tok) or []
+        tokens[tok] = opt_in if listed[:1] == [opt_in] else reg.TOKENS[tok][0]
 
     order = list(preset.get("sections") or ["hero", "about", "items", "order"])
     variants = {sec: _wchoose(seed, f"variant:{sec}", _variant_pool(preset, sec, ctx), (p["variants"].get(sec, ()) if p else ()))

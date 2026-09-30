@@ -55,7 +55,7 @@ export function coloursOf(entry) {
   return { accent: p.accent, ground: p.ground, label: p.label, custom: false }
 }
 
-export const DEFAULT_TOKENS = { radius: 'sharp', density: 'regular', button: 'solid', heading_case: 'normal', image_style: 'square', divider: 'line', background: 'match', bands: 'plain', cards: 'flat', hero_height: 'standard', finish: 'standard' }
+export const DEFAULT_TOKENS = { radius: 'sharp', density: 'regular', button: 'solid', heading_case: 'normal', image_style: 'square', divider: 'line', background: 'match', bands: 'plain', cards: 'flat', hero_height: 'standard', mobile_cols: 'two', finish: 'standard' }
 
 export const LOOKS = [
   { key: 'elegant', name: 'Elegant boutique', blurb: 'Fine lines, arches, airy', pal: 'berry', font: 'bodoni_jost', tok: { radius: 'sharp', density: 'airy', button: 'outline', heading_case: 'spaced_upper', image_style: 'arch', divider: 'ornament', background: 'ivory', bands: 'wash', cards: 'bordered' } },
@@ -100,6 +100,10 @@ export function tokenGlyph(tokenKey, opt, accent, fontKey) {
   }
   if (tokenKey === 'hero_height') {
     return { style: { width: 40, height: opt === 'tall' ? 32 : 18, borderRadius: 4, background: `${accent}99`, border: `1.5px solid ${accent}` }, text: '' }
+  }
+  if (tokenKey === 'mobile_cols') {
+    const one = opt === 'one'
+    return { style: { width: one ? 18 : 30, height: 30, borderRadius: 3, background: `${accent}99`, border: `1.5px solid ${accent}`, boxShadow: one ? 'none' : `inset 14px 0 0 -13px ${accent}` }, text: '' }
   }
   if (tokenKey === 'finish') {
     const fine = opt === 'refined'

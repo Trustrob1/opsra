@@ -240,6 +240,25 @@ function GalleryCard({ content, setContent, canEdit, collapsible, assetUrls, onU
   )
 }
 
+function BannerCard({ content, setContent, canEdit, collapsible, assetUrls, onUpload }) {
+  const b = content.banner || {}
+  const set = (patch) => setContent((c) => ({ ...c, banner: { eyebrow: '', headline: '', text: '', button_text: '', image_asset_id: null, ...(c.banner || {}), ...patch } }))
+  return (
+    <Frame title="Closing banner" hint="A full-width photo near the bottom of the page. It only appears once it has a headline." canEdit={canEdit} collapsible={collapsible}>
+      <Rows>
+        <Box>
+          <Field label="Small line above (optional)" count={(b.eyebrow || '').length} max={60}><input style={INPUT} value={b.eyebrow || ''} maxLength={60} disabled={!canEdit} onChange={(e) => set({ eyebrow: e.target.value })} /></Field>
+          <Field label="Headline" count={(b.headline || '').length} max={100}><input style={INPUT} value={b.headline || ''} maxLength={100} disabled={!canEdit} placeholder="Ready when you are." onChange={(e) => set({ headline: e.target.value })} /></Field>
+          <Field label="Short text (optional)" count={(b.text || '').length} max={300}><textarea style={TEXTAREA} value={b.text || ''} maxLength={300} disabled={!canEdit} onChange={(e) => set({ text: e.target.value })} /></Field>
+          <Field label="Button text (optional)" count={(b.button_text || '').length} max={40}><input style={INPUT} value={b.button_text || ''} maxLength={40} disabled={!canEdit} placeholder="Chat with us" onChange={(e) => set({ button_text: e.target.value })} /></Field>
+          <Photo label="Background photo" assetId={b.image_asset_id} assetUrls={assetUrls} canEdit={canEdit}
+            onPick={(f) => onUpload('banner_0', f, (id) => set({ image_asset_id: id }))} onRemove={() => set({ image_asset_id: null })} />
+        </Box>
+      </Rows>
+    </Frame>
+  )
+}
+
 const HAS = {
   announcement: (c) => !!c.announcement?.text,
   faq: (c) => (c.faqs || []).length > 0,
@@ -247,6 +266,7 @@ const HAS = {
   process: (c) => (c.process?.steps || []).length > 0,
   team: (c) => (c.team || []).length > 0,
   gallery: (c) => (c.gallery || []).length > 0,
+  banner: (c) => !!c.banner?.headline,
 }
 
 /** `offered` = section keys the template (or the site's recipe) includes. */
@@ -261,6 +281,7 @@ export default function ExtraSectionCards({ content, setContent, offered = [], c
       {show('process') && <ProcessCard {...shared} />}
       {show('team') && <TeamCard {...shared} assetUrls={assetUrls} onUpload={onUpload} />}
       {show('gallery') && <GalleryCard {...shared} assetUrls={assetUrls} onUpload={onUpload} />}
+      {show('banner') && <BannerCard {...shared} assetUrls={assetUrls} onUpload={onUpload} />}
     </>
   )
 }

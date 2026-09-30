@@ -94,6 +94,8 @@ _SAMPLE_CONTENT = {
     "team": [{"name": "Amaka Obi", "role": "Founder", "bio": "Started the business to serve customers better."},
              {"name": "Tunde Bello", "role": "Operations", "bio": "Keeps every order on schedule."}],
     "gallery": [{"caption": "Recent work"}, {"caption": "Behind the scenes"}, {"caption": "Happy customers"}],
+    "banner": {"eyebrow": "Your next order", "headline": "Ready when you are.", "text": "Message us and we will help you choose.",
+               "button_text": "Chat with us"},
     "order_section": {"title": "How to order", "steps": ["Message us on WhatsApp", "Confirm your order", "We deliver"]},
     "seo": {"title": "Sample Business", "description": "A sample preview page."},
 }

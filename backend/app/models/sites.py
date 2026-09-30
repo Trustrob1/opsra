@@ -140,6 +140,16 @@ class SiteAnnouncement(BaseModel):
     text: str = Field("", max_length=140)
 
 
+class SiteBanner(BaseModel):
+    """SITE-1C-3f: a closing full-width photo banner (headline, a line of text, a WhatsApp button)."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    eyebrow: str = Field("", max_length=60)
+    headline: str = Field("", max_length=100)
+    text: str = Field("", max_length=300)
+    button_text: str = Field("", max_length=40)
+    image_asset_id: Optional[str] = None
+
+
 class SiteFaq(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     q: str = Field(..., min_length=1, max_length=140)
@@ -225,6 +235,7 @@ class SiteContentV1(BaseModel):
     process: SiteProcess = Field(default_factory=SiteProcess)
     team: list[SiteTeamMember] = Field(default_factory=list, max_length=6)
     gallery: list[SiteGalleryImage] = Field(default_factory=list, max_length=9)
+    banner: SiteBanner = Field(default_factory=SiteBanner)   # SITE-1C-3f
     seo: SiteSeo = Field(default_factory=SiteSeo)
 
 
@@ -247,6 +258,7 @@ class SectionVariants(BaseModel):
     process: Optional[str] = None
     team: Optional[str] = None
     gallery: Optional[str] = None
+    banner: Optional[str] = None   # SITE-1C-3f
 
 
 class RecipeTokens(BaseModel):
@@ -264,6 +276,7 @@ class RecipeTokens(BaseModel):
     cards: Optional[str] = Field(None, max_length=20)
     finish: Optional[str] = Field(None, max_length=20)   # SITE-1C-3d: "standard" | "refined"
     hero_height: Optional[str] = Field(None, max_length=20)   # SITE-1C-3e: "standard" | "tall"
+    mobile_cols: Optional[str] = Field(None, max_length=20)   # SITE-1C-3f: "two" | "one"
 
 
 class Recipe(BaseModel):

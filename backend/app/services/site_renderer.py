@@ -385,7 +385,7 @@ def _items(c: dict, variant: str, assets: "_Assets", labels: dict, wa_msgs: dict
             for p in rest)
         return f'<section class="sec wrap" id="shop"><p class="eyebrow">{esc(labels["items"])}</p><h2>Our {esc(labels["items"])}</h2>{feat}<div class="minis">{small}</div></section>'
 
-    # grid (default)
+    # grid (default) and scroll (SITE-1C-3f: the same cards in a swipe row)
     cards = "".join(
         f'<article class="card">{assets.img_or_placeholder(p.get("image_asset_id"), p["name"], "ph-card")}'
         f'{tag_html(p)}'
@@ -393,7 +393,11 @@ def _items(c: dict, variant: str, assets: "_Assets", labels: dict, wa_msgs: dict
         f'{price_html(p, price_style)}'
         f'{btn_wa(b, labels["cta"], order_tpl.format(item=p["name"]), "btn btn-line")}</div></article>'
         for p in items)
-    return f'<section class="sec wrap" id="shop"><p class="eyebrow">{esc(labels["items"])}</p><h2>Our {esc(labels["items"])}</h2><div class="grid">{cards}</div></section>'
+    if variant == "scroll":
+        holder = f'<div class="grid-scroll" role="group" tabindex="0" aria-label="{esc(labels["items"])}: scroll sideways for more">{cards}</div>'
+    else:
+        holder = f'<div class="grid">{cards}</div>'
+    return f'<section class="sec wrap" id="shop"><p class="eyebrow">{esc(labels["items"])}</p><h2>Our {esc(labels["items"])}</h2>{holder}</section>'
 
 
 def _about(c: dict, variant: str, assets: "_Assets") -> str:
@@ -548,6 +552,12 @@ def _gallery(c: dict, variant: str, assets: "_Assets") -> str:
     if not shots:
         return ""
     masonry = variant == "masonry"
+    if variant == "tiles":  # SITE-1C-3f: big photo tiles, captions on the photo
+        tiles = "".join(
+            f'<figure class="gal-tile">{assets.img_or_placeholder(g.get("image_asset_id"), (g.get("caption") or "").strip() or "Photo", "ph-tile")}'
+            + (f'<figcaption>{esc((g.get("caption") or "").strip())}</figcaption>' if (g.get("caption") or "").strip() else "") + '</figure>'
+            for g in shots)
+        return f'<section class="sec wrap" id="gallery"><p class="eyebrow">Gallery</p><h2>Our work</h2><div class="gal-tiles">{tiles}</div></section>'
     figs = []
     for i, g in enumerate(shots):
         cap = (g.get("caption") or "").strip()
@@ -556,6 +566,22 @@ def _gallery(c: dict, variant: str, assets: "_Assets") -> str:
                     + (f'<figcaption>{esc(cap)}</figcaption>' if cap else "") + '</figure>')
     cls = "gal gal-masonry" if masonry else "gal"
     return f'<section class="sec wrap" id="gallery"><p class="eyebrow">Gallery</p><h2>Our work</h2><div class="{cls}">{"".join(figs)}</div></section>'
+
+
+def _banner(c: dict, variant: str, assets: "_Assets", labels: dict, wa_msgs: dict) -> str:
+    """SITE-1C-3f: closing full-width photo banner. Empty (renders nothing) until it has a headline."""
+    bn = c.get("banner") or {}
+    headline = (bn.get("headline") or "").strip()
+    if not headline:
+        return ""
+    b = c["business"]
+    eyebrow = f'<p class="eyebrow banner-eyebrow">{esc(bn["eyebrow"].strip())}</p>' if (bn.get("eyebrow") or "").strip() else ""
+    text = f'<p class="lead banner-lead">{esc(bn["text"].strip())}</p>' if (bn.get("text") or "").strip() else ""
+    label = (bn.get("button_text") or "").strip() or labels["cta"]
+    img = assets.img_or_placeholder(bn.get("image_asset_id"), headline, "ph-banner")
+    return (f'<section class="banner" id="banner">{img}<div class="banner-scrim" aria-hidden="true"></div>'
+            f'<div class="banner-in wrap">{eyebrow}<h2>{esc(headline)}</h2>{text}'
+            f'<div class="row">{btn_wa(b, label, wa_msgs.get("browse", DEFAULT_WA_MESSAGES["browse"]), "btn btn-accent banner-btn")}</div></div></section>')
 
 
 def _footer(c: dict, visit_shown: bool = False) -> str:
@@ -725,7 +751,7 @@ def _token_css(tokens, palette=None, heavy: bool = False) -> str:
             out.append(".btn-accent{background:transparent;color:var(--btn-accent);border-color:transparent;"
                        "border-bottom:2px solid var(--btn-accent);border-radius:0;padding-left:4px;padding-right:4px}")
         # The main hero button sits on a photo: it always stays solid so it stays readable.
-        out.append(".hero-over .btn-accent,.hero-tint .btn-accent{background:var(--btn-accent);color:var(--on-accent);"
+        out.append(".hero-over .btn-accent,.hero-tint .btn-accent,.banner-btn{background:var(--btn-accent);color:var(--on-accent);"
                    "border:1.5px solid transparent;border-radius:var(--br);padding:14px 22px}")
     if tk.get("heading_case") in ("upper", "spaced_upper"):
         out.append("h1,h2{overflow-wrap:break-word}")
@@ -773,6 +799,8 @@ def _token_css(tokens, palette=None, heavy: bool = False) -> str:
                    + (".card .ph,.card .photo{border-radius:var(--r) var(--r) 0 0}" if img in (None, "square") else "")
                    + ".card-body{padding:18px 18px 22px;gap:8px}"
                    "@media (max-width:760px){.grid{gap:18px}.card-body{padding:14px 14px 18px}}")
+    if tk.get("mobile_cols") == "one":  # SITE-1C-3f: one card per row on phones (roomier)
+        out.append("@media (max-width:760px){.grid,.minis,.cats{grid-template-columns:1fr;gap:20px}}")
     if tk.get("hero_height") == "tall":  # SITE-1C-3e: a Full photo hero that nearly fills the screen
         out.append(".hero-fullbleed{min-height:88vh;min-height:min(92svh,900px)}"
                    "@media (max-width:760px){.hero-fullbleed{min-height:86vh;min-height:min(86svh,760px)}}")
@@ -927,6 +955,22 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 .gal figure{{display:flex;flex-direction:column;gap:8px}} .gal figcaption{{font-size:.88rem;color:var(--muted)}}
 .ph-gal{{aspect-ratio:4/3}}
 .gal-masonry{{display:block;column-count:3;column-gap:16px}}
+.gal-tiles{{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}}
+.gal-tile{{position:relative;grid-column:span 3;min-height:420px;border-radius:var(--r);overflow:hidden}}
+.gal-tile:nth-child(4n+1),.gal-tile:nth-child(4n+4){{grid-column:span 4}} .gal-tile:nth-child(4n+2),.gal-tile:nth-child(4n+3){{grid-column:span 2}}
+.gal-tile:last-child:nth-child(odd){{grid-column:1/-1}}
+.gal-tile .ph-tile{{position:absolute;inset:0;border-radius:0;min-height:0}}
+.gal-tile::after{{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,10,8,.62),transparent 55%);pointer-events:none}}
+.gal-tile figcaption{{position:absolute;z-index:1;left:24px;right:24px;bottom:22px;color:#fff;font-family:{disp};font-size:clamp(1.3rem,2.4vw,1.9rem);line-height:1.1}}
+.gal-tile .ph-tile span{{display:none}}
+.grid-scroll{{display:grid;grid-auto-flow:column;grid-auto-columns:calc((100% - 48px)/3);gap:24px;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;padding-bottom:14px;scrollbar-width:thin}}
+.grid-scroll>*{{scroll-snap-align:start}} .grid-scroll:focus-visible{{outline:2px solid var(--accent);outline-offset:4px}}
+.banner{{position:relative;min-height:520px;display:flex;align-items:center;color:#fff;overflow:hidden}}
+.banner .ph-banner{{position:absolute;inset:0;border-radius:0;min-height:0}}
+.banner .ph-banner{{background:linear-gradient(160deg,var(--ph2),var(--ink))}} .banner .ph-banner span{{display:none}}
+.banner-scrim{{position:absolute;inset:0;background:rgba(18,15,12,.55)}}
+.banner-in{{position:relative;z-index:1;padding-top:80px;padding-bottom:80px}} .banner-in h2{{max-width:14em;margin-bottom:0;color:#fff}}
+.banner-eyebrow{{color:#fff;opacity:.85}} .banner-lead{{color:rgba(255,255,255,.88)}}
 .gal-masonry figure{{break-inside:avoid;margin-bottom:16px}}
 .ph-gal-t{{aspect-ratio:3/4}} .ph-gal-s{{aspect-ratio:1/1}}
 .foot{{background:var(--ink);color:var(--ground);padding-top:48px;padding-bottom:48px}}
@@ -943,6 +987,8 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
  .hero-fullbleed{{min-height:520px}} .btn-line{{padding:12px 10px;font-size:.85rem}}
  .faq-cols,.menu-cols,.visit-grid,.proc{{grid-template-columns:1fr}} .visit-card{{padding:24px}}
  .team{{grid-template-columns:1fr 1fr;gap:16px}} .member-row{{grid-template-columns:72px 1fr;gap:14px}}
+ .gal-tiles{{grid-template-columns:1fr}} .gal-tiles .gal-tile:nth-child(n){{grid-column:1/-1;min-height:340px}} .gal-tile figcaption{{left:18px;right:18px;bottom:16px}}
+ .grid-scroll{{grid-auto-columns:78%;gap:14px;margin:0 -24px;padding:0 24px 14px;scroll-padding-left:24px}} .banner{{min-height:440px}} .banner-in{{padding-top:56px;padding-bottom:56px}}
  .gal{{grid-template-columns:1fr 1fr;gap:10px}} .gal-masonry{{column-count:2;column-gap:10px}} .gal-masonry figure{{margin-bottom:10px}}
 }}
 """
@@ -982,6 +1028,7 @@ def _render_body(content: dict, recipe: dict, preset: dict, assets: "_Assets") -
         "process": lambda: _process(content, variants.get("process") or "numbered"),
         "team": lambda: _team(content, variants.get("team") or "cards", assets),
         "gallery": lambda: _gallery(content, variants.get("gallery") or "grid", assets),
+        "banner": lambda: _banner(content, variants.get("banner") or "photo", assets, labels, wa_msgs),  # SITE-1C-3f
     }
     order = recipe.get("order", [])
     # The announcement bar always sits above the menu, wherever the template listed it.

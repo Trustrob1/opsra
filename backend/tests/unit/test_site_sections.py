@@ -71,10 +71,10 @@ class TestRegistry:
 
     def test_every_new_section_but_the_bar_has_two_layouts(self):
         for sec in NEW_SECTIONS:
-            assert len(reg.SECTION_VARIANTS[sec]) == (1 if sec == "announcement" else 2)
+            assert len(reg.SECTION_VARIANTS[sec]) == {"announcement": 1, "gallery": 3}.get(sec, 2)
 
     def test_the_original_six_are_untouched(self):
-        for sec, layouts in {"hero": ("fullbleed", "collage", "centered"), "items": ("grid", "rows", "featured"),
+        for sec, layouts in {"hero": ("fullbleed", "collage", "centered"), "items": ("grid", "rows", "featured", "scroll"),
                              "about": ("left", "right", "quote"), "reviews": ("cards", "spotlight", "list"),
                              "categories": ("tiles", "chips"), "order": ("steps",)}.items():
             assert reg.SECTION_VARIANTS[sec] == layouts

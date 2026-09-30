@@ -189,6 +189,33 @@ function LookField({ value, nicheKey, isMobile, onChange }) {
   )
 }
 
+// SITE-1C-3f: the three "starts on" options as plain switches. On = the option is listed first in the
+// template's token_options (the picker starts new sites on it; each site can still switch back).
+const START_ON = [
+  { key: 'finish', on: 'refined', base: 'standard', label: 'Refined look', hint: 'Sharper type, a see-through sticky menu, subtle motion and a floating WhatsApp button.' },
+  { key: 'hero_height', on: 'tall', base: 'standard', label: 'Tall hero photo', hint: 'The top photo fills nearly the whole screen. Applies to the Full photo layout.' },
+  { key: 'mobile_cols', on: 'one', base: 'two', label: 'One card per row on phones', hint: 'Cards stack full-width on phones instead of sitting two across.' },
+]
+
+function StartOptions({ tokenOptions, onChange }) {
+  const cur = tokenOptions || {}
+  const set = (o, v) => {
+    const next = { ...cur }
+    if (v) next[o.key] = [o.on, o.base]; else delete next[o.key]
+    onChange({ token_options: next })
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {START_ON.map((o) => (
+        <div key={o.key}>
+          <Toggle checked={(cur[o.key] || [])[0] === o.on} onChange={(v) => set(o, v)} label={o.label} />
+          <div style={{ fontSize: 12, color: T.muted, marginLeft: 2, marginTop: 2 }}>{o.hint}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function CreateTemplateModal({ open, isMobile, onClose, onCreated, showToast }) {
   const [form, setForm] = useState(blankForm())
   const [saving, setSaving] = useState(false)
@@ -224,12 +251,15 @@ function CreateTemplateModal({ open, isMobile, onClose, onCreated, showToast }) 
         <Field label="Name"><input style={INPUT} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
         <Field label="Sections" group><SectionCheckboxes value={form.sections} onChange={(v) => setForm((f) => ({ ...f, sections: v }))} /></Field>
         <Field label="Allowed themes" group><ThemeCheckboxes value={form.allowed_themes} onChange={(v) => setForm((f) => ({ ...f, allowed_themes: v }))} /></Field>
-        <Field label="Allowed layouts" group hint="Which section layouts new sites may use. Leave a section with none ticked to allow them all.">
+        <Field label="Allowed layouts" group hint="Which section layouts new sites may use. Leave a section with none ticked to allow them all. Swipe row and Feature tiles are only used when ticked.">
           <LayoutAllowance sections={form.sections} value={form.allowed_variants || {}} onChange={(v) => setForm((f) => ({ ...f, allowed_variants: v }))} />
         </Field>
         <Field label="Colours, fonts and look" group>
           <LookField nicheKey={form.key.trim().toLowerCase()} isMobile={isMobile} onChange={(v) => setForm((f) => ({ ...f, ...v }))}
             value={{ default_palettes: form.default_palettes, allowed_fonts: form.allowed_fonts, token_options: form.token_options }} />
+        </Field>
+        <Field label="New sites start with" group hint="Plain switches for the options most templates want. Staff can still change them on each site.">
+          <StartOptions tokenOptions={form.token_options} onChange={(v) => setForm((f) => ({ ...f, ...v }))} />
         </Field>
         <Field label="Max items"><input style={INPUT} type="number" min="1" max="60" value={form.max_items} onChange={(e) => setForm((f) => ({ ...f, max_items: e.target.value }))} /></Field>
         <Field label="AI tone (optional)" hint="Guides SITE-2's AI copy generation for this niche">
@@ -274,12 +304,15 @@ function EditTemplateDrawer({ preset, isMobile, onClose, onSaved, showToast }) {
         <Field label="Name"><input style={INPUT} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
         <Field label="Sections" group><SectionCheckboxes value={form.sections} onChange={(v) => setForm((f) => ({ ...f, sections: v }))} /></Field>
         <Field label="Allowed themes" group><ThemeCheckboxes value={form.allowed_themes} onChange={(v) => setForm((f) => ({ ...f, allowed_themes: v }))} /></Field>
-        <Field label="Allowed layouts" group hint="Which section layouts new sites may use. Leave a section with none ticked to allow them all.">
+        <Field label="Allowed layouts" group hint="Which section layouts new sites may use. Leave a section with none ticked to allow them all. Swipe row and Feature tiles are only used when ticked.">
           <LayoutAllowance sections={form.sections} value={form.allowed_variants || {}} onChange={(v) => setForm((f) => ({ ...f, allowed_variants: v }))} />
         </Field>
         <Field label="Colours, fonts and look" group>
           <LookField nicheKey={preset.key} isMobile={isMobile} onChange={(v) => setForm((f) => ({ ...f, ...v }))}
             value={{ default_palettes: form.default_palettes, allowed_fonts: form.allowed_fonts, token_options: form.token_options }} />
+        </Field>
+        <Field label="New sites start with" group hint="Plain switches for the options most templates want. Staff can still change them on each site.">
+          <StartOptions tokenOptions={form.token_options} onChange={(v) => setForm((f) => ({ ...f, ...v }))} />
         </Field>
         <Field label="Max items"><input style={INPUT} type="number" min="1" max="60" value={form.max_items} onChange={(e) => setForm((f) => ({ ...f, max_items: e.target.value }))} /></Field>
         <Field label="AI tone"><input style={INPUT} value={form.ai_tone} onChange={(e) => setForm((f) => ({ ...f, ai_tone: e.target.value }))} /></Field>

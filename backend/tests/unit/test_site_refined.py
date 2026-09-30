@@ -196,3 +196,95 @@ class TestHeroHeightAndTileCards:
         from app.models.sites import Recipe
         rec = Recipe(theme="atelier", palette="berry", order=["hero"], tokens={"hero_height": "tall", "cards": "tile"})
         assert rec.tokens.hero_height == "tall" and reg.TOKEN_LABELS["hero_height"] == "Hero height"
+
+
+# ───────────────────────── SITE-1C-3f: scroll row, tiles, banner, one-per-row ─────────────────────────
+from copy import deepcopy  # noqa: E402
+from tests.unit.test_site_design import CONTENT  # noqa: E402
+
+
+P3F = {**PRESET, "sections": list(reg.SECTION_VARIANTS)}
+ORD = ["hero", "items", "about", "reviews", "gallery", "order", "banner"]
+
+
+def _with_banner(**over):
+    c = deepcopy(CONTENT)
+    c["banner"] = {"eyebrow": "Visit", "headline": "Ready when you are.", "text": "Order today.",
+                   "button_text": "Chat with us", "image_asset_id": None, **over}
+    return c
+
+
+class TestOptInPickerRule:
+    @pytest.mark.parametrize("tok,opt,base", [("finish", "refined", "standard"), ("hero_height", "tall", "standard"),
+                                              ("mobile_cols", "one", "two")])
+    def test_listed_first_starts_on_and_listed_second_starts_off(self, tok, opt, base):
+        on = {**PRESET, "token_options": {tok: [opt, base]}}
+        off = {**PRESET, "token_options": {tok: [base, opt]}}
+        locked = {**PRESET, "token_options": {tok: [opt]}}
+        assert picker.pick_recipe(on, "s-1")["tokens"][tok] == opt
+        assert picker.pick_recipe(off, "s-1")["tokens"][tok] == base
+        assert picker.pick_recipe(locked, "s-1")["tokens"][tok] == opt
+        assert picker.pick_recipe(PRESET, "s-1")["tokens"][tok] == base
+
+    def test_a_site_can_still_switch_back_when_both_are_listed(self):
+        preset = {**PRESET, "token_options": {"mobile_cols": ["one", "two"]}}
+        r.validate_recipe(preset, _recipe(tokens={"mobile_cols": "two"}))
+
+
+class TestOptInLayouts:
+    def test_never_random_unless_the_template_lists_them(self):
+        for i in range(60):
+            v = picker.pick_recipe(PRESET, f"v-{i}")["variants"]
+            assert v.get("items") != "scroll" and v.get("gallery") != "tiles"
+
+    def test_staff_can_pick_them_per_site(self):
+        rec = _recipe(variants={"items": "scroll", "gallery": "tiles"})
+        r.validate_recipe(PRESET, rec)
+
+
+class TestScrollRow:
+    def test_items_scroll_wraps_the_cards(self):
+        html = _render(_recipe(variants={"items": "scroll"}))
+        assert 'class="grid-scroll"' in html and 'tabindex="0"' in html and "scroll-snap-type" in html
+        assert "grid-scroll" not in _render(_recipe())
+
+    def test_css_balanced(self):
+        css = _style(_render(_recipe(variants={"items": "scroll"})))
+        assert css.count("{") == css.count("}")
+
+
+class TestTilesGallery:
+    def test_tiles_render_with_overlaid_captions(self):
+        c = deepcopy(CONTENT)
+        c["gallery"] = [{"image_asset_id": None, "caption": f"Look {i}"} for i in range(5)]
+        html = r.render_page(c, _recipe(order=ORD, variants={"gallery": "tiles"}), P3F, {})
+        assert html.count('class="gal-tile"') == 5 and "gal-tiles" in html and "Look 3" in html
+        assert "gal-tiles" not in r.render_page(c, _recipe(order=ORD), P3F, {})
+
+
+class TestBanner:
+    def test_renders_nothing_without_a_headline(self):
+        c = _with_banner(headline="")
+        assert 'id="banner"' not in r.render_page(c, _recipe(order=ORD), P3F, {})
+
+    def test_old_content_without_banner_is_valid(self):
+        from app.models.sites import SiteContentV1
+        assert SiteContentV1.model_validate(deepcopy(CONTENT)).banner.headline == ""
+
+    def test_renders_with_headline_and_solid_button_under_outline_tokens(self):
+        html = r.render_page(_with_banner(), _recipe(order=ORD, tokens={"button": "outline"}), P3F, {})
+        assert 'id="banner"' in html and "Ready when you are." in html and "Chat with us" in html
+        css = _style(html)
+        assert ".banner-btn{background:var(--btn-accent)" in css or ".banner-btn{" in css
+        assert css.count("{") == css.count("}")
+
+    def test_no_banner_keeps_the_original_button_selector(self):
+        css = _style(_render(_recipe(tokens={"button": "outline"})))
+        assert ".hero-over .btn-accent,.hero-tint .btn-accent{background:var(--btn-accent);color:var(--on-accent)" in css
+
+
+class TestMobileCols:
+    def test_one_per_row_rule(self):
+        css = _style(_render(_recipe(tokens={"mobile_cols": "one"})))
+        assert "grid-template-columns:1fr;gap:20px" in css
+        assert "grid-template-columns:1fr;gap:20px" not in _style(_render(_recipe(tokens={"mobile_cols": "two"})))

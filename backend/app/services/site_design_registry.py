@@ -39,6 +39,8 @@ TOKENS: dict[str, tuple[str, ...]] = {
     "cards": ("flat", "bordered", "lifted", "tile"),
     # SITE-1C-3e: how tall a Full photo hero is. Never picked at random (a template opts in, like "finish").
     "hero_height": ("standard", "tall"),
+    # SITE-1C-3f: cards per row on phones for grid-style sections (Items grid, Featured, Categories tiles).
+    "mobile_cols": ("two", "one"),
     # SITE-1C-3d: "Refined look" — display-scale type, roomier spacing, a floating header, photo hover,
     # a dark story band and a floating WhatsApp button, all CSS-only. "standard" renders as before.
     # The picker never chooses it at random: a template opts in by narrowing this token to ["refined"].
@@ -57,6 +59,7 @@ TOKEN_LABELS: dict[str, str] = {
     "cards": "Cards",
     "finish": "Refined look",
     "hero_height": "Hero height",
+    "mobile_cols": "Cards on phones",
 }
 
 # ---------------------------------------------------------------- section layouts (SITE-1C-2)
@@ -64,7 +67,7 @@ TOKEN_LABELS: dict[str, str] = {
 # section is its default (what a recipe with no `variants` renders).
 SECTION_VARIANTS: dict[str, tuple[str, ...]] = {
     "hero": ("fullbleed", "collage", "centered"),
-    "items": ("grid", "rows", "featured"),
+    "items": ("grid", "rows", "featured", "scroll"),   # SITE-1C-3f: "scroll" = a swipe row (opt-in, never random)
     "about": ("left", "right", "quote"),
     "reviews": ("cards", "spotlight", "list"),
     "categories": ("tiles", "chips"),
@@ -76,7 +79,9 @@ SECTION_VARIANTS: dict[str, tuple[str, ...]] = {
     "visit": ("split", "card"),
     "process": ("numbered", "timeline"),
     "team": ("cards", "list"),
-    "gallery": ("grid", "masonry"),
+    "gallery": ("grid", "masonry", "tiles"),            # SITE-1C-3f: "tiles" = big photo tiles with captions on them (opt-in)
+    # SITE-1C-3f: a closing full-width photo banner with a headline and a WhatsApp button.
+    "banner": ("photo",),
 }
 
 # ---------------------------------------------------------------- font pairings (spec SITE-1C §4)
