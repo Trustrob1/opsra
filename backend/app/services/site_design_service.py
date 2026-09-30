@@ -33,7 +33,7 @@ def _choose(seed: str, axis: str, options: list):
 
 
 def _palette_pool(preset: dict) -> list[str]:
-    chosen = [p for p in (preset.get("default_palettes") or []) if p in reg.PALETTES]
+    chosen = [p for p in (preset.get("default_palettes") or []) if p in reg.PALETTES or reg.is_hex(p)]
     return chosen or reg.palettes_for_niche(preset.get("key")) or ["berry"]
 
 
@@ -63,7 +63,7 @@ def _pick(preset: dict, seed: str, colour_answer) -> dict:
             named = next((p for p in palettes if p.lower() == v.lower()), None)
             palette = named
     if not custom and not palette:
-        palette = _choose(seed, "palette", palettes)
+        palette, custom = reg.palette_fields(_choose(seed, "palette", palettes))
 
     fonts = _choose(seed, "fonts", reg.allowed_pairings(preset, theme))
     tokens = {t: _choose(seed, f"token:{t}", reg.allowed_token_options(preset, theme, t)) for t in reg.TOKENS}
@@ -79,7 +79,7 @@ def first_choice_recipe(preset: dict, colour_answer=None) -> dict:
     """The pre-SITE-1C-1 behaviour, kept as the safe fallback."""
     themes = preset.get("allowed_themes") or ["atelier"]
     palettes = preset.get("default_palettes") or ["berry"]
-    palette, custom = palettes[0], None
+    palette, custom = reg.palette_fields(palettes[0])
     if isinstance(colour_answer, str):
         v = colour_answer.strip()
         if reg.is_hex(v):

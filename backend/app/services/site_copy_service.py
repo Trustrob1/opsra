@@ -52,6 +52,8 @@ from typing import Optional
 from app.models.sites import Recipe, SiteContentV1
 from app.services.ai_service import HAIKU, call_claude, sanitise_for_prompt
 
+from app.services import site_design_registry
+
 logger = logging.getLogger(__name__)
 
 _MAX_ABOUT_PARAGRAPHS = 3
@@ -222,7 +224,7 @@ def _build_recipe(preset: dict, colour_answer, seed: Optional[str] = None) -> di
             logger.warning("[SITE-1C] picker unavailable, using first-choice recipe: %s", exc)
     themes = preset.get("allowed_themes") or ["atelier"]
     palettes = preset.get("default_palettes") or ["berry"]
-    palette, custom = palettes[0], None
+    palette, custom = site_design_registry.palette_fields(palettes[0])
     if isinstance(colour_answer, str):
         v = colour_answer.strip()
         if re.match(r"^#[0-9a-fA-F]{6}$", v):
@@ -277,8 +279,9 @@ def generate_content_and_recipe(db, site: dict, preset: dict, org_id: str) -> tu
     try:
         Recipe.model_validate(recipe_dict)
     except Exception:
+        _pal, _custom = site_design_registry.palette_fields((preset.get("default_palettes") or ["berry"])[0])
         recipe_dict = {"theme": (preset.get("allowed_themes") or ["atelier"])[0],
-                        "palette": (preset.get("default_palettes") or ["berry"])[0], "custom_colour": None,
+                        "palette": _pal, "custom_colour": _custom,
                         "order": preset.get("sections") or ["hero", "about", "items", "order"], "hidden": []}
 
     try:

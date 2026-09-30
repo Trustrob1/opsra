@@ -182,6 +182,9 @@ class RecipeTokens(BaseModel):
     heading_case: Optional[str] = Field(None, max_length=20)
     image_style: Optional[str] = Field(None, max_length=20)
     divider: Optional[str] = Field(None, max_length=20)
+    background: Optional[str] = Field(None, max_length=20)
+    bands: Optional[str] = Field(None, max_length=20)
+    cards: Optional[str] = Field(None, max_length=20)
 
 
 class Recipe(BaseModel):

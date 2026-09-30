@@ -163,6 +163,12 @@ def palette_from_hex(hex_colour: str) -> dict:
     # accent breaks that assumption, darken ink further rather than fail silently.
     if _contrast_ratio(ink, ground) < 4.5:
         ink = _mix(ink, "#000000", 0.3)
+    # Secondary text must also stay readable on the lightest-contrast page backgrounds a site can
+    # choose (SITE-1C-1b: grey / ivory / white) — darken it only when a bright colour needs it.
+    for _ in range(12):
+        if min(_contrast_ratio(muted, g) for g in (ground, "#F3F4F6", "#FAF7F0", "#FFFFFF")) >= 4.5:
+            break
+        muted = _mix(muted, "#000000", 0.15)
 
     result = {
         "ground": ground, "ink": ink, "muted": muted, "accent": accent,
@@ -490,6 +496,8 @@ HEADING_CASE_CSS = {
     "spaced_upper": "text-transform:uppercase;letter-spacing:.06em;",
 }
 RADIUS_VALUES = {"sharp": ("0", "0"), "soft": ("8px", "8px"), "pill": ("14px", "999px")}
+# SITE-1C-1b: page background overrides (the palette's own tinted ground stays the default, "match").
+BACKGROUND_VALUES = {"white": "#FFFFFF", "grey": "#F3F4F6", "ivory": "#FAF7F0"}
 DENSITY = {"airy": (104, 72, 32), "compact": (56, 40, 16)}  # desktop padding, mobile padding, grid gap (px)
 
 
@@ -503,7 +511,19 @@ def resolve_pairing(theme_key: str, fonts_key=None) -> dict:
             "body_fallback": t["body_fallback"], "heading_weight": "400" if t["upper_headings"] else "600"}
 
 
-def _token_css(tokens) -> str:
+def _wash_colour(palette: dict) -> str:
+    """Tint for the alternating section bands: as strong as possible while the accent (used for
+    eyebrows and links) and the muted text still read on it. Falls back to the palette's own
+    tint if a bright custom colour cannot reach the ratio."""
+    accent = palette["accent"]
+    for step in (0.92, 0.93, 0.94, 0.95, 0.96, 0.97):
+        w = _mix(accent, "#FFFFFF", step)
+        if _contrast_ratio(accent, w) >= 4.5 and _contrast_ratio(palette["muted"], w) >= 4.5:
+            return w
+    return _mix(accent, "#FFFFFF", 0.97)
+
+
+def _token_css(tokens, palette=None) -> str:
     """CSS overrides for the tokens that are set. Appended after the base CSS, so a recipe with
     no tokens gets no extra CSS at all (byte-identical to before). Heading case is handled in
     _css itself because it changes several existing rules."""
@@ -551,6 +571,23 @@ def _token_css(tokens) -> str:
                    'background:linear-gradient(var(--accent),var(--accent)) 0 50%/22px 1.5px no-repeat,'
                    'linear-gradient(var(--accent),var(--accent)) 100% 50%/22px 1.5px no-repeat,'
                    'radial-gradient(circle,var(--accent) 3px,transparent 3.5px) 50% 50%/12px 12px no-repeat}')
+    bg = BACKGROUND_VALUES.get(tk.get("background"))
+    if bg:
+        out.append(f":root{{--ground:{bg}}}")
+    cards = tk.get("cards")
+    if tk.get("bands") == "wash":
+        # Every second section sits on a full-width wash of the accent tint. Cards inside a wash
+        # keep a solid background so they do not vanish into it.
+        wash = _wash_colour(palette) if palette else "var(--soft)"
+        out.append(f"section.sec:nth-of-type(even){{background:{wash};box-shadow:0 0 0 100vmax {wash};"
+                   "clip-path:inset(0 -100vmax)}")
+        if cards not in ("bordered", "lifted"):
+            out.append("section.sec:nth-of-type(even) .prow,section.sec:nth-of-type(even) .rev{background:var(--ground)}")
+    if cards in ("bordered", "lifted"):
+        edge = ("border:1px solid var(--line)" if cards == "bordered"
+                else "box-shadow:0 14px 34px -16px rgba(20,20,30,.35),0 2px 6px rgba(20,20,30,.06)")
+        out.append(f".card,.prow,.rev{{background:#FFFFFF;{edge}}}"
+                   ".card{padding:12px;border-radius:var(--r)}.card-body{padding:14px 4px 6px}")
     return "".join(out)
 
 
@@ -664,7 +701,7 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
  .hero-fullbleed{{min-height:520px}} .btn-line{{padding:12px 10px;font-size:.85rem}}
 }}
 """
-    return base + _token_css(tokens)
+    return base + _token_css(tokens, palette)
 
 
 # ---------------------------------------------------------------- top-level render

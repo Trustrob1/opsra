@@ -153,9 +153,10 @@ class TestRegistry:
             assert pair["heading_weight"] == ("400" if t["upper_headings"] else "600")
             assert pair["group"] in meta["font_groups"]
 
-    def test_six_tokens_with_at_least_three_options(self):
-        assert set(reg.TOKENS) == {"radius", "density", "button", "heading_case", "image_style", "divider"}
-        assert all(len(v) >= 3 for v in reg.TOKENS.values())
+    def test_nine_tokens_with_at_least_two_options(self):
+        assert set(reg.TOKENS) == {"radius", "density", "button", "heading_case", "image_style", "divider",
+                                   "background", "bands", "cards"}
+        assert all(len(v) >= 2 for v in reg.TOKENS.values())
 
     def test_palette_meta_covers_every_palette_and_only_those(self):
         assert set(reg.PALETTE_META) == set(reg.PALETTES)

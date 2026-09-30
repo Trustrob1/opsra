@@ -31,6 +31,11 @@ TOKENS: dict[str, tuple[str, ...]] = {
     "heading_case": ("normal", "upper", "spaced_upper"),
     "image_style": ("square", "rounded", "arch", "framed"),
     "divider": ("none", "line", "dot", "ornament"),
+    # SITE-1C-1b: page background, alternating section bands, card style.
+    # The first option of each is "no change" (renders exactly as before).
+    "background": ("match", "white", "grey", "ivory"),
+    "bands": ("plain", "wash"),
+    "cards": ("flat", "bordered", "lifted"),
 }
 
 TOKEN_LABELS: dict[str, str] = {
@@ -40,6 +45,9 @@ TOKEN_LABELS: dict[str, str] = {
     "heading_case": "Headings",
     "image_style": "Photos",
     "divider": "Section divider",
+    "background": "Page background",
+    "bands": "Section bands",
+    "cards": "Cards",
 }
 
 # ---------------------------------------------------------------- font pairings (spec SITE-1C §4)
@@ -225,6 +233,14 @@ def allowed_pairings(preset: dict, theme: str) -> list[str]:
     return pool or [theme_default_pairing(theme)]
 
 
+def palette_fields(entry: str) -> tuple[Optional[str], Optional[str]]:
+    """A template's palette list holds palette keys and/or custom hex colours.
+    Returns (palette, custom_colour) ready for a recipe: exactly one of them is set."""
+    if is_hex(entry):
+        return None, entry.upper()
+    return entry, None
+
+
 def allowed_token_options(preset: dict, theme: str, token: str) -> list[str]:
     """Options the picker may use for one token: theme exclusions applied, then the preset's
     `token_options[token]` if staff narrowed it (empty / missing means every option)."""
@@ -250,7 +266,8 @@ def validate_preset_design_fields(allowed_fonts, token_options, default_palettes
             if o not in TOKENS[token]:
                 raise ValueError(f"Unknown option {o!r} for {token}")
     for p in default_palettes or []:
-        if p not in PALETTES:
+        # A template may list named palettes and/or its own custom colours (6-digit hex).
+        if p not in PALETTES and not is_hex(p):
             raise ValueError(f"Unknown palette: {p}")
 
 

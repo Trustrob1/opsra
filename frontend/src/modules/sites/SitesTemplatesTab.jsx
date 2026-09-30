@@ -6,10 +6,12 @@
  * Preview renders the preset with built-in sample data (POST /presets/{id}/preview).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Eye, LayoutTemplate, Shuffle } from 'lucide-react'
+import { Plus, Eye, LayoutTemplate, Shuffle, Palette } from 'lucide-react'
 import { listPresets, createPreset, updatePreset, previewPreset, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Drawer, Toggle } from './sitesUi'
-import { T, INPUT, THEMES, PALETTES, FONT_PAIRINGS, FONT_GROUP_LABELS, TOKENS, SECTION_KEYS, SECTION_LABELS } from './sitesKit'
+import { T, INPUT, THEMES, PALETTES, FONT_PAIRINGS, TOKENS, SECTION_KEYS, SECTION_LABELS } from './sitesKit'
+import LookStudio from './LookStudio'
+import { lookSummary } from './lookKit'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
@@ -88,7 +90,7 @@ export default function SitesTemplatesTab({ isActive, canEdit, showToast }) {
         </div>
       )}
 
-      <CreateTemplateModal open={creating} onClose={() => setCreating(false)}
+      <CreateTemplateModal open={creating} isMobile={isMobile} onClose={() => setCreating(false)}
         onCreated={() => { setCreating(false); showToast('Template created'); load() }} showToast={showToast} />
       <EditTemplateDrawer preset={editing} isMobile={isMobile} onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); load() }} showToast={showToast} />
@@ -153,86 +155,30 @@ function ThemeCheckboxes({ value, onChange }) {
   )
 }
 
-function PaletteCheckboxes({ value, onChange, nicheKey }) {
-  const toggle = (key) => {
-    onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
-  }
-  const suggested = PALETTES.filter((p) => p.niches.includes(nicheKey)).map((p) => p.value)
+function LookField({ value, nicheKey, isMobile, onChange }) {
+  const [open, setOpen] = useState(false)
+  // Escape closes only the Look studio, not the template form underneath it (capture phase runs first).
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [open])
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-        {PALETTES.map((p) => (
-          <label key={p.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
-            <input type="checkbox" checked={value.includes(p.value)} onChange={() => toggle(p.value)} />
-            <span style={{ width: 12, height: 12, borderRadius: '50%', background: p.accent, display: 'inline-block', border: `1px solid ${T.line}` }} />
-            {p.label}
-          </label>
-        ))}
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '10px 12px', border: `1px solid ${T.line}`, borderRadius: 10, background: '#FAFCFD' }}>
+        <span style={{ fontSize: 12.5, color: T.soft, lineHeight: 1.45, flex: 1, minWidth: 180 }}>{lookSummary(value)}</span>
+        <Button size="sm" variant="secondary" icon={Palette} onClick={() => setOpen(true)}>Customise look</Button>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {suggested.length > 0 && (
-          <Button size="sm" variant="secondary" onClick={() => onChange(suggested)}>Use the {suggested.length} suggested for this niche</Button>
-        )}
-        <Button size="sm" variant="ghost" onClick={() => onChange(PALETTES.map((p) => p.value))}>Tick all</Button>
-        <Button size="sm" variant="ghost" onClick={() => onChange([])}>Clear</Button>
-      </div>
-      <span style={{ fontSize: 11.5, color: T.muted }}>New sites pick a palette from the ticked ones.</span>
-    </div>
+      <Modal open={open} onClose={() => setOpen(false)} title="Look studio" width={1180}
+        footer={<Button variant="primary" onClick={() => setOpen(false)}>Done</Button>}>
+        <LookStudio value={value} nicheKey={nicheKey} isMobile={isMobile} onChange={onChange} />
+      </Modal>
+    </>
   )
 }
 
-function FontCheckboxes({ value, onChange }) {
-  const toggle = (key) => {
-    onChange(value.includes(key) ? value.filter((x) => x !== key) : [...value, key])
-  }
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {Object.keys(FONT_GROUP_LABELS).map((g) => (
-        <div key={g}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
-            {FONT_GROUP_LABELS[g]}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            {FONT_PAIRINGS.filter((f) => f.group === g).map((f) => (
-              <label key={f.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
-                <input type="checkbox" checked={value.includes(f.value)} onChange={() => toggle(f.value)} />
-                {f.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      ))}
-      <span style={{ fontSize: 11.5, color: T.muted }}>Leave all unticked to allow every pairing that suits the theme.</span>
-    </div>
-  )
-}
-
-function TokenOptionChecks({ value, onChange }) {
-  const toggle = (key, opt) => {
-    const cur = value[key] || []
-    onChange({ ...value, [key]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt] })
-  }
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {TOKENS.map((t) => (
-        <div key={t.key}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>{t.label}</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            {t.options.map((o) => (
-              <label key={o.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: T.ink }}>
-                <input type="checkbox" checked={(value[t.key] || []).includes(o.value)} onChange={() => toggle(t.key, o.value)} />
-                {o.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      ))}
-      <span style={{ fontSize: 11.5, color: T.muted }}>Leave a row unticked to allow every option for it.</span>
-    </div>
-  )
-}
-
-function CreateTemplateModal({ open, onClose, onCreated, showToast }) {
+function CreateTemplateModal({ open, isMobile, onClose, onCreated, showToast }) {
   const [form, setForm] = useState(blankForm())
   const [saving, setSaving] = useState(false)
 
@@ -267,9 +213,10 @@ function CreateTemplateModal({ open, onClose, onCreated, showToast }) {
         <Field label="Name"><input style={INPUT} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
         <Field label="Sections" group><SectionCheckboxes value={form.sections} onChange={(v) => setForm((f) => ({ ...f, sections: v }))} /></Field>
         <Field label="Allowed themes" group><ThemeCheckboxes value={form.allowed_themes} onChange={(v) => setForm((f) => ({ ...f, allowed_themes: v }))} /></Field>
-        <Field label="Default palettes" group><PaletteCheckboxes nicheKey={form.key.trim().toLowerCase()} value={form.default_palettes} onChange={(v) => setForm((f) => ({ ...f, default_palettes: v }))} /></Field>
-        <Field label="Font pairings" group><FontCheckboxes value={form.allowed_fonts} onChange={(v) => setForm((f) => ({ ...f, allowed_fonts: v }))} /></Field>
-        <Field label="Look options" group><TokenOptionChecks value={form.token_options} onChange={(v) => setForm((f) => ({ ...f, token_options: v }))} /></Field>
+        <Field label="Colours, fonts and look" group>
+          <LookField nicheKey={form.key.trim().toLowerCase()} isMobile={isMobile} onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+            value={{ default_palettes: form.default_palettes, allowed_fonts: form.allowed_fonts, token_options: form.token_options }} />
+        </Field>
         <Field label="Max items"><input style={INPUT} type="number" min="1" max="60" value={form.max_items} onChange={(e) => setForm((f) => ({ ...f, max_items: e.target.value }))} /></Field>
         <Field label="AI tone (optional)" hint="Guides SITE-2's AI copy generation for this niche">
           <input style={INPUT} value={form.ai_tone} onChange={(e) => setForm((f) => ({ ...f, ai_tone: e.target.value }))} />
@@ -313,9 +260,10 @@ function EditTemplateDrawer({ preset, isMobile, onClose, onSaved, showToast }) {
         <Field label="Name"><input style={INPUT} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
         <Field label="Sections" group><SectionCheckboxes value={form.sections} onChange={(v) => setForm((f) => ({ ...f, sections: v }))} /></Field>
         <Field label="Allowed themes" group><ThemeCheckboxes value={form.allowed_themes} onChange={(v) => setForm((f) => ({ ...f, allowed_themes: v }))} /></Field>
-        <Field label="Default palettes" group><PaletteCheckboxes nicheKey={preset.key} value={form.default_palettes} onChange={(v) => setForm((f) => ({ ...f, default_palettes: v }))} /></Field>
-        <Field label="Font pairings" group><FontCheckboxes value={form.allowed_fonts} onChange={(v) => setForm((f) => ({ ...f, allowed_fonts: v }))} /></Field>
-        <Field label="Look options" group><TokenOptionChecks value={form.token_options} onChange={(v) => setForm((f) => ({ ...f, token_options: v }))} /></Field>
+        <Field label="Colours, fonts and look" group>
+          <LookField nicheKey={preset.key} isMobile={isMobile} onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+            value={{ default_palettes: form.default_palettes, allowed_fonts: form.allowed_fonts, token_options: form.token_options }} />
+        </Field>
         <Field label="Max items"><input style={INPUT} type="number" min="1" max="60" value={form.max_items} onChange={(e) => setForm((f) => ({ ...f, max_items: e.target.value }))} /></Field>
         <Field label="AI tone"><input style={INPUT} value={form.ai_tone} onChange={(e) => setForm((f) => ({ ...f, ai_tone: e.target.value }))} /></Field>
         <Field label="Active" group><Toggle checked={form.is_active} onChange={(v) => setForm((f) => ({ ...f, is_active: v }))} label={form.is_active ? 'Builders can use this template' : 'Hidden from builders'} /></Field>

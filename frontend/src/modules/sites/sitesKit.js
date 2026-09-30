@@ -134,6 +134,10 @@ export const TOKENS = [
   { key: 'heading_case', label: 'Headings', options: [{ value: 'normal', label: 'Normal' }, { value: 'upper', label: 'UPPERCASE' }, { value: 'spaced_upper', label: 'SPACED UPPERCASE' }] },
   { key: 'image_style', label: 'Photos', options: [{ value: 'square', label: 'Square' }, { value: 'rounded', label: 'Rounded' }, { value: 'arch', label: 'Arch' }, { value: 'framed', label: 'Framed' }] },
   { key: 'divider', label: 'Section divider', options: [{ value: 'none', label: 'None' }, { value: 'line', label: 'Line' }, { value: 'dot', label: 'Dot' }, { value: 'ornament', label: 'Ornament' }] },
+  // SITE-1C-1b: page background, alternating section bands, card style (first option = no change).
+  { key: 'background', label: 'Page background', options: [{ value: 'match', label: 'Match colour' }, { value: 'white', label: 'White' }, { value: 'grey', label: 'Soft grey' }, { value: 'ivory', label: 'Warm ivory' }] },
+  { key: 'bands', label: 'Section bands', options: [{ value: 'plain', label: 'Plain' }, { value: 'wash', label: 'Tinted bands' }] },
+  { key: 'cards', label: 'Cards', options: [{ value: 'flat', label: 'Flat' }, { value: 'bordered', label: 'Bordered' }, { value: 'lifted', label: 'Lifted' }] },
 ]
 export const THEME_TOKEN_EXCLUSIONS = { atelier: { radius: ['pill'] } }
 
