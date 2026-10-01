@@ -21,8 +21,9 @@ import io
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 
 from app.database import get_supabase
@@ -49,7 +50,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_renderer
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -865,8 +866,14 @@ def export_site_zip(site_id: str, org=Depends(get_current_org), db=Depends(get_s
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
+class PublishRequest(BaseModel):
+    """Optional body for publish. dns_mode picks the flow for the domain: 'cloudflare_zone' (we manage its
+    DNS on Cloudflare — for domains we bought) or 'client_cname' (the client adds a CNAME). Omitted = auto."""
+    dns_mode: Optional[Literal["cloudflare_zone", "client_cname"]] = None
+
+
 @router.post("/sites/{site_id}/publish")
-def publish_site(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+def publish_site(site_id: str, body: Optional[PublishRequest] = None, org=Depends(get_current_org), db=Depends(get_supabase)):
     """SITE-PUBLISH — uploads the site's files to Cloudflare R2 under the client's domain; the
     `opsra-sites` Worker serves them. Safe to repeat (replaces the live copy)."""
     org_id = _ops_org(org, db, _WRITE_ROLES)
@@ -874,7 +881,13 @@ def publish_site(site_id: str, org=Depends(get_current_org), db=Depends(get_supa
     # Connect the domain to the Worker. A problem here never undoes the publish: the files are already up.
     result["hostnames"], result["hostnames_error"] = None, None
     try:
-        result["hostnames"] = site_cloudflare_service.register_domain(result["domain"])
+        mode = site_zone_service.resolve_mode(db, org_id, result["domain"], body.dns_mode if body else None)
+        if mode == site_zone_service.MODE_ZONE:
+            result["hostnames"] = site_zone_service.connect_domain(result["domain"])
+            site_zone_service.save_state(db, org_id, result["domain"], result["hostnames"])
+        else:
+            result["hostnames"] = site_cloudflare_service.register_domain(result["domain"])
+            result["hostnames"]["mode"] = site_zone_service.MODE_CNAME
     except site_cloudflare_service.HostnamesNotConfigured:
         pass
     except site_ops_service.SiteOpsError as exc:
@@ -891,6 +904,12 @@ def site_hostnames(site_id: str, org=Depends(get_current_org), db=Depends(get_su
 
     def _status():
         domain = site_publish_service.site_domain(db, org_id, site_id)
-        return site_cloudflare_service.status_domain(domain)
+        if site_zone_service.resolve_mode(db, org_id, domain) == site_zone_service.MODE_ZONE:
+            info = site_zone_service.connect_domain(domain, create=False)
+            site_zone_service.save_state(db, org_id, domain, info)
+            return info
+        info = site_cloudflare_service.status_domain(domain)
+        info["mode"] = site_zone_service.MODE_CNAME
+        return info
 
     return ok(data=_ops(_status))

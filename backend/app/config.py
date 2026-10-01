@@ -66,7 +66,9 @@ class Settings(BaseSettings):
     # Token needs Zone > SSL and Certificates > Edit on the SaaS zone. Empty = feature off.
     CLOUDFLARE_API_TOKEN: str = ""
     CLOUDFLARE_ZONE_ID: str = ""
+    CLOUDFLARE_ACCOUNT_ID: str = ""   # SITE-ZONES — account that owns the client-domain zones (token also needs Zone:Edit, DNS:Edit, Workers Scripts:Edit)
     SITES_CNAME_TARGET: str = "sites.coreaicloudtech.com.ng"
+    SITES_WORKER_NAME: str = "opsra-sites"   # the Worker each client domain is routed to
 
     @field_validator("ENVIRONMENT")
     @classmethod

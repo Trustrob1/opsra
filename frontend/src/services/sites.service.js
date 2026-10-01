@@ -108,7 +108,8 @@ export const downloadSiteExport = async (siteId, slug) => {
 }
 
 /** SITE-PUBLISH — uploads the site to Cloudflare under the client's domain. Returns {domain, files, bytes, removed, urls}. */
-export const publishSite = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/publish`))
+/** opts.dns_mode: 'cloudflare_zone' (we manage the domain's DNS on Cloudflare) | 'client_cname' (client adds a CNAME). Omitted = auto. */
+export const publishSite = (siteId, opts) => unwrap(api.post(`/api/v1/sites/${siteId}/publish`, opts || {}))
 
 /** SITE-HOSTNAMES — DNS records the client must add + whether Cloudflare has connected the domain. */
 export const getSiteHostnames = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/hostnames`))
