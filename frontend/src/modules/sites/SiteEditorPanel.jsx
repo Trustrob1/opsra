@@ -7,9 +7,9 @@
  * own separation (routers/sites.py) so a half-finished edit never auto-publishes.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Plus, Trash2, Save, RefreshCw, Eye, ImagePlus, ExternalLink, Shuffle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, RefreshCw, Eye, ImagePlus, ExternalLink, Shuffle, CloudUpload } from 'lucide-react'
 import {
-  getSite, patchSiteContent, patchSiteRecipe, suggestDesigns, renderSite, uploadSiteAsset, getPreset, errorMessage,
+  getSite, patchSiteContent, patchSiteRecipe, suggestDesigns, renderSite, uploadSiteAsset, getPreset, publishSite, errorMessage,
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Field, Modal, SectionTitle } from './sitesUi'
 import SectionTiles from './SectionTiles'
@@ -32,6 +32,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
   const [savingContent, setSavingContent] = useState(false)
   const [savingRecipe, setSavingRecipe] = useState(false)
   const [rendering, setRendering] = useState(false)
+  const [publishing, setPublishing] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
 
   const load = useCallback(async () => {
@@ -102,6 +103,14 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
     }
   }
 
+  const doPublish = async () => {
+    setPublishing(true)
+    try {
+      const r = await publishSite(siteId)
+      showToast(`Published to Cloudflare: ${r.files} files for ${r.domain}`)
+    } catch (e) { showToast(errorMessage(e, 'Could not publish the site.'), 'bad') } finally { setPublishing(false) }
+  }
+
   if (loading) return <Spinner />
   if (error) return (<><BackLink onBack={onBack} /><Notice tone="bad">{error}</Notice></>)
   if (!site) return null
@@ -142,6 +151,10 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
         <Button variant="secondary" icon={ExternalLink} onClick={() => window.open(previewUrl, '_blank', 'noopener')}
           disabled={!site.rendered_html}>Open live preview URL</Button>
         <Button variant="primary" icon={RefreshCw} loading={rendering} onClick={doRender}>Render preview</Button>
+        {canEdit && (
+          <Button variant="secondary" icon={CloudUpload} loading={publishing} onClick={doPublish}
+            title="Publishes the saved content and design to the client's domain on Cloudflare">Publish to Cloudflare</Button>
+        )}
       </div>
       <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>
         {site.updated_at ? `Last saved ${dateTime(site.updated_at)}` : null}
