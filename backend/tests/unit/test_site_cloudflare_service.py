@@ -10,12 +10,20 @@ import pytest
 from app.services import site_cloudflare_service as cf
 
 ZONE = "zone123"
+
+
+@pytest.fixture(autouse=True)
+def _worker_settings(monkeypatch):
+    class _W:
+        SITES_WORKER_NAME = "opsra-sites"
+    monkeypatch.setattr(cf, "_settings", lambda: _W())
 TARGET = "sites.coreaicloudtech.com.ng"
 
 
 class FakeCF:
     def __init__(self, existing=None, fail=False):
         self.rows = {r["hostname"]: dict(r) for r in (existing or [])}
+        self.routes = {}
         self.calls = []
         self.fail = fail
         self._n = 0
@@ -24,6 +32,20 @@ class FakeCF:
         self.calls.append((method, path, json, params))
         if self.fail:
             raise cf.HostnameError("x")
+        if "/workers/routes" in path:
+            if method == "GET":
+                return {"success": True, "result": [dict(r) for r in self.routes.values()]}
+            if method == "POST":
+                self._n += 1
+                self.routes[f"r{self._n}"] = {"id": f"r{self._n}", **json}
+                return {"success": True, "result": {}}
+            rid = path.rsplit("/", 1)[-1]
+            if method == "PUT":
+                self.routes[rid].update(json)
+                return {"success": True, "result": {}}
+            if method == "DELETE":
+                self.routes.pop(rid, None)
+                return {"success": True, "result": {}}
         if method == "GET":
             h = (params or {}).get("hostname")
             return {"success": True, "result": [r for r in self.rows.values() if r["hostname"] == h]}
@@ -47,7 +69,7 @@ def _reg(c, domain="shop.com.ng"):
 def test_registers_domain_and_www_with_http_validation():
     c = FakeCF()
     out = _reg(c)
-    posts = [x for x in c.calls if x[0] == "POST"]
+    posts = [x for x in c.calls if x[0] == "POST" and x[1].endswith("custom_hostnames")]
     assert [p[2]["hostname"] for p in posts] == ["shop.com.ng", "www.shop.com.ng"]
     assert all(p[2]["ssl"]["method"] == "http" and p[2]["ssl"]["type"] == "dv" for p in posts)
     assert all(p[1] == f"/zones/{ZONE}/custom_hostnames" for p in posts)
@@ -58,9 +80,9 @@ def test_registers_domain_and_www_with_http_validation():
 def test_register_is_idempotent():
     c = FakeCF()
     _reg(c)
-    n = len([x for x in c.calls if x[0] == "POST"])
+    n = len([x for x in c.calls if x[0] == "POST" and x[1].endswith("custom_hostnames")])
     _reg(c)
-    assert len([x for x in c.calls if x[0] == "POST"]) == n == 2
+    assert len([x for x in c.calls if x[0] == "POST" and x[1].endswith("custom_hostnames")]) == n == 2
 
 
 def test_www_and_url_input_normalise_to_the_same_hostnames():
@@ -176,3 +198,44 @@ def test_real_client_turns_http_and_api_failures_into_friendly_errors(monkeypatc
     monkeypatch.setattr(httpx, "request", ok)
     assert c.request("GET", "/zones/z/custom_hostnames")["success"] is True
     assert seen["url"].endswith("/client/v4/zones/z/custom_hostnames") and seen["auth"] == f"Bearer {secret}"
+
+
+# ── Worker routes ───────────────────────────────────────────────────────────
+
+def test_register_creates_one_worker_route_covering_bare_and_www():
+    c = FakeCF()
+    out = _reg(c)
+    assert [r["pattern"] for r in c.routes.values()] == ["*shop.com.ng/*"]
+    assert list(c.routes.values())[0]["script"] == "opsra-sites"
+    assert out["route_ok"] is True
+
+
+def test_route_is_not_duplicated_on_repeat_and_is_repaired_when_it_points_elsewhere():
+    c = FakeCF()
+    _reg(c)
+    _reg(c)
+    assert len(c.routes) == 1
+    next(iter(c.routes.values()))["script"] = "something-else"
+    assert cf.status_domain("shop.com.ng", client=c, zone=ZONE, target=TARGET)["route_ok"] is False
+    _reg(c)
+    assert next(iter(c.routes.values()))["script"] == "opsra-sites" and len(c.routes) == 1
+
+
+def test_status_reports_missing_route_and_blocks_all_active():
+    active = {"status": "active", "ssl": {"status": "active"}}
+    c = FakeCF(existing=[{"id": "1", "hostname": "shop.com.ng", **active}, {"id": "2", "hostname": "www.shop.com.ng", **active}])
+    out = cf.status_domain("shop.com.ng", client=c, zone=ZONE, target=TARGET)
+    assert out["route_ok"] is False and out["all_active"] is False
+    assert not [x for x in c.calls if x[0] in ("POST", "PUT", "DELETE")]
+
+
+def test_remove_also_deletes_only_that_domains_route():
+    c = FakeCF()
+    _reg(c)
+    _reg(c, "other.ng")
+    cf.remove_domain("shop.com.ng", client=c, zone=ZONE)
+    assert [r["pattern"] for r in c.routes.values()] == ["*other.ng/*"]
+
+
+def test_route_pattern():
+    assert cf.route_pattern("https://www.Shop.com.ng/") == "*shop.com.ng/*"

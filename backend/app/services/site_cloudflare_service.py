@@ -10,7 +10,10 @@ SaaS zone; Cloudflare then verifies the DNS record and issues the SSL certificat
 validation, so the client adds no extra TXT record). The Worker then serves the site by Host header.
 
 Rules:
-- Settings come from the environment (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID, SITES_CNAME_TARGET).
+- Each domain also gets ONE Worker route (`*<domain>/*`, which covers the bare and www forms) on the SaaS zone, so
+  only registered client domains reach the Worker and the zone's own website and email are untouched.
+  Routes are limited to 1,000 per zone, so one zone holds about 1,000 client domains.
+- Settings come from the environment (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID, SITES_CNAME_TARGET, SITES_WORKER_NAME).
   With the token or zone missing the feature is "not set up": callers get NotConfigured and skip it.
 - register_domain() is safe to repeat: a hostname that already exists is returned, never created twice.
 - Cloudflare's error text is logged, never shown to staff (it can echo request details); staff get a
@@ -70,6 +73,36 @@ class CloudflareClient:
         return body
 
 
+def worker_name() -> str:
+    return getattr(_settings(), "SITES_WORKER_NAME", "") or "opsra-sites"
+
+
+def route_pattern(domain: str) -> str:
+    """'shop.com.ng' -> '*shop.com.ng/*' (matches shop.com.ng and www.shop.com.ng)."""
+    return f"*{normalise_domain(domain)}/*"
+
+
+def _find_route(client: Any, zone: str, pattern: str) -> Optional[dict]:
+    body = client.request("GET", f"/zones/{zone}/workers/routes")
+    for row in body.get("result") or []:
+        if row.get("pattern") == pattern:
+            return row
+    return None
+
+
+def _ensure_route(client: Any, zone: str, domain: str, script: str) -> bool:
+    """Makes sure the domain's route points at the Worker. Returns True when it does."""
+    pattern = route_pattern(domain)
+    row = _find_route(client, zone, pattern)
+    if row and row.get("script") == script:
+        return True
+    if row and row.get("id"):
+        client.request("PUT", f"/zones/{zone}/workers/routes/{row['id']}", json={"pattern": pattern, "script": script})
+        return True
+    client.request("POST", f"/zones/{zone}/workers/routes", json={"pattern": pattern, "script": script})
+    return True
+
+
 def make_client() -> tuple:
     """Returns (client, zone_id, cname_target). Raises HostnamesNotConfigured when not set up."""
     s = _settings()
@@ -127,8 +160,10 @@ def dns_instructions(domain: str, target: str) -> list:
     ]
 
 
-def register_domain(domain: str, client: Any = None, zone: Optional[str] = None, target: Optional[str] = None) -> dict:
-    """Registers the domain and its www form (idempotent). Returns {domain, target, hostnames, dns, all_active}."""
+def register_domain(domain: str, client: Any = None, zone: Optional[str] = None, target: Optional[str] = None,
+                    script: Optional[str] = None) -> dict:
+    """Registers the domain and its www form plus its Worker route (idempotent).
+    Returns {domain, target, hostnames, dns, route_ok, all_active}."""
     if client is None:
         client, zone, target = make_client()
     d = normalise_domain(domain)
@@ -136,11 +171,13 @@ def register_domain(domain: str, client: Any = None, zone: Optional[str] = None,
     for host in hostnames_for(d):
         row = _find(client, zone, host) or _create(client, zone, host)
         rows.append(_summary(row))
+    route_ok = _ensure_route(client, zone, d, script or worker_name())
     return {"domain": d, "target": target, "hostnames": rows, "dns": dns_instructions(d, target),
-            "all_active": all(r["active"] for r in rows)}
+            "route_ok": route_ok, "all_active": route_ok and all(r["active"] for r in rows)}
 
 
-def status_domain(domain: str, client: Any = None, zone: Optional[str] = None, target: Optional[str] = None) -> dict:
+def status_domain(domain: str, client: Any = None, zone: Optional[str] = None, target: Optional[str] = None,
+                  script: Optional[str] = None) -> dict:
     """Current status of the domain's hostnames, without creating anything. A hostname Cloudflare doesn't
     know yet is reported as status 'not_registered'."""
     if client is None:
@@ -151,16 +188,21 @@ def status_domain(domain: str, client: Any = None, zone: Optional[str] = None, t
         row = _find(client, zone, host)
         rows.append(_summary(row) if row else {"hostname": host, "id": None, "status": "not_registered",
                                                "ssl_status": "none", "active": False, "errors": []})
+    route = _find_route(client, zone, route_pattern(d))
+    route_ok = bool(route and route.get("script") == (script or worker_name()))
     return {"domain": d, "target": target, "hostnames": rows, "dns": dns_instructions(d, target),
-            "all_active": all(r["active"] for r in rows)}
+            "route_ok": route_ok, "all_active": route_ok and all(r["active"] for r in rows)}
 
 
 def remove_domain(domain: str, client: Any = None, zone: Optional[str] = None) -> dict:
-    """Removes the domain's hostnames from Cloudflare (for example when a site lapses)."""
+    """Removes the domain's hostnames and Worker route from Cloudflare (for example when a site lapses)."""
     if client is None:
         client, zone, _ = make_client()
     d = normalise_domain(domain)
     removed = 0
+    route = _find_route(client, zone, route_pattern(d))
+    if route and route.get("id"):
+        client.request("DELETE", f"/zones/{zone}/workers/routes/{route['id']}")
     for host in hostnames_for(d):
         row = _find(client, zone, host)
         if row and row.get("id"):
