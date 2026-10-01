@@ -153,7 +153,7 @@ class TestApprove:
         row = db.rows("site_orders")[0]
         assert row["status"] == "fulfilling" and row["approved_by"] == USER and row["approved_at"]
         jobs = db.rows("site_hosting_jobs")
-        assert len(jobs) == 1 and jobs[0]["order_id"] == "ord-1" and len(jobs[0]["checklist"]) == 6
+        assert len(jobs) == 1 and jobs[0]["order_id"] == "ord-1" and len(jobs[0]["checklist"]) == 5
         assert row["hosting_job_id"] == jobs[0]["id"]
         assert res["hosting_job"]["id"] == jobs[0]["id"]
         assert any(t["task_type"] == "hosting_job" for t in db.rows("tasks"))
@@ -505,6 +505,14 @@ class TestMarkLive:
         monkeypatch.setattr(pricing_service, "quote", lambda db, org, domain, route, kind="initial", settings=None: {
             "cost": {"domain": 5913.0, "hosting": 36765.0, "ai_messages": 0, "total": 42678.0}})
 
+    def test_old_job_with_paste_url_step_still_goes_live(self, spy):
+        old = [{"key": k, "label": k, "done": False} for k in
+               ("recheck_domain", "register_domain", "buy_hosting", "upload_site", "enable_ssl", "paste_url")]
+        db = self._setup(job_kw={"checklist": old})
+        ops.mark_live(db, ORG, "job-1", USER, "https://adaezastyles.com.ng/", http_get=lambda u: _Resp(200), now=INSIDE)
+        job = db.rows("site_hosting_jobs")[0]
+        assert next(s for s in job["checklist"] if s["key"] == "paste_url")["done"] is True
+
     def test_happy_path(self, spy):
         db = self._setup()
         out = ops.mark_live(db, ORG, "job-1", USER, "https://adaezastyles.com.ng/", http_get=lambda u: _Resp(200), now=INSIDE)
@@ -512,7 +520,7 @@ class TestMarkLive:
         assert db.rows("site_orders")[0]["status"] == "live"
         job = db.rows("site_hosting_jobs")[0]
         assert job["status"] == "done" and job["completed_at"] and job["domain_used"] == "adaezastyles.com.ng"
-        assert next(s for s in job["checklist"] if s["key"] == "paste_url")["done"] is True
+        assert next(s for s in job["checklist"] if s["key"] == "mark_live")["done"] is True
         site = db.rows("sites")[0]
         assert site["status"] == "live" and site["live_url"] == "https://adaezastyles.com.ng/" and site["published_at"]
         dom = db.rows("site_domains")[0]

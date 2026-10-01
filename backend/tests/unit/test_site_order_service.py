@@ -340,7 +340,7 @@ class TestCreateHostingJob:
         monkeypatch.setattr(funnel_svc, "notify_managers", lambda *a, **k: None)
 
         job = svc.create_hosting_job(db, ORG_ID, self._order())
-        assert len(job["checklist"]) == 6
+        assert len(job["checklist"]) == 5
         assert job["checklist"][0]["key"] == "recheck_domain"
         assert job["status"] == "queued"
         db.table("tasks").insert.assert_called()

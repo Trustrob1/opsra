@@ -708,6 +708,12 @@ def use_backup_domain(db: Any, org_id: str, job_id: str, user_id: str) -> dict:
             "message": "The backup is taken too. The order now waits for the builder to choose a new domain."}
 
 
+def _live_step_key(job: dict) -> str:
+    """The checklist key mark_live ticks: 'mark_live' on new jobs, 'paste_url' on jobs created before SITE-ZONES."""
+    keys = {i.get("key") for i in (job.get("checklist") or [])}
+    return "mark_live" if "mark_live" in keys else "paste_url"
+
+
 def _default_http_get(url: str):
     import httpx
     return httpx.get(url, follow_redirects=True, timeout=10.0)
@@ -745,7 +751,7 @@ def mark_live(db: Any, org_id: str, job_id: str, user_id: str, live_url: str,
 
     db.table("site_hosting_jobs").update({
         "status": "done", "completed_at": ts, "domain_used": domain,
-        "checklist": _tick(job.get("checklist"), "paste_url", True), "updated_at": ts,
+        "checklist": _tick(job.get("checklist"), _live_step_key(job), True), "updated_at": ts,
     }).eq("id", job["id"]).eq("org_id", org_id).execute()
     db.table("sites").update({"status": "live", "live_url": url, "published_at": ts, "updated_at": ts}) \
         .eq("id", order["site_id"]).eq("org_id", org_id).execute()

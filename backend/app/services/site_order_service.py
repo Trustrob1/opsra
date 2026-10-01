@@ -26,7 +26,7 @@ suppress its own generic "payment received" WhatsApp message for site
 orders, since this module sends its own (spec §11.6). Mirrors
 funnel_service.is_funnel_reference() exactly.
 
-create_hosting_job(): spec §11.4 step 3 — the 6-step checklist, the SLA
+create_hosting_job(): spec §11.4 step 3 — the 5-step checklist, the SLA
 clock and a task-board row. Kept as its own public, idempotent function
 (not inlined into on_payment_confirmed) so the future staff "Approve order"
 route (SITE-3 dashboard tabs, not built this session) can call it too, for
@@ -57,14 +57,15 @@ logger = logging.getLogger(__name__)
 
 _SLA_HOURS = 24
 
-# spec §11.4 step 3 — the exact 6-step checklist, in order.
+# spec §11.4 step 3, shortened by SITE-ZONES: Cloudflare hosts the site, so there is no hosting package to
+# buy, no zip to upload and no SSL to switch on. Domains we buy are put on Cloudflare DNS and attached to the
+# Worker from the Publish popup; the only manual registrar step left is setting the two nameservers.
 _HOSTING_CHECKLIST = [
     {"key": "recheck_domain", "label": "Re-check the domain. If it's taken, use the backup.", "done": False},
     {"key": "register_domain", "label": "Register the domain at QServers in the client's name.", "done": False},
-    {"key": "buy_hosting", "label": "Buy the hosting package (the configured bundle).", "done": False},
-    {"key": "upload_site", "label": "Download the export zip and upload it to public_html.", "done": False},
-    {"key": "enable_ssl", "label": "Turn on SSL.", "done": False},
-    {"key": "paste_url", "label": "Paste the live URL into Opsra.", "done": False},
+    {"key": "publish_site", "label": "Click Publish to Cloudflare.", "done": False},
+    {"key": "set_nameservers", "label": "Set the two nameservers from the popup at QServers (or add the CNAME if the client keeps their own DNS).", "done": False},
+    {"key": "mark_live", "label": "Click Check status, then Mark live once both addresses show Live.", "done": False},
 ]
 
 
@@ -431,8 +432,8 @@ def create_hosting_job(db: Any, org_id: str, order: dict) -> dict:
                       else f"Deploy hosting: {order.get('domain') or order['site_id']}"),
             "description": ("Renewal job — renew the domain and the hosting package, confirm the site loads, "
                             "then click Mark renewed in Opsra." if is_renewal else
-                            "Standard hosting job — re-check the domain, register it, buy hosting, "
-                            "upload the export, turn on SSL, then paste the live URL into Opsra."),
+                            "Standard hosting job — re-check the domain, register it, click Publish to Cloudflare, "
+                            "set the nameservers at QServers, then Mark live in Opsra."),
             "task_type": "hosting_job",
             "source_module": "site_hosting",
             "source_record_id": job.get("id"),
