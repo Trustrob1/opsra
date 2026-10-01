@@ -215,3 +215,42 @@ def test_delete_keys_refuses_keys_outside_the_prefix():
 def test_unpublish_with_bad_domain_raises():
     with pytest.raises(sp.NoDomain):
         sp.unpublish_domain("", client=FakeS3(), bucket="b")
+
+
+# ── site_domain (used by the hostname status endpoint) ──────────────────────
+
+class _Q:
+    def __init__(self, rows): self.rows, self.f = rows, []
+    def select(self, *_a): return self
+    def eq(self, k, v): self.f.append(lambda r: r.get(k) == v); return self
+    def neq(self, k, v): self.f.append(lambda r: r.get(k) != v); return self
+    def is_(self, k, _v): self.f.append(lambda r: r.get(k) is None); return self
+    def order(self, k, desc=False): self.rows = sorted(self.rows, key=lambda r: r.get(k) or "", reverse=desc); return self
+    def limit(self, *_a): return self
+    def execute(self):
+        class R: pass
+        r = R(); r.data = [x for x in self.rows if all(f(x) for f in self.f)]; return r
+
+
+class _DB:
+    def __init__(self, sites, orders): self.t = {"sites": sites, "site_orders": orders}
+    def table(self, n): return _Q(list(self.t[n]))
+
+
+def test_site_domain_uses_latest_live_order():
+    db = _DB([{"id": "s1", "org_id": "o", "deleted_at": None}], [
+        {"site_id": "s1", "org_id": "o", "domain": "old.ng", "status": "live", "created_at": "2026-01-01"},
+        {"site_id": "s1", "org_id": "o", "domain": "WWW.New.ng", "status": "live", "created_at": "2026-02-01"},
+        {"site_id": "s1", "org_id": "o", "domain": "expired.ng", "status": "expired", "created_at": "2026-03-01"},
+    ])
+    assert sp.site_domain(db, "o", "s1") == "new.ng"
+
+
+def test_site_domain_errors():
+    db = _DB([{"id": "s1", "org_id": "o", "deleted_at": None}], [])
+    with pytest.raises(sp.NoDomain):
+        sp.site_domain(db, "o", "s1")
+    with pytest.raises(site_ops_service.NotFound):
+        sp.site_domain(db, "o", "missing")
+    with pytest.raises(site_ops_service.NotFound):
+        sp.site_domain(db, "other-org", "s1")

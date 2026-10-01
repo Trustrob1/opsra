@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET: str = "opsra-sites"
 
+    # SITE-HOSTNAMES — Cloudflare for SaaS custom hostnames (connect a client's domain to the Worker).
+    # Token needs Zone > SSL and Certificates > Edit on the SaaS zone. Empty = feature off.
+    CLOUDFLARE_API_TOKEN: str = ""
+    CLOUDFLARE_ZONE_ID: str = ""
+    SITES_CNAME_TARGET: str = "sites.coreaicloudtech.com.ng"
+
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, v: str) -> str:

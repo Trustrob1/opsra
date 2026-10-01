@@ -14,6 +14,7 @@ import {
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Segmented, Toggle } from './sitesUi'
 import { Fact } from './sitesOpsUi'
+import PublishResultModal from './PublishResultModal'
 import { T, INPUT, TEXTAREA, money, dateTime, JOB_STATUS, SLA, formatCountdown, useNow } from './sitesKit'
 
 const AMBER_MS = 12 * 3600 * 1000
@@ -99,6 +100,7 @@ export default function SitesHostingTab({ isActive, user, canEdit, showToast, on
 
 function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, onMarkLive, onGoOrders }) {
   const [busy, setBusy] = useState(null)
+  const [publishResult, setPublishResult] = useState(null)
   const [notes, setNotes] = useState(job.notes || '')
   const [result, setResult] = useState(null)
   useEffect(() => { setNotes(job.notes || '') }, [job.notes])
@@ -143,8 +145,7 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
   const publish = async () => {
     setBusy('publish')
     try {
-      const r = await publishSite(job.site_id)
-      showToast(`Published to Cloudflare: ${r.files} files for ${r.domain}`)
+      setPublishResult(await publishSite(job.site_id))
     } catch (e) { showToast(errorMessage(e, 'Could not publish the site.'), 'bad') } finally { setBusy(null) }
   }
   const zip = async () => {
@@ -230,6 +231,7 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
           <p style={{ margin: 0, fontSize: 13 }}>Live at <a href={job.live_url} target="_blank" rel="noreferrer noopener" style={{ color: T.teal, fontWeight: 600 }}>{job.live_url}</a></p>
         )}
       </div>
+      <PublishResultModal open={!!publishResult} onClose={() => setPublishResult(null)} siteId={job.site_id} result={publishResult} />
     </Card>
   )
 }

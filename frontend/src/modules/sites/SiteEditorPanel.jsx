@@ -18,6 +18,7 @@ import ThemePicker from './ThemePicker'
 import { T, INPUT, TEXTAREA, photoHint, dateTime, THEMES, SECTION_LABELS, SITE_STATUS, insertSection } from './sitesKit'
 import LookPickerField from './LookPicker'
 import ExtraSectionCards from './ExtraSectionCards'
+import PublishResultModal from './PublishResultModal'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -33,6 +34,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
   const [savingRecipe, setSavingRecipe] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const [publishResult, setPublishResult] = useState(null)
   const [previewOpen, setPreviewOpen] = useState(false)
 
   const load = useCallback(async () => {
@@ -106,8 +108,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
   const doPublish = async () => {
     setPublishing(true)
     try {
-      const r = await publishSite(siteId)
-      showToast(`Published to Cloudflare: ${r.files} files for ${r.domain}`)
+      setPublishResult(await publishSite(siteId))
     } catch (e) { showToast(errorMessage(e, 'Could not publish the site.'), 'bad') } finally { setPublishing(false) }
   }
 
@@ -181,6 +182,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
         <div><Button variant="primary" icon={Save} loading={savingRecipe} onClick={saveRecipe}>Save design</Button></div>
       )}
 
+      <PublishResultModal open={!!publishResult} onClose={() => setPublishResult(null)} siteId={siteId} result={publishResult} />
       <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title="Preview" width={420}>
         {site.rendered_html
           ? <iframe title="Site preview" srcDoc={site.rendered_html} style={{ width: '100%', height: '70vh', border: `1px solid ${T.line}`, borderRadius: 8 }} />

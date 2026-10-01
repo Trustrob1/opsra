@@ -1,0 +1,178 @@
+"""
+tests/unit/test_site_cloudflare_service.py
+-------------------------------------------
+SITE-HOSTNAMES — custom hostnames via the Cloudflare API. A fake client stands in for Cloudflare; no network.
+"""
+from __future__ import annotations
+
+import pytest
+
+from app.services import site_cloudflare_service as cf
+
+ZONE = "zone123"
+TARGET = "sites.coreaicloudtech.com.ng"
+
+
+class FakeCF:
+    def __init__(self, existing=None, fail=False):
+        self.rows = {r["hostname"]: dict(r) for r in (existing or [])}
+        self.calls = []
+        self.fail = fail
+        self._n = 0
+
+    def request(self, method, path, json=None, params=None):
+        self.calls.append((method, path, json, params))
+        if self.fail:
+            raise cf.HostnameError("x")
+        if method == "GET":
+            h = (params or {}).get("hostname")
+            return {"success": True, "result": [r for r in self.rows.values() if r["hostname"] == h]}
+        if method == "POST":
+            self._n += 1
+            row = {"id": f"id{self._n}", "hostname": json["hostname"], "status": "pending",
+                   "ssl": {"status": "initializing"}, "verification_errors": ["custom hostname does not CNAME to this zone."]}
+            self.rows[json["hostname"]] = row
+            return {"success": True, "result": row}
+        if method == "DELETE":
+            hid = path.rsplit("/", 1)[-1]
+            self.rows = {k: v for k, v in self.rows.items() if v["id"] != hid}
+            return {"success": True, "result": {"id": hid}}
+        raise AssertionError(method)
+
+
+def _reg(c, domain="shop.com.ng"):
+    return cf.register_domain(domain, client=c, zone=ZONE, target=TARGET)
+
+
+def test_registers_domain_and_www_with_http_validation():
+    c = FakeCF()
+    out = _reg(c)
+    posts = [x for x in c.calls if x[0] == "POST"]
+    assert [p[2]["hostname"] for p in posts] == ["shop.com.ng", "www.shop.com.ng"]
+    assert all(p[2]["ssl"]["method"] == "http" and p[2]["ssl"]["type"] == "dv" for p in posts)
+    assert all(p[1] == f"/zones/{ZONE}/custom_hostnames" for p in posts)
+    assert out["domain"] == "shop.com.ng" and out["target"] == TARGET and out["all_active"] is False
+    assert [h["hostname"] for h in out["hostnames"]] == ["shop.com.ng", "www.shop.com.ng"]
+
+
+def test_register_is_idempotent():
+    c = FakeCF()
+    _reg(c)
+    n = len([x for x in c.calls if x[0] == "POST"])
+    _reg(c)
+    assert len([x for x in c.calls if x[0] == "POST"]) == n == 2
+
+
+def test_www_and_url_input_normalise_to_the_same_hostnames():
+    c = FakeCF()
+    out = _reg(c, "https://WWW.Shop.com.ng/")
+    assert out["domain"] == "shop.com.ng"
+    assert set(c.rows) == {"shop.com.ng", "www.shop.com.ng"}
+
+
+def test_all_active_only_when_status_and_ssl_are_both_active():
+    active = {"status": "active", "ssl": {"status": "active"}, "verification_errors": []}
+    c = FakeCF(existing=[{"id": "1", "hostname": "shop.com.ng", **active},
+                         {"id": "2", "hostname": "www.shop.com.ng", "status": "active", "ssl": {"status": "pending_validation"}}])
+    out = _reg(c)
+    assert out["hostnames"][0]["active"] is True and out["hostnames"][1]["active"] is False
+    assert out["all_active"] is False
+    c.rows["www.shop.com.ng"]["ssl"]["status"] = "active"
+    assert cf.status_domain("shop.com.ng", client=c, zone=ZONE, target=TARGET)["all_active"] is True
+
+
+def test_status_does_not_create_and_reports_unregistered():
+    c = FakeCF()
+    out = cf.status_domain("shop.com.ng", client=c, zone=ZONE, target=TARGET)
+    assert not [x for x in c.calls if x[0] == "POST"]
+    assert {h["status"] for h in out["hostnames"]} == {"not_registered"} and out["all_active"] is False
+
+
+def test_hostname_match_is_exact_not_a_substring():
+    c = FakeCF(existing=[{"id": "9", "hostname": "notshop.com.ng", "status": "active", "ssl": {"status": "active"}}])
+    c.request = lambda m, p, json=None, params=None, _o=c.request: (  # Cloudflare's filter can return near matches
+        {"success": True, "result": list(c.rows.values())} if m == "GET" else _o(m, p, json, params))
+    out = _reg(c)
+    assert not any(h["active"] for h in out["hostnames"])
+
+
+def test_errors_are_shown_but_capped():
+    row = {"id": "1", "hostname": "shop.com.ng", "status": "pending", "ssl": {},
+           "verification_errors": ["a", "b", "c", "d", "e"]}
+    c = FakeCF(existing=[row])
+    assert cf.status_domain("shop.com.ng", client=c, zone=ZONE, target=TARGET)["hostnames"][0]["errors"] == ["a", "b", "c"]
+
+
+def test_dns_instructions():
+    ins = cf.dns_instructions("www.Shop.com.ng", TARGET)
+    assert ins[0]["host"] == "www.shop.com.ng" and ins[0]["type"] == "CNAME" and ins[0]["value"] == TARGET
+    assert ins[1]["host"] == "shop.com.ng" and "forward" in ins[1]["note"]
+
+
+def test_remove_deletes_both_hostnames_only():
+    c = FakeCF()
+    _reg(c)
+    _reg(c, "other.ng")
+    out = cf.remove_domain("shop.com.ng", client=c, zone=ZONE)
+    assert out == {"domain": "shop.com.ng", "removed": 2}
+    assert set(c.rows) == {"other.ng", "www.other.ng"}
+
+
+def test_bad_domain_raises_before_calling_cloudflare():
+    from app.services.site_publish_service import NoDomain
+    c = FakeCF()
+    with pytest.raises(NoDomain):
+        _reg(c, "not a domain")
+    assert c.calls == []
+
+
+def test_cloudflare_failure_propagates_as_hostname_error():
+    with pytest.raises(cf.HostnameError):
+        _reg(FakeCF(fail=True))
+
+
+class _S:
+    def __init__(self, token="t", zone="z", target="t.example.ng"):
+        self.CLOUDFLARE_API_TOKEN, self.CLOUDFLARE_ZONE_ID, self.SITES_CNAME_TARGET = token, zone, target
+
+
+@pytest.mark.parametrize("kw", [{"token": ""}, {"zone": ""}])
+def test_not_configured(monkeypatch, kw):
+    monkeypatch.setattr(cf, "_settings", lambda: _S(**kw))
+    with pytest.raises(cf.HostnamesNotConfigured) as e:
+        cf.make_client()
+    assert e.value.status_code == 503
+
+
+def test_make_client_returns_zone_and_default_target(monkeypatch):
+    monkeypatch.setattr(cf, "_settings", lambda: _S(target=""))
+    client, zone, target = cf.make_client()
+    assert isinstance(client, cf.CloudflareClient) and zone == "z" and target == "sites.coreaicloudtech.com.ng"
+
+
+def test_real_client_turns_http_and_api_failures_into_friendly_errors(monkeypatch):
+    import httpx
+
+    class R:
+        def __init__(self, code, body): self.status_code, self._b = code, body
+        def json(self): return self._b
+
+    secret = "SECRET-TOKEN"
+    c = cf.CloudflareClient(secret)
+    monkeypatch.setattr(httpx, "request", lambda *a, **k: R(403, {"success": False, "errors": [{"message": "nope"}]}))
+    with pytest.raises(cf.HostnameError) as e:
+        c.request("GET", "/x")
+    assert secret not in str(e.value) and "nope" not in str(e.value)
+
+    def boom(*a, **k): raise httpx.ConnectError("down")
+    monkeypatch.setattr(httpx, "request", boom)
+    with pytest.raises(cf.HostnameError):
+        c.request("GET", "/x")
+
+    seen = {}
+    def ok(method, url, **k):
+        seen.update(url=url, auth=k["headers"]["Authorization"])
+        return R(200, {"success": True, "result": []})
+    monkeypatch.setattr(httpx, "request", ok)
+    assert c.request("GET", "/zones/z/custom_hostnames")["success"] is True
+    assert seen["url"].endswith("/client/v4/zones/z/custom_hostnames") and seen["auth"] == f"Bearer {secret}"

@@ -110,6 +110,9 @@ export const downloadSiteExport = async (siteId, slug) => {
 /** SITE-PUBLISH — uploads the site to Cloudflare under the client's domain. Returns {domain, files, bytes, removed, urls}. */
 export const publishSite = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/publish`))
 
+/** SITE-HOSTNAMES — DNS records the client must add + whether Cloudflare has connected the domain. */
+export const getSiteHostnames = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/hostnames`))
+
 /** Pull a readable message out of an axios error ({detail:{message}} or FastAPI 422 list). */
 export function errorMessage(err, fallback = 'Something went wrong. Please try again.') {
   const d = err?.response?.data?.detail

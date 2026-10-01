@@ -137,6 +137,17 @@ def _ordered(files: list) -> list:
     return sorted(files, key=lambda f: f[0] == "index.html")
 
 
+def site_domain(db: Any, org_id: str, site_id: str) -> str:
+    """The normalised domain of a site's latest non-expired order. Raises NotFound / NoDomain."""
+    site = site_ops_service._one((db.table("sites").select("id").eq("id", site_id).eq("org_id", org_id)
+                                  .is_("deleted_at", "null").limit(1).execute()).data)
+    if not site:
+        raise site_ops_service.NotFound("Site not found")
+    order = site_ops_service._one((db.table("site_orders").select("domain").eq("org_id", org_id).eq("site_id", site_id)
+                                   .neq("status", "expired").order("created_at", desc=True).limit(1).execute()).data)
+    return normalise_domain((order or {}).get("domain"))
+
+
 def publish_site(db: Any, org_id: str, site_id: str, client: Any = None, bucket: Optional[str] = None) -> dict:
     """Uploads the site to R2. Returns {domain, prefix, files, bytes, removed, urls}.
     Raises NotFound / ValidationFailed (from the export), NoDomain, NotConfigured, PublishError."""
