@@ -8,9 +8,9 @@
  * Pattern 26: stays mounted; fetches (and ticks the countdown) only while `isActive`.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Download, RefreshCw, ArrowLeftRight, Rocket, UserPlus, UserMinus, Server, Clock, TriangleAlert } from 'lucide-react'
+import { CloudUpload, Download, RefreshCw, ArrowLeftRight, Rocket, UserPlus, UserMinus, Server, Clock, TriangleAlert } from 'lucide-react'
 import {
-  listHostingJobs, patchHostingJob, recheckJobDomain, switchToBackupDomain, markJobLive, markJobRenewed, downloadSiteExport, errorMessage,
+  listHostingJobs, patchHostingJob, recheckJobDomain, switchToBackupDomain, markJobLive, markJobRenewed, downloadSiteExport, publishSite, errorMessage,
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Segmented, Toggle } from './sitesUi'
 import { Fact } from './sitesOpsUi'
@@ -140,6 +140,13 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
   const renewed = () => run('renewed', () => markJobRenewed(job.id), 'Marked renewed — the builder has been told')
   const recheck = () => run('recheck', () => recheckJobDomain(job.id))
   const backup = async () => { const res = await run('backup', () => switchToBackupDomain(job.id)); if (res) onReload() }
+  const publish = async () => {
+    setBusy('publish')
+    try {
+      const r = await publishSite(job.site_id)
+      showToast(`Published to Cloudflare: ${r.files} files for ${r.domain}`)
+    } catch (e) { showToast(errorMessage(e, 'Could not publish the site.'), 'bad') } finally { setBusy(null) }
+  }
   const zip = async () => {
     setBusy('zip')
     try { await downloadSiteExport(job.site_id, job.site_slug) } catch (e) { showToast(errorMessage(e, 'Could not build the zip.'), 'bad') } finally { setBusy(null) }
@@ -210,6 +217,7 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
             {canEdit && !mine && <Button icon={UserPlus} loading={busy === 'assign'} onClick={() => assign(user?.id)}>Take job</Button>}
             {canEdit && job.assigned_to && <Button variant="ghost" icon={UserMinus} loading={busy === 'assign'} onClick={() => assign(null)}>Unassign</Button>}
             {!isRenewal && <Button icon={Download} loading={busy === 'zip'} onClick={zip}>Download zip</Button>}
+            {canEdit && !isRenewal && <Button icon={CloudUpload} loading={busy === 'publish'} onClick={publish}>Publish to Cloudflare</Button>}
             {canEdit && !waitingOnBuilder && !registered && !isRenewal && (<>
               <Button icon={RefreshCw} loading={busy === 'recheck'} onClick={recheck}>Re-check domain</Button>
               {job.backup_domain && !usingBackup && <Button icon={ArrowLeftRight} loading={busy === 'backup'} onClick={backup}>Use backup domain</Button>}

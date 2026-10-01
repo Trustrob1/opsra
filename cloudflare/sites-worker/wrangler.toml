@@ -1,0 +1,10 @@
+name = "opsra-sites"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# The bucket the backend publishes into.
+[[r2_buckets]]
+binding = "SITES"
+bucket_name = "opsra-sites"
+
+# Routes / custom domains are added after the first deploy (see README.md).

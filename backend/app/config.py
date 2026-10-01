@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     # Empty string = Sentry disabled (safe for local dev).
     SENTRY_DSN: str = ""
 
+    # SITE-PUBLISH — Cloudflare R2 (S3-compatible) bucket that holds published client sites.
+    # Create an R2 API token limited to the bucket (Object Read & Write) and set these in Render.
+    # Empty = publishing is switched off (the publish endpoint returns a clear message).
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET: str = "opsra-sites"
+
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, v: str) -> str:

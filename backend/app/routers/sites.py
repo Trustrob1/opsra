@@ -49,7 +49,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_renderer
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -863,3 +863,14 @@ def export_site_zip(site_id: str, org=Depends(get_current_org), db=Depends(get_s
     _log_event(db, org_id, site_id, f"user:{org.get('id')}", "export_downloaded")
     return Response(content=data, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.post("/sites/{site_id}/publish")
+def publish_site(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """SITE-PUBLISH — uploads the site's files to Cloudflare R2 under the client's domain; the
+    `opsra-sites` Worker serves them. Safe to repeat (replaces the live copy)."""
+    org_id = _ops_org(org, db, _WRITE_ROLES)
+    result = _ops(site_publish_service.publish_site, db, org_id, site_id)
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "published_to_cloudflare",
+               {k: result[k] for k in ("domain", "files", "bytes", "removed")})
+    return ok(data=result)

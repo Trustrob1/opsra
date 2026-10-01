@@ -234,6 +234,8 @@ def create_code(db: Any, org_id: str, payload: dict) -> dict:
     if exists:
         raise DiscountError("You already have a code with that name.")
     data["org_id"] = org_id
+    data.setdefault("active", True)
+    data.setdefault("one_per_builder", False)
     res = db.table("site_discount_codes").insert(data).execute()
     return _one(res.data) or data
 

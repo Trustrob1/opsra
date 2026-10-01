@@ -895,8 +895,10 @@ def pricing_errors():
 # Export zip — spec §8.6
 # ---------------------------------------------------------------------------
 
-def build_export_zip(db: Any, org_id: str, site_id: str) -> tuple:
-    """Returns (bytes, filename). Built in memory, never stored (spec §8.6)."""
+def collect_export_files(db: Any, org_id: str, site_id: str) -> tuple:
+    """The files of a site's export bundle (spec §8.6): index.html, images/*, robots.txt, sitemap.xml.
+    Returns (files, site, domain) where files is a list of (path, bytes). Shared by the zip download
+    and by site_publish_service (SITE-PUBLISH), so both always ship exactly the same files."""
     from app.services import site_renderer
     site = _one((db.table("sites").select("*").eq("id", site_id).eq("org_id", org_id)
                  .is_("deleted_at", "null").limit(1).execute()).data)
@@ -913,36 +915,45 @@ def build_export_zip(db: Any, org_id: str, site_id: str) -> tuple:
                   .neq("status", "expired").order("created_at", desc=True).limit(1).execute()).data)
     domain = (order or {}).get("domain")
 
-    buf = io.BytesIO()
+    files: list = []
     used: set = set()
     assets_by_id: dict = {}
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for a in assets:
-            try:
-                data = db.storage.from_("site-assets").download(a["storage_path"])
-            except Exception as exc:
-                logger.warning("site_ops: export asset download failed asset=%s: %s", a.get("id"), exc)
-                continue
-            ext = _IMAGE_EXT.get(a.get("mime_type") or "", "jpg")
-            slot = re.sub(r"[^a-z0-9_-]", "-", str(a.get("slot") or "image").lower())
-            name = f"images/{slot}.{ext}"
-            if name in used:
-                name = f"images/{slot}-{str(a['id'])[:6]}.{ext}"
-            used.add(name)
-            zf.writestr(name, data)
-            assets_by_id[a["id"]] = {"export_path": name}
+    for a in assets:
         try:
-            html = site_renderer.render_export(site["content"], site["recipe"], preset, assets_by_id)
-        except ValueError as exc:
-            raise ValidationFailed(str(exc))
-        zf.writestr("index.html", html)
-        origin = f"https://{domain}" if domain else None
-        zf.writestr("robots.txt", "User-agent: *\nAllow: /\n" + (f"Sitemap: {origin}/sitemap.xml\n" if origin else ""))
-        if origin:
-            zf.writestr("sitemap.xml",
-                        '<?xml version="1.0" encoding="UTF-8"?>\n'
-                        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-                        f"<url><loc>{origin}/</loc></url></urlset>\n")
+            data = db.storage.from_("site-assets").download(a["storage_path"])
+        except Exception as exc:
+            logger.warning("site_ops: export asset download failed asset=%s: %s", a.get("id"), exc)
+            continue
+        ext = _IMAGE_EXT.get(a.get("mime_type") or "", "jpg")
+        slot = re.sub(r"[^a-z0-9_-]", "-", str(a.get("slot") or "image").lower())
+        name = f"images/{slot}.{ext}"
+        if name in used:
+            name = f"images/{slot}-{str(a['id'])[:6]}.{ext}"
+        used.add(name)
+        files.append((name, data))
+        assets_by_id[a["id"]] = {"export_path": name}
+    try:
+        html = site_renderer.render_export(site["content"], site["recipe"], preset, assets_by_id)
+    except ValueError as exc:
+        raise ValidationFailed(str(exc))
+    files.append(("index.html", html))
+    origin = f"https://{domain}" if domain else None
+    files.append(("robots.txt", "User-agent: *\nAllow: /\n" + (f"Sitemap: {origin}/sitemap.xml\n" if origin else "")))
+    if origin:
+        files.append(("sitemap.xml",
+                      '<?xml version="1.0" encoding="UTF-8"?>\n'
+                      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                      f"<url><loc>{origin}/</loc></url></urlset>\n"))
+    return files, site, domain
+
+
+def build_export_zip(db: Any, org_id: str, site_id: str) -> tuple:
+    """Returns (bytes, filename). Built in memory, never stored (spec §8.6)."""
+    files, site, _domain = collect_export_files(db, org_id, site_id)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in files:
+            zf.writestr(name, data)
     return buf.getvalue(), f"{site['slug']}-export.zip"
 
 
