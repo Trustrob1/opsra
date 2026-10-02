@@ -522,6 +522,100 @@ def run_asset_cleanup() -> dict:
     return total
 
 
+# ─────────────────────────────── Offsite backup (SITE-BACKUP) ───────────────────────────────
+
+_BACKUP_ALERT_TYPE = "site_backup_alert"
+_BACKUP_ALERT_DEDUP_HOURS = 20
+
+
+def _alert_backup_problem(db, now: datetime, title: str, body: str) -> int:
+    """In-app notification + push to the managers of every org that has site orders.
+    One alert per org per 20 hours, so the run alert and the morning watchdog don't both fire.
+    Returns the number of orgs alerted. S14: never raises."""
+    alerted = 0
+    try:
+        org_ids = {r["org_id"] for r in (db.table("site_orders").select("org_id").limit(1000).execute()).data or []
+                   if r.get("org_id")}
+    except Exception:  # S14
+        logger.exception("[site_worker] backup alert: org lookup failed")
+        return 0
+    cutoff = (now - timedelta(hours=_BACKUP_ALERT_DEDUP_HOURS)).isoformat()
+    for org_id in org_ids:
+        try:
+            already = (db.table("notifications").select("id").eq("org_id", org_id)
+                       .eq("type", _BACKUP_ALERT_TYPE).gte("created_at", cutoff).limit(1).execute()).data
+            if already:
+                continue
+            for uid in set(_get_manager_ids(db, org_id)):
+                try:
+                    db.table("notifications").insert({
+                        "org_id": org_id, "user_id": uid, "title": title[:200], "body": body[:1000],
+                        "type": _BACKUP_ALERT_TYPE, "resource_type": "site_backup_run", "resource_id": None,
+                        "is_read": False, "created_at": now.isoformat(),
+                    }).execute()
+                except Exception:  # S14
+                    logger.exception("[site_worker] backup alert notify failed org=%s user=%s", org_id, uid)
+                _push(db, uid, title, body)
+            alerted += 1
+        except Exception:  # S14
+            logger.exception("[site_worker] backup alert failed org=%s", org_id)
+    return alerted
+
+
+@celery_app.task(name="app.workers.site_worker.run_site_backup")
+def run_site_backup() -> dict:
+    from app.services import site_backup_service
+    db = get_supabase()
+    started = _now()
+    total = {"status": "failed", "domains_total": 0, "domains_backed_up": 0, "domains_unchanged": 0,
+             "domains_failed": 0, "files_copied": 0, "snapshots_pruned": 0, "error": None}
+    try:
+        total = site_backup_service.run_backup(db, now=started)
+        if total["status"] in ("failed", "partial"):
+            title = "Site backup failed" if total["status"] == "failed" else "Site backup incomplete"
+            _alert_backup_problem(db, started, title, total.get("error") or "See the backup run record.")
+    except Exception as exc:  # S14
+        total["status"] = "failed"
+        total["error"] = str(exc)[:500]
+        logger.exception("[site_worker] site backup crashed")
+        _alert_backup_problem(db, started, "Site backup failed", total["error"])
+
+    failed = 1 if total["status"] in ("failed", "partial") else 0
+    write_worker_log(
+        db, worker_name="site_worker.site_backup", status="failed" if failed else "passed",
+        items_processed=total.get("domains_backed_up", 0) + total.get("domains_unchanged", 0),
+        items_failed=total.get("domains_failed", 0) or failed, error_message=total.get("error"),
+        started_at=started, run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return {k: total.get(k) for k in ("status", "domains_total", "domains_backed_up", "domains_unchanged",
+                                      "domains_failed", "files_copied", "snapshots_pruned", "error")}
+
+
+@celery_app.task(name="app.workers.site_worker.run_site_backup_watchdog")
+def run_site_backup_watchdog() -> dict:
+    from app.services import site_backup_service
+    db = get_supabase()
+    started = _now()
+    result = {"problem": None, "alerted_orgs": 0, "failed": 0}
+    try:
+        # Nothing to back up (and nobody to tell) until the site engine has at least one order.
+        has_sites = bool((db.table("site_orders").select("id").limit(1).execute()).data)
+        if has_sites:
+            problem = site_backup_service.backup_problem(db, started)
+            if problem:
+                result["problem"] = problem
+                result["alerted_orgs"] = _alert_backup_problem(db, started, "Site backups need attention", problem)
+    except Exception as exc:  # S14
+        result["failed"] += 1
+        logger.warning("[site_worker] backup watchdog failed: %s", exc)
+    write_worker_log(
+        db, worker_name="site_worker.site_backup_watchdog", status="failed" if result["failed"] else "passed",
+        items_processed=1, items_failed=result["failed"], started_at=started,
+        run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return result
+
+
 # ─────────────────────────────── Entry point ───────────────────────────────
 
 @celery_app.task(name="app.workers.site_worker.run_site_builder_timers")

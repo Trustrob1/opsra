@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET: str = "opsra-sites"
 
+    # SITE-BACKUP — nightly copy of published sites to a SEPARATE S3-compatible bucket (a second
+    # Cloudflare R2 account, Backblaze B2, ...). R2 endpoint: https://<account id>.r2.cloudflarestorage.com
+    # Use a key limited to the backup bucket. Empty = the nightly job records a "not set up" failure and alerts.
+    BACKUP_S3_ENDPOINT: str = ""
+    BACKUP_S3_REGION: str = ""            # optional; blank = 'auto' for R2, or read from a Backblaze endpoint
+    BACKUP_S3_ACCESS_KEY_ID: str = ""
+    BACKUP_S3_SECRET_ACCESS_KEY: str = ""
+    BACKUP_S3_BUCKET: str = ""
+    BACKUP_KEEP_SNAPSHOTS: int = 14       # newest snapshots kept per site
+
     # SITE-HOSTNAMES — Cloudflare for SaaS custom hostnames (connect a client's domain to the Worker).
     # Token needs Zone > SSL and Certificates > Edit on the SaaS zone. Empty = feature off.
     CLOUDFLARE_API_TOKEN: str = ""

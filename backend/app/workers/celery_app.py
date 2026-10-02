@@ -643,5 +643,25 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.site_worker.run_asset_cleanup",
         "schedule": crontab(minute=0, hour=3),
     },
+
+    # ------------------------------------------------------------------ #
+    # site-backup — Daily 01:00 UTC = 02:00 WAT  (SITE-BACKUP)           #
+    # Copies every published site from R2 to the separate backup bucket,   #
+    # verifies each copy, keeps the newest 14 snapshots per site and      #
+    # writes a run record. Alerts managers when it fails.                 #
+    # ------------------------------------------------------------------ #
+    "site-backup": {
+        "task": "app.workers.site_worker.run_site_backup",
+        "schedule": crontab(minute=0, hour=1),
+    },
+
+    # ------------------------------------------------------------------ #
+    # site-backup-watchdog — Daily 06:00 UTC = 07:00 WAT  (SITE-BACKUP)  #
+    # Alerts when no backup started in 26h, or the last one failed.       #
+    # ------------------------------------------------------------------ #
+    "site-backup-watchdog": {
+        "task": "app.workers.site_worker.run_site_backup_watchdog",
+        "schedule": crontab(minute=0, hour=6),
+    },
 }
 
