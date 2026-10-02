@@ -39,14 +39,16 @@ export default {
     const path = filePath(url.pathname);
     if (!folder || path === null) return plain(404, 'Not found');
 
-    const key = `${folder}/${path}`;
+    // SITE_PREFIX is set only on the standby copy in the backup account ("live/"); the main Worker has none.
+    const root = env.SITE_PREFIX || '';
+    const key = `${root}${folder}/${path}`;
     const object = await env.SITES.get(key, {
       onlyIf: request.headers,
       range: request.headers,
     });
 
     if (object === null) {
-      const page = await env.SITES.get(`${folder}/404.html`);
+      const page = await env.SITES.get(`${root}${folder}/404.html`);
       if (page && page.body) {
         const h = new Headers({ 'Content-Type': 'text/html; charset=utf-8', ...SECURITY });
         return new Response(request.method === 'HEAD' ? null : page.body, { status: 404, headers: h });

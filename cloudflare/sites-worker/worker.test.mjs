@@ -96,3 +96,11 @@ test('conditional request returns 304', async () => {
 test('path traversal is refused', async () => {
   assert.equal((await get('https://shop.com.ng/%2e%2e/other.ng/index.html')).status, 404);
 });
+
+test('standby copy reads from the SITE_PREFIX folder', async () => {
+  const standby = { SITE_PREFIX: 'live/', SITES: bucket({ 'live/shop.com.ng/index.html': { body: 'standby', type: 'text/html' } }) };
+  const r = await worker.fetch(new Request('https://shop.com.ng/'), standby);
+  assert.equal(r.status, 200);
+  assert.equal(await r.text(), 'standby');
+  assert.equal((await worker.fetch(new Request('https://other.ng/'), standby)).status, 404);
+});

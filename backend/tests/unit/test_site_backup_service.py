@@ -381,3 +381,52 @@ def test_failed_restore_removes_nothing_from_r2():
     with pytest.raises(bk.BackupError, match="failed part-way"):
         bk.restore_site_from_backup(D1, src=b2, src_bucket="backups", dst=r2, dst_bucket="opsra-sites")
     assert f"{D1}/keep-me.txt" in r2.objects and r2.deleted == []
+
+
+# ── standby host (SITE-STANDBY) ─────────────────────────────────────────────
+
+def _backed_up(*domains):
+    r2, b2, db = r2_with(*domains), FakeS3(), FakeDB()
+    run(db, r2, b2)
+    return b2
+
+
+def test_prepare_copies_newest_snapshot_to_live_and_verifies():
+    b2 = _backed_up(D1)
+    out = bk.prepare_backup_host(D1, client=b2, bucket="backups")
+    assert out["ok"] and out["results"][0]["files"] == 3
+    assert b2.objects[f"live/{D1}/index.html"]["body"] == f"<html>{D1}</html>".encode()
+    assert b2.objects[f"live/{D1}/index.html"]["ContentType"].startswith("text/html")
+    assert f"snapshots/{D1}/2026-10-02/index.html" in b2.objects          # snapshot untouched
+
+
+def test_prepare_all_domains_and_removes_stale_live_files():
+    b2 = _backed_up(D1, D2)
+    b2.put_object(Bucket="b", Key=f"live/{D1}/old.html", Body=b"old")
+    out = bk.prepare_backup_host(client=b2, bucket="backups")
+    assert {r["domain"] for r in out["results"]} == {D1, D2}
+    assert f"live/{D1}/old.html" not in b2.objects
+    assert not any(k.startswith("live/") and "/old" in k for k in b2.objects)
+
+
+def test_prepare_one_bad_site_does_not_stop_the_others():
+    b2 = _backed_up(D1, D2)
+    b2.fail_get = f"snapshots/{D1}/"
+    out = bk.prepare_backup_host(client=b2, bucket="backups")
+    assert not out["ok"] and [f["domain"] for f in out["failed"]] == [D1]
+    assert [r["domain"] for r in out["results"]] == [D2]
+
+
+def test_prepare_unknown_domain_date_and_empty_bucket():
+    b2 = _backed_up(D1)
+    assert bk.prepare_backup_host("nope.com", client=b2, bucket="backups")["failed"][0]["error"].startswith("No backup exists")
+    assert "No backup of" in bk.prepare_backup_host(D1, "2020-01-01", client=b2, bucket="backups")["failed"][0]["error"]
+    with pytest.raises(bk.BackupError):
+        bk.prepare_backup_host(client=FakeS3(), bucket="backups")
+
+
+def test_prepare_detects_a_dropped_file():
+    b2 = _backed_up(D1)
+    b2.drop_on_put = f"live/{D1}/robots.txt"
+    out = bk.prepare_backup_host(D1, client=b2, bucket="backups")
+    assert not out["ok"] and "verification failed" in out["failed"][0]["error"]

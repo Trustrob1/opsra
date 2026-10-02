@@ -1,0 +1,13 @@
+# Standby copy of the sites Worker. Deploy it in the BACKUP Cloudflare account (the one that owns the
+# backup bucket), never the main one:   npx wrangler deploy --config wrangler.backup.toml
+# It serves live/<domain>/ from the backup bucket, which `prepare_backup_host` fills on demand.
+name = "opsra-sites-standby"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+SITE_PREFIX = "live/"
+
+[[r2_buckets]]
+binding = "SITES"
+bucket_name = "REPLACE_WITH_BACKUP_BUCKET_NAME"   # same value as BACKUP_S3_BUCKET

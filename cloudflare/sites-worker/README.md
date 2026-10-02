@@ -22,3 +22,13 @@ Run `SITES-WORKER_deploy.bat` (first time it opens a browser to log in to Cloudf
 
 ## Tests
 `npm test` (Node 20+, no dependencies).
+
+## Standby copy (SITE-STANDBY)
+`wrangler.backup.toml` deploys the same code as `opsra-sites-standby` in the BACKUP Cloudflare account. It
+serves `live/<domain>/` from the backup bucket (`SITE_PREFIX = "live/"`). The folder is filled on demand by
+the Celery task `app.workers.site_worker.prepare_backup_host` (Render Shell on opsra-celery-worker):
+
+    python -c "from app.workers.site_worker import prepare_backup_host as p; print(p('shop.com.ng'))"
+    python -c "from app.workers.site_worker import prepare_backup_host as p; print(p())"   # every backed-up site
+
+It reads only the backup bucket. Pointing a domain at the standby (DNS) is manual.

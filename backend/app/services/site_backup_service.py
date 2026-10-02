@@ -26,6 +26,11 @@ How a run works (run_backup):
   never look like "everything was deleted").
 - Writes one site_backup_runs row per run and one site_backup_items row per site.
 
+SITE-STANDBY: prepare_backup_host() copies a snapshot to live/<domain>/ INSIDE THE BACKUP BUCKET so a
+second copy of the sites Worker (cloudflare/sites-worker/wrangler.backup.toml, in the backup Cloudflare
+account, SITE_PREFIX=live/) can serve the site if the main account is down. It reads only the backup
+bucket and never touches R2 or DNS; pointing a domain at the standby is a manual step.
+
 Rules:
 - Never writes or deletes anything in R2 during a backup. restore_site_from_backup is the
   only function here that writes to R2, and it only touches `<domain>/`.
@@ -47,6 +52,7 @@ from app.services import site_publish_service as sp
 logger = logging.getLogger(__name__)
 
 SNAPSHOT_ROOT = "snapshots"
+LIVE_ROOT = "live"               # what the standby Worker serves (SITE-STANDBY)
 DEFAULT_KEEP = 14                # newest snapshots kept per domain
 ORPHAN_KEEP_DAYS = 90            # a domain no longer in R2 keeps its snapshots this long
 RUNNING_GUARD_HOURS = 3          # a 'running' row younger than this blocks a second run
@@ -497,3 +503,68 @@ def restore_site_from_backup(domain: str, snapshot_date: Optional[str] = None,
         raise BackupError(f"Restore of {d} failed part-way: {exc}. Run it again; nothing is removed until all files are uploaded.") from exc
 
     return {"domain": d, "snapshot_date": day, "files": len(new_keys), "bytes": total, "removed": removed}
+
+
+# ───────────────────────────── standby host (SITE-STANDBY) ─────────────────────────────
+
+def list_backed_up_domains(client: Any, bucket: str) -> list:
+    base = SNAPSHOT_ROOT + "/"
+    return sorted(p[len(base):].strip("/") for p in _common_prefixes(client, bucket, base)
+                  if _DOMAIN_RE.match(p[len(base):].strip("/")))
+
+
+def _prepare_one(client: Any, bucket: str, domain: str, snapshot_date: Optional[str]) -> dict:
+    dates = list_snapshot_dates(client, bucket, domain)
+    if not dates:
+        raise BackupError(f"No backup exists for {domain}.")
+    day = snapshot_date or dates[0]
+    if day not in dates:
+        raise BackupError(f"No backup of {domain} for {day}. Available: {', '.join(dates[:5])}")
+    prefix = _snapshot_prefix(domain, day)
+    objects = _list_objects(client, bucket, prefix)
+    if not objects:
+        raise BackupError(f"The {day} backup of {domain} is empty.")
+
+    live_prefix = f"{LIVE_ROOT}/{domain}/"
+    want: dict = {}
+    try:
+        for key, _size in sorted(objects, key=lambda o: o[0][len(prefix):] == "index.html"):
+            path = key[len(prefix):]
+            body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
+            client.put_object(Bucket=bucket, Key=live_prefix + path, Body=body,
+                              ContentType=sp._content_type(path), CacheControl=sp._cache_control(path))
+            want[live_prefix + path] = len(body)
+        stored = dict(_list_objects(client, bucket, live_prefix))
+        stale = [k for k in stored if k not in want]
+        if stale:
+            sp._delete_keys(client, bucket, stale, live_prefix)
+            stored = {k: v for k, v in stored.items() if k in want}
+    except Exception as exc:
+        raise BackupError(f"copy failed part-way: {exc}. Run it again; the previous standby copy is only trimmed after every file is uploaded.") from exc
+    if stored != want:
+        raise BackupError(f"verification failed (missing {len(set(want) - set(stored))}, "
+                          f"wrong size {sum(1 for k in set(want) & set(stored) if want[k] != stored[k])})")
+    return {"domain": domain, "snapshot_date": day, "files": len(want), "bytes": sum(want.values()), "status": "ready"}
+
+
+def prepare_backup_host(domain: Optional[str] = None, snapshot_date: Optional[str] = None,
+                        client: Any = None, bucket: Optional[str] = None) -> dict:
+    """Copies the newest (or chosen) snapshot of one site, or of every backed-up site when `domain`
+    is None, to live/<domain>/ in the backup bucket and verifies it. Reads/writes only the backup
+    bucket. One bad site never stops the others (S14). Returns {ok, results, failed}."""
+    c = client or make_backup_client()
+    b = bucket or _backup_bucket()
+    if domain:
+        domains = [sp.normalise_domain(domain)]
+    else:
+        domains = list_backed_up_domains(c, b)
+        if not domains:
+            raise BackupError("There are no backups yet, so there is nothing to prepare.")
+    results, failed = [], []
+    for d in domains:
+        try:
+            results.append(_prepare_one(c, b, d, snapshot_date))
+        except Exception as exc:  # S14
+            logger.warning("[site_backup] standby prepare failed for %s: %s", d, exc)
+            failed.append({"domain": d, "status": "failed", "error": str(exc)[:300]})
+    return {"ok": not failed, "results": results, "failed": failed}

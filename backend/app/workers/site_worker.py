@@ -595,6 +595,25 @@ def run_site_backup() -> dict:
                                       "domains_failed", "files_copied", "snapshots_pruned", "error")}
 
 
+@celery_app.task(name="app.workers.site_worker.prepare_backup_host")
+def prepare_backup_host(domain: str = None, snapshot_date: str = None) -> dict:
+    """SITE-STANDBY — run by hand (Render Shell) when a site must be served from the standby host."""
+    from app.services import site_backup_service
+    started = _now()
+    try:
+        out = site_backup_service.prepare_backup_host(domain, snapshot_date)
+    except Exception as exc:  # S14
+        logger.exception("[site_worker] prepare_backup_host crashed")
+        out = {"ok": False, "results": [], "failed": [{"domain": domain or "*", "status": "failed", "error": str(exc)[:300]}]}
+    write_worker_log(
+        get_supabase(), worker_name="site_worker.prepare_backup_host",
+        status="passed" if out["ok"] else "failed", items_processed=len(out["results"]),
+        items_failed=len(out["failed"]), error_message=(out["failed"][0]["error"] if out["failed"] else None),
+        started_at=started, run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return out
+
+
 @celery_app.task(name="app.workers.site_worker.run_site_backup_watchdog")
 def run_site_backup_watchdog() -> dict:
     from app.services import site_backup_service
