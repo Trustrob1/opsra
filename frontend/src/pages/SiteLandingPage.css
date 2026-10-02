@@ -76,7 +76,7 @@
 .sl .sl-bar span{margin-left:10px;font-family:var(--mono);font-size:11px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sl .sl-shot{aspect-ratio:16/10;background-size:cover;background-position:top center;background-color:#E9EEF0}
 .sl .sl-sites{padding:clamp(40px,6vw,72px) 0}
-.sl .sl-site-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:24px}
+.sl .sl-site-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:28px}
 .sl .sl-site{margin:0;display:block}
 .sl a.sl-site:hover .sl-browser{box-shadow:0 14px 36px rgba(11,27,43,.12)}
 .sl .sl-site-cap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 4px 0}
@@ -88,6 +88,10 @@
 .sl .sl-stats div{background:var(--ink);color:#fff;border-radius:16px;padding:24px}
 .sl .sl-stats b{display:block;font-size:38px;font-weight:800;letter-spacing:-.03em;color:var(--teal-soft)}
 .sl .sl-stats span{font-size:14px;color:#C3CFDB}
+
+.sl .sl-live{position:relative;aspect-ratio:16/10;overflow:hidden;background:#EEF1F2}
+.sl .sl-live iframe{position:absolute;top:0;left:0;width:1280px;height:800px;border:0;transform-origin:top left;pointer-events:none;background:#fff}
+.sl .sl-tag{display:inline-block;margin-left:8px;vertical-align:middle;font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:500;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:2px 8px;background:#fff}
 
 /* how it works */
 .sl .sl-how{padding:clamp(40px,6vw,72px) 0}

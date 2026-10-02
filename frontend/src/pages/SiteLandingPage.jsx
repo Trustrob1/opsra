@@ -56,14 +56,37 @@ const TABS = [
   },
 ];
 
-/* Sites shown in browser frames. d = desktop render, m = phone render (files in /public/sites-landing).
-   Today these are sample businesses made with the site builder. When real customer sites exist,
-   replace or add entries (set href to the live site) and change SITES_SAMPLE to false. */
-const SITES_SAMPLE = true;
+/* Sites shown in browser frames. Each one is loaded LIVE in an iframe (so it is the real site, not a picture)
+   and the whole card links to it. Shape: { name, kind, url (shown in the address bar), href, tag? }.
+   Set SITES_SAMPLE to true only to fall back to the engine sample renders (d / m files in /public/sites-landing). */
+const SITES_SAMPLE = false;
 const REAL_SITES = [
-  { name: "Bright Path", kind: "A coach, Lagos", url: "brightpath.com.ng", d: "coach_d0", m: "coach_m0" },
-  { name: "Sparkhub", kind: "A school, Lagos", url: "sparkhub.com.ng", d: "academy_d0", m: "academy_m0" },
-  { name: "Clearwater", kind: "A firm, Lagos", url: "clearwater.com.ng", d: "accounts_d0", m: "accounts_m0" },
+  {
+    name: "Alfa Diva",
+    kind: "African clothing for women, made in Lagos",
+    url: "trustrobert.com/websites/alfa-diva",
+    href: "https://trustrobert.com/websites/alfa-diva/",
+  },
+  {
+    name: "Veltro Aria",
+    kind: "Luxury car website",
+    tag: "Concept",
+    url: "trustrobert.com/portfolio-carsite.html",
+    href: "https://trustrobert.com/portfolio-carsite.html",
+  },
+  {
+    name: "Keel Wealth",
+    kind: "Fintech website",
+    tag: "Concept",
+    url: "trustrobert.com/websites/keel",
+    href: "https://trustrobert.com/websites/keel/",
+  },
+  {
+    name: "Trust Robert",
+    kind: "AI automation and workflow strategist",
+    url: "trustrobert.com",
+    href: "https://trustrobert.com/",
+  },
 ];
 
 /* Leave empty until they are real. Shape: { text, who, role }. */
@@ -225,7 +248,7 @@ function SignInForm({ inputRef }) {
   );
 }
 
-function Browser({ url, shot, label }) {
+function Browser({ url, shot, label, live, title }) {
   return (
     <div className="sl-browser" role="img" aria-label={label}>
       <div className="sl-bar">
@@ -234,7 +257,20 @@ function Browser({ url, shot, label }) {
         <i></i>
         <span>{url}</span>
       </div>
-      <div className={`sl-shot sl-i-${shot}`}></div>
+      {live ? (
+        <div className="sl-live">
+          <iframe
+            src={live}
+            title={title || label}
+            loading="lazy"
+            tabIndex={-1}
+            sandbox="allow-scripts allow-same-origin"
+            referrerPolicy="no-referrer"
+          ></iframe>
+        </div>
+      ) : (
+        <div className={`sl-shot sl-i-${shot}`}></div>
+      )}
     </div>
   );
 }
@@ -368,6 +404,22 @@ export default function SiteLandingPage() {
       }),
     );
 
+    /* live site previews: render each iframe at 1280px wide and scale it to fit its frame */
+    const lives = [...root.querySelectorAll(".sl-live")];
+    const fit = () =>
+      lives.forEach((box) => {
+        const f = box.querySelector("iframe");
+        if (f) f.style.transform = `scale(${box.clientWidth / 1280})`;
+      });
+    fit();
+    if ("ResizeObserver" in window) {
+      const ro = new ResizeObserver(fit);
+      lives.forEach((b) => ro.observe(b));
+      undo.push(() => ro.disconnect());
+    } else {
+      on(window, "resize", fit);
+    }
+
     /* arriving from /sites#signin (logout, expired link) */
     let t = 0;
     if (window.location.hash === "#signin") {
@@ -480,21 +532,30 @@ export default function SiteLandingPage() {
           <div className="sl-wrap">
             <div className="sl-head">
               <span className="sl-label">{SITES_SAMPLE ? "Sample sites" : "Live today"}</span>
-              <h2>{SITES_SAMPLE ? "Three businesses. Three looks. No two alike." : "Built on Opsra. Open them and see."}</h2>
+              <h2>{SITES_SAMPLE ? "Three businesses. Three looks. No two alike." : "Real websites. Open them and see."}</h2>
               <p>
                 {SITES_SAMPLE
                   ? "Made with the same site builder you’ll use. Each one started as a short brief, and each got its own layout, colours and fonts."
-                  : "Every card opens a working website that a real business owns."}
+                  : "These are live, working sites, shown as they are right now and not as pictures. Click one to open it."}
               </p>
             </div>
             <div className="sl-site-grid">
               {REAL_SITES.map((s) => {
                 const inner = (
                   <>
-                    <Browser url={s.url} shot={s.d} label={`Website for ${s.name}, ${s.kind}`} />
+                    <Browser
+                      url={s.url}
+                      shot={s.d}
+                      live={SITES_SAMPLE ? undefined : s.href}
+                      title={`Live preview of ${s.name}`}
+                      label={`Website for ${s.name}, ${s.kind}`}
+                    />
                     <div className="sl-site-cap">
                       <div>
-                        <b>{s.name}</b>
+                        <b>
+                          {s.name}
+                          {s.tag ? <i className="sl-tag">{s.tag}</i> : null}
+                        </b>
                         <span>{s.kind}</span>
                       </div>
                       {s.href ? <em>Visit site {ARROW}</em> : null}
@@ -502,7 +563,14 @@ export default function SiteLandingPage() {
                   </>
                 );
                 return s.href ? (
-                  <a key={s.name} className="sl-site" href={s.href} target="_blank" rel="noopener noreferrer">
+                  <a
+                    key={s.name}
+                    className="sl-site"
+                    href={s.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Open ${s.name} in a new tab`}
+                  >
                     {inner}
                   </a>
                 ) : (
