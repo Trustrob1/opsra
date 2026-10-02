@@ -800,3 +800,34 @@ def test_domain_check_fresh_bypasses_cache_and_rate_limit(monkeypatch):
     assert name == "adaezastyles.com.ng" and avail is True and len(calls) == 30
     with pytest.raises(dcs.InvalidDomain):
         dcs.check_availability_fresh(db, ORG, "adaezastyles.xyz")
+
+
+class TestTickPublishStep:
+    def test_ticks_the_publish_step_only(self):
+        db = _db(site_hosting_jobs=[_job()])
+        assert ops.tick_publish_step(db, ORG, "site-1") is True
+        steps = {i["key"]: i for i in db.tables["site_hosting_jobs"][0]["checklist"]}
+        assert steps["publish_site"]["done"] is True and steps["publish_site"]["done_at"]
+        assert all(not s["done"] for k, s in steps.items() if k != "publish_site")
+
+    def test_second_publish_changes_nothing(self):
+        db = _db(site_hosting_jobs=[_job()])
+        ops.tick_publish_step(db, ORG, "site-1")
+        first = db.tables["site_hosting_jobs"][0]["checklist"]
+        assert ops.tick_publish_step(db, ORG, "site-1") is False
+        assert db.tables["site_hosting_jobs"][0]["checklist"] == first
+
+    def test_done_jobs_other_sites_and_other_orgs_are_left_alone(self):
+        db = _db(site_hosting_jobs=[_job(id="j-done", status="done"), _job(id="j-other", site_id="site-2"),
+                                    _job(id="j-org", org_id="other-org")])
+        assert ops.tick_publish_step(db, ORG, "site-1") is False
+        assert all(not i["done"] for j in db.tables["site_hosting_jobs"] for i in j["checklist"])
+
+    def test_renewal_job_without_a_publish_step_is_ignored(self):
+        db = _db(site_hosting_jobs=[_job(checklist=[{"key": "renew_hosting", "label": "Renew", "done": False}])])
+        assert ops.tick_publish_step(db, ORG, "site-1") is False
+
+    def test_a_database_error_never_raises(self):
+        class Boom:
+            def table(self, *_a): raise RuntimeError("db down")
+        assert ops.tick_publish_step(Boom(), ORG, "site-1") is False

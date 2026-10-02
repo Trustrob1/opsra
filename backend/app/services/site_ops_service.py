@@ -708,6 +708,29 @@ def use_backup_domain(db: Any, org_id: str, job_id: str, user_id: str) -> dict:
             "message": "The backup is taken too. The order now waits for the builder to choose a new domain."}
 
 
+def tick_publish_step(db: Any, org_id: str, site_id: str) -> bool:
+    """SITE-AUTOTICK — after a successful Publish, tick 'publish_site' on this site's open hosting job
+    so staff don't have to. Only touches jobs that are not done and have that step not yet ticked
+    (renewal jobs have no such step and are left alone). Best effort: never raises, because the
+    publish itself has already succeeded. Returns True when at least one job was ticked."""
+    ticked = False
+    try:
+        jobs = (db.table("site_hosting_jobs").select("id, checklist, status")
+                .eq("org_id", org_id).eq("site_id", site_id).neq("status", "done").execute()).data or []
+        for job in jobs:
+            checklist = job.get("checklist") or []
+            step = next((i for i in checklist if i.get("key") == "publish_site"), None)
+            if not step or step.get("done"):
+                continue
+            db.table("site_hosting_jobs").update({
+                "checklist": _tick(checklist, "publish_site", True), "updated_at": _iso(),
+            }).eq("id", job["id"]).eq("org_id", org_id).execute()
+            ticked = True
+    except Exception:  # S14
+        logger.warning("tick_publish_step failed site=%s", site_id, exc_info=True)
+    return ticked
+
+
 def _live_step_key(job: dict) -> str:
     """The checklist key mark_live ticks: 'mark_live' on new jobs, 'paste_url' on jobs created before SITE-ZONES."""
     keys = {i.get("key") for i in (job.get("checklist") or [])}

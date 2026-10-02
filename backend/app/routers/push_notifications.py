@@ -22,6 +22,43 @@ VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
 VAPID_SUBJECT     = os.getenv("VAPID_SUBJECT", "mailto:ops@opsra.io")
 
 
+def _clean_vapid_key(raw):
+    """Env-var hygiene: trims spaces, removes wrapping quotes, turns a literal backslash-n into a real newline."""
+    k = (raw or "").strip()
+    if len(k) >= 2 and k[0] == k[-1] and k[0] in "\"'":
+        k = k[1:-1].strip()
+    return k.replace("\\n", "\n")
+
+
+def vapid_key_problem(raw):
+    """Plain-English reason the private key can't be used, or None when it looks usable.
+    A usable key is either a PEM block or the 43-character base64url form of the 32-byte key."""
+    import base64
+    k = _clean_vapid_key(raw)
+    if not k:
+        return "VAPID_PRIVATE_KEY is empty."
+    if k.startswith("-----BEGIN"):
+        return None
+    try:
+        raw_bytes = base64.urlsafe_b64decode(k.replace("\n", "").replace(" ", "") + "=" * (-len(k) % 4))
+    except Exception:
+        return "VAPID_PRIVATE_KEY is not valid base64url text. Check for stray characters."
+    if len(raw_bytes) == 32:
+        return None
+    if len(raw_bytes) == 65:
+        return "VAPID_PRIVATE_KEY holds the PUBLIC key (65 bytes). Put the private key (32 bytes) here."
+    return f"VAPID_PRIVATE_KEY decodes to {len(raw_bytes)} bytes; a private key must be 32 bytes."
+
+
+def _vapid_for_push(raw):
+    """What webpush() should receive: a Vapid object for a PEM key, else the cleaned base64url string."""
+    k = _clean_vapid_key(raw)
+    if k.startswith("-----BEGIN"):
+        from py_vapid import Vapid
+        return Vapid.from_pem(k.encode())
+    return k.replace("\n", "").replace(" ", "")
+
+
 class PushTokenRequest(BaseModel):
     token:    str
     platform: str = "web"
@@ -91,10 +128,12 @@ def send_push_notification(
         webpush(
             subscription_info=subscription_info,
             data=json.dumps(payload),
-            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_private_key=_vapid_for_push(VAPID_PRIVATE_KEY),
             vapid_claims={"sub": VAPID_SUBJECT},
         )
         logger.info(f"[push] Sent to user {user_id}: {title}")
 
     except Exception as e:
-        logger.warning(f"[push] Send failed for user {user_id} (non-critical): {e}")
+        problem = vapid_key_problem(VAPID_PRIVATE_KEY)
+        logger.warning(f"[push] Send failed for user {user_id} (non-critical): {e}"
+                       + (f" — {problem}" if problem else ""))

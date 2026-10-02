@@ -878,6 +878,8 @@ def publish_site(site_id: str, body: Optional[PublishRequest] = None, org=Depend
     `opsra-sites` Worker serves them. Safe to repeat (replaces the live copy)."""
     org_id = _ops_org(org, db, _WRITE_ROLES)
     result = _ops(site_publish_service.publish_site, db, org_id, site_id)
+    # SITE-AUTOTICK — tick the "Click Publish to Cloudflare" step on this site's open hosting job.
+    result["hosting_step_ticked"] = site_ops_service.tick_publish_step(db, org_id, site_id)
     # Connect the domain to the Worker. A problem here never undoes the publish: the files are already up.
     result["hostnames"], result["hostnames_error"] = None, None
     try:

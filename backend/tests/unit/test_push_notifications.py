@@ -137,3 +137,44 @@ def test_no_push_when_no_token():
             with patch("pywebpush.webpush") as mock_webpush:
                 send_push_notification(mock_db, "user-uuid-123", "Test", "Body")
                 mock_webpush.assert_not_called()
+
+
+# ── VAPID private key handling ──────────────────────────────────────────────
+
+def _b64u(raw: bytes) -> str:
+    import base64
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def test_vapid_key_problem_messages():
+    from app.routers.push_notifications import vapid_key_problem
+    good = _b64u(b"\x01" * 32)
+    assert vapid_key_problem(good) is None
+    assert vapid_key_problem(f'"{good}"') is None                       # wrapped in quotes
+    assert vapid_key_problem(f"  {good}\n") is None                     # stray whitespace
+    assert "PUBLIC" in vapid_key_problem(_b64u(b"\x04" * 65))
+    assert "48 bytes" in vapid_key_problem(_b64u(b"\x01" * 48))
+    assert "empty" in vapid_key_problem("")
+    assert "not valid" in vapid_key_problem("!!!not base64!!!")
+    assert vapid_key_problem("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----") is None
+
+
+def test_vapid_key_is_cleaned_before_use():
+    from app.routers.push_notifications import _vapid_for_push
+    good = _b64u(b"\x01" * 32)
+    assert _vapid_for_push(f"'{good}'") == good
+    assert _vapid_for_push(f" {good}\n ") == good
+
+
+def test_real_pem_and_raw_keys_load_in_pywebpush():
+    """A freshly generated key works in both accepted formats; the cleaned string is what py-vapid expects."""
+    from py_vapid import Vapid
+    from cryptography.hazmat.primitives import serialization
+    from app.routers.push_notifications import _vapid_for_push
+    v = Vapid(); v.generate_keys()
+    raw = v.private_key.private_numbers().private_value.to_bytes(32, "big")
+    assert Vapid.from_string(_vapid_for_push(f'"{_b64u(raw)}"')).private_key.private_numbers().private_value == \
+        v.private_key.private_numbers().private_value
+    pem = v.private_pem().decode()
+    loaded = _vapid_for_push(pem.replace("\n", "\\n"))                 # PEM pasted with literal \n
+    assert loaded.private_key.private_numbers().private_value == v.private_key.private_numbers().private_value

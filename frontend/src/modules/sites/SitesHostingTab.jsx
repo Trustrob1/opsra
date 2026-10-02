@@ -146,6 +146,7 @@ function JobCard({ job, nowMs, user, canEdit, showToast, onReplace, onReload, on
     setBusy('publish')
     try {
       setPublishResult(await publishSite(job.site_id))
+      onReload() // the Publish step is ticked automatically; show it
     } catch (e) { showToast(errorMessage(e, 'Could not publish the site.'), 'bad') } finally { setBusy(null) }
   }
   const zip = async () => {
