@@ -1,30 +1,28 @@
 /**
  * frontend/src/pages/SiteLandingPage.jsx
- * SITE-LANDING — public landing page for Opsra Sites, with passwordless sign-in.
+ * SITE-LANDING-2 — public landing page for Opsra Sites, with passwordless sign-in.
  * Registered in App.jsx at `/sites` and `/builders`, and also shown at `/b/login`
  * when a builder arrives without a magic-link token.
  *
- * Standalone page (no AppShell, no staff auth), same family as BuilderPortalPage /
- * SiteBriefFormPage. Styles live in SiteLandingPage.css, scoped under `.sl` with
- * every class prefixed `sl-`, so nothing leaks into or out of the staff app.
- * Images are in /public/sites-landing/ (real renders from the site engine).
+ * Standalone page (no AppShell, no staff auth). Styles live in SiteLandingPage.css,
+ * scoped under `.sl` with every class prefixed `sl-`, so nothing leaks into or out
+ * of the staff app. Images are in /public/sites-landing/ (real renders from the site engine).
+ *
+ * SITE-LANDING-2 redesign: warm paper background, bold sans headline, pill buttons,
+ * a prompt-style hero with audience tabs, real-site gallery in browser frames.
+ * The sections for customer quotes and live numbers are NOT shown until real ones
+ * exist: add entries to REAL_SITES / QUOTES / STATS below and they render by themselves.
  *
  * POSITIONING: "If you can use WhatsApp, you can build a website." Two audiences:
- * people launching their own brand (full control, no developer) and people who
- * want to earn by building and selling sites without technical skills.
+ * people launching their own brand and people who want to earn by building and selling sites.
  *
  * SIGN-IN: builders have no password. They type the WhatsApp number they registered
  * with and the server sends a single-use link to THEIR OWN WhatsApp and email
  * (POST /api/v1/builder/auth/request-link). The link never comes back to this page
  * and the reply is identical for unknown numbers.
  *
- * No animation libraries: the sticky-device steps use IntersectionObserver, the
- * manifesto fades on scroll, the hero reveals with CSS. Everything is readable
- * with JS off and with prefers-reduced-motion.
- *
  * OWNER SETTINGS: set VITE_BUILDER_JOIN_URL (a wa.me link to the Site Builder
- * WhatsApp number) so "Start building" opens WhatsApp. Unset, it scrolls to the
- * sign-in box.
+ * WhatsApp number) so "Start building" opens WhatsApp. Unset, it scrolls to the sign-in box.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { requestBuilderLink, errorMessage } from "../services/builder_portal.service";
@@ -38,6 +36,54 @@ const TITLE = "Opsra Sites | Build a website on WhatsApp";
 const DESC =
   "If you can use WhatsApp or fill in a simple form, you can build a website. Launch your own brand, or build sites for others and get paid. No developer, no code.";
 
+/* Hero tabs: the example shown in the box above them. */
+const TABS = [
+  {
+    label: "My own brand",
+    text: "I run a coaching business in Lagos. I want a website with my story, my prices and a WhatsApp button.",
+  },
+  {
+    label: "For my clients",
+    text: "I want to build a website for a client, a small clinic. I'll send them a form link to fill in on their phone.",
+  },
+  {
+    label: "A shop",
+    text: "I sell fashion from my phone. I need a simple site where people can see my items and message me to order.",
+  },
+  {
+    label: "A school or firm",
+    text: "Our school needs a proper website with admissions information, a gallery and a contact page.",
+  },
+];
+
+/* Sites shown in browser frames. d = desktop render, m = phone render (files in /public/sites-landing).
+   Today these are sample businesses made with the site builder. When real customer sites exist,
+   replace or add entries (set href to the live site) and change SITES_SAMPLE to false. */
+const SITES_SAMPLE = true;
+const REAL_SITES = [
+  { name: "Bright Path", kind: "A coach, Lagos", url: "brightpath.com.ng", d: "coach_d0", m: "coach_m0" },
+  { name: "Sparkhub", kind: "A school, Lagos", url: "sparkhub.com.ng", d: "academy_d0", m: "academy_m0" },
+  { name: "Clearwater", kind: "A firm, Lagos", url: "clearwater.com.ng", d: "accounts_d0", m: "accounts_m0" },
+];
+
+/* Leave empty until they are real. Shape: { text, who, role }. */
+const QUOTES = [];
+/* Leave empty until they are real. Shape: { value, label }. */
+const STATS = [];
+
+const CHIPS = [
+  "Your own domain",
+  "Hosting",
+  "A WhatsApp button",
+  "Photos from your camera roll",
+  "Matched to your business",
+  "Ask for another design",
+  "Undo your last 20 changes",
+  "Edit any word or colour",
+  "Client form links",
+  "No Opsra branding on previews",
+];
+
 const FAQ = [
   [
     "Do I need to know how to code or design?",
@@ -45,7 +91,7 @@ const FAQ = [
   ],
   [
     "Can I do everything on WhatsApp?",
-    "Yes. You can start a site, send photos and answer every question in a WhatsApp chat, or use the simple online form instead.",
+    "Yes. You can start a site, send photos and answer every question in a WhatsApp chat, or use the simple online form instead. Both lead to the same website.",
   ],
   [
     "Can I change the site after it is made?",
@@ -56,6 +102,29 @@ const FAQ = [
     "Yes. Build a site for a client, or send them a form link to fill in on their own phone. Your portal shows the trade price and a suggested client price before you pay.",
   ],
   ["Whose name is the domain in?", "The site owner’s: you for your own brand, or your client for a site you sold."],
+];
+
+const STEPS = [
+  [
+    "01 · Start",
+    "Message us, or open the form.",
+    "Reply with a number to choose what you want to do. Answer on WhatsApp, fill the form yourself, or get a link to hand to your client.",
+  ],
+  [
+    "02 · Tell us",
+    "Answer a few easy questions.",
+    "Your business name, what you sell, a few photos from your phone. The form saves as you go, so you can come back to it.",
+  ],
+  [
+    "03 · Make it yours",
+    "See your site, then change anything.",
+    "Words, photos, colours, layout. Don’t love the look? Ask for another design. Every site is matched to the business, so yours won’t look like anyone else’s.",
+  ],
+  [
+    "04 · Go live",
+    "Put your name on the internet.",
+    "Choose when to launch. Your website gets its own address, and you’re in charge of it from the first day.",
+  ],
 ];
 
 const ARROW = (
@@ -148,11 +217,25 @@ function SignInForm({ inputRef }) {
       <div aria-live="polite">
         <p className="sl-err">{error || (showErr ? "That doesn’t look like a full phone number yet." : "")}</p>
       </div>
-      <button className="sl-btn sl-onblue" type="submit" disabled={stage === "sending"}>
+      <button className="sl-btn sl-teal" type="submit" disabled={stage === "sending"}>
         <span>{stage === "sending" ? "Sending…" : "Send my sign-in link"}</span>
         {ARROW}
       </button>
     </form>
+  );
+}
+
+function Browser({ url, shot, label }) {
+  return (
+    <div className="sl-browser" role="img" aria-label={label}>
+      <div className="sl-bar">
+        <i></i>
+        <i></i>
+        <i></i>
+        <span>{url}</span>
+      </div>
+      <div className={`sl-shot sl-i-${shot}`}></div>
+    </div>
   );
 }
 
@@ -161,6 +244,7 @@ export default function SiteLandingPage() {
   const sheetRef = useRef(null);
   const mainInputRef = useRef(null);
   const sheetInputRef = useRef(null);
+  const [tab, setTab] = useState(0);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -180,8 +264,7 @@ export default function SiteLandingPage() {
     if (metaDesc) metaDesc.setAttribute("content", DESC);
     const added = [];
     [
-      "https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=satoshi@400,500,700&display=swap",
-      "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap",
+      "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap",
     ].forEach((href) => {
       const l = document.createElement("link");
       l.rel = "stylesheet";
@@ -214,16 +297,11 @@ export default function SiteLandingPage() {
       added.forEach((n) => n.remove());
     });
 
-    /* nav: solid after a little scroll, hides on the way down */
+    /* nav: gets a border after a little scroll */
     const nav = root.querySelector(".sl-nav");
-    let lastY = window.scrollY;
-    const onScroll = () => {
-      const y = window.scrollY;
-      nav.classList.toggle("sl-solid", y > 40);
-      nav.classList.toggle("sl-away", y > lastY && y > 400);
-      lastY = y;
-    };
+    const onScroll = () => nav.classList.toggle("sl-solid", window.scrollY > 16);
     on(window, "scroll", onScroll, { passive: true });
+    onScroll();
 
     /* in-page links */
     root.querySelectorAll('a[href^="#"]').forEach((a) =>
@@ -290,53 +368,6 @@ export default function SiteLandingPage() {
       }),
     );
 
-    /* manifesto: words fade in as it scrolls past */
-    const mf = root.querySelector("[data-scrub]");
-    if (mf && !reduce) {
-      if (!mf.dataset.split) {
-        const split = (node) => {
-          [...node.childNodes].forEach((n) => {
-            if (n.nodeType === 3) {
-              const f = document.createDocumentFragment();
-              n.textContent.split(/(\s+)/).forEach((tok) => {
-                if (!tok) return;
-                if (/^\s+$/.test(tok)) f.appendChild(document.createTextNode(tok));
-                else {
-                  const s = document.createElement("span");
-                  s.className = "sl-w";
-                  s.textContent = tok;
-                  f.appendChild(s);
-                }
-              });
-              n.replaceWith(f);
-            } else if (n.nodeType === 1) split(n);
-          });
-        };
-        split(mf);
-        mf.dataset.split = "1";
-      }
-      const words = [...mf.querySelectorAll(".sl-w")];
-      let raf = 0;
-      const paint = () => {
-        raf = 0;
-        const r = mf.getBoundingClientRect(),
-          vh = window.innerHeight;
-        const p = Math.min(1, Math.max(0, (vh * 0.75 - r.top) / (r.height + vh * 0.3)));
-        words.forEach((w, i) => {
-          w.style.opacity = String(0.22 + 0.78 * Math.min(1, Math.max(0, p * words.length * 1.15 - i)));
-        });
-      };
-      const queue = () => {
-        if (!raf) raf = requestAnimationFrame(paint);
-      };
-      on(window, "scroll", queue, { passive: true });
-      on(window, "resize", queue);
-      paint();
-      undo.push(() => {
-        if (raf) cancelAnimationFrame(raf);
-      });
-    }
-
     /* arriving from /sites#signin (logout, expired link) */
     let t = 0;
     if (window.location.hash === "#signin") {
@@ -361,109 +392,203 @@ export default function SiteLandingPage() {
           <a className="sl-mark" href="#top" aria-label="Opsra Sites, home">
             <i aria-hidden="true"></i>opsra<small>Sites</small>
           </a>
-          <ul>
-            <li>
-              <a href="#ways">Two ways in</a>
-            </li>
-            <li>
-              <a href="#how">How it works</a>
-            </li>
-            <li>
-              <a href="#sites">Sample sites</a>
-            </li>
-            <li>
-              <a href="#faq">Questions</a>
-            </li>
-          </ul>
+          <nav aria-label="Main">
+            <ul>
+              <li>
+                <a href="#sites">Sites</a>
+              </li>
+              <li>
+                <a href="#how">How it works</a>
+              </li>
+              <li>
+                <a href="#ways">Two ways in</a>
+              </li>
+              <li>
+                <a href="#pricing">Pricing</a>
+              </li>
+              <li>
+                <a href="#faq">Questions</a>
+              </li>
+            </ul>
+          </nav>
           <div className="sl-right">
             <button className="sl-signin-link" type="button" data-open-signin>
               Sign in
             </button>
-            <a className="sl-btn sl-blue sl-magnetic" href={START_HREF} {...START_ATTRS} data-start>
+            <a className="sl-btn sl-teal sl-sm" href={START_HREF} {...START_ATTRS} data-start>
               Start building
             </a>
           </div>
         </div>
       </header>
+
       <main id="main">
         <section className="sl-hero" id="top">
           <div className="sl-wrap">
-            <div className="sl-top">
-              <span className="sl-label">Websites for people who aren’t developers</span>
-              <span className="sl-label">WhatsApp · Simple form</span>
-            </div>
+            <span className="sl-badge">
+              <i aria-hidden="true"></i>Websites for people who aren’t developers
+            </span>
             <h1>
-              <span className="sl-l">
-                <span>If you can use</span>
-              </span>
-              <span className="sl-l">
-                <span>WhatsApp, you can</span>
-              </span>
-              <span className="sl-l">
-                <span className="sl-blue">build a website.</span>
-              </span>
+              The easiest way to get <span className="sl-accent">a real website online.</span>
             </h1>
-            <div className="sl-hero-row">
-              <div className="sl-hero-copy">
-                <p className="sl-lede">
-                  Answer a few questions in a chat, or fill in a simple form. The technical side is taken care of, so
-                  you stay focused on the business, the brand or the clients.
-                </p>
-                <p className="sl-lede">
-                  Launch your own brand with full control, or build websites for others and get paid for it.
-                </p>
-                <div className="sl-hero-cta">
-                  <a className="sl-btn sl-blue sl-magnetic" href={START_HREF} {...START_ATTRS} data-start>
-                    Start building{" "}
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M5 12h14M13 6l6 6-6 6" />
-                    </svg>
-                  </a>
-                  <a className="sl-tlink" href="#how">
-                    See how it works
-                  </a>
-                </div>
-                <div className="sl-hero-meta">
-                  <span>No code</span>
-                  <span>No developer</span>
-                  <span>
-                    <b>3</b> sites free to try
-                  </span>
-                </div>
+            <p className="sl-lede">
+              Answer a few questions on WhatsApp. Opsra builds it, hosts it and puts it on its own address, with no
+              developer and no code.
+            </p>
+
+            <div className="sl-prompt">
+              <span className="sl-label">An example of what you’d tell us</span>
+              <p className="sl-prompt-text" aria-live="polite">
+                {TABS[tab].text}
+              </p>
+              <div className="sl-prompt-row">
+                <span className="sl-prompt-hint">Photos come straight from your phone</span>
+                <a className="sl-btn sl-wa" href={START_HREF} {...START_ATTRS} data-start>
+                  Start on WhatsApp
+                </a>
+                <a className="sl-btn sl-teal" href="#how">
+                  See how it works
+                </a>
               </div>
-              <div className="sl-rig">
-                <div
-                  className="sl-laptop sl-lift"
-                  role="img"
-                  aria-label="A coaching business website built with Opsra, shown on a laptop"
+            </div>
+
+            <div className="sl-tabs" role="group" aria-label="Who is it for?">
+              {TABS.map((x, i) => (
+                <button
+                  key={x.label}
+                  type="button"
+                  aria-pressed={tab === i}
+                  className={tab === i ? "sl-on" : ""}
+                  onClick={() => setTab(i)}
                 >
-                  <div className="sl-lid">
-                    <div className="sl-screen">
-                      <div className="sl-chrome">
-                        <i></i>
-                        <i></i>
-                        <i></i>
-                        <span>brightpath.com.ng</span>
+                  {x.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="sl-meta">
+              <span>No code</span>
+              <span>No developer</span>
+              <span>
+                <b>3</b> sites free to try
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className="sl-sites" id="sites">
+          <div className="sl-wrap">
+            <div className="sl-head">
+              <span className="sl-label">{SITES_SAMPLE ? "Sample sites" : "Live today"}</span>
+              <h2>{SITES_SAMPLE ? "Three businesses. Three looks. No two alike." : "Built on Opsra. Open them and see."}</h2>
+              <p>
+                {SITES_SAMPLE
+                  ? "Made with the same site builder you’ll use. Each one started as a short brief, and each got its own layout, colours and fonts."
+                  : "Every card opens a working website that a real business owns."}
+              </p>
+            </div>
+            <div className="sl-site-grid">
+              {REAL_SITES.map((s) => {
+                const inner = (
+                  <>
+                    <Browser url={s.url} shot={s.d} label={`Website for ${s.name}, ${s.kind}`} />
+                    <div className="sl-site-cap">
+                      <div>
+                        <b>{s.name}</b>
+                        <span>{s.kind}</span>
                       </div>
-                      <div className="sl-shot sl-i-coach_d0"></div>
+                      {s.href ? <em>Visit site {ARROW}</em> : null}
+                    </div>
+                  </>
+                );
+                return s.href ? (
+                  <a key={s.name} className="sl-site" href={s.href} target="_blank" rel="noopener noreferrer">
+                    {inner}
+                  </a>
+                ) : (
+                  <figure key={s.name} className="sl-site">
+                    {inner}
+                  </figure>
+                );
+              })}
+            </div>
+            {STATS.length > 0 && (
+              <div className="sl-stats">
+                {STATS.map((s) => (
+                  <div key={s.label}>
+                    <b>{s.value}</b>
+                    <span>{s.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="sl-how" id="how">
+          <div className="sl-wrap">
+            <div className="sl-head">
+              <span className="sl-label">From a message to a website</span>
+              <h2>From idea to live site in four steps.</h2>
+              <p>Two of them are just answering questions.</p>
+            </div>
+            <div className="sl-how-grid">
+              <div className="sl-steps" id="steps">
+                {STEPS.map(([lab, h, p], i) => (
+                  <div
+                    key={lab}
+                    className={`sl-step${i === 0 ? " sl-on" : ""}`}
+                    data-i={i}
+                    tabIndex="0"
+                    role="button"
+                    aria-label={`Show step ${i + 1}: ${h}`}
+                  >
+                    <span className="sl-label">{lab}</span>
+                    <h3>{h}</h3>
+                    <p>{p}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="sl-dev" aria-hidden="true">
+                <div className="sl-d sl-d-phone sl-on" data-s="0">
+                  <div className="sl-phone">
+                    <div className="sl-pscr">
+                      <div className="sl-chat">
+                        <div className="sl-hd">
+                          <span className="sl-av"></span>
+                          <div>
+                            <b>Opsra Site Builder</b>
+                            <small>online</small>
+                          </div>
+                        </div>
+                        <div className="sl-bd">
+                          <div className="sl-msg sl-in">
+                            {
+                              "Hi Adaeze! What would you like to do?\n\n1. Start a new site\n2. My sites\n3. Talk to a person\n\nYou can also type MENU, MY SITES, STATUS or HUMAN at any time."
+                            }
+                          </div>
+                          <div className="sl-msg sl-out">
+                            1<em>09:38</em>
+                          </div>
+                          <div className="sl-msg sl-in">
+                            {
+                              "How would you like to start?\n\n1. Fill the form myself\n2. Get a link for my client to fill in\n3. Answer here on WhatsApp\n\nReply with 1, 2 or 3 (or MENU to go back)."
+                            }
+                          </div>
+                          <div className="sl-msg sl-out">
+                            3<em>09:39</em>
+                          </div>
+                        </div>
+                        <div className="sl-composer">
+                          <span>Message</span>
+                          <i></i>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="sl-base"></div>
                 </div>
-                <div className="sl-phone-w sl-lift">
-                  <div
-                    className="sl-phone"
-                    role="img"
-                    aria-label="A WhatsApp chat where a person sends a photo and finishes their brief"
-                  >
+                <div className="sl-d sl-d-phone" data-s="1">
+                  <div className="sl-phone">
                     <div className="sl-pscr">
                       <div className="sl-chat">
                         <div className="sl-hd">
@@ -503,235 +628,19 @@ export default function SiteLandingPage() {
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section className="sl-manifesto" aria-labelledby="mf">
-          <div className="sl-wrap">
-            <p id="mf" data-scrub>
-              You decide what it says, how it looks and who it’s for.{" "}
-              <em>Nobody stands between you and your own website</em>, and you never have to learn a line of code.
-            </p>
-          </div>
-        </section>
-        <section className="sl-ways" id="ways">
-          <div className="sl-wrap">
-            <div className="sl-sec-head">
-              <h2>Two ways to use it. One easy start.</h2>
-              <span className="sl-label">Pick the one that sounds like you</span>
-            </div>
-            <div className="sl-ways-grid">
-              <article className="sl-way">
-                <div
-                  className="sl-art sl-art-a"
-                  role="img"
-                  aria-label="A website for a business owner's own brand, on a laptop and a phone"
-                >
-                  <div className="sl-laptop sl-lift">
-                    <div className="sl-lid">
-                      <div className="sl-screen">
-                        <div className="sl-shot sl-i-accounts_d1"></div>
-                      </div>
+                <div className="sl-d sl-d-wide" data-s="2">
+                  <div className="sl-browser">
+                    <div className="sl-bar">
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <span>Preview — not yet live</span>
                     </div>
-                    <div className="sl-base"></div>
-                  </div>
-                  <div className="sl-phone-w sl-lift">
-                    <div className="sl-phone">
-                      <div className="sl-pscr">
-                        <div className="sl-shot sl-i-coach_m1"></div>
-                      </div>
+                    <div className="sl-swap" id="swap">
+                      <div className="sl-shot sl-on sl-i-coach_d0" data-k="0"></div>
+                      <div className="sl-shot sl-i-coach_market_d0" data-k="1"></div>
+                      <div className="sl-shot sl-i-coach_studio_d0" data-k="2"></div>
                     </div>
-                  </div>
-                </div>
-                <span className="sl-label">For your own brand</span>
-                <h3>Launch it yourself. Keep every decision.</h3>
-                <p>
-                  You’ve got a business, a practice or a project that deserves a proper website. Build it today, in your
-                  words, without waiting on a developer.
-                </p>
-                <ul>
-                  <li>Change any word, photo or colour yourself, whenever you like</li>
-                  <li>Not right yet? Ask for another design, and undo your last 20 changes</li>
-                  <li>Your site sits on a domain registered in your name</li>
-                  <li>Build and preview your first 3 sites free</li>
-                </ul>
-              </article>
-              <article className="sl-way">
-                <div className="sl-art sl-art-b" role="img" aria-label="Three different websites on three phones">
-                  <div className="sl-phone-w sl-p1 sl-lift">
-                    <div className="sl-phone">
-                      <div className="sl-pscr">
-                        <div className="sl-shot sl-i-coach_m0"></div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="sl-phone-w sl-p2 sl-lift">
-                    <div className="sl-phone">
-                      <div className="sl-pscr">
-                        <div className="sl-shot sl-i-academy_m0"></div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="sl-phone-w sl-p3 sl-lift">
-                    <div className="sl-phone">
-                      <div className="sl-pscr">
-                        <div className="sl-shot sl-i-accounts_m0"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <span className="sl-label">To earn from it</span>
-                <h3>Build sites for others. Get paid for them.</h3>
-                <p>
-                  Know a shop, a clinic or a school that needs a website? You don’t need technical skills to be the
-                  person who gets it done, only a phone.
-                </p>
-                <ul>
-                  <li>Take their details on WhatsApp, or send a form link they fill in on their own phone</li>
-                  <li>See the trade price and a suggested client price before you pay</li>
-                  <li>The site goes live under your client’s name, with no Opsra branding on the preview</li>
-                  <li>No code, no design skills, no hosting know-how</li>
-                </ul>
-              </article>
-            </div>
-          </div>
-        </section>
-        <section className="sl-how" id="how">
-          <div className="sl-wrap">
-            <div className="sl-sec-head">
-              <h2>From a message to a website.</h2>
-              <span className="sl-label">Four steps. Two of them are just answering questions.</span>
-            </div>
-            <div className="sl-how-grid">
-              <div className="sl-steps" id="steps">
-                <div
-                  className="sl-step sl-on"
-                  data-i="0"
-                  tabIndex="0"
-                  role="button"
-                  aria-label="Show step 1: Start a chat"
-                >
-                  <span className="sl-label">01 · Start</span>
-                  <h3>Message us, or open the form.</h3>
-                  <p>
-                    Reply with a number to choose what you want to do. Answer on WhatsApp, fill the form yourself, or
-                    get a link to hand to your client.
-                  </p>
-                </div>
-                <div
-                  className="sl-step"
-                  data-i="1"
-                  tabIndex="0"
-                  role="button"
-                  aria-label="Show step 2: Answer a few questions"
-                >
-                  <span className="sl-label">02 · Tell us</span>
-                  <h3>Answer a few easy questions.</h3>
-                  <p>
-                    Your business name, what you sell, a few photos from your phone. The form saves as you go, so you
-                    can come back to it.
-                  </p>
-                </div>
-                <div className="sl-step" data-i="2" tabIndex="0" role="button" aria-label="Show step 3: Make it yours">
-                  <span className="sl-label">03 · Make it yours</span>
-                  <h3>See your site, then change anything.</h3>
-                  <p>
-                    Words, photos, colours, layout. Don’t love the look? Ask for another design. Every site is matched
-                    to the business, so yours won’t look like anyone else’s.
-                  </p>
-                </div>
-                <div className="sl-step" data-i="3" tabIndex="0" role="button" aria-label="Show step 4: Go live">
-                  <span className="sl-label">04 · Go live</span>
-                  <h3>Put your name on the internet.</h3>
-                  <p>
-                    Choose when to launch. Your website gets its own address, and you’re in charge of it from the first
-                    day.
-                  </p>
-                </div>
-              </div>
-              <div className="sl-dev" aria-hidden="true">
-                <div className="sl-d sl-d-phone sl-on" data-s="0">
-                  <div className="sl-phone sl-lift">
-                    <div className="sl-pscr">
-                      <div className="sl-chat">
-                        <div className="sl-hd">
-                          <span className="sl-av"></span>
-                          <div>
-                            <b>Opsra Site Builder</b>
-                            <small>online</small>
-                          </div>
-                        </div>
-                        <div className="sl-bd">
-                          <div className="sl-msg sl-in">
-                            {
-                              "Hi Adaeze! What would you like to do?\n\n1. Start a new site\n2. My sites\n3. Talk to a person\n\nYou can also type MENU, MY SITES, STATUS or HUMAN at any time."
-                            }
-                          </div>
-                          <div className="sl-msg sl-out">
-                            1<em>09:38</em>
-                          </div>
-                          <div className="sl-msg sl-in">
-                            {
-                              "How would you like to start?\n\n1. Fill the form myself\n2. Get a link for my client to fill in\n3. Answer here on WhatsApp\n\nReply with 1, 2 or 3 (or MENU to go back)."
-                            }
-                          </div>
-                          <div className="sl-msg sl-out">
-                            3<em>09:39</em>
-                          </div>
-                        </div>
-                        <div className="sl-composer">
-                          <span>Message</span>
-                          <i></i>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="sl-d sl-d-phone" data-s="1">
-                  <div className="sl-phone sl-lift">
-                    <div className="sl-pscr">
-                      <div className="sl-form">
-                        <span className="sl-tag">Saved just now</span>
-                        <h4>Tell us about your business</h4>
-                        <div className="sl-f">
-                          <span>Business name</span>
-                          <b>Bright Path</b>
-                        </div>
-                        <div className="sl-f">
-                          <span>What do you offer?</span>
-                          <div className="sl-row2">
-                            <b>One-to-one coaching</b>
-                            <b className="sl-ph">Price (₦)</b>
-                          </div>
-                        </div>
-                        <div className="sl-f">
-                          <span>Photos</span>
-                          <b className="sl-ph">Add from your phone</b>
-                        </div>
-                        <span className="sl-pill">Send it in</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="sl-d sl-d-laptop" data-s="2">
-                  <div className="sl-laptop sl-lift">
-                    <div className="sl-lid">
-                      <div className="sl-screen">
-                        <div className="sl-chrome">
-                          <i></i>
-                          <i></i>
-                          <i></i>
-                          <span>Preview — not yet live</span>
-                        </div>
-                        <div className="sl-swap" id="swap">
-                          <div className="sl-shot sl-on sl-i-coach_d0" data-k="0"></div>
-                          <div className="sl-shot sl-i-coach_market_d0" data-k="1"></div>
-                          <div className="sl-shot sl-i-coach_studio_d0" data-k="2"></div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="sl-base"></div>
                   </div>
                   <div className="sl-designs" role="group" aria-label="Try another design">
                     <button type="button" aria-pressed="true" data-k="0">
@@ -746,220 +655,120 @@ export default function SiteLandingPage() {
                   </div>
                   <p className="sl-cap">Same business, three looks</p>
                 </div>
-                <div className="sl-d sl-d-laptop" data-s="3">
-                  <div className="sl-laptop sl-lift">
-                    <div className="sl-lid">
-                      <div className="sl-screen">
-                        <div className="sl-chrome">
-                          <i></i>
-                          <i></i>
-                          <i></i>
-                          <span>clearwater.com.ng</span>
-                        </div>
-                        <div className="sl-shot sl-i-accounts_d0"></div>
-                      </div>
-                    </div>
-                    <div className="sl-base"></div>
-                  </div>
+                <div className="sl-d sl-d-wide" data-s="3">
+                  <Browser url="clearwater.com.ng" shot="accounts_d0" label="A finished site on its own address" />
                   <p className="sl-cap">Live on its own address</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
-        <section className="sl-gallery" id="sites">
+
+        <section className="sl-built" aria-labelledby="bh">
           <div className="sl-wrap">
-            <div className="sl-sec-head">
-              <h2>Three businesses. Three looks. No two alike.</h2>
-              <span className="sl-label">Sample sites</span>
-            </div>
-            <div className="sl-g-grid">
-              <figure className="sl-g-item" style={{ margin: 0 }}>
-                <div className="sl-g-art">
-                  <div className="sl-laptop sl-lift" role="img" aria-label="Sample site for a coaching business">
-                    <div className="sl-lid">
-                      <div className="sl-screen">
-                        <div className="sl-shot sl-i-coach_d0"></div>
-                      </div>
-                    </div>
-                    <div className="sl-base"></div>
-                  </div>
-                  <div className="sl-phone-w sl-lift">
-                    <div className="sl-phone">
-                      <div className="sl-pscr">
-                        <div className="sl-shot sl-i-coach_m0"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <figcaption className="sl-g-cap">
-                  <b>Bright Path</b>
-                  <span>A coach, Lagos</span>
-                </figcaption>
-              </figure>
-              <figure className="sl-g-item" style={{ margin: 0 }}>
-                <div className="sl-g-art">
-                  <div className="sl-laptop sl-lift" role="img" aria-label="Sample site for a training academy">
-                    <div className="sl-lid">
-                      <div className="sl-screen">
-                        <div className="sl-shot sl-i-academy_d0"></div>
-                      </div>
-                    </div>
-                    <div className="sl-base"></div>
-                  </div>
-                  <div className="sl-phone-w sl-lift">
-                    <div className="sl-phone">
-                      <div className="sl-pscr">
-                        <div className="sl-shot sl-i-academy_m0"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <figcaption className="sl-g-cap">
-                  <b>Sparkhub</b>
-                  <span>A school, Lagos</span>
-                </figcaption>
-              </figure>
-              <figure className="sl-g-item" style={{ margin: 0 }}>
-                <div className="sl-g-art">
-                  <div className="sl-laptop sl-lift" role="img" aria-label="Sample site for an accounting firm">
-                    <div className="sl-lid">
-                      <div className="sl-screen">
-                        <div className="sl-shot sl-i-accounts_d0"></div>
-                      </div>
-                    </div>
-                    <div className="sl-base"></div>
-                  </div>
-                  <div className="sl-phone-w sl-lift">
-                    <div className="sl-phone">
-                      <div className="sl-pscr">
-                        <div className="sl-shot sl-i-accounts_m0"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <figcaption className="sl-g-cap">
-                  <b>Clearwater</b>
-                  <span>A firm, Lagos</span>
-                </figcaption>
-              </figure>
-            </div>
-            <p className="sl-g-note">
-              These are sample businesses made with the same site builder you’ll use. Each one started as a short brief,
-              and each got its own layout, colours and fonts.
-            </p>
-          </div>
-        </section>
-        <section className="sl-need sl-inv" id="need" aria-labelledby="nh">
-          <div className="sl-wrap">
-            <span className="sl-label">What you bring</span>
-            <h2 id="nh">
-              <span>A phone.</span>
-              <span>Some photos.</span>
-              <span>Your idea.</span>
-            </h2>
-            <div className="sl-need-rows">
-              <div className="sl-need-row">
-                <b>The phone</b>
-                <span>A WhatsApp chat or a simple web form. Your pick.</span>
-              </div>
-              <div className="sl-need-row">
-                <b>The photos</b>
-                <span>Straight from your camera roll. No editing needed.</span>
-              </div>
-              <div className="sl-need-row">
-                <b>The idea</b>
-                <span>A sentence or two about what you do, and who it’s for.</span>
-              </div>
-            </div>
-            <p className="sl-after">That’s the whole list. Code, design and hosting aren’t on it.</p>
-          </div>
-        </section>
-        <section className="sl-charge" id="charge">
-          <div className="sl-wrap">
-            <div className="sl-sec-head" style={{ marginBottom: "var(--s8)" }}>
-              <h2>You’re in charge of it.</h2>
-              <span className="sl-label">From the first word to the final price</span>
-            </div>
-            <div className="sl-prow">
-              <h3>Your words</h3>
-              <p>Write them in a form or say them in a chat. Change them whenever you like, without asking anyone.</p>
-            </div>
-            <div className="sl-prow">
-              <h3>Your look</h3>
-              <p>
-                Colours, fonts and layouts are matched to your business. Ask for another design, and undo your last 20
-                changes.
-              </p>
-            </div>
-            <div className="sl-prow">
-              <h3>Your name</h3>
-              <p>The domain is registered in the owner’s name, and previews you show carry no Opsra branding.</p>
-            </div>
-            <div className="sl-prow">
-              <h3>Your income</h3>
-              <p>
-                Sell the sites you build. Your portal shows the trade price and a suggested client price before you pay.
-              </p>
+            <div className="sl-built-box">
+              <h2 id="bh">The hard parts are handled. You just run the business.</h2>
+              <p>What you bring: a phone, some photos and your idea. Code, design and hosting aren’t on the list.</p>
+              <ul>
+                {CHIPS.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
             </div>
           </div>
         </section>
+
+        <section className="sl-ways" id="ways">
+          <div className="sl-wrap">
+            <div className="sl-ways-grid">
+              <article className="sl-way">
+                <span className="sl-label">For your own brand</span>
+                <h3>Launch it yourself. Keep every decision.</h3>
+                <p>
+                  You’ve got a business, a practice or a project that deserves a proper website. Build it today, in your
+                  words, without waiting on a developer.
+                </p>
+                <ul>
+                  <li>Change any word, photo or colour yourself, whenever you like</li>
+                  <li>Not right yet? Ask for another design, and undo your last 20 changes</li>
+                  <li>Your site sits on a domain registered in your name</li>
+                  <li>Build and preview your first 3 sites free</li>
+                </ul>
+                <a className="sl-btn sl-teal" href={START_HREF} {...START_ATTRS} data-start>
+                  Build my site {ARROW}
+                </a>
+              </article>
+              <article className="sl-way sl-dark">
+                <span className="sl-label">To earn from it</span>
+                <h3>Build sites for others. Get paid for them.</h3>
+                <p>
+                  Know a shop, a clinic or a school that needs a website? You don’t need technical skills to be the
+                  person who gets it done, only a phone.
+                </p>
+                <ul>
+                  <li>Take their details on WhatsApp, or send a form link they fill in on their own phone</li>
+                  <li>See the trade price and a suggested client price before you pay</li>
+                  <li>The site goes live under your client’s name, with no Opsra branding on the preview</li>
+                  <li>No code, no design skills, no hosting know-how</li>
+                </ul>
+                <a className="sl-btn sl-light" href={START_HREF} {...START_ATTRS} data-start>
+                  Start earning {ARROW}
+                </a>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        {QUOTES.length > 0 && (
+          <section className="sl-quotes" aria-labelledby="qh">
+            <div className="sl-wrap">
+              <div className="sl-head">
+                <h2 id="qh">Never built a website? Neither had they.</h2>
+              </div>
+              <div className="sl-quote-grid">
+                {QUOTES.map((q) => (
+                  <figure key={q.who} className="sl-quote">
+                    <blockquote>{q.text}</blockquote>
+                    <figcaption>
+                      <b>{q.who}</b>
+                      <span>{q.role}</span>
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className="sl-price" id="pricing">
           <div className="sl-wrap">
             <div className="sl-price-box">
-              <h2>
-                Try it before<span className="sl-sub">you pay anything.</span>
-              </h2>
-              <div>
-                <p>Build and preview 3 sites for free. Pay only when one goes live.</p>
-                <p>Selling sites regularly? ₦5,000 a month keeps you building after your third.</p>
-              </div>
+              <h2>Try it before you pay anything.</h2>
+              <p>Build and preview 3 sites for free. Pay only when one goes live.</p>
+              <p>Selling sites regularly? ₦5,000 a month keeps you building after your third.</p>
+              <a className="sl-btn sl-light" href={START_HREF} {...START_ATTRS} data-start>
+                Build my first site free {ARROW}
+              </a>
             </div>
           </div>
         </section>
+
         <section className="sl-faq" id="faq">
           <div className="sl-wrap">
-            <div className="sl-faq-grid">
-              <h2>Good questions.</h2>
-              <div>
-                <details>
-                  <summary>Do I need to know how to code or design?</summary>
-                  <p>
-                    No. If you can send a WhatsApp message or fill in an online form, you can build a website. The
-                    technical side is taken care of.
-                  </p>
+            <h2>Good questions.</h2>
+            <div className="sl-faq-list">
+              {FAQ.map(([q, a]) => (
+                <details key={q}>
+                  <summary>{q}</summary>
+                  <p>{a}</p>
                 </details>
-                <details>
-                  <summary>Can I do everything on WhatsApp?</summary>
-                  <p>
-                    Yes. You can start a site, send photos and answer every question in the chat. Or use the simple
-                    online form instead. Both lead to the same website.
-                  </p>
-                </details>
-                <details>
-                  <summary>Can I change the site after it’s made?</summary>
-                  <p>
-                    Yes. Change words, photos, colours and layout yourself. You can ask for another design, and undo
-                    your last 20 changes.
-                  </p>
-                </details>
-                <details>
-                  <summary>Can I build websites for other people and sell them?</summary>
-                  <p>
-                    Yes. Build a site for a client, or send them a form link to fill in on their own phone. Your portal
-                    shows the trade price and a suggested client price before you pay.
-                  </p>
-                </details>
-                <details>
-                  <summary>Whose name is the domain in?</summary>
-                  <p>The site owner’s. That’s you for your own brand, or your client for a site you sold.</p>
-                </details>
-              </div>
+              ))}
             </div>
           </div>
         </section>
-        <section className="sl-signin sl-inv" id="start" aria-labelledby="sih">
-          <div className="sl-wrap">
+
+        <section className="sl-signin" id="start" aria-labelledby="sih">
+          <div className="sl-wrap sl-signin-grid">
             <div>
               <span className="sl-label">Ready when you are</span>
               <h2 id="sih">Start your website today.</h2>
@@ -969,19 +778,8 @@ export default function SiteLandingPage() {
               </p>
               {JOIN_URL && (
                 <div className="sl-cta">
-                  <a className="sl-btn sl-onblue" href={JOIN_URL} target="_blank" rel="noopener noreferrer">
-                    Start on WhatsApp{" "}
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M5 12h14M13 6l6 6-6 6" />
-                    </svg>
+                  <a className="sl-btn sl-wa" href={JOIN_URL} target="_blank" rel="noopener noreferrer">
+                    Start on WhatsApp {ARROW}
                   </a>
                 </div>
               )}
@@ -994,20 +792,18 @@ export default function SiteLandingPage() {
           </div>
         </section>
       </main>
+
       <footer className="sl-foot">
-        <div className="sl-wrap">
-          <div className="sl-word" aria-hidden="true">
-            opsra
-          </div>
-          <div className="sl-row">
-            <span>© {new Date().getFullYear()} Opsra</span>
-            <div>
-              <a href="/privacy">Privacy</a>
-              <a href="/terms">Terms</a>
-            </div>
+        <div className="sl-wrap sl-foot-row">
+          <span className="sl-foot-mark">opsra</span>
+          <span>© {new Date().getFullYear()} Opsra</span>
+          <div>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
           </div>
         </div>
       </footer>
+
       <dialog
         className="sl-sheet"
         ref={sheetRef}
