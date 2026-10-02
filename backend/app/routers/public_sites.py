@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from app.database import get_supabase
-from app.services import site_renderer
+from app.services import site_premium_service, site_renderer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -76,7 +76,7 @@ def preview_site(slug: str, request: Request, db=Depends(get_supabase)):
 
     site_r = (
         db.table("sites")
-        .select("id, org_id, preset_id, status, content, recipe, preview_expires_at, deleted_at")
+        .select("id, org_id, preset_id, status, content, recipe, preview_expires_at, deleted_at, tier, current_design_id")
         .eq("slug", slug)
         .is_("deleted_at", "null")
         .maybe_single()
@@ -125,7 +125,9 @@ def preview_site(slug: str, request: Request, db=Depends(get_supabase)):
     assets_by_id = {a["id"]: {"public_url": a["public_url"]} for a in (assets_r.data or [])}
 
     try:
-        html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id)
+        html = site_premium_service.render_if_premium(db, site, assets_by_id)   # SITE-PREMIUM P1
+        if html is None:
+            html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id)
     except Exception as exc:
         logger.error("preview_site: render failed for slug=%s: %s", slug, exc)
         raise HTTPException(status_code=500, detail="This preview couldn't be rendered right now")

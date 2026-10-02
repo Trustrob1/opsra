@@ -43,6 +43,8 @@ from app.models.sites import (
     SiteCreate,
     SitePresetCreate,
     SitePresetUpdate,
+    PremiumImportRequest,
+    PremiumUseDesign,
     SiteRecipePatch,
     generate_form_token,
     slugify_business_name,
@@ -50,7 +52,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -172,7 +174,9 @@ def _render_and_store(db, org_id: str, site: dict) -> dict:
     assets_r = db.table("site_assets").select("id, public_url").eq("site_id", site["id"]).execute()
     assets_by_id = {a["id"]: {"public_url": a["public_url"]} for a in (assets_r.data or [])}
     try:
-        html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id)
+        html = site_premium_service.render_if_premium(db, site, assets_by_id)   # SITE-PREMIUM P1
+        if html is None:
+            html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     updates = {
@@ -693,6 +697,67 @@ def suggest_designs(site_id: str, org=Depends(get_current_org), db=Depends(get_s
     suggestions = site_design_service.suggest_for_site(db, org_id, site, preset, used)
     _log_event(db, org_id, site_id, f"user:{org.get('id')}", "design_suggested", {"round": used + 1, "shown": len(suggestions)})
     return ok(data={"suggestions": suggestions, "used": used + 1, "cap": None, "remaining": None, "counts_as_edit": False})
+
+
+# ── SITE-PREMIUM P1: bespoke Premium designs (staff import, list, undo, back to Standard) ──────────────
+
+def _premium_org(org, db, roles):
+    """Role check + the site engine switch + the Premium switch (off except for the test org)."""
+    _require(org, roles)
+    org_id = org["org_id"]
+    settings = _require_enabled(db, org_id)
+    try:
+        site_premium_service.require_enabled(settings)
+    except site_ops_service.SiteOpsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    return org_id
+
+
+@router.get("/sites/{site_id}/premium/designs")
+def premium_designs(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _premium_org(org, db, _READ_ROLES)
+    site = _get_site(db, org_id, site_id)
+    return ok(data={"tier": site.get("tier") or "standard", "current_design_id": site.get("current_design_id"),
+                    "designs": site_premium_service.list_designs(db, org_id, site_id)})
+
+
+@router.post("/sites/{site_id}/premium/import", status_code=status.HTTP_201_CREATED)
+def premium_import(site_id: str, payload: PremiumImportRequest, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _premium_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    assets_r = db.table("site_assets").select("id, public_url").eq("site_id", site_id).execute()
+    assets_by_id = {a["id"]: {"public_url": a["public_url"]} for a in (assets_r.data or [])}
+    result = _ops(site_premium_service.import_skeleton, db, org_id, site, f"user:{org.get('id')}", payload.html,
+                  payload.headline_font, payload.body_font, assets_by_id)
+    site["tier"], site["current_design_id"] = "premium", result["id"]
+    _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "premium_design_imported",
+               {"design_id": result["id"], "version": result["version"], "removed": len(result["removed"])})
+    return ok(data={"design_id": result["id"], "version": result["version"], "removed": result["removed"]},
+              message="Premium design saved - open the preview to review it")
+
+
+@router.post("/sites/{site_id}/premium/use-design")
+def premium_use_design(site_id: str, payload: PremiumUseDesign, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _premium_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    row = _ops(site_premium_service.use_design, db, org_id, site, payload.design_id)
+    site["tier"], site["current_design_id"] = "premium", row["id"]
+    _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "premium_design_selected",
+               {"design_id": row["id"], "version": row["version"]})
+    return ok(data={"design_id": row["id"], "version": row["version"]}, message="Design version restored")
+
+
+@router.post("/sites/{site_id}/premium/standard")
+def premium_force_standard(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _premium_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    site_premium_service.force_standard(db, org_id, site)
+    site["tier"] = "standard"
+    _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "premium_switched_to_standard")
+    return ok(data={"tier": "standard"}, message="Site is back on the Standard design")
 
 
 @router.post("/sites/{site_id}/render")

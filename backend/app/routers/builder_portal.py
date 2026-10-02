@@ -58,6 +58,7 @@ from app.services import (
     site_image_service,
     site_order_service,
     site_renewal_service,
+    site_premium_service,
     site_renderer,
 )
 
@@ -240,7 +241,9 @@ def _render_and_store(db, org_id: str, site: dict) -> dict:
     assets_r = db.table("site_assets").select("id, public_url").eq("site_id", site["id"]).execute()
     assets_by_id = {a["id"]: {"public_url": a["public_url"]} for a in (assets_r.data or [])}
     try:
-        html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id)
+        html = site_premium_service.render_if_premium(db, site, assets_by_id)   # SITE-PREMIUM P1
+        if html is None:
+            html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id)
     except ValueError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     updates = {"rendered_html": html, "updated_at": _now_iso()}

@@ -546,3 +546,18 @@ class HostingJobPatch(BaseModel):
 class MarkLiveRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     live_url: str = Field(..., min_length=8, max_length=500)
+
+
+# ───────────────────────────── SITE-PREMIUM P1 ─────────────────────────────
+
+class PremiumImportRequest(BaseModel):
+    """Staff import of a hand-written Premium skeleton (HTML with an optional <style> block).
+    Fonts must come from the Premium font registry; omitted = a safe default pair."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+    html: str = Field(..., min_length=20, max_length=400_000)
+    headline_font: Optional[str] = Field(None, max_length=60)
+    body_font: Optional[str] = Field(None, max_length=60)
+
+
+class PremiumUseDesign(BaseModel):
+    design_id: str = Field(..., min_length=36, max_length=36)
