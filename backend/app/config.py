@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     CLOUDFLARE_ACCOUNT_ID: str = ""   # SITE-ZONES — account that owns the client-domain zones (token also needs Zone:Edit, DNS:Edit, Workers Scripts:Edit)
     SITES_CNAME_TARGET: str = "sites.coreaicloudtech.com.ng"
     SITES_WORKER_NAME: str = "opsra-sites"   # the Worker each client domain is routed to
+    # SITE-FAILOVER — the same client hostnames are also registered in the BACKUP Cloudflare account (its own
+    # SaaS zone + the standby Worker), so a DNS switch at the failover name can move every site over at once.
+    STANDBY_CLOUDFLARE_API_TOKEN: str = ""
+    STANDBY_CLOUDFLARE_ZONE_ID: str = ""
+    STANDBY_SITES_CNAME_TARGET: str = ""      # e.g. sites.opsraedge.com.ng (a proxied record in the standby zone)
+    STANDBY_SITES_WORKER_NAME: str = "opsra-sites-standby"
 
     @field_validator("ENVIRONMENT")
     @classmethod

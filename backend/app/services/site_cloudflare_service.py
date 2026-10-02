@@ -15,6 +15,9 @@ Rules:
   Routes are limited to 1,000 per zone, so one zone holds about 1,000 client domains.
 - Settings come from the environment (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID, SITES_CNAME_TARGET, SITES_WORKER_NAME).
   With the token or zone missing the feature is "not set up": callers get NotConfigured and skip it.
+- SITE-FAILOVER: the same hostnames can also be registered in a second (backup) Cloudflare account with the
+  STANDBY_* settings (register_standby / standby_status). Their certificates stay "pending" until DNS is switched
+  to the standby, which is normal. Standby problems never block the main registration.
 - register_domain() is safe to repeat: a hostname that already exists is returned, never created twice.
 - Cloudflare's error text is logged, never shown to staff (it can echo request details); staff get a
   plain message. The API token is never logged or returned.
@@ -209,3 +212,38 @@ def remove_domain(domain: str, client: Any = None, zone: Optional[str] = None) -
             client.request("DELETE", f"/zones/{zone}/custom_hostnames/{row['id']}")
             removed += 1
     return {"domain": d, "removed": removed}
+
+
+# ───────────────────────── standby account (SITE-FAILOVER) ─────────────────────────
+
+def make_standby_client() -> tuple:
+    """Returns (client, zone_id, cname_target, worker_name) for the BACKUP Cloudflare account.
+    Raises HostnamesNotConfigured when the STANDBY_* settings aren't all present."""
+    s = _settings()
+    token = getattr(s, "STANDBY_CLOUDFLARE_API_TOKEN", "")
+    zone = getattr(s, "STANDBY_CLOUDFLARE_ZONE_ID", "")
+    target = getattr(s, "STANDBY_SITES_CNAME_TARGET", "")
+    if not (token and zone and target):
+        raise HostnamesNotConfigured("The standby (backup account) connection isn't set up.")
+    return CloudflareClient(token), zone, target, (getattr(s, "STANDBY_SITES_WORKER_NAME", "") or "opsra-sites-standby")
+
+
+def register_standby(domain: str, client: Any = None, zone: Optional[str] = None, target: Optional[str] = None,
+                     script: Optional[str] = None) -> dict:
+    """Registers the domain (and www) plus its route in the backup account. Idempotent."""
+    if client is None:
+        client, zone, target, script = make_standby_client()
+    return register_domain(domain, client=client, zone=zone, target=target, script=script)
+
+
+def standby_status(domain: str, client: Any = None, zone: Optional[str] = None, target: Optional[str] = None,
+                   script: Optional[str] = None) -> dict:
+    if client is None:
+        client, zone, target, script = make_standby_client()
+    return status_domain(domain, client=client, zone=zone, target=target, script=script)
+
+
+def remove_standby(domain: str, client: Any = None, zone: Optional[str] = None) -> dict:
+    if client is None:
+        client, zone, _t, _s = make_standby_client()
+    return remove_domain(domain, client=client, zone=zone)

@@ -890,6 +890,15 @@ def publish_site(site_id: str, body: Optional[PublishRequest] = None, org=Depend
         else:
             result["hostnames"] = site_cloudflare_service.register_domain(result["domain"])
             result["hostnames"]["mode"] = site_zone_service.MODE_CNAME
+            # SITE-FAILOVER — also register it in the backup Cloudflare account. Never blocks the publish.
+            try:
+                site_cloudflare_service.register_standby(result["domain"])
+                result["standby_registered"] = True
+            except site_cloudflare_service.HostnamesNotConfigured:
+                pass
+            except Exception as exc:  # S14
+                result["standby_registered"] = False
+                logger.warning("[sites] standby registration failed for %s: %s", result["domain"], exc)
     except site_cloudflare_service.HostnamesNotConfigured:
         pass
     except site_ops_service.SiteOpsError as exc:

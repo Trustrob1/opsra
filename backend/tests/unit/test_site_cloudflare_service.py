@@ -239,3 +239,53 @@ def test_remove_also_deletes_only_that_domains_route():
 
 def test_route_pattern():
     assert cf.route_pattern("https://www.Shop.com.ng/") == "*shop.com.ng/*"
+
+
+# ── standby account (SITE-FAILOVER) ─────────────────────────────────────────
+
+STANDBY_TARGET = "sites.opsraedge.com.ng"
+
+
+def test_register_standby_uses_standby_zone_target_and_worker():
+    c = FakeCF()
+    out = cf.register_standby("shop.com.ng", client=c, zone="standbyzone", target=STANDBY_TARGET, script="opsra-sites-standby")
+    assert out["target"] == STANDBY_TARGET
+    assert [h["hostname"] for h in out["hostnames"]] == ["shop.com.ng", "www.shop.com.ng"]
+    assert all("/zones/standbyzone/" in call[1] for call in c.calls)
+    assert list(c.routes.values())[0]["script"] == "opsra-sites-standby"
+    assert out["all_active"] is False        # pending until DNS is switched: normal for a standby
+
+
+def test_register_standby_is_idempotent():
+    c = FakeCF()
+    for _ in range(2):
+        cf.register_standby("shop.com.ng", client=c, zone="z", target=STANDBY_TARGET, script="opsra-sites-standby")
+    assert len(c.rows) == 2 and len(c.routes) == 1
+
+
+def test_standby_not_configured_raises(monkeypatch):
+    class _S:
+        STANDBY_CLOUDFLARE_API_TOKEN = "t"
+        STANDBY_CLOUDFLARE_ZONE_ID = ""
+        STANDBY_SITES_CNAME_TARGET = "x"
+    monkeypatch.setattr(cf, "_settings", lambda: _S())
+    with pytest.raises(cf.HostnamesNotConfigured):
+        cf.register_standby("shop.com.ng")
+
+
+def test_make_standby_client_reads_settings(monkeypatch):
+    class _S:
+        STANDBY_CLOUDFLARE_API_TOKEN = "t"
+        STANDBY_CLOUDFLARE_ZONE_ID = "zz"
+        STANDBY_SITES_CNAME_TARGET = STANDBY_TARGET
+        STANDBY_SITES_WORKER_NAME = ""
+    monkeypatch.setattr(cf, "_settings", lambda: _S())
+    _client, zone, target, worker = cf.make_standby_client()
+    assert (zone, target, worker) == ("zz", STANDBY_TARGET, "opsra-sites-standby")
+
+
+def test_remove_standby_deletes_route_and_hostnames():
+    c = FakeCF()
+    cf.register_standby("shop.com.ng", client=c, zone="z", target=STANDBY_TARGET, script="opsra-sites-standby")
+    assert cf.remove_standby("shop.com.ng", client=c, zone="z")["removed"] == 2
+    assert not c.rows and not c.routes
