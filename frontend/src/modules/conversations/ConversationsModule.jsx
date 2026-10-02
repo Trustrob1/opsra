@@ -1280,8 +1280,18 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted }) {
                 />
                 <DownloadBtn />
               </div>
+            ) : msg.message_type === 'video' ? (
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <video
+                  controls
+                  preload="metadata"
+                  src={msg.media_url}
+                  style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 8, display: 'block', background: '#000' }}
+                />
+                <DownloadBtn style={{ position: 'absolute', top: 6, right: 6 }} />
+              </div>
             ) : (
-              /* document or video */
+              /* document */
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: '8px 10px' }}>
                 <span style={{ fontSize: 20 }}>
                   {msg.message_type === 'video' ? <Video size={20} /> : <FileText size={20} />}

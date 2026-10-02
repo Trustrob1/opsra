@@ -369,7 +369,8 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filename: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
+def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filename: Optional[str] = None,
+                           access_token: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     """
     Downloads a media file from Meta's media API and stores it in
     Supabase Storage bucket 'whatsapp-media'.
@@ -379,8 +380,9 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filen
     in the Conversations thread.
     """
     try:
-        from app.services.whatsapp_service import _get_org_wa_credentials
-        _, access_token, _ = _get_org_wa_credentials(db, org_id)
+        if not access_token:
+            from app.services.whatsapp_service import _get_org_wa_credentials
+            _, access_token, _ = _get_org_wa_credentials(db, org_id)
         if not access_token:
             logger.warning("_fetch_and_store_media: no access token for org %s", org_id)
             return None, None
@@ -413,6 +415,12 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filen
             ext = "mp3"
         elif "mp4" in mime_type:
             ext = "mp4"
+        elif "3gpp" in mime_type:
+            ext = "3gp"
+        elif "webm" in mime_type:
+            ext = "webm"
+        elif "quicktime" in mime_type:
+            ext = "mov"
         elif "aac" in mime_type:
             ext = "aac"
         elif "jpeg" in mime_type or "jpg" in mime_type:
@@ -451,7 +459,7 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filen
         db.storage.from_("whatsapp-media").upload(
             path=storage_path,
             file=file_bytes,
-            file_options={"content-type": mime_type},
+            file_options={"content-type": mime_type.split(";")[0].strip()},
         )
 
         # Step 5 — get a long-lived signed URL (1 year)
@@ -478,6 +486,35 @@ def _fetch_and_store_media(db, org_id: str, media_id: str, mime_type: str, filen
             media_id, org_id, exc,
         )
         return None, None
+
+
+def _inbound_media_for_message(db, org_id: str, message: dict, msg_type: str,
+                               access_token: Optional[str] = None) -> dict:
+    """Download an inbound image/audio/video/document and return the
+    whatsapp_messages fields to save: message_type, media_url, storage_path,
+    content. Empty dict when there is nothing to save. S14: never raises."""
+    try:
+        if msg_type not in ("image", "audio", "video", "document"):
+            return {}
+        m = message.get(msg_type) or {}
+        media_id = m.get("id")
+        if not media_id:
+            return {}
+        default_mime = {"image": "image/jpeg", "audio": "audio/ogg",
+                        "video": "video/mp4", "document": "application/pdf"}[msg_type]
+        mime = m.get("mime_type") or default_mime
+        fname = (m.get("filename") or "document") if msg_type == "document" else None
+        url, path = _fetch_and_store_media(db, org_id, media_id, mime, filename=fname,
+                                           access_token=access_token)
+        if not url:
+            return {}
+        out = {"message_type": msg_type, "media_url": url, "storage_path": path}
+        if msg_type == "document":
+            out["content"] = fname
+        return out
+    except Exception as exc:
+        logger.warning("_inbound_media_for_message failed org=%s: %s", org_id, exc)
+        return {}
 
 
 def _lookup_record_by_phone(
@@ -1185,6 +1222,8 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         _image_mime     = (message.get("image") or {}).get("mime_type", "image/jpeg")
     elif msg_type == "video":
         content = "[Video]"
+        _video_media_id = (message.get("video") or {}).get("id")
+        _video_mime     = (message.get("video") or {}).get("mime_type", "video/mp4")
     elif msg_type == "audio":
         content = "[Voice note]"
         _audio_media_id = (message.get("audio") or {}).get("id")
@@ -1320,11 +1359,16 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 )
                 return
             from app.services import funnel_service
+            _funnel_media = _inbound_media_for_message(
+                db, _funnel_org_id, message, msg_type,
+                access_token=(number_row.get("access_token") or "").strip() or None,
+            )
             funnel_service.handle_inbound(
                 db=db, number_row=number_row, sender_phone=sender_phone,
                 contact_name=contact_name, msg_type=msg_type, content=content,
                 msg_id=msg_id, interactive_payload=interactive_payload,
                 referral=message.get("referral") or {},
+                media=_funnel_media,
             )
             return
  
@@ -1826,6 +1870,10 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     elif msg_type == "image" and locals().get("_image_media_id") and org_id:
         _inbound_media_url, _inbound_storage_path = _fetch_and_store_media(
             db, org_id, _image_media_id, _image_mime
+        )
+    elif msg_type == "video" and locals().get("_video_media_id") and org_id:
+        _inbound_media_url, _inbound_storage_path = _fetch_and_store_media(
+            db, org_id, _video_media_id, _video_mime
         )
     elif msg_type == "document" and org_id:
         _doc_media_id = (message.get("document") or {}).get("id")

@@ -572,16 +572,19 @@ def _create_registration(db, funnel: dict, phone: str, name: Optional[str], lead
 
 
 def _save_inbound(db, org_id: str, lead_id: Optional[str], msg_type: str, content: Optional[str],
-                  msg_id: Optional[str]) -> None:
+                  msg_id: Optional[str], media: Optional[dict] = None) -> None:
     try:
-        db.table("whatsapp_messages").insert({
+        row = {
             "org_id": org_id, "lead_id": lead_id, "direction": "inbound",
             "message_type": msg_type if msg_type in ("text", "image") else "text",
             "channel": "whatsapp", "content": content, "status": "delivered",
             "meta_message_id": msg_id or None, "window_open": True,
             "window_expires_at": _iso(_now() + timedelta(hours=24)),
             "sent_by": None, "created_at": _iso(_now()),
-        }).execute()
+        }
+        if media:  # downloaded image/audio/video/document: keep type + file
+            row.update(media)
+        db.table("whatsapp_messages").insert(row).execute()
     except Exception as exc:
         logger.warning("funnel: inbound save failed org=%s: %s", org_id, exc)
 
@@ -626,7 +629,7 @@ def send_greeting(db, funnel: dict, number_row: dict, reg: dict, now: datetime) 
 def handle_inbound(db, number_row: dict, sender_phone: str, contact_name: Optional[str],
                    msg_type: str, content: Optional[str], msg_id: Optional[str],
                    interactive_payload: Optional[dict], referral: Optional[dict],
-                   now: Optional[datetime] = None) -> None:
+                   now: Optional[datetime] = None, media: Optional[dict] = None) -> None:
     """Entry point for numbers in wa_sales_mode='event_funnel'. S14 — never raises."""
     now = now or _now()
     org_id = number_row.get("org_id")
@@ -636,7 +639,7 @@ def handle_inbound(db, number_row: dict, sender_phone: str, contact_name: Option
         funnel = get_active_funnel_for_number(db, org_id, number_row.get("id"))
         text = (content or "").strip()
         if not funnel:
-            _save_inbound(db, org_id, _find_org_lead(db, org_id, sender_phone), msg_type, content, msg_id)
+            _save_inbound(db, org_id, _find_org_lead(db, org_id, sender_phone), msg_type, content, msg_id, media)
             funnel_messaging.send_text(db, org_id, number_row, sender_phone, DEFAULT_MESSAGES["no_funnel"])
             return
         msgs = funnel_messages(funnel)
@@ -660,7 +663,7 @@ def handle_inbound(db, number_row: dict, sender_phone: str, contact_name: Option
             lead_id = _get_or_create_lead(db, org_id, sender_phone, contact_name, text, ad_code, referral)
             reg = _create_registration(db, funnel, sender_phone, contact_name, lead_id, ad_code,
                                        referral, referred_by_id, now)
-            _save_inbound(db, org_id, lead_id, msg_type, content, msg_id)
+            _save_inbound(db, org_id, lead_id, msg_type, content, msg_id, media)
             if not reg:
                 return
             log_event(db, org_id, funnel["id"], reg.get("id"), "lead_created",
@@ -673,7 +676,7 @@ def handle_inbound(db, number_row: dict, sender_phone: str, contact_name: Option
             return
 
         # ── Existing registration ────────────────────────────────────────
-        _save_inbound(db, org_id, reg.get("lead_id"), msg_type, content, msg_id)
+        _save_inbound(db, org_id, reg.get("lead_id"), msg_type, content, msg_id, media)
         settings = funnel_settings(funnel)
         reg = _update_reg(db, reg, {
             "last_inbound_at": _iso(now),
