@@ -10,4 +10,4 @@ SITE_PREFIX = "live/"
 
 [[r2_buckets]]
 binding = "SITES"
-bucket_name = "REPLACE_WITH_BACKUP_BUCKET_NAME"   # same value as BACKUP_S3_BUCKET
+bucket_name = "opsra-sites-backup"   # same value as BACKUP_S3_BUCKET
