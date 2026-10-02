@@ -95,6 +95,24 @@ def _parse_and_strip_ref_tag(text: str) -> tuple[str, dict]:
 # SA-2A — webhook_request_log helper
 # S14: never raises. DB write failure must not affect response code.
 # ---------------------------------------------------------------------------
+# OUTAGE-FIX 3 Oct 2026: Celery .delay() is a blocking network call (Upstash Redis over TLS).
+# Called directly inside an async handler it froze the whole event loop whenever Redis was slow,
+# so login and /health stopped answering and Render restarted the worker. Run it in a thread
+# with a hard time limit; if Redis cannot be reached in time, answer 503 so Meta retries later.
+_ENQUEUE_TIMEOUT_S = 5.0
+
+
+async def _enqueue_webhook(task, payload: dict) -> None:
+    import asyncio
+    from starlette.concurrency import run_in_threadpool
+    try:
+        await asyncio.wait_for(run_in_threadpool(task.delay, payload), timeout=_ENQUEUE_TIMEOUT_S)
+    except Exception as exc:
+        logger.error("webhook enqueue failed (%s): %s", getattr(task, "name", task), exc)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Queue unavailable")
+
+
+
 def _log_webhook(
     db,
     *,
@@ -3711,7 +3729,7 @@ async def receive_whatsapp_message(request: Request, db=Depends(get_supabase)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook signature")
     payload: dict = json.loads(raw_body)
     from app.workers.webhook_worker import process_inbound_webhook
-    process_inbound_webhook.delay(payload)
+    await _enqueue_webhook(process_inbound_webhook, payload)
     _log_webhook(
         db, route="/webhooks/meta/whatsapp", response_status=200,
         topic="whatsapp_inbound", processing_ms=int((_time.monotonic() - _t0) * 1000),
@@ -3781,7 +3799,7 @@ async def receive_instagram_message(request: Request, db=Depends(get_supabase)):
     payload: dict = json.loads(raw_body)
 
     from app.workers.instagram_worker import process_instagram_webhook
-    process_instagram_webhook.delay(payload)
+    await _enqueue_webhook(process_instagram_webhook, payload)
 
     _log_webhook(
         db,
@@ -4016,7 +4034,7 @@ async def receive_messenger_message(request: Request, db=Depends(get_supabase)):
     payload: dict = json.loads(raw_body)
 
     from app.workers.messenger_worker import process_messenger_webhook
-    process_messenger_webhook.delay(payload)
+    await _enqueue_webhook(process_messenger_webhook, payload)
 
     _log_webhook(
         db,

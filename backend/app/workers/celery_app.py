@@ -207,6 +207,17 @@ celery_app.conf.update(
     result_expires=86_400,
     # Routing — single default queue for Phase 1
     task_default_queue="default",
+    # OUTAGE-FIX: never let a slow Redis hold a caller for minutes. Fail fast instead.
+    broker_connection_timeout=5,
+    broker_connection_retry_on_startup=True,
+    broker_transport_options={
+        "socket_timeout": 5,
+        "socket_connect_timeout": 5,
+        "retry_on_timeout": False,
+        "max_retries": 1,
+    },
+    task_publish_retry=True,
+    task_publish_retry_policy={"max_retries": 1, "interval_start": 0, "interval_step": 0.2, "interval_max": 0.5},
     task_queues=[
         Queue("default"),
     ],
