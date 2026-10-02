@@ -106,3 +106,24 @@ def test_tasks_are_scheduled():
     assert "app.workers.site_worker.run_site_backup" in sched
     assert "app.workers.site_worker.run_site_backup_watchdog" in sched
     assert 1 in sched["app.workers.site_worker.run_site_backup"].hour
+
+
+def test_alert_still_goes_out_when_the_dedup_lookup_times_out(env, monkeypatch):
+    db, pushes = env
+    real_table = db.table
+
+    def flaky(name):
+        if name == "notifications":
+            q = real_table(name)
+            orig = q.execute
+            def boom():
+                if q.op == "select":
+                    raise RuntimeError("canceling statement due to statement timeout")
+                return orig()
+            q.execute = boom
+            return q
+        return real_table(name)
+
+    monkeypatch.setattr(db, "table", flaky)
+    sw.run_site_backup()                            # BACKUP_S3_* unset in tests -> failed run
+    assert len(_alerts(db)) == 1 and pushes == [(MGR, "Site backup failed")]

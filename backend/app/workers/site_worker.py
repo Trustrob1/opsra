@@ -542,8 +542,12 @@ def _alert_backup_problem(db, now: datetime, title: str, body: str) -> int:
     cutoff = (now - timedelta(hours=_BACKUP_ALERT_DEDUP_HOURS)).isoformat()
     for org_id in org_ids:
         try:
-            already = (db.table("notifications").select("id").eq("org_id", org_id)
-                       .eq("type", _BACKUP_ALERT_TYPE).gte("created_at", cutoff).limit(1).execute()).data
+            try:
+                already = (db.table("notifications").select("id").eq("org_id", org_id)
+                           .eq("type", _BACKUP_ALERT_TYPE).gte("created_at", cutoff).limit(1).execute()).data
+            except Exception:  # S14 — a slow or failed lookup must never swallow the alert; better twice than never
+                logger.warning("[site_worker] backup alert dedup lookup failed org=%s; sending anyway", org_id)
+                already = None
             if already:
                 continue
             for uid in set(_get_manager_ids(db, org_id)):
