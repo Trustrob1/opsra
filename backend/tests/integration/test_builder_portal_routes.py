@@ -242,6 +242,57 @@ class TestEditor:
 
 
 # ---------------------------------------------------------------------------
+# SITE-PREMIUM P4-1: a Premium site tells the editor so, and refuses the Standard design controls
+# ---------------------------------------------------------------------------
+_PREMIUM_SITE = {**_FAKE_SITE, "tier": "premium", "current_design_id": "design-1"}
+_DESIGN_ROW = {"id": "design-1", "version": 3, "slot_manifest": {"slots": [
+    {"path": "business.name", "kind": "text"}, {"path": "hero.headline", "kind": "text"}, {"path": "items", "kind": "repeat"}]}}
+
+
+class TestPremiumSite:
+    def _db(self, site):
+        return _db_mock(sites=_chain([dict(site)]), site_assets=_chain([]), site_presets=_chain([_FAKE_PRESET]),
+                        site_designs=_chain([_DESIGN_ROW]), site_events=_chain([]), site_revisions=_chain([]))
+
+    def test_get_site_reports_premium_and_used_groups(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db(_PREMIUM_SITE)
+        resp = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}")
+        assert resp.status_code == 200
+        assert resp.json()["data"]["premium"] == {"active": True, "design_id": "design-1", "version": 3,
+                                                  "used": ["business", "hero", "items"]}
+
+    def test_get_site_standard_has_no_premium_info(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db(_FAKE_SITE)
+        resp = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}")
+        assert resp.json()["data"]["premium"] is None
+
+    def test_recipe_patch_refused_on_premium(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db(_PREMIUM_SITE)
+        recipe = {"theme": "atelier", "palette": "berry", "order": ["hero"], "hidden": []}
+        resp = authed_client.patch(f"/api/v1/builder/sites/{SITE_ID}/recipe", json={"recipe": recipe})
+        assert resp.status_code == 409
+
+    def test_design_suggest_and_apply_refused_on_premium(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db(_PREMIUM_SITE)
+        assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/design/suggest").status_code == 409
+        recipe = {"theme": "atelier", "palette": "berry", "order": ["hero"], "hidden": []}
+        assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/design/apply", json={"recipe": recipe}).status_code == 409
+
+    def test_content_patch_still_works_on_premium(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db(_PREMIUM_SITE)
+        content = dict(_FAKE_SITE["content"])
+        content["hero"] = {"headline": "Fresh", "subhead": "", "image_asset_id": None}
+        resp = authed_client.patch(f"/api/v1/builder/sites/{SITE_ID}/content", json={"content": content})
+        assert resp.status_code == 200
+
+    def test_standard_site_recipe_patch_is_not_refused(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db(_FAKE_SITE)
+        bad = {"theme": "not-a-real-theme", "palette": "berry", "order": ["hero"], "hidden": []}
+        resp = authed_client.patch(f"/api/v1/builder/sites/{SITE_ID}/recipe", json={"recipe": bad})
+        assert resp.status_code == 422   # reached validation, so the Premium guard did not block it
+
+
+# ---------------------------------------------------------------------------
 # Account
 # ---------------------------------------------------------------------------
 class TestAccount:

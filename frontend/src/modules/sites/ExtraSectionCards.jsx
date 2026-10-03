@@ -270,8 +270,10 @@ const HAS = {
 }
 
 /** `offered` = section keys the template (or the site's recipe) includes. */
-export default function ExtraSectionCards({ content, setContent, offered = [], canEdit = true, collapsible = false, assetUrls, onUpload }) {
-  const show = (key) => offered.includes(key) || HAS[key](content)
+// onlyOffered (SITE-PREMIUM P4-1): show a card only when it is in `offered`, even if the content has data for it
+// (a Premium design shows just the groups it uses, so editing the others would change nothing).
+export default function ExtraSectionCards({ content, setContent, offered = [], canEdit = true, collapsible = false, onlyOffered = false, assetUrls, onUpload }) {
+  const show = (key) => offered.includes(key) || (!onlyOffered && HAS[key](content))
   const shared = { content, setContent, canEdit, collapsible }
   return (
     <>

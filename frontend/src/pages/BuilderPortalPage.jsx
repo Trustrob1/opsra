@@ -333,6 +333,8 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   const [undoing, setUndoing] = useState(false)
   const [limitOffer, setLimitOffer] = useState(null)      // set when a save is refused for lack of edits
   const [careBusy, setCareBusy] = useState(null)
+  // SITE-PREMIUM P4-1: set for a Premium design: { active, version, used: [content groups the design shows] }
+  const [premium, setPremium] = useState(null)
   // Mobile-only: which pane is showing (Edit vs Preview) since a phone screen
   // has no room for both side by side. Ignored at desktop widths, where the
   // CSS below forces both panes visible at once â see the <style> block in
@@ -347,6 +349,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
       setSite(s)
       setContent(s.content)
       setRecipe(s.recipe)
+      setPremium(s.premium && s.premium.active ? s.premium : null)
       const urls = {}
       for (const a of s.assets || []) urls[a.id] = a.public_url
       setAssetUrls(urls)
@@ -492,6 +495,11 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   }
 
   const st = SITE_STATUS[site.status] || SITE_STATUS.brief_in_progress
+  // Premium: only the content groups the design actually shows get a card (business, hero, hours/location and
+  // the SEO card always stay, because search listings use them).
+  const showGroup = (key) => !premium || (premium.used || []).includes(key)
+  const premiumExtras = Object.entries({ announcement: 'announcement', faqs: 'faq', menu: 'menu', process: 'process', team: 'team', gallery: 'gallery', banner: 'banner' })
+    .filter(([k]) => showGroup(k)).map(([, v]) => v)
   const previewUrl = `${BASE}/s/${site.slug}`
 
   return (
@@ -557,14 +565,21 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
         <div className="bp-pane" data-active={mobileTab === 'edit'}>
           {/* Business and Hero start open (the two you touch almost every visit); the rest start
               collapsed so the form doesn't read as one very long scroll - click a title to open it. */}
+          {premium && (
+            <Notice tone="info">
+              Your site has a Premium design, made specially for you. Its look and layout are fixed, so colour, font and layout options are not shown here.
+              Edit your text, prices and photos below. Only the parts your design shows are listed.
+            </Notice>
+          )}
           <BusinessCard content={content} setContent={setContent} defaultOpen />
           <HeroCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} defaultOpen />
-          <AboutCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />
-          <ItemsCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />
-          <CategoriesCard content={content} setContent={setContent} />
-          <ReviewsCard content={content} setContent={setContent} />
+          {showGroup('about') && <AboutCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />}
+          {showGroup('items') && <ItemsCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />}
+          {showGroup('categories') && <CategoriesCard content={content} setContent={setContent} />}
+          {showGroup('reviews') && <ReviewsCard content={content} setContent={setContent} />}
           <ExtraSectionCards content={content} setContent={setContent} collapsible assetUrls={assetUrls} onUpload={uploadFor}
-            offered={[...(site?.design_options?.sections || []), ...(recipe?.order || [])]} />
+            onlyOffered={!!premium}
+            offered={premium ? premiumExtras : [...(site?.design_options?.sections || []), ...(recipe?.order || [])]} />
           <HoursLocationCard content={content} setContent={setContent} />
           <OrderSeoCard content={content} setContent={setContent} />
 
@@ -587,10 +602,14 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           )}
           <div><Button variant="primary" icon={Save} loading={savingContent} onClick={saveContent}>Save content</Button></div>
 
-          <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} onSuggest={() => setSuggestOpen(true)} />
-          <DesignSuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} fetchSuggestions={fetchSuggestions}
-            errorText={(e) => errorMessage(e, 'Could not get design suggestions.')} onUse={applySuggested} />
-          <div><Button variant="primary" icon={Save} loading={savingRecipe} onClick={saveRecipe}>Save design</Button></div>
+          {!premium && (
+            <>
+              <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} onSuggest={() => setSuggestOpen(true)} />
+              <DesignSuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} fetchSuggestions={fetchSuggestions}
+                errorText={(e) => errorMessage(e, 'Could not get design suggestions.')} onUse={applySuggested} />
+              <div><Button variant="primary" icon={Save} loading={savingRecipe} onClick={saveRecipe}>Save design</Button></div>
+            </>
+          )}
         </div>
 
         <div className="bp-pane bp-preview-pane" data-active={mobileTab === 'preview'}>

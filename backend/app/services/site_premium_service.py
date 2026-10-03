@@ -20,6 +20,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from app.models.sites import SiteContentV1
 from app.services import site_premium_checks as checks
 from app.services import site_premium_fonts as fonts
 from app.services import site_premium_renderer as renderer
@@ -165,6 +166,45 @@ def preview_design(db: Any, org_id: str, site: dict, design_id: str, assets_by_i
     if not design:
         raise NotFound("Design version not found")
     return renderer.render_premium_page(content=site.get("content") or {}, design=design, assets_by_id=assets_by_id, export=False)
+
+
+# SITE-PREMIUM P4-1: what the builder editor needs to know about a Premium site.
+_LINK_TOP = {"whatsapp": "business", "phone": "business", "instagram": "business", "maps": "location"}
+
+
+def used_top_level(manifest: Optional[dict]) -> list[str]:
+    """The top-level content keys (business, hero, items, faqs ...) that a design's slot manifest reads.
+    Paths inside a data-repeat are relative to the entry, so a rare name collision only means one extra
+    card is shown, never one hidden."""
+    fields = set(SiteContentV1.model_fields)
+    used: set[str] = set()
+    for s in (manifest or {}).get("slots") or []:
+        path = str(s.get("path") or "")
+        if s.get("kind") == "link":
+            top = _LINK_TOP.get(path.partition(":")[0])
+        else:
+            top = path.lstrip("!").split(".")[0]
+        if top in fields:
+            used.add(top)
+    return sorted(used)
+
+
+def editor_info(db: Any, org_id: str, site: dict) -> Optional[dict]:
+    """None for a Standard site (or one with no usable design). For a Premium site: which design version
+    is current and which content groups it actually shows, so the builder editor can hide the Standard
+    design controls and the fields that would change nothing. Never raises."""
+    if (site.get("tier") or "standard") != "premium" or not site.get("current_design_id"):
+        return None
+    try:
+        row = _one((db.table("site_designs").select("id, version, slot_manifest").eq("id", site["current_design_id"])
+                    .eq("org_id", org_id).eq("status", "ready").limit(1).execute()).data)
+    except Exception as exc:  # S14
+        logger.warning("site_premium: editor_info failed site=%s: %s", site.get("id"), exc)
+        return None
+    if not row:
+        return None
+    return {"active": True, "design_id": row["id"], "version": row.get("version"),
+            "used": used_top_level(row.get("slot_manifest"))}
 
 
 def render_if_premium(db: Any, site: dict, assets_by_id: dict, export: bool = False,

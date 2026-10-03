@@ -306,6 +306,8 @@ def get_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(g
     site = _get_site(db, builder["org_id"], builder["id"], site_id)
     assets = (db.table("site_assets").select("id, slot, public_url").eq("site_id", site_id).execute()).data or []
     site["assets"] = assets
+    # SITE-PREMIUM P4-1: tells the editor this is a Premium design and which content it shows.
+    site["premium"] = site_premium_service.editor_info(db, builder["org_id"], site)
     # SITE-1C-1c: only the design choices the template allows (so the visual look picker can
     # narrow itself); never the rest of the preset. Fails open: no options = everything shown.
     try:
@@ -323,6 +325,14 @@ def get_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(g
 
 
 # ─────────────────────────────── Editor ───────────────────────────────
+
+def _refuse_if_premium(db, org_id: str, site: dict) -> None:
+    """SITE-PREMIUM P4-1: a Premium site is drawn by its own design, so the Standard design controls
+    (recipe, suggested looks) would save something that changes nothing. Refuse plainly instead."""
+    if site_premium_service.editor_info(db, org_id, site):
+        raise HTTPException(409, detail={"code": "PREMIUM_DESIGN",
+                                         "message": "This site has a Premium design, so the standard design options do not apply to it."})
+
 
 @router.patch("/sites/{site_id}/content")
 def patch_my_content(site_id: str, payload: SiteContentPatch, builder=Depends(get_current_builder), db=Depends(get_supabase)):
@@ -347,6 +357,7 @@ def patch_my_content(site_id: str, payload: SiteContentPatch, builder=Depends(ge
 def patch_my_recipe(site_id: str, payload: SiteRecipePatch, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     org_id = builder["org_id"]
     site = _get_site(db, org_id, builder["id"], site_id)
+    _refuse_if_premium(db, org_id, site)
     preset = _get_preset(db, org_id, site["preset_id"])
     try:
         site_renderer.validate_recipe(preset, payload.recipe.model_dump(mode="json"))
@@ -373,6 +384,7 @@ def _is_live_site(site: dict) -> bool:
 def suggest_my_designs(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     org_id = builder["org_id"]
     site = _get_site(db, org_id, builder["id"], site_id)
+    _refuse_if_premium(db, org_id, site)
     preset = _get_preset(db, org_id, site["preset_id"])
     live = _is_live_site(site)
     used = site_design_service.suggestions_used(db, org_id, site_id)
@@ -390,6 +402,7 @@ def suggest_my_designs(site_id: str, builder=Depends(get_current_builder), db=De
 def apply_my_design(site_id: str, payload: SiteRecipePatch, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     org_id = builder["org_id"]
     site = _get_site(db, org_id, builder["id"], site_id)
+    _refuse_if_premium(db, org_id, site)
     preset = _get_preset(db, org_id, site["preset_id"])
     recipe = payload.recipe.model_dump(mode="json")
     try:
