@@ -108,8 +108,11 @@ def call_claude_checked(system: str, user: str, max_tokens: int, model: str) -> 
     try:
         response = _go()
     except anthropic.APIStatusError as exc:
-        raise GenerationFailed(f"The design service returned an error ({exc.status_code}).")
+        detail = " ".join(str(getattr(exc, "message", "") or exc).split())[:240]   # Anthropic's own reason (no secrets in it)
+        logger.warning("site_premium_generation: Claude API error %s: %s", exc.status_code, detail)
+        raise GenerationFailed(f"The design service returned an error ({exc.status_code}): {detail}")
     except Exception as exc:  # S14
+        logger.warning("site_premium_generation: Claude call failed: %s: %s", type(exc).__name__, exc)
         raise GenerationFailed(f"The design service could not be reached ({type(exc).__name__}).")
     text = "".join(b.text for b in (response.content or []) if getattr(b, "type", None) == "text")
     usage = getattr(response, "usage", None)

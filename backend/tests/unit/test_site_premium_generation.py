@@ -365,3 +365,56 @@ class TestCostCapAlert:
     def test_never_raises(self):
         with patch("app.services.funnel_service._get_manager_ids", side_effect=RuntimeError("x")):
             gen.alert_cost_cap(_db(), ORG, "site-1")
+
+
+class TestCallClaudeChecked:
+    """The real call wrapper, with a fake Anthropic client (no network)."""
+
+    class _Client:
+        def __init__(self, result=None, error=None):
+            self.calls, self._result, self._error = [], result, error
+            self.messages = self
+
+        def create(self, **kw):
+            self.calls.append(kw)
+            if self._error:
+                raise self._error
+            return self._result
+
+    @staticmethod
+    def _response(text="hi", stop="end_turn", i=11, o=22):
+        from types import SimpleNamespace
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], stop_reason=stop,
+                               usage=SimpleNamespace(input_tokens=i, output_tokens=o))
+
+    def _run(self, client):
+        with patch("app.services.ai_service._get_client", return_value=client):
+            return gen.call_claude_checked("sys", "user", 123, "claude-x")
+
+    def test_returns_text_and_token_counts_and_passes_the_limits(self):
+        c = self._Client(self._response("hello", i=5, o=7))
+        assert self._run(c) == ("hello", 5, 7)
+        kw = c.calls[0]
+        assert kw["model"] == "claude-x" and kw["max_tokens"] == 123 and kw["system"] == "sys" and kw["timeout"] == gen.STEP_TIMEOUT_SECONDS
+        assert kw["messages"] == [{"role": "user", "content": "user"}]
+
+    def test_a_cut_off_reply_is_a_failure(self):
+        with pytest.raises(gen.GenerationFailed) as e:
+            self._run(self._Client(self._response(stop="max_tokens")))
+        assert "cut off" in str(e.value)
+
+    def test_the_api_reason_is_shown_not_hidden(self):
+        import anthropic
+        import httpx
+        err = anthropic.BadRequestError("Your credit balance is too low to access the Anthropic API.\nPlease go to Plans & Billing.",
+                                        response=httpx.Response(400, request=httpx.Request("POST", "http://x")), body=None)
+        with pytest.raises(gen.GenerationFailed) as e:
+            self._run(self._Client(error=err))
+        msg = str(e.value)
+        assert "(400)" in msg and "credit balance is too low" in msg and "\n" not in msg
+
+    def test_a_network_error_is_a_failure_not_a_crash(self):
+        with pytest.raises(gen.GenerationFailed) as e:
+            self._run(self._Client(error=ConnectionError("boom")))
+        assert "could not be reached" in str(e.value)
+

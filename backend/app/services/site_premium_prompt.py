@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from app.models.sites import SiteContentV1
 from app.services import site_premium_fonts as fonts
 
-PROMPT_VERSION = "p2.1"
+PROMPT_VERSION = "p2.2"
 
 HERO_SCALES = ("giant", "mid", "mini")
 ACCENT_FAMILIES = ("blue", "green_teal", "red_wine", "violet_pink", "metal", "yellow_green")
@@ -117,7 +117,8 @@ Rules:
 - ink on bg must reach contrast 4.5:1, and the text colour used on the accent must also reach 4.5:1.
 - Sections: 5 to 9 sections after the nav, ending with a closing WhatsApp call to action and a footer. Only include sections the content can fill (items, about, reviews, faqs, hours/location, gallery, team, process, menu). Never plan a reviews section if the content has no reviews.
 - Across the page use at least 4 different layout families when there are 8 or more sections, and never more than 2 "split" sections in a row. No two neighbouring sections share a layout.
-- The hero scale decides the headline size: giant (display type filling the width), mid, or mini (compact, for sites that must show products at once).
+- The hero scale decides the headline size: giant (display type filling the width), mid (still bold: a headline of at least 4rem on desktop), or mini (compact, for sites that must show products at once). Prefer giant or mid unless the site must show products at once.
+- Name each section in "sections" with a short snake_case name; the page will mark each one with exactly that name.
 - Fonts must come from the lists given. Headline and body must be an allowed pair.
 """
 
@@ -164,6 +165,9 @@ COPY AND DESIGN RULES
 - Eyebrows (data-role="eyebrow"): at most one per three sections.
 - No decorative section numbers (01 / 02) unless the content is a real sequence. No rows of three identical icon cards. No uniform padding and identical layouts stacked down the page. No drop shadow on everything, no rounded-2xl everywhere.
 - One signature moment only (as in the art direction), executed with CSS. One look only, light or dark as directed.
+- LAYOUT AND SCALE (desktop). Use the full width: the page container is max-width clamp(1100px, 88vw, 1440px) with fluid side padding, never a narrow column floating in empty space. The hero fills the viewport width: the headline and the image share one composition (overlap, offset, or the headline running across the image edge), headline size clamp(2.75rem, 7vw, 7.5rem) or larger, with the supporting line and CTA sized to match (at least 1.125rem). Sections alternate density: at least one full-bleed band, and generous but varied vertical spacing.
+- MOTION (CSS only, always inside the reduced-motion rules above). Deliver at least three distinct motion moments: a staggered hero entrance, scroll-driven reveals on section headings and cards (inside @supports (animation-timeline: view())), and hover states on every card, link and button (image zoom of at most 1.04 inside an overflow-hidden frame, an underline that draws, an arrow that slides). Plus the one signature moment from the art direction. Motion must feel deliberate and calm, never busy.
+- The data-section value on each body section MUST equal the section name in the art direction exactly.
 - Follow the art direction's palette, fonts (through the variables), hero scale, section list, layouts and backgrounds. Use every section it lists, in order, each with a different composition from its neighbours.
 - Use semantic HTML: header, nav, main, section, footer, one h1, then h2/h3 in order. Descriptive link text.
 - Aim for under 60 KB of HTML plus CSS in total. No unused CSS.
