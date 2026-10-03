@@ -110,6 +110,13 @@ def call_claude_checked(system: str, user: str, max_tokens: int, model: str) -> 
     except anthropic.APIStatusError as exc:
         detail = " ".join(str(getattr(exc, "message", "") or exc).split())[:240]   # Anthropic's own reason (no secrets in it)
         logger.warning("site_premium_generation: Claude API error %s: %s", exc.status_code, detail)
+        reason = service_problem(exc.status_code, detail)
+        if reason == "no_credit":
+            raise GenerationFailed("The design service has run out of credit, so no design was made and nothing was used up. "
+                                   "Add credit to the Anthropic account and try again.", reason=reason)
+        if reason == "bad_key":
+            raise GenerationFailed("The design service rejected its access key, so no design was made and nothing was used up. "
+                                   "The Anthropic API key needs to be checked.", reason=reason)
         raise GenerationFailed(f"The design service returned an error ({exc.status_code}): {detail}")
     except Exception as exc:  # S14
         logger.warning("site_premium_generation: Claude call failed: %s: %s", type(exc).__name__, exc)
@@ -121,8 +128,24 @@ def call_claude_checked(system: str, user: str, max_tokens: int, model: str) -> 
     return text, int(getattr(usage, "input_tokens", 0) or 0), int(getattr(usage, "output_tokens", 0) or 0)
 
 
+def service_problem(status_code: int, detail: str) -> Optional[str]:
+    """'no_credit' or 'bad_key' when the Anthropic account itself is the problem (nothing the design or the
+    customer can fix), else None. Anthropic answers an empty balance with a 400 whose text names the credit balance."""
+    text = (detail or "").lower()
+    if status_code == 402 or "credit balance" in text or "purchase credits" in text:
+        return "no_credit"
+    if status_code in (401, 403):
+        return "bad_key"
+    return None
+
+
 class GenerationFailed(Exception):
-    """A step failed in a way that is not the model's fault to fix (network, cut-off, no reply)."""
+    """A step failed in a way that is not the model's fault to fix (network, cut-off, no reply).
+    `reason` is 'no_credit' or 'bad_key' when the Anthropic account is the cause."""
+
+    def __init__(self, message: str = "", reason: Optional[str] = None):
+        super().__init__(message)
+        self.reason = reason
 
 
 class OutputTooLong(GenerationFailed):
@@ -176,8 +199,11 @@ def check_caps(db: Any, org_id: str, site: dict, settings: dict) -> None:
     else:
         site_ids = [site["id"]]
     if site_ids:
-        tried = (db.table("site_designs").select("id").eq("org_id", org_id).in_("site_id", site_ids)
+        tried = (db.table("site_designs").select("id, status, checks, cost_usd").eq("org_id", org_id).in_("site_id", site_ids)
                  .in_("kind", ["generate", "redesign"]).gte("created_at", since).execute().data or [])
+        # an attempt that failed because the design service itself was down or out of credit used nothing: not counted
+        tried = [r for r in tried if not (r.get("status") == "failed" and (r.get("checks") or {}).get("stage") == "service"
+                                          and not float(r.get("cost_usd") or 0))]
         if len(tried) >= per_builder:
             raise CapReached(f"You can design {per_builder} Premium sites a day. Please try again tomorrow.")
     cap = float(settings.get("site_premium_daily_cost_cap") or 20)
@@ -217,6 +243,26 @@ def start_generation(db: Any, org_id: str, site: dict, actor: str) -> dict:
     if not inserted.get("id"):
         raise SiteOpsError("The design could not be started. Nothing was changed.")
     return inserted
+
+
+def alert_service_problem(db: Any, org_id: str, site_id: str, reason: str) -> None:
+    """Tell managers once a day that the AI account is out of credit (or its key was refused). S14: never raises."""
+    try:
+        event = "premium_no_credit" if reason == "no_credit" else "premium_bad_key"
+        done = (db.table("site_events").select("id").eq("org_id", org_id).eq("event", event).gte("created_at", _today_start_iso()).limit(1).execute()).data
+        if done:
+            return
+        db.table("site_events").insert({"org_id": org_id, "site_id": site_id, "order_id": None, "actor": "system",
+                                        "event": event, "detail": {}, "created_at": _now_iso()}).execute()
+        from app.services.funnel_service import _get_manager_ids
+        from app.routers.push_notifications import send_push_notification
+        title = "Premium designs stopped: AI credit is empty" if reason == "no_credit" else "Premium designs stopped: AI key refused"
+        body = ("Add credit to the Anthropic account. Premium designs resume as soon as it is topped up." if reason == "no_credit"
+                else "The Anthropic API key was refused. Check the key in the server settings.")
+        for uid in _get_manager_ids(db, org_id):
+            send_push_notification(db=db, user_id=uid, title=title, body=body)
+    except Exception as exc:  # S14
+        logger.warning("site_premium_generation: service alert failed org=%s: %s", org_id, exc)
 
 
 def alert_cost_cap(db: Any, org_id: str, site_id: str) -> None:
@@ -414,7 +460,9 @@ def run_generation(db: Any, design_id: str, claude: ClaudeFn = call_claude_check
             assets=assets, assets_by_id=assets_by_id, design_notes=(preset or {}).get("premium_design_notes") or "",
             do_not_repeat=recent_fingerprints(db, org_id, site.get("preset_id")), model=model, claude=claude)
     except GenerationFailed as exc:
-        return _finish_failed(db, design, usage, started, model, {"stage": "service", "errors": [str(exc)]})
+        if exc.reason:
+            alert_service_problem(db, design["org_id"], design["site_id"], exc.reason)
+        return _finish_failed(db, design, usage, started, model, {"stage": "service", "errors": [str(exc)], "reason": exc.reason})
     except Exception as exc:  # S14 - a bug must never leave the row 'generating'
         logger.exception("site_premium_generation: unexpected failure design=%s", design_id)
         return _finish_failed(db, design, usage, started, model, {"stage": "unexpected", "errors": [f"Unexpected problem ({type(exc).__name__})."]})

@@ -365,6 +365,49 @@ class TestRunGeneration:
         assert len(db.rows("site_designs")) == 10
 
 
+class TestOutOfCredit:
+    def _db_run(self, claude):
+        db = _db()
+        row = gen.start_generation(db, ORG, db.rows("sites")[0], "user:u1")
+        with patch("app.routers.sites._render_and_store"), \
+             patch("app.services.funnel_service._get_manager_ids", return_value=["m1"]), \
+             patch("app.routers.push_notifications.send_push_notification") as push:
+            out = gen.run_generation(db, row["id"], claude=claude)
+        return db, out, push
+
+    def test_no_credit_fails_safely_says_so_and_alerts_managers_once(self):
+        err = gen.GenerationFailed("The design service has run out of credit, so no design was made.", reason="no_credit")
+        db, out, push = self._db_run(ScriptedClaude(err))
+        d = db.rows("site_designs")[0]
+        assert out["outcome"] == "fallback_standard" and d["status"] == "failed" and d["checks"]["reason"] == "no_credit"
+        assert "run out of credit" in d["checks"]["errors"][0]
+        assert db.rows("sites")[0]["tier"] == "standard" and push.call_count == 1
+        assert [e["event"] for e in db.rows("site_events")].count("premium_no_credit") == 1
+        with patch("app.services.funnel_service._get_manager_ids", return_value=["m1"]), \
+             patch("app.routers.push_notifications.send_push_notification") as push2:
+            gen.alert_service_problem(db, ORG, "site-1", "no_credit")
+        assert push2.call_count == 0                                    # once a day
+
+    def test_an_ordinary_service_failure_does_not_alert(self):
+        _, _, push = self._db_run(ScriptedClaude(gen.GenerationFailed("The design service could not be reached.")))
+        assert push.call_count == 0
+
+    def test_a_service_failure_does_not_use_up_the_daily_designs(self):
+        db = _db(site_premium_daily_per_builder=1)
+        _row(db, status="failed", checks={"stage": "service", "errors": ["x"]}, cost_usd=0)
+        gen.start_generation(db, ORG, db.rows("sites")[0], "u")           # allowed: the failed attempt used nothing
+
+    def test_a_failed_attempt_that_cost_money_still_counts(self):
+        db = _db(site_premium_daily_per_builder=1)
+        _row(db, status="failed", checks={"stage": "build", "errors": ["x"]}, cost_usd=0.05)
+        with pytest.raises(gen.CapReached):
+            gen.start_generation(db, ORG, db.rows("sites")[0], "u")
+
+    def test_alert_never_raises(self):
+        with patch("app.services.funnel_service._get_manager_ids", side_effect=RuntimeError("x")):
+            gen.alert_service_problem(_db(), ORG, "site-1", "bad_key")
+
+
 class TestCostCapAlert:
     def test_alerts_managers_once_a_day(self):
         db = _db()
@@ -418,12 +461,35 @@ class TestCallClaudeChecked:
     def test_the_api_reason_is_shown_not_hidden(self):
         import anthropic
         import httpx
-        err = anthropic.BadRequestError("Your credit balance is too low to access the Anthropic API.\nPlease go to Plans & Billing.",
+        err = anthropic.BadRequestError("messages.0: something the request got wrong.\nSecond line.",
                                         response=httpx.Response(400, request=httpx.Request("POST", "http://x")), body=None)
         with pytest.raises(gen.GenerationFailed) as e:
             self._run(self._Client(error=err))
         msg = str(e.value)
-        assert "(400)" in msg and "credit balance is too low" in msg and "\n" not in msg
+        assert "(400)" in msg and "something the request got wrong" in msg and "\n" not in msg and e.value.reason is None
+
+    def test_an_empty_credit_balance_is_said_plainly(self):
+        import anthropic
+        import httpx
+        err = anthropic.BadRequestError("Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing.",
+                                        response=httpx.Response(400, request=httpx.Request("POST", "http://x")), body=None)
+        with pytest.raises(gen.GenerationFailed) as e:
+            self._run(self._Client(error=err))
+        assert e.value.reason == "no_credit" and "run out of credit" in str(e.value) and "Plans & Billing" not in str(e.value)
+
+    def test_a_refused_key_is_said_plainly(self):
+        import anthropic
+        import httpx
+        err = anthropic.AuthenticationError("invalid x-api-key", response=httpx.Response(401, request=httpx.Request("POST", "http://x")), body=None)
+        with pytest.raises(gen.GenerationFailed) as e:
+            self._run(self._Client(error=err))
+        assert e.value.reason == "bad_key" and "key" in str(e.value)
+
+    def test_service_problem_classifier(self):
+        assert gen.service_problem(400, "Your credit balance is too low") == "no_credit"
+        assert gen.service_problem(402, "") == "no_credit"
+        assert gen.service_problem(401, "x") == "bad_key" and gen.service_problem(403, "x") == "bad_key"
+        assert gen.service_problem(400, "bad request") is None and gen.service_problem(529, "overloaded") is None
 
     def test_a_network_error_is_a_failure_not_a_crash(self):
         with pytest.raises(gen.GenerationFailed) as e:
