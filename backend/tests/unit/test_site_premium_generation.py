@@ -74,6 +74,18 @@ class TestPipeline:
         assert not r["ok"] and r["stage"] == "build" and any("contrast" in e for e in r["errors"])
         assert len(c.calls) == 3
 
+    def test_a_cut_off_build_is_retried_once_asking_for_a_shorter_page_and_is_still_paid_for(self):
+        c = ScriptedClaude(good_art_reply(), gen.OutputTooLong(5000, 20000), good_build_reply())
+        r = gen.design_site(**ARGS, claude=c)
+        assert r["ok"] and r["attempts"]["build"] == 2
+        assert "cut off because it was too long" in c.calls[2]["user"] and "compactly" in c.calls[2]["user"]
+        assert r["usage"].output_tokens >= 20000
+
+    def test_two_cut_offs_fail_the_build_without_raising(self):
+        c = ScriptedClaude(good_art_reply(), gen.OutputTooLong(5000, 20000), gen.OutputTooLong(5000, 20000))
+        r = gen.design_site(**ARGS, claude=c)
+        assert not r["ok"] and r["stage"] == "build" and r["usage"].output_tokens >= 40000
+
     def test_unsafe_markup_is_removed_not_trusted(self):
         evil = good_build_reply().replace("<main>", '<main><script>alert(1)</script><img src=x onerror=alert(1)>')
         r = gen.design_site(**ARGS, claude=ScriptedClaude(good_art_reply(), evil))

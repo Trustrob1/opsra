@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from app.models.sites import SiteContentV1
 from app.services import site_premium_fonts as fonts
 
-PROMPT_VERSION = "p2.2"
+PROMPT_VERSION = "p2.4"
 
 HERO_SCALES = ("giant", "mid", "mini")
 ACCENT_FAMILIES = ("blue", "green_teal", "red_wine", "violet_pink", "metal", "yellow_green")
@@ -114,7 +114,7 @@ Rules:
 - Banned looks: warm cream background with a serif and a terracotta accent; any brown, tan, bronze, brass, gold, cognac, champagne or caramel accent (hue about 25 to 50 degrees); a near-black page with one lone neon accent; purple-to-blue gradients; glassmorphism.
 - Pick an accent family that is NOT in the do-not-repeat list. Pick fonts and a hero scale that differ from the recent ones when you can.
 - Prefer a cool, grey, tinted or dark ground before any warm off-white. Never pure #000000 or #FFFFFF: use tinted near-black and near-white.
-- ink on bg must reach contrast 4.5:1, and the text colour used on the accent must also reach 4.5:1.
+- ink on bg must reach contrast 4.5:1. The accent must reach at least 3:1 against the bg, and at least 4.5:1 against either the bg or the ink (that colour becomes the button text). Bright lime, neon yellow and pale accents fail these on a light page: pick a deeper tone for light mode. Check the numbers before answering.
 - Sections: 5 to 9 sections after the nav, ending with a closing WhatsApp call to action and a footer. Only include sections the content can fill (items, about, reviews, faqs, hours/location, gallery, team, process, menu). Never plan a reviews section if the content has no reviews.
 - Across the page use at least 4 different layout families when there are 8 or more sections, and never more than 2 "split" sections in a row. No two neighbouring sections share a layout.
 - The hero scale decides the headline size: giant (display type filling the width), mid (still bold: a headline of at least 4rem on desktop), or mini (compact, for sites that must show products at once). Prefer giant or mid unless the site must show products at once.
@@ -151,6 +151,7 @@ CSS CONTRACT
 - Allowed CSS: normal properties, @media, @supports, @keyframes, @layer, @container. NOT allowed: url(), image-set(), expression(), behavior, inline style attributes, <style> inside elements.
 - Tokens: define a spacing scale (4, 8, 12, 16, 24, 32, 48, 64, 96, 128px) and use only those. Section padding uses clamp(). Lay out with gap, not ad hoc margins. Do not fix grid alignment with margin-top guesses: use an explicit wrapper.
 - Type: dramatic scale contrast with clamp(); tight leading on big type (0.9 to 1.05); text-wrap: balance on headings and pretty on paragraphs; font-variant-numeric: tabular-nums for prices; body copy 60 to 70 characters per line; small uppercase letter-spaced labels. Curly quotes and a non-breaking space between a number and its unit.
+- Use the art direction's accent, bg and ink hex values EXACTLY in :root. If the accent is not readable as text on the background, never darken or lighten it: use --ink for text and keep the accent for fills, borders and large shapes. --accent-ink is the bg or ink colour, whichever reaches 4.5:1 on the accent.
 - Colour: 1 background, 1 text colour, 1 supporting neutral (tinted toward the hue), 1 accent used sparingly. Never pure #000000 or #FFFFFF. No cream, tan, brass or gold hex values. ::selection and :focus-visible styled in the palette. Text on photos always sits on a scrim.
 - Mobile first at 390px. No horizontal scroll: contain decorative shapes inside their box, use overflow-x: clip on sections (never hidden). Tap targets at least 44px. Button labels short enough for one line at 360px (white-space: nowrap). A [hidden] rule with display:none !important. Navigation at most 72px tall, with at most 4 links and a WhatsApp button; no hamburger script: on phones show the brand and the WhatsApp button only, or use <details><summary>.
 - Section heights: never height:100vh or 100dvh; use min-height with clamp() or svh. Content must be fully visible with no scrolling effects applied.
@@ -170,7 +171,7 @@ COPY AND DESIGN RULES
 - The data-section value on each body section MUST equal the section name in the art direction exactly.
 - Follow the art direction's palette, fonts (through the variables), hero scale, section list, layouts and backgrounds. Use every section it lists, in order, each with a different composition from its neighbours.
 - Use semantic HTML: header, nav, main, section, footer, one h1, then h2/h3 in order. Descriptive link text.
-- Aim for under 60 KB of HTML plus CSS in total. No unused CSS.
+- HARD SIZE BUDGET: at most 40 KB of HTML plus CSS together (about 11,000 tokens), however many items the site has. Group selectors, share rules between components, use custom properties and clamp(), no repeated declarations, no comments, short class names. Markup for a repeated item is written once with data-repeat. No unused CSS.
 """
 
 RETRY_NOTE = (
@@ -284,6 +285,18 @@ def parse_art_direction(text: str, niche: Optional[str] = None) -> dict:
     for key in ("accent_hex", "bg_hex", "ink_hex"):
         if not _hex(art.get(key)):
             errors.append(f"'{key}' must be a #RRGGBB colour")
+    if all(_hex(art.get(k)) for k in ("accent_hex", "bg_hex", "ink_hex")):
+        from app.services.site_premium_checks import contrast_ratio
+        acc, bg, ink = (art[k].strip().upper() for k in ("accent_hex", "bg_hex", "ink_hex"))
+        if contrast_ratio(ink, bg) < 4.5:
+            errors.append(f"ink_hex {ink} on bg_hex {bg} has contrast {contrast_ratio(ink, bg):.1f}:1; it must be at least 4.5:1")
+        on_bg, on_ink = contrast_ratio(acc, bg), contrast_ratio(acc, ink)
+        if on_bg < 3.0:
+            errors.append(f"accent_hex {acc} is too close to bg_hex {bg} (contrast {on_bg:.1f}:1, needs 3:1 or more so accent text, "
+                          "links and borders stay visible). Choose a deeper accent on a light background or a lighter one on a dark background")
+        elif max(on_bg, on_ink) < 4.5:
+            errors.append(f"accent_hex {acc} cannot carry readable button text: it reaches only {max(on_bg, on_ink):.1f}:1 against "
+                          f"bg_hex {bg} and ink_hex {ink}; one of them must reach 4.5:1. Choose a darker or lighter accent")
     head, body = art.get("headline_font"), art.get("body_font")
     try:
         fonts.validate_fonts(head or "", body or "")

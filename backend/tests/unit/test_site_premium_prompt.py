@@ -62,6 +62,25 @@ class TestParseArtDirection:
     def test_code_fence_and_prose_around_json_are_tolerated(self):
         assert p.parse_art_direction("```json\n" + art() + "\n```", "boutique")["hero_scale"] == "giant"
 
+    def test_a_bright_lime_accent_on_a_light_page_is_rejected_with_the_numbers(self):
+        with pytest.raises(p.ArtDirectionError) as e:
+            p.parse_art_direction(art(accent_hex="#C5F02A", bg_hex="#F5F6F4"), "boutique")
+        assert any("too close to bg_hex" in m and "3:1" in m for m in e.value.errors)
+
+    def test_an_accent_that_cannot_carry_readable_button_text_is_rejected(self):
+        with pytest.raises(p.ArtDirectionError) as e:
+            p.parse_art_direction(art(accent_hex="#6F9100", bg_hex="#1E2A1A", ink_hex="#EEF1E8"), "boutique")
+        assert any("button text" in m for m in e.value.errors)
+
+    def test_a_bright_accent_on_a_dark_page_is_fine(self):
+        out = p.parse_art_direction(art(accent_hex="#C5F02A", bg_hex="#101810", ink_hex="#F2F5EC", mode="dark"), "boutique")
+        assert out["accent_hex"] == "#C5F02A"
+
+    def test_unreadable_ink_on_bg_is_rejected_at_the_art_step(self):
+        with pytest.raises(p.ArtDirectionError) as e:
+            p.parse_art_direction(art(ink_hex="#E0E0E0"), "boutique")
+        assert any("ink_hex" in m for m in e.value.errors)
+
     def test_hex_is_normalised_to_upper_case(self):
         assert p.parse_art_direction(art(accent_hex="#2f4bff"), "boutique")["accent_hex"] == "#2F4BFF"
 

@@ -38,8 +38,19 @@ def run(only=None, out_dir="premium-golden", model="claude-sonnet-5-5", dry=Fals
             rows.append({"key": b["key"], "ok": True, "dry": True, "niche_fonts": list(fonts.NICHE_HEADLINES.get(b["key"], ()))[:3]})
             continue
         started = time.monotonic()
-        result = gen.design_site(content=content, brief={"personality": b["personality"]}, niche=b["key"], personality=b["personality"],
-                                 assets=[], assets_by_id={}, design_notes="", do_not_repeat=list(fingerprints[-12:]), model=model, claude=claude)
+        print(f"{b['key']:<13} designing ... (1 to 4 minutes)", flush=True)
+        try:
+            result = gen.design_site(content=content, brief={"personality": b["personality"]}, niche=b["key"], personality=b["personality"],
+                                     assets=[], assets_by_id={}, design_notes="", do_not_repeat=list(fingerprints[-12:]), model=model, claude=claude)
+        except gen.GenerationFailed as exc:   # one bad brief must not end the whole run
+            report = {"key": b["key"], "ok": False, "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0, "attempts": 0,
+                      "seconds": round(time.monotonic() - started, 1), "stage": "service", "errors": [str(exc)]}
+            os.makedirs(os.path.join(out_dir, b["key"]), exist_ok=True)
+            with open(os.path.join(out_dir, b["key"], "report.json"), "w", encoding="utf-8") as fh:
+                json.dump(report, fh, indent=2)
+            rows.append(report)
+            print(f"{b['key']:<13} FAIL  {exc}", flush=True)
+            continue
         usage = result["usage"]
         cost = gen.cost_usd(model, usage.input_tokens, usage.output_tokens)
         folder = os.path.join(out_dir, b["key"])
@@ -61,7 +72,7 @@ def run(only=None, out_dir="premium-golden", model="claude-sonnet-5-5", dry=Fals
         with open(os.path.join(folder, "report.json"), "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=2)
         rows.append(report)
-        print(f"{b['key']:<13} {'PASS' if report['ok'] else 'FAIL'}  ${cost:.3f}  attempts={report['attempts']}  {report['seconds']}s")
+        print(f"{b['key']:<13} {'PASS' if report['ok'] else 'FAIL'}  ${cost:.3f}  attempts={report['attempts']}  {report['seconds']}s", flush=True)
     done = [r for r in rows if not r.get("dry")]
     summary = {"briefs": len(rows), "passed": sum(1 for r in done if r["ok"]), "total_cost_usd": round(sum(r["cost_usd"] for r in done), 4),
                "average_cost_usd": round(sum(r["cost_usd"] for r in done) / len(done), 4) if done else 0, "model": model, "dry": dry}

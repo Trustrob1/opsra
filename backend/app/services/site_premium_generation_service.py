@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
 ART_MAX_TOKENS = 2_000
-BUILD_MAX_TOKENS = 16_000
+BUILD_MAX_TOKENS = 20_000   # p2.2 pages run 12k to 17k tokens; 16k cut off a golden-set brief
 STEP_TIMEOUT_SECONDS = 240
 STALE_AFTER_MINUTES = 20
 RECENT_FOR_REPEAT = 12
@@ -117,12 +117,26 @@ def call_claude_checked(system: str, user: str, max_tokens: int, model: str) -> 
     text = "".join(b.text for b in (response.content or []) if getattr(b, "type", None) == "text")
     usage = getattr(response, "usage", None)
     if getattr(response, "stop_reason", None) == "max_tokens":
-        raise GenerationFailed("The design was cut off because it was too long.")
+        raise OutputTooLong(int(getattr(usage, "input_tokens", 0) or 0), int(getattr(usage, "output_tokens", 0) or 0))
     return text, int(getattr(usage, "input_tokens", 0) or 0), int(getattr(usage, "output_tokens", 0) or 0)
 
 
 class GenerationFailed(Exception):
     """A step failed in a way that is not the model's fault to fix (network, cut-off, no reply)."""
+
+
+class OutputTooLong(GenerationFailed):
+    """The reply hit the token cap. It carries the tokens already spent so the cost is still recorded, and the build
+    step retries once asking for a much shorter page."""
+
+    def __init__(self, input_tokens: int = 0, output_tokens: int = 0):
+        super().__init__("The design was cut off because it was too long.")
+        self.input_tokens, self.output_tokens = input_tokens, output_tokens
+
+
+TOO_LONG_NOTE = ("Your previous output was cut off because it was too long. Write the whole page again, much more compactly: "
+                 "at most 36 KB of HTML plus CSS together. Group selectors, use custom properties and clamp(), no repeated "
+                 "declarations, no comments, short class names, one compact rule per component.")
 
 
 # ------------------------------------------------------------------ guards (run in the request)
@@ -316,7 +330,12 @@ def design_site(*, content: dict, brief: Any, niche: Optional[str], personality:
         attempts["build"] = attempt
         user = prompt.build_design_user(art=art, content=content, assets=assets, design_notes=design_notes,
                                         errors=errors or None, previous=previous)
-        text, i, o = claude(prompt.BUILD_SYSTEM, user, BUILD_MAX_TOKENS, model)
+        try:
+            text, i, o = claude(prompt.BUILD_SYSTEM, user, BUILD_MAX_TOKENS, model)
+        except OutputTooLong as exc:   # cut off: pay for it in the totals, then ask once for a much shorter page
+            usage.add(exc.input_tokens, exc.output_tokens)
+            errors, previous = [TOO_LONG_NOTE], None
+            continue
         usage.add(i, o)
         try:
             raw = prompt.extract_skeleton(text)
