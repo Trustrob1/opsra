@@ -30,6 +30,7 @@ from typing import Any, Optional
 from app.services import site_premium_checks as checks
 from app.services import site_premium_fonts as fonts
 from app.services import site_premium_renderer as renderer
+from app.services import site_premium_sections as sections
 from app.services import site_premium_service as premium
 from app.services.site_ops_service import NotFound, SiteOpsError, ValidationFailed
 
@@ -153,11 +154,13 @@ def look_options(design: dict, niche: Optional[str]) -> dict:
             params.append(fonts._family_param(n, meta["wght"]))
     sample = ("https://fonts.googleapis.com/css2?" + "&".join(params) + "&display=swap") if params else None
     return {"current": {"accent": accent, "headline_font": fo["current"]["headline"], "body_font": fo["current"]["body"]},
-            "swatches": swatches, "fonts": fo, "sample_css_url": sample}
+            "swatches": swatches, "fonts": fo, "sample_css_url": sample,
+            "sections": sections.section_options(design)}
 
 
 def plan_tweak(design: dict, content: dict, assets_by_id: dict, niche: Optional[str], accent: Optional[str] = None,
-               headline_font: Optional[str] = None, body_font: Optional[str] = None) -> dict:
+               headline_font: Optional[str] = None, body_font: Optional[str] = None,
+               section_colours: Optional[dict] = None) -> dict:
     """Validates a requested look and returns the new parts (tokens, art_direction, notes, page html) without
     saving anything. Raises ValidationFailed with a plain reason."""
     tokens = current_tokens(design)
@@ -193,6 +196,22 @@ def plan_tweak(design: dict, content: dict, assets_by_id: dict, niche: Optional[
             raise ValidationFailed(f"{body_font} is not available with this heading font.")
         new_art["body_font"] = body_font
         changes["body_font"] = body_font
+
+    if section_colours:
+        # P4-3a: per-section colours from the design's own fixed set. {section: key}; 'original' clears one.
+        # Worked out against the design AS IT WILL BE (new accent included), so 'brand' means the new brand colour.
+        try:
+            merged = sections.normalise_choice({**design, "tokens": new_tokens, "art_direction": new_art}, section_colours)
+        except ValueError as exc:
+            raise ValidationFailed(str(exc))
+        before = dict(art.get("section_colours") or {})
+        if merged != before:
+            if merged:
+                new_art["section_colours"] = merged
+            else:
+                new_art.pop("section_colours", None)
+            changes["sections"] = {s: merged.get(s, sections.ORIGINAL) for s in set(merged) | set(before)
+                                   if merged.get(s) != before.get(s)}
 
     if not changes:
         raise ValidationFailed("That is already your current look. Pick something different.")

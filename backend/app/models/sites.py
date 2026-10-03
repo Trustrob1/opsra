@@ -388,6 +388,22 @@ class PremiumLookRequest(BaseModel):
     accent: Optional[str] = Field(None, max_length=7)
     headline_font: Optional[str] = Field(None, max_length=60)
     body_font: Optional[str] = Field(None, max_length=60)
+    # P4-3a: {section name: 'original' | 'base' | 'soft' | 'dark' | 'brand'}; the server checks them against the design
+    sections: Optional[dict[str, str]] = None
+
+    @field_validator("sections")
+    @classmethod
+    def _sections_shape(cls, v):
+        if v is None:
+            return v
+        if not v or len(v) > 12:
+            raise ValueError("Pick between 1 and 12 sections.")
+        for name, key in v.items():
+            if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", name or ""):
+                raise ValueError("That is not a section name.")
+            if key not in ("original", "base", "soft", "dark", "brand"):
+                raise ValueError("That colour is not one of the choices.")
+        return v
 
 
 class SiteAssetCreate(BaseModel):

@@ -1,6 +1,6 @@
 /**
  * frontend/src/modules/sites/PremiumLookCard.jsx
- * SITE-PREMIUM P4-2 - the customer's colour and font choice for a Premium site (builder portal).
+ * SITE-PREMIUM P4-2/P4-3a - the customer's colour, font and per-section colour choice for a Premium site (builder portal).
  * Buttons and pickers only. Choosing something previews it at once (nothing is saved); "Apply this look" saves it.
  * The server decides which colours and fonts are allowed for this design, so everything offered here works.
  */
@@ -22,10 +22,12 @@ function choiceStyle(selected, disabled) {
 export default function PremiumLookCard({ data, busy, previewing, error, onPreview, onApply, onCancel, onGoBack }) {
   const look = data?.look
   const current = look?.current || {}
+  const savedSections = JSON.stringify((look?.sections || []).map((r) => [r.name, r.current]))
   const [accent, setAccent] = useState(null)
   const [custom, setCustom] = useState('')
   const [headline, setHeadline] = useState(null)
   const [body, setBody] = useState(null)
+  const [secPick, setSecPick] = useState({})            // P4-3a: {section name: colour key} not saved yet
 
   // Show the options in their own fonts: one Google Fonts stylesheet for the fonts on offer.
   useEffect(() => {
@@ -39,29 +41,35 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
   }, [look?.sample_css_url])
 
   // The server knows a new look was saved (or undone) when `current` changes: clear the pending choice.
-  useEffect(() => { setAccent(null); setCustom(''); setHeadline(null); setBody(null) }, [current.accent, current.headline_font, current.body_font])
+  useEffect(() => { setAccent(null); setCustom(''); setHeadline(null); setBody(null); setSecPick({}) }, [current.accent, current.headline_font, current.body_font, savedSections])
 
   if (!look) return null
+  const sectionRows = look.sections || []
 
   const selection = (over = {}) => {
     const a = 'accent' in over ? over.accent : accent
     const h = 'headline' in over ? over.headline : headline
     const b = 'body' in over ? over.body : body
+    const sp = 'sections' in over ? over.sections : secPick
     const sel = {}
     if (a && a.toUpperCase() !== (current.accent || '').toUpperCase()) sel.accent = a
     if (h && h !== current.headline_font) sel.headline_font = h
     if (b && b !== current.body_font) sel.body_font = b
+    const sd = {}
+    sectionRows.forEach((row) => { if (sp[row.name] && sp[row.name] !== row.current) sd[row.name] = sp[row.name] })
+    if (Object.keys(sd).length) sel.sections = sd
     return sel
   }
   const pick = (over) => {
     if ('accent' in over) setAccent(over.accent)
     if ('headline' in over) setHeadline(over.headline)
     if ('body' in over) setBody(over.body)
+    if ('sections' in over) setSecPick(over.sections)
     onPreview(selection(over))
   }
   const sel = selection()
   const changed = Object.keys(sel).length > 0
-  const cancel = () => { setAccent(null); setCustom(''); setHeadline(null); setBody(null); onCancel() }
+  const cancel = () => { setAccent(null); setCustom(''); setHeadline(null); setBody(null); setSecPick({}); onCancel() }
   const fo = look.fonts || {}
 
   return (
@@ -77,11 +85,14 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
             const isCurrent = (current.accent || '').toUpperCase() === s.hex.toUpperCase()
             const selected = (accent || '').toUpperCase() === s.hex.toUpperCase()
             return (
-              <button key={s.key} type="button" aria-pressed={selected} disabled={!s.ok || busy}
-                title={s.ok ? s.name : s.reason} onClick={() => pick({ accent: s.hex })} style={choiceStyle(selected, !s.ok)}>
-                <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', background: s.hex, border: '1px solid rgba(0,0,0,.15)' }} />
-                <span>{s.name}{isCurrent ? ' (current)' : ''}</span>
-              </button>
+              <div key={s.key} style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 190 }}>
+                <button type="button" aria-pressed={selected} disabled={!s.ok || busy}
+                  title={s.ok ? s.name : s.reason} onClick={() => pick({ accent: s.hex })} style={choiceStyle(selected, !s.ok)}>
+                  <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', background: s.hex, border: '1px solid rgba(0,0,0,.15)' }} />
+                  <span>{s.name}{isCurrent ? ' (current)' : ''}</span>
+                </button>
+                {!s.ok && s.reason && <span style={{ fontSize: 11, lineHeight: 1.3, color: T.muted }}>{s.reason}</span>}
+              </div>
             )
           })}
         </div>
@@ -123,6 +134,33 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
                   onClick={() => pick({ body: name })} style={{ ...choiceStyle(selected, false), fontFamily: `'${name}', sans-serif` }}>
                   {name}{isCurrent ? ' (current)' : ''}
                 </button>
+              )
+            })}
+          </div>
+        </Field>
+      )}
+
+      {sectionRows.length > 0 && (
+        <Field label="Section colours" hint="Give a section its own colour. Only colours from your design are offered, so the text always stays easy to read.">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {sectionRows.map((row) => {
+              const chosen = secPick[row.name] || row.current
+              return (
+                <div key={row.name}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.ink, marginBottom: 6 }}>{row.label}</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {row.options.map((o) => {
+                      const selected = chosen === o.key
+                      return (
+                        <button key={o.key} type="button" aria-pressed={selected} disabled={busy}
+                          onClick={() => pick({ sections: { ...secPick, [row.name]: o.key } })} style={choiceStyle(selected, false)}>
+                          {o.hex && <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 4, background: o.hex, border: '1px solid rgba(0,0,0,.2)' }} />}
+                          <span>{o.label}{o.key === row.current ? ' (current)' : ''}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               )
             })}
           </div>

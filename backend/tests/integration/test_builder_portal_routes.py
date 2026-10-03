@@ -722,3 +722,40 @@ class TestLoginLinkService:
         monkeypatch.setattr(svc, "_send_whatsapp", boom)
         monkeypatch.setattr(svc, "_send_email", boom)
         svc.send_login_link("+2348000000001")   # must not raise
+
+
+class TestPremiumSectionColours:
+    """SITE-PREMIUM P4-3a: per-section colours go through the same preview / apply routes."""
+
+    def _db(self, site=None):
+        return _db_mock(sites=_chain([dict(site or _LOOK_SITE)]), site_assets=_chain([]), site_presets=_chain([_FAKE_PRESET]),
+                        site_designs=_chain([dict(_LOOK_DESIGN)]), site_events=_chain([]), site_revisions=_chain([]))
+
+    def test_options_carry_the_sections(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        data = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/look").json()["data"]
+        assert data["look"]["sections"] and data["look"]["sections"][0]["options"][0]["key"] == "original"
+
+    def test_preview_paints_the_section_and_saves_nothing(self, authed_client):
+        db = self._db()
+        app.dependency_overrides[get_supabase] = lambda: db
+        name = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/look").json()["data"]["look"]["sections"][0]["name"]
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look/preview", json={"sections": {name: "dark"}})
+        assert resp.status_code == 200 and f'data-section="{name}"' in resp.json()["data"]["html"]
+        db.table("site_designs").insert.assert_not_called()
+
+    @pytest.mark.parametrize("body", [{"sections": {}}, {"sections": {"about": "pink"}}, {"sections": {"About Us": "dark"}},
+                                      {"sections": {"nope": "dark"}}, {"sections": {"hero": "dark"}}])
+    def test_bad_section_choices_are_refused(self, authed_client, body):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json=body).status_code == 422
+
+    def test_apply_saves_a_version_and_is_free_before_live(self, authed_client, monkeypatch):
+        calls = []
+        monkeypatch.setattr(site_care_plan_service, "consume_edit", lambda *a, **k: calls.append(1) or {"counted": True})
+        db = self._db()
+        app.dependency_overrides[get_supabase] = lambda: db
+        name = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/look").json()["data"]["look"]["sections"][0]["name"]
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json={"sections": {name: "soft"}})
+        assert resp.status_code == 200 and calls == []
+        db.table("site_designs").insert.assert_called()

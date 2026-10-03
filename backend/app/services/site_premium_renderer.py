@@ -32,6 +32,7 @@ from urllib.parse import quote
 
 from app.services import site_premium_behaviours as behaviours
 from app.services import site_premium_fonts as fonts
+from app.services import site_premium_sections as sections
 from app.services.site_premium_sanitiser import SLOT_ATTRS
 
 MAX_REPEAT = 60
@@ -150,9 +151,10 @@ class Ctx:
     export: bool
     price_style: str = "exact"
     scopes: list = field(default_factory=list)       # innermost last: the current repeat entries
+    keep: frozenset = frozenset()                    # P4-3a: section names whose data-section marker stays in the page
 
     def child(self, item: Any) -> "Ctx":
-        return Ctx(self.content, self.assets, self.export, self.price_style, self.scopes + [item])
+        return Ctx(self.content, self.assets, self.export, self.price_style, self.scopes + [item], self.keep)
 
     def lookup(self, path: str) -> Any:
         if path == ".":
@@ -266,8 +268,10 @@ def _image_node(node: Node, ctx: Ctx) -> Node:
 
 # ------------------------------------------------------------------ the slot pass
 
-def _strip_markers(attrs: dict) -> dict:
-    return {k: v for k, v in attrs.items() if k not in SLOT_ATTRS}
+def _strip_markers(attrs: dict, keep: frozenset = frozenset()) -> dict:
+    # data-section stays only on a section the customer gave a colour, so the colour rule has something to match
+    return {k: v for k, v in attrs.items()
+            if k not in SLOT_ATTRS or (k == "data-section" and v in keep)}
 
 
 def _truthy_if(expr: str, ctx: Ctx) -> bool:
@@ -304,7 +308,7 @@ def _transform(nodes: list, ctx: Ctx) -> list:
                 continue
             if isinstance(value, (list, dict)):
                 continue
-            out.append(Node(n.tag, _strip_markers(a), [_format(value, fmt, ctx)]))
+            out.append(Node(n.tag, _strip_markers(a, ctx.keep), [_format(value, fmt, ctx)]))
             continue
         attrs = dict(a)
         if "data-slot-href" in a:
@@ -316,12 +320,13 @@ def _transform(nodes: list, ctx: Ctx) -> list:
             if external:
                 attrs["target"] = "_blank"
                 attrs["rel"] = "noopener"
-        out.append(Node(n.tag, _strip_markers(attrs), _transform(n.children, ctx)))
+        out.append(Node(n.tag, _strip_markers(attrs, ctx.keep), _transform(n.children, ctx)))
     return out
 
 
-def fill_slots(skeleton_html: str, content: dict, assets_by_id: dict, export: bool = False) -> str:
-    ctx = Ctx(content=content or {}, assets=assets_by_id or {}, export=export)
+def fill_slots(skeleton_html: str, content: dict, assets_by_id: dict, export: bool = False,
+               keep_sections: frozenset = frozenset()) -> str:
+    ctx = Ctx(content=content or {}, assets=assets_by_id or {}, export=export, keep=frozenset(keep_sections))
     return _serialise(_transform(parse_fragment(skeleton_html), ctx))
 
 
@@ -395,7 +400,10 @@ def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, expo
             var_css.append(f"{name}:{value}")
     tokens_css = ":root{" + ";".join(var_css) + "}"
 
-    body = fill_slots(design.get("skeleton_html") or "", content, assets_by_id, export=export)
+    chosen = art.get("section_colours")
+    section_css = sections.override_css(design) if isinstance(chosen, dict) and chosen else ""
+    keep = frozenset(str(k) for k in chosen) if section_css else frozenset()
+    body = fill_slots(design.get("skeleton_html") or "", content, assets_by_id, export=export, keep_sections=keep)
 
     biz = content.get("business") or {}
     seo = content.get("seo") or {}
@@ -434,7 +442,7 @@ def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, expo
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
         f'<link rel="stylesheet" href="{escape(font_link, quote=True)}">',
         f'<script type="application/ld+json">{_json_ld(content, canonical)}</script>',
-        f"<style>{_BASE_CSS}{behaviours.head_css(used)}{design.get('skeleton_css') or ''}{tokens_css}{_REDUCED_MOTION_CSS}</style>",
+        f"<style>{_BASE_CSS}{behaviours.head_css(used)}{design.get('skeleton_css') or ''}{tokens_css}{section_css}{_REDUCED_MOTION_CSS}</style>",
     ]
     return ('<!doctype html><html lang="en"><head>' + "".join(head) + "</head><body>"
             + preview_bar + body + behaviours.body_script(used) + "</body></html>")

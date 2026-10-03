@@ -496,7 +496,8 @@ def premium_look_preview(site_id: str, payload: PremiumLookRequest, builder=Depe
     site = _get_site(db, org_id, builder["id"], site_id)
     design = _premium_errors(site_premium_tweaks.current_design, db, org_id, site)
     plan = _premium_errors(site_premium_tweaks.plan_tweak, design, site.get("content") or {}, _assets_map(db, site_id),
-                           _niche_of(db, org_id, site), payload.accent, payload.headline_font, payload.body_font)
+                           _niche_of(db, org_id, site), payload.accent, payload.headline_font, payload.body_font,
+                           payload.sections)
     return ok(data={"html": plan["html"], "changes": plan["changes"]})
 
 
@@ -507,7 +508,8 @@ def premium_look_apply(site_id: str, payload: PremiumLookRequest, builder=Depend
     design = _premium_errors(site_premium_tweaks.current_design, db, org_id, site)
     # Validate first, so a refused look never uses up an edit.
     plan = _premium_errors(site_premium_tweaks.plan_tweak, design, site.get("content") or {}, _assets_map(db, site_id),
-                           _niche_of(db, org_id, site), payload.accent, payload.headline_font, payload.body_font)
+                           _niche_of(db, org_id, site), payload.accent, payload.headline_font, payload.body_font,
+                           payload.sections)
     counted = False
     if _is_live_site(site):
         try:
