@@ -59,6 +59,7 @@ from app.services import (
     site_image_service,
     site_order_service,
     site_renewal_service,
+    site_premium_history,
     site_premium_service,
     site_premium_tweaks,
     site_renderer,
@@ -543,6 +544,118 @@ def premium_look_undo(site_id: str, builder=Depends(get_current_builder), db=Dep
     _log_event(db, org_id, site_id, builder["id"], "premium_look_undone", {"version": row.get("version")})
     return ok(data={"site": site, "premium": site_premium_service.editor_info(db, org_id, site), **_look_payload(db, org_id, site)},
               message="Back to your previous look")
+
+
+# ── SITE-PREMIUM P4-4: design history, restore and "Try another design" ──────────────────────────────
+
+def _premium_site(db, org_id: str, builder_id: str, site_id: str) -> dict:
+    """The builder's own site, which must have a Premium design (404 otherwise, like the look routes)."""
+    site = _get_site(db, org_id, builder_id, site_id)
+    if not site_premium_service.editor_info(db, org_id, site):
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "This site does not have a Premium design."})
+    return site
+
+
+def _history_payload(db, org_id: str, site: dict) -> dict:
+    return {"history": site_premium_history.history(db, org_id, site),
+            "redesign": site_premium_history.redesign_status(db, org_id, site)}
+
+
+def _site_result(db, org_id: str, site: dict) -> dict:
+    """What the editor needs after the live design changes: the site, premium info, look options, history, redesign status."""
+    return {"site": site, "premium": site_premium_service.editor_info(db, org_id, site),
+            **_look_payload(db, org_id, site), **_history_payload(db, org_id, site)}
+
+
+@router.get("/sites/{site_id}/premium/history")
+def premium_history(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _premium_site(db, org_id, builder["id"], site_id)
+    return ok(data=_history_payload(db, org_id, site))
+
+
+@router.get("/sites/{site_id}/premium/history/{design_id}/preview")
+def premium_history_preview(site_id: str, design_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """The page for one saved version with the site's current content. Saves nothing."""
+    org_id = builder["org_id"]
+    site = _premium_site(db, org_id, builder["id"], site_id)
+    html = _premium_errors(site_premium_history.version_preview, db, org_id, site, design_id, _assets_map(db, site_id))
+    return ok(data={"design_id": design_id, "html": html})
+
+
+@router.post("/sites/{site_id}/premium/history/{design_id}/restore")
+def premium_history_restore(site_id: str, design_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """Go back to a saved version. Never counts as an edit; the version being replaced stays in the history."""
+    org_id = builder["org_id"]
+    site = _premium_site(db, org_id, builder["id"], site_id)
+    row = _premium_errors(site_premium_history.restore, db, org_id, site, design_id)
+    site["current_design_id"] = row["id"]
+    site = _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, builder["id"], "premium_design_restored", {"version": row.get("version")})
+    return ok(data=_site_result(db, org_id, site), message="Design restored")
+
+
+@router.get("/sites/{site_id}/premium/redesign")
+def premium_redesign_status(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _premium_site(db, org_id, builder["id"], site_id)
+    return ok(data=site_premium_history.redesign_status(db, org_id, site))
+
+
+@router.post("/sites/{site_id}/premium/redesign", status_code=status.HTTP_202_ACCEPTED)
+def premium_redesign_start(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """Claude designs a completely new look from the same content and photos. Returns at once; a worker does the
+    1 to 4 minute job into a held-back slot, and the live site is not touched until the customer keeps it."""
+    org_id = builder["org_id"]
+    site = _premium_site(db, org_id, builder["id"], site_id)
+    try:
+        row = site_premium_history.start_redesign(db, org_id, site, f"builder:{builder['id']}")
+    except site_premium_history.RedesignNotAllowed as exc:
+        raise HTTPException(402, detail={"code": exc.code, "message": str(exc)})
+    except site_premium_history.gen.CapReached as exc:
+        raise HTTPException(429, detail={"code": exc.code, "message": str(exc)})
+    except SiteOpsError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    try:
+        from app.workers.site_premium_worker import run_premium_generation
+        run_premium_generation.apply_async(args=[row["id"]], retry=False)
+    except Exception as exc:  # S14 - the queue is down: do not leave the site blocked, and do not use up a redesign
+        logger.warning("premium redesign: could not queue design=%s: %s", row["id"], exc)
+        db.table("site_designs").update({"status": "failed", "checks": {"stage": "service", "outcome": "fallback_standard",
+                                         "errors": ["The design could not be queued."]}}).eq("id", row["id"]).eq("org_id", org_id).execute()
+        raise HTTPException(503, detail={"code": "SERVICE_UNAVAILABLE", "message": "The design service is busy. Please try again in a few minutes."})
+    _log_event(db, org_id, site_id, builder["id"], "premium_redesign_started", {"design_id": row["id"], "version": row["version"]})
+    return ok(data={"design_id": row["id"], "redesign": site_premium_history.redesign_status(db, org_id, site)},
+              message="Designing a new look. This takes a few minutes.")
+
+
+@router.get("/sites/{site_id}/premium/redesign/preview")
+def premium_redesign_preview(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _premium_site(db, org_id, builder["id"], site_id)
+    html = _premium_errors(site_premium_history.redesign_preview, db, org_id, site, _assets_map(db, site_id))
+    return ok(data={"html": html})
+
+
+@router.post("/sites/{site_id}/premium/redesign/keep")
+def premium_redesign_keep(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """Make the new design the live one. The design it replaces stays in the history, so going back is one tap."""
+    org_id = builder["org_id"]
+    site = _premium_site(db, org_id, builder["id"], site_id)
+    row = _premium_errors(site_premium_history.keep_redesign, db, org_id, site)
+    site["current_design_id"] = row["id"]
+    site = _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, builder["id"], "premium_redesign_kept", {"version": row.get("version")})
+    return ok(data=_site_result(db, org_id, site), message="Your new design is live in the preview")
+
+
+@router.post("/sites/{site_id}/premium/redesign/discard")
+def premium_redesign_discard(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _premium_site(db, org_id, builder["id"], site_id)
+    _premium_errors(site_premium_history.discard_redesign, db, org_id, site)
+    _log_event(db, org_id, site_id, builder["id"], "premium_redesign_discarded")
+    return ok(data=_history_payload(db, org_id, site), message="New design discarded")
 
 
 @router.post("/sites/{site_id}/assets", status_code=status.HTTP_201_CREATED)

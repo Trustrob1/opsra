@@ -59,6 +59,22 @@ export const applyPremiumLook = (token, siteId, look) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/premium/look`, look, authed(token)))
 export const undoPremiumLook = (token, siteId) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/premium/look/undo`, null, authed(token)))
+export const getPremiumHistory = (token, siteId) =>
+  unwrap(axios.get(`${BASE}/sites/${siteId}/premium/history`, authed(token)))
+export const getPremiumHistoryPreview = (token, siteId, designId) =>
+  unwrap(axios.get(`${BASE}/sites/${siteId}/premium/history/${designId}/preview`, authed(token)))
+export const restorePremiumVersion = (token, siteId, designId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/history/${designId}/restore`, null, authed(token)))
+export const getPremiumRedesign = (token, siteId) =>
+  unwrap(axios.get(`${BASE}/sites/${siteId}/premium/redesign`, authed(token)))
+export const startPremiumRedesign = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/redesign`, null, authed(token)))
+export const getPremiumRedesignPreview = (token, siteId) =>
+  unwrap(axios.get(`${BASE}/sites/${siteId}/premium/redesign/preview`, authed(token)))
+export const keepPremiumRedesign = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/redesign/keep`, null, authed(token)))
+export const discardPremiumRedesign = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/redesign/discard`, null, authed(token)))
 export const renderMySite = (token, siteId) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/render`, null, authed(token)))
 export const undoMySite = (token, siteId) =>

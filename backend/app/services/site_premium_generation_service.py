@@ -213,8 +213,9 @@ def check_caps(db: Any, org_id: str, site: dict, settings: dict) -> None:
         raise CapReached("Premium design is paused for today. Please try again tomorrow.")
 
 
-def start_generation(db: Any, org_id: str, site: dict, actor: str) -> dict:
-    """Guards, then insert the 'generating' row. The Celery task is queued by the caller with the returned id."""
+def start_generation(db: Any, org_id: str, site: dict, actor: str, kind: str = "generate") -> dict:
+    """Guards, then insert the 'generating' row. The Celery task is queued by the caller with the returned id.
+    kind 'redesign' (P4-4) makes a held-back design the customer keeps or discards."""
     settings = settings_for(db, org_id)
     premium.require_enabled(settings)
     if not (site.get("content") or {}):
@@ -228,7 +229,7 @@ def start_generation(db: Any, org_id: str, site: dict, actor: str) -> dict:
     existing = (db.table("site_designs").select("id, version").eq("site_id", site["id"]).eq("org_id", org_id).execute()).data or []
     version = max((int(r["version"]) for r in existing), default=0) + 1
     row = {
-        "org_id": org_id, "site_id": site["id"], "version": version, "kind": "generate",
+        "org_id": org_id, "site_id": site["id"], "version": version, "kind": kind if kind in ("generate", "redesign") else "generate",
         "parent_id": site.get("current_design_id"), "skeleton_html": "", "skeleton_css": "",
         "slot_manifest": {}, "art_direction": {}, "tokens": {}, "model": settings.get("site_premium_model") or DEFAULT_MODEL,
         "prompt_version": prompt.PROMPT_VERSION, "status": "generating", "staged": False, "checks": {},
@@ -284,6 +285,17 @@ def alert_cost_cap(db: Any, org_id: str, site_id: str) -> None:
 
 
 # ------------------------------------------------------------------ inputs
+
+def _do_not_repeat(db: Any, org_id: str, site: dict, design: dict) -> list[dict]:
+    """The anti-sameness list. For a redesign the site's CURRENT design comes first, so the new one looks different."""
+    recent = recent_fingerprints(db, org_id, site.get("preset_id"))
+    if design.get("kind") != "redesign" or not site.get("current_design_id"):
+        return recent
+    cur = _one((db.table("site_designs").select("art_direction").eq("id", site["current_design_id"]).eq("org_id", org_id)
+                .limit(1).execute()).data)
+    art = (cur or {}).get("art_direction") or {}
+    return ([prompt.fingerprint(art)] + recent) if art else recent
+
 
 def recent_fingerprints(db: Any, org_id: str, preset_id: Optional[str], limit: int = RECENT_FOR_REPEAT) -> list[dict]:
     """The anti-sameness list: art-direction fingerprints of the latest designs for this kind of business in this org."""
@@ -458,7 +470,7 @@ def run_generation(db: Any, design_id: str, claude: ClaudeFn = call_claude_check
         result = design_site(
             content=site["content"], brief=site.get("brief") or {}, niche=niche, personality=(site.get("brief") or {}).get("personality") if isinstance(site.get("brief"), dict) else None,
             assets=assets, assets_by_id=assets_by_id, design_notes=(preset or {}).get("premium_design_notes") or "",
-            do_not_repeat=recent_fingerprints(db, org_id, site.get("preset_id")), model=model, claude=claude)
+            do_not_repeat=_do_not_repeat(db, org_id, site, design), model=model, claude=claude)
     except GenerationFailed as exc:
         if exc.reason:
             alert_service_problem(db, design["org_id"], design["site_id"], exc.reason)
@@ -482,9 +494,19 @@ def run_generation(db: Any, design_id: str, claude: ClaudeFn = call_claude_check
                    "removed": parts["removed"], "attempts": result["attempts"], "visual": "not_run_p3", "outcome": "premium"},
     }
     prev_tier, prev_design = site.get("tier") or "standard", site.get("current_design_id")
+    if design.get("kind") == "redesign":
+        update["staged"] = True            # P4-4: held back; the customer previews it and keeps or discards it
     ok = (db.table("site_designs").update(update).eq("id", design_id).eq("org_id", org_id).eq("status", "checking").execute()).data
     if not ok:
         return {"ok": False, "design_id": design_id, "outcome": "superseded"}
+    if design.get("kind") == "redesign":
+        _log_usage(db, org_id, model, usage)
+        _log_event(db, org_id, site_id, "system", "premium_redesign_used",
+                   {"design_id": design_id, "version": design["version"], "cost_usd": spent})
+        _log_event(db, org_id, site_id, "system", "premium_design_ready",
+                   {"design_id": design_id, "version": design["version"], "cost_usd": spent, "attempts": result["attempts"],
+                    "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens, "staged": True})
+        return {"ok": True, "design_id": design_id, "outcome": "premium_staged", "cost_usd": spent, "version": design["version"]}
     try:   # make it current and re-render; a render failure rolls the site back to what it was
         db.table("sites").update({"tier": "premium", "current_design_id": design_id, "updated_at": _now_iso()}).eq("id", site_id).eq("org_id", org_id).execute()
         from app.routers.sites import _render_and_store

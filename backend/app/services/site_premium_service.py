@@ -157,6 +157,7 @@ def use_design(db: Any, org_id: str, site: dict, design_id: str) -> dict:
         raise NotFound("Design version not found")
     db.table("sites").update({"tier": "premium", "current_design_id": row["id"], "updated_at": _now_iso()}) \
         .eq("id", site["id"]).eq("org_id", org_id).execute()
+    db.table("site_designs").update({"staged": False}).eq("id", row["id"]).eq("org_id", org_id).execute()   # P4-4: a held-back design chosen by staff is no longer held back
     return row
 
 

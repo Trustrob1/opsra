@@ -48,6 +48,7 @@ import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, T
 import LookPickerField from '../modules/sites/LookPicker'
 import ExtraSectionCards from '../modules/sites/ExtraSectionCards'
 import PremiumLookCard from '../modules/sites/PremiumLookCard'
+import PremiumDesignsCard from '../modules/sites/PremiumDesignsCard'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -657,6 +658,10 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
             <PremiumLookCard data={look} busy={lookBusy} previewing={lookPreviewing} error={lookError}
               onPreview={previewLook} onApply={applyLook} onGoBack={goBackLook}
               onCancel={() => { setLookPreviewHtml(null); setLookError(null) }} />
+          )}
+          {premium && (
+            <PremiumDesignsCard token={token} siteId={siteId} onResult={takeLookResult}
+              onPreviewHtml={setLookPreviewHtml} previewingHtml={!!lookPreviewHtml} />
           )}
           {!premium && (
             <>

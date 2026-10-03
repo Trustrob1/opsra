@@ -801,3 +801,83 @@ class TestPremiumSectionLayout:
         name = self._section(authed_client)["name"]
         resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json={"section_layout": {name: {"size": "large"}}})
         assert resp.status_code == 200 and calls == [1]
+
+
+class TestPremiumHistoryAndRedesign:
+    """SITE-PREMIUM P4-4: history, restore and 'Try another design' through the builder routes."""
+
+    def _db(self, site=None):
+        return _db_mock(sites=_chain([dict(site or _LOOK_SITE)]), site_assets=_chain([]), site_presets=_chain([_FAKE_PRESET]),
+                        site_designs=_chain([dict(_LOOK_DESIGN)]), site_events=_chain([]), site_revisions=_chain([]),
+                        site_builder_settings=_chain([{}]))
+
+    def test_history_lists_the_versions_and_the_redesign_allowance(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        data = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/history").json()["data"]
+        assert data["history"][0]["id"] == "design-1" and data["history"][0]["is_current"] is True
+        assert data["redesign"]["included"] == 2 and data["redesign"]["counts_as_edit"] is False
+
+    @pytest.mark.parametrize("method,path", [("get", "premium/history"), ("get", "premium/redesign"), ("post", "premium/redesign"),
+                                             ("post", "premium/redesign/keep"), ("post", "premium/redesign/discard"),
+                                             ("get", "premium/redesign/preview"), ("post", "premium/history/design-1/restore")])
+    def test_a_standard_site_has_none_of_it(self, authed_client, method, path):
+        app.dependency_overrides[get_supabase] = lambda: self._db(site=_FAKE_SITE)
+        assert getattr(authed_client, method)(f"/api/v1/builder/sites/{SITE_ID}/{path}").status_code == 404
+
+    def test_restoring_the_current_version_is_refused(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/history/design-1/restore").status_code == 422
+
+    def test_a_version_preview_returns_the_page(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        resp = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/history/design-1/preview")
+        assert resp.status_code == 200 and "<html" in resp.json()["data"]["html"].lower()
+
+    def test_restore_returns_the_updated_editor_data_and_never_uses_an_edit(self, authed_client, monkeypatch):
+        calls = []
+        monkeypatch.setattr(site_care_plan_service, "consume_edit", lambda *a, **k: calls.append(1) or {"counted": True})
+        monkeypatch.setattr("app.services.site_premium_history.restore", lambda *a, **k: {"id": "design-0", "version": 0})
+        app.dependency_overrides[get_supabase] = lambda: self._db(site={**_LOOK_SITE, "status": "live"})
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/history/design-0/restore")
+        data = resp.json()["data"]
+        assert resp.status_code == 200 and calls == [] and {"site", "premium", "look", "history", "redesign"} <= set(data)
+
+    def test_starting_a_redesign_queues_the_job(self, authed_client, monkeypatch):
+        queued = []
+        monkeypatch.setattr("app.services.site_premium_history.start_redesign", lambda *a, **k: {"id": "d9", "version": 2})
+        monkeypatch.setattr("app.workers.site_premium_worker.run_premium_generation.apply_async", lambda **k: queued.append(k["args"]))
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/redesign")
+        assert resp.status_code == 202 and queued == [["d9"]] and resp.json()["data"]["design_id"] == "d9"
+
+    def test_out_of_allowance_is_a_402_with_a_plain_reason(self, authed_client, monkeypatch):
+        from app.services import site_premium_history as h
+
+        def refuse(*a, **k):
+            raise h.RedesignNotAllowed("Your included new designs are used. Ask us if you would like another one.")
+        monkeypatch.setattr(h, "start_redesign", refuse)
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/redesign")
+        assert resp.status_code == 402 and resp.json()["detail"]["code"] == "REDESIGN_NOT_INCLUDED"
+        assert "included new designs" in resp.json()["detail"]["message"]
+
+    def test_a_down_queue_does_not_use_up_a_redesign_or_block_the_site(self, authed_client, monkeypatch):
+        def down(**k):
+            raise RuntimeError("redis down")
+        monkeypatch.setattr("app.services.site_premium_history.start_redesign", lambda *a, **k: {"id": "d9", "version": 2})
+        monkeypatch.setattr("app.workers.site_premium_worker.run_premium_generation.apply_async", down)
+        db = self._db()
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/redesign")
+        assert resp.status_code == 503
+        failed = db.table("site_designs").update.call_args[0][0]
+        assert failed["status"] == "failed" and failed["checks"]["stage"] == "service"      # stage 'service' is not counted as used
+
+    def test_keep_and_discard(self, authed_client, monkeypatch):
+        monkeypatch.setattr("app.services.site_premium_history.keep_redesign", lambda *a, **k: {"id": "design-1", "version": 2})
+        monkeypatch.setattr("app.services.site_premium_history.discard_redesign", lambda *a, **k: None)
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        kept = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/redesign/keep")
+        assert kept.status_code == 200 and {"site", "history", "redesign"} <= set(kept.json()["data"])
+        gone = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/redesign/discard")
+        assert gone.status_code == 200 and "history" in gone.json()["data"]
