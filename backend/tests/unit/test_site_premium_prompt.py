@@ -44,7 +44,15 @@ class TestBehaviourPrompt:
             assert f"{name} (" in p.BUILD_SYSTEM
 
     def test_prompt_version_bumped(self):
-        assert p.PROMPT_VERSION == "p2.5"
+        assert p.PROMPT_VERSION == "p2.6"
+
+
+class TestHeroRules:
+    def test_hero_photo_rules_allow_full_bleed_with_text_in_a_safe_column(self):
+        s = p.BUILD_SYSTEM
+        for needle in ("HERO PHOTO SAFETY", "FULL-BLEED", "FRAMED", "never cross a face", "ONE left-aligned column",
+                       "HERO SPACING", "PHOTO EDGES", "design notes say where the subject stands"):
+            assert needle in s
 
 
 class TestUserMessages:

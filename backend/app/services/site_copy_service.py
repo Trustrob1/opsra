@@ -135,7 +135,9 @@ def _ai_prompt(facts: dict, preset: dict, shortlist: Optional[list] = None) -> t
         "only use what's in the brief. Return ONLY a JSON object with exactly these keys: "
         'tagline, hero_headline, hero_subhead, about_title, about_body (a list of 1-3 '
         "short paragraphs, plain strings), about_pull_quote, seo_title, seo_description, "
-        f"order_section_title. Tone: {sanitise_for_prompt(tone, 200)}. "
+        "order_section_title. hero_headline says what the business does or offers in under 9 words and never "
+        'starts with "Welcome to". Spell every word correctly. '
+        f"Tone: {sanitise_for_prompt(tone, 200)}. "
         f'This business sells "{labels.get("items", "items")}" (singular: '
         f'"{labels.get("item", "item")}")."'
     )
@@ -185,7 +187,7 @@ def _builder_words_copy(facts: dict) -> dict:
         body.append(facts["story_text"])
     return {
         "tagline": facts["offer_text"][:160] if facts["offer_text"] else "",
-        "hero_headline": f"Welcome to {name}",
+        "hero_headline": name,
         "hero_subhead": facts["offer_text"][:240],
         "about_title": "About us",
         "about_body": body[:_MAX_ABOUT_PARAGRAPHS] or [f"{name}, based in {facts['city']}." if facts["city"] else name],
@@ -204,7 +206,7 @@ def _build_content(copy: dict, facts: dict) -> dict:
             "phone_display": "", "instagram": facts["instagram"], "delivery_note": "",
         },
         "hero": {
-            "headline": copy.get("hero_headline") or f"Welcome to {facts['name']}",
+            "headline": copy.get("hero_headline") or facts["name"],
             "subhead": copy.get("hero_subhead") or "", "image_asset_id": None,
         },
         "about": {
