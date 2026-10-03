@@ -222,3 +222,32 @@ class TestVisualScripts(_Base):
         import premium_visual_check
         with pytest.raises(SystemExit):
             premium_visual_check.build_page(self.db, "nope")
+
+
+class TestDesignPreview(_Base):
+    def test_previews_a_finished_version_without_changing_the_site(self):
+        with _c() as c:
+            first = self.import_(c).json()["data"]["design_id"]
+            self.import_(c)
+            before = dict(self.db.rows("sites")[0])
+            r = c.get(f"{BASE}/site-1/premium/designs/{first}/preview")
+        assert r.status_code == 200, r.text
+        data = r.json()["data"]
+        assert data["design_id"] == first and "<html" in data["html"].lower() and "Adaeze" in data["html"]
+        after = self.db.rows("sites")[0]
+        assert after["current_design_id"] == before["current_design_id"] and after["tier"] == before["tier"]
+
+    def test_unknown_or_unfinished_version_is_404(self):
+        with _c() as c:
+            self.import_(c)
+            assert c.get(f"{BASE}/site-1/premium/designs/{'0' * 36}/preview").status_code == 404
+            self.db.rows("site_designs")[0]["status"] = "failed"
+            did = self.db.rows("site_designs")[0]["id"]
+            assert c.get(f"{BASE}/site-1/premium/designs/{did}/preview").status_code == 404
+
+    def test_another_orgs_site_is_404_and_premium_off_is_403(self):
+        with _c() as c:
+            did = self.import_(c).json()["data"]["design_id"]
+        self.db = _seed(premium=False)
+        with _c() as c:
+            assert c.get(f"{BASE}/site-1/premium/designs/{did}/preview").status_code == 403

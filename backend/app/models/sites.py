@@ -356,6 +356,7 @@ class SitePresetUpdate(BaseModel):
     token_options: Optional[dict[str, list[str]]] = None
     allowed_variants: Optional[dict[str, list[str]]] = None
     ai_tone: Optional[str] = Field(None, max_length=300)
+    premium_design_notes: Optional[str] = Field(None, max_length=1500)   # SITE-PREMIUM P2b: guidance fed to every Premium design for this template
     max_items: Optional[int] = Field(None, ge=1, le=60)
     is_active: Optional[bool] = None
 

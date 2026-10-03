@@ -12,7 +12,7 @@ import { Card, Button, Badge, Notice, Spinner, Empty, Field, Modal, Drawer, Togg
 import SectionTiles from './SectionTiles'
 import LayoutAllowance from './LayoutAllowance'
 import ThemePicker from './ThemePicker'
-import { T, INPUT, THEMES, PALETTES, FONT_PAIRINGS, TOKENS, SECTION_KEYS, SECTION_LABELS, insertSection } from './sitesKit'
+import { T, INPUT, TEXTAREA, THEMES, PALETTES, FONT_PAIRINGS, TOKENS, SECTION_KEYS, SECTION_LABELS, insertSection } from './sitesKit'
 import LookStudio from './LookStudio'
 import { lookSummary } from './lookKit'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -279,7 +279,7 @@ function EditTemplateDrawer({ preset, isMobile, onClose, onSaved, showToast }) {
     if (preset) setForm({
       name: preset.name, sections: preset.sections || [], allowed_themes: preset.allowed_themes || [],
       default_palettes: preset.default_palettes || [], allowed_fonts: preset.allowed_fonts || [], token_options: preset.token_options || {}, allowed_variants: preset.allowed_variants || {},
-      ai_tone: preset.ai_tone || '', max_items: preset.max_items ?? 20,
+      ai_tone: preset.ai_tone || '', premium_design_notes: preset.premium_design_notes || '', max_items: preset.max_items ?? 20,
       is_active: preset.is_active !== false,
     })
   }, [preset])
@@ -317,6 +317,11 @@ function EditTemplateDrawer({ preset, isMobile, onClose, onSaved, showToast }) {
         </Field>
         <Field label="Max items"><input style={INPUT} type="number" min="1" max="60" value={form.max_items} onChange={(e) => setForm((f) => ({ ...f, max_items: e.target.value }))} /></Field>
         <Field label="AI tone"><input style={INPUT} value={form.ai_tone} onChange={(e) => setForm((f) => ({ ...f, ai_tone: e.target.value }))} /></Field>
+        <Field label="Premium design notes (optional)" count={form.premium_design_notes.length} max={1500}
+          hint="Guidance Claude reads for every Premium design of this template, e.g. 'warm and welcoming, never corporate' or 'show prices clearly'. Not shown to clients.">
+          <textarea style={TEXTAREA} maxLength={1500} value={form.premium_design_notes}
+            onChange={(e) => setForm((f) => ({ ...f, premium_design_notes: e.target.value }))} />
+        </Field>
         <Field label="Active" group><Toggle checked={form.is_active} onChange={(v) => setForm((f) => ({ ...f, is_active: v }))} label={form.is_active ? 'Builders can use this template' : 'Hidden from builders'} /></Field>
         <div style={{ marginTop: 6 }}><Button variant="primary" loading={saving} onClick={submit}>Save</Button></div>
       </div>

@@ -19,6 +19,7 @@ import { T, INPUT, TEXTAREA, photoHint, dateTime, THEMES, SECTION_LABELS, SITE_S
 import LookPickerField from './LookPicker'
 import ExtraSectionCards from './ExtraSectionCards'
 import PublishResultModal from './PublishResultModal'
+import PremiumPanel from './PremiumPanel'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -80,6 +81,11 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
       setSavingRecipe(false)
     }
   }
+
+  // SITE-PREMIUM P2b: after a Premium design finishes or is switched, reload the site so the preview shows it (no spinner flash)
+  const refreshSite = useCallback(async () => {
+    try { setSite(await getSite(siteId)) } catch { /* the panel keeps working; the next full load will catch up */ }
+  }, [siteId])
 
   const doRender = async () => {
     setRendering(true)
@@ -161,6 +167,8 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
         {site.updated_at ? `Last saved ${dateTime(site.updated_at)}` : null}
         {site.preview_expires_at ? ` · Preview link expires ${dateTime(site.preview_expires_at)}` : null}
       </p>
+
+      <PremiumPanel siteId={siteId} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />
 
       <BusinessCard content={content} setContent={setContent} canEdit={canEdit} />
       <HeroCard content={content} setContent={setContent} canEdit={canEdit} assetUrls={assetUrls} onUpload={uploadFor} />

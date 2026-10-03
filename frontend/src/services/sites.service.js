@@ -114,6 +114,16 @@ export const publishSite = (siteId, opts) => unwrap(api.post(`/api/v1/sites/${si
 /** SITE-HOSTNAMES — DNS records the client must add + whether Cloudflare has connected the domain. */
 export const getSiteHostnames = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/hostnames`))
 
+// ── SITE-PREMIUM P2b: Premium designs (Claude designs a bespoke page; staff review, switch, go back) ──
+/** { tier, current_design_id, designs: [{ id, version, status, cost_usd, duration_ms, checks, created_by, created_at, ... }] } */
+export const getPremiumDesigns = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/premium/designs`))
+/** Queues a design (202). Poll getPremiumDesigns: the new version goes generating -> checking -> ready | failed. */
+export const generatePremiumDesign = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/premium/generate`))
+/** { design_id, html } - the page for one finished version; changes nothing. */
+export const previewPremiumDesign = (siteId, designId) => unwrap(api.get(`/api/v1/sites/${siteId}/premium/designs/${designId}/preview`))
+export const switchPremiumDesign = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/premium/use-design`, { design_id: designId }))
+export const premiumBackToStandard = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/premium/standard`))
+
 /** Pull a readable message out of an axios error ({detail:{message}} or FastAPI 422 list). */
 export function errorMessage(err, fallback = 'Something went wrong. Please try again.') {
   const d = err?.response?.data?.detail

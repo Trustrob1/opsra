@@ -30,7 +30,7 @@ from app.services.site_premium_sanitiser import SanitiseError, sanitise_skeleton
 logger = logging.getLogger(__name__)
 
 KEEP_VERSIONS = 10
-_LIST_COLUMNS = "id, version, kind, status, staged, created_by, created_at, cost_usd, model, prompt_version, checks"
+_LIST_COLUMNS = "id, version, kind, status, staged, created_by, created_at, cost_usd, model, prompt_version, checks, duration_ms, input_tokens, output_tokens"
 
 
 class PremiumNotEnabled(SiteOpsError):
@@ -155,6 +155,16 @@ def use_design(db: Any, org_id: str, site: dict, design_id: str) -> dict:
     db.table("sites").update({"tier": "premium", "current_design_id": row["id"], "updated_at": _now_iso()}) \
         .eq("id", site["id"]).eq("org_id", org_id).execute()
     return row
+
+
+def preview_design(db: Any, org_id: str, site: dict, design_id: str, assets_by_id: dict) -> str:
+    """SITE-PREMIUM P2b: the page for ONE ready design version, with the site's current content, so staff can look at any
+    version before (or without) making it the live one. Changes nothing. Raises NotFound for an unknown or unfinished version."""
+    design = _one((db.table("site_designs").select("*").eq("id", design_id).eq("site_id", site["id"])
+                   .eq("org_id", org_id).eq("status", "ready").limit(1).execute()).data)
+    if not design:
+        raise NotFound("Design version not found")
+    return renderer.render_premium_page(content=site.get("content") or {}, design=design, assets_by_id=assets_by_id, export=False)
 
 
 def render_if_premium(db: Any, site: dict, assets_by_id: dict, export: bool = False,

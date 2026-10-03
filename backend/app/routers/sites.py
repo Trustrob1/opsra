@@ -721,6 +721,17 @@ def premium_designs(site_id: str, org=Depends(get_current_org), db=Depends(get_s
                     "designs": site_premium_service.list_designs(db, org_id, site_id)})
 
 
+@router.get("/sites/{site_id}/premium/designs/{design_id}/preview")
+def premium_design_preview(site_id: str, design_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """SITE-PREMIUM P2b: the rendered page for one finished design version (nothing is changed or made live)."""
+    org_id = _premium_org(org, db, _READ_ROLES)
+    site = _get_site(db, org_id, site_id)
+    assets_r = db.table("site_assets").select("id, public_url").eq("site_id", site_id).execute()
+    assets_by_id = {a["id"]: {"public_url": a["public_url"]} for a in (assets_r.data or [])}
+    html = _ops(site_premium_service.preview_design, db, org_id, site, design_id, assets_by_id)
+    return ok(data={"design_id": design_id, "html": html})
+
+
 @router.post("/sites/{site_id}/premium/generate", status_code=status.HTTP_202_ACCEPTED)
 def premium_generate(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
     """SITE-PREMIUM P2: Claude designs this site. Returns at once; a worker does the 1 to 4 minute job.

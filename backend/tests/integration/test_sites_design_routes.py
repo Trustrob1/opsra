@@ -126,6 +126,15 @@ class TestPresetDesignFields(_Base):
         row = self.preset_row()
         assert row["allowed_fonts"] == ["jakarta_inter"] and row["token_options"] == {"radius": ["soft"]}
 
+    def test_update_saves_and_clears_the_premium_design_notes(self):
+        with _c() as c:
+            r = c.patch(f"{BASE}/presets/p1", json={"premium_design_notes": "Warm and welcoming, never corporate."})
+            assert r.status_code == 200, r.text
+            assert self.preset_row()["premium_design_notes"] == "Warm and welcoming, never corporate."
+            assert c.patch(f"{BASE}/presets/p1", json={"premium_design_notes": ""}).status_code == 200
+            assert self.preset_row()["premium_design_notes"] == ""
+            assert c.patch(f"{BASE}/presets/p1", json={"premium_design_notes": "x" * 1501}).status_code == 422
+
     def test_update_can_clear_back_to_everything_allowed(self):
         self.preset_row().update({"allowed_fonts": ["jakarta_inter"], "token_options": {"radius": ["soft"]}})
         with _c() as c:
