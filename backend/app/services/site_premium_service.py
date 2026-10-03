@@ -20,6 +20,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from app.services import site_premium_checks as checks
 from app.services import site_premium_fonts as fonts
 from app.services import site_premium_renderer as renderer
 from app.services import site_premium_slots as slots
@@ -70,6 +71,8 @@ def validate_skeleton(raw_html: str, content: dict, headline_font: str, body_fon
     errors = renderer.css_contract_errors(clean.css)
     manifest, slot_errors = slots.analyse(clean.html, content)
     errors += slot_errors
+    static = checks.run_static_checks(clean.html, clean.css, headline_font, body_font)
+    errors += static["errors"]
     if errors:
         raise _problems(errors)
     tokens = renderer.extract_root_tokens(clean.css)
@@ -79,7 +82,7 @@ def validate_skeleton(raw_html: str, content: dict, headline_font: str, body_fon
         renderer.render_premium_page(content=content, design=design, assets_by_id=assets_by_id or {}, export=False)
     except Exception as exc:  # S14
         raise _problems([f"The design could not be rendered with this site's content ({exc})"])
-    return {**design, "slot_manifest": manifest, "removed": clean.removed}
+    return {**design, "slot_manifest": manifest, "removed": clean.removed, "static_warnings": static["warnings"]}
 
 
 def import_skeleton(db: Any, org_id: str, site: dict, actor: str, raw_html: str,
@@ -103,7 +106,8 @@ def import_skeleton(db: Any, org_id: str, site: dict, actor: str, raw_html: str,
         "skeleton_html": parts["skeleton_html"], "skeleton_css": parts["skeleton_css"],
         "slot_manifest": parts["slot_manifest"], "art_direction": parts["art_direction"],
         "tokens": parts["tokens"], "status": "ready", "staged": False,
-        "checks": {"sanitiser": "ok", "contract": "ok", "slots": "ok", "removed": parts["removed"]},
+        "checks": {"sanitiser": "ok", "contract": "ok", "slots": "ok", "static": {"errors": [], "warnings": parts["static_warnings"]},
+                   "removed": parts["removed"]},
         "created_by": actor, "created_at": _now_iso(),
     }
     inserted = _one((db.table("site_designs").insert(row).execute()).data) or {}
@@ -113,7 +117,8 @@ def import_skeleton(db: Any, org_id: str, site: dict, actor: str, raw_html: str,
     db.table("sites").update({"tier": "premium", "current_design_id": design_id, "updated_at": _now_iso()}) \
         .eq("id", site["id"]).eq("org_id", org_id).execute()
     _prune(db, org_id, site["id"], keep_id=design_id)
-    return {"id": design_id, "version": version, "removed": parts["removed"], "slot_manifest": parts["slot_manifest"]}
+    return {"id": design_id, "version": version, "removed": parts["removed"], "slot_manifest": parts["slot_manifest"],
+            "warnings": parts["static_warnings"]}
 
 
 def _prune(db: Any, org_id: str, site_id: str, keep_id: str) -> None:

@@ -178,3 +178,47 @@ class TestImportScript(_Base):
         self.db = _seed(premium=False)
         with pytest.raises(PremiumNotEnabled):
             premium_import.run(self.db, "site-1", RAW)
+
+
+_HAS_PLAYWRIGHT = __import__("importlib").util.find_spec("playwright") is not None
+
+
+class TestVisualScripts(_Base):
+    def test_visual_flag_reports_in_check_mode(self, tmp_path, monkeypatch):
+        if not _HAS_PLAYWRIGHT:
+            pytest.skip("playwright not installed")
+        import premium_import
+        from app.services.site_premium_visual import VisualCheckUnavailable
+        monkeypatch.chdir(tmp_path)
+        try:
+            out = premium_import.run(self.db, "site-1", RAW, "Outfit", "Hanken Grotesk", check_only=True, visual=True)
+        except VisualCheckUnavailable:
+            pytest.skip("chromium not installed")
+        assert out["saved"] is False and "VISUAL CHECK" in out["visual"]
+        assert (tmp_path / "premium-checks" / "site-1" / "report.json").exists()
+        assert self.db.rows("site_designs") == []
+
+    def test_check_current_design(self, tmp_path):
+        if not _HAS_PLAYWRIGHT:
+            pytest.skip("playwright not installed")
+        import premium_import
+        import premium_visual_check
+        from app.services.site_premium_visual import VisualCheckUnavailable
+        premium_import.run(self.db, "site-1", RAW, "Outfit", "Hanken Grotesk")
+        try:
+            report = premium_visual_check.run(self.db, "site-1", out_dir=str(tmp_path))
+        except VisualCheckUnavailable:
+            pytest.skip("chromium not installed")
+        assert report["info"]["source"].startswith("current design version 1")
+        assert (tmp_path / "page-390.png").exists() and (tmp_path / "report.json").exists()
+
+    def test_no_current_design_is_explained(self, tmp_path):
+        import premium_visual_check
+        with pytest.raises(SystemExit) as exc:
+            premium_visual_check.build_page(self.db, "site-1")
+        assert "no current Premium design" in str(exc.value)
+
+    def test_unknown_site(self):
+        import premium_visual_check
+        with pytest.raises(SystemExit):
+            premium_visual_check.build_page(self.db, "nope")
