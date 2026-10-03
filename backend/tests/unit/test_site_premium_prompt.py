@@ -44,7 +44,7 @@ class TestBehaviourPrompt:
             assert f"{name} (" in p.BUILD_SYSTEM
 
     def test_prompt_version_bumped(self):
-        assert p.PROMPT_VERSION == "p2.7"
+        assert p.PROMPT_VERSION == "p2.8"
 
 
 class TestHeroRules:
@@ -173,3 +173,52 @@ class TestGoldenBriefs:
         c = brief["content"]
         assert not c.get("reviews")
         assert "image_asset_id" not in json.dumps(c)
+
+
+class TestBackgroundRhythm:
+    """A page must not be one flat colour all the way down (owner feedback, 3 Oct 2026)."""
+
+    @staticmethod
+    def secs(*modes):
+        out = [{"name": "hero", "layout": "fullbleed", "background": "base"}]
+        layouts = ["grid", "split", "list", "quote", "steps", "columns", "faq", "strip"]
+        for i, m in enumerate(modes):
+            out.append({"name": f"s{i}", "layout": layouts[i % len(layouts)], "background": m})
+        return out
+
+    def test_a_varied_page_passes(self):
+        assert p.background_rhythm_errors(self.secs("surface", "base", "deep", "base", "accent")) == []
+
+    def test_one_flat_colour_is_refused(self):
+        errs = p.background_rhythm_errors(self.secs("base", "base", "base", "base", "base"))
+        assert any("only 1 background" in e for e in errs) and any("three sections in a row" in e for e in errs)
+
+    def test_a_big_page_needs_three_different_modes(self):
+        errs = p.background_rhythm_errors(self.secs("base", "surface", "base", "surface", "base"))
+        assert any("at least 3" in e for e in errs)
+
+    def test_a_contrast_band_only_at_the_end_is_not_enough(self):
+        errs = p.background_rhythm_errors(self.secs("base", "surface", "base", "surface", "deep"))
+        assert any("contrasting band" in e for e in errs)
+
+    def test_three_in_a_row_is_refused_even_when_varied_elsewhere(self):
+        errs = p.background_rhythm_errors(self.secs("surface", "surface", "surface", "accent", "base"))
+        assert any("three sections in a row" in e for e in errs)
+
+    def test_a_short_page_only_needs_two_modes(self):
+        assert p.background_rhythm_errors(self.secs("surface", "deep", "base")) == []
+        assert p.background_rhythm_errors(self.secs("base", "base")) != []
+
+    def test_footer_and_hero_are_not_counted(self):
+        s = self.secs("surface", "base", "deep", "base", "accent") + [{"name": "footer", "layout": "columns", "background": "deep"}]
+        assert p.background_rhythm_errors(s) == []
+
+    def test_the_art_direction_parser_enforces_it(self):
+        flat = {**ART, "sections": self.secs("base", "base", "base", "base", "base")}
+        with pytest.raises(p.ArtDirectionError) as exc:
+            p.parse_art_direction(json.dumps(flat), niche="boutique")
+        assert any("background" in e for e in exc.value.errors)
+
+    def test_the_prompts_tell_the_model(self):
+        assert "BACKGROUND RHYTHM" in p.ART_SYSTEM and "never the same mode on more than 2" in p.ART_SYSTEM
+        assert "VISIBLY different" in p.BUILD_SYSTEM and "do not make every section the same dark" in p.BUILD_SYSTEM

@@ -27,12 +27,13 @@ from app.models.sites import SiteContentV1
 from app.services import site_premium_fonts as fonts
 from app.services.site_premium_behaviours import BEHAVIOURS
 
-PROMPT_VERSION = "p2.7"
+PROMPT_VERSION = "p2.8"
 
 HERO_SCALES = ("giant", "mid", "mini")
 ACCENT_FAMILIES = ("blue", "green_teal", "red_wine", "violet_pink", "metal", "yellow_green")
 LAYOUT_FAMILIES = ("split", "stack", "fullbleed", "grid", "bento", "list", "columns", "quote", "steps", "faq", "strip")
 BACKGROUND_MODES = ("base", "surface", "accent", "photo", "deep")
+CONTRAST_BANDS = ("accent", "deep", "photo")
 MODES = ("light", "dark")
 
 
@@ -120,6 +121,7 @@ Rules:
 - Across the page use at least 4 different layout families when there are 8 or more sections, and never more than 2 "split" sections in a row. No two neighbouring sections share a layout.
 - The hero scale decides the headline size: giant (display type filling the width), mid (still bold: a headline of at least 4rem on desktop), or mini (compact, for sites that must show products at once). Prefer giant or mid unless the site must show products at once.
 - Name each section in "sections" with a short snake_case name; the page will mark each one with exactly that name.
+- BACKGROUND RHYTHM (the page must never read as one flat colour all the way down). Give the sections after the hero at least 3 different "background" modes when there are 5 or more of them (at least 2 when there are fewer), never the same mode on more than 2 neighbouring sections, and include at least one contrasting band ("accent", "deep" or "photo") somewhere before the closing section, not only at the very end. This applies to dark pages too: a dark page still alternates a lighter "surface" step, a darker "deep" step and an "accent" band.
 - Fonts must come from the lists given. Headline and body must be an allowed pair.
 """
 
@@ -155,6 +157,7 @@ CSS CONTRACT
 - Tokens: define a spacing scale (4, 8, 12, 16, 24, 32, 48, 64, 96, 128px) and use only those. Section padding uses clamp(). Lay out with gap, not ad hoc margins. Do not fix grid alignment with margin-top guesses: use an explicit wrapper.
 - Type: dramatic scale contrast with clamp(); tight leading on big type (0.9 to 1.05); text-wrap: balance on headings and pretty on paragraphs; font-variant-numeric: tabular-nums for prices; body copy 60 to 70 characters per line; small uppercase letter-spaced labels. Curly quotes and a non-breaking space between a number and its unit.
 - Use the art direction's accent, bg and ink hex values EXACTLY in :root. If the accent is not readable as text on the background, never darken or lighten it: use --ink for text and keep the accent for fills, borders and large shapes. --accent-ink is the bg or ink colour, whichever reaches 4.5:1 on the accent.
+- Section backgrounds follow the art direction's "background" modes and must be VISIBLY different from one another: "base" is the page colour; "surface" is a clearly different step of it (on a light page slightly darker, on a dark page clearly lighter, at least 1.3:1 against the page colour, never a near-duplicate); "deep" is the opposite pole of the page (on a light page a dark band with light text, on a dark page a darker band, at least 1.3:1 against the page colour); "accent" fills the section with the accent colour and uses --accent-ink for text and a contrasting button; "photo" runs a photo under a scrim. Bands changing colour as you scroll is what gives the page rhythm: do not make every section the same dark or the same light.
 - Colour: 1 background, 1 text colour, 1 supporting neutral (tinted toward the hue), 1 accent used sparingly. Never pure #000000 or #FFFFFF. No cream, tan, brass or gold hex values. ::selection and :focus-visible styled in the palette. Text on photos always sits on a scrim.
 - Mobile first at 390px. No horizontal scroll: contain decorative shapes inside their box, use overflow-x: clip on sections (never hidden). Tap targets at least 44px. Button labels short enough for one line at 360px (white-space: nowrap). A [hidden] rule with display:none !important. Navigation at most 72px tall, with at most 4 links and a WhatsApp button; no hamburger script: on phones show the brand and the WhatsApp button only, or use <details><summary>.
 - Section heights: never height:100vh or 100dvh; use min-height with clamp() or svh. Content must be fully visible with no scrolling effects applied.
@@ -331,12 +334,36 @@ def parse_art_direction(text: str, niche: Optional[str] = None) -> dict:
         names = [str(s.get("name")) for s in sections if isinstance(s, dict)]
         if names and names[0] != "hero":
             errors.append("the first section must be named 'hero'")
+        errors.extend(background_rhythm_errors(sections))
     if errors:
         raise ArtDirectionError(errors)
     art["signature_moment"] = art.get("signature_moment") or "none"
     for key in ("accent_hex", "bg_hex", "ink_hex"):
         art[key] = art[key].strip().upper()
     return art
+
+
+def background_rhythm_errors(sections: list) -> list[str]:
+    """P4 follow-up (3 Oct 2026): a page must not be one flat colour all the way down. Looks only at the body sections
+    (after the hero, without the footer). Returns plain reasons that are fed back to the model on a retry."""
+    body = [s for s in sections[1:] if isinstance(s, dict) and s.get("background") in BACKGROUND_MODES
+            and str(s.get("name")) not in ("footer", "nav")]
+    if not body:
+        return []
+    errors: list[str] = []
+    modes = [s["background"] for s in body]
+    need = 3 if len(body) >= 5 else 2
+    if len(set(modes)) < need:
+        errors.append(f"the sections after the hero use only {len(set(modes))} background mode(s) ({', '.join(sorted(set(modes)))}); "
+                      f"use at least {need} different ones so the page has colour rhythm")
+    for i in range(len(modes) - 2):
+        if modes[i] == modes[i + 1] == modes[i + 2]:
+            errors.append(f"three sections in a row ('{body[i]['name']}', '{body[i + 1]['name']}', '{body[i + 2]['name']}') share the "
+                          f"'{modes[i]}' background; change at least one of them")
+            break
+    if len(body) >= 5 and not any(m in CONTRAST_BANDS for m in modes[:-1]):
+        errors.append("add a contrasting band ('accent', 'deep' or 'photo') to a section before the closing one, not only at the end")
+    return errors
 
 
 def fingerprint(art: dict) -> dict:
