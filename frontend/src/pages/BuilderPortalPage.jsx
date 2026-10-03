@@ -777,6 +777,20 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
   const detailsOk = fullName.trim() && email.trim() && phone.trim() && address.trim()
   const canSubmit = Boolean(domainOk && backupOk && !sameDomain && standard && detailsOk && acceptedTerms && !submitting)
 
+  // Plain reasons the payment button is still off, shown next to it so it never just looks broken.
+  const domainChecked = domainCheck?.domain === domain.trim().toLowerCase()
+  const backupChecked = backupCheck?.domain === backupDomain.trim().toLowerCase()
+  const blockers = []
+  if (!isDomainLike(domain)) blockers.push('Enter your domain.')
+  else if (!domainChecked) blockers.push('Press Check next to your main domain.')
+  else if (!domainOk) blockers.push('Your main domain is not available. Pick another name.')
+  if (!isDomainLike(backupDomain)) blockers.push('Enter a backup domain.')
+  else if (!backupChecked) blockers.push('Press Check next to your backup domain.')
+  else if (!backupOk) blockers.push('Your backup domain is not available. Pick another name.')
+  if (sameDomain) blockers.push('Use a different backup domain.')
+  if (!detailsOk) blockers.push('Fill in all the legal-owner details.')
+  if (!acceptedTerms) blockers.push('Tick the box to accept the refund rule.')
+
   async function submit() {
     if (!canSubmit) return
     setSubmitting(true)
@@ -826,11 +840,11 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
             <SectionTitle title="Domain" hint="Confirm the domain and a backup, in case the first is taken." />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <DomainField label="Domain" value={domain} onChange={(v) => { setDomain(v); setDomainCheck(null) }}
-                checking={checkingDomain} result={domainCheck}
+                checking={checkingDomain} result={domainCheck} needsCheck={isDomainLike(domain) && !domainChecked}
                 onCheck={() => runCheck(domain, setCheckingDomain, setDomainCheck)}
                 onPickAlt={(d) => { setDomain(d); setDomainCheck(null) }} />
               <DomainField label="Backup domain" value={backupDomain} onChange={(v) => { setBackupDomain(v); setBackupCheck(null) }}
-                checking={checkingBackup} result={backupCheck}
+                checking={checkingBackup} result={backupCheck} needsCheck={isDomainLike(backupDomain) && !backupChecked}
                 onCheck={() => runCheck(backupDomain, setCheckingBackup, setBackupCheck)}
                 onPickAlt={(d) => { setBackupDomain(d); setBackupCheck(null) }} />
               {sameDomain && <Notice tone="bad">The backup domain must be different from the main domain.</Notice>}
@@ -904,7 +918,7 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
         <div className="bp-checkout-summary-docked">
           {standard
             ? <SummaryCard quote={standard} renewalTotal={renewalStandard?.price?.total} docked
-                onSubmit={submit} submitting={submitting} canSubmit={canSubmit} />
+                onSubmit={submit} submitting={submitting} canSubmit={canSubmit} blockers={blockers} />
             : <Card><p style={{ margin: 0, fontSize: 12.5, color: T.muted }}>Enter a domain above to see pricing.</p></Card>}
         </div>
       </div>
@@ -913,7 +927,8 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
         <div className="bp-checkout-sticky-bar">
           <div>
             <p style={{ margin: 0, fontSize: 10.5, color: T.muted, fontWeight: 600 }}>Total due today</p>
-            <p className="tnum" style={{ margin: 0, fontSize: 18, fontWeight: 700, color: T.ink }}>{money(standard.price.total)}</p>
+            <p className="tnum" style={{ margin: 0, fontSize: 18, fontWeight: 700, color: T.ink }}>{money(amountDue)}</p>
+            {!canSubmit && !submitting && blockers[0] && <p role="status" style={{ margin: '2px 0 0', fontSize: 11.5, fontWeight: 600, color: '#9A5B00' }}>{blockers[0]}</p>}
           </div>
           <Button variant="primary" icon={CreditCard} loading={submitting} disabled={!canSubmit} onClick={submit}>
             Proceed to payment
@@ -924,7 +939,7 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
   )
 }
 
-function DomainField({ label, value, onChange, checking, result, onCheck, onPickAlt }) {
+function DomainField({ label, value, onChange, checking, result, onCheck, onPickAlt, needsCheck }) {
   const tone = result?.status === 'available' ? 'good' : result?.status === 'taken' ? 'bad' : result ? 'warn' : null
   const unconfirmed = result?.status === 'available' && result?.confirmed === false
   const statusLabel = result?.status === 'available' ? (unconfirmed ? 'Available (unconfirmed)' : 'Available')
@@ -935,6 +950,11 @@ function DomainField({ label, value, onChange, checking, result, onCheck, onPick
         <input style={INPUT} placeholder="business.com.ng" value={value} onChange={(e) => onChange(e.target.value)} />
         <Button variant="secondary" loading={checking} onClick={onCheck} style={{ flexShrink: 0 }}>Check</Button>
       </div>
+      {!result && needsCheck && (
+        <p role="status" style={{ margin: '8px 0 0', fontSize: 12.5, fontWeight: 600, color: '#9A5B00' }}>
+          Press Check to confirm this name. You can't pay until it is checked.
+        </p>
+      )}
       {result && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div><Badge tone={tone}>{statusLabel}</Badge></div>
@@ -963,7 +983,7 @@ function DomainField({ label, value, onChange, checking, result, onCheck, onPick
   )
 }
 
-function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSubmit }) {
+function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSubmit, blockers = [] }) {
   const p = quote.price
   return (
     <Card>
@@ -980,6 +1000,11 @@ function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSub
         {p.service_fee > 0 && <SummaryRow label="Service fee" value={money(p.service_fee)} />}
         {quote.discount && <SummaryRow label={`Code ${quote.discount.code}`} value={`−${money(quote.discount.discount)}`} />}
         {quote.premium_balance > 0 && <SummaryRow label="Premium design balance" value={money(quote.premium_balance)} />}
+        {quote.premium_balance > 0 && (
+          <p style={{ margin: 0, fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
+            Your Premium design fee is already paid. This completes the Premium price, and it is part of the total below.
+          </p>
+        )}
       </div>
       <div style={{ height: 1, background: T.line, margin: '16px 0' }} />
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
@@ -1000,6 +1025,12 @@ function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSub
           <Button variant="primary" icon={CreditCard} loading={submitting} disabled={!canSubmit} onClick={onSubmit} style={{ width: '100%' }}>
             Proceed to payment
           </Button>
+          {!canSubmit && !submitting && blockers.length > 0 && (
+            <div role="status" style={{ marginTop: 10, background: '#FFF6E5', border: '1px solid #F0D9A8', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: '#7A4A00', lineHeight: 1.5 }}>
+              <b>To continue:</b>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{blockers.map((b) => <li key={b}>{b}</li>)}</ul>
+            </div>
+          )}
           <p style={{ margin: '10px 0 0', fontSize: 11, color: T.muted, textAlign: 'center', lineHeight: 1.5 }}>
             You'll be redirected to Paystack to pay {money(quote.amount_due ?? p.total)} securely.
           </p>
