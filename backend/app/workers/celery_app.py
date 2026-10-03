@@ -188,6 +188,7 @@ celery_app = Celery(
         "app.workers.owner_pdf_worker",                  # ← OWNER-PDF-1
         "app.workers.funnel_worker",                     # ← FUNNEL-1A
         "app.workers.site_worker",                       # ← SITE-1B §7.7
+        "app.workers.site_premium_worker",               # ← SITE-PREMIUM P2
     ],
 )
 
@@ -673,6 +674,16 @@ celery_app.conf.beat_schedule = {
     "site-backup-watchdog": {
         "task": "app.workers.site_worker.run_site_backup_watchdog",
         "schedule": crontab(minute=0, hour=6),
+    },
+
+    # ------------------------------------------------------------------ #
+    # site-premium-stale-sweep — every 10 minutes  (SITE-PREMIUM P2)      #
+    # Marks a Premium generation stuck for 20+ minutes as failed, so the  #
+    # site is never blocked by a worker that died.                        #
+    # ------------------------------------------------------------------ #
+    "site-premium-stale-sweep": {
+        "task": "app.workers.site_premium_worker.run_premium_stale_sweep",
+        "schedule": crontab(minute="*/10"),
     },
 }
 

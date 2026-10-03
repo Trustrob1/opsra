@@ -52,7 +52,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -719,6 +719,36 @@ def premium_designs(site_id: str, org=Depends(get_current_org), db=Depends(get_s
     site = _get_site(db, org_id, site_id)
     return ok(data={"tier": site.get("tier") or "standard", "current_design_id": site.get("current_design_id"),
                     "designs": site_premium_service.list_designs(db, org_id, site_id)})
+
+
+@router.post("/sites/{site_id}/premium/generate", status_code=status.HTTP_202_ACCEPTED)
+def premium_generate(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """SITE-PREMIUM P2: Claude designs this site. Returns at once; a worker does the 1 to 4 minute job.
+    Poll GET /premium/designs: the new version's status goes generating -> checking -> ready (or failed, and the
+    site keeps its Standard design). Guards: Premium on, content present, one in flight per site, per-builder and
+    org daily caps."""
+    org_id = _premium_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    actor = f"user:{org.get('id')}"
+    try:
+        row = site_premium_generation_service.start_generation(db, org_id, site, actor)
+    except site_premium_generation_service.CapReached as exc:
+        if "paused" in str(exc):
+            site_premium_generation_service.alert_cost_cap(db, org_id, site_id)
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    except site_ops_service.SiteOpsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    try:
+        from app.workers.site_premium_worker import run_premium_generation
+        run_premium_generation.apply_async(args=[row["id"]], retry=False)
+    except Exception as exc:  # S14 - the queue is down: do not leave the site blocked
+        logger.warning("premium generate: could not queue design=%s: %s", row["id"], exc)
+        db.table("site_designs").update({"status": "failed", "checks": {"outcome": "fallback_standard", "errors": ["The design could not be queued."]}}) \
+            .eq("id", row["id"]).eq("org_id", org_id).execute()
+        raise HTTPException(status_code=503, detail={"code": "SERVICE_UNAVAILABLE", "message": "The design service is busy. Please try again in a few minutes."})
+    _log_event(db, org_id, site_id, actor, "premium_generation_started", {"design_id": row["id"], "version": row["version"]})
+    return ok(data={"design_id": row["id"], "version": row["version"], "status": "generating"},
+              message="Designing your Premium site. This takes a few minutes.")
 
 
 @router.post("/sites/{site_id}/premium/import", status_code=status.HTTP_201_CREATED)

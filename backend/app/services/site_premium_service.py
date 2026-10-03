@@ -54,11 +54,13 @@ def require_enabled(settings_row: Optional[dict]) -> None:
 
 
 def _problems(errors: list[str]) -> ValidationFailed:
-    return ValidationFailed("Skeleton not accepted: " + "; ".join(errors))
+    exc = ValidationFailed("Skeleton not accepted: " + "; ".join(errors))
+    exc.errors = list(errors)   # P2: the generation job feeds the individual reasons back to the model
+    return exc
 
 
 def validate_skeleton(raw_html: str, content: dict, headline_font: str, body_font: str,
-                      assets_by_id: Optional[dict] = None) -> dict:
+                      assets_by_id: Optional[dict] = None, strict: bool = False) -> dict:
     """Runs every P1 check. Returns the parts to store, or raises ValidationFailed with the reasons."""
     try:
         fonts.validate_fonts(headline_font, body_font)
@@ -71,7 +73,7 @@ def validate_skeleton(raw_html: str, content: dict, headline_font: str, body_fon
     errors = renderer.css_contract_errors(clean.css)
     manifest, slot_errors = slots.analyse(clean.html, content)
     errors += slot_errors
-    static = checks.run_static_checks(clean.html, clean.css, headline_font, body_font)
+    static = checks.run_static_checks(clean.html, clean.css, headline_font, body_font, strict=strict)   # P2: strict for generation
     errors += static["errors"]
     if errors:
         raise _problems(errors)
