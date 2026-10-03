@@ -31,6 +31,7 @@ from app.services.site_premium_sanitiser import SanitiseError, sanitise_skeleton
 logger = logging.getLogger(__name__)
 
 KEEP_VERSIONS = 10
+KEEP_FULL_DESIGNS = 3   # P4-2: customer tweaks add versions, so the newest full designs are never pruned
 _LIST_COLUMNS = "id, version, kind, status, staged, created_by, created_at, cost_usd, model, prompt_version, checks, duration_ms, input_tokens, output_tokens"
 
 
@@ -126,11 +127,12 @@ def import_skeleton(db: Any, org_id: str, site: dict, actor: str, raw_html: str,
 
 def _prune(db: Any, org_id: str, site_id: str, keep_id: str) -> None:
     try:
-        rows = (db.table("site_designs").select("id, version").eq("site_id", site_id).eq("org_id", org_id)
+        rows = (db.table("site_designs").select("id, version, kind").eq("site_id", site_id).eq("org_id", org_id)
                 .execute()).data or []
         rows.sort(key=lambda r: int(r["version"]), reverse=True)
+        protected = {r["id"] for r in [r for r in rows if r.get("kind") != "patch"][:KEEP_FULL_DESIGNS]}
         for old in rows[KEEP_VERSIONS:]:
-            if old["id"] != keep_id:
+            if old["id"] != keep_id and old["id"] not in protected:
                 db.table("site_designs").delete().eq("id", old["id"]).eq("org_id", org_id).execute()
     except Exception as exc:  # S14 - pruning is housekeeping, never blocks an import
         logger.warning("site_premium: prune failed site=%s: %s", site_id, exc)

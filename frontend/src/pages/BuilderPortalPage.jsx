@@ -37,6 +37,7 @@ import {
 import {
   exchangeBuilderToken, renewalCheckout, careCheckout, cancelCarePlan, editLimitOffer, getMyAccount, updateMyAccount, listMySites, getMySite,
   patchMySiteContent, patchMySiteRecipe, suggestMyDesigns, applyMyDesign, renderMySite, undoMySite, uploadMySiteAsset,
+  getPremiumLook, previewPremiumLook, applyPremiumLook, undoPremiumLook,
   checkDomain, getQuote, checkout, errorMessage,
 } from '../services/builder_portal.service'
 import SectionTiles from '../modules/sites/SectionTiles'
@@ -46,6 +47,7 @@ import { T, INPUT, TEXTAREA, money, dateTime, dateOnly, THEMES, SECTION_LABELS, 
 import { Card, Button, Badge, Notice, Spinner, Field, Segmented, SectionTitle, Toast, Empty } from '../modules/sites/sitesUi'
 import LookPickerField from '../modules/sites/LookPicker'
 import ExtraSectionCards from '../modules/sites/ExtraSectionCards'
+import PremiumLookCard from '../modules/sites/PremiumLookCard'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -335,6 +337,11 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   const [careBusy, setCareBusy] = useState(null)
   // SITE-PREMIUM P4-1: set for a Premium design: { active, version, used: [content groups the design shows] }
   const [premium, setPremium] = useState(null)
+  const [look, setLook] = useState(null)               // P4-2: colour/font options for a Premium site
+  const [lookPreviewHtml, setLookPreviewHtml] = useState(null)
+  const [lookBusy, setLookBusy] = useState(false)
+  const [lookPreviewing, setLookPreviewing] = useState(false)
+  const [lookError, setLookError] = useState(null)
   // Mobile-only: which pane is showing (Edit vs Preview) since a phone screen
   // has no room for both side by side. Ignored at desktop widths, where the
   // CSS below forces both panes visible at once â see the <style> block in
@@ -350,6 +357,11 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
       setContent(s.content)
       setRecipe(s.recipe)
       setPremium(s.premium && s.premium.active ? s.premium : null)
+      if (s.premium && s.premium.active) {
+        getPremiumLook(token, siteId).then(setLook).catch(() => setLook(null))
+      } else {
+        setLook(null)
+      }
       const urls = {}
       for (const a of s.assets || []) urls[a.id] = a.public_url
       setAssetUrls(urls)
@@ -469,6 +481,45 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
     } finally {
       setUndoing(false)
     }
+  }
+
+  // ── Premium look (P4-2): preview never saves; apply saves a new design version; going back restores the last one.
+  const previewLook = async (sel) => {
+    setLookError(null)
+    if (!sel || Object.keys(sel).length === 0) { setLookPreviewHtml(null); return }
+    setLookBusy(true); setLookPreviewing(true)
+    try {
+      const r = await previewPremiumLook(token, siteId, sel)
+      setLookPreviewHtml(r.html)
+    } catch (e) {
+      setLookPreviewHtml(null)
+      setLookError(errorMessage(e, 'Could not preview that look.'))
+    } finally { setLookBusy(false); setLookPreviewing(false) }
+  }
+  const takeLookResult = (r) => {
+    const { site: s2, premium: p2, ...rest } = r
+    setSite(s2); setPremium(p2 && p2.active ? p2 : null); setLook(rest); setLookPreviewHtml(null); setLookError(null)
+  }
+  const applyLook = async (sel) => {
+    setLookBusy(true)
+    try {
+      takeLookResult(await applyPremiumLook(token, siteId, sel))
+      setLimitOffer(null)
+      showToast('Look updated — preview refreshed')
+    } catch (e) {
+      const offer = editLimitOffer(e)
+      if (offer) setLimitOffer(offer)
+      else setLookError(errorMessage(e, 'Could not save this look.'))
+    } finally { setLookBusy(false) }
+  }
+  const goBackLook = async () => {
+    setLookBusy(true)
+    try {
+      takeLookResult(await undoPremiumLook(token, siteId))
+      showToast('Back to your previous look')
+    } catch (e) {
+      setLookError(errorMessage(e, 'There is no earlier look to go back to.'))
+    } finally { setLookBusy(false) }
   }
 
   const uploadFor = async (slot, file, onSet) => {
@@ -602,6 +653,11 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           )}
           <div><Button variant="primary" icon={Save} loading={savingContent} onClick={saveContent}>Save content</Button></div>
 
+          {premium && look && (
+            <PremiumLookCard data={look} busy={lookBusy} previewing={lookPreviewing} error={lookError}
+              onPreview={previewLook} onApply={applyLook} onGoBack={goBackLook}
+              onCancel={() => { setLookPreviewHtml(null); setLookError(null) }} />
+          )}
           {!premium && (
             <>
               <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} onSuggest={() => setSuggestOpen(true)} />
@@ -617,11 +673,11 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: T.ink }}>
               <Eye size={14} aria-hidden="true" /> Live preview
             </span>
-            <span style={{ fontSize: 11, color: unsaved ? T.warn : T.muted }}>{unsaved ? 'You have unsaved changes — press Save changes and refresh preview' : 'Preview is up to date'}</span>
+            <span style={{ fontSize: 11, color: (unsaved || lookPreviewHtml) ? T.warn : T.muted }}>{lookPreviewHtml ? 'Previewing a new look. It is not saved until you press Apply this look.' : unsaved ? 'You have unsaved changes — press Save changes and refresh preview' : 'Preview is up to date'}</span>
           </div>
           <div className="bp-preview-frame-wrap">
-            {site.rendered_html
-              ? <iframe title="Site preview" srcDoc={site.rendered_html} style={{ width: '100%', height: '100%', minHeight: '60vh', border: 'none', display: 'block' }} />
+            {(lookPreviewHtml || site.rendered_html)
+              ? <iframe title="Site preview" srcDoc={lookPreviewHtml || site.rendered_html} style={{ width: '100%', height: '100%', minHeight: '60vh', border: 'none', display: 'block' }} />
               : <div style={{ padding: 24 }}>
                   <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>Click <strong>Refresh preview</strong> above to see how your site looks.</p>
                 </div>}

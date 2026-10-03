@@ -50,6 +50,15 @@ export const suggestMyDesigns = (token, siteId) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/design/suggest`, null, authed(token)))
 export const applyMyDesign = (token, siteId, recipe) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/design/apply`, { recipe }, authed(token)))
+// SITE-PREMIUM P4-2: the customer's colour and font look for a Premium site
+export const getPremiumLook = (token, siteId) =>
+  unwrap(axios.get(`${BASE}/sites/${siteId}/premium/look`, authed(token)))
+export const previewPremiumLook = (token, siteId, look) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/look/preview`, look, authed(token)))
+export const applyPremiumLook = (token, siteId, look) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/look`, look, authed(token)))
+export const undoPremiumLook = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/look/undo`, null, authed(token)))
 export const renderMySite = (token, siteId) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/render`, null, authed(token)))
 export const undoMySite = (token, siteId) =>

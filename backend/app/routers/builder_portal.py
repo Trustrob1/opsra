@@ -43,6 +43,7 @@ from app.models.sites import (
     CheckoutRequest,
     DomainCheckRequest,
     QuoteRequest,
+    PremiumLookRequest,
     Recipe,
     SiteAssetCreate,
     SiteContentPatch,
@@ -59,8 +60,10 @@ from app.services import (
     site_order_service,
     site_renewal_service,
     site_premium_service,
+    site_premium_tweaks,
     site_renderer,
 )
+from app.services.site_ops_service import SiteOpsError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -448,6 +451,89 @@ def undo_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(
     site = _render_and_store(db, org_id, site)
     _log_event(db, org_id, site_id, builder["id"], "undo")
     return ok(data=site, message="Undone")
+
+
+# ─────────────── Premium look: colour and font (SITE-PREMIUM P4-2) ───────────────
+# Buttons and pickers only. A look change is free before go-live and counts as 1 edit once the site is live
+# (same session dedupe as a content save). Going back one step never counts.
+def _premium_errors(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except SiteOpsError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
+
+
+def _niche_of(db, org_id: str, site: dict) -> Optional[str]:
+    try:
+        return _get_preset(db, org_id, site["preset_id"]).get("key")
+    except HTTPException:
+        return None
+
+
+def _assets_map(db, site_id: str) -> dict:
+    rows = (db.table("site_assets").select("id, public_url").eq("site_id", site_id).execute()).data or []
+    return {a["id"]: {"public_url": a["public_url"]} for a in rows}
+
+
+def _look_payload(db, org_id: str, site: dict) -> dict:
+    design = _premium_errors(site_premium_tweaks.current_design, db, org_id, site)
+    return {"look": site_premium_tweaks.look_options(design, _niche_of(db, org_id, site)),
+            "can_go_back": design.get("kind") == "patch" and bool(design.get("parent_id")),
+            "counts_as_edit": _is_live_site(site)}
+
+
+@router.get("/sites/{site_id}/premium/look")
+def premium_look_options(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _get_site(db, org_id, builder["id"], site_id)
+    return ok(data=_look_payload(db, org_id, site))
+
+
+@router.post("/sites/{site_id}/premium/look/preview")
+def premium_look_preview(site_id: str, payload: PremiumLookRequest, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """Shows the page with the chosen look. Saves nothing and costs nothing."""
+    org_id = builder["org_id"]
+    site = _get_site(db, org_id, builder["id"], site_id)
+    design = _premium_errors(site_premium_tweaks.current_design, db, org_id, site)
+    plan = _premium_errors(site_premium_tweaks.plan_tweak, design, site.get("content") or {}, _assets_map(db, site_id),
+                           _niche_of(db, org_id, site), payload.accent, payload.headline_font, payload.body_font)
+    return ok(data={"html": plan["html"], "changes": plan["changes"]})
+
+
+@router.post("/sites/{site_id}/premium/look")
+def premium_look_apply(site_id: str, payload: PremiumLookRequest, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _get_site(db, org_id, builder["id"], site_id)
+    design = _premium_errors(site_premium_tweaks.current_design, db, org_id, site)
+    # Validate first, so a refused look never uses up an edit.
+    plan = _premium_errors(site_premium_tweaks.plan_tweak, design, site.get("content") or {}, _assets_map(db, site_id),
+                           _niche_of(db, org_id, site), payload.accent, payload.headline_font, payload.body_font)
+    counted = False
+    if _is_live_site(site):
+        try:
+            counted = bool(site_care_plan_service.consume_edit(db, org_id, site).get("counted"))
+        except site_care_plan_service.EditLimitReached as exc:
+            raise HTTPException(402, detail={"code": "EDIT_LIMIT_REACHED", "message": str(exc), "offer": exc.offer})
+        except Exception as exc:  # fail open, same as a content save
+            logger.warning("care plan: consume_edit failed (premium look) site=%s: %s", site_id, exc)
+    saved = _premium_errors(site_premium_tweaks.apply_tweak, db, org_id, site, f"builder:{builder['id']}", design, plan)
+    site["current_design_id"] = saved["id"]   # the stored row now points at the new version; keep this copy in step before rendering
+    site = _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, builder["id"], "premium_look_changed", {"changes": saved["changes"], "version": saved["version"], "counted_as_edit": counted})
+    return ok(data={"site": site, "premium": site_premium_service.editor_info(db, org_id, site), **_look_payload(db, org_id, site)},
+              message="Look updated")
+
+
+@router.post("/sites/{site_id}/premium/look/undo")
+def premium_look_undo(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    site = _get_site(db, org_id, builder["id"], site_id)
+    row = _premium_errors(site_premium_tweaks.restore_previous, db, org_id, site)
+    site["current_design_id"] = row["id"]
+    site = _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, builder["id"], "premium_look_undone", {"version": row.get("version")})
+    return ok(data={"site": site, "premium": site_premium_service.editor_info(db, org_id, site), **_look_payload(db, org_id, site)},
+              message="Back to your previous look")
 
 
 @router.post("/sites/{site_id}/assets", status_code=status.HTTP_201_CREATED)

@@ -382,6 +382,14 @@ class SiteRecipePatch(BaseModel):
     recipe: Recipe
 
 
+class PremiumLookRequest(BaseModel):
+    """SITE-PREMIUM P4-2: the look a customer picks for a Premium site. Every field optional; at least one must change."""
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    accent: Optional[str] = Field(None, max_length=7)
+    headline_font: Optional[str] = Field(None, max_length=60)
+    body_font: Optional[str] = Field(None, max_length=60)
+
+
 class SiteAssetCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     slot: str = Field(..., min_length=1, max_length=40)

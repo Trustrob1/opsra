@@ -293,6 +293,100 @@ class TestPremiumSite:
 
 
 # ---------------------------------------------------------------------------
+# SITE-PREMIUM P4-2: colour and font look for a Premium site
+# ---------------------------------------------------------------------------
+from tests.unit.premium_gen_fixtures import CSS as _P_CSS, SKELETON as _P_SKELETON   # noqa: E402
+from tests.unit.test_site_premium_render import CONTENT as _P_CONTENT   # noqa: E402
+from app.services import site_care_plan_service   # noqa: E402
+
+_LOOK_DESIGN = {"id": "design-1", "version": 1, "kind": "import", "parent_id": None, "status": "ready", "org_id": ORG_ID,
+                "site_id": SITE_ID, "skeleton_html": _P_SKELETON, "skeleton_css": _P_CSS, "slot_manifest": {"slots": []},
+                "art_direction": {"headline_font": "Outfit", "body_font": "Hanken Grotesk"},
+                "tokens": {"--accent": "#2F4BFF", "--accent-ink": "#F4F6FF", "--bg": "#F5F6F4", "--ink": "#0E1B2C"}, "checks": {}}
+_LOOK_SITE = {**_FAKE_SITE, "tier": "premium", "current_design_id": "design-1", "content": _P_CONTENT}
+
+
+class TestPremiumLook:
+    def _db(self, site=None, design=None):
+        return _db_mock(sites=_chain([dict(site or _LOOK_SITE)]), site_assets=_chain([]), site_presets=_chain([_FAKE_PRESET]),
+                        site_designs=_chain([dict(design or _LOOK_DESIGN)]), site_events=_chain([]), site_revisions=_chain([]))
+
+    def test_options_list_swatches_and_fonts(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        resp = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/look")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["look"]["current"]["accent"] == "#2F4BFF" and len(data["look"]["swatches"]) >= 8
+        assert data["counts_as_edit"] is False and data["can_go_back"] is False
+
+    def test_standard_site_has_no_look(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db(site=_FAKE_SITE)
+        assert authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/look").status_code == 404
+
+    def test_preview_shows_the_colour_and_saves_nothing(self, authed_client):
+        db = self._db()
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look/preview", json={"accent": "#C0243B"})
+        assert resp.status_code == 200 and "--accent:#C0243B" in resp.json()["data"]["html"]
+        db.table("site_designs").insert.assert_not_called()
+
+    @pytest.mark.parametrize("body", [{"accent": "#A67C52"}, {"accent": "red"}, {}, {"headline_font": "Bodoni Moda"}, {"nonsense": 1}])
+    def test_bad_looks_are_refused(self, authed_client, body):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json=body)
+        assert resp.status_code == 422
+
+    def test_apply_before_live_is_free_and_saves_a_version(self, authed_client, monkeypatch):
+        calls = []
+        monkeypatch.setattr(site_care_plan_service, "consume_edit", lambda *a, **k: calls.append(1) or {"counted": True})
+        db = self._db()
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json={"accent": "#C0243B"})
+        assert resp.status_code == 200 and resp.json()["data"]["premium"]["active"] is True
+        db.table("site_designs").insert.assert_called()
+        assert calls == []                                    # preview_ready: no edit used
+
+    def test_apply_on_a_live_site_counts_as_one_edit(self, authed_client, monkeypatch):
+        calls = []
+        monkeypatch.setattr(site_care_plan_service, "consume_edit", lambda *a, **k: calls.append(1) or {"counted": True})
+        app.dependency_overrides[get_supabase] = lambda: self._db(site={**_LOOK_SITE, "status": "live"})
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json={"accent": "#C0243B"})
+        assert resp.status_code == 200 and calls == [1]
+
+    def test_out_of_edits_blocks_with_the_offer_and_saves_nothing(self, authed_client, monkeypatch):
+        def refuse(*a, **k):
+            raise site_care_plan_service.EditLimitReached("No edits left", {"plan_price": 5000})
+        monkeypatch.setattr(site_care_plan_service, "consume_edit", refuse)
+        db = self._db(site={**_LOOK_SITE, "status": "live"})
+        app.dependency_overrides[get_supabase] = lambda: db
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json={"accent": "#C0243B"})
+        assert resp.status_code == 402
+        db.table("site_designs").insert.assert_not_called()
+
+    def test_a_refused_look_does_not_use_an_edit(self, authed_client, monkeypatch):
+        calls = []
+        monkeypatch.setattr(site_care_plan_service, "consume_edit", lambda *a, **k: calls.append(1) or {"counted": True})
+        app.dependency_overrides[get_supabase] = lambda: self._db(site={**_LOOK_SITE, "status": "live"})
+        assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json={"accent": "#A67C52"}).status_code == 422
+        assert calls == []
+
+    def test_go_back_needs_an_earlier_look(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look/undo").status_code == 404
+
+    def test_go_back_restores_the_parent(self, authed_client):
+        tweaked = {**_LOOK_DESIGN, "id": "design-2", "version": 2, "kind": "patch", "parent_id": "design-1"}
+        app.dependency_overrides[get_supabase] = lambda: self._db(site={**_LOOK_SITE, "current_design_id": "design-2"}, design=tweaked)
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look/undo")
+        assert resp.status_code == 200
+
+    def test_someone_elses_site_is_404(self, authed_client):
+        db = _db_mock(sites=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        assert authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/look").status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Account
 # ---------------------------------------------------------------------------
 class TestAccount:
