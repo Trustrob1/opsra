@@ -160,7 +160,7 @@ def look_options(design: dict, niche: Optional[str]) -> dict:
 
 def plan_tweak(design: dict, content: dict, assets_by_id: dict, niche: Optional[str], accent: Optional[str] = None,
                headline_font: Optional[str] = None, body_font: Optional[str] = None,
-               section_colours: Optional[dict] = None) -> dict:
+               section_colours: Optional[dict] = None, section_layout: Optional[dict] = None) -> dict:
     """Validates a requested look and returns the new parts (tokens, art_direction, notes, page html) without
     saving anything. Raises ValidationFailed with a plain reason."""
     tokens = current_tokens(design)
@@ -212,6 +212,31 @@ def plan_tweak(design: dict, content: dict, assets_by_id: dict, niche: Optional[
                 new_art.pop("section_colours", None)
             changes["sections"] = {s: merged.get(s, sections.ORIGINAL) for s in set(merged) | set(before)
                                    if merged.get(s) != before.get(s)}
+
+    if section_layout:
+        # P4-3b: show / hide a section and make its headline smaller or larger (deterministic, no AI)
+        trial = {**design, "tokens": new_tokens, "art_direction": new_art}
+        try:
+            hidden, sized = sections.normalise_layout(trial, section_layout)
+        except ValueError as exc:
+            raise ValidationFailed(str(exc))
+        before_hidden, before_sizes = sections.hidden_names(design), sections.sizes(design)
+        layout_changes: dict = {}
+        for name in set(hidden) | set(before_hidden) | set(sized) | set(before_sizes):
+            c: dict = {}
+            if (name in hidden) != (name in before_hidden):
+                c["show"] = name not in hidden
+            if sized.get(name, "normal") != before_sizes.get(name, "normal"):
+                c["size"] = sized.get(name, "normal")
+            if c:
+                layout_changes[name] = c
+        if layout_changes:
+            for key, value in (("section_hidden", hidden), ("section_size", sized)):
+                if value:
+                    new_art[key] = value
+                else:
+                    new_art.pop(key, None)
+            changes["layout"] = layout_changes
 
     if not changes:
         raise ValidationFailed("That is already your current look. Pick something different.")

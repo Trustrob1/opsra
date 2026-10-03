@@ -162,3 +162,111 @@ class TestPlan:
         site = db.rows("sites")[0]
         opts = tw.look_options(tw.current_design(db, ORG, site), "boutique")
         assert any(s["name"] == "about" for s in opts["sections"])
+
+
+# ---------------------------------------------------------------- P4-3b: show / hide / headline size
+
+def layout_design(hidden=None, size=None):
+    d = design_with()
+    if hidden:
+        d["art_direction"]["section_hidden"] = hidden
+    if size:
+        d["art_direction"]["section_size"] = size
+    return d
+
+
+class TestLayoutModule:
+    def test_hide_and_size_merge_into_the_current_state(self):
+        d = layout_design(hidden=["about"], size={"items": "large"})
+        hidden, sized = sec.normalise_layout(d, {"closing": {"show": False}, "about": {"show": True}, "items": {"size": "small"}})
+        assert hidden == ["closing"] and sized == {"items": "small"}
+
+    def test_normal_size_clears_the_size(self):
+        d = layout_design(size={"items": "large"})
+        assert sec.normalise_layout(d, {"items": {"size": "normal"}}) == ([], {})
+
+    @pytest.mark.parametrize("wanted", [{}, {"hero": {"show": False}}, {"nope": {"show": False}}, {"footer": {"show": False}},
+                                        {"footer": {"size": "large"}}, {"items": {"size": "huge"}}, {"items": {}}, {"items": "hide"},
+                                        {"items": {"show": "no"}}])
+    def test_bad_layout_changes_are_refused(self, wanted):
+        with pytest.raises(ValueError):
+            sec.normalise_layout(design_with(), wanted)
+
+    def test_stale_names_are_ignored_not_fatal(self):
+        d = layout_design(hidden=["gone", "footer"], size={"gone": "large", "items": "tiny"})
+        assert sec.hidden_names(d) == [] and sec.sizes(d) == {}
+
+    def test_size_css_uses_known_numbers_only(self):
+        css = sec.size_css(layout_design(size={"items": "large", "about": "small"}))
+        assert 'data-section="items"] :where(h1,h2){zoom:1.25' in css and "zoom:0.85" in css
+
+    def test_options_report_visibility_size_and_limits(self):
+        opts = {o["name"]: o for o in sec.section_options(layout_design(hidden=["about"], size={"items": "large"}))}
+        assert opts["about"]["visible"] is False and opts["items"]["size"] == "large" and opts["closing"]["size"] == "normal"
+        assert opts["footer"]["can_hide"] is False and opts["footer"]["can_resize"] is False
+
+    def test_a_colour_that_looks_the_same_as_another_is_not_offered_twice(self):
+        d = design_with()
+        d["skeleton_css"] = ":root{--accent:#2F4BFF;--accent-ink:#FFFFFF;--bg:#1C1827;--ink:#F5F6F4;--deep:#1B1726}"
+        d["tokens"] = {"--accent": "#2F4BFF", "--accent-ink": "#FFFFFF", "--bg": "#1C1827", "--ink": "#F5F6F4"}
+        keys = [p["key"] for p in sec.palette(d)]
+        assert "base" in keys and "dark" not in keys
+
+
+NAV_SKELETON = SKELETON.replace('<a class="btn" data-slot-href="whatsapp">Order on WhatsApp</a></header>',
+                                '<ul><li><a href="#shop">Shop</a></li><li><a href="#top">Top</a></li></ul>'
+                                '<a class="btn" data-slot-href="whatsapp">Order on WhatsApp</a></header>', 1)
+
+
+class TestLayoutRenderer:
+    def render(self, design):
+        return renderer.render_premium_page(content=CONTENT, design=design, assets_by_id=ASSETS, export=False)
+
+    def test_a_hidden_section_is_left_out_with_its_links(self):
+        d = {**layout_design(hidden=["items"]), "skeleton_html": NAV_SKELETON}
+        html = self.render(d)
+        assert "The collection" not in html and 'id="shop"' not in html and 'href="#shop"' not in html
+        assert 'href="#top"' in html                                   # other links stay
+        assert "Ready when you are" in html
+
+    def test_nothing_is_hidden_without_a_choice(self):
+        html = self.render({**design_with(), "skeleton_html": NAV_SKELETON})
+        assert "The collection" in html and 'href="#shop"' in html
+
+    def test_a_resized_section_keeps_its_marker_and_gets_a_rule(self):
+        html = self.render(layout_design(size={"closing": "large"}))
+        assert 'data-section="closing"' in html and "zoom:1.25" in html
+        assert len(re.findall(r"<[a-z]+ [^>]*data-section=", html)) == 1
+
+    def test_a_stale_hidden_name_does_not_crash(self):
+        assert "The collection" in self.render(layout_design(hidden=["gone"]))
+
+
+class TestLayoutPlan:
+    def plan(self, **kw):
+        db = make_db()
+        site = db.rows("sites")[0]
+        design = tw.current_design(db, ORG, site)
+        return db, site, design, tw.plan_tweak(design, site["content"], ASSETS, "boutique", **kw)
+
+    def test_hiding_and_sizing_are_stored_and_reported(self):
+        _db, _s, _d, plan = self.plan(section_layout={"closing": {"show": False}, "items": {"size": "large"}})
+        art = plan["art_direction"]
+        assert art["section_hidden"] == ["closing"] and art["section_size"] == {"items": "large"}
+        assert plan["changes"]["layout"] == {"closing": {"show": False}, "items": {"size": "large"}}
+        assert "Ready when you are" not in plan["html"]
+
+    def test_showing_again_removes_the_key(self):
+        db, site, design, plan = self.plan(section_layout={"closing": {"show": False}})
+        tw.apply_tweak(db, ORG, site, "builder:b1", design, plan)
+        plan2 = tw.plan_tweak(tw.current_design(db, ORG, site), site["content"], ASSETS, "boutique",
+                              section_layout={"closing": {"show": True}})
+        assert "section_hidden" not in plan2["art_direction"] and "Ready when you are" in plan2["html"]
+
+    def test_no_change_is_refused(self):
+        with pytest.raises(ValidationFailed):
+            self.plan(section_layout={"closing": {"show": True}})
+
+    def test_the_footer_cannot_be_hidden(self):
+        with pytest.raises(ValidationFailed, match="footer"):
+            self.plan(section_layout={"footer": {"show": False}})

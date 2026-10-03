@@ -152,9 +152,12 @@ class Ctx:
     price_style: str = "exact"
     scopes: list = field(default_factory=list)       # innermost last: the current repeat entries
     keep: frozenset = frozenset()                    # P4-3a: section names whose data-section marker stays in the page
+    hidden: frozenset = frozenset()                  # P4-3b: sections the customer hid (left out of the page)
+    removed: list = field(default_factory=list)      # ids of the sections left out, so links to them can go too
 
     def child(self, item: Any) -> "Ctx":
-        return Ctx(self.content, self.assets, self.export, self.price_style, self.scopes + [item], self.keep)
+        return Ctx(self.content, self.assets, self.export, self.price_style, self.scopes + [item], self.keep,
+                   self.hidden, self.removed)
 
     def lookup(self, path: str) -> Any:
         if path == ".":
@@ -287,6 +290,10 @@ def _transform(nodes: list, ctx: Ctx) -> list:
             out.append(n)
             continue
         a = n.attrs
+        if ctx.hidden and a.get("data-section") in ctx.hidden:
+            if a.get("id"):
+                ctx.removed.append(a["id"])
+            continue
         if "data-if" in a and not _truthy_if(a["data-if"], ctx):
             continue
         if "data-repeat" in a:
@@ -324,10 +331,30 @@ def _transform(nodes: list, ctx: Ctx) -> list:
     return out
 
 
+def _drop_links_to(nodes: list, ids: set) -> list:
+    """Removes in-page links (#id) to sections that were left out, and a list item that held only such a link."""
+    out: list = []
+    for n in nodes:
+        if isinstance(n, str):
+            out.append(n)
+            continue
+        if n.tag == "a" and (n.attrs.get("href") or "") in {"#" + i for i in ids}:
+            continue
+        kids = _drop_links_to(n.children, ids) if n.children else n.children
+        if n.tag == "li" and n.children and not any((isinstance(k, str) and k.strip()) or not isinstance(k, str) for k in kids):
+            continue
+        out.append(Node(n.tag, n.attrs, kids))
+    return out
+
+
 def fill_slots(skeleton_html: str, content: dict, assets_by_id: dict, export: bool = False,
-               keep_sections: frozenset = frozenset()) -> str:
-    ctx = Ctx(content=content or {}, assets=assets_by_id or {}, export=export, keep=frozenset(keep_sections))
-    return _serialise(_transform(parse_fragment(skeleton_html), ctx))
+               keep_sections: frozenset = frozenset(), hidden_sections: frozenset = frozenset()) -> str:
+    ctx = Ctx(content=content or {}, assets=assets_by_id or {}, export=export, keep=frozenset(keep_sections),
+              hidden=frozenset(hidden_sections))
+    nodes = _transform(parse_fragment(skeleton_html), ctx)
+    if ctx.removed:
+        nodes = _drop_links_to(nodes, set(ctx.removed))
+    return _serialise(nodes)
 
 
 # ------------------------------------------------------------------ the page
@@ -401,9 +428,14 @@ def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, expo
     tokens_css = ":root{" + ";".join(var_css) + "}"
 
     chosen = art.get("section_colours")
-    section_css = sections.override_css(design) if isinstance(chosen, dict) and chosen else ""
-    keep = frozenset(str(k) for k in chosen) if section_css else frozenset()
-    body = fill_slots(design.get("skeleton_html") or "", content, assets_by_id, export=export, keep_sections=keep)
+    colour_css = sections.override_css(design) if isinstance(chosen, dict) and chosen else ""
+    size_css = sections.size_css(design) if art.get("section_size") else ""
+    section_css = colour_css + size_css
+    keep = frozenset(str(k) for k in chosen) if colour_css else frozenset()
+    keep |= frozenset(sections.sizes(design)) if size_css else frozenset()
+    hidden = frozenset(sections.hidden_names(design)) if art.get("section_hidden") else frozenset()
+    body = fill_slots(design.get("skeleton_html") or "", content, assets_by_id, export=export, keep_sections=keep,
+                      hidden_sections=hidden)
 
     biz = content.get("business") or {}
     seo = content.get("seo") or {}

@@ -475,6 +475,13 @@ def _assets_map(db, site_id: str) -> dict:
     return {a["id"]: {"public_url": a["public_url"]} for a in rows}
 
 
+def _layout_dict(payload) -> Optional[dict]:
+    """P4-3b: the section show/hide/size changes as plain dicts ({section: {show?, size?}})."""
+    if not payload.section_layout:
+        return None
+    return {name: change.model_dump(exclude_none=True) for name, change in payload.section_layout.items()}
+
+
 def _look_payload(db, org_id: str, site: dict) -> dict:
     design = _premium_errors(site_premium_tweaks.current_design, db, org_id, site)
     return {"look": site_premium_tweaks.look_options(design, _niche_of(db, org_id, site)),
@@ -497,7 +504,7 @@ def premium_look_preview(site_id: str, payload: PremiumLookRequest, builder=Depe
     design = _premium_errors(site_premium_tweaks.current_design, db, org_id, site)
     plan = _premium_errors(site_premium_tweaks.plan_tweak, design, site.get("content") or {}, _assets_map(db, site_id),
                            _niche_of(db, org_id, site), payload.accent, payload.headline_font, payload.body_font,
-                           payload.sections)
+                           payload.sections, _layout_dict(payload))
     return ok(data={"html": plan["html"], "changes": plan["changes"]})
 
 
@@ -509,7 +516,7 @@ def premium_look_apply(site_id: str, payload: PremiumLookRequest, builder=Depend
     # Validate first, so a refused look never uses up an edit.
     plan = _premium_errors(site_premium_tweaks.plan_tweak, design, site.get("content") or {}, _assets_map(db, site_id),
                            _niche_of(db, org_id, site), payload.accent, payload.headline_font, payload.body_font,
-                           payload.sections)
+                           payload.sections, _layout_dict(payload))
     counted = False
     if _is_live_site(site):
         try:

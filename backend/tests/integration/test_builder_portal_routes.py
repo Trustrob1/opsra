@@ -759,3 +759,45 @@ class TestPremiumSectionColours:
         resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json={"sections": {name: "soft"}})
         assert resp.status_code == 200 and calls == []
         db.table("site_designs").insert.assert_called()
+
+
+class TestPremiumSectionLayout:
+    """SITE-PREMIUM P4-3b: show / hide a section and headline size, through the same look routes."""
+
+    def _db(self):
+        return _db_mock(sites=_chain([dict(_LOOK_SITE)]), site_assets=_chain([]), site_presets=_chain([_FAKE_PRESET]),
+                        site_designs=_chain([dict(_LOOK_DESIGN)]), site_events=_chain([]), site_revisions=_chain([]))
+
+    def _section(self, authed_client):
+        rows = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/look").json()["data"]["look"]["sections"]
+        return next(r for r in rows if r["can_hide"])
+
+    def test_options_say_what_can_be_hidden_or_resized(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        row = self._section(authed_client)
+        assert row["visible"] is True and row["size"] == "normal"
+
+    def test_preview_hides_a_section_and_saves_nothing(self, authed_client):
+        db = self._db()
+        app.dependency_overrides[get_supabase] = lambda: db
+        name = self._section(authed_client)["name"]
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look/preview", json={"section_layout": {name: {"show": False}}})
+        assert resp.status_code == 200 and resp.json()["data"]["changes"]["layout"] == {name: {"show": False}}
+        db.table("site_designs").insert.assert_not_called()
+
+    @pytest.mark.parametrize("body", [{"section_layout": {}}, {"section_layout": {"about": {}}}, {"section_layout": {"about": {"size": "huge"}}},
+                                      {"section_layout": {"About Us": {"show": False}}}, {"section_layout": {"about": {"colour": "red"}}},
+                                      {"section_layout": {"nope": {"show": False}}}, {"section_layout": {"footer": {"show": False}}}])
+    def test_bad_layout_changes_are_refused(self, authed_client, body):
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        assert authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json=body).status_code == 422
+
+    def test_apply_on_a_live_site_counts_as_one_edit(self, authed_client, monkeypatch):
+        calls = []
+        monkeypatch.setattr(site_care_plan_service, "consume_edit", lambda *a, **k: calls.append(1) or {"counted": True})
+        db = _db_mock(sites=_chain([{**_LOOK_SITE, "status": "live"}]), site_assets=_chain([]), site_presets=_chain([_FAKE_PRESET]),
+                      site_designs=_chain([dict(_LOOK_DESIGN)]), site_events=_chain([]), site_revisions=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        name = self._section(authed_client)["name"]
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/look", json={"section_layout": {name: {"size": "large"}}})
+        assert resp.status_code == 200 and calls == [1]

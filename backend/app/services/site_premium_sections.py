@@ -99,10 +99,10 @@ def palette(design: dict) -> list[dict]:
     c = design_colours(design)
     wanted = (("base", c.get("--bg")), ("soft", c.get("--surface")), ("dark", c.get("--deep") or c.get("--ink")),
               ("brand", c.get("--accent")))
-    out, seen = [], set()
+    out: list[dict] = []
     for key, value in wanted:
-        if value and value.upper() not in seen:
-            seen.add(value.upper())
+        # a colour that looks the same as one already offered (contrast under 1.06) is not a real choice
+        if value and all(contrast(value, p["hex"]) >= 1.06 for p in out):
             out.append({"key": key, "label": PALETTE_LABELS[key], "hex": value.upper()})
     return out
 
@@ -211,6 +211,89 @@ def override_css(design: dict) -> str:
         return ""
 
 
+# ---- P4-3b: show / hide a section and make its headline smaller or larger
+SIZES = {"small": 0.85, "normal": 1.0, "large": 1.25}
+NO_HIDE = frozenset({"footer"})      # the footer holds the contact details and must stay
+NO_SIZE = frozenset({"footer"})
+
+
+def _valid_names(design: dict) -> set:
+    try:
+        return set(section_names(design.get("skeleton_html") or ""))
+    except Exception:  # S14
+        return set()
+
+
+def hidden_names(design: dict) -> list[str]:
+    """Sections the customer hid, in page order, only those that exist and may be hidden. Never raises."""
+    try:
+        wanted = (design.get("art_direction") or {}).get("section_hidden") or []
+        if not isinstance(wanted, list):
+            return []
+        valid = _valid_names(design)
+        return [n for n in section_names(design.get("skeleton_html") or "") if n in wanted and n in valid and n not in NO_HIDE]
+    except Exception:  # S14
+        return []
+
+
+def sizes(design: dict) -> dict:
+    """{section: 'small'|'large'} for sections that exist and may be resized. Never raises."""
+    try:
+        wanted = (design.get("art_direction") or {}).get("section_size") or {}
+        if not isinstance(wanted, dict):
+            return {}
+        valid = _valid_names(design)
+        return {n: s for n, s in wanted.items() if n in valid and n not in NO_SIZE and s in ("small", "large")}
+    except Exception:  # S14
+        return {}
+
+
+def size_css(design: dict) -> str:
+    """One rule per resized section. zoom scales the heading with its own line height, so the layout stays tidy;
+    break-word stops a long word from pushing the page sideways on a phone."""
+    rules = []
+    for name, size in sizes(design).items():
+        rules.append(f':root:root [data-section="{name}"] :where(h1,h2){{zoom:{SIZES[size]};overflow-wrap:break-word}}')
+    return "".join(rules)
+
+
+def normalise_layout(design: dict, wanted: dict) -> tuple[list[str], dict]:
+    """Merges {section: {show?: bool, size?: 'small'|'normal'|'large'}} into the design's current hidden list and
+    sizes. Returns (hidden sections in page order, sizes). Raises ValueError with a plain reason."""
+    if not isinstance(wanted, dict) or not wanted:
+        raise ValueError("Pick a section.")
+    if len(wanted) > MAX_SECTIONS:
+        raise ValueError("Too many sections at once.")
+    order = section_names(design.get("skeleton_html") or "")
+    hidden, sz = set(hidden_names(design)), dict(sizes(design))
+    for name, change in wanted.items():
+        if name not in order:
+            raise ValueError("That section is not part of your design.")
+        if not isinstance(change, dict) or not change:
+            raise ValueError("Pick show or hide, or a size.")
+        show = change.get("show")
+        if show is not None:
+            if show is True:
+                hidden.discard(name)
+            elif show is False:
+                if name in NO_HIDE:
+                    raise ValueError("The footer stays, because it holds your contact details.")
+                hidden.add(name)
+            else:
+                raise ValueError("Pick show or hide.")
+        size = change.get("size")
+        if size is not None:
+            if size not in SIZES:
+                raise ValueError("That size is not available.")
+            if name in NO_SIZE:
+                raise ValueError("The footer text cannot be resized.")
+            if size == "normal":
+                sz.pop(name, None)
+            else:
+                sz[name] = size
+    return [n for n in order if n in hidden], sz
+
+
 def label_for(section: str) -> str:
     """A plain label for a section name: 'our-menu' -> 'Our menu'."""
     text = re.sub(r"[-_]+", " ", section).strip()
@@ -222,10 +305,13 @@ def section_options(design: dict) -> list[dict]:
     chosen = (design.get("art_direction") or {}).get("section_colours") or {}
     colours = design_colours(design)
     pal = [p for p in palette(design) if text_for(p["hex"], colours)]
+    hidden, sz = set(hidden_names(design)), sizes(design)
     out = []
     for name in section_names(design.get("skeleton_html") or ""):
         current = chosen.get(name)
         out.append({"name": name, "label": label_for(name),
+                    "visible": name not in hidden, "can_hide": name not in NO_HIDE,
+                    "size": sz.get(name, "normal"), "can_resize": name not in NO_SIZE,
                     "current": current if current in {p["key"] for p in pal} else ORIGINAL,
                     "options": [{"key": ORIGINAL, "label": "Original", "hex": None}] + pal})
     return out

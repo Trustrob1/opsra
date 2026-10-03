@@ -1,6 +1,6 @@
 /**
  * frontend/src/modules/sites/PremiumLookCard.jsx
- * SITE-PREMIUM P4-2/P4-3a - the customer's colour, font and per-section colour choice for a Premium site (builder portal).
+ * SITE-PREMIUM P4-2/P4-3a/P4-3b - the customer's colour, font, per-section colour, show/hide and headline size choice for a Premium site (builder portal).
  * Buttons and pickers only. Choosing something previews it at once (nothing is saved); "Apply this look" saves it.
  * The server decides which colours and fonts are allowed for this design, so everything offered here works.
  */
@@ -22,12 +22,13 @@ function choiceStyle(selected, disabled) {
 export default function PremiumLookCard({ data, busy, previewing, error, onPreview, onApply, onCancel, onGoBack }) {
   const look = data?.look
   const current = look?.current || {}
-  const savedSections = JSON.stringify((look?.sections || []).map((r) => [r.name, r.current]))
+  const savedSections = JSON.stringify((look?.sections || []).map((r) => [r.name, r.current, r.visible, r.size]))
   const [accent, setAccent] = useState(null)
   const [custom, setCustom] = useState('')
   const [headline, setHeadline] = useState(null)
   const [body, setBody] = useState(null)
   const [secPick, setSecPick] = useState({})            // P4-3a: {section name: colour key} not saved yet
+  const [layPick, setLayPick] = useState({})            // P4-3b: {section name: {show?, size?}} not saved yet
 
   // Show the options in their own fonts: one Google Fonts stylesheet for the fonts on offer.
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
   }, [look?.sample_css_url])
 
   // The server knows a new look was saved (or undone) when `current` changes: clear the pending choice.
-  useEffect(() => { setAccent(null); setCustom(''); setHeadline(null); setBody(null); setSecPick({}) }, [current.accent, current.headline_font, current.body_font, savedSections])
+  useEffect(() => { setAccent(null); setCustom(''); setHeadline(null); setBody(null); setSecPick({}); setLayPick({}) }, [current.accent, current.headline_font, current.body_font, savedSections])
 
   if (!look) return null
   const sectionRows = look.sections || []
@@ -51,6 +52,7 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
     const h = 'headline' in over ? over.headline : headline
     const b = 'body' in over ? over.body : body
     const sp = 'sections' in over ? over.sections : secPick
+    const lp = 'layout' in over ? over.layout : layPick
     const sel = {}
     if (a && a.toUpperCase() !== (current.accent || '').toUpperCase()) sel.accent = a
     if (h && h !== current.headline_font) sel.headline_font = h
@@ -58,6 +60,15 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
     const sd = {}
     sectionRows.forEach((row) => { if (sp[row.name] && sp[row.name] !== row.current) sd[row.name] = sp[row.name] })
     if (Object.keys(sd).length) sel.sections = sd
+    const ld = {}
+    sectionRows.forEach((row) => {
+      const l = lp[row.name] || {}
+      const d = {}
+      if (l.show !== undefined && l.show !== row.visible) d.show = l.show
+      if (l.size && l.size !== row.size) d.size = l.size
+      if (Object.keys(d).length) ld[row.name] = d
+    })
+    if (Object.keys(ld).length) sel.section_layout = ld
     return sel
   }
   const pick = (over) => {
@@ -65,12 +76,14 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
     if ('headline' in over) setHeadline(over.headline)
     if ('body' in over) setBody(over.body)
     if ('sections' in over) setSecPick(over.sections)
+    if ('layout' in over) setLayPick(over.layout)
     onPreview(selection(over))
   }
   const sel = selection()
   const changed = Object.keys(sel).length > 0
-  const cancel = () => { setAccent(null); setCustom(''); setHeadline(null); setBody(null); setSecPick({}); onCancel() }
+  const cancel = () => { setAccent(null); setCustom(''); setHeadline(null); setBody(null); setSecPick({}); setLayPick({}); onCancel() }
   const fo = look.fonts || {}
+  const setLay = (name, change) => pick({ layout: { ...layPick, [name]: { ...(layPick[name] || {}), ...change } } })
 
   return (
     <Card>
@@ -141,13 +154,30 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
       )}
 
       {sectionRows.length > 0 && (
-        <Field label="Section colours" hint="Give a section its own colour. Only colours from your design are offered, so the text always stays easy to read.">
+        <Field label="Sections" hint="Give a section its own colour, hide it, or make its heading bigger or smaller. Only colours from your design are offered, so the text always stays easy to read. A hidden section can be shown again at any time.">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {sectionRows.map((row) => {
               const chosen = secPick[row.name] || row.current
+              const lay = layPick[row.name] || {}
+              const visible = lay.show !== undefined ? lay.show : row.visible
+              const size = lay.size || row.size
               return (
-                <div key={row.name}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: T.ink, marginBottom: 6 }}>{row.label}</div>
+                <div key={row.name} style={{ opacity: visible ? 1 : 0.6 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: T.ink, marginRight: 4 }}>{row.label}{visible ? '' : ' (hidden)'}</div>
+                    {row.can_hide && (
+                      <button type="button" aria-pressed={!visible} disabled={busy}
+                        onClick={() => setLay(row.name, { show: !visible })} style={choiceStyle(!visible, false)}>
+                        {visible ? 'Hide this section' : 'Show this section'}
+                      </button>
+                    )}
+                    {row.can_resize && visible && [['small', 'Smaller heading'], ['normal', 'Normal heading'], ['large', 'Larger heading']].map(([key, label]) => (
+                      <button key={key} type="button" aria-pressed={size === key} disabled={busy}
+                        onClick={() => setLay(row.name, { size: key })} style={choiceStyle(size === key, false)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {row.options.map((o) => {
                       const selected = chosen === o.key

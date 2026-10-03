@@ -382,6 +382,13 @@ class SiteRecipePatch(BaseModel):
     recipe: Recipe
 
 
+class SectionLayoutChange(BaseModel):
+    """SITE-PREMIUM P4-3b: one section's change: show or hide it, and/or a headline size."""
+    model_config = ConfigDict(extra="forbid")
+    show: Optional[bool] = None
+    size: Optional[Literal["small", "normal", "large"]] = None
+
+
 class PremiumLookRequest(BaseModel):
     """SITE-PREMIUM P4-2: the look a customer picks for a Premium site. Every field optional; at least one must change."""
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
@@ -390,6 +397,22 @@ class PremiumLookRequest(BaseModel):
     body_font: Optional[str] = Field(None, max_length=60)
     # P4-3a: {section name: 'original' | 'base' | 'soft' | 'dark' | 'brand'}; the server checks them against the design
     sections: Optional[dict[str, str]] = None
+    # P4-3b: {section name: {show: bool, size: 'small'|'normal'|'large'}}; checked against the design by the server
+    section_layout: Optional[dict[str, SectionLayoutChange]] = None
+
+    @field_validator("section_layout")
+    @classmethod
+    def _layout_shape(cls, v):
+        if v is None:
+            return v
+        if not v or len(v) > 12:
+            raise ValueError("Pick between 1 and 12 sections.")
+        for name, change in v.items():
+            if not re.fullmatch(r"[a-z][a-z0-9_-]{0,30}", name or ""):
+                raise ValueError("That is not a section name.")
+            if change.show is None and change.size is None:
+                raise ValueError("Pick show or hide, or a size.")
+        return v
 
     @field_validator("sections")
     @classmethod
