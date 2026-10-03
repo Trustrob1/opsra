@@ -65,6 +65,17 @@ export const getPremiumHistoryPreview = (token, siteId, designId) =>
   unwrap(axios.get(`${BASE}/sites/${siteId}/premium/history/${designId}/preview`, authed(token)))
 export const restorePremiumVersion = (token, siteId, designId) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/premium/history/${designId}/restore`, null, authed(token)))
+// ── Buying Premium (P5) ─────────────────────────────────────────────────────
+/** → { offer: { available, state, design_fee, total, golive_balance, ... }, tier } */
+export const getPremiumOffer = (token, siteId) =>
+  unwrap(axios.get(`${BASE}/sites/${siteId}/premium/offer`, authed(token)))
+/** what: 'design' | 'redesign' → { checkout_url, amount, kind, reused } */
+export const premiumCheckout = (token, siteId, what) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/checkout`, { what }, authed(token)))
+export const retryPremiumDesign = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/retry`, null, authed(token)))
+export const refundPremiumFee = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/premium/refund`, null, authed(token)))
 export const getPremiumRedesign = (token, siteId) =>
   unwrap(axios.get(`${BASE}/sites/${siteId}/premium/redesign`, authed(token)))
 export const startPremiumRedesign = (token, siteId) =>
@@ -101,8 +112,8 @@ export const uploadMySiteAsset = (token, siteId, slot, file) => {
 export const checkDomain = (token, domain) =>
   unwrap(axios.post(`${BASE}/domains/check`, { domain }, authed(token)))
 /** { domain, kind } → { standard: {...}|{error}, express: {...}|null|{error} } */
-export const getQuote = (token, domain, kind = 'initial', discountCode) =>
-  unwrap(axios.post(`${BASE}/quotes`, { domain, kind, ...(discountCode ? { discount_code: discountCode } : {}) }, authed(token)))
+export const getQuote = (token, domain, kind = 'initial', discountCode, siteId) =>
+  unwrap(axios.post(`${BASE}/quotes`, { domain, kind, ...(discountCode ? { discount_code: discountCode } : {}), ...(siteId && kind === 'initial' ? { site_id: siteId } : {}) }, authed(token)))
 /** payload: { site_id, route, domain, backup_domain, legal_owner, accepted_terms }
  * → { checkout_url, reference, order_id, amount } */
 export const checkout = (token, payload) =>

@@ -517,6 +517,7 @@ class QuoteRequest(BaseModel):
     domain: str = Field(..., min_length=3, max_length=253)
     kind: QuoteKind = "initial"
     discount_code: Optional[str] = Field(None, max_length=40)
+    site_id: Optional[str] = Field(None, max_length=64)       # P5: lets a Premium site's quote show the design balance
 
 
 class LegalOwnerDetails(BaseModel):

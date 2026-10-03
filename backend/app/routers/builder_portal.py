@@ -59,6 +59,7 @@ from app.services import (
     site_image_service,
     site_order_service,
     site_renewal_service,
+    site_premium_billing_service,
     site_premium_history,
     site_premium_service,
     site_premium_tweaks,
@@ -595,6 +596,46 @@ def premium_history_restore(site_id: str, design_id: str, builder=Depends(get_cu
     return ok(data=_site_result(db, org_id, site), message="Design restored")
 
 
+# ─────────────── Buying Premium (SITE-PREMIUM P5) ───────────────
+
+def _billing_errors(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except SiteOpsError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
+
+
+@router.get("/sites/{site_id}/premium/offer")
+def premium_offer(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """The 'Make it Premium' card for a Standard site before go-live (price, payment state, failure options)."""
+    site = _get_site(db, builder["org_id"], builder["id"], site_id)
+    return ok(data={"offer": site_premium_billing_service.offer(db, builder["org_id"], site), "tier": site.get("tier") or "standard"})
+
+
+@router.post("/sites/{site_id}/premium/checkout")
+def premium_checkout(site_id: str, payload: dict, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """what = 'design' (the design fee, before the design is made) or 'redesign' (one extra new design)."""
+    what = (payload or {}).get("what")
+    result = _billing_errors(site_premium_billing_service.create_checkout, db, builder["org_id"], builder, site_id, what)
+    return ok(data={k: v for k, v in result.items() if k != "order"}, message="Payment link created")
+
+
+@router.post("/sites/{site_id}/premium/retry", status_code=status.HTTP_202_ACCEPTED)
+def premium_retry(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """A paid design that failed is tried again at no charge (up to the allowed number of failed attempts)."""
+    _billing_errors(site_premium_billing_service.retry, db, builder["org_id"], builder, site_id)
+    site = _get_site(db, builder["org_id"], builder["id"], site_id)
+    return ok(data={"offer": site_premium_billing_service.offer(db, builder["org_id"], site)}, message="Designing your site again.")
+
+
+@router.post("/sites/{site_id}/premium/refund")
+def premium_refund(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """The builder asks for the design fee back when no design could be made."""
+    _billing_errors(site_premium_billing_service.request_refund, db, builder["org_id"], builder, site_id)
+    site = _get_site(db, builder["org_id"], builder["id"], site_id)
+    return ok(data={"offer": site_premium_billing_service.offer(db, builder["org_id"], site)}, message="Your refund has been requested.")
+
+
 @router.get("/sites/{site_id}/premium/redesign")
 def premium_redesign_status(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     org_id = builder["org_id"]
@@ -738,6 +779,21 @@ def get_quote(payload: QuoteRequest, builder=Depends(get_current_builder), db=De
         except Exception:
             logger.exception("quote: discount code check failed")
             result["discount_error"] = "We couldn't check that code. Try again."
+    # SITE-PREMIUM P5 - what is still owed of the Premium price is one extra line on the go-live total.
+    if payload.site_id and payload.kind == "initial":
+        try:
+            site = _get_site(db, builder["org_id"], builder["id"], payload.site_id)
+            line = site_premium_billing_service.go_live_balance(db, builder["org_id"], site["id"])
+            if line["balance"]:
+                for q in result.values():
+                    if isinstance(q, dict) and isinstance(q.get("price"), dict) and not q.get("error"):
+                        base = q["amount_due"] if q.get("amount_due") is not None else q["price"]["total"]
+                        q["premium_balance"] = line["balance"]
+                        q["amount_due"] = round(float(base) + float(line["balance"]), 2)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("quote: premium balance failed")
     return ok(data=result)
 
 

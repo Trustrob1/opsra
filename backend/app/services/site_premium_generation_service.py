@@ -442,6 +442,11 @@ def _finish_failed(db: Any, design: dict, usage: Usage, started: float, model: s
     _log_usage(db, design["org_id"], model, usage)
     _log_event(db, design["org_id"], design["site_id"], "system", "premium_design_failed",
                {"design_id": design["id"], "stage": checks.get("stage"), "cost_usd": spent, "errors": (checks.get("errors") or [])[:5]})
+    try:   # P5: when a paid first design has failed all its allowed attempts, the fee refund is opened
+        from app.services import site_premium_billing_service
+        site_premium_billing_service.after_failure(db, design["org_id"], {**design, "checks": checks})
+    except Exception as exc:  # S14
+        logger.warning("site_premium_generation: billing follow-up failed design=%s: %s", design.get("id"), exc)
     return {"ok": False, "design_id": design["id"], "outcome": "fallback_standard", "cost_usd": spent, "errors": checks.get("errors", [])}
 
 
@@ -500,9 +505,20 @@ def run_generation(db: Any, design_id: str, claude: ClaudeFn = call_claude_check
     if not ok:
         return {"ok": False, "design_id": design_id, "outcome": "superseded"}
     if design.get("kind") == "redesign":
+        try:   # P5-a: the customer's own look choices follow them into the new design where they fit
+            from app.services import site_premium_carry
+            site_premium_carry.carry_into_row(db, org_id, site, {**design, **update}, site["content"], assets_by_id, niche)
+        except Exception as exc:  # S14
+            logger.warning("site_premium_generation: carry-over failed design=%s: %s", design_id, exc)
         _log_usage(db, org_id, model, usage)
+        paid_credit = False
+        try:   # P5: a design bought as a paid credit is marked, so it does not use up the free included ones
+            from app.services import site_premium_billing_service
+            paid_credit = site_premium_billing_service.uses_paid_credit(db, org_id, site)
+        except Exception as exc:  # S14
+            logger.warning("site_premium_generation: credit check failed design=%s: %s", design_id, exc)
         _log_event(db, org_id, site_id, "system", "premium_redesign_used",
-                   {"design_id": design_id, "version": design["version"], "cost_usd": spent})
+                   {"design_id": design_id, "version": design["version"], "cost_usd": spent, "paid_credit": paid_credit})
         _log_event(db, org_id, site_id, "system", "premium_design_ready",
                    {"design_id": design_id, "version": design["version"], "cost_usd": spent, "attempts": result["attempts"],
                     "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens, "staged": True})

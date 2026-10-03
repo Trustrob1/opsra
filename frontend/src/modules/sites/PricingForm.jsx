@@ -139,6 +139,13 @@ export default function PricingForm({ pricing, canEdit, saving, onSave }) {
     if (Object.keys(e.value).length || out.routes.express) {
       out.routes.express = { ...(out.routes.express || {}), domains: e.value }
     }
+    const pm = out.premium
+    if (pm) {
+      for (const k of Object.keys(pm)) {
+        if (pm[k] === '') pm[k] = 0
+        else if (!isNum(pm[k])) return { error: 'Premium prices must be numbers, zero or more.' }
+      }
+    }
     const cp = out.care_plan
     if (cp) {
       for (const k of Object.keys(cp)) {
@@ -219,6 +226,15 @@ export default function PricingForm({ pricing, canEdit, saving, onSave }) {
           <NumField label="Flat payment fee (₦)" value={n(['gateway', 'flat_ngn'])} onChange={setN(['gateway', 'flat_ngn'])} disabled={dis} />
           <NumField label="No flat fee below (₦)" value={n(['gateway', 'flat_waived_below_ngn'])} onChange={setN(['gateway', 'flat_waived_below_ngn'])} disabled={dis} />
           <NumField label="Payment fee cap (₦)" hint="Leave empty for no cap." value={n(['gateway', 'cap_ngn'])} onChange={setN(['gateway', 'cap_ngn'])} disabled={dis} />
+        </div>
+      </Card>
+
+      <Card>
+        <SectionTitle title="Premium sites" hint="What builders pay for a Premium design. Change these any time; the next order uses the new numbers." />
+        <div style={GRID}>
+          <NumField label="Design fee, paid before the design is made (₦)" value={get(p, ['premium', 'design_fee_ngn'], 20000)} onChange={setN(['premium', 'design_fee_ngn'])} disabled={dis} />
+          <NumField label="Total Premium price (₦)" hint="What is left after the design fee is added when they go live." value={get(p, ['premium', 'total_fee_ngn'], 30000)} onChange={setN(['premium', 'total_fee_ngn'])} disabled={dis} />
+          <NumField label="One extra new design (₦)" hint="Bought after go-live, or after the included new designs are used. 0 switches it off." value={get(p, ['premium', 'redesign_fee_ngn'], 30000)} onChange={setN(['premium', 'redesign_fee_ngn'])} disabled={dis} />
         </div>
       </Card>
 

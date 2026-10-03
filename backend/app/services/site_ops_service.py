@@ -434,7 +434,7 @@ def record_refund(db: Any, org_id: str, order_id: str, user_id: str, amount: Opt
     order = {**order, **(_one(claim.data) or {}), "status": "refunded", "refund_amount": value, "refunded_at": now}
 
     _complete_tasks(db, org_id, order["id"], f"Refund of {_money(value)} recorded")
-    _message_builder(db, org_id, order, f"Your refund of {_money(value)} for {order.get('domain')} has been sent.")
+    _message_builder(db, org_id, order, f"Your refund of {_money(value)} for {order.get('domain') or 'your order'} has been sent.")
     _log_event(db, org_id, order.get("site_id"), f"user:{user_id}", "refund_recorded",
                {"refund_amount": value}, order["id"])
     return order

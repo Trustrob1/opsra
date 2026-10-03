@@ -113,29 +113,44 @@ def version_preview(db: Any, org_id: str, site: dict, design_id: str, assets_by_
 # ------------------------------------------------------------------ try another design
 
 def _used(db: Any, org_id: str, site_id: str) -> int:
-    rows = (db.table("site_events").select("id").eq("org_id", org_id).eq("site_id", site_id).eq("event", USED_EVENT)
+    """New designs made from the free included allowance (a design bought as a paid credit is not counted here)."""
+    rows = (db.table("site_events").select("id, detail").eq("org_id", org_id).eq("site_id", site_id).eq("event", USED_EVENT)
             .execute()).data or []
-    return len(rows)
+    return sum(1 for r in rows if not (r.get("detail") or {}).get("paid_credit"))
+
+
+def free_available(db: Any, org_id: str, site: dict, settings: dict) -> dict:
+    """Whether an included (free) new design can be made now. After go-live nothing is free: a new design is a paid add-on."""
+    included = settings.get("site_premium_redesigns_included")
+    included = DEFAULT_REDESIGNS_INCLUDED if included is None else int(included)
+    used = _used(db, org_id, site["id"])
+    live = (site.get("status") or "") in LIVE_STATUSES
+    return {"included": included, "used": used, "live": live, "free_ok": (not live) and used < included}
 
 
 def _staged_row(db: Any, org_id: str, site_id: str) -> Optional[dict]:
-    return _one((db.table("site_designs").select("id, version, created_at").eq("site_id", site_id).eq("org_id", org_id)
+    return _one((db.table("site_designs").select("id, version, created_at, checks").eq("site_id", site_id).eq("org_id", org_id)
                  .eq("kind", "redesign").eq("status", "ready").eq("staged", True).order("version", desc=True).limit(1)
                  .execute()).data)
 
 
 def redesign_status(db: Any, org_id: str, site: dict) -> dict:
     """Everything the 'Try another design' card needs. Never raises for a normal Premium site."""
+    from app.services import site_premium_billing_service as billing
     settings = gen.settings_for(db, org_id)
-    included = settings.get("site_premium_redesigns_included")
-    included = DEFAULT_REDESIGNS_INCLUDED if included is None else int(included)
-    used = _used(db, org_id, site["id"])
-    live = (site.get("status") or "") in LIVE_STATUSES
+    fa = free_available(db, org_id, site, settings)
+    included, used, live = fa["included"], fa["used"], fa["live"]
+    cfg = billing.get_config(settings)
+    credits = billing.redesign_credits(db, org_id, site["id"])
+    override = live and bool(settings.get("site_premium_post_live_redesign")) and used < included   # staff switch: free for this org
+    allowed = fa["free_ok"] or credits["available"] > 0 or override
+    price = cfg["redesign_fee_ngn"]
     reason = None
-    if used >= included:
-        reason = "Your included new designs are used. Ask us if you would like another one."
-    elif live and not settings.get("site_premium_post_live_redesign"):
-        reason = "A new design after your site is live is a paid add-on. Ask us and we will set it up."
+    if not allowed:
+        if live:
+            reason = "A new design after your site is live is a paid add-on" + (f" ({billing._money(price)})." if price > 0 else ". Ask us and we will set it up.")
+        else:
+            reason = "Your included new designs are used." + (f" You can buy another for {billing._money(price)}." if price > 0 else " Ask us if you would like another one.")
     gen.sweep_stale(db, org_id, site["id"])
     running = _one((db.table("site_designs").select("id, created_at").eq("site_id", site["id"]).eq("org_id", org_id)
                     .eq("kind", "redesign").in_("status", ["generating", "checking"]).order("version", desc=True)
@@ -147,9 +162,20 @@ def redesign_status(db: Any, org_id: str, site: dict) -> dict:
                      .eq("org_id", org_id).eq("kind", "redesign").order("version", desc=True).limit(1).execute()).data)
         if last and last.get("status") == "failed" and _recent(last.get("created_at")):
             failed = ((last.get("checks") or {}).get("errors") or ["The new design could not be finished."])[0]
-    return {"allowed": reason is None, "blocked_reason": reason, "included": included, "used": used,
-            "remaining": max(included - used, 0), "in_progress": running, "staged": staged, "last_failure": failed,
+    return {"allowed": allowed, "blocked_reason": reason, "included": included, "used": used,
+            "remaining": max(included - used, 0), "can_buy": (not allowed) and price > 0, "price": price,
+            "credits": credits["available"], "uses_free": fa["free_ok"], "in_progress": running, "staged": _public_staged(staged), "last_failure": failed,
             "counts_as_edit": False}
+
+
+def _public_staged(staged: Optional[dict]) -> Optional[dict]:
+    """The held-back design as the customer sees it: no raw checks, only the plain carried-over sentence."""
+    if not staged:
+        return None
+    from app.services import site_premium_carry
+    out = {k: v for k, v in staged.items() if k != "checks"}
+    out["carried_note"] = site_premium_carry.carried_note((staged.get("checks") or {}).get("carried"))
+    return out
 
 
 def _recent(created_at: Optional[str]) -> bool:

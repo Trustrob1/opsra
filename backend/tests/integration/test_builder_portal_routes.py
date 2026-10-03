@@ -881,3 +881,82 @@ class TestPremiumHistoryAndRedesign:
         assert kept.status_code == 200 and {"site", "history", "redesign"} <= set(kept.json()["data"])
         gone = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/redesign/discard")
         assert gone.status_code == 200 and "history" in gone.json()["data"]
+
+
+class TestPremiumBuyRoutes:
+    """SITE-PREMIUM P5: the offer, checkout, retry and refund routes, and the Premium line on the go-live quote."""
+
+    def _db(self, site=None):
+        return _db_mock(sites=_chain([dict(site or _FAKE_SITE)]), site_builder_settings=_chain([{}]), site_designs=_chain([]),
+                        site_orders=_chain([]), site_events=_chain([]), payment_links=_chain([]))
+
+    def test_the_offer_route_returns_the_card_state(self, authed_client, monkeypatch):
+        bill = builder_portal.site_premium_billing_service
+        monkeypatch.setattr(bill, "offer", lambda db, org, site: {"available": True, "state": "can_buy", "design_fee": 20000})
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        data = authed_client.get(f"/api/v1/builder/sites/{SITE_ID}/premium/offer").json()["data"]
+        assert data["offer"]["state"] == "can_buy" and data["tier"] == "standard"
+
+    def test_another_builders_site_is_a_404(self, authed_client):
+        db = _db_mock(sites=_chain([]))
+        app.dependency_overrides[get_supabase] = lambda: db
+        for method, path in (("get", "offer"), ("post", "retry"), ("post", "refund")):
+            assert getattr(authed_client, method)(f"/api/v1/builder/sites/{SITE_ID}/premium/{path}").status_code == 404
+
+    def test_checkout_returns_the_link_without_the_order(self, authed_client, monkeypatch):
+        bill = builder_portal.site_premium_billing_service
+        monkeypatch.setattr(bill, "create_checkout", lambda db, org, b, sid, what: {
+            "checkout_url": "https://paystack.test/x", "amount": 20000, "kind": "premium_design", "reused": False, "order": {"id": "o1"}})
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/checkout", json={"what": "design"})
+        assert resp.status_code == 200 and resp.json()["data"] == {"checkout_url": "https://paystack.test/x", "amount": 20000,
+                                                                    "kind": "premium_design", "reused": False}
+
+    def test_a_blocked_purchase_is_a_422_with_a_plain_reason(self, authed_client, monkeypatch):
+        bill = builder_portal.site_premium_billing_service
+
+        def blocked(*a, **k):
+            raise bill.PremiumBillingBlocked("Premium is chosen before your site goes live.")
+        monkeypatch.setattr(bill, "create_checkout", blocked)
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        resp = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/checkout", json={"what": "design"})
+        assert resp.status_code == 422 and "before your site goes live" in resp.json()["detail"]["message"]
+
+    def test_retry_and_refund_return_the_new_card_state(self, authed_client, monkeypatch):
+        bill = builder_portal.site_premium_billing_service
+        monkeypatch.setattr(bill, "retry", lambda *a, **k: {"id": "d1"})
+        monkeypatch.setattr(bill, "request_refund", lambda *a, **k: {"id": "o1"})
+        monkeypatch.setattr(bill, "offer", lambda *a, **k: {"state": "designing"})
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        r1 = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/retry")
+        r2 = authed_client.post(f"/api/v1/builder/sites/{SITE_ID}/premium/refund")
+        assert r1.status_code == 202 and r1.json()["data"]["offer"]["state"] == "designing"
+        assert r2.status_code == 200 and r2.json()["data"]["offer"]["state"] == "designing"
+
+    def test_the_quote_for_a_prepaid_premium_site_adds_one_line_to_the_total(self, authed_client, monkeypatch):
+        quotes = {"standard": {"price": {"total": 79500}, "tld": ".com.ng"}, "express": {"error": "off"}}
+        monkeypatch.setattr(builder_portal.pricing_service, "quote_both_routes", lambda *a, **k: quotes)
+        monkeypatch.setattr(builder_portal.site_premium_billing_service, "go_live_balance",
+                            lambda db, org, sid: {"balance": 10000, "paid": 20000, "total": 30000})
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        data = authed_client.post("/api/v1/builder/quotes", json={"domain": "adaeza.com.ng", "kind": "initial", "site_id": SITE_ID}).json()["data"]
+        assert data["standard"]["premium_balance"] == 10000 and data["standard"]["amount_due"] == 89500
+        assert "premium_balance" not in data["express"]
+
+    def test_a_quote_without_a_site_or_for_renewals_has_no_premium_line(self, authed_client, monkeypatch):
+        monkeypatch.setattr(builder_portal.pricing_service, "quote_both_routes", lambda *a, **k: {"standard": {"price": {"total": 100}}})
+        called = []
+        monkeypatch.setattr(builder_portal.site_premium_billing_service, "go_live_balance", lambda *a: called.append(1) or {"balance": 5})
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        a = authed_client.post("/api/v1/builder/quotes", json={"domain": "adaeza.com.ng", "kind": "initial"}).json()["data"]
+        b = authed_client.post("/api/v1/builder/quotes", json={"domain": "adaeza.com.ng", "kind": "renewal", "site_id": SITE_ID}).json()["data"]
+        assert "premium_balance" not in a["standard"] and "premium_balance" not in b["standard"] and called == []
+
+    def test_a_discount_is_applied_before_the_premium_line(self, authed_client, monkeypatch):
+        monkeypatch.setattr(builder_portal.pricing_service, "quote_both_routes",
+                            lambda *a, **k: {"standard": {"price": {"total": 79500}, "amount_due": 70000}})
+        monkeypatch.setattr(builder_portal.site_premium_billing_service, "go_live_balance",
+                            lambda *a: {"balance": 10000, "paid": 20000, "total": 30000})
+        app.dependency_overrides[get_supabase] = lambda: self._db()
+        data = authed_client.post("/api/v1/builder/quotes", json={"domain": "adaeza.com.ng", "kind": "initial", "site_id": SITE_ID}).json()["data"]
+        assert data["standard"]["amount_due"] == 80000

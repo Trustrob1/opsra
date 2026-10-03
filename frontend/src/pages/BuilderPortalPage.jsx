@@ -49,6 +49,7 @@ import LookPickerField from '../modules/sites/LookPicker'
 import ExtraSectionCards from '../modules/sites/ExtraSectionCards'
 import PremiumLookCard from '../modules/sites/PremiumLookCard'
 import PremiumDesignsCard from '../modules/sites/PremiumDesignsCard'
+import PremiumOfferCard from '../modules/sites/PremiumOfferCard'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -663,6 +664,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
             <PremiumDesignsCard token={token} siteId={siteId} onResult={takeLookResult}
               onPreviewHtml={setLookPreviewHtml} previewingHtml={!!lookPreviewHtml} />
           )}
+          {!premium && <PremiumOfferCard token={token} siteId={siteId} onPremium={load} />}
           {!premium && (
             <>
               <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} onSuggest={() => setSuggestOpen(true)} />
@@ -743,13 +745,13 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
     const d = domain.trim().toLowerCase()
     setQuoting(true)
     const t = setTimeout(() => {
-      Promise.all([getQuote(token, d, 'initial', appliedCode), getQuote(token, d, 'renewal')])
+      Promise.all([getQuote(token, d, 'initial', appliedCode, siteId), getQuote(token, d, 'renewal')])
         .then(([q, rq]) => { setQuote(q); setRenewalQuote(rq); setQuoteError(null); setCodeError(q?.discount_error || null) })
         .catch((e) => { setQuote(null); setRenewalQuote(null); setQuoteError(errorMessage(e, 'Could not price this domain.')) })
         .finally(() => setQuoting(false))
     }, 500)
     return () => clearTimeout(t)
-  }, [domain, token, appliedCode])
+  }, [domain, token, appliedCode, siteId])
 
   async function runCheck(value, setChecking, setResult) {
     if (!isDomainLike(value)) { showToast('Enter a full domain, e.g. business.com.ng', 'bad'); return }
@@ -977,6 +979,7 @@ function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSub
         {p.hosting > 0 && <SummaryRow label="Hosting bundle" value={money(p.hosting)} />}
         {p.service_fee > 0 && <SummaryRow label="Service fee" value={money(p.service_fee)} />}
         {quote.discount && <SummaryRow label={`Code ${quote.discount.code}`} value={`−${money(quote.discount.discount)}`} />}
+        {quote.premium_balance > 0 && <SummaryRow label="Premium design balance" value={money(quote.premium_balance)} />}
       </div>
       <div style={{ height: 1, background: T.line, margin: '16px 0' }} />
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>

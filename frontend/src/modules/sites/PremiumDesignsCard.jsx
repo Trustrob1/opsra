@@ -11,7 +11,7 @@ import { T } from './sitesKit'
 import { Card, Button, Notice, SectionTitle, Badge } from './sitesUi'
 import {
   getPremiumHistory, getPremiumHistoryPreview, restorePremiumVersion,
-  getPremiumRedesign, startPremiumRedesign, getPremiumRedesignPreview, keepPremiumRedesign, discardPremiumRedesign,
+  premiumCheckout, getPremiumRedesign, startPremiumRedesign, getPremiumRedesignPreview, keepPremiumRedesign, discardPremiumRedesign,
   errorMessage,
 } from '../../services/builder_portal.service'
 
@@ -119,6 +119,11 @@ export default function PremiumDesignsCard({ token, siteId, onResult, onPreviewH
     if (r) { onPreviewHtml(r.html); setPreviewLabel('Your new design') }
   }
 
+  const buy = async () => {
+    const r = await guard(() => premiumCheckout(token, siteId, 'redesign'), 'Could not start the payment.')
+    if (r?.checkout_url) window.location.assign(r.checkout_url)
+  }
+
   const keep = async () => {
     const r = await guard(() => keepPremiumRedesign(token, siteId), 'Could not keep the new design.')
     if (r) { closePreview(); take(r); onResult(r) }
@@ -151,6 +156,7 @@ export default function PremiumDesignsCard({ token, siteId, onResult, onPreviewH
             <Notice tone="info">
               Your new design is ready. {previewingHtml ? 'It is showing in the preview.' : 'Press Preview to see it.'} Nothing has changed on your site yet.
             </Notice>
+            {staged.carried_note && <p style={{ margin: '8px 0 0', fontSize: 12.5 }}>{staged.carried_note}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
               {!previewingHtml && <Button icon={Eye} disabled={busy} onClick={showStaged}>Preview</Button>}
               <Button variant="primary" icon={Check} loading={busy} onClick={keep}>Keep this design</Button>
@@ -167,6 +173,9 @@ export default function PremiumDesignsCard({ token, siteId, onResult, onPreviewH
         )}
 
         {!running && !staged && redesign && !redesign.allowed && <Notice tone="info">{redesign.blocked_reason}</Notice>}
+        {!running && !staged && redesign?.can_buy && (
+          <Button variant="primary" icon={Sparkles} loading={busy} onClick={buy}>Buy a new design · ₦{Number(redesign.price).toLocaleString('en-NG')}</Button>
+        )}
 
         {!running && !staged && redesign?.allowed && !confirming && (
           <Button icon={Sparkles} disabled={busy} onClick={() => setConfirming(true)}>Try another design</Button>
@@ -174,7 +183,9 @@ export default function PremiumDesignsCard({ token, siteId, onResult, onPreviewH
         {confirming && (
           <div style={{ border: `1px solid ${T.lineStrong}`, borderRadius: 10, padding: 12 }}>
             <p style={{ margin: '0 0 10px', fontSize: 13, color: T.ink }}>
-              Make a completely new design? It uses 1 of your {redesign.remaining} new designs left, even if you decide not to keep it. If it cannot be finished, nothing is used.
+              Make a completely new design? {redesign.uses_free === false
+                ? 'It uses the new design you bought, even if you decide not to keep it.'
+                : `It uses 1 of your ${redesign.remaining} new designs left, even if you decide not to keep it.`} If it cannot be finished, nothing is used.
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Button variant="primary" icon={Sparkles} loading={busy} onClick={start}>Yes, make a new design</Button>

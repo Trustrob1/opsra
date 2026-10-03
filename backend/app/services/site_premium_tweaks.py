@@ -183,6 +183,7 @@ def plan_tweak(design: dict, content: dict, assets_by_id: dict, niche: Optional[
             new_tokens["--accent-ink"] = pick_accent_ink(accent, tokens["--bg"], tokens["--ink"])
             new_art["accent_hex"] = accent
             new_art["accent_family"] = family_for(accent)
+            new_art["customer_accent"] = True          # P5-a: a redesign keeps a colour the customer chose
             changes["accent"] = accent
 
     opts = font_options(design, niche)

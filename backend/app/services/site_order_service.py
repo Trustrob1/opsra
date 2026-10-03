@@ -149,9 +149,23 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
                   "amount_due": discount["amount_due"]}
         amount = discount["amount_due"]
 
+    # SITE-PREMIUM P5 - what is still owed of the Premium price is added as one line (0 unless a design fee was paid here).
+    premium_line = {"balance": 0}
+    try:
+        from app.services import site_premium_billing_service
+        premium_line = site_premium_billing_service.go_live_balance(db, org_id, site["id"])
+    except Exception as exc:  # S14 - a lookup problem must not block a normal checkout
+        logger.warning("create_checkout: premium balance lookup failed site=%s: %s", site["id"], exc)
+    if premium_line.get("balance"):
+        quoted = {**quoted, "premium": premium_line}
+        amount = round(float(amount) + float(premium_line["balance"]), 2)
+        if "amount_due" in quoted:
+            quoted["amount_due"] = amount
+
     # spec §11.7 — "their FIRST order is created" is decided before the insert below.
-    is_first_order = not ((db.table("site_orders").select("id").eq("org_id", org_id)
-                            .eq("builder_id", builder["id"]).limit(1).execute()).data or [])
+    is_first_order = not [o for o in ((db.table("site_orders").select("id, kind").eq("org_id", org_id)
+                                       .eq("builder_id", builder["id"]).execute()).data or [])
+                          if o.get("kind") not in ("premium_design", "premium_redesign")]   # a prepaid Premium design fee is not their site order
 
     try:
         link = paystack_storefront_service.generate_payment_link(
@@ -176,7 +190,7 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
         "quote": quoted,
         "amount": amount,
         "cost_snapshot": quoted["cost"],
-        "expected_profit": round(float(quoted["profit"]) - (discount["discount"] if discount else 0.0), 2),
+        "expected_profit": round(float(quoted["profit"]) - (discount["discount"] if discount else 0.0) + float(premium_line.get("balance") or 0), 2),
         "payment_link_id": link.get("payment_link_id"),
         "payment_reference": link["reference"],
         "status": "pending_payment",
@@ -279,6 +293,32 @@ def _handle_care_payment(db: Any, org_id: str, order: dict, now: datetime) -> bo
         return True
 
 
+def _handle_premium_payment(db: Any, org_id: str, order: dict, now: datetime) -> bool:
+    """SITE-PREMIUM P5: a paid design fee starts the design; a paid redesign gives one credit. S14 - never raises."""
+    try:
+        sla_due_at = (now + timedelta(hours=_SLA_HOURS)).isoformat()
+        claim = (db.table("site_orders").update({"status": "live", "sla_due_at": sla_due_at, "updated_at": now.isoformat()})
+                 .eq("id", order["id"]).eq("status", "pending_payment").execute())
+        if not claim.data:
+            return True
+        try:
+            from app.services import site_premium_billing_service
+            site_premium_billing_service.on_paid(db, org_id, {**order, "status": "live"}, now)
+        except Exception as exc:
+            logger.warning("site_order: premium payment activation failed order=%s: %s", order["id"], exc)
+        try:
+            from app.services import funnel_service
+            funnel_service.notify_managers(
+                db, org_id, "Premium design paid" if order.get("kind") == "premium_design" else "Premium redesign paid",
+                f"₦{float(order.get('amount') or 0):,.0f}", "site_order_paid", None)
+        except Exception as exc:
+            logger.warning("site_order: premium manager notify failed order=%s: %s", order["id"], exc)
+        return True
+    except Exception as exc:
+        logger.warning("site_order._handle_premium_payment failed order=%s: %s", order.get("id"), exc)
+        return True
+
+
 def _alert_late_payment(db: Any, org_id: str, order: dict) -> None:
     """A payment landed on an order we had already expired (a newer renewal replaced it). S14."""
     try:
@@ -312,6 +352,8 @@ def on_payment_confirmed(db: Any, org_id: str, reference: str, now: Optional[dat
 
         if order.get("kind") in ("care_plan", "edit_pack"):
             return _handle_care_payment(db, org_id, order, now)
+        if order.get("kind") in ("premium_design", "premium_redesign"):
+            return _handle_premium_payment(db, org_id, order, now)
 
         approval_required = bool(order.get("approval_required"))
         new_status = "awaiting_approval" if approval_required else "fulfilling"
