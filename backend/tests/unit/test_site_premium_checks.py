@@ -163,3 +163,25 @@ class TestImportWiring:
         db = make_db()
         with pytest.raises(ValidationFailed):
             svc.import_skeleton(db, "org-1", db.rows("sites")[0], "user:u1", GOOD_RAW, "Anton", "Karla", ASSETS)
+
+
+class TestArchFrames:
+    @pytest.mark.parametrize("decl", [
+        "border-radius:999px 999px 0 0", "border-radius: 50% 50% 0 0", "border-radius:200px 200px 0 0",
+        "border-radius:12rem 12rem 0 0", "border-top-left-radius:999px;border-top-right-radius:999px",
+    ])
+    def test_arch_top_frames_are_flagged(self, decl):
+        r = c.run_static_checks("<section data-section='hero'><h1>x</h1></section>", f".f{{{decl}}} @media (prefers-reduced-motion:reduce){{*{{animation:none}}}}")
+        assert any("Arch frames are not permitted" in w for w in r["warnings"])
+
+    @pytest.mark.parametrize("decl", [
+        "border-radius:12px", "border-radius:999px", "border-radius:50%", "border-radius:0 0 999px 999px",
+        "border-radius:8px 8px 0 0", "border-radius:999px 0",
+    ])
+    def test_ordinary_radii_are_fine(self, decl):
+        r = c.run_static_checks("<section data-section='hero'><h1>x</h1></section>", f".f{{{decl}}} @media (prefers-reduced-motion:reduce){{*{{animation:none}}}}")
+        assert not any("Arch" in w for w in r["warnings"])
+
+    def test_prompt_bans_arch_frames(self):
+        from app.services import site_premium_prompt as pr
+        assert "NO ARCH FRAMES" in pr.BUILD_SYSTEM and "radius or arch" not in pr.BUILD_SYSTEM

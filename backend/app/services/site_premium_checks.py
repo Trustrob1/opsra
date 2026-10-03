@@ -239,6 +239,42 @@ def _check_structure(nodes: list, warnings: list) -> None:
         warnings.append("More than two image-and-text split sections in a row. Vary the layout.")
 
 
+_LEN_RE = re.compile(r"^(-?\d*\.?\d+)(px|rem|em|%|vw|vh)?$")
+
+
+def _radius_size(token: str) -> str:
+    """'big' (arch-sized), 'flat' (square-ish) or 'mid' for one border-radius length."""
+    m = _LEN_RE.match((token or "").strip().lower())
+    if not m:
+        return "mid"
+    n, unit = float(m.group(1)), m.group(2) or "px"
+    if unit == "%":
+        return "big" if n >= 35 else ("flat" if n <= 8 else "mid")
+    if unit in ("rem", "em"):
+        return "big" if n >= 5 else ("flat" if n <= 1.5 else "mid")
+    if unit in ("vw", "vh"):
+        return "big" if n >= 8 else ("flat" if n <= 1.5 else "mid")
+    return "big" if n >= 80 else ("flat" if n <= 24 else "mid")
+
+
+def _has_arch_frame(css: str) -> bool:
+    """True when any rule gives two big top corners and flat bottom corners (an arch-top frame)."""
+    for block in re.findall(r"\{([^{}]*)\}", css or ""):
+        m = re.search(r"(?<![\w-])border-radius\s*:\s*([^;}/]+)", block, re.I)
+        if m:
+            v = m.group(1).split()
+            if len(v) == 4 and _radius_size(v[0]) == "big" and _radius_size(v[1]) == "big" \
+                    and _radius_size(v[2]) == "flat" and _radius_size(v[3]) == "flat":
+                return True
+        tl = re.search(r"border-top-left-radius\s*:\s*([^;}/\s]+)", block, re.I)
+        tr = re.search(r"border-top-right-radius\s*:\s*([^;}/\s]+)", block, re.I)
+        if tl and tr and _radius_size(tl.group(1)) == "big" and _radius_size(tr.group(1)) == "big":
+            br = re.search(r"border-bottom-(?:left|right)-radius\s*:\s*([^;}/\s]+)", block, re.I)
+            if not br or _radius_size(br.group(1)) == "flat":
+                return True
+    return False
+
+
 def _check_css_rules(css: str, warnings: list) -> None:
     if "prefers-reduced-motion" not in css:
         warnings.append("The CSS has no prefers-reduced-motion rule. Motion must switch off for people who ask for it.")
@@ -247,6 +283,8 @@ def _check_css_rules(css: str, warnings: list) -> None:
     marquees = {m.group(1) for m in re.finditer(r"@(?:-webkit-)?keyframes\s+([\w-]*(?:marquee|ticker)[\w-]*)", css, re.I)}
     if len(marquees) > 1:
         warnings.append("More than one marquee. Use at most one, CSS only.")
+    if _has_arch_frame(css):
+        warnings.append("An arch-top frame (large rounded top corners, flat bottom) is used. Arch frames are not permitted: use a plain rectangle (radius 12px at most) or full-bleed.")
     if re.search(r"cursor\s*:\s*(?:none|url)", css, re.I):
         warnings.append("The CSS overrides the cursor. Custom cursors are not allowed.")
 

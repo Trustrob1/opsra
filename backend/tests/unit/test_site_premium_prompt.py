@@ -44,7 +44,7 @@ class TestBehaviourPrompt:
             assert f"{name} (" in p.BUILD_SYSTEM
 
     def test_prompt_version_bumped(self):
-        assert p.PROMPT_VERSION == "p2.6"
+        assert p.PROMPT_VERSION == "p2.7"
 
 
 class TestHeroRules:
