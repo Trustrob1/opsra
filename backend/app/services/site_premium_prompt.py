@@ -25,8 +25,9 @@ from pydantic import BaseModel
 
 from app.models.sites import SiteContentV1
 from app.services import site_premium_fonts as fonts
+from app.services.site_premium_behaviours import BEHAVIOURS
 
-PROMPT_VERSION = "p2.4"
+PROMPT_VERSION = "p2.5"
 
 HERO_SCALES = ("giant", "mid", "mini")
 ACCENT_FAMILIES = ("blue", "green_teal", "red_wine", "violet_pink", "metal", "yellow_green")
@@ -122,6 +123,8 @@ Rules:
 - Fonts must come from the lists given. Headline and body must be an allowed pair.
 """
 
+BEHAVIOUR_LIST = "; ".join(f"{k} ({v})" for k, v in BEHAVIOURS.items())
+
 BUILD_SYSTEM = f"""You are a senior front-end developer and art director. You write ONE bespoke single-page website as an HTML fragment plus CSS, following the art direction you are given exactly. {_INJECTION_RULE}
 
 OUTPUT FORMAT
@@ -156,8 +159,8 @@ CSS CONTRACT
 - Mobile first at 390px. No horizontal scroll: contain decorative shapes inside their box, use overflow-x: clip on sections (never hidden). Tap targets at least 44px. Button labels short enough for one line at 360px (white-space: nowrap). A [hidden] rule with display:none !important. Navigation at most 72px tall, with at most 4 links and a WhatsApp button; no hamburger script: on phones show the brand and the WhatsApp button only, or use <details><summary>.
 - Section heights: never height:100vh or 100dvh; use min-height with clamp() or svh. Content must be fully visible with no scrolling effects applied.
 - Images: aspect-ratio on every frame, object-fit: cover, object-position tuned for faces near the top (center 22% for portraits). Give frames a palette-tinted background so a missing photo still looks designed.
-- Motion is CSS only and optional: transform and opacity only, 0.3 to 0.5s hovers, 0.8 to 1.2s reveals with cubic-bezier(0.22, 1, 0.36, 1). Content is fully visible with no motion: never hide content waiting for an animation; animate FROM a visible state (opacity .2 and a small offset) and only inside @supports (animation-timeline: view()). Include a @media (prefers-reduced-motion: reduce) block that switches every animation and transition off. At most ONE marquee on the whole page (a @keyframes named marquee), paused under reduced motion. No custom cursor, no cursor:none. No scripts of any kind.
-- Interactivity may only use <details>/<summary>, :target, :hover, :focus-within and scroll-driven animation.
+- Motion is CSS only and optional: transform and opacity only, 0.3 to 0.5s hovers, 0.8 to 1.2s reveals with cubic-bezier(0.22, 1, 0.36, 1). Content is fully visible with no motion: never hide content waiting for an animation; animate FROM a visible state (opacity .2 and a small offset) and only inside @supports (animation-timeline: view()). Include a @media (prefers-reduced-motion: reduce) block that switches every animation and transition off. At most ONE marquee on the whole page (a @keyframes named marquee), paused under reduced motion. No custom cursor, no cursor:none. Never write a <script> or any JavaScript; the BEHAVIOURS rule below is the only way to add behaviour.
+- Interactivity may only use <details>/<summary>, :target, :hover, :focus-within, scroll-driven animation and the Opsra behaviours below.
 
 COPY AND DESIGN RULES
 - Do not use em-dashes (—) or emoji anywhere. Use commas, full stops, colons. Drawn inline SVG icons are fine (simple shapes only).
@@ -168,6 +171,7 @@ COPY AND DESIGN RULES
 - One signature moment only (as in the art direction), executed with CSS. One look only, light or dark as directed.
 - LAYOUT AND SCALE (desktop). Use the full width: the page container is max-width clamp(1100px, 88vw, 1440px) with fluid side padding, never a narrow column floating in empty space. The hero fills the viewport width: the headline and the image share one composition (overlap, offset, or the headline running across the image edge), headline size clamp(2.75rem, 7vw, 7.5rem) or larger, with the supporting line and CTA sized to match (at least 1.125rem). Sections alternate density: at least one full-bleed band, and generous but varied vertical spacing.
 - MOTION (CSS only, always inside the reduced-motion rules above). Deliver at least three distinct motion moments: a staggered hero entrance, scroll-driven reveals on section headings and cards (inside @supports (animation-timeline: view())), and hover states on every card, link and button (image zoom of at most 1.04 inside an overflow-hidden frame, an underline that draws, an arrow that slides). Plus the one signature moment from the art direction. Motion must feel deliberate and calm, never busy.
+- BEHAVIOURS (Opsra-owned, safe). Add behaviour by putting data-behaviour="name" on an element (several names separated by spaces). Opsra supplies the script and CSS; you only mark elements and style the result. Available: {BEHAVIOUR_LIST}. Use them with restraint: reveal on section headings and cards, stagger on card grids and lists, count on real statistics only (never years or phone numbers), scrolled on the nav, parallax on at most one hero or band image, tilt on at most one card set, progress at most once. At most 25 marked elements on the page. Everything must look finished with no behaviour at all (they only add polish after load). Do not set transform, opacity or translate on an element carrying reveal or stagger (wrap it instead). Unknown names are removed.
 - The data-section value on each body section MUST equal the section name in the art direction exactly.
 - Follow the art direction's palette, fonts (through the variables), hero scale, section list, layouts and backgrounds. Use every section it lists, in order, each with a different composition from its neighbours.
 - Use semantic HTML: header, nav, main, section, footer, one h1, then h2/h3 in order. Descriptive link text.

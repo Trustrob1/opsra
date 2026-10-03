@@ -30,6 +30,7 @@ from html.parser import HTMLParser
 from typing import Any, Optional
 from urllib.parse import quote
 
+from app.services import site_premium_behaviours as behaviours
 from app.services import site_premium_fonts as fonts
 from app.services.site_premium_sanitiser import SLOT_ATTRS
 
@@ -406,8 +407,10 @@ def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, expo
         'letter-spacing:.06em">PREVIEW &mdash; NOT YET LIVE</div>')
     robots = ('<meta name="robots" content="index, follow, max-image-preview:large">' if export
               else '<meta name="robots" content="noindex, nofollow">')
+    used = behaviours.used_behaviours(body)
     head = [
         '<meta charset="utf-8">',
+        behaviours.csp_meta(used),
         '<meta name="viewport" content="width=device-width,initial-scale=1">',
         robots,
         f"<title>{escape(title)}</title>",
@@ -431,7 +434,7 @@ def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, expo
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
         f'<link rel="stylesheet" href="{escape(font_link, quote=True)}">',
         f'<script type="application/ld+json">{_json_ld(content, canonical)}</script>',
-        f"<style>{_BASE_CSS}{design.get('skeleton_css') or ''}{tokens_css}{_REDUCED_MOTION_CSS}</style>",
+        f"<style>{_BASE_CSS}{behaviours.head_css(used)}{design.get('skeleton_css') or ''}{tokens_css}{_REDUCED_MOTION_CSS}</style>",
     ]
     return ('<!doctype html><html lang="en"><head>' + "".join(head) + "</head><body>"
-            + preview_bar + body + "</body></html>")
+            + preview_bar + body + behaviours.body_script(used) + "</body></html>")

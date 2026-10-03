@@ -31,6 +31,8 @@ from html.parser import HTMLParser
 import nh3
 import tinycss2
 
+from app.services.site_premium_behaviours import clean_behaviour_value
+
 MAX_TOTAL_BYTES = 250_000          # HTML + CSS together (spec section 5, to be tuned)
 MAX_CSS_CHARS = 120_000
 
@@ -68,7 +70,7 @@ ALLOWED_TAGS = _HTML_TAGS | set(_SVG_ATTRS)
 # Slot markers are the contract with the renderer (spec section 6).
 SLOT_ATTRS = {"data-slot", "data-slot-img", "data-slot-href", "data-repeat", "data-if", "data-format",
               "data-section", "data-layout", "data-role", "data-priority"}
-_GENERIC_ATTRS = {"class", "id", "lang", "dir", "title", "role"} | SLOT_ATTRS
+_GENERIC_ATTRS = {"class", "id", "lang", "dir", "title", "role", "data-behaviour"} | SLOT_ATTRS
 
 _ATTRS: dict[str, set[str]] = {
     "*": set(_GENERIC_ATTRS),
@@ -122,6 +124,8 @@ def _attribute_filter(tag: str, attr: str, value: str):
         return value if value == _XMLNS else None
     if "url(" in low:
         return value if _LOCAL_URL_RE.match((value or "").strip()) else None
+    if attr == "data-behaviour":
+        return clean_behaviour_value(value)     # only names from the Opsra behaviour library survive
     if attr in SLOT_ATTRS and attr not in ("data-section", "data-layout", "data-role", "data-priority", "data-format"):
         return value if _SLOT_PATH_RE.match(value or "") else None
     if attr in ("data-section", "data-layout", "data-role", "data-format"):
