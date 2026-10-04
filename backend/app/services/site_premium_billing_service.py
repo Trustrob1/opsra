@@ -19,7 +19,8 @@ Money rules
     to refund by hand in Paystack, then 'Record refund' (site_ops_service.record_refund). It is opened
     automatically after the last failed attempt, or by the builder pressing 'Get my money back'.
   * Not refundable once a design has passed the checks and been made (a ready design exists).
-  * Premium sites made by staff without a design-fee order have no balance at go-live (nothing was prepaid).
+  * A Premium site with no design-fee order has no balance at go-live (nothing was prepaid), unless staff switch
+    sites.premium_charge_at_golive on: then the whole Premium price (total_fee_ngn) is added at go-live.
 
 Nothing here trusts the browser for money: prices are read from settings on the server every time.
 """
@@ -98,12 +99,30 @@ def design_fee_paid(db: Any, org_id: str, site_id: str) -> int:
 
 
 def go_live_balance(db: Any, org_id: str, site_id: str) -> dict:
-    """What is still owed of the Premium price, to add to the go-live order. 0 when no design fee was paid here."""
+    """What is still owed of the Premium price, to add to the go-live order.
+    A design fee paid here -> the total minus what was paid. No fee paid -> 0, unless staff switched 'charge at go-live'
+    on for a Premium site that was made before payment existed: then the whole Premium price is owed."""
     paid = design_fee_paid(db, org_id, site_id)
-    if paid <= 0:
-        return {"balance": 0, "paid": 0, "total": 0}
     total = get_config(_settings(db, org_id))["total_fee_ngn"]
-    return {"balance": max(total - paid, 0), "paid": paid, "total": total}
+    if paid > 0:
+        return {"balance": max(total - paid, 0), "paid": paid, "total": total}
+    site = _one(db.table("sites").select("id, tier, premium_charge_at_golive").eq("id", site_id).eq("org_id", org_id)
+                .limit(1).execute().data)
+    if site and site.get("premium_charge_at_golive") and (site.get("tier") or "standard") == "premium":
+        return {"balance": total, "paid": 0, "total": total}
+    return {"balance": 0, "paid": 0, "total": 0}
+
+
+def set_charge_at_golive(db: Any, org_id: str, site: dict, enabled: bool, actor: str) -> dict:
+    """Staff switch for a Premium site made before payment existed: charge the whole Premium price at go-live."""
+    if (site.get("tier") or "standard") != "premium":
+        raise ValidationFailed("Only a site with a Premium design can be charged for Premium.")
+    if enabled and design_fee_paid(db, org_id, site["id"]) > 0:
+        raise ValidationFailed("This site already paid a Premium design fee, so its balance is charged automatically.")
+    db.table("sites").update({"premium_charge_at_golive": bool(enabled), "updated_at": _now_iso()}) \
+        .eq("id", site["id"]).eq("org_id", org_id).execute()
+    _event(db, org_id, site["id"], "premium_charge_at_golive_on" if enabled else "premium_charge_at_golive_off", {}, None, actor=actor)
+    return {"charge_at_golive": bool(enabled), **go_live_balance(db, org_id, site["id"])}
 
 
 def _event(db: Any, org_id: str, site_id: str, event: str, detail: Optional[dict] = None, order_id: Optional[str] = None,

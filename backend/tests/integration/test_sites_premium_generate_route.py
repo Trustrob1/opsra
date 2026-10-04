@@ -148,3 +148,28 @@ class TestGenerateRoute(_Base):
             r = c.get("/api/v1/sites/site-1/premium/designs")
         assert r.status_code == 200
         assert [d["status"] for d in r.json()["data"]["designs"]] == ["generating"]
+
+
+class TestChargeAtGoLiveRoute(_Base):
+    URL = "/api/v1/sites/site-1/premium/charge-at-golive"
+
+    def test_staff_can_switch_it_on_and_the_list_shows_it(self):
+        self.db.tables["sites"][0].update(tier="premium")
+        with _c() as c:
+            r = c.post(self.URL, json={"enabled": True})
+            listed = c.get("/api/v1/sites/site-1/premium/designs").json()["data"]
+        assert r.status_code == 200 and r.json()["data"]["balance"] == 30000
+        assert listed["charge_at_golive"] is True and listed["golive_balance"] == 30000 and listed["fee_paid"] == 0 and listed["total_fee"] == 30000
+
+    def test_a_standard_site_is_refused(self):
+        with _c() as c:
+            r = c.post(self.URL, json={"enabled": True})
+        assert r.status_code == 422
+
+    def test_a_read_only_role_cannot_change_it(self):
+        self.db.tables["sites"][0].update(tier="premium")
+        self.template = "sales_agent"
+        with _c() as c:
+            r = c.post(self.URL, json={"enabled": True})
+        assert r.status_code in (401, 403)
+        assert not self.db.rows("sites")[0].get("premium_charge_at_golive")

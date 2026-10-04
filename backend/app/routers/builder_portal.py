@@ -789,6 +789,7 @@ def get_quote(payload: QuoteRequest, builder=Depends(get_current_builder), db=De
                     if isinstance(q, dict) and isinstance(q.get("price"), dict) and not q.get("error"):
                         base = q["amount_due"] if q.get("amount_due") is not None else q["price"]["total"]
                         q["premium_balance"] = line["balance"]
+                        q["premium_paid"] = line["paid"]
                         q["amount_due"] = round(float(base) + float(line["balance"]), 2)
         except HTTPException:
             raise

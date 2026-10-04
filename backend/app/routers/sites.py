@@ -52,7 +52,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -718,7 +718,24 @@ def premium_designs(site_id: str, org=Depends(get_current_org), db=Depends(get_s
     org_id = _premium_org(org, db, _READ_ROLES)
     site = _get_site(db, org_id, site_id)
     return ok(data={"tier": site.get("tier") or "standard", "current_design_id": site.get("current_design_id"),
-                    "designs": site_premium_service.list_designs(db, org_id, site_id)})
+                    "designs": site_premium_service.list_designs(db, org_id, site_id),
+                    "charge_at_golive": bool(site.get("premium_charge_at_golive")),
+                    "fee_paid": site_premium_billing_service.design_fee_paid(db, org_id, site_id),
+                    "golive_balance": site_premium_billing_service.go_live_balance(db, org_id, site_id)["balance"],
+                    "total_fee": site_premium_billing_service.get_config(site_premium_generation_service.settings_for(db, org_id))["total_fee_ngn"]})
+
+
+@router.post("/sites/{site_id}/premium/charge-at-golive")
+def premium_charge_at_golive(site_id: str, payload: dict, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """Staff: charge the whole Premium price at go-live for a Premium site made before payment existed."""
+    org_id = _premium_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    enabled = bool((payload or {}).get("enabled"))
+    try:
+        data = site_premium_billing_service.set_charge_at_golive(db, org_id, site, enabled, f"user:{org.get('id')}")
+    except site_ops_service.SiteOpsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    return ok(data=data, message="Premium will be charged at go-live." if enabled else "Premium will not be charged at go-live.")
 
 
 @router.get("/sites/{site_id}/premium/designs/{design_id}/preview")

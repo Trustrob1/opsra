@@ -118,6 +118,8 @@ export const getSiteHostnames = (siteId) => unwrap(api.get(`/api/v1/sites/${site
 /** { tier, current_design_id, designs: [{ id, version, status, cost_usd, duration_ms, checks, created_by, created_at, ... }] } */
 export const getPremiumDesigns = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/premium/designs`))
 /** Queues a design (202). Poll getPremiumDesigns: the new version goes generating -> checking -> ready | failed. */
+/** Staff: charge the whole Premium price at go-live for a Premium site made before payment existed. */
+export const setPremiumChargeAtGoLive = (siteId, enabled) => unwrap(api.post(`/api/v1/sites/${siteId}/premium/charge-at-golive`, { enabled }))
 export const generatePremiumDesign = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/premium/generate`))
 /** { design_id, html } - the page for one finished version; changes nothing. */
 export const previewPremiumDesign = (siteId, designId) => unwrap(api.get(`/api/v1/sites/${siteId}/premium/designs/${designId}/preview`))

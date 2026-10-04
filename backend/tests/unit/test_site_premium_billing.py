@@ -14,6 +14,7 @@ from app.services import site_premium_billing_service as bill
 from app.services import site_premium_generation_service as gen
 from app.services import site_premium_history as hist
 from app.services import whatsapp_service
+from app.services.site_ops_service import ValidationFailed
 from tests.funnel_fake_db import FakeDB
 from tests.unit.premium_gen_fixtures import ScriptedClaude, good_art_reply, good_build_reply
 from tests.unit.test_site_premium_generation import CONTENT, ORG, _row
@@ -423,3 +424,59 @@ class TestPaidRedesignCredits:
     def test_the_staff_switch_still_allows_it_free(self):
         db = self.live_premium(site_premium_post_live_redesign=True)
         assert hist.redesign_status(db, ORG, site(db))["allowed"]
+
+
+class TestChargeAtGoLive:
+    """A Premium site made before payment existed is free by default; staff can switch the whole price on for it."""
+
+    def test_off_by_default_so_an_old_premium_site_owes_nothing(self):
+        db = make_db(tier="premium")
+        assert bill.go_live_balance(db, ORG, "site-1")["balance"] == 0
+
+    def test_switched_on_the_whole_price_is_owed(self):
+        db = make_db(tier="premium")
+        out = bill.set_charge_at_golive(db, ORG, site(db), True, "user:u1")
+        assert out == {"charge_at_golive": True, "balance": 30000, "paid": 0, "total": 30000}
+        assert site(db)["premium_charge_at_golive"] is True
+        assert "premium_charge_at_golive_on" in [e["event"] for e in db.rows("site_events")]
+
+    def test_the_price_follows_the_setting(self):
+        db = make_db(tier="premium", pricing={"premium": {"total_fee_ngn": 45000}})
+        assert bill.set_charge_at_golive(db, ORG, site(db), True, "u")["balance"] == 45000
+
+    def test_switching_it_off_again_charges_nothing(self):
+        db = make_db(tier="premium")
+        bill.set_charge_at_golive(db, ORG, site(db), True, "u")
+        assert bill.set_charge_at_golive(db, ORG, site(db), False, "u")["balance"] == 0
+
+    def test_a_standard_site_cannot_be_switched_on(self):
+        db = make_db()
+        with pytest.raises(ValidationFailed):
+            bill.set_charge_at_golive(db, ORG, site(db), True, "u")
+
+    def test_a_site_that_paid_the_fee_does_not_need_the_switch(self):
+        db = make_db(tier="premium")
+        order(db)
+        with pytest.raises(ValidationFailed):
+            bill.set_charge_at_golive(db, ORG, site(db), True, "u")
+        assert bill.go_live_balance(db, ORG, "site-1")["balance"] == 10000
+
+    def test_a_site_sent_back_to_standard_is_not_charged(self):
+        db = make_db(tier="premium")
+        bill.set_charge_at_golive(db, ORG, site(db), True, "u")
+        db.tables["sites"][0]["tier"] = "standard"
+        assert bill.go_live_balance(db, ORG, "site-1")["balance"] == 0
+
+    def test_the_go_live_order_carries_the_whole_price(self, monkeypatch):
+        db = make_db(tier="premium")
+        bill.set_charge_at_golive(db, ORG, site(db), True, "u")
+        quote = {"route": "standard", "kind": "initial", "domain": "a.com.ng", "tld": ".com.ng", "cost": {"total": 1},
+                 "price": {"total": 79500}, "profit": 5}
+        monkeypatch.setattr(pricing_service, "quote", lambda *a, **k: quote)
+        monkeypatch.setattr(pricing_service, "get_settings", lambda db, org: {})
+        monkeypatch.setattr(pay, "generate_payment_link", lambda **k: {"checkout_url": "u", "reference": "r", "payment_link_id": "p"})
+        from app.services import lead_service
+        monkeypatch.setattr(lead_service, "move_stage", lambda **k: {})
+        payload = SimpleNamespace(site_id="site-1", route="standard", domain="a.com.ng", backup_domain="b.ng", discount_code=None,
+                                  legal_owner=SimpleNamespace(model_dump=lambda mode="json": {}))
+        assert orders.create_checkout(db, ORG, BUILDER, payload)["amount"] == 109500

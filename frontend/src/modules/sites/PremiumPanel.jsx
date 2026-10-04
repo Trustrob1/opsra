@@ -10,9 +10,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sparkles, Eye, Undo2, RefreshCw } from 'lucide-react'
 import {
-  getPremiumDesigns, generatePremiumDesign, previewPremiumDesign, switchPremiumDesign, premiumBackToStandard, errorMessage,
+  getPremiumDesigns, generatePremiumDesign, setPremiumChargeAtGoLive, previewPremiumDesign, switchPremiumDesign, premiumBackToStandard, errorMessage,
 } from '../../services/sites.service'
-import { Card, Button, Badge, Notice, SectionTitle, Modal, Segmented } from './sitesUi'
+import { Card, Button, Badge, Notice, SectionTitle, Modal, Segmented, Toggle } from './sitesUi'
 import { T, dateTime } from './sitesKit'
 
 const POLL_MS = 5000
@@ -34,6 +34,7 @@ export default function PremiumPanel({ siteId, canEdit, showToast, onSiteChanged
   const [error, setError] = useState(null)
   const [starting, setStarting] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [charging, setCharging] = useState(false)
   const [preview, setPreview] = useState(null)  // { version, html }
   const [width, setWidth] = useState('desktop')
   const hadActive = useRef(false)
@@ -129,6 +130,18 @@ export default function PremiumPanel({ siteId, canEdit, showToast, onSiteChanged
   }
 
   const isPremium = data?.tier === 'premium'
+  const toggleCharge = async (on) => {
+    setCharging(true)
+    try {
+      await setPremiumChargeAtGoLive(siteId, on)
+      showToast(on ? 'Premium will be charged at go-live' : 'Premium will not be charged at go-live')
+      await load()
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not change this.'), 'bad')
+    } finally {
+      setCharging(false)
+    }
+  }
   const current = designs.find((d) => d.id === data?.current_design_id)
 
   return (
@@ -153,6 +166,23 @@ export default function PremiumPanel({ siteId, canEdit, showToast, onSiteChanged
       />
 
       {error && <Notice tone="bad">{error}</Notice>}
+      {isPremium && (
+        <div style={{ marginBottom: 12, border: `1px solid ${T.line}`, borderRadius: 10, padding: '10px 12px' }}>
+          {data.fee_paid > 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: T.ink }}>
+              Premium design fee paid: ₦{Number(data.fee_paid).toLocaleString('en-NG')}. The balance of ₦{Number(data.golive_balance).toLocaleString('en-NG')} is added when the builder goes live.
+            </p>
+          ) : (
+            <>
+              <Toggle checked={!!data.charge_at_golive} disabled={!canEdit || charging} onChange={toggleCharge}
+                label={`Charge Premium (₦${Number(data.total_fee || 0).toLocaleString('en-NG')}) when this site goes live`} />
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: T.muted }}>
+                No Premium fee was paid for this site, so it is free by default. Switch this on if the builder should pay for Premium at go-live.
+              </p>
+            </>
+          )}
+        </div>
+      )}
       <Notice tone="info">
         Use clean photos: no text, logos or screenshots on them. A portrait or product photo works best. A finished design
         replaces this site's preview straight away; publish to Cloudflare only when you are happy with it. Older versions are kept.

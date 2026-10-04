@@ -1002,7 +1002,9 @@ function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSub
         {quote.premium_balance > 0 && <SummaryRow label="Premium design balance" value={money(quote.premium_balance)} />}
         {quote.premium_balance > 0 && (
           <p style={{ margin: 0, fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
-            Your Premium design fee is already paid. This completes the Premium price, and it is part of the total below.
+            {quote.premium_paid > 0
+              ? 'Your Premium design fee is already paid. This completes the Premium price, and it is part of the total below.'
+              : 'This is the price of your Premium design. It is part of the total below.'}
           </p>
         )}
       </div>
