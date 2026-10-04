@@ -26,6 +26,7 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { requestBuilderLink, errorMessage } from "../services/builder_portal.service";
+import SiteSignUpForm from "./SiteSignUpForm";
 import "./SiteLandingPage.css";
 
 const JOIN_URL = import.meta.env.VITE_BUILDER_JOIN_URL || "";
@@ -245,6 +246,23 @@ function SignInForm({ inputRef }) {
         {ARROW}
       </button>
     </form>
+  );
+}
+
+function AuthPanel({ inputRef }) {
+  const [mode, setMode] = useState("signin"); // signin | signup
+  return (
+    <>
+      <div className="sl-authtabs" role="tablist" aria-label="Sign in or create an account">
+        <button type="button" role="tab" aria-selected={mode === "signin"} onClick={() => setMode("signin")}>
+          Sign in
+        </button>
+        <button type="button" role="tab" aria-selected={mode === "signup"} onClick={() => setMode("signup")}>
+          Create account
+        </button>
+      </div>
+      {mode === "signin" ? <SignInForm inputRef={inputRef} /> : <SiteSignUpForm />}
+    </>
   );
 }
 
@@ -841,8 +859,8 @@ export default function SiteLandingPage() {
               <span className="sl-label">Ready when you are</span>
               <h2 id="sih">Start your website today.</h2>
               <p className="sl-sub">
-                Begin on WhatsApp or with the form, and pick it up again whenever you like. Already building? Sign in on
-                the right, with no password.
+                Begin on WhatsApp or right here on the web, and pick it up again whenever you like. Already building?
+                Sign in on the right, with no password.
               </p>
               {JOIN_URL && (
                 <div className="sl-cta">
@@ -853,9 +871,9 @@ export default function SiteLandingPage() {
               )}
             </div>
             <div className="sl-box-in" id="signin">
-              <span className="sl-label">Already building?</span>
-              <h3>Sign in with your WhatsApp number.</h3>
-              <SignInForm inputRef={mainInputRef} />
+              <span className="sl-label">Your account</span>
+              <h3>Sign in or create your account.</h3>
+              <AuthPanel inputRef={mainInputRef} />
             </div>
           </div>
         </section>
@@ -889,9 +907,9 @@ export default function SiteLandingPage() {
           >
             ×
           </button>
-          <span className="sl-label">Welcome back</span>
-          <h2 id="sl-shh">Sign in.</h2>
-          <SignInForm inputRef={sheetInputRef} />
+          <span className="sl-label">Welcome</span>
+          <h2 id="sl-shh">Sign in or sign up.</h2>
+          <AuthPanel inputRef={sheetInputRef} />
         </div>
       </dialog>
     </div>

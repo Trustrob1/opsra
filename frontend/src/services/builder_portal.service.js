@@ -155,3 +155,29 @@ export function errorMessage(err, fallback = 'Something went wrong. Please try a
  * WhatsApp/email. The reply never says whether the number exists. */
 export const requestBuilderLink = (phone) =>
   unwrap(axios.post(`${BASE}/auth/request-link`, { phone }))
+
+// ── Web sign-up (SITE-WEB-1) ────────────────────────────────────────────────
+/** payload: { full_name, email, phone, account_type: 'builder'|'owner', accept_terms, website (honeypot) }
+ * → { request_id, email_hint }. A code is emailed; nothing is created yet. */
+export const startSignup = (payload) => unwrap(axios.post(`${BASE}/auth/signup/start`, payload))
+/** → { token, builder }. Open `/b/login?t=<token>` to start the session. */
+export const verifySignup = (requestId, code) =>
+  unwrap(axios.post(`${BASE}/auth/signup/verify`, { request_id: requestId, code }))
+
+// ── Free sites and the builder subscription (SITE-ACCESS-1) ─────────────────
+/** → { used, free_sites, free_left, subscribed, subscribed_until, can_create, price_ngn, days } */
+export const getAccess = (token) => unwrap(axios.get(`${BASE}/access`, authed(token)))
+/** → { checkout_url, amount, days, reused } */
+export const accessCheckout = (token) => unwrap(axios.post(`${BASE}/access/checkout`, null, authed(token)))
+/** The detail a 403 ACCESS_LIMIT response carries ({ message, access }), or null for any other error. */
+export const accessLimit = (err) => {
+  const d = err?.response?.data?.detail
+  return err?.response?.status === 403 && d?.code === 'ACCESS_LIMIT' ? d : null
+}
+
+// ── Start a site from the web (SITE-WEB-1) ──────────────────────────────────
+export const listPresets = (token) => unwrap(axios.get(`${BASE}/presets`, authed(token)))
+export const listMyForms = (token) => unwrap(axios.get(`${BASE}/forms`, authed(token)))
+/** payload: { audience: 'builder'|'client', preset_id?, client_label? } → { id, url, expires_at, ... } (link shown once) */
+export const createMyForm = (token, payload) => unwrap(axios.post(`${BASE}/forms`, payload, authed(token)))
+export const revokeMyForm = (token, formId) => unwrap(axios.post(`${BASE}/forms/${formId}/revoke`, null, authed(token)))

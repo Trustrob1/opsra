@@ -960,3 +960,114 @@ class TestPremiumBuyRoutes:
         app.dependency_overrides[get_supabase] = lambda: self._db()
         data = authed_client.post("/api/v1/builder/quotes", json={"domain": "adaeza.com.ng", "kind": "initial", "site_id": SITE_ID}).json()["data"]
         assert data["standard"]["amount_due"] == 80000
+
+
+# ---------------------------------------------------------------------------
+# SITE-ACCESS-1 + SITE-WEB-1: free-site cap, subscription link, New site (pick a type, get a form link)
+# ---------------------------------------------------------------------------
+class TestAccessAndNewSite:
+    def _sites(self, n):
+        return _chain([{"id": f"s{i}"} for i in range(n)])
+
+    def test_access_view_under_cap(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(sites=self._sites(2))
+        resp = authed_client.get("/api/v1/builder/access")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["used"] == 2 and data["free_sites"] == 3 and data["can_create"] is True and data["subscribed"] is False
+
+    def test_access_view_at_cap(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(sites=self._sites(3))
+        data = authed_client.get("/api/v1/builder/access").json()["data"]
+        assert data["can_create"] is False and data["price_ngn"] == 5000
+
+    def test_access_checkout_returns_the_link(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        monkeypatch.setattr(builder_portal.site_access_service, "create_checkout",
+                            lambda db, org_id, builder: {"checkout_url": "https://pay.test/x", "amount": 5000, "days": 30, "reused": False})
+        resp = authed_client.post("/api/v1/builder/access/checkout")
+        assert resp.status_code == 200 and resp.json()["data"]["checkout_url"] == "https://pay.test/x"
+
+    def test_access_checkout_error_is_a_422(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+
+        def boom(db, org_id, builder):
+            raise builder_portal.site_access_service.AccessError("not available")
+        monkeypatch.setattr(builder_portal.site_access_service, "create_checkout", boom)
+        assert authed_client.post("/api/v1/builder/access/checkout").status_code == 422
+
+    def test_presets_lists_only_choosing_fields(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(
+            site_presets=_chain([{"id": PRESET_ID, "key": "boutique", "name": "Fashion boutique"}]))
+        resp = authed_client.get("/api/v1/builder/presets")
+        assert resp.status_code == 200 and resp.json()["data"][0]["name"] == "Fashion boutique"
+
+    def test_create_form_link(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(
+            sites=self._sites(1), site_brief_forms=_chain([]), site_presets=_chain([_FAKE_PRESET]))
+        seen = {}
+
+        def fake(db, org_id, builder, audience, preset_id=None, client_label=None):
+            seen.update(audience=audience, preset_id=preset_id, label=client_label, builder=builder["id"])
+            return {"id": "f-1", "expires_at": "2026-10-19T00:00:00+00:00"}, "https://app.test/f/tok"
+        monkeypatch.setattr(builder_portal.site_chat_service, "create_form_link", fake)
+        resp = authed_client.post("/api/v1/builder/forms", json={"audience": "client", "preset_id": PRESET_ID, "client_label": " Adaeze "})
+        assert resp.status_code == 201
+        assert resp.json()["data"]["url"] == "https://app.test/f/tok"
+        assert seen == {"audience": "client", "preset_id": PRESET_ID, "label": "Adaeze", "builder": BUILDER_ID}
+
+    def test_create_form_link_defaults_to_the_builders_own_form(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(sites=self._sites(0), site_brief_forms=_chain([]))
+        seen = {}
+        monkeypatch.setattr(builder_portal.site_chat_service, "create_form_link",
+                            lambda db, org_id, builder, audience, preset_id=None, client_label=None:
+                            (seen.update(a=audience) or {"id": "f-2"}, "https://app.test/f/t2"))
+        assert authed_client.post("/api/v1/builder/forms", json={}).status_code == 201
+        assert seen["a"] == "builder"
+
+    def test_create_form_link_blocked_at_the_cap(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(sites=self._sites(3), site_brief_forms=_chain([]))
+        called = []
+        monkeypatch.setattr(builder_portal.site_chat_service, "create_form_link", lambda *a, **k: called.append(1))
+        resp = authed_client.post("/api/v1/builder/forms", json={"audience": "builder"})
+        assert resp.status_code == 403
+        detail = resp.json()["detail"]
+        assert detail["code"] == "ACCESS_LIMIT" and detail["access"]["used"] == 3 and "free sites" in detail["message"]
+        assert called == []
+
+    def test_create_form_link_bad_audience(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(sites=self._sites(0))
+        assert authed_client.post("/api/v1/builder/forms", json={"audience": "everyone"}).status_code == 422
+
+    def test_create_form_link_unknown_preset(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(sites=self._sites(0), site_presets=_chain([]))
+        assert authed_client.post("/api/v1/builder/forms", json={"preset_id": PRESET_ID}).status_code == 404
+
+    def test_too_many_open_links(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(
+            sites=self._sites(0), site_brief_forms=_chain([{"id": f"f{i}"} for i in range(25)]))
+        assert authed_client.post("/api/v1/builder/forms", json={}).status_code == 422
+
+    def test_list_my_links(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(
+            site_brief_forms=_chain([{"id": "f-1", "audience": "client", "status": "open"}]))
+        resp = authed_client.get("/api/v1/builder/forms")
+        assert resp.status_code == 200 and resp.json()["data"][0]["id"] == "f-1"
+        assert "token_hash" not in resp.json()["data"][0]
+
+    def test_revoke_open_link(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(site_brief_forms=_chain([{"id": "f-1", "status": "open"}]))
+        assert authed_client.post("/api/v1/builder/forms/f-1/revoke").status_code == 200
+
+    def test_revoke_missing_link(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(site_brief_forms=_chain([]))
+        assert authed_client.post("/api/v1/builder/forms/nope/revoke").status_code == 404
+
+    def test_revoke_submitted_link_is_refused(self, authed_client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock(site_brief_forms=_chain([{"id": "f-1", "status": "submitted"}]))
+        assert authed_client.post("/api/v1/builder/forms/f-1/revoke").status_code == 409
+
+    def test_new_routes_need_a_builder_session(self, client):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        for method, path in (("get", "/access"), ("post", "/access/checkout"), ("get", "/presets"), ("get", "/forms"), ("post", "/forms")):
+            assert getattr(client, method)(f"/api/v1/builder{path}").status_code == 401

@@ -198,6 +198,13 @@ def _create_brief_form(db, org_id: str, builder: dict, audience: str, preset_id:
     return (_one(res.data) or row), raw_token
 
 
+def create_form_link(db, org_id: str, builder: dict, audience: str, preset_id: Optional[str] = None,
+                      client_label: Optional[str] = None) -> tuple[dict, str]:
+    """SITE-WEB-1: the builder portal's way to mint a brief-form link (same row the bot makes). Returns (form, url)."""
+    form, raw_token = _create_brief_form(db, org_id, builder, audience, preset_id=preset_id, client_label=client_label)
+    return form, _form_url({}, raw_token)
+
+
 def _form_url(settings: dict, raw_token: str) -> str:
     # Per spec §7.3, the form lives on the FRONTEND at /f/{token} — a separate
     # host from the preview_base_url (which is the backend preview host).
@@ -206,8 +213,29 @@ def _form_url(settings: dict, raw_token: str) -> str:
     return f"{frontend_base}/f/{raw_token}"
 
 
+def _blocked_by_access(db, org_id: str, number_row: dict, sender_phone: str, builder: dict) -> bool:
+    """SITE-ACCESS-1: True (after telling the builder why) when they have used their free sites and have no
+    active subscription. The message carries a Paystack link when one can be made."""
+    from app.services import site_access_service as access
+    try:
+        access.check_can_create(db, org_id, builder)
+        return False
+    except access.AccessBlocked as exc:
+        text = str(exc)
+        try:
+            checkout = access.create_checkout(db, org_id, builder)
+            text += f"\n\nPay here: {checkout['checkout_url']}\n\nThen reply NEW to start your next site."
+        except Exception:
+            logger.exception("[SITE-ACCESS] checkout link failed builder=%s", builder.get("id"))
+            text += "\n\nReply HUMAN and we'll send you a payment link."
+        _send_text(db, org_id, number_row, sender_phone, text, builder.get("lead_id"))
+        return True
+
+
 def _send_form_link(db, org_id: str, number_row: dict, sender_phone: str, builder: dict, settings: dict,
                      audience: str, preset_id: Optional[str] = None) -> None:
+    if _blocked_by_access(db, org_id, number_row, sender_phone, builder):
+        return
     form, raw_token = _create_brief_form(db, org_id, builder, audience, preset_id=preset_id)
     url = _form_url(settings, raw_token)
     if audience == "client":
@@ -522,6 +550,8 @@ def _handle_command(cmd: str, db, org_id: str, number_row: dict, sender_phone: s
         _send_text(db, org_id, number_row, sender_phone, _menu_text(builder), lead_id)
         return True
     if cmd == "NEW":
+        if _blocked_by_access(db, org_id, number_row, sender_phone, builder):
+            return True
         _update_chat(db, chat, {"state": "choose_new_type"})
         _send_text(db, org_id, number_row, sender_phone, _new_site_options_text(), lead_id)
         return True
@@ -623,6 +653,8 @@ def handle_inbound(db, number_row: dict, sender_phone: str, contact_name: str, m
 
     if state == "menu":
         if upper in ("1",) or "start" in text.lower() or "new" in text.lower():
+            if _blocked_by_access(db, org_id, number_row, sender_phone, builder):
+                return
             _update_chat(db, chat, {"state": "choose_new_type"})
             _send_text(db, org_id, number_row, sender_phone, _new_site_options_text(), builder.get("lead_id"))
             return
@@ -664,6 +696,9 @@ def handle_inbound(db, number_row: dict, sender_phone: str, contact_name: str, m
             _send_text(db, org_id, number_row, sender_phone, "Please reply with one of the numbers above (or MENU to go back).", builder.get("lead_id"))
             return
         preset = presets[int(text) - 1]
+        if _blocked_by_access(db, org_id, number_row, sender_phone, builder):
+            _update_chat(db, chat, {"state": "menu"})
+            return
         chat = _start_chat_brief(db, org_id, chat, builder, preset)
         steps = _steps_for_preset(preset)
         _send_text(db, org_id, number_row, sender_phone, _question_prompt(steps[0]), builder.get("lead_id"))

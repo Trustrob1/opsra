@@ -245,3 +245,20 @@
 @media (prefers-reduced-motion:reduce){
   .sl *,.sl *::before,.sl *::after{transition:none!important;animation:none!important}
 }
+
+/* auth tabs + sign-up form (SITE-WEB-1) */
+.sl .sl-authtabs{display:flex;gap:4px;padding:4px;background:#F1EFEA;border-radius:999px;margin:12px 0 4px;align-self:flex-start}
+.sl .sl-authtabs button{min-height:40px;padding:0 18px;border:0;border-radius:999px;background:transparent;font:inherit;font-size:14px;font-weight:700;color:var(--mute);cursor:pointer}
+.sl .sl-authtabs button[aria-selected="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(11,27,43,.15)}
+.sl .sl-legend{font-size:13px;font-weight:600;color:var(--ink2);padding:0;margin-bottom:6px}
+.sl .sl-radios{display:flex;flex-direction:column;gap:8px}
+.sl .sl-sform .sl-radio{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid #CFCBC2;border-radius:12px;cursor:pointer;font-size:15px;font-weight:600;color:var(--ink)}
+.sl .sl-sform .sl-radio input{width:auto;min-height:0;margin-top:4px;accent-color:var(--teal)}
+.sl .sl-sform .sl-radio small{display:block;font-weight:400;color:var(--mute);font-size:13px}
+.sl .sl-sform .sl-radio:has(input:checked){border-color:var(--teal);background:#F0FAFB}
+.sl .sl-sform .sl-check{display:flex;align-items:flex-start;gap:10px;font-size:14px;font-weight:400;color:var(--ink2);margin-top:6px}
+.sl .sl-sform .sl-check input{width:auto;min-height:0;margin-top:4px;accent-color:var(--teal)}
+.sl .sl-sform .sl-check a{color:var(--teal-deep);text-decoration:underline}
+.sl .sl-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.sl .sl-sform input.sl-code{letter-spacing:.4em;text-align:center;font-size:24px;font-weight:700}
+.sl .sl-sform .sl-linkbtn{align-self:flex-start;cursor:pointer;background:none;border:0;padding:8px 0;font:inherit;font-weight:700;color:var(--teal-deep);text-decoration:underline}

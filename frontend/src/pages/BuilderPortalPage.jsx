@@ -39,6 +39,7 @@ import {
   patchMySiteContent, patchMySiteRecipe, suggestMyDesigns, applyMyDesign, renderMySite, undoMySite, uploadMySiteAsset,
   getPremiumLook, previewPremiumLook, applyPremiumLook, undoPremiumLook,
   checkDomain, getQuote, checkout, errorMessage,
+  getAccess, accessCheckout, listMyForms, revokeMyForm,
 } from '../services/builder_portal.service'
 import SectionTiles from '../modules/sites/SectionTiles'
 import DesignSuggestModal from '../modules/sites/DesignSuggestModal'
@@ -50,6 +51,7 @@ import ExtraSectionCards from '../modules/sites/ExtraSectionCards'
 import PremiumLookCard from '../modules/sites/PremiumLookCard'
 import PremiumDesignsCard from '../modules/sites/PremiumDesignsCard'
 import PremiumOfferCard from '../modules/sites/PremiumOfferCard'
+import NewSiteModal from '../modules/sites/NewSiteModal'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -172,6 +174,10 @@ function MySitesView({ token, onOpen, showToast }) {
   const [error, setError] = useState(null)
   const [renewing, setRenewing] = useState(null)
   const [careBusy, setCareBusy] = useState(null)
+  const [access, setAccess] = useState(null)         // SITE-ACCESS-1: free sites used / subscription
+  const [forms, setForms] = useState([])             // SITE-WEB-1: links waiting for details
+  const [newOpen, setNewOpen] = useState(false)
+  const [subBusy, setSubBusy] = useState(false)
 
   async function buy(site, what) {
     setCareBusy(`${site.id}:${what}`)
@@ -208,25 +214,98 @@ function MySitesView({ token, onOpen, showToast }) {
     }
   }
 
+  const refreshExtras = useCallback(() => {
+    getAccess(token).then(setAccess).catch(() => {})                          // the page still works without these
+    listMyForms(token).then((rows) => setForms(rows.filter((f) => f.status === 'open'))).catch(() => {})
+  }, [token])
+
   useEffect(() => {
     listMySites(token)
       .then(setSites)
       .catch((e) => setError(errorMessage(e, 'Could not load your sites.')))
-  }, [token])
+    refreshExtras()
+  }, [token, refreshExtras])
+
+  async function subscribe() {
+    setSubBusy(true)
+    try {
+      const res = await accessCheckout(token)
+      window.location.assign(res.checkout_url)
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not create the payment link.'), 'bad')
+      setSubBusy(false)
+    }
+  }
+
+  async function cancelLink(form) {
+    try {
+      await revokeMyForm(token, form.id)
+      setForms((rows) => rows.filter((f) => f.id !== form.id))
+      showToast('Link cancelled')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not cancel the link.'), 'bad')
+    }
+  }
 
   if (error) return <Notice tone="bad">{error}</Notice>
   if (sites === null) return <Spinner />
 
+  const header = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: T.soft }}>
+          {access && (access.subscribed
+            ? `Subscription active until ${dateOnly(access.subscribed_until)}`
+            : `${access.used} of ${access.free_sites} free sites used`)}
+        </span>
+        <Button variant="primary" icon={Plus} onClick={() => setNewOpen(true)}>New site</Button>
+      </div>
+      {access && !access.can_create && (
+        <Notice tone="warn">
+          You&apos;ve used your {access.free_sites} free sites. Subscribe for {money(access.price_ngn)} every {access.days} days to keep starting new ones. Your existing sites are not affected.
+          <div style={{ marginTop: 8 }}><Button variant="primary" size="sm" loading={subBusy} onClick={subscribe}>Subscribe · {money(access.price_ngn)}</Button></div>
+        </Notice>
+      )}
+    </div>
+  )
+
+  const waiting = forms.length > 0 && (
+    <Card pad={14}>
+      <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: T.ink }}>Waiting for details</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {forms.map((f) => (
+          <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: T.ink }}>
+              {f.client_label || (f.audience === 'client' ? 'Client link' : 'Your form')}
+              <span style={{ color: T.muted }}> · expires {dateOnly(f.expires_at)}</span>
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => cancelLink(f)}>Cancel link</Button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+
+  const newSiteModal = (
+    <NewSiteModal open={newOpen} onClose={() => setNewOpen(false)} token={token} onCreated={refreshExtras} onSubscribe={subscribe} />
+  )
+
   if (sites.length === 0) {
     return (
-      <Card>
-        <Empty icon={Building2} title="No sites yet" text="Once a site has been started for one of your clients, it will show up here for you to edit." />
-      </Card>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {header}
+        <Card>
+          <Empty icon={Building2} title="No sites yet" text="Tap New site to get a form link for you or your client. The site shows up here once the form is submitted." />
+        </Card>
+        {waiting}
+        {newSiteModal}
+      </div>
     )
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {header}
       {sites.map((s) => {
         const st = SITE_STATUS[s.status] || SITE_STATUS.brief_in_progress
         return (
@@ -279,6 +358,8 @@ function MySitesView({ token, onOpen, showToast }) {
           </div>
         )
       })}
+      {waiting}
+      {newSiteModal}
     </div>
   )
 }

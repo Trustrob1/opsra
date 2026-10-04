@@ -245,6 +245,26 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
     if not preset:
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": "That business type is no longer available."})
 
+    # SITE-ACCESS-1: a builder past their free sites needs a subscription before another site is made.
+    # The answers stay saved on the form, so nothing is lost: once they subscribe the same link can be submitted.
+    from app.services import site_access_service
+    try:
+        _builder_row = _one((db.table("site_builders").select("*").eq("id", form["builder_id"])
+                             .eq("org_id", form["org_id"]).limit(1).execute()).data)
+    except Exception:  # S14 - a lookup failure must not lose a client's submission
+        logger.exception("[SITE-ACCESS] builder lookup failed on submit form=%s", form.get("id"))
+        _builder_row = None
+    if _builder_row:
+        try:
+            site_access_service.check_can_create(db, form["org_id"], _builder_row)
+        except site_access_service.AccessBlocked:
+            if form.get("audience") == "client":
+                _msg = "This form can't be submitted right now. Please let the person who sent you the link know."
+            else:
+                _msg = ("You've used your free sites. Open your Opsra builder portal to subscribe, then submit this form again. "
+                        "Your answers are saved.")
+            raise HTTPException(status_code=403, detail={"code": "ACCESS_LIMIT", "message": _msg})
+
     merged_answers = dict(form.get("answers") or {})
     merged_answers.update({k: v for k, v in (payload.answers or {}).items() if k != "_photos"})  # see autosave
     photos = merged_answers.pop("_photos", {})

@@ -52,6 +52,9 @@ from app.models.sites import (
 )
 from app.services import (
     builder_auth_service,
+    builder_signup_service,
+    site_access_service,
+    site_chat_service,
     domain_check_service,
     pricing_service,
     site_care_plan_service,
@@ -99,6 +102,13 @@ def _one(data):
     return data
 
 
+def _client_ip(request: Request) -> str:
+    """The caller's IP. Behind Render's proxy request.client is the proxy, so use the address the proxy appended
+    to X-Forwarded-For (the LAST entry; anything earlier is whatever the caller claimed)."""
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[-1].strip()
+    return forwarded or (request.client.host if request.client else "unknown")
+
+
 def _rate_limited(bucket: dict, key: str, limit: int, window_s: float) -> bool:
     now = time.time()
     hits = [t for t in bucket[key] if now - t < window_s]
@@ -115,7 +125,7 @@ def exchange_token(payload: dict, request: Request, db=Depends(get_supabase)):
     if not raw_token:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "token is required"})
 
-    limit_key = request.client.host if request.client else "unknown"
+    limit_key = _client_ip(request)
     if _rate_limited(_exchange_hits, limit_key, _EXCHANGE_LIMIT_PER_MIN, 60.0):
         raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many attempts — please wait a moment."})
 
@@ -165,7 +175,7 @@ def request_login_link(payload: dict, request: Request, background_tasks: Backgr
     if not variants:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Enter the WhatsApp number you registered with."})
 
-    ip = request.client.host if request.client else "unknown"
+    ip = _client_ip(request)
     if (_rate_limited(_request_link_ip_hits, ip, _REQUEST_LINK_PER_IP_HOUR, 3600.0)
             or _rate_limited(_request_link_phone_hits, variants[1], _REQUEST_LINK_PER_PHONE_HOUR, 3600.0)):
         raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many requests — please try again in an hour."})
@@ -173,6 +183,43 @@ def request_login_link(payload: dict, request: Request, background_tasks: Backgr
     background_tasks.add_task(builder_login_service.send_login_link, variants[1])
     return ok(data={"sent": True},
               message="If that number is registered, a sign-in link is on its way to your WhatsApp and email.")
+
+
+# ─────────────── Web sign-up (SITE-WEB-1): emailed code, then straight into the portal ───────────────
+
+_verify_hits: dict[str, list[float]] = defaultdict(list)
+
+
+@router.post("/auth/signup/start")
+def signup_start(payload: dict, request: Request, background_tasks: BackgroundTasks, db=Depends(get_supabase)):
+    """Public. Emails a 6-digit code. The reply is the same whether or not the number already has an account
+    (an existing account is sent a normal sign-in link instead)."""
+    from app.services import builder_login_service
+
+    def _send_link(phone: str) -> None:
+        background_tasks.add_task(builder_login_service.send_login_link, phone)
+
+    try:
+        data = builder_signup_service.start(db, payload, _client_ip(request), send_login_link=_send_link)
+    except builder_signup_service.SignupError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    return ok(data=data, message="If those details are new, a code is on its way to your email.")
+
+
+@router.post("/auth/signup/verify")
+def signup_verify(payload: dict, request: Request, db=Depends(get_supabase)):
+    """Public. A correct code creates the account and returns a single-use portal sign-in token; the page opens
+    /b/login?t=<token>, which exchanges it for a session exactly like a link from WhatsApp."""
+    if _rate_limited(_verify_hits, _client_ip(request), 30, 3600.0):
+        raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many attempts. Please try again in an hour."})
+    payload = payload or {}
+    try:
+        builder = builder_signup_service.verify(db, payload.get("request_id"), payload.get("code"))
+        token = builder_signup_service.mint_login_token(db, builder)
+    except builder_signup_service.SignupError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    return ok(data={"token": token, "builder": {"id": builder["id"], "full_name": builder["full_name"]}},
+              message="Welcome to Opsra")
 
 
 # ─────────────────────────────── get_current_builder ───────────────────────────────
@@ -281,6 +328,88 @@ def patch_me(payload: dict, builder=Depends(get_current_builder), db=Depends(get
 
 
 # ─────────────────────────────── My sites ───────────────────────────────
+
+# ─────────────── Access: free sites and subscription (SITE-ACCESS-1) ───────────────
+
+@router.get("/access")
+def get_access(builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """How many sites the builder has used, the free cap, and whether a subscription is running."""
+    return ok(data=site_access_service.view(db, builder["org_id"], builder))
+
+
+@router.post("/access/checkout")
+def access_checkout(builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    try:
+        result = site_access_service.create_checkout(db, builder["org_id"], builder)
+    except site_access_service.AccessError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    return ok(data=result, message="Payment link created")
+
+
+# ─────────────── New site from the web: pick a type, get a form link (SITE-WEB-1) ───────────────
+
+_MAX_OPEN_FORMS = 25
+
+
+@router.get("/presets")
+def list_my_presets(builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """The business types a builder can start a site for (only what's needed to choose one)."""
+    rows = (db.table("site_presets").select("id, key, name").eq("org_id", builder["org_id"])
+            .eq("is_active", True).order("name").execute()).data or []
+    return ok(data=rows)
+
+
+@router.get("/forms")
+def list_my_forms(builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    rows = (db.table("site_brief_forms")
+            .select("id, audience, status, client_label, preset_id, site_id, expires_at, submitted_at, created_at")
+            .eq("org_id", builder["org_id"]).eq("builder_id", builder["id"])
+            .order("created_at", desc=True).limit(50).execute()).data or []
+    return ok(data=rows)
+
+
+@router.post("/forms", status_code=status.HTTP_201_CREATED)
+def create_my_form(payload: dict, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """Start a new site: a brief-form link the builder fills in or sends to their client. The link is shown once."""
+    org_id = builder["org_id"]
+    payload = payload or {}
+    audience = payload.get("audience") or "builder"
+    if audience not in ("builder", "client"):
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "audience must be builder or client"})
+    label = str(payload.get("client_label") or "").strip()[:120] or None
+    preset_id = payload.get("preset_id") or None
+    if preset_id:
+        _get_preset(db, org_id, str(preset_id))
+
+    try:
+        site_access_service.check_can_create(db, org_id, builder)
+    except site_access_service.AccessBlocked as exc:
+        raise HTTPException(403, detail={"code": "ACCESS_LIMIT", "message": str(exc), "access": exc.view})
+
+    open_forms = (db.table("site_brief_forms").select("id").eq("org_id", org_id).eq("builder_id", builder["id"])
+                  .eq("status", "open").execute()).data or []
+    if len(open_forms) >= _MAX_OPEN_FORMS:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR",
+                                         "message": f"You have {_MAX_OPEN_FORMS} open links. Cancel the ones you no longer need first."})
+
+    form, url = site_chat_service.create_form_link(db, org_id, builder, audience, preset_id=preset_id, client_label=label)
+    return ok(data={"id": form.get("id"), "audience": audience, "url": url, "expires_at": form.get("expires_at"),
+                    "client_label": label}, message="Link created. Copy it now: it is only shown once.")
+
+
+@router.post("/forms/{form_id}/revoke")
+def revoke_my_form(form_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    org_id = builder["org_id"]
+    form = _one((db.table("site_brief_forms").select("id, status").eq("id", form_id).eq("org_id", org_id)
+                 .eq("builder_id", builder["id"]).limit(1).execute()).data)
+    if not form:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Link not found"})
+    if form.get("status") != "open":
+        raise HTTPException(409, detail={"code": "CONFLICT", "message": "Only open links can be cancelled"})
+    db.table("site_brief_forms").update({"status": "revoked", "updated_at": _now_iso()}) \
+        .eq("id", form_id).eq("org_id", org_id).execute()
+    return ok(data={"id": form_id, "status": "revoked"}, message="Link cancelled")
+
 
 @router.get("/sites")
 def list_my_sites(builder=Depends(get_current_builder), db=Depends(get_supabase)):

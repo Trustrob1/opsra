@@ -165,7 +165,7 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
     # spec §11.7 — "their FIRST order is created" is decided before the insert below.
     is_first_order = not [o for o in ((db.table("site_orders").select("id, kind").eq("org_id", org_id)
                                        .eq("builder_id", builder["id"]).execute()).data or [])
-                          if o.get("kind") not in ("premium_design", "premium_redesign")]   # a prepaid Premium design fee is not their site order
+                          if o.get("kind") not in ("premium_design", "premium_redesign", "builder_access")]   # prepaid fees and the builder subscription are not their site order
 
     try:
         link = paystack_storefront_service.generate_payment_link(
@@ -293,6 +293,39 @@ def _handle_care_payment(db: Any, org_id: str, order: dict, now: datetime) -> bo
         return True
 
 
+def _handle_access_payment(db: Any, org_id: str, order: dict, now: datetime) -> bool:
+    """SITE-ACCESS-1: a paid builder subscription extends access_paid_until. Nothing to fulfil. S14 - never raises."""
+    try:
+        sla_due_at = (now + timedelta(hours=_SLA_HOURS)).isoformat()
+        claim = (db.table("site_orders").update({"status": "live", "sla_due_at": sla_due_at, "updated_at": now.isoformat()})
+                 .eq("id", order["id"]).eq("status", "pending_payment").execute())
+        if not claim.data:
+            return True
+        try:
+            from app.services import site_access_service
+            site_access_service.on_paid(db, org_id, order, now)
+        except Exception as exc:
+            logger.warning("site_order: access payment activation failed order=%s: %s", order["id"], exc)
+            try:
+                from app.services import funnel_service
+                funnel_service.notify_managers(
+                    db, org_id, "Builder subscription needs a hand",
+                    f"A builder subscription payment (₦{float(order.get('amount') or 0):,.0f}) was received but couldn't be applied "
+                    "automatically. Set the builder's access date by hand in Sites > Builders.", "site_order_late_payment", None)
+            except Exception:
+                pass
+        try:
+            from app.services import funnel_service
+            funnel_service.notify_managers(
+                db, org_id, "Builder subscription paid", f"₦{float(order.get('amount') or 0):,.0f}", "site_order_paid", None)
+        except Exception as exc:
+            logger.warning("site_order: access manager notify failed order=%s: %s", order["id"], exc)
+        return True
+    except Exception as exc:
+        logger.warning("site_order._handle_access_payment failed order=%s: %s", order.get("id"), exc)
+        return True
+
+
 def _handle_premium_payment(db: Any, org_id: str, order: dict, now: datetime) -> bool:
     """SITE-PREMIUM P5: a paid design fee starts the design; a paid redesign gives one credit. S14 - never raises."""
     try:
@@ -354,6 +387,8 @@ def on_payment_confirmed(db: Any, org_id: str, reference: str, now: Optional[dat
             return _handle_care_payment(db, org_id, order, now)
         if order.get("kind") in ("premium_design", "premium_redesign"):
             return _handle_premium_payment(db, org_id, order, now)
+        if order.get("kind") == "builder_access":
+            return _handle_access_payment(db, org_id, order, now)
 
         approval_required = bool(order.get("approval_required"))
         new_status = "awaiting_approval" if approval_required else "fulfilling"
