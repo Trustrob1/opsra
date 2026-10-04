@@ -40,6 +40,7 @@ import {
   getPremiumLook, previewPremiumLook, applyPremiumLook, undoPremiumLook,
   checkDomain, getQuote, checkout, errorMessage,
   getAccess, accessCheckout, listMyForms, revokeMyForm,
+  startPhoneChange, verifyPhoneChange, whatsappLink,
 } from '../services/builder_portal.service'
 import SectionTiles from '../modules/sites/SectionTiles'
 import DesignSuggestModal from '../modules/sites/DesignSuggestModal'
@@ -62,6 +63,7 @@ export default function BuilderPortalPage() {
   const [error, setError] = useState('')
   const [view, setView] = useState('mysites')        // mysites | editor | account
   const [selectedSiteId, setSelectedSiteId] = useState(null)
+  const [waDismissed, setWaDismissed] = useState(false)
   const [toast, showToast] = useToast()
 
   useEffect(() => {
@@ -76,6 +78,10 @@ export default function BuilderPortalPage() {
       .then((data) => {
         setSession({ token: data.access_token, builder: data.builder })
         setStage('app')
+        // SITE-WEB-2: the full account (incl. whether they have messaged our WhatsApp yet). Never blocks sign-in.
+        getMyAccount(data.access_token)
+          .then((me) => setSession((s) => (s ? { ...s, builder: { ...s.builder, ...me } } : s)))
+          .catch(() => {})
       })
       .catch((e) => {
         setError(errorMessage(e, "This link isn't valid — ask for a new one."))
@@ -115,6 +121,11 @@ export default function BuilderPortalPage() {
           </Card>
         )}
 
+        {stage === 'app' && (view === 'mysites' || view === 'account') && !waDismissed
+          && session?.builder?.whatsapp_ever === false && whatsappLink('MENU') && (
+          <WhatsAppPrompt onDone={() => setWaDismissed(true)} />
+        )}
+
         {stage === 'app' && view === 'mysites' && (
           <MySitesView token={session.token} onOpen={(id) => { setSelectedSiteId(id); setView('editor') }} showToast={showToast} />
         )}
@@ -130,7 +141,7 @@ export default function BuilderPortalPage() {
 
         {stage === 'app' && view === 'account' && (
           <AccountView token={session.token} builder={session.builder}
-            onUpdated={(b) => setSession((s) => ({ ...s, builder: b }))} showToast={showToast} />
+            onUpdated={(b) => setSession((s) => ({ ...s, builder: { ...s.builder, ...b } }))} showToast={showToast} />
         )}
       </main>
       <Toast t={toast} />
@@ -168,6 +179,28 @@ function navBtn(active) {
 }
 
 // ─────────────────────────────── My sites ───────────────────────────────
+
+// SITE-WEB-2: WhatsApp only lets us message someone who has messaged us in the last 24 hours (and our own reply
+// to their first message opens that window), so we ask for one message instead of paying for a template.
+function WhatsAppPrompt({ onDone }) {
+  return (
+    <Notice tone="info" style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ flex: '1 1 280px', fontSize: 13.5 }}>
+          <strong>Get your links and order updates on WhatsApp.</strong> Send us one message first: WhatsApp only lets us
+          reply to people who have messaged us. Your updates always reach your email too.
+        </span>
+        <span style={{ display: 'flex', gap: 8 }}>
+          <a href={whatsappLink('MENU')} target="_blank" rel="noopener noreferrer" onClick={onDone}
+            style={{ background: '#0E7C66', color: '#fff', borderRadius: 8, padding: '8px 14px', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>
+            Message us on WhatsApp
+          </a>
+          <Button size="sm" onClick={onDone}>Not now</Button>
+        </span>
+      </div>
+    </Notice>
+  )
+}
 
 function MySitesView({ token, onOpen, showToast }) {
   const [sites, setSites] = useState(null)
@@ -366,6 +399,78 @@ function MySitesView({ token, onOpen, showToast }) {
 
 // ─────────────────────────────── Account ───────────────────────────────
 
+// SITE-WEB-2: change the WhatsApp number. The code goes to the email already saved on the account.
+function PhoneChange({ token, builder, onUpdated, showToast }) {
+  const [step, setStep] = useState('idle')          // idle | number | code
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
+  const [requestId, setRequestId] = useState('')
+  const [hint, setHint] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  function reset() { setStep('idle'); setPhone(''); setCode(''); setRequestId(''); setError('') }
+
+  async function sendCode() {
+    setBusy(true); setError('')
+    try {
+      const res = await startPhoneChange(token, phone)
+      setRequestId(res.request_id); setHint(res.email_hint || 'your email'); setStep('code')
+    } catch (e) {
+      setError(errorMessage(e, 'Could not send the code. Please try again.'))
+    } finally { setBusy(false) }
+  }
+
+  async function confirm() {
+    setBusy(true); setError('')
+    try {
+      const row = await verifyPhoneChange(token, requestId, code)
+      onUpdated({ ...row, whatsapp_ever: false, whatsapp_open: false })
+      showToast('WhatsApp number updated')
+      reset()
+    } catch (e) {
+      setError(errorMessage(e, 'That code did not work. Check it and try again.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Field label="WhatsApp number" hint={step === 'idle' ? 'Used for your sign-in links and order updates.' : undefined}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <input style={{ ...INPUT, background: '#F5FAFB', color: T.muted }} value={builder?.phone_number || ''} disabled aria-label="Current WhatsApp number" />
+        {step === 'idle' && (
+          builder?.email
+            ? <div><Button size="sm" onClick={() => setStep('number')}>Change number</Button></div>
+            : <span style={{ fontSize: 12.5, color: T.muted }}>To change your number, save your email above first. We send the confirmation code there.</span>
+        )}
+        {step === 'number' && (
+          <>
+            <Field label="New WhatsApp number" hint="For example 0803 123 4567.">
+              <input style={INPUT} type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </Field>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button variant="primary" size="sm" loading={busy} disabled={phone.replace(/\D/g, '').length < 9} onClick={sendCode}>Email me a code</Button>
+              <Button size="sm" onClick={reset}>Cancel</Button>
+            </div>
+          </>
+        )}
+        {step === 'code' && (
+          <>
+            <Field label="Confirmation code" hint={`We emailed a 6-digit code to ${hint}. It works for 15 minutes.`}>
+              <input style={{ ...INPUT, letterSpacing: 4 }} inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+            </Field>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button variant="primary" size="sm" loading={busy} disabled={code.length !== 6} onClick={confirm}>Confirm new number</Button>
+              <Button size="sm" onClick={() => { setStep('number'); setCode(''); setError('') }}>Use a different number</Button>
+            </div>
+          </>
+        )}
+        {error && <Notice tone="bad">{error}</Notice>}
+      </div>
+    </Field>
+  )
+}
+
 function AccountView({ token, builder, onUpdated, showToast }) {
   const [fullName, setFullName] = useState(builder?.full_name || '')
   const [businessName, setBusinessName] = useState(builder?.business_name || '')
@@ -392,9 +497,7 @@ function AccountView({ token, builder, onUpdated, showToast }) {
         <Field label="Your name"><input style={INPUT} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
         <Field label="Business name"><input style={INPUT} value={businessName} onChange={(e) => setBusinessName(e.target.value)} /></Field>
         <Field label="Email"><input style={INPUT} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-        <Field label="Phone number" hint="Contact your team to change your WhatsApp number.">
-          <input style={{ ...INPUT, background: '#F5FAFB', color: T.muted }} value={builder?.phone_number || ''} disabled />
-        </Field>
+        <PhoneChange token={token} builder={builder} onUpdated={onUpdated} showToast={showToast} />
       </div>
       <div style={{ marginTop: 16 }}>
         <Button variant="primary" icon={User} loading={saving} onClick={save}>Save changes</Button>

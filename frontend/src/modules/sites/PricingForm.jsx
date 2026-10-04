@@ -139,6 +139,22 @@ export default function PricingForm({ pricing, canEdit, saving, onSave }) {
     if (Object.keys(e.value).length || out.routes.express) {
       out.routes.express = { ...(out.routes.express || {}), domains: e.value }
     }
+    // SITE-WEB-2: builder access. Whole numbers inside the same limits the server enforces.
+    const ba = {
+      free_sites: Number(get(p, ['builder_access', 'free_sites'], 3)),
+      price_ngn: Number(get(p, ['builder_access', 'price_ngn'], 5000)),
+      days: Number(get(p, ['builder_access', 'days'], 30)),
+      signup_daily_cap: Number(get(p, ['builder_access', 'signup_daily_cap'], 150)),
+    }
+    const lim = { free_sites: [0, 1000, 'Free sites'], price_ngn: [0, 10000000, 'Subscription price'],
+      days: [1, 366, 'Subscription length'], signup_daily_cap: [0, 100000, 'Daily sign-up limit'] }
+    for (const k of Object.keys(lim)) {
+      const [lo, hi, label] = lim[k]
+      const raw = get(p, ['builder_access', k], '')
+      if (raw === '' && p.builder_access && k in p.builder_access) return { error: `${label} can't be left empty.` }
+      if (!Number.isInteger(ba[k]) || ba[k] < lo || ba[k] > hi) return { error: `${label} must be a whole number from ${lo} to ${hi.toLocaleString()}.` }
+    }
+    out.builder_access = { ...(out.builder_access || {}), ...ba }
     const pm = out.premium
     if (pm) {
       for (const k of Object.keys(pm)) {
@@ -235,6 +251,16 @@ export default function PricingForm({ pricing, canEdit, saving, onSave }) {
           <NumField label="Design fee, paid before the design is made (₦)" value={get(p, ['premium', 'design_fee_ngn'], 20000)} onChange={setN(['premium', 'design_fee_ngn'])} disabled={dis} />
           <NumField label="Total Premium price (₦)" hint="What is left after the design fee is added when they go live." value={get(p, ['premium', 'total_fee_ngn'], 30000)} onChange={setN(['premium', 'total_fee_ngn'])} disabled={dis} />
           <NumField label="One extra new design (₦)" hint="Bought after go-live, or after the included new designs are used. 0 switches it off." value={get(p, ['premium', 'redesign_fee_ngn'], 30000)} onChange={setN(['premium', 'redesign_fee_ngn'])} disabled={dis} />
+        </div>
+      </Card>
+
+      <Card>
+        <SectionTitle title="Builder access" hint="How many sites a builder can start for free, and what it costs to keep building after that. Applies on the web and on WhatsApp. Opsra staff are never limited." />
+        <div style={GRID}>
+          <NumField label="Free sites per builder" hint="Drafts count. Staff can give one builder more." step={1} value={get(p, ['builder_access', 'free_sites'], 3)} onChange={setN(['builder_access', 'free_sites'])} disabled={dis} />
+          <NumField label="Subscription price (₦)" hint="Charged when a builder is past the free sites." step={1} value={get(p, ['builder_access', 'price_ngn'], 5000)} onChange={setN(['builder_access', 'price_ngn'])} disabled={dis} />
+          <NumField label="Subscription length (days)" step={1} value={get(p, ['builder_access', 'days'], 30)} onChange={setN(['builder_access', 'days'])} disabled={dis} />
+          <NumField label="New sign-ups per day (limit)" hint="Stops a rush of sign-ups. 0 pauses web sign-up." step={1} value={get(p, ['builder_access', 'signup_daily_cap'], 150)} onChange={setN(['builder_access', 'signup_daily_cap'])} disabled={dis} />
         </div>
       </Card>
 

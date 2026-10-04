@@ -25,7 +25,7 @@
  * WhatsApp number) so "Start building" opens WhatsApp. Unset, it scrolls to the sign-in box.
  */
 import { useEffect, useId, useRef, useState } from "react";
-import { requestBuilderLink, errorMessage } from "../services/builder_portal.service";
+import { requestBuilderLink, errorMessage, whatsappLink } from "../services/builder_portal.service";
 import SiteSignUpForm from "./SiteSignUpForm";
 import "./SiteLandingPage.css";
 
@@ -245,6 +245,14 @@ function SignInForm({ inputRef }) {
         <span>{stage === "sending" ? "Sending…" : "Send my sign-in link"}</span>
         {ARROW}
       </button>
+      {whatsappLink("EDIT") && (
+        <>
+          <p className="sl-hint">Prefer WhatsApp? Send us the word EDIT and we’ll reply with your link straight away.</p>
+          <a className="sl-btn sl-wa" href={whatsappLink("EDIT")} target="_blank" rel="noopener noreferrer">
+            <span>Sign in on WhatsApp</span>
+          </a>
+        </>
+      )}
     </form>
   );
 }

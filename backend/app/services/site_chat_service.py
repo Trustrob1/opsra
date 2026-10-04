@@ -117,7 +117,10 @@ def _get_settings(db, org_id: str) -> Optional[dict]:
 
 
 def _get_builder(db, org_id: str, phone_number: str) -> Optional[dict]:
-    return _one((db.table("site_builders").select("*").eq("org_id", org_id).eq("phone_number", phone_number).limit(1).execute()).data)
+    """Matches both spellings of the number ('2348...' and '+2348...'): web sign-ups store digits, staff may type '+'."""
+    digits = "".join(ch for ch in (phone_number or "") if ch.isdigit())
+    variants = list(dict.fromkeys([phone_number, digits, "+" + digits])) if digits else [phone_number]
+    return _one((db.table("site_builders").select("*").eq("org_id", org_id).in_("phone_number", variants).limit(1).execute()).data)
 
 
 def _get_or_create_chat(db, org_id: str, phone_number: str, builder_id: Optional[str]) -> dict:

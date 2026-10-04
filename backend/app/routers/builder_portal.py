@@ -52,6 +52,7 @@ from app.models.sites import (
 )
 from app.services import (
     builder_auth_service,
+    builder_phone_service,
     builder_signup_service,
     site_access_service,
     site_chat_service,
@@ -306,11 +307,29 @@ def _render_and_store(db, org_id: str, site: dict) -> dict:
 
 # ─────────────────────────────── Account ───────────────────────────────
 
+def _whatsapp_state(db, builder: dict) -> dict:
+    """Has this builder ever messaged the Site Builder WhatsApp, and within the last 24 hours (Meta's reply window)?
+    Never raises: the portal just hides the 'message us' prompt if this can't be worked out."""
+    try:
+        digits = "".join(ch for ch in (builder.get("phone_number") or "") if ch.isdigit())
+        rows = (db.table("site_chats").select("last_inbound_at").eq("org_id", builder["org_id"])
+                .in_("phone_number", [digits, "+" + digits]).limit(5).execute()).data or []
+        times = [t for t in (builder_signup_service._parse(r.get("last_inbound_at")) for r in rows) if t]
+        if not times:
+            return {"ever": False, "open": False}
+        return {"ever": True, "open": (datetime.now(timezone.utc) - max(times)).total_seconds() < 24 * 3600}
+    except Exception:
+        return {"ever": True, "open": True}
+
+
 @router.get("/me")
-def get_me(builder=Depends(get_current_builder)):
+def get_me(builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    wa = _whatsapp_state(db, builder)
     return ok(data={"id": builder["id"], "full_name": builder["full_name"],
                      "business_name": builder.get("business_name"), "email": builder.get("email"),
-                     "phone_number": builder["phone_number"], "status": builder["status"]})
+                     "phone_number": builder["phone_number"], "status": builder["status"],
+                     "account_type": builder.get("account_type") or "builder",
+                     "whatsapp_ever": wa["ever"], "whatsapp_open": wa["open"]})
 
 
 @router.patch("/me")
@@ -325,6 +344,31 @@ def patch_me(payload: dict, builder=Depends(get_current_builder), db=Depends(get
     db.table("site_builders").update(updates).eq("id", builder["id"]).eq("org_id", builder["org_id"]).execute()
     row = _one((db.table("site_builders").select("*").eq("id", builder["id"]).execute()).data)
     return ok(data=row, message="Account updated")
+
+
+_phone_change_hits: dict[str, list[float]] = defaultdict(list)
+
+
+@router.post("/me/phone/start")
+def phone_change_start(payload: dict, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """Signed-in builder asks to move to a new WhatsApp number. A code goes to the email already on the account."""
+    try:
+        data = builder_phone_service.start(db, builder, (payload or {}).get("phone"))
+    except builder_signup_service.SignupError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    return ok(data=data, message="A code is on its way to your email.")
+
+
+@router.post("/me/phone/verify")
+def phone_change_verify(payload: dict, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    if _rate_limited(_phone_change_hits, builder["id"], 20, 3600.0):
+        raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many attempts. Please try again in an hour."})
+    payload = payload or {}
+    try:
+        row = builder_phone_service.verify(db, builder, payload.get("request_id"), payload.get("code"))
+    except builder_signup_service.SignupError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    return ok(data=row, message="Your WhatsApp number is updated")
 
 
 # ─────────────────────────────── My sites ───────────────────────────────

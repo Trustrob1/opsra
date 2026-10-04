@@ -37,6 +37,26 @@ export const getMyAccount = (token) => unwrap(axios.get(`${BASE}/me`, authed(tok
 /** payload: any of { full_name, business_name, email } */
 export const updateMyAccount = (token, payload) => unwrap(axios.patch(`${BASE}/me`, payload, authed(token)))
 
+/** SITE-WEB-2: change the WhatsApp number. A code is emailed to the address on the account; then confirm it. */
+export const startPhoneChange = (token, phone) => unwrap(axios.post(`${BASE}/me/phone/start`, { phone }, authed(token)))
+export const verifyPhoneChange = (token, requestId, code) =>
+  unwrap(axios.post(`${BASE}/me/phone/verify`, { request_id: requestId, code }, authed(token)))
+
+/** SITE-WEB-2: a wa.me link to the Site Builder WhatsApp with `text` already typed. The builder presses send, which is
+ * their first message, so WhatsApp lets us reply (a sign-in link, order updates) with no approved template.
+ * Built from VITE_BUILDER_JOIN_URL; returns '' when that isn't set. */
+export function whatsappLink(text) {
+  const base = import.meta.env.VITE_BUILDER_JOIN_URL || ''
+  if (!base) return ''
+  try {
+    const u = new URL(base)
+    u.searchParams.set('text', text)
+    return u.toString()
+  } catch {
+    return base
+  }
+}
+
 // ── My sites ─────────────────────────────────────────────────────────────
 export const listMySites = (token) => unwrap(axios.get(`${BASE}/sites`, authed(token)))
 export const getMySite = (token, siteId) => unwrap(axios.get(`${BASE}/sites/${siteId}`, authed(token)))

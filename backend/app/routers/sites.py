@@ -263,11 +263,38 @@ def get_settings(org=Depends(get_current_org), db=Depends(get_supabase)):
     return ok(data=row or {})
 
 
+# SITE-WEB-2: pricing.builder_access limits (free sites, subscription price and length, daily sign-up cap).
+_ACCESS_LIMITS = {
+    "free_sites": (0, 1000, "Free sites"),
+    "price_ngn": (0, 10_000_000, "Subscription price"),
+    "days": (1, 366, "Subscription length (days)"),
+    "signup_daily_cap": (0, 100_000, "Daily sign-up limit"),
+}
+
+
+def _check_builder_access(pricing) -> None:
+    """Rejects a nonsense builder_access block with a plain 422; fills nothing in (the reader falls back to defaults)."""
+    if not isinstance(pricing, dict) or "builder_access" not in pricing:
+        return
+    ba = pricing["builder_access"]
+    if not isinstance(ba, dict):
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Builder access settings must be a set of numbers."})
+    for key, (low, high, label) in _ACCESS_LIMITS.items():
+        if key not in ba:
+            continue
+        v = ba[key]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v != int(v) or not (low <= int(v) <= high):
+            raise HTTPException(422, detail={"code": "VALIDATION_ERROR",
+                                             "message": f"{label} must be a whole number from {low} to {high:,}."})
+        ba[key] = int(v)
+
+
 @router.patch("/sites/settings")
 def patch_settings(payload: dict, org=Depends(get_current_org), db=Depends(get_supabase)):
     _require(org, _WRITE_ROLES)
     updates = dict(payload or {})
     updates.pop("org_id", None)
+    _check_builder_access(updates.get("pricing"))
     updates["updated_at"] = _now_iso()
     existing = _one((db.table("site_builder_settings").select("org_id").eq("org_id", org["org_id"]).limit(1).execute()).data)
     if existing:
