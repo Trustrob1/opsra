@@ -113,8 +113,18 @@ def resolve_org(db: Any) -> Optional[str]:
     number = _one((db.table("whatsapp_numbers").select("org_id").eq("wa_sales_mode", "site_builder").limit(1).execute()).data)
     if number and number.get("org_id"):
         return number["org_id"]
-    rows = (db.table("site_builder_settings").select("org_id").eq("enabled", True).limit(2).execute()).data or []
-    return rows[0]["org_id"] if len(rows) == 1 else None
+    rows = (db.table("site_builder_settings").select("org_id").eq("enabled", True).limit(20).execute()).data or []
+    if len(rows) == 1:
+        return rows[0]["org_id"]
+    # Several orgs have the engine on and none owns a site_builder number: use the one that actually has builders.
+    best, best_n, tie = None, 0, False
+    for r in rows:
+        n = len((db.table("site_builders").select("id").eq("org_id", r["org_id"]).limit(500).execute()).data or [])
+        if n > best_n:
+            best, best_n, tie = r["org_id"], n, False
+        elif n == best_n and n > 0:
+            tie = True
+    return best if best and not tie else None
 
 
 def _settings(db: Any, org_id: str) -> dict:
