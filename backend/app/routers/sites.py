@@ -53,7 +53,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service, site_import_service, site_import_render, site_import_resolve, site_import_editable_service
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service, site_import_service, site_import_render, site_import_resolve, site_import_editable_service, site_library_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1013,6 +1013,93 @@ def import_make_editable(payload: ImportDesignRef, site_id: str, org=Depends(get
         raise HTTPException(status_code=503, detail={"code": "SERVICE_UNAVAILABLE", "message": "The service is busy. Please try again in a few minutes."})
     _log_event(db, org_id, site_id, actor, "import_editable_started", {"design_id": started["design_id"]})
     return ok(data={"design_id": started["design_id"], "status": "running"}, message="Making the page editable. This takes a few minutes.")
+
+
+# ── SITE-IMPORT 3: library designs (staff only; switched on per account by site_builder_settings.site_library_enabled) ──────────
+
+def _library_org(org, db, roles):
+    _require(org, roles)
+    org_id = org["org_id"]
+    settings = _require_enabled(db, org_id)
+    if not settings.get("site_library_enabled"):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "The design library is not switched on for this account yet."})
+    return org_id
+
+
+def _library_call(fn, *args):
+    try:
+        return fn(*args)
+    except site_ops_service.SiteOpsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+
+
+class LibrarySaveRequest(BaseModel):
+    site_id: str = Field(min_length=1, max_length=64)
+    design_id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=80)
+    niche: str = Field(min_length=1, max_length=80)
+    note: str = Field("", max_length=300)
+
+
+class LibraryAttachRequest(BaseModel):
+    library_id: Optional[str] = Field(None, max_length=64)    # omitted: the rotation picks one
+
+
+@router.get("/site-library")
+def library_list(niche: Optional[str] = Query(None, max_length=80), org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _library_org(org, db, _READ_ROLES)
+    return ok(data=site_library_service.list_designs(db, org_id, niche))
+
+
+@router.post("/site-library/save", status_code=status.HTTP_201_CREATED)
+def library_save(payload: LibrarySaveRequest, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """Copy a site's design (an editable import or a ready Premium design) into the library after the fit checks."""
+    org_id = _library_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, payload.site_id)
+    actor = f"user:{org.get('id')}"
+    result = _library_call(site_library_service.save, db, org_id, site, payload.design_id, actor, payload.name, payload.niche, payload.note)
+    _log_event(db, org_id, payload.site_id, actor, "library_design_saved", {"library_id": result["id"], "niche": payload.niche, "kind": result["source_kind"]})
+    return ok(data=result, message="Saved to the library")
+
+
+@router.get("/site-library/{library_id}/preview")
+def library_preview(library_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _library_org(org, db, _READ_ROLES)
+    return ok(data={"library_id": library_id, "html": _library_call(site_library_service.preview, db, org_id, library_id)})
+
+
+@router.get("/site-library/{library_id}")
+def library_detail(library_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _library_org(org, db, _READ_ROLES)
+    row = _library_call(site_library_service.get, db, org_id, library_id)
+    return ok(data={k: row.get(k) for k in ("id", "name", "niche", "note", "source_kind", "status", "uses_count", "has_scripts", "fit", "created_at")})
+
+
+@router.post("/site-library/{library_id}/retire")
+def library_retire(library_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _library_org(org, db, _WRITE_ROLES)
+    return ok(data=_library_call(site_library_service.set_status, db, org_id, library_id, "retired"), message="Retired. Sites already using it are not changed.")
+
+
+@router.post("/site-library/{library_id}/restore")
+def library_restore(library_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id = _library_org(org, db, _WRITE_ROLES)
+    return ok(data=_library_call(site_library_service.set_status, db, org_id, library_id, "active"), message="Restored")
+
+
+@router.post("/sites/{site_id}/library/attach")
+def library_attach(payload: LibraryAttachRequest, site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """Give this site a copy of a library design (the named one, or the next one in the rotation). The site's own content fills it."""
+    org_id = _library_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    actor = f"user:{org.get('id')}"
+    if payload.library_id:
+        result = _library_call(site_library_service.attach, db, org_id, site, payload.library_id, actor)
+    else:
+        result = _library_call(site_library_service.attach_best, db, org_id, site, actor)
+    _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, actor, "library_design_attached", {"library_id": result["library_id"], "design_id": result["design_id"]})
+    return ok(data=result, message="The design is now this site's page")
 
 
 @router.post("/sites/{site_id}/render")

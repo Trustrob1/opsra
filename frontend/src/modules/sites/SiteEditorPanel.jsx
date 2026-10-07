@@ -21,6 +21,7 @@ import ExtraSectionCards from './ExtraSectionCards'
 import PublishResultModal from './PublishResultModal'
 import PremiumPanel from './PremiumPanel'
 import ImportPanel from './ImportPanel'
+import LibraryPanel from './LibraryPanel'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -171,6 +172,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
 
       <PremiumPanel siteId={siteId} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />
       <ImportPanel siteId={siteId} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />
+      <LibraryPanel site={site} presetKey={preset?.key} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />
 
       <BusinessCard content={content} setContent={setContent} canEdit={canEdit} />
       <HeroCard content={content} setContent={setContent} canEdit={canEdit} assetUrls={assetUrls} onUpload={uploadFor} />

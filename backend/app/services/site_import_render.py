@@ -205,7 +205,9 @@ def _level2_page(design: dict, content: Optional[dict], assets_by_id: Optional[d
     if not (design.get("editable") and skeleton and content is not None):
         return None
     from app.services import site_import_slotting
-    return site_import_slotting.fill(skeleton, content, assets_by_id or {}, export=export)
+    # a library design on a client's site never shows the sample business's picture where the client has no photo yet
+    return site_import_slotting.fill(skeleton, content, assets_by_id or {}, export=export,
+                                     placeholder_images=bool(meta.get("library")))
 
 
 def render_imported_page(db: Any, design: dict, allowed_hosts, export: bool = False,
@@ -319,6 +321,8 @@ def activate(db: Any, org_id: str, site: dict, design_id: str, adopt_content: bo
     if not row:
         raise ImportRenderError("Imported design not found.")
     if adopt_content:
+        if (row.get("import_meta") or {}).get("library"):
+            raise ImportRenderError("This design came from the library, so it uses this site's own content. Nothing is taken from the sample page.")
         if not (row.get("editable") and (row.get("import_meta") or {}).get("extracted_content")):
             raise ImportRenderError("This design is not editable yet, so its text cannot become the site's content.")
         from app.services import site_import_editable_service

@@ -144,6 +144,17 @@ export const resolveImportDesign = (siteId, designId) => unwrap(api.post(`/api/v
 export const activateImportDesign = (siteId, designId, adoptContent = false) => unwrap(api.post(`/api/v1/sites/${siteId}/import/activate`, { design_id: designId, adopt_content: !!adoptContent }))
 export const makeImportEditable = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/import/make-editable`, { design_id: designId }))
 
+// ── SITE-IMPORT 3: design library (staff) ──
+/** { designs: [{ id, name, niche, source_kind, status, uses_count, has_scripts, note, ... }], niches: [{ niche, active, warning }] } */
+export const getLibraryDesigns = (niche) => unwrap(api.get('/api/v1/site-library', { params: niche ? { niche } : {} }))
+/** payload: { site_id, design_id, name, niche, note } -> { id, warnings, fixed_text }. 409 duplicate name, 422 failed fit checks. */
+export const saveLibraryDesign = (payload) => unwrap(api.post('/api/v1/site-library/save', payload))
+/** { html } - show ONLY inside <iframe sandbox="allow-scripts allow-popups" srcDoc>. */
+export const previewLibraryDesign = (libraryId) => unwrap(api.get(`/api/v1/site-library/${libraryId}/preview`))
+export const setLibraryDesignStatus = (libraryId, action) => unwrap(api.post(`/api/v1/site-library/${libraryId}/${action === 'retire' ? 'retire' : 'restore'}`))
+/** libraryId null = the rotation picks one. */
+export const attachLibraryDesign = (siteId, libraryId) => unwrap(api.post(`/api/v1/sites/${siteId}/library/attach`, libraryId ? { library_id: libraryId } : {}))
+
 /** Pull a readable message out of an axios error ({detail:{message}} or FastAPI 422 list). */
 export function errorMessage(err, fallback = 'Something went wrong. Please try again.') {
   const d = err?.response?.data?.detail

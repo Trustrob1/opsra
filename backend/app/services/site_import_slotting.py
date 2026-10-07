@@ -633,11 +633,37 @@ def _format_value(value: Any, fmt: str, ctx) -> str:
     return _renderer()._format(value, fmt, ctx)
 
 
-def fill(skeleton: str, content: dict, assets_by_id: Optional[dict] = None, export: bool = False) -> str:
-    """The page: slots replaced by the site's content, every other byte of the skeleton as it was."""
+_FILL_CTX: dict = {}
+
+
+def _fill_ctx_class(r):
+    """The renderer's Ctx plus the placeholder_images flag, which has to survive Ctx.child() (one child per repeated entry)."""
+    if "cls" not in _FILL_CTX:
+        class FillCtx(r.Ctx):
+            placeholder_images = False
+
+            def child(self, item):
+                c = FillCtx(self.content, self.assets, self.export, self.price_style, self.scopes + [item], self.keep,
+                            self.hidden, self.removed)
+                c.placeholder_images = self.placeholder_images
+                return c
+        _FILL_CTX["cls"] = FillCtx
+    return _FILL_CTX["cls"]
+
+
+PLACEHOLDER_IMG = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='600'%3E"
+                   "%3Crect width='800' height='600' fill='%23e5e7eb'/%3E%3C/svg%3E")
+
+
+def fill(skeleton: str, content: dict, assets_by_id: Optional[dict] = None, export: bool = False,
+         placeholder_images: bool = False) -> str:
+    """The page: slots replaced by the site's content, every other byte of the skeleton as it was.
+    placeholder_images=True (library designs on a client's site): a picture slot with no photo chosen shows a neutral grey box
+    instead of the page's own picture, so another business's photo never appears on a client's site."""
     r = _renderer()
     root = dom.parse(skeleton)
-    ctx = r.Ctx(content=content or {}, assets=assets_by_id or {}, export=export)
+    ctx = _fill_ctx_class(r)(content=content or {}, assets=assets_by_id or {}, export=export)
+    ctx.placeholder_images = placeholder_images
     out: list = []
     _fill_nodes(root.children, ctx, out, r)
     return "".join(out)
@@ -686,7 +712,10 @@ def _fill_elem(el: Elem, ctx, out: list, r, siblings: list, pos: int) -> None:
         if url:
             out.append(_clean_start(el, {**extra, "src": url, "srcset": None, "sizes": None}))
         else:
-            out.append(_clean_start(el, extra))                # no photo chosen yet: the page's own picture stays
+            if getattr(ctx, "placeholder_images", False):
+                out.append(_clean_start(el, {**extra, "src": PLACEHOLDER_IMG, "srcset": None, "sizes": None}))
+            else:
+                out.append(_clean_start(el, extra))            # no photo chosen yet: the page's own picture stays
         return
     if "data-slot" in a:
         value = ctx.lookup(a["data-slot"])
@@ -775,3 +804,44 @@ def _short(x: tuple) -> str:
 def used_top_level(manifest_slots: list) -> list:
     from app.services import site_premium_service as p
     return p.used_top_level({"slots": manifest_slots})
+
+
+_NOT_TEXT = frozenset({"script", "style", "noscript", "template", "svg", "head", "textarea", "option"})
+
+
+def fixed_text(skeleton: str, min_words: int = 3, limit: int = 40) -> list:
+    """Visible text of a marked page that no slot controls (it stays exactly as written on every site). A library design with a
+    lot of this text is carrying the sample business's wording, which staff must see before saving it."""
+    root = dom.parse(skeleton)
+    found: list = []
+
+    def walk(el: Elem, slotted: bool):
+        here = slotted or "data-slot" in el.attrs
+        for c in el.children:
+            if isinstance(c, Text):
+                if not here:
+                    t = " ".join(unescape(c.raw).split())
+                    if len(t.split()) >= min_words:
+                        found.append(t[:140])
+            elif isinstance(c, Elem) and c.tag not in _NOT_TEXT:
+                walk(c, here)
+    body = dom.find(root, "body") or root
+    walk(body, False)
+    seen, out = set(), []
+    for t in found:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out[:limit]
+
+
+def head_text(skeleton: str) -> dict:
+    """The page's own <title> and meta description (never slotted at Level 2)."""
+    out: dict = {}
+    m = re.search(r"<title[^>]*>(.*?)</title>", skeleton, re.I | re.S)
+    if m:
+        out["title"] = " ".join(unescape(m.group(1)).split())[:120]
+    m = re.search(r"""<meta\s+name=["']description["']\s+content=["'](.*?)["']""", skeleton, re.I | re.S)
+    if m:
+        out["description"] = " ".join(unescape(m.group(1)).split())[:160]
+    return out
