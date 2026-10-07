@@ -82,3 +82,43 @@ def test_only_owner_or_ops_manager_can_change_it(api):
     h, c = api
     h["role"] = "sales_agent"
     assert _patch(c, {"free_sites": 9}).status_code == 403
+
+
+# ── SITE-TOOLS: design tool switches ─────────────────────────────────────
+
+_FLAGS = ("premium_enabled", "site_import_enabled", "site_library_enabled")
+
+
+def test_owner_can_switch_each_design_tool_on_and_off(api):
+    h, c = api
+    for f in _FLAGS:
+        assert c.patch(URL, json={f: True}).status_code == 200
+        assert h["db"].rows("site_builder_settings")[0][f] is True
+        assert c.patch(URL, json={f: False}).json()["data"][f] is False
+
+
+def test_ops_manager_cannot_switch_design_tools(api):
+    h, c = api
+    h["role"] = "ops_manager"
+    for f in _FLAGS:
+        r = c.patch(URL, json={f: True})
+        assert r.status_code == 403
+        assert f not in h["db"].rows("site_builder_settings")[0]
+    assert c.patch(URL, json={"enabled": True}).status_code == 200      # other settings still allowed
+
+
+@pytest.mark.parametrize("bad", ["true", 1, 0, None, "yes", []])
+def test_design_tool_must_be_true_or_false(api, bad):
+    h, c = api
+    r = c.patch(URL, json={"site_library_enabled": bad})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "VALIDATION_ERROR"
+    assert "site_library_enabled" not in h["db"].rows("site_builder_settings")[0]
+
+
+def test_switching_one_tool_leaves_the_others_alone(api):
+    h, c = api
+    c.patch(URL, json={"premium_enabled": True})
+    c.patch(URL, json={"site_library_enabled": True})
+    row = h["db"].rows("site_builder_settings")[0]
+    assert row["premium_enabled"] is True and row["site_library_enabled"] is True
+    assert "site_import_enabled" not in row

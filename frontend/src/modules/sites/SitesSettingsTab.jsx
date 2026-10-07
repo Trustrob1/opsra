@@ -12,7 +12,16 @@ import { T, TEXTAREA } from './sitesKit'
 import PricingForm from './PricingForm'
 import DiscountCodesCard from './DiscountCodesCard'
 
-export default function SitesSettingsTab({ isActive, canEdit, showToast, onEnabledChange }) {
+const DESIGN_TOOLS = [
+  { key: 'premium_enabled', title: 'Premium designs',
+    hint: 'Lets builders order a custom-designed Premium page for their site.' },
+  { key: 'site_import_enabled', title: 'Import a finished site',
+    hint: 'Lets you upload a site made elsewhere and host it (and make it editable) like a built one.' },
+  { key: 'site_library_enabled', title: 'Design library',
+    hint: 'Lets you save good imported designs and reuse them on new sites, filled with each site\u2019s own content.' },
+]
+
+export default function SitesSettingsTab({ isActive, canEdit, isOwner = false, showToast, onEnabledChange }) {
   const [settings, setSettings] = useState(null)
   const [pricingText, setPricingText] = useState('{}')
   const [loading, setLoading] = useState(true)
@@ -59,6 +68,20 @@ export default function SitesSettingsTab({ isActive, canEdit, showToast, onEnabl
       const row = await updateSiteSettings({ members_only: !checked })
       setSettings(row)
       showToast(checked ? 'Open sign-up turned on' : 'Open sign-up turned off')
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not save.'), 'bad')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const toggleTool = async (tool, checked) => {
+    if (!isOwner) return
+    setSaving(true)
+    try {
+      const row = await updateSiteSettings({ [tool.key]: checked })
+      setSettings(row)
+      showToast(`${tool.title} turned ${checked ? 'on' : 'off'}`)
     } catch (e) {
       showToast(errorMessage(e, 'Could not save.'), 'bad')
     } finally {
@@ -121,6 +144,18 @@ export default function SitesSettingsTab({ isActive, canEdit, showToast, onEnabl
             ? 'Open sign-up — anyone who messages is registered and can start building straight away'
             : 'Invite only — new numbers wait for your approval and get the join-link reply'} />
         {!canEdit && <p style={{ margin: '10px 0 0', fontSize: 12, color: T.muted }}>Only an owner or ops manager can change this.</p>}
+      </Card>
+
+      <Card>
+        <SectionTitle title="Design tools" hint="Switch the extra design features on or off for this org." />
+        {DESIGN_TOOLS.map((tool) => (
+          <div key={tool.key} style={{ margin: '0 0 14px' }}>
+            <Toggle checked={!!settings?.[tool.key]} onChange={(c) => toggleTool(tool, c)} disabled={!isOwner || saving}
+              label={`${tool.title} — ${settings?.[tool.key] ? 'on' : 'off'}`} />
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: T.muted }}>{tool.hint}</p>
+          </div>
+        ))}
+        {!isOwner && <p style={{ margin: '4px 0 0', fontSize: 12, color: T.muted }}>Only the owner can change these.</p>}
       </Card>
 
       <PricingForm pricing={settings?.pricing ?? {}} canEdit={canEdit} saving={saving} onSave={savePricingObject} />

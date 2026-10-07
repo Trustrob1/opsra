@@ -123,7 +123,7 @@ export default function SitesModule({ user }) {
         <SitesTemplatesTab isActive={tab === 'templates'} canEdit={canEdit} showToast={showToast} />
       </Panel>
       <Panel on={tab === 'settings'}>
-        <SitesSettingsTab isActive={tab === 'settings'} canEdit={canEdit} showToast={showToast} onEnabledChange={setEnabled} />
+        <SitesSettingsTab isActive={tab === 'settings'} canEdit={canEdit} isOwner={canApprove} showToast={showToast} onEnabledChange={setEnabled} />
       </Panel>
 
       <Toast t={toast} />

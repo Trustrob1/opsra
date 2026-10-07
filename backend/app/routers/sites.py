@@ -290,11 +290,33 @@ def _check_builder_access(pricing) -> None:
         ba[key] = int(v)
 
 
+# SITE-TOOLS: on/off switches for the design tools. Only the owner may flip them; each must be true or false.
+_DESIGN_TOOL_FLAGS = {
+    "premium_enabled": "Premium designs",
+    "site_import_enabled": "Import a finished site",
+    "site_library_enabled": "Design library",
+}
+
+
+def _check_design_tools(updates: dict, org: dict) -> None:
+    present = [k for k in _DESIGN_TOOL_FLAGS if k in updates]
+    if not present:
+        return
+    if _role(org) not in _OWNER_ONLY:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail={"code": "FORBIDDEN", "message": "Only the owner can switch design tools on or off."})
+    for k in present:
+        if not isinstance(updates[k], bool):
+            raise HTTPException(422, detail={"code": "VALIDATION_ERROR",
+                                             "message": f"{_DESIGN_TOOL_FLAGS[k]} must be on or off."})
+
+
 @router.patch("/sites/settings")
 def patch_settings(payload: dict, org=Depends(get_current_org), db=Depends(get_supabase)):
     _require(org, _WRITE_ROLES)
     updates = dict(payload or {})
     updates.pop("org_id", None)
+    _check_design_tools(updates, org)
     _check_builder_access(updates.get("pricing"))
     updates["updated_at"] = _now_iso()
     existing = _one((db.table("site_builder_settings").select("org_id").eq("org_id", org["org_id"]).limit(1).execute()).data)
