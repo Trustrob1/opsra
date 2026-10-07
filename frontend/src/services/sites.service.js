@@ -168,3 +168,12 @@ export function errorMessage(err, fallback = 'Something went wrong. Please try a
   }
   return fallback
 }
+
+// ── PARTNER-1B — Launch Partners (staff) ────────────────────────────────────
+export const listPartners = () => unwrap(api.get('/api/v1/partners'))
+export const listPartnerApplications = (status = 'applied') =>
+  unwrap(api.get('/api/v1/partners/applications', { params: { status } }))
+export const approvePartnerApplication = (id) => unwrap(api.post(`/api/v1/partners/applications/${id}/approve`))
+export const declinePartnerApplication = (id) => unwrap(api.post(`/api/v1/partners/applications/${id}/decline`))
+export const suspendPartner = (id) => unwrap(api.post(`/api/v1/partners/${id}/suspend`))
+export const reactivatePartner = (id) => unwrap(api.post(`/api/v1/partners/${id}/reactivate`))

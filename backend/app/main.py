@@ -203,6 +203,7 @@ from app.routers import public_sites as public_sites_router        # SITE-1A —
 from app.routers import public_forms as public_forms_router        # SITE-1B — /api/v1/forms/{token}
 from app.routers import builder_portal as builder_portal_router    # SITE-2B — /api/v1/builder/*
 from app.routers import site_partners as site_partners_router        # PARTNER-1A — /api/v1/partners/* and /api/v1/partner-links/*
+from app.routers import partner_portal as partner_portal_router          # PARTNER-1B — /api/v1/partner-portal/*
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -248,6 +249,7 @@ app.include_router(public_forms_router.router,   prefix="/api/v1", tags=["public
 app.include_router(builder_portal_router.router, prefix="/api/v1/builder", tags=["builder_portal"])  # SITE-2B
 app.include_router(site_partners_router.public_router, prefix="/api/v1", tags=["partner_links"])   # PARTNER-1A — public
 app.include_router(site_partners_router.router, prefix="/api/v1/partners", tags=["partners"])         # PARTNER-1A — staff
+app.include_router(partner_portal_router.router, prefix="/api/v1/partner-portal", tags=["partner_portal"])   # PARTNER-1B
 
 
 # ---------------------------------------------------------------------------

@@ -259,6 +259,9 @@ export default function SiteBriefFormPage({ token }) {
                       maxItems={preset.max_items || 20} />
           ))}
 
+          {form?.audience === 'client' && (
+            <p style={S.saveHint}>The person who sent you this form will be able to see your business name, phone number and the progress of your website.</p>
+          )}
           <button type="button" style={{ ...S.btn, ...(submitting ? S.btnDisabled : {}) }} disabled={submitting} onClick={handleSubmit}>
             {submitting ? 'Submitting…' : 'Submit'}
           </button>

@@ -182,6 +182,11 @@ export default function App() {
     const PartnerLinkPage = require('./pages/PartnerLinkPage').default
     return <PartnerLinkPage slug={_partnerMatch[1]} />
   }
+  // PARTNER-1B — Partner sign in / apply (/partner) and the partner portal (/partner/login?t=…).
+  if (window.location.pathname === '/partner' || window.location.pathname === '/partner/login') {
+    const PartnerPage = require('./pages/PartnerPage').default
+    return <PartnerPage />
+  }
   // SITE-1B — public brief-form link, spec §7.3. Tokens are secrets.token_urlsafe(32)
   // (~43 URL-safe base64 chars, no padding); the range below is a safe margin.
   const _formMatch = window.location.pathname.match(/^\/f\/([A-Za-z0-9_-]{20,80})$/)

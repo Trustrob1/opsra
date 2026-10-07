@@ -487,12 +487,18 @@ export default function SiteLandingPage() {
               <li>
                 <a href="#faq">Questions</a>
               </li>
+              <li>
+                <a href="/partner">Become a partner</a>
+              </li>
             </ul>
           </nav>
           <div className="sl-right">
             <button className="sl-signin-link" type="button" data-open-signin>
               Sign in
             </button>
+            <a className="sl-signin-link" href="/partner" style={{ textDecoration: "none", color: "inherit" }}>
+              Partner sign in
+            </a>
             <a className="sl-btn sl-teal sl-sm" href={START_HREF} {...START_ATTRS} data-start>
               Start building
             </a>
