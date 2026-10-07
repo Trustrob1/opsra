@@ -18,13 +18,14 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 
 from app.database import get_supabase
 from app.dependencies import get_current_org
@@ -52,7 +53,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service, site_import_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -843,6 +844,83 @@ def premium_force_standard(site_id: str, org=Depends(get_current_org), db=Depend
     _render_and_store(db, org_id, site)
     _log_event(db, org_id, site_id, f"user:{org.get('id')}", "premium_switched_to_standard")
     return ok(data={"tier": "standard"}, message="Site is back on the Standard design")
+
+
+# ── SITE-IMPORT 1a: upload a finished single-page site made outside Opsra (staff only) ──────────────
+
+def _import_org(org, db, roles):
+    """Role check + the site engine switch + the import switch (off except where staff turn it on)."""
+    _require(org, roles)
+    org_id = org["org_id"]
+    settings = _require_enabled(db, org_id)
+    if not settings.get("site_import_enabled"):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Site import is not switched on for this account yet."})
+    return org_id, settings
+
+
+async def _read_capped(file: UploadFile, limit: int) -> bytes:
+    """Reads an upload in chunks and stops as soon as it is over the limit (never holds more than limit + 1 chunk)."""
+    chunks, total = [], 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(status_code=413, detail={"code": "VALIDATION_ERROR",
+                                "message": f"The upload is over the {limit // (1024 * 1024)} MB limit."})
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@router.post("/sites/{site_id}/import")
+async def import_site_upload(
+    site_id: str,
+    file: UploadFile = File(...),
+    dry_run: bool = Form(False),
+    accepted: str = Form(""),
+    org=Depends(get_current_org), db=Depends(get_supabase),
+):
+    """A .zip (or one .html file). dry_run=true analyses and saves nothing. `accepted` is optional JSON,
+    e.g. {"js/vendor.js": ["eval"]}: staff accept a named overridable finding for that file."""
+    org_id, settings = _import_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    cfg = site_import_service.settings_for(settings)
+    try:
+        accepted_map = json.loads(accepted) if accepted.strip() else {}
+        if not isinstance(accepted_map, dict) or not all(isinstance(k, str) and isinstance(v, list) for k, v in accepted_map.items()):
+            raise ValueError("shape")
+    except ValueError:
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR",
+                            "message": "accepted must be JSON like {\"js/app.js\": [\"eval\"]}."})
+    data = await _read_capped(file, cfg["max_mb"] * 1024 * 1024)
+    actor = f"user:{org.get('id')}"
+    try:
+        result = site_import_service.import_site(db, org_id, site, actor, data, file.filename or "", settings,
+                                                 accepted=accepted_map, dry_run=dry_run)
+    except site_import_service.ImportRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc),
+                            "errors": exc.errors, "report": exc.report})
+    except site_import_service.ImportFailed as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    if result["saved"]:
+        report = result["report"]
+        _log_event(db, org_id, site_id, actor, "site_imported",
+                   {"design_id": result["design_id"], "version": result["version"], "files": result["files"],
+                    "warnings": len(report["warnings"]), "accepted": report["accepted"],
+                    "scripts": len(report["scripts"]) + report["page"].get("inline_scripts", 0)})
+        return ok(data=result, message="Import saved. It is not live yet: open the report to review it.")
+    return ok(data=result, message="Checked only: nothing was saved.")
+
+
+@router.get("/sites/{site_id}/import/report")
+def import_report(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id, _settings = _import_org(org, db, _READ_ROLES)
+    _get_site(db, org_id, site_id)
+    latest = site_import_service.latest_report(db, org_id, site_id)
+    if not latest:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "This site has no imported design yet."})
+    return ok(data=latest)
 
 
 @router.post("/sites/{site_id}/render")
