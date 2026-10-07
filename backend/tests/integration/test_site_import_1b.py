@@ -302,6 +302,39 @@ class TestRoutes(_Routes):
         assert r.status_code == 200 and d["resolved"] == [] and d["failed"][0]["reason"].startswith("the address")
 
 
+class TestPremiumImportRowsAreIgnored(_Routes):
+    """Premium's pasted-skeleton designs also use kind 'import' (no files_prefix). They must never be listed, activated or pruned."""
+    def _add_premium_row(self):
+        self.db.tables["site_designs"].append({"id": "p1", "org_id": ORG, "site_id": "site-1", "version": 9, "kind": "import",
+                                               "status": "ready", "staged": False, "skeleton_html": "<p>x</p>", "import_meta": None,
+                                               "files_prefix": None, "created_at": "2026-10-01T10:00:00Z", "created_by": "script"})
+
+    def test_not_listed(self):
+        self._add_premium_row()
+        ids = [d["id"] for d in TestClient(app).get(f"{BASE}/site-1/import/designs").json()["data"]["designs"]]
+        assert ids == ["d1"]
+
+    def test_cannot_be_activated_or_previewed(self):
+        self._add_premium_row()
+        c = TestClient(app)
+        assert c.post(f"{BASE}/site-1/import/activate", json={"design_id": "p1"}).status_code == 422
+        assert c.get(f"{BASE}/site-1/import/designs/p1/preview").status_code == 422
+        assert self.db.tables["sites"][0]["tier"] == "standard"
+
+    def test_prune_never_deletes_them(self):
+        self._add_premium_row()
+        for v in range(20, 34):
+            self.db.tables["site_designs"].append({"id": f"u{v}", "org_id": ORG, "site_id": "site-1", "version": v, "kind": "import",
+                                                   "files_prefix": f"x/{v}", "import_meta": {"files": []}, "source_path": None})
+        svc._prune(self.db, ORG, self.db.tables["sites"][0], keep_id="u33")
+        ids = {r["id"] for r in self.db.tables["site_designs"]}
+        assert "p1" in ids and "u33" in ids and "u20" not in ids
+
+    def test_latest_report_skips_them(self):
+        self._add_premium_row()
+        assert svc.latest_report(self.db, ORG, "site-1")["design_id"] == "d1"
+
+
 class TestPreviewHeaders:
     def test_imported_site_gets_sandbox_headers(self):
         db = _seed(tier="imported")

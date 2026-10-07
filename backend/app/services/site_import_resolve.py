@@ -143,7 +143,7 @@ def resolve(db: Any, org_id: str, site: dict, design_id: str, allowed_hosts, fet
     row = (db.table("site_designs").select("*").eq("id", design_id).eq("site_id", site["id"]).eq("org_id", org_id)
            .eq("kind", "import").eq("status", "ready").limit(1).execute()).data
     row = row[0] if isinstance(row, list) and row else (row if isinstance(row, dict) else None)
-    if not row:
+    if not row or not row.get("files_prefix"):
         raise svc.ImportRejected("Imported design not found.")
     meta = row.get("import_meta") or {}
     report = meta.get("report") or {}

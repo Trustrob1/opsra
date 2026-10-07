@@ -505,9 +505,10 @@ def _cleanup(db: Any, file_keys: list, raw_key: Optional[str]) -> None:
 def _prune(db: Any, org_id: str, site: dict, keep_id: str) -> None:
     """Keeps the newest KEEP_IMPORT_VERSIONS import designs (never the current one) and deletes the files of older ones."""
     try:
-        rows = (db.table("site_designs").select("id, version, kind, import_meta, source_path")
+        rows = (db.table("site_designs").select("id, version, kind, import_meta, source_path, files_prefix")
                 .eq("site_id", site["id"]).eq("org_id", org_id).in_("kind", ["import", "import_slot"])
                 .execute()).data or []
+        rows = [r for r in rows if r.get("files_prefix")]      # only uploaded sites: Premium 'import' designs (pasted skeletons) are never touched
         rows.sort(key=lambda r: int(r["version"]), reverse=True)
         for old in rows[KEEP_IMPORT_VERSIONS:]:
             if old["id"] in (keep_id, site.get("current_design_id")):
@@ -520,9 +521,10 @@ def _prune(db: Any, org_id: str, site: dict, keep_id: str) -> None:
 
 
 def latest_report(db: Any, org_id: str, site_id: str) -> Optional[dict]:
-    row = _one((db.table("site_designs").select("id, version, kind, status, staged, created_at, created_by, import_meta, editable")
-                .eq("site_id", site_id).eq("org_id", org_id).in_("kind", ["import", "import_slot"])
-                .order("version", desc=True).limit(1).execute()).data)
+    rows = (db.table("site_designs").select("id, version, kind, status, staged, created_at, created_by, import_meta, editable, files_prefix")
+            .eq("site_id", site_id).eq("org_id", org_id).in_("kind", ["import", "import_slot"])
+            .order("version", desc=True).execute()).data or []
+    row = next((r for r in rows if r.get("files_prefix")), None)
     if not row:
         return None
     meta = row.get("import_meta") or {}

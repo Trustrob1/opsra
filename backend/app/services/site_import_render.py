@@ -215,8 +215,9 @@ def _current_design(db: Any, site: dict, design_id: Optional[str] = None) -> Opt
     did = design_id or site.get("current_design_id")
     if not did:
         return None
-    return _one((db.table("site_designs").select("*").eq("id", did).eq("site_id", site["id"])
-                 .eq("org_id", site["org_id"]).eq("kind", "import").eq("status", "ready").limit(1).execute()).data)
+    row = _one((db.table("site_designs").select("*").eq("id", did).eq("site_id", site["id"])
+                .eq("org_id", site["org_id"]).eq("kind", "import").eq("status", "ready").limit(1).execute()).data)
+    return row if row and row.get("files_prefix") else None      # a Premium pasted-skeleton 'import' design is not an uploaded site
 
 
 def render_if_imported(db: Any, site: dict, assets_by_id: dict, export: bool = False,
@@ -272,11 +273,13 @@ def export_bundle(db: Any, site: dict) -> list:
 # ---------------------------------------------------------------------------
 
 def designs(db: Any, org_id: str, site: dict) -> list:
-    rows = (db.table("site_designs").select("id, version, kind, status, staged, created_by, created_at, checks, import_meta")
+    rows = (db.table("site_designs").select("id, version, kind, status, staged, created_by, created_at, checks, import_meta, files_prefix")
             .eq("site_id", site["id"]).eq("org_id", org_id).eq("kind", "import").order("version", desc=True)
             .execute()).data or []
     out = []
     for r in rows:
+        if not r.get("files_prefix"):
+            continue
         meta = r.get("import_meta") or {}
         rep = meta.get("report") or {}
         out.append({"id": r["id"], "version": r.get("version"), "status": r.get("status"), "staged": bool(r.get("staged")),
