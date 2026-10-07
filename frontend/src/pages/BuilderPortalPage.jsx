@@ -523,6 +523,8 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   const [careBusy, setCareBusy] = useState(null)
   // SITE-PREMIUM P4-1: set for a Premium design: { active, version, used: [content groups the design shows] }
   const [premium, setPremium] = useState(null)
+  // SITE-IMPORT 2: set for an uploaded page made editable: { active, used: [content groups the page shows] }
+  const [imported, setImported] = useState(null)
   const [look, setLook] = useState(null)               // P4-2: colour/font options for a Premium site
   const [lookPreviewHtml, setLookPreviewHtml] = useState(null)
   const [lookBusy, setLookBusy] = useState(false)
@@ -543,6 +545,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
       setContent(s.content)
       setRecipe(s.recipe)
       setPremium(s.premium && s.premium.active ? s.premium : null)
+      setImported(s.imported && s.imported.active ? s.imported : null)
       if (s.premium && s.premium.active) {
         getPremiumLook(token, siteId).then(setLook).catch(() => setLook(null))
       } else {
@@ -734,7 +737,8 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   const st = SITE_STATUS[site.status] || SITE_STATUS.brief_in_progress
   // Premium: only the content groups the design actually shows get a card (business, hero, hours/location and
   // the SEO card always stay, because search listings use them).
-  const showGroup = (key) => !premium || (premium.used || []).includes(key)
+  const fixedLook = premium || imported
+  const showGroup = (key) => !fixedLook || (fixedLook.used || []).includes(key)
   const premiumExtras = Object.entries({ announcement: 'announcement', faqs: 'faq', menu: 'menu', process: 'process', team: 'team', gallery: 'gallery', banner: 'banner' })
     .filter(([k]) => showGroup(k)).map(([, v]) => v)
   const previewUrl = `${BASE}/s/${site.slug}`
@@ -802,6 +806,12 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
         <div className="bp-pane" data-active={mobileTab === 'edit'}>
           {/* Business and Hero start open (the two you touch almost every visit); the rest start
               collapsed so the form doesn't read as one very long scroll - click a title to open it. */}
+          {imported && (
+            <Notice tone="info">
+              This site is your uploaded page. Its look and layout stay exactly as uploaded, so colour, font and layout options are not shown here.
+              Edit your text, prices and photos below. Only the parts your page shows are listed.
+            </Notice>
+          )}
           {premium && (
             <Notice tone="info">
               Your site has a Premium design, made specially for you. Its look and layout are fixed, so colour, font and layout options are not shown here.
@@ -815,8 +825,8 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           {showGroup('categories') && <CategoriesCard content={content} setContent={setContent} />}
           {showGroup('reviews') && <ReviewsCard content={content} setContent={setContent} />}
           <ExtraSectionCards content={content} setContent={setContent} collapsible assetUrls={assetUrls} onUpload={uploadFor}
-            onlyOffered={!!premium}
-            offered={premium ? premiumExtras : [...(site?.design_options?.sections || []), ...(recipe?.order || [])]} />
+            onlyOffered={!!fixedLook}
+            offered={fixedLook ? premiumExtras : [...(site?.design_options?.sections || []), ...(recipe?.order || [])]} />
           <HoursLocationCard content={content} setContent={setContent} />
           <OrderSeoCard content={content} setContent={setContent} />
 
@@ -848,8 +858,8 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
             <PremiumDesignsCard token={token} siteId={siteId} onResult={takeLookResult}
               onPreviewHtml={setLookPreviewHtml} previewingHtml={!!lookPreviewHtml} />
           )}
-          {!premium && <PremiumOfferCard token={token} siteId={siteId} onPremium={load} />}
-          {!premium && (
+          {!fixedLook && <PremiumOfferCard token={token} siteId={siteId} onPremium={load} />}
+          {!fixedLook && (
             <>
               <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} onSuggest={() => setSuggestOpen(true)} />
               <DesignSuggestModal open={suggestOpen} onClose={() => setSuggestOpen(false)} fetchSuggestions={fetchSuggestions}

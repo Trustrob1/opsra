@@ -189,6 +189,7 @@ celery_app = Celery(
         "app.workers.funnel_worker",                     # ← FUNNEL-1A
         "app.workers.site_worker",                       # ← SITE-1B §7.7
         "app.workers.site_premium_worker",               # ← SITE-PREMIUM P2
+        "app.workers.site_import_worker",                # ← SITE-IMPORT 2 (make an uploaded site editable)
     ],
 )
 

@@ -948,13 +948,11 @@ def collect_export_files(db: Any, org_id: str, site_id: str) -> tuple:
     used: set = set()
     assets_by_id: dict = {}
     imported = None
-    if (site.get("tier") or "standard") == "imported":     # SITE-IMPORT 1b: ship the uploaded file tree, never fall back to Standard
-        from app.services import site_import_render
-        try:
-            imported = site_import_render.export_bundle(db, site)
-        except site_import_render.ImportRenderError as exc:
-            raise ValidationFailed(str(exc))
-        assets = []
+    is_imported = (site.get("tier") or "standard") == "imported"     # SITE-IMPORT 1b: ship the uploaded file tree, never fall back to Standard
+    if is_imported:
+        from app.services import site_import_editable_service
+        if not site_import_editable_service.editable_design(db, site):
+            assets = []          # Level 1: the page uses only its own files; the site's photos are not part of it
     for a in assets:
         try:
             data = db.storage.from_("site-assets").download(a["storage_path"])
@@ -969,7 +967,12 @@ def collect_export_files(db: Any, org_id: str, site_id: str) -> tuple:
         used.add(name)
         files.append((name, data))
         assets_by_id[a["id"]] = {"export_path": name}
-    if imported is not None:
+    if is_imported:
+        from app.services import site_import_render
+        try:
+            imported = site_import_render.export_bundle(db, site, assets_by_id)
+        except site_import_render.ImportRenderError as exc:
+            raise ValidationFailed(str(exc))
         files.extend(imported)
     else:
         try:

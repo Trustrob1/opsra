@@ -141,7 +141,8 @@ export const importSiteFile = (siteId, file, opts = {}) => {
 export const previewImportDesign = (siteId, designId) => unwrap(api.get(`/api/v1/sites/${siteId}/import/designs/${designId}/preview`))
 /** { resolved, failed, remaining } - copies files the page loads from unlisted websites. */
 export const resolveImportDesign = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/import/resolve`, { design_id: designId }))
-export const activateImportDesign = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/import/activate`, { design_id: designId }))
+export const activateImportDesign = (siteId, designId, adoptContent = false) => unwrap(api.post(`/api/v1/sites/${siteId}/import/activate`, { design_id: designId, adopt_content: !!adoptContent }))
+export const makeImportEditable = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/import/make-editable`, { design_id: designId }))
 
 /** Pull a readable message out of an axios error ({detail:{message}} or FastAPI 422 list). */
 export function errorMessage(err, fallback = 'Something went wrong. Please try again.') {

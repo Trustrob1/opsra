@@ -197,8 +197,20 @@ def public_base(db: Any, design: dict) -> Optional[str]:
         return None
 
 
-def render_imported_page(db: Any, design: dict, allowed_hosts, export: bool = False) -> str:
-    html = design.get("skeleton_html") or ""
+def _level2_page(design: dict, content: Optional[dict], assets_by_id: Optional[dict], export: bool) -> Optional[str]:
+    """SITE-IMPORT 2: the marked page filled with the site's content, or None when this design is a Level 1 import
+    (or no content is given). The fill leaves every byte outside the slots exactly as the author wrote it."""
+    meta = design.get("import_meta") or {}
+    skeleton = meta.get("slot_skeleton")
+    if not (design.get("editable") and skeleton and content is not None):
+        return None
+    from app.services import site_import_slotting
+    return site_import_slotting.fill(skeleton, content, assets_by_id or {}, export=export)
+
+
+def render_imported_page(db: Any, design: dict, allowed_hosts, export: bool = False,
+                         content: Optional[dict] = None, assets_by_id: Optional[dict] = None) -> str:
+    html = _level2_page(design, content, assets_by_id, export) or design.get("skeleton_html") or ""
     if not html.strip():
         raise ImportRenderError("The imported design has no page.")
     accepted = _accepted_rules(design)
@@ -230,30 +242,34 @@ def render_if_imported(db: Any, site: dict, assets_by_id: dict, export: bool = F
         if not design:
             logger.warning("site_import_render: design missing for site %s - rendering Standard", site.get("id"))
             return None
-        return render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=export)
+        return render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=export,
+                                    content=site.get("content"), assets_by_id=assets_by_id)
     except Exception as exc:  # S14
         logger.warning("site_import_render: render failed site=%s: %s", site.get("id"), exc)
         return None
 
 
-def preview_design(db: Any, org_id: str, site: dict, design_id: str) -> str:
+def preview_design(db: Any, org_id: str, site: dict, design_id: str, assets_by_id: Optional[dict] = None) -> str:
     design = _current_design(db, {"id": site["id"], "org_id": org_id}, design_id)
     if not design:
         raise ImportRenderError("Imported design not found.")
-    return render_imported_page(db, design, _allowed_hosts(db, org_id), export=False)
+    extracted = (design.get("import_meta") or {}).get("extracted_content")
+    return render_imported_page(db, design, _allowed_hosts(db, org_id), export=False,
+                                content=extracted, assets_by_id=assets_by_id)
 
 
 # ---------------------------------------------------------------------------
 # Export / publish
 # ---------------------------------------------------------------------------
 
-def export_bundle(db: Any, site: dict) -> list:
+def export_bundle(db: Any, site: dict, assets_by_id: Optional[dict] = None) -> list:
     """[(path, bytes_or_str)] for an imported site: the page as index.html and every stored file at its own path.
     Raises ImportRenderError when anything is missing."""
     design = _current_design(db, site)
     if not design:
         raise ImportRenderError("This site's imported design is missing. Open the Import panel and choose a design.")
-    files = [("index.html", render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=True))]
+    files = [("index.html", render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=True,
+                                                 content=site.get("content"), assets_by_id=assets_by_id))]
     for f in ((design.get("import_meta") or {}).get("files") or []):
         if not f.get("stored"):
             continue
@@ -272,6 +288,11 @@ def export_bundle(db: Any, site: dict) -> list:
 # Activation / listing
 # ---------------------------------------------------------------------------
 
+def _level2_status(row: dict) -> dict:
+    from app.services import site_import_editable_service
+    return site_import_editable_service.public_status(row)
+
+
 def designs(db: Any, org_id: str, site: dict) -> list:
     rows = (db.table("site_designs").select("id, version, kind, status, staged, created_by, created_at, checks, import_meta, files_prefix")
             .eq("site_id", site["id"]).eq("org_id", org_id).eq("kind", "import").order("version", desc=True)
@@ -288,14 +309,20 @@ def designs(db: Any, org_id: str, site: dict) -> list:
                     "counts": rep.get("counts"), "warnings": len(rep.get("warnings") or []),
                     "scripts": len(rep.get("scripts") or []) + (rep.get("page") or {}).get("inline_scripts", 0),
                     "external_unknown": len((rep.get("external") or {}).get("unknown") or []),
-                    "missing_files": len(rep.get("missing_files") or [])})
+                    "missing_files": len(rep.get("missing_files") or []),
+                    "editable": bool(r.get("editable")), "level2": _level2_status(r)})
     return out
 
 
-def activate(db: Any, org_id: str, site: dict, design_id: str) -> dict:
+def activate(db: Any, org_id: str, site: dict, design_id: str, adopt_content: bool = False, actor: str = "system") -> dict:
     row = _current_design(db, {"id": site["id"], "org_id": org_id}, design_id)
     if not row:
         raise ImportRenderError("Imported design not found.")
+    if adopt_content:
+        if not (row.get("editable") and (row.get("import_meta") or {}).get("extracted_content")):
+            raise ImportRenderError("This design is not editable yet, so its text cannot become the site's content.")
+        from app.services import site_import_editable_service
+        site_import_editable_service.adopt_content(db, org_id, site, row, actor)
     db.table("sites").update({"tier": "imported", "current_design_id": row["id"], "updated_at": _now_iso()}) \
         .eq("id", site["id"]).eq("org_id", org_id).execute()
     db.table("site_designs").update({"staged": False}).eq("id", row["id"]).eq("org_id", org_id).execute()

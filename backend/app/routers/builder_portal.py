@@ -66,6 +66,7 @@ from app.services import (
     site_premium_billing_service,
     site_premium_history,
     site_premium_service,
+    site_import_editable_service,
     site_premium_tweaks,
     site_renderer,
 )
@@ -486,6 +487,8 @@ def get_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(g
     site["assets"] = assets
     # SITE-PREMIUM P4-1: tells the editor this is a Premium design and which content it shows.
     site["premium"] = site_premium_service.editor_info(db, builder["org_id"], site)
+    # SITE-IMPORT 2: an uploaded site made editable: the editor shows only the content groups the page shows.
+    site["imported"] = site_import_editable_service.editor_info(db, builder["org_id"], site)
     # SITE-1C-1c: only the design choices the template allows (so the visual look picker can
     # narrow itself); never the rest of the preset. Fails open: no options = everything shown.
     try:
@@ -510,6 +513,9 @@ def _refuse_if_premium(db, org_id: str, site: dict) -> None:
     if site_premium_service.editor_info(db, org_id, site):
         raise HTTPException(409, detail={"code": "PREMIUM_DESIGN",
                                          "message": "This site has a Premium design, so the standard design options do not apply to it."})
+    if site_import_editable_service.editor_info(db, org_id, site):
+        raise HTTPException(409, detail={"code": "IMPORTED_DESIGN",
+                                         "message": "This site is an uploaded page, so the standard design options do not apply to it."})
 
 
 @router.patch("/sites/{site_id}/content")

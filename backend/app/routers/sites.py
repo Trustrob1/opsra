@@ -53,7 +53,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service, site_import_service, site_import_render, site_import_resolve
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service, site_import_service, site_import_render, site_import_resolve, site_import_editable_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -925,6 +925,7 @@ def import_report(site_id: str, org=Depends(get_current_org), db=Depends(get_sup
 
 class ImportDesignRef(BaseModel):
     design_id: str = Field(min_length=1, max_length=64)
+    adopt_content: bool = False        # SITE-IMPORT 2: make the page's own text the site's content when activating a Level 2 design
 
 
 def _import_render_call(fn, *args):
@@ -949,7 +950,9 @@ def import_design_preview(site_id: str, design_id: str, org=Depends(get_current_
     """The page of one imported design, ready to show in a sandboxed iframe (scripts on, no access to the dashboard)."""
     org_id, _settings = _import_org(org, db, _READ_ROLES)
     site = _get_site(db, org_id, site_id)
-    html = _import_render_call(site_import_render.preview_design, db, org_id, site, design_id)
+    assets_r = db.table("site_assets").select("id, public_url").eq("site_id", site_id).execute()
+    assets_by_id = {a["id"]: {"public_url": a["public_url"]} for a in (assets_r.data or [])}
+    html = _import_render_call(site_import_render.preview_design, db, org_id, site, design_id, assets_by_id)
     return ok(data={"html": html})
 
 
@@ -959,6 +962,12 @@ def import_resolve(payload: ImportDesignRef, site_id: str, org=Depends(get_curre
     org_id, settings = _import_org(org, db, _WRITE_ROLES)
     site = _get_site(db, org_id, site_id)
     cfg = site_import_service.settings_for(settings)
+    marked = (db.table("site_designs").select("id, editable").eq("id", payload.design_id).eq("site_id", site_id)
+              .eq("org_id", org_id).limit(1).execute()).data
+    if marked and marked[0].get("editable"):
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message":
+                            "This design is already editable, and copying files would change its page. Copy the files first, then make it editable "
+                            "(upload the site again if needed)."})
     result = _import_render_call(site_import_resolve.resolve, db, org_id, site, payload.design_id, cfg["allowed_hosts"])
     _log_event(db, org_id, site_id, f"user:{org.get('id')}", "site_import_resolved",
                {"design_id": payload.design_id, "resolved": len(result["resolved"]), "failed": len(result["failed"])})
@@ -970,11 +979,40 @@ def import_activate(payload: ImportDesignRef, site_id: str, org=Depends(get_curr
     """Make an imported design the site's page (preview). Publishing to the domain stays a separate step."""
     org_id, _settings = _import_org(org, db, _WRITE_ROLES)
     site = _get_site(db, org_id, site_id)
-    row = _import_render_call(site_import_render.activate, db, org_id, site, payload.design_id)
+    actor = f"user:{org.get('id')}"
+    row = _import_render_call(site_import_render.activate, db, org_id, site, payload.design_id, payload.adopt_content, actor)
     site["tier"], site["current_design_id"] = "imported", row["id"]
     _render_and_store(db, org_id, site)
-    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "site_import_activated", {"design_id": row["id"]})
-    return ok(data={"design_id": row["id"], "tier": "imported"}, message="The imported design is now the site's page")
+    _log_event(db, org_id, site_id, actor, "site_import_activated", {"design_id": row["id"], "adopt_content": bool(payload.adopt_content)})
+    return ok(data={"design_id": row["id"], "tier": "imported", "editable": bool(row.get("editable"))},
+              message="The imported design is now the site's page")
+
+
+@router.post("/sites/{site_id}/import/make-editable", status_code=status.HTTP_202_ACCEPTED)
+def import_make_editable(payload: ImportDesignRef, site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """SITE-IMPORT 2: Claude maps the uploaded page onto the editor's content fields (a plan, never page code). Returns at once;
+    a worker does the 1 to 3 minute job. Poll GET /import/designs: level2.status goes running -> working -> ready (or failed,
+    and the design stays a plain Level 1 import)."""
+    org_id, _settings = _import_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    actor = f"user:{org.get('id')}"
+    try:
+        started = site_import_editable_service.start(db, org_id, site, actor, payload.design_id)
+    except site_premium_generation_service.CapReached as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    except site_ops_service.SiteOpsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    try:
+        from app.workers.site_import_worker import run_make_editable
+        run_make_editable.apply_async(args=[started["design_id"]], retry=False)
+    except Exception as exc:  # S14 - the queue is down: do not leave the design 'running'
+        logger.warning("import make-editable: could not queue design=%s: %s", started["design_id"], exc)
+        row = (db.table("site_designs").select("*").eq("id", started["design_id"]).eq("org_id", org_id).limit(1).execute()).data
+        if row:
+            site_import_editable_service._write_meta(db, row[0], status="failed", errors=["The job could not be queued."], finished_at=site_import_editable_service._now_iso())
+        raise HTTPException(status_code=503, detail={"code": "SERVICE_UNAVAILABLE", "message": "The service is busy. Please try again in a few minutes."})
+    _log_event(db, org_id, site_id, actor, "import_editable_started", {"design_id": started["design_id"]})
+    return ok(data={"design_id": started["design_id"], "status": "running"}, message="Making the page editable. This takes a few minutes.")
 
 
 @router.post("/sites/{site_id}/render")

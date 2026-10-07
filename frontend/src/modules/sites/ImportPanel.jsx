@@ -7,11 +7,15 @@
  * Backend: routers/sites.py /sites/{id}/import/* (switched on per account by site_builder_settings.site_import_enabled;
  * when it is off the API answers 403 and this panel renders nothing). Making a design the page changes the preview only;
  * publishing to the client's domain stays the separate "Publish to Cloudflare" step.
+ *
+ * SITE-IMPORT 2: "Make editable" asks Claude to map the page onto the editor's fields (a plan, never page code). It runs in a
+ * worker (a few minutes), so the panel polls while a design is running. An editable design can take the page's own text as the
+ * site's content when it is used; on failure the design simply stays a plain import.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { UploadCloud, Eye, Copy, CheckCircle2, Undo2, ShieldCheck } from 'lucide-react'
+import { UploadCloud, Eye, Copy, CheckCircle2, Undo2, ShieldCheck, Wand2 } from 'lucide-react'
 import {
-  getImportDesigns, importSiteFile, previewImportDesign, resolveImportDesign, activateImportDesign, premiumBackToStandard, errorMessage,
+  getImportDesigns, importSiteFile, previewImportDesign, resolveImportDesign, activateImportDesign, makeImportEditable, premiumBackToStandard, errorMessage,
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, SectionTitle, Modal, Segmented } from './sitesUi'
 import { T, dateTime } from './sitesKit'
@@ -28,6 +32,7 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
   const [accepted, setAccepted] = useState({})     // { file: [rule, ...] }
   const [preview, setPreview] = useState(null)     // { version, html }
   const [width, setWidth] = useState('desktop')
+  const [adopt, setAdopt] = useState({})           // design id -> use the page's own text as the site's content (default yes)
   const input = useRef(null)
 
   const load = useCallback(async () => {
@@ -42,6 +47,13 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
   }, [siteId])
 
   useEffect(() => { load() }, [load])
+
+  const working = (data?.designs || []).some((d) => ['running', 'working'].includes(d.level2?.status))
+  useEffect(() => {
+    if (!working) return undefined
+    const t = setInterval(load, 5000)
+    return () => clearInterval(t)
+  }, [working, load])
   if (hidden) return null
 
   const designs = data?.designs || []
@@ -101,10 +113,23 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
     }
   }
 
+  const makeEditable = async (d) => {
+    setBusy(d.id)
+    try {
+      await makeImportEditable(siteId, d.id)
+      showToast('Making the page editable. This takes a few minutes; you can leave this screen.')
+      await load()
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not start.'), 'bad')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const use = async (d) => {
     setBusy(d.id)
     try {
-      await activateImportDesign(siteId, d.id)
+      await activateImportDesign(siteId, d.id, d.editable && adopt[d.id] !== false)
       showToast(`Version ${d.version} is now this site's page`)
       await load()
       onSiteChanged?.()
@@ -195,6 +220,9 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
               <strong style={{ fontSize: 13.5, color: T.ink }}>Import {d.version}</strong>
               {d.active && <Badge tone="good">In use</Badge>}
               {d.staged && !d.active && <Badge tone="neutral">Not used yet</Badge>}
+              {d.editable && <Badge tone="good">Editable</Badge>}
+              {['running', 'working'].includes(d.level2?.status) && <Badge tone="warn">Making editable…</Badge>}
+              {d.level2?.status === 'failed' && !d.editable && <Badge tone="warn">Stays a plain import</Badge>}
               <span style={{ fontSize: 12, color: T.muted }}>
                 {dateTime(d.created_at)} · {who(d.created_by)} · {d.filename || 'upload'} · {d.counts?.files ?? '?'} files · {d.scripts} script(s)
                 {d.warnings ? ` · ${d.warnings} warning(s)` : ''}
@@ -208,8 +236,24 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
                   Copy {d.external_unknown} outside file(s)
                 </Button>
               )}
+              {canEdit && !d.editable && !['running', 'working'].includes(d.level2?.status) && (
+                <Button size="sm" variant="secondary" icon={Wand2} loading={busy === d.id} disabled={!!busy && busy !== d.id} onClick={() => makeEditable(d)}
+                  title="Claude maps this page onto the editor's fields so the text, prices, photos and contact links can be edited here and by WhatsApp EDIT. The page's code is never changed. Takes a few minutes.">
+                  {d.level2?.status === 'failed' ? 'Try again' : 'Make editable'}
+                </Button>
+              )}
+              {canEdit && d.editable && !d.active && (
+                <label style={{ fontSize: 12, color: T.muted }} title="Replaces this site's text with what the page says. The old text stays available through Undo.">
+                  <input type="checkbox" checked={adopt[d.id] !== false} onChange={(e) => setAdopt((p) => ({ ...p, [d.id]: e.target.checked }))} /> Use the page's own text
+                </label>
+              )}
               {canEdit && !d.active && (
                 <Button size="sm" variant="primary" icon={CheckCircle2} loading={busy === d.id} disabled={!!busy && busy !== d.id} onClick={() => use(d)}>Use this design</Button>
+              )}
+              {d.level2?.status === 'failed' && !d.editable && (d.level2.errors || []).length > 0 && (
+                <div style={{ flexBasis: '100%', fontSize: 12, color: T.muted }}>
+                  Could not make it editable: {(d.level2.errors || []).slice(0, 3).join(' · ')}
+                </div>
               )}
             </div>
           ))}
@@ -217,7 +261,9 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
       )}
       {isImported && (
         <Notice tone="info" style={{ marginTop: 12 }}>
-          This site now shows the imported page. The content fields below do not change it. To change the page, import a new version.
+          {designs.some((d) => d.active && d.editable)
+            ? 'This site shows an editable imported page. The text, prices, photos and contact links you edit appear on it; everything else on the page stays as it was uploaded.'
+            : 'This site now shows the imported page. The content fields below do not change it. Press Make editable on a version, or import a new version, to change the page.'}
         </Notice>
       )}
 

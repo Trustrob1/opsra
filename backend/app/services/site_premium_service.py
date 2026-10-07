@@ -127,10 +127,11 @@ def import_skeleton(db: Any, org_id: str, site: dict, actor: str, raw_html: str,
 
 def _prune(db: Any, org_id: str, site_id: str, keep_id: str) -> None:
     try:
-        rows = (db.table("site_designs").select("id, version, kind").eq("site_id", site_id).eq("org_id", org_id)
+        rows = (db.table("site_designs").select("id, version, kind, files_prefix").eq("site_id", site_id).eq("org_id", org_id)
                 .execute()).data or []
         rows.sort(key=lambda r: int(r["version"]), reverse=True)
         protected = {r["id"] for r in [r for r in rows if r.get("kind") != "patch"][:KEEP_FULL_DESIGNS]}
+        protected |= {r["id"] for r in rows if r.get("files_prefix")}      # SITE-IMPORT: an uploaded site is pruned by its own rule
         for old in rows[KEEP_VERSIONS:]:
             if old["id"] != keep_id and old["id"] not in protected:
                 db.table("site_designs").delete().eq("id", old["id"]).eq("org_id", org_id).execute()
