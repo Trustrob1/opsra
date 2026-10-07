@@ -44,3 +44,9 @@ export function errorMessage(err) {
   if (typeof detail === 'string') return detail
   return detail?.message || 'Something went wrong — please try again.'
 }
+
+/** PARTNER-1A — open a partner's permanent link: returns { url } of a fresh single-client brief form. */
+export async function openPartnerLink(slug) {
+  const res = await axios.post(`${BASE}/partner-links/${encodeURIComponent(slug)}/open`)
+  return res.data.data
+}

@@ -176,6 +176,12 @@ export default function App() {
     const PublicLogPage = require('./pages/PublicLogPage').default
     return <PublicLogPage token={_logMatch[1]} />
   }
+  // PARTNER-1A — a Launch Partner's permanent link: opens a fresh client brief form.
+  const _partnerMatch = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]{6,64})$/)
+  if (_partnerMatch) {
+    const PartnerLinkPage = require('./pages/PartnerLinkPage').default
+    return <PartnerLinkPage slug={_partnerMatch[1]} />
+  }
   // SITE-1B — public brief-form link, spec §7.3. Tokens are secrets.token_urlsafe(32)
   // (~43 URL-safe base64 chars, no padding); the range below is a safe margin.
   const _formMatch = window.location.pathname.match(/^\/f\/([A-Za-z0-9_-]{20,80})$/)
