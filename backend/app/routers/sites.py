@@ -24,7 +24,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 
 from app.database import get_supabase
@@ -53,7 +53,7 @@ from app.models.sites import (
 # generate_form_token() is a generic (raw_token, sha256_hash) pair — reused as-is
 # for editor magic links below (site_editor_tokens.token_hash is the same shape
 # as site_brief_forms.token_hash, spec §18).
-from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service, site_import_service
+from app.services import site_care_plan_service, site_discount_service, site_design_registry, site_design_service, site_image_service, site_ops_service, site_publish_service, site_cloudflare_service, site_zone_service, site_renderer, site_premium_service, site_premium_generation_service, site_premium_billing_service, site_import_service, site_import_render, site_import_resolve
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -921,6 +921,60 @@ def import_report(site_id: str, org=Depends(get_current_org), db=Depends(get_sup
     if not latest:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "This site has no imported design yet."})
     return ok(data=latest)
+
+
+class ImportDesignRef(BaseModel):
+    design_id: str = Field(min_length=1, max_length=64)
+
+
+def _import_render_call(fn, *args):
+    try:
+        return fn(*args)
+    except (site_import_render.ImportRenderError, site_import_service.ImportRejected) as exc:
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    except site_import_service.ImportFailed as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+
+
+@router.get("/sites/{site_id}/import/designs")
+def import_designs(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    org_id, _settings = _import_org(org, db, _READ_ROLES)
+    site = _get_site(db, org_id, site_id)
+    return ok(data={"tier": site.get("tier"), "current_design_id": site.get("current_design_id"),
+                    "designs": site_import_render.designs(db, org_id, site)})
+
+
+@router.get("/sites/{site_id}/import/designs/{design_id}/preview")
+def import_design_preview(site_id: str, design_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """The page of one imported design, ready to show in a sandboxed iframe (scripts on, no access to the dashboard)."""
+    org_id, _settings = _import_org(org, db, _READ_ROLES)
+    site = _get_site(db, org_id, site_id)
+    html = _import_render_call(site_import_render.preview_design, db, org_id, site, design_id)
+    return ok(data={"html": html})
+
+
+@router.post("/sites/{site_id}/import/resolve")
+def import_resolve(payload: ImportDesignRef, site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """Copy the pictures / stylesheets / fonts the page loads from unlisted websites into the site's own files."""
+    org_id, settings = _import_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    cfg = site_import_service.settings_for(settings)
+    result = _import_render_call(site_import_resolve.resolve, db, org_id, site, payload.design_id, cfg["allowed_hosts"])
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "site_import_resolved",
+               {"design_id": payload.design_id, "resolved": len(result["resolved"]), "failed": len(result["failed"])})
+    return ok(data=result, message=f"{len(result['resolved'])} file(s) copied")
+
+
+@router.post("/sites/{site_id}/import/activate")
+def import_activate(payload: ImportDesignRef, site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """Make an imported design the site's page (preview). Publishing to the domain stays a separate step."""
+    org_id, _settings = _import_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    row = _import_render_call(site_import_render.activate, db, org_id, site, payload.design_id)
+    site["tier"], site["current_design_id"] = "imported", row["id"]
+    _render_and_store(db, org_id, site)
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "site_import_activated", {"design_id": row["id"]})
+    return ok(data={"design_id": row["id"], "tier": "imported"}, message="The imported design is now the site's page")
 
 
 @router.post("/sites/{site_id}/render")

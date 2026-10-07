@@ -132,4 +132,16 @@ def preview_site(slug: str, request: Request, db=Depends(get_supabase)):
         logger.error("preview_site: render failed for slug=%s: %s", slug, exc)
         raise HTTPException(status_code=500, detail="This preview couldn't be rendered right now")
 
-    return HTMLResponse(content=html, status_code=200, headers=_preview_headers())
+    headers = _preview_headers()
+    if (site.get("tier") or "standard") == "imported":      # SITE-IMPORT 1b: scripts run, but in a sandbox
+        from app.services import site_import_render
+        base = None
+        try:
+            d = site_import_render._current_design(db, site)
+            base = site_import_render.public_base(db, d) if d else None
+            from urllib.parse import urlsplit
+            origin = "{u.scheme}://{u.netloc}".format(u=urlsplit(base)) if base else None
+            headers = site_import_render.preview_headers(site_import_render._allowed_hosts(db, site["org_id"]), origin)
+        except Exception as exc:  # S14: keep the strict script-free headers
+            logger.warning("preview_site: imported headers failed slug=%s: %s", slug, exc)
+    return HTMLResponse(content=html, status_code=200, headers=headers)

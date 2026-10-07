@@ -126,6 +126,23 @@ export const previewPremiumDesign = (siteId, designId) => unwrap(api.get(`/api/v
 export const switchPremiumDesign = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/premium/use-design`, { design_id: designId }))
 export const premiumBackToStandard = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/premium/standard`))
 
+// ── SITE-IMPORT 1b: import a finished single-page site made outside Opsra (staff) ──
+/** { tier, current_design_id, designs: [{ id, version, active, staged, counts, warnings, scripts, external_unknown, missing_files, ... }] } */
+export const getImportDesigns = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/import/designs`))
+/** opts: { dryRun, accepted: { 'js/app.js': ['eval'] } }. 422 carries detail.errors and detail.report. */
+export const importSiteFile = (siteId, file, opts = {}) => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('dry_run', opts.dryRun ? 'true' : 'false')
+  if (opts.accepted && Object.keys(opts.accepted).length) form.append('accepted', JSON.stringify(opts.accepted))
+  return unwrap(api.post(`/api/v1/sites/${siteId}/import`, form, { headers: { 'Content-Type': 'multipart/form-data' } }))
+}
+/** { html } - show ONLY inside <iframe sandbox="allow-scripts" srcDoc>. */
+export const previewImportDesign = (siteId, designId) => unwrap(api.get(`/api/v1/sites/${siteId}/import/designs/${designId}/preview`))
+/** { resolved, failed, remaining } - copies files the page loads from unlisted websites. */
+export const resolveImportDesign = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/import/resolve`, { design_id: designId }))
+export const activateImportDesign = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/import/activate`, { design_id: designId }))
+
 /** Pull a readable message out of an axios error ({detail:{message}} or FastAPI 422 list). */
 export function errorMessage(err, fallback = 'Something went wrong. Please try again.') {
   const d = err?.response?.data?.detail

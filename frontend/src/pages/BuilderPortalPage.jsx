@@ -868,7 +868,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           </div>
           <div className="bp-preview-frame-wrap">
             {(lookPreviewHtml || site.rendered_html)
-              ? <iframe title="Site preview" srcDoc={lookPreviewHtml || site.rendered_html} style={{ width: '100%', height: '100%', minHeight: '60vh', border: 'none', display: 'block' }} />
+              ? <iframe title="Site preview" srcDoc={lookPreviewHtml || site.rendered_html} sandbox={site.tier === 'imported' ? 'allow-scripts allow-popups' : undefined} style={{ width: '100%', height: '100%', minHeight: '60vh', border: 'none', display: 'block' }} />
               : <div style={{ padding: 24 }}>
                   <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>Click <strong>Refresh preview</strong> above to see how your site looks.</p>
                 </div>}

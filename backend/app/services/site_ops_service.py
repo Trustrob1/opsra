@@ -947,6 +947,14 @@ def collect_export_files(db: Any, org_id: str, site_id: str) -> tuple:
     files: list = []
     used: set = set()
     assets_by_id: dict = {}
+    imported = None
+    if (site.get("tier") or "standard") == "imported":     # SITE-IMPORT 1b: ship the uploaded file tree, never fall back to Standard
+        from app.services import site_import_render
+        try:
+            imported = site_import_render.export_bundle(db, site)
+        except site_import_render.ImportRenderError as exc:
+            raise ValidationFailed(str(exc))
+        assets = []
     for a in assets:
         try:
             data = db.storage.from_("site-assets").download(a["storage_path"])
@@ -961,17 +969,22 @@ def collect_export_files(db: Any, org_id: str, site_id: str) -> tuple:
         used.add(name)
         files.append((name, data))
         assets_by_id[a["id"]] = {"export_path": name}
-    try:
-        from app.services import site_premium_service   # SITE-PREMIUM P1
-        html = site_premium_service.render_if_premium(db, site, assets_by_id, export=True, canonical_domain=domain)
-        if html is None:
-            html = site_renderer.render_export(site["content"], site["recipe"], preset, assets_by_id)
-    except ValueError as exc:
-        raise ValidationFailed(str(exc))
-    files.append(("index.html", html))
+    if imported is not None:
+        files.extend(imported)
+    else:
+        try:
+            from app.services import site_premium_service   # SITE-PREMIUM P1
+            html = site_premium_service.render_if_premium(db, site, assets_by_id, export=True, canonical_domain=domain)
+            if html is None:
+                html = site_renderer.render_export(site["content"], site["recipe"], preset, assets_by_id)
+        except ValueError as exc:
+            raise ValidationFailed(str(exc))
+        files.append(("index.html", html))
+    have = {p.lower() for p, _ in files}
     origin = f"https://{domain}" if domain else None
-    files.append(("robots.txt", "User-agent: *\nAllow: /\n" + (f"Sitemap: {origin}/sitemap.xml\n" if origin else "")))
-    if origin:
+    if "robots.txt" not in have:
+        files.append(("robots.txt", "User-agent: *\nAllow: /\n" + (f"Sitemap: {origin}/sitemap.xml\n" if origin else "")))
+    if origin and "sitemap.xml" not in have:
         files.append(("sitemap.xml",
                       '<?xml version="1.0" encoding="UTF-8"?>\n'
                       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'

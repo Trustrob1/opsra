@@ -43,6 +43,18 @@ _CONTENT_TYPES = {
     ".jpeg": "image/jpeg",
     ".png": "image/png",
     ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".avif": "image/avif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".css": "text/css; charset=utf-8",          # SITE-IMPORT 1b
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
 }
 _PAGE_CACHE = "public, max-age=60"          # pages: an edit shows up within a minute
 _FILE_CACHE = "public, max-age=3600"        # images
@@ -80,7 +92,7 @@ def _content_type(path: str) -> str:
 
 
 def _cache_control(path: str) -> str:
-    return _PAGE_CACHE if path.endswith((".html", ".txt", ".xml")) else _FILE_CACHE
+    return _PAGE_CACHE if path.endswith((".html", ".txt", ".xml", ".css", ".js", ".mjs", ".json")) else _FILE_CACHE
 
 
 def _settings():

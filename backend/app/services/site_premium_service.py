@@ -214,6 +214,9 @@ def render_if_premium(db: Any, site: dict, assets_by_id: dict, export: bool = Fa
                       canonical_domain: Optional[str] = None) -> Optional[str]:
     """The Premium page for this site, or None when the site is Standard / has no usable design.
     Never raises - a problem is logged and the caller renders Standard instead."""
+    if (site.get("tier") or "standard") == "imported":      # SITE-IMPORT 1b: an uploaded, finished site
+        from app.services import site_import_render
+        return site_import_render.render_if_imported(db, site, assets_by_id, export=export, canonical_domain=canonical_domain)
     if (site.get("tier") or "standard") != "premium" or not site.get("current_design_id"):
         return None
     try:

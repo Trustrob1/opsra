@@ -20,6 +20,7 @@ import LookPickerField from './LookPicker'
 import ExtraSectionCards from './ExtraSectionCards'
 import PublishResultModal from './PublishResultModal'
 import PremiumPanel from './PremiumPanel'
+import ImportPanel from './ImportPanel'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -169,6 +170,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
       </p>
 
       <PremiumPanel siteId={siteId} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />
+      <ImportPanel siteId={siteId} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />
 
       <BusinessCard content={content} setContent={setContent} canEdit={canEdit} />
       <HeroCard content={content} setContent={setContent} canEdit={canEdit} assetUrls={assetUrls} onUpload={uploadFor} />
@@ -193,7 +195,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
       <PublishResultModal open={!!publishResult} onClose={() => setPublishResult(null)} siteId={siteId} result={publishResult} />
       <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title="Preview" width={420}>
         {site.rendered_html
-          ? <iframe title="Site preview" srcDoc={site.rendered_html} style={{ width: '100%', height: '70vh', border: `1px solid ${T.line}`, borderRadius: 8 }} />
+          ? <iframe title="Site preview" srcDoc={site.rendered_html} sandbox={site.tier === 'imported' ? 'allow-scripts allow-popups' : undefined} style={{ width: '100%', height: '70vh', border: `1px solid ${T.line}`, borderRadius: 8 }} />
           : <p style={{ fontSize: 13, color: T.muted }}>Render the preview first.</p>}
       </Modal>
     </div>
