@@ -73,6 +73,11 @@ export async function checkWinnerDomain(token, domain) {
   const res = await axios.post(`${BASE}/giveaway-winner/${encodeURIComponent(token)}/domain-check`, { domain })
   return res.data.data
 }
+/** Buy a pack of extra catalog items once the site is paid for → { checkout_url, amount, items } */
+export async function buyWinnerItems(token) {
+  const res = await axios.post(`${BASE}/giveaway-winner/${encodeURIComponent(token)}/catalog-checkout`)
+  return res.data.data
+}
 /** body: { domain, backup_domain, legal_owner:{full_name,email,phone,address}, accepted_terms } — the amount is set by the server. */
 export async function payGiveawayWinner(token, body) {
   const res = await axios.post(`${BASE}/giveaway-winner/${encodeURIComponent(token)}/checkout`, body)

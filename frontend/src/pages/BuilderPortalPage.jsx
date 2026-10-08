@@ -35,7 +35,7 @@ import {
   RefreshCw, Save, Shuffle, ShoppingCart, Trash2, Undo2, User,
 } from 'lucide-react'
 import {
-  exchangeBuilderToken, renewalCheckout, careCheckout, cancelCarePlan, editLimitOffer, getMyAccount, updateMyAccount, listMySites, getMySite,
+  exchangeBuilderToken, renewalCheckout, careCheckout, cancelCarePlan, editLimitOffer, catalogCheckout, catalogLimitOffer, getMyAccount, updateMyAccount, listMySites, getMySite,
   patchMySiteContent, patchMySiteRecipe, suggestMyDesigns, applyMyDesign, renderMySite, undoMySite, uploadMySiteAsset,
   getPremiumLook, previewPremiumLook, applyPremiumLook, undoPremiumLook,
   checkDomain, getQuote, checkout, errorMessage,
@@ -521,6 +521,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
   const [undoing, setUndoing] = useState(false)
   const [limitOffer, setLimitOffer] = useState(null)      // set when a save is refused for lack of edits
   const [careBusy, setCareBusy] = useState(null)
+  const [catalogOffer, setCatalogOffer] = useState(null)  // GIVEAWAY-2: set when a save would add items past the site's limit
   // SITE-PREMIUM P4-1: set for a Premium design: { active, version, used: [content groups the design shows] }
   const [premium, setPremium] = useState(null)
   // SITE-IMPORT 2: set for an uploaded page made editable: { active, used: [content groups the page shows] }
@@ -585,14 +586,27 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
     try {
       const saved = await patchMySiteContent(token, siteId, content)
       setContent(saved.content)
-      setLimitOffer(null)
+      setLimitOffer(null); setCatalogOffer(null)
       await refreshAfterSave(saved, 'Content saved')
     } catch (e) {
       const offer = editLimitOffer(e)
+      const cat = catalogLimitOffer(e)
       if (offer) setLimitOffer(offer)
+      else if (cat) setCatalogOffer(cat)
       else showToast(errorMessage(e, 'Could not save your changes.'), 'bad')
     } finally {
       setSavingContent(false)
+    }
+  }
+
+  const buyItems = async () => {
+    setCareBusy('items')
+    try {
+      const res = await catalogCheckout(token, siteId)
+      window.location.assign(res.checkout_url)
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not create the payment link.'), 'bad')
+      setCareBusy(null)
     }
   }
 
@@ -821,7 +835,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           <BusinessCard content={content} setContent={setContent} defaultOpen />
           <HeroCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} defaultOpen />
           {showGroup('about') && <AboutCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />}
-          {showGroup('items') && <ItemsCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} />}
+          {showGroup('items') && <ItemsCard content={content} setContent={setContent} assetUrls={assetUrls} onUpload={uploadFor} max={site?.item_limit?.limit} offer={site?.item_limit} onBuy={buyItems} busy={careBusy === 'items'} />}
           {showGroup('categories') && <CategoriesCard content={content} setContent={setContent} />}
           {showGroup('reviews') && <ReviewsCard content={content} setContent={setContent} />}
           <ExtraSectionCards content={content} setContent={setContent} collapsible assetUrls={assetUrls} onUpload={uploadFor}
@@ -830,6 +844,16 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
           <HoursLocationCard content={content} setContent={setContent} />
           <OrderSeoCard content={content} setContent={setContent} />
 
+          {catalogOffer && (
+            <div role="alert" style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 13.5, color: T.ink }}>{catalogOffer.message}</div>
+              {catalogOffer.can_buy && (
+                <div><Button variant="primary" loading={careBusy === 'items'} disabled={!!careBusy} onClick={buyItems}>
+                  Add {catalogOffer.pack_items} more items · {money(catalogOffer.pack_price)}
+                </Button></div>
+              )}
+            </div>
+          )}
           {limitOffer && (
             <div role="alert" style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 13.5, color: T.ink }}>{limitOffer.message || "You've used all the edits for this site."}</div>
@@ -1359,10 +1383,10 @@ function AboutCard({ content, setContent, assetUrls, onUpload, defaultOpen }) {
   )
 }
 
-function ItemsCard({ content, setContent, assetUrls, onUpload, defaultOpen }) {
+function ItemsCard({ content, setContent, assetUrls, onUpload, defaultOpen, max: limit, offer, onBuy, busy }) {
   const [open, setOpen] = useState(!!defaultOpen)
   const items = content.items
-  const max = 60
+  const max = limit || 60
   const update = (i, patch) => setContent((c) => ({ ...c, items: c.items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)) }))
   const add = () => { if (items.length < max) setContent((c) => ({ ...c, items: [...c.items, blankItem()] })) }
   const remove = (i) => setContent((c) => ({ ...c, items: c.items.filter((_, idx) => idx !== i) }))
@@ -1374,6 +1398,7 @@ function ItemsCard({ content, setContent, assetUrls, onUpload, defaultOpen }) {
         right={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {items.length < max && <Button size="sm" variant="secondary" icon={Plus} onClick={add}>Add item</Button>}
+            {items.length >= max && offer?.can_buy && onBuy && <Button size="sm" variant="secondary" loading={busy} onClick={onBuy}>Add {offer.pack_items} more items · {money(offer.pack_price)}</Button>}
             <CollapseToggle open={open} onToggle={() => setOpen((o) => !o)} />
           </div>
         } />

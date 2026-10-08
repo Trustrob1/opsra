@@ -92,7 +92,7 @@ export default function GiveawayPage({ slug }) {
               <li style={S.li}>Use it for your own business, or for another business. One slot per WhatsApp number.</li>
               <li style={S.li}>Opening the form does not use a slot. A slot is taken when you submit.</li>
             </ul>
-            <TermsList fee={g.fee_ngn} renewal={g.renewal_ngn} terms={g.terms} />
+            <TermsList fee={g.fee_ngn} renewal={g.renewal_ngn} terms={g.terms} payByDays={g.pay_by_days} />
             {g.open ? (
               <>
                 <p style={{ ...S.p, fontWeight: 700, margin: '0 0 8px' }}>Your details (we send your private page here)</p>

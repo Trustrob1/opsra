@@ -177,3 +177,23 @@ def test_winner_flow_submit_view_pay_and_void(ctx, monkeypatch):
     assert client.get(f"/api/v1/giveaways/{g['slug']}").json()["data"]["left"] == 2
     app.dependency_overrides[get_current_org] = lambda: _org("sales_agent")
     assert client.post(f"/api/v1/giveaways/{g['id']}/entries/1/void").status_code == 403
+
+
+def test_pay_by_days_and_winner_catalog_route(ctx, monkeypatch):
+    client, db = ctx
+    p = site_partner_service.create_partner(db, ORG, "Group Owner", "08030000001", None, "Hub")
+    r = client.post("/api/v1/giveaways", json={"partner_id": p["id"], "title": "Free Website Giveaway", "total_slots": 2, "pay_by_days": 5})
+    assert r.status_code == 201 and r.json()["data"]["pay_by_days"] == 5
+    assert client.post("/api/v1/giveaways", json={"partner_id": p["id"], "title": "Free Website Giveaway", "pay_by_days": 99}).status_code == 422
+    g = r.json()["data"]
+    t1 = client.post(f"/api/v1/giveaways/{g['slug']}/open", json=_who()).json()["data"]["url"].rsplit("/", 1)[1]
+    _choose_preset(db)
+    tok = client.post(f"/api/v1/forms/{t1}/submit", json={"client_business_name": "Zed Shop", "answers": {}}).json()["data"]["winner_url"].rsplit("/", 1)[1]
+    assert client.post(f"/api/v1/giveaway-winner/{tok}/catalog-checkout").status_code == 409        # not paid yet
+    from app.services import site_access_service, site_catalog_service
+    monkeypatch.setattr(site_access_service, "ensure_lead", lambda *a: "lead-1")
+    monkeypatch.setattr(site_catalog_service, "create_checkout",
+                        lambda *a: {"checkout_url": "https://pay.test/c", "amount": 5000, "items": 30, "reused": False})
+    db.table("site_orders").insert({"id": "o1", "site_id": db.rows("sites")[0]["id"], "kind": "initial", "status": "fulfilling"}).execute()
+    r = client.post(f"/api/v1/giveaway-winner/{tok}/catalog-checkout")
+    assert r.status_code == 200 and r.json()["data"]["items"] == 30

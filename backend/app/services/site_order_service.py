@@ -173,7 +173,7 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload, fixed_amount: 
     # spec §11.7 — "their FIRST order is created" is decided before the insert below.
     is_first_order = not [o for o in ((db.table("site_orders").select("id, kind").eq("org_id", org_id)
                                        .eq("builder_id", builder["id"]).execute()).data or [])
-                          if o.get("kind") not in ("premium_design", "premium_redesign", "builder_access")]   # prepaid fees and the builder subscription are not their site order
+                          if o.get("kind") not in ("premium_design", "premium_redesign", "builder_access", "catalog_pack")]   # prepaid fees and the builder subscription are not their site order
 
     try:
         link = paystack_storefront_service.generate_payment_link(
@@ -257,6 +257,13 @@ def is_site_order_reference(db: Any, org_id: str, reference: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def _message_builder(db: Any, org_id: str, order: dict, text: str) -> None:
+    # GIVEAWAY-2: a giveaway site belongs to the group owner's account, but the message is for the winner who owns the site.
+    try:
+        from app.services import site_giveaway_service
+        if site_giveaway_service.message_winner(db, org_id, order, text):
+            return
+    except Exception as exc:  # S14 - fall back to the normal recipient
+        logger.warning("site_order: winner message check failed order=%s: %s", order.get("id"), exc)
     builder_row = _one((db.table("site_builders").select("phone_number").eq("id", order["builder_id"])
                          .eq("org_id", org_id).limit(1).execute()).data)
     phone = (builder_row or {}).get("phone_number")
@@ -299,6 +306,38 @@ def _handle_care_payment(db: Any, org_id: str, order: dict, now: datetime) -> bo
         return True
     except Exception as exc:
         logger.warning("site_order._handle_care_payment failed order=%s: %s", order.get("id"), exc)
+        return True
+
+
+def _handle_catalog_payment(db: Any, org_id: str, order: dict, now: datetime) -> bool:
+    """GIVEAWAY-2: a catalog pack has nothing to fulfil: paid means more items allowed. S14 - never raises."""
+    try:
+        claim = (db.table("site_orders").update({"status": "live", "updated_at": now.isoformat()})
+                 .eq("id", order["id"]).eq("status", "pending_payment").execute())
+        if not claim.data:
+            return True
+        try:
+            from app.services import site_catalog_service
+            site_catalog_service.on_paid(db, org_id, order, now)
+        except Exception as exc:
+            logger.warning("site_order: catalog payment activation failed order=%s: %s", order["id"], exc)
+            try:
+                from app.services import funnel_service
+                funnel_service.notify_managers(
+                    db, org_id, "Catalog payment needs a hand",
+                    f"A catalog pack payment (₦{float(order.get('amount') or 0):,.0f}) was received but the items couldn't be added "
+                    "automatically. Check the site.", "site_order_late_payment", None)
+            except Exception:
+                pass
+        try:
+            from app.services import funnel_service
+            funnel_service.notify_managers(db, org_id, "Catalog pack paid",
+                                           f"₦{float(order.get('amount') or 0):,.0f}", "site_order_paid", None)
+        except Exception as exc:
+            logger.warning("site_order: catalog manager notify failed order=%s: %s", order["id"], exc)
+        return True
+    except Exception as exc:
+        logger.warning("site_order._handle_catalog_payment failed order=%s: %s", order.get("id"), exc)
         return True
 
 
@@ -394,6 +433,8 @@ def on_payment_confirmed(db: Any, org_id: str, reference: str, now: Optional[dat
 
         if order.get("kind") in ("care_plan", "edit_pack"):
             return _handle_care_payment(db, org_id, order, now)
+        if order.get("kind") == "catalog_pack":
+            return _handle_catalog_payment(db, org_id, order, now)
         if order.get("kind") in ("premium_design", "premium_redesign"):
             return _handle_premium_payment(db, org_id, order, now)
         if order.get("kind") == "builder_access":

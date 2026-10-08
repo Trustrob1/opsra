@@ -13,6 +13,8 @@ The slot is claimed when the form is SUBMITTED (first N complete submissions win
   on_won()       after the site exists: private winner link by email + WhatsApp, and an alert to Opsra staff
   winner_view() / winner_checkout() / winner_domain_check()   the winner's private page (/w/{token}): preview,
                  and paying the giveaway fee through the normal order + hosting pipeline
+  run_deadlines() hourly sweep: an unpaid winner is reminded 24h before the pay-by time, then the slot is released
+  message_winner() order/hosting messages for a giveaway site go to the winner (email + WhatsApp), not the group owner
   list/create/set_status/entries/void_slot   staff
 
 Atomic claim: (giveaway_id, position) is unique, so two simultaneous submissions can never take the same slot.
@@ -29,6 +31,8 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_PAY_BY_DAYS = 3
+REMINDER_HOURS = 24                 # reminder goes out this long before the pay-by time
 _PAID_STATES = ("awaiting_approval", "fulfilling", "live", "needs_builder_choice")
 MAX_OPEN_FORMS_PER_DAY = 300        # unsubmitted forms per giveaway per day (abuse cap)
 _CLAIM_TRIES = 6
@@ -98,7 +102,7 @@ def _money_int(value, label: str, default: int) -> int:
 
 
 def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slots: int = 5,
-                    fee_ngn=None, renewal_ngn=None) -> dict:
+                    fee_ngn=None, renewal_ngn=None, pay_by_days=None) -> dict:
     title = re.sub(r"\s+", " ", str(title or "")).strip()
     if not (3 <= len(title) <= 120):
         raise GiveawayError("Please enter a title for the giveaway.")
@@ -110,6 +114,12 @@ def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slo
         raise GiveawayError("Slots must be between 1 and 100.")
     fee = _money_int(fee_ngn, "The domain and hosting fee", 24500)
     renewal = _money_int(renewal_ngn, "The yearly renewal", 25000)
+    try:
+        days = DEFAULT_PAY_BY_DAYS if pay_by_days in (None, "") else int(pay_by_days)
+    except (TypeError, ValueError):
+        raise GiveawayError("The pay-by days must be a number.")
+    if not (1 <= days <= 30):
+        raise GiveawayError("The pay-by days must be between 1 and 30.")
     partner = _one((db.table("site_partners").select("*").eq("id", partner_id).eq("org_id", org_id).limit(1).execute()).data)
     if not partner:
         raise GiveawayError("Choose a group owner (partner) first.")
@@ -118,7 +128,7 @@ def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slo
     row = None
     for _ in range(5):
         cand = {"org_id": org_id, "partner_id": partner_id, "title": title, "total_slots": slots,
-                "fee_ngn": fee, "renewal_ngn": renewal,
+                "fee_ngn": fee, "renewal_ngn": renewal, "pay_by_days": days,
                 "slug": secrets.token_urlsafe(7), "status": "active", "created_at": _iso(), "updated_at": _iso()}
         try:
             row = _one(db.table("site_giveaways").insert(cand).execute().data) or cand
@@ -154,6 +164,7 @@ def set_status(db: Any, org_id: str, giveaway_id: str, status: str) -> Optional[
 def entries(db: Any, org_id: str, giveaway_id: str) -> list[dict]:
     rows = (db.table("site_giveaway_entries").select("*").eq("org_id", org_id).eq("giveaway_id", giveaway_id)
             .eq("status", "winner").order("position").limit(200).execute()).data or []
+    g = _one((db.table("site_giveaways").select("*").eq("id", giveaway_id).eq("org_id", org_id).limit(1).execute()).data)
     out = []
     for e in rows:
         site = _one((db.table("sites").select("client_business_name,status,live_url").eq("id", e["site_id"]).limit(1).execute()).data) if e.get("site_id") else None
@@ -162,6 +173,7 @@ def entries(db: Any, org_id: str, giveaway_id: str) -> list[dict]:
                     "live_url": (site or {}).get("live_url"),
                     "contact_name": e.get("contact_name"), "contact_phone": e.get("contact_phone"),
                     "contact_email": e.get("contact_email"),
+                    "pay_by": _iso(_deadline(e, g)) if (g and _deadline(e, g)) else None,
                     "paid": bool(site and _initial_order_paid(db, e["site_id"]))})
     return out
 
@@ -181,10 +193,24 @@ def void_slot(db: Any, org_id: str, giveaway_id: str, position: int) -> dict:
         raise GiveawayError("That slot isn't taken.")
     if entry.get("site_id") and _initial_order_paid(db, entry["site_id"]):
         raise GiveawayError("This winner has already paid, so the slot can't be voided here.")
-    if entry.get("site_id"):
-        db.table("sites").update({"deleted_at": _iso(), "updated_at": _iso()}).eq("id", entry["site_id"])             .eq("org_id", org_id).execute()
-    db.table("site_giveaway_entries").update({"status": "voided", "position": None, "winner_token_hash": None})         .eq("id", entry["id"]).execute()
+    _release(db, entry, "staff")
     return {"position": position, "status": "voided"}
+
+
+def _release(db: Any, entry: dict, reason: str) -> None:
+    """Free the slot and the WhatsApp number, remove the unpaid site, and cancel any unpaid payment link.
+    A staff void also kills the winner link; an expiry keeps it so the page can say what happened."""
+    if entry.get("site_id"):
+        db.table("sites").update({"deleted_at": _iso(), "updated_at": _iso()}).eq("id", entry["site_id"]) \
+            .eq("org_id", entry["org_id"]).execute()
+        pend = (db.table("site_orders").select("id").eq("site_id", entry["site_id"]).eq("kind", "initial")
+                .eq("status", "pending_payment").limit(50).execute()).data or []
+        for o in pend:                      # a late payment on these is caught by the existing late-payment alert
+            db.table("site_orders").update({"status": "expired", "updated_at": _iso()}).eq("id", o["id"]).execute()
+    upd = {"status": "voided", "position": None, "void_reason": reason}
+    if reason == "staff":
+        upd["winner_token_hash"] = None
+    db.table("site_giveaway_entries").update(upd).eq("id", entry["id"]).execute()
 
 
 # ───────────────────────────── public ─────────────────────────────
@@ -205,7 +231,10 @@ def _terms(db: Any, org_id: str) -> dict:
         limits = [int(p["max_items"]) for p in presets if p.get("max_items")]
     except Exception:  # S14
         logger.warning("[GIVEAWAY-1] preset limits unavailable")
-    return {"free_edits": cfg["free_edits"], "care_price_ngn": cfg["price_ngn"], "care_edits_per_month": cfg["edits_per_month"],
+    from app.services import site_catalog_service
+    pack = site_catalog_service.get_config(pricing_service.get_settings(db, org_id))
+    return {"catalog_pack_items": pack["items"], "catalog_pack_price_ngn": pack["price_ngn"],
+            "free_edits": cfg["free_edits"], "care_price_ngn": cfg["price_ngn"], "care_edits_per_month": cfg["edits_per_month"],
             "pack_price_ngn": cfg["pack_price_ngn"], "pack_edits": cfg["pack_edits"],
             "edit_item_cap": site_care_plan_service.EDIT_ITEM_CAP, "max_items": min(limits) if limits else None}
 
@@ -222,6 +251,7 @@ def get_public(db: Any, slug: str) -> Optional[dict]:
             "total": g["total_slots"], "taken": min(taken, g["total_slots"]), "left": left,
             "status": g["status"], "open": is_open,
             "fee_ngn": g.get("fee_ngn") or 24500, "renewal_ngn": g.get("renewal_ngn") or 25000,
+            "pay_by_days": g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS,
             "terms": _terms(db, g["org_id"])}
 
 
@@ -393,12 +423,17 @@ def on_won(db: Any, entry: Optional[dict], site_name: str = "") -> Optional[str]
 
 # ───────────────────────────── the winner's private page ─────────────────────────────
 
-def _winner_context(db: Any, raw_token: str):
+def _winner_context(db: Any, raw_token: str, allow_expired: bool = False):
     if not raw_token or len(raw_token) > 128:
         raise WinnerError("This link isn't valid.", 404, "NOT_FOUND")
     entry = _one((db.table("site_giveaway_entries").select("*").eq("winner_token_hash", _hash(raw_token))
-                  .eq("status", "winner").limit(1).execute()).data)
+                  .limit(1).execute()).data)
     if not entry:
+        raise WinnerError("This link isn't valid.", 404, "NOT_FOUND")
+    if entry.get("status") == "voided" and entry.get("void_reason") == "expired":
+        if not allow_expired:
+            raise WinnerError("Your slot was released because payment wasn't made in time.", 410, "EXPIRED")
+    elif entry.get("status") != "winner":
         raise WinnerError("This link isn't valid.", 404, "NOT_FOUND")
     g = _one((db.table("site_giveaways").select("*").eq("id", entry["giveaway_id"]).limit(1).execute()).data)
     if not g:
@@ -409,8 +444,13 @@ def _winner_context(db: Any, raw_token: str):
 
 def winner_view(db: Any, raw_token: str) -> dict:
     import os
-    entry, g, site = _winner_context(db, raw_token)
+    entry, g, site = _winner_context(db, raw_token, allow_expired=True)
     partner = _one((db.table("site_partners").select("full_name,agency_name").eq("id", g["partner_id"]).limit(1).execute()).data) or {}
+    if entry.get("status") == "voided":
+        return {"stage": "expired", "group_name": g["title"], "business_name": None, "position": None, "preview_url": None,
+                "live_url": None, "can_pay": False, "fee_ngn": g.get("fee_ngn") or 24500, "renewal_ngn": g.get("renewal_ngn") or 25000,
+                "pay_by": None, "pay_by_days": g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS, "terms": _terms(db, g["org_id"]),
+                "contact": {"name": entry.get("contact_name"), "email": entry.get("contact_email"), "phone": entry.get("contact_phone")}}
     stage, preview_url, can_pay, live_url = "building", None, False, None
     if site:
         paid = _initial_order_paid(db, site["id"])
@@ -421,6 +461,7 @@ def winner_view(db: Any, raw_token: str) -> dict:
             stage = "going_live"
         elif st in ("preview_ready", "revising") and site.get("slug"):
             stage, can_pay = "preview", True
+            entry = _start_clock(db, entry, site)
         if site.get("slug") and site.get("rendered_html"):
             base = os.getenv("PUBLIC_API_URL", "https://opsra.onrender.com").rstrip("/")
             preview_url = f"{base}/s/{site['slug']}"
@@ -428,6 +469,9 @@ def winner_view(db: Any, raw_token: str) -> dict:
             "group_name": g["title"], "owner_name": partner.get("agency_name") or partner.get("full_name"),
             "position": entry.get("position"), "preview_url": preview_url, "live_url": live_url,
             "can_pay": can_pay, "fee_ngn": g.get("fee_ngn") or 24500, "renewal_ngn": g.get("renewal_ngn") or 25000,
+            "pay_by": _iso(_deadline(entry, g)) if stage == "preview" and _deadline(entry, g) else None,
+            "pay_by_days": g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS,
+            "can_buy_items": stage in ("going_live", "live"),
             "terms": _terms(db, g["org_id"]),
             "contact": {"name": entry.get("contact_name"), "email": entry.get("contact_email"), "phone": entry.get("contact_phone")}}
 
@@ -480,3 +524,151 @@ def winner_checkout(db: Any, raw_token: str, body: dict) -> dict:
         raise WinnerError("Site not found.", 404, "NOT_FOUND")
     except (site_order_service.CheckoutBlocked, pricing_service.PricingError) as exc:
         raise WinnerError(str(exc))
+
+
+def winner_catalog_checkout(db: Any, raw_token: str) -> dict:
+    """The winner buys a catalog pack (more items) once their site is paid for. Price/size are the live settings."""
+    from app.services import site_access_service, site_catalog_service
+    entry, g, site = _winner_context(db, raw_token)
+    if not site or not _initial_order_paid(db, site["id"]):
+        raise WinnerError("You can add more items once your website is paid for.", 409, "NOT_READY")
+    partner = _one((db.table("site_partners").select("builder_id").eq("id", g["partner_id"]).limit(1).execute()).data)
+    builder = _one((db.table("site_builders").select("*").eq("id", partner["builder_id"]).eq("org_id", g["org_id"]).limit(1).execute()).data) if partner else None
+    if not builder or not site_access_service.ensure_lead(db, g["org_id"], builder):
+        raise WinnerError("We couldn't start your payment just now. Please try again shortly.", 503, "UNAVAILABLE")
+    try:
+        return site_catalog_service.create_checkout(db, g["org_id"], builder, site["id"])
+    except site_catalog_service.CatalogError as exc:
+        raise WinnerError(str(exc))
+
+
+# ───────────────────────────── pay-by deadline ─────────────────────────────
+
+def _parse(value) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def _deadline(entry: dict, g: Optional[dict]) -> Optional[datetime]:
+    start = _parse((entry or {}).get("preview_ready_at"))
+    if not start or not g:
+        return None
+    return start + timedelta(days=int(g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS))
+
+
+def _start_clock(db: Any, entry: dict, site: dict, now: Optional[datetime] = None) -> dict:
+    """The pay-by clock starts when the preview is first ready (seen by the winner page or the hourly sweep)."""
+    if entry.get("preview_ready_at"):
+        return entry
+    stamp = _iso(now)
+    try:
+        db.table("site_giveaway_entries").update({"preview_ready_at": stamp}).eq("id", entry["id"]).execute()
+    except Exception:  # S14
+        logger.exception("[GIVEAWAY-2] could not start the pay-by clock entry=%s", entry.get("id"))
+        return entry
+    return {**entry, "preview_ready_at": stamp}
+
+
+def _send_to_contact(db: Any, entry: dict, subject: str, text: str) -> bool:
+    """Email (reliable) + WhatsApp (needs an open 24h window until templates are approved). Never raises."""
+    sent = False
+    try:
+        from app.services import site_partner_apply_service
+        sent = bool(site_partner_apply_service._send_email(entry.get("contact_email"), subject, text))
+    except Exception:
+        logger.exception("[GIVEAWAY-2] winner email failed")
+    try:
+        number_row = _one((db.table("whatsapp_numbers").select("*").eq("org_id", entry["org_id"])
+                           .eq("wa_sales_mode", "site_builder").limit(1).execute()).data)
+        if number_row and entry.get("contact_phone"):
+            from app.services.whatsapp_service import send_agent_text_message
+            send_agent_text_message(db=db, org_id=entry["org_id"], phone_number=str(entry["contact_phone"]).lstrip("+"),
+                                    lead_id=None, message=text, phone_id=number_row.get("phone_id"),
+                                    access_token=number_row.get("access_token"))
+    except Exception:
+        logger.warning("[GIVEAWAY-2] winner WhatsApp not sent (needs an open 24h window until templates are approved)")
+    return sent
+
+
+def message_winner(db: Any, org_id: str, order: dict, text: str) -> bool:
+    """True when the order belongs to a giveaway site: the message went to the winner and must NOT also go to the
+    group owner whose account the site sits under."""
+    site_id = (order or {}).get("site_id")
+    if not site_id:
+        return False
+    entry = _one((db.table("site_giveaway_entries").select("*").eq("site_id", site_id).eq("status", "winner")
+                  .limit(1).execute()).data)
+    if not entry:
+        return False
+    text = (text.replace("Your client's website", "Your website").replace("your client's site", "your site")
+            .replace("your client's", "your").replace("Your client's", "Your"))
+    ok_ = _send_to_contact(db, entry, "Update on your website", text)
+    if not ok_:
+        logger.warning("[GIVEAWAY-2] winner email not sent for order=%s (no RESEND key or address)", order.get("id"))
+    return True
+
+
+def run_deadlines(db: Any, now: Optional[datetime] = None) -> dict:
+    """Hourly. For every winner whose preview is ready and who hasn't paid: start the clock, remind them with
+    REMINDER_HOURS left, and release the slot when the time is up. Never raises."""
+    now = now or _now()
+    res = {"checked": 0, "reminded": 0, "released": 0, "failed": 0}
+    try:
+        rows = (db.table("site_giveaway_entries").select("*").eq("status", "winner").limit(1000).execute()).data or []
+    except Exception:
+        logger.exception("[GIVEAWAY-2] deadline sweep could not read entries")
+        res["failed"] += 1
+        return res
+    cache: dict[str, Optional[dict]] = {}
+    for e in rows:
+        if not e.get("site_id"):
+            continue
+        res["checked"] += 1
+        try:
+            g = cache.get(e["giveaway_id"])
+            if g is None and e["giveaway_id"] not in cache:
+                g = cache[e["giveaway_id"]] = _one((db.table("site_giveaways").select("*").eq("id", e["giveaway_id"]).limit(1).execute()).data)
+            site = _one((db.table("sites").select("id,status,client_business_name").eq("id", e["site_id"]).is_("deleted_at", "null").limit(1).execute()).data)
+            if not g or not site or site.get("status") not in ("preview_ready", "revising"):
+                continue
+            if _initial_order_paid(db, site["id"]):
+                continue
+            e = _start_clock(db, e, site, now)
+            dl = _deadline(e, g)
+            if not dl:
+                continue
+            if now >= dl:
+                recent = (db.table("site_orders").select("id,created_at").eq("site_id", site["id"]).eq("kind", "initial")
+                          .eq("status", "pending_payment").limit(20).execute()).data or []
+                if any((_parse(o.get("created_at")) or now - timedelta(days=9)) > now - timedelta(hours=24) for o in recent):
+                    continue                # they opened a payment link in the last day: give it time to complete
+                _release(db, e, "expired")
+                res["released"] += 1
+                _send_to_contact(db, e, "Your free website slot was released",
+                                 f"Hi {(e.get('contact_name') or 'there').split(' ')[0]}, your free website slot in "
+                                 f"\"{g.get('title')}\" has been released because the domain and hosting fee wasn't paid within "
+                                 f"{g.get('pay_by_days') or DEFAULT_PAY_BY_DAYS} days of your preview. Thank you for taking part.")
+                try:
+                    from app.services import funnel_service
+                    funnel_service.notify_managers(db, e["org_id"], "Giveaway slot released (unpaid)",
+                                                   f"{g.get('title')} · slot {e.get('position')} · {site.get('client_business_name')}",
+                                                   "giveaway_slot_released", None)
+                except Exception:
+                    logger.warning("[GIVEAWAY-2] release alert failed")
+            elif now >= dl - timedelta(hours=REMINDER_HOURS) and not e.get("deadline_reminder_at"):
+                _send_to_contact(db, e, "Your website preview is waiting",
+                                 f"Hi {(e.get('contact_name') or 'there').split(' ')[0]}, your free website preview is ready. "
+                                 f"Please pay the domain and hosting fee (₦{int(g.get('fee_ngn') or 24500):,}) by "
+                                 f"{dl.astimezone(timezone(timedelta(hours=1))).strftime('%d %b %Y, %H:%M')} (WAT), or the slot "
+                                 "is given to someone else. Open your private link to pay.")
+                db.table("site_giveaway_entries").update({"deadline_reminder_at": _iso(now)}).eq("id", e["id"]).execute()
+                res["reminded"] += 1
+        except Exception:
+            logger.exception("[GIVEAWAY-2] deadline step failed entry=%s", e.get("id"))
+            res["failed"] += 1
+    return res

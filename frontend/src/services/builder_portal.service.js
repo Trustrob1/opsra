@@ -151,6 +151,14 @@ export const careCheckout = (token, siteId, what) =>
 /** cancel = true keeps the plan until the end of the paid month; false takes it back. */
 export const cancelCarePlan = (token, siteId, cancel = true) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/care-plan/cancel`, { cancel }, authed(token)))
+/** GIVEAWAY-2 — buy a pack of extra catalog items for one site → { checkout_url, amount, items } */
+export const catalogCheckout = (token, siteId) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/catalog/checkout`, {}, authed(token)))
+/** The offer a 402 CATALOG_LIMIT response carries (the item limit and the pack on sale), or null for any other error. */
+export const catalogLimitOffer = (err) => {
+  const d = err?.response?.data?.detail
+  return err?.response?.status === 402 && d?.code === 'CATALOG_LIMIT' ? { ...(d.offer || {}), message: d.message } : null
+}
 /** The offer a 402 EDIT_LIMIT_REACHED response carries, or null for any other error. */
 export const editLimitOffer = (err) => {
   const d = err?.response?.data?.detail

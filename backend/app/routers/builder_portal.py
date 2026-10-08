@@ -59,6 +59,7 @@ from app.services import (
     domain_check_service,
     pricing_service,
     site_care_plan_service,
+    site_catalog_service,
     site_design_service,
     site_image_service,
     site_order_service,
@@ -485,6 +486,10 @@ def get_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(g
     site = _get_site(db, builder["org_id"], builder["id"], site_id)
     assets = (db.table("site_assets").select("id, slot, public_url").eq("site_id", site_id).execute()).data or []
     site["assets"] = assets
+    try:
+        site["item_limit"] = site_catalog_service.offer_for(db, builder["org_id"], site)    # GIVEAWAY-2
+    except Exception as exc:
+        logger.warning("builder_portal: item limit unavailable site=%s: %s", site_id, exc)
     # SITE-PREMIUM P4-1: tells the editor this is a Premium design and which content it shows.
     site["premium"] = site_premium_service.editor_info(db, builder["org_id"], site)
     # SITE-IMPORT 2: an uploaded site made editable: the editor shows only the content groups the page shows.
@@ -523,6 +528,12 @@ def patch_my_content(site_id: str, payload: SiteContentPatch, builder=Depends(ge
     org_id = builder["org_id"]
     site = _get_site(db, org_id, builder["id"], site_id)
     new_content = payload.content.model_dump(mode="json")
+    try:                                    # GIVEAWAY-2: a template holds a set number of items; more is a paid pack
+        site_catalog_service.check_growth(db, org_id, site, new_content)
+    except site_catalog_service.CatalogLimitReached as exc:
+        raise HTTPException(402, detail={"code": "CATALOG_LIMIT", "message": str(exc), "offer": exc.offer})
+    except Exception as exc:  # fail open - a lookup problem must never stop a builder saving
+        logger.warning("catalog limit check failed site=%s: %s", site_id, exc)
     try:
         items_changed = site_care_plan_service.count_item_changes(site.get("content"), new_content)
         site_care_plan_service.consume_edit(db, org_id, site, items_changed=items_changed)
@@ -1014,6 +1025,18 @@ def _care_errors(fn, *args, **kwargs):
         raise HTTPException(404, detail={"code": "NOT_FOUND", "message": str(exc)})
     except site_care_plan_service.CarePlanError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+
+@router.post("/sites/{site_id}/catalog/checkout")
+def catalog_checkout(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    """GIVEAWAY-2: buy a pack of extra items for this site."""
+    try:
+        result = site_catalog_service.create_checkout(db, builder["org_id"], builder, site_id)
+    except site_catalog_service.CatalogNotFound as exc:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": str(exc)})
+    except site_catalog_service.CatalogError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    return ok(data=result, message="Payment link created")
 
 
 @router.get("/sites/{site_id}/care-plan")

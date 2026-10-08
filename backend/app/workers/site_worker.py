@@ -502,6 +502,26 @@ def run_care_cycle() -> dict:
     return total
 
 
+@celery_app.task(name="app.workers.site_worker.run_giveaway_deadlines")
+def run_giveaway_deadlines() -> dict:
+    """GIVEAWAY-2: hourly. Unpaid giveaway winners get a reminder, then the slot is released when the pay-by time passes."""
+    from app.services import site_giveaway_service
+    db = get_supabase()
+    started = _now()
+    total = {"checked": 0, "reminded": 0, "released": 0, "failed": 0}
+    try:
+        total = site_giveaway_service.run_deadlines(db, started)
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] giveaway deadlines failed: %s", exc)
+    write_worker_log(
+        db, worker_name="site_worker.giveaway_deadlines", status="failed" if total["failed"] else "passed",
+        items_processed=total["checked"], items_failed=total["failed"], started_at=started,
+        run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return total
+
+
 @celery_app.task(name="app.workers.site_worker.run_asset_cleanup")
 def run_asset_cleanup() -> dict:
     from app.services import site_care_plan_service

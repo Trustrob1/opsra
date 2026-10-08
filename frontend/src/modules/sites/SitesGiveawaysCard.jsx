@@ -17,7 +17,7 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState({ partner_id: '', title: 'Free Website Giveaway', total_slots: 5, fee_ngn: 24500, renewal_ngn: 25000 })
+  const [form, setForm] = useState({ partner_id: '', title: 'Free Website Giveaway', total_slots: 5, fee_ngn: 24500, renewal_ngn: 25000, pay_by_days: 3 })
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(null)       // giveaway id whose winners are shown
   const [winners, setWinners] = useState([])
@@ -32,7 +32,7 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
     setBusy(true)
     try {
       await createGiveaway({ partner_id: form.partner_id, title: form.title.trim(), total_slots: Number(form.total_slots),
-        fee_ngn: Number(form.fee_ngn) || undefined, renewal_ngn: Number(form.renewal_ngn) || undefined })
+        fee_ngn: Number(form.fee_ngn) || undefined, renewal_ngn: Number(form.renewal_ngn) || undefined, pay_by_days: Number(form.pay_by_days) || undefined })
       showToast('Giveaway created'); setAdding(false); await load()
     } catch (e) { showToast(errorMessage(e, 'Could not create the giveaway.'), 'bad') } finally { setBusy(false) }
   }
@@ -73,6 +73,8 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
               <input style={{ ...INPUT, marginTop: 4 }} type="number" min="1000" value={form.fee_ngn} onChange={(e) => setForm({ ...form, fee_ngn: e.target.value })} /></label>
             <label style={{ fontSize: 12.5, color: T.muted }}>Yearly renewal (₦)
               <input style={{ ...INPUT, marginTop: 4 }} type="number" min="1000" value={form.renewal_ngn} onChange={(e) => setForm({ ...form, renewal_ngn: e.target.value })} /></label>
+            <label style={{ fontSize: 12.5, color: T.muted }}>Days to pay after preview
+              <input style={{ ...INPUT, marginTop: 4 }} type="number" min="1" max="30" value={form.pay_by_days} onChange={(e) => setForm({ ...form, pay_by_days: e.target.value })} /></label>
             <Button variant="primary" loading={busy} disabled={!form.partner_id || form.title.trim().length < 3} onClick={create}>Create giveaway</Button>
           </div>
         </Card>
@@ -88,7 +90,7 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
               <Fragment key={g.id}>
                 <tr style={{ borderTop: `1px solid ${T.line}` }}>
                   <Td>{g.title}</Td><Td>{g.owner_name || '—'}</Td>
-                  <Td><strong>{g.taken}</strong> / {g.total_slots} taken · {g.left} left<div style={{ fontSize: 11.5, color: T.muted }}>Fee ₦{Number(g.fee_ngn || 24500).toLocaleString()} · renewal ₦{Number(g.renewal_ngn || 25000).toLocaleString()}</div></Td>
+                  <Td><strong>{g.taken}</strong> / {g.total_slots} taken · {g.left} left<div style={{ fontSize: 11.5, color: T.muted }}>Fee ₦{Number(g.fee_ngn || 24500).toLocaleString()} · renewal ₦{Number(g.renewal_ngn || 25000).toLocaleString()} · pay within {g.pay_by_days || 3} days</div></Td>
                   <Td><Badge tone={g.status === 'active' && g.left > 0 ? 'good' : 'neutral'}>{g.status !== 'active' ? 'Closed' : g.left === 0 ? 'Full' : 'Open'}</Badge></Td>
                   <Td><div style={{ display: 'flex', gap: 4 }}>
                     <Button size="sm" variant="ghost" onClick={async () => { try { await navigator.clipboard.writeText(g.link_url); showToast('Link copied') } catch (_) { showToast('Could not copy', 'bad') } }}>Copy link</Button>
@@ -100,7 +102,7 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
                   <tr><td colSpan={5} style={{ padding: '4px 14px 14px', background: T.card }}>
                     {winners.length === 0 ? <span style={{ fontSize: 12.5, color: T.muted }}>No winners yet.</span> : winners.map((w) => (
                       <div key={w.position} style={{ fontSize: 13, padding: '4px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span>#{w.position} · {w.business_name || '(site not created)'} · {w.site_status || '—'} · {w.paid ? 'paid' : 'not paid'} · {w.contact_name || '—'} {w.contact_phone || ''} {w.contact_email || ''}</span>
+                        <span>#{w.position} · {w.business_name || '(site not created)'} · {w.site_status || '—'} · {w.paid ? 'paid' : `not paid${w.pay_by ? ` (pay by ${new Date(w.pay_by).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })})` : ''}`} · {w.contact_name || '—'} {w.contact_phone || ''} {w.contact_email || ''}</span>
                         {canEdit && !w.paid && <Button size="sm" variant="ghost" onClick={() => voidSlot(g, w)}>Void slot</Button>}
                       </div>
                     ))}

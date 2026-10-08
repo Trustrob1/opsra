@@ -94,6 +94,7 @@ class GiveawayCreate(BaseModel):
     total_slots: int = Field(default=5, ge=1, le=100)
     fee_ngn: int | None = Field(default=None, ge=1000, le=10_000_000)        # domain + hosting fee the winner pays; blank = 24,500
     renewal_ngn: int | None = Field(default=None, ge=1000, le=10_000_000)    # yearly renewal from year two; blank = 25,000
+    pay_by_days: int | None = Field(default=None, ge=1, le=30)                # days to pay after the preview is ready; blank = 3
 
 
 @router.get("")
@@ -107,7 +108,7 @@ def create(payload: GiveawayCreate, org=Depends(get_current_org), db=Depends(get
     _require(org, _WRITE_ROLES)
     try:
         row = svc.create_giveaway(db, org["org_id"], payload.partner_id, payload.title, payload.total_slots,
-                                  payload.fee_ngn, payload.renewal_ngn)
+                                  payload.fee_ngn, payload.renewal_ngn, payload.pay_by_days)
     except svc.GiveawayError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     return ok(data=row, message="Giveaway created")
@@ -170,6 +171,11 @@ def winner_page(token: str, request: Request, db=Depends(get_supabase)):
 @public_router.post("/giveaway-winner/{token}/domain-check")
 def winner_domain(token: str, payload: dict, request: Request, db=Depends(get_supabase)):
     return ok(data=_winner_call(request, "wd", 30, svc.winner_domain_check, db, token, str((payload or {}).get("domain") or "")))
+
+
+@public_router.post("/giveaway-winner/{token}/catalog-checkout")
+def winner_catalog(token: str, request: Request, db=Depends(get_supabase)):
+    return ok(data=_winner_call(request, "wk", 10, svc.winner_catalog_checkout, db, token), message="Payment link created")
 
 
 @public_router.post("/giveaway-winner/{token}/checkout")
