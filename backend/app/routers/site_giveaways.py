@@ -12,11 +12,13 @@ Pattern 28: org_id from get_current_org only (staff). Read owner/admin/ops_manag
 """
 from __future__ import annotations
 
+import io
 import logging
 import time
+from datetime import datetime
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.database import get_supabase
@@ -88,6 +90,19 @@ def public_open(slug: str, payload: dict, request: Request, db=Depends(get_supab
     raise HTTPException(code, detail={"code": c, "message": m})
 
 
+@public_router.get("/giveaways/{slug}/qr.svg")
+def public_qr(slug: str, request: Request, db=Depends(get_supabase)):
+    """GIVEAWAY-4: the giveaway page's QR code, for the flier. Only ever encodes this giveaway's own public link."""
+    if _limited("qr:" + _ip(request), 60):
+        raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many requests. Please try again in a minute."})
+    if not svc.get_public(db, slug):
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "This giveaway link isn't valid."})
+    import segno
+    buf = io.BytesIO()
+    segno.make(svc.giveaway_url(slug), error="m").save(buf, kind="svg", scale=10, border=2, dark="#0F1733", xmldecl=False)
+    return Response(content=buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
+
+
 @public_router.post("/giveaways/{slug}/lost-link")
 def public_lost_link(slug: str, payload: dict, request: Request, db=Depends(get_supabase)):
     """A winner asks for a new private link with their WhatsApp number. The answer is the same whether or not it matched."""
@@ -105,6 +120,8 @@ class GiveawayCreate(BaseModel):
     fee_ngn: int | None = Field(default=None, ge=1000, le=10_000_000)        # domain + hosting fee the winner pays; blank = 24,500
     renewal_ngn: int | None = Field(default=None, ge=1000, le=10_000_000)    # yearly renewal from year two; blank = 25,000
     pay_by_days: int | None = Field(default=None, ge=1, le=30)                # days to pay after the preview is ready; blank = 3
+    campaign_name: str | None = Field(default=None, max_length=60)            # headline on the flier and page; blank = the title
+    ends_at: datetime | None = None                                           # closing time; blank = open until full or closed
 
 
 @router.get("")
@@ -118,7 +135,8 @@ def create(payload: GiveawayCreate, org=Depends(get_current_org), db=Depends(get
     _require(org, _WRITE_ROLES)
     try:
         row = svc.create_giveaway(db, org["org_id"], payload.partner_id, payload.title, payload.total_slots,
-                                  payload.fee_ngn, payload.renewal_ngn, payload.pay_by_days)
+                                  payload.fee_ngn, payload.renewal_ngn, payload.pay_by_days,
+                                  payload.campaign_name, payload.ends_at)
     except svc.GiveawayError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     return ok(data=row, message="Giveaway created")

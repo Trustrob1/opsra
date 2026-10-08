@@ -225,3 +225,19 @@ def test_lost_link_routes(ctx, monkeypatch):
     assert client.post(f"/api/v1/giveaways/{g['id']}/entries/9/resend-link").status_code == 422
     app.dependency_overrides[get_current_org] = lambda: _org("sales_agent")
     assert client.post(f"/api/v1/giveaways/{g['id']}/entries/1/resend-link").status_code == 403
+
+
+def test_campaign_fields_and_qr_endpoint(ctx):
+    client, db = ctx
+    p = site_partner_service.create_partner(db, ORG, "Group Owner", "08030000001", None, "Hub")
+    r = client.post("/api/v1/giveaways", json={"partner_id": p["id"], "title": "Free Website Giveaway", "total_slots": 3,
+                                               "campaign_name": "Launch Week", "ends_at": "2999-01-01T00:00:00Z"})
+    assert r.status_code == 201, r.text
+    slug = r.json()["data"]["slug"]
+    pub = client.get(f"/api/v1/giveaways/{slug}").json()["data"]
+    assert pub["campaign_name"] == "Launch Week" and pub["ended"] is False and pub["ends_at"]
+    bad = client.post("/api/v1/giveaways", json={"partner_id": p["id"], "title": "Free Website Giveaway", "campaign_name": "ab"})
+    assert bad.status_code == 422
+    q = client.get(f"/api/v1/giveaways/{slug}/qr.svg")
+    assert q.status_code == 200 and q.headers["content-type"].startswith("image/svg+xml") and b"<svg" in q.content
+    assert client.get("/api/v1/giveaways/nope-nope/qr.svg").status_code == 404

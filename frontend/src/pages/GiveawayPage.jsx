@@ -92,7 +92,8 @@ export default function GiveawayPage({ slug }) {
         {state === 'error' && (<><h1 style={S.h1}>We couldn’t load this page</h1><p style={S.p}>Please check your connection and try again.</p></>)}
         {state === 'ready' && g && (
           <>
-            <h1 style={S.h1}>{g.title}</h1>
+            <h1 style={S.h1}>{g.campaign_name || g.title}</h1>
+            {g.ends_at && !g.ended && <p style={S.p}>Closes <strong>{new Date(g.ends_at).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'long', timeStyle: 'short' })}</strong> (WAT).</p>}
             {g.owner_name && <p style={S.p}>For members of <strong>{g.owner_name}</strong>.</p>}
             <Counter g={g} />
             <ul style={{ paddingLeft: 18, margin: '0 0 8px' }}>
@@ -116,7 +117,7 @@ export default function GiveawayPage({ slug }) {
               </>
             ) : (
               <div role="status" style={{ background: '#fdf1f0', color: '#8a1c13', borderRadius: 10, padding: 14, fontSize: 14, lineHeight: 1.5 }}>
-                {g.left === 0 ? 'All the free slots have been taken. Thank you for your interest.' : 'This giveaway is closed.'}
+                {g.left === 0 ? 'All the free slots have been taken. Thank you for your interest.' : g.ended ? 'This giveaway has ended. Thank you for your interest.' : 'This giveaway is closed.'}
               </div>
             )}
             <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #e3ebf0' }}>

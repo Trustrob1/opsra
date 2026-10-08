@@ -546,3 +546,50 @@ class TestLostLink:
         sent = self._sent(monkeypatch)
         assert svc.request_link(db, g["slug"], "08031234567", NOW) is True
         assert sent == []
+
+
+class TestCampaignAndClosing:
+    """GIVEAWAY-4 — campaign name (flier headline) and optional closing time."""
+
+    def _future(self, **kw):
+        return (datetime.now(timezone.utc) + timedelta(**(kw or {"days": 2}))).isoformat()
+
+    def _set_end(self, db, g, when):
+        db.table("site_giveaways").update({"ends_at": when.isoformat()}).eq("id", g["id"]).execute()
+
+    def test_campaign_name_is_stored_trimmed_and_public(self):
+        db, p, _ = _setup()
+        g = svc.create_giveaway(db, ORG, p["id"], "Valid title", 3, campaign_name="  Launch   Week  ")
+        assert g["campaign_name"] == "Launch Week"
+        assert svc.get_public(db, g["slug"])["campaign_name"] == "Launch Week"
+
+    def test_campaign_name_optional_and_length_checked(self):
+        db, p, _ = _setup()
+        assert svc.create_giveaway(db, ORG, p["id"], "Valid title", 3, campaign_name="   ")["campaign_name"] is None
+        for bad in ("ab", "x" * 61):
+            with pytest.raises(svc.GiveawayError):
+                svc.create_giveaway(db, ORG, p["id"], "Valid title", 3, campaign_name=bad)
+
+    def test_ends_at_must_be_a_future_date(self):
+        db, p, _ = _setup()
+        g = svc.create_giveaway(db, ORG, p["id"], "Valid title", 3, ends_at=self._future())
+        assert g["ends_at"]
+        with pytest.raises(svc.GiveawayError):
+            svc.create_giveaway(db, ORG, p["id"], "Valid title", 3, ends_at=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat())
+        with pytest.raises(svc.GiveawayError):
+            svc.create_giveaway(db, ORG, p["id"], "Valid title", 3, ends_at="not a date")
+
+    def test_ended_giveaway_stops_new_forms_but_gives_grace_to_open_ones(self):
+        db, p, _ = _setup()
+        g = svc.create_giveaway(db, ORG, p["id"], "Valid title", 3, ends_at=self._future())
+        form = _open(db, g)
+        late_form = _open(db, g)
+        now = datetime.now(timezone.utc)
+        self._set_end(db, g, now - timedelta(hours=1))
+        pub = svc.get_public(db, g["slug"])
+        assert pub["ended"] is True and pub["open"] is False
+        assert svc.open_entry(db, g["slug"], True, _c())["kind"] == "closed"
+        assert svc.claim_slot(db, form)["status"] == "winner"          # inside the 6 h grace
+        self._set_end(db, g, now - timedelta(hours=7))
+        with pytest.raises(svc.GiveawayFull):
+            svc.claim_slot(db, late_form)

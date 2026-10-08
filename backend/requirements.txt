@@ -75,3 +75,4 @@ openpyxl
 
 
 Pillow>=10.0                   # SITE-1C-3d: resize/compress site photo uploads (also pulled in by weasyprint)
+segno>=1.6                    # GIVEAWAY-4: QR code on the giveaway flier (pure Python, no extra dependencies)

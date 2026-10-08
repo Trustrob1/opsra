@@ -64,6 +64,9 @@ export async function openGiveaway(slug, consent, contact = {}) {
   return res.data.data
 }
 
+/** GIVEAWAY-4 — the QR code image (SVG) of a giveaway's own public link, for the flier. */
+export const qrSvgUrl = (slug) => `${BASE}/giveaways/${encodeURIComponent(slug)}/qr.svg`
+
 /** GIVEAWAY-3 — a winner who lost their private link asks for a new one with their WhatsApp number. */
 export async function requestLostLink(slug, phone) {
   const res = await axios.post(`${BASE}/giveaways/${encodeURIComponent(slug)}/lost-link`, { phone })

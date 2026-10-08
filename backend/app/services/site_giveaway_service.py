@@ -34,6 +34,7 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 DEFAULT_PAY_BY_DAYS = 3
+CLOSE_GRACE_HOURS = 6               # someone who opened the form before the closing time may still finish it
 REMINDER_HOURS = 24                 # reminder goes out this long before the pay-by time
 _PAID_STATES = ("awaiting_approval", "fulfilling", "live", "needs_builder_choice")
 MAX_OPEN_FORMS_PER_DAY = 300        # unsubmitted forms per giveaway per day (abuse cap)
@@ -83,6 +84,22 @@ def giveaway_url(slug: str) -> str:
     return f"{base}/g/{slug}"
 
 
+def _ended(g: dict, now: Optional[datetime] = None, grace_hours: int = 0) -> bool:
+    """True once the giveaway's closing time (if it has one) has passed."""
+    end = _parse_dt(g.get("ends_at"))
+    return bool(end and (now or _now()) > end + timedelta(hours=grace_hours))
+
+
+def _parse_dt(value) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
 def _winners(db: Any, giveaway_id: str) -> int:
     rows = (db.table("site_giveaway_entries").select("id").eq("giveaway_id", giveaway_id)
             .eq("status", "winner").limit(1000).execute()).data or []
@@ -104,7 +121,7 @@ def _money_int(value, label: str, default: int) -> int:
 
 
 def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slots: int = 5,
-                    fee_ngn=None, renewal_ngn=None, pay_by_days=None) -> dict:
+                    fee_ngn=None, renewal_ngn=None, pay_by_days=None, campaign_name=None, ends_at=None) -> dict:
     title = re.sub(r"\s+", " ", str(title or "")).strip()
     if not (3 <= len(title) <= 120):
         raise GiveawayError("Please enter a title for the giveaway.")
@@ -122,6 +139,16 @@ def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slo
         raise GiveawayError("The pay-by days must be a number.")
     if not (1 <= days <= 30):
         raise GiveawayError("The pay-by days must be between 1 and 30.")
+    campaign = re.sub(r"\s+", " ", str(campaign_name or "")).strip() or None
+    if campaign and not (3 <= len(campaign) <= 60):
+        raise GiveawayError("The campaign name must be 3 to 60 characters.")
+    ends = None
+    if ends_at not in (None, ""):
+        ends = _parse(ends_at) if not isinstance(ends_at, datetime) else (ends_at if ends_at.tzinfo else ends_at.replace(tzinfo=timezone.utc))
+        if not ends:
+            raise GiveawayError("The closing date isn't valid.")
+        if ends <= _now():
+            raise GiveawayError("The closing date must be in the future.")
     partner = _one((db.table("site_partners").select("*").eq("id", partner_id).eq("org_id", org_id).limit(1).execute()).data)
     if not partner:
         raise GiveawayError("Choose a group owner (partner) first.")
@@ -131,6 +158,7 @@ def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slo
     for _ in range(5):
         cand = {"org_id": org_id, "partner_id": partner_id, "title": title, "total_slots": slots,
                 "fee_ngn": fee, "renewal_ngn": renewal, "pay_by_days": days,
+                "campaign_name": campaign, "ends_at": _iso(ends) if ends else None,
                 "slug": secrets.token_urlsafe(7), "status": "active", "created_at": _iso(), "updated_at": _iso()}
         try:
             row = _one(db.table("site_giveaways").insert(cand).execute().data) or cand
@@ -248,8 +276,8 @@ def get_public(db: Any, slug: str) -> Optional[dict]:
     partner = _one((db.table("site_partners").select("full_name,agency_name,status").eq("id", g["partner_id"]).limit(1).execute()).data) or {}
     taken = _winners(db, g["id"])
     left = max(0, g["total_slots"] - taken)
-    is_open = g["status"] == "active" and partner.get("status") == "active" and left > 0
-    return {"title": g["title"], "owner_name": partner.get("agency_name") or partner.get("full_name"),
+    is_open = g["status"] == "active" and partner.get("status") == "active" and left > 0 and not _ended(g)
+    return {"title": g["title"], "campaign_name": g.get("campaign_name"), "ends_at": g.get("ends_at"), "ended": _ended(g), "owner_name": partner.get("agency_name") or partner.get("full_name"),
             "total": g["total_slots"], "taken": min(taken, g["total_slots"]), "left": left,
             "status": g["status"], "open": is_open,
             "fee_ngn": g.get("fee_ngn") or 24500, "renewal_ngn": g.get("renewal_ngn") or 25000,
@@ -292,7 +320,8 @@ def open_entry(db: Any, slug: str, consent: bool, contact: Optional[dict] = None
         return {"kind": "invalid", "message": str(exc)}
     partner = _one((db.table("site_partners").select("*").eq("id", g["partner_id"]).limit(1).execute()).data)
     builder = _one((db.table("site_builders").select("*").eq("id", partner["builder_id"]).eq("org_id", g["org_id"]).limit(1).execute()).data) if partner else None
-    if g["status"] != "active" or not partner or partner.get("status") != "active" or not builder or builder.get("status") != "active":
+    if (g["status"] != "active" or not partner or partner.get("status") != "active" or not builder or builder.get("status") != "active"
+            or _ended(g, now)):
         return {"kind": "closed"}
     if max(0, g["total_slots"] - _winners(db, g["id"])) <= 0:
         return {"kind": "full"}
@@ -338,7 +367,7 @@ def claim_slot(db: Any, form: dict) -> Optional[dict]:
         db.table("site_giveaway_entries").update({"winner_token_hash": hashed}).eq("id", entry["id"]).execute()
         return {**entry, "_winner_token": raw}
     g = _one((db.table("site_giveaways").select("*").eq("id", entry["giveaway_id"]).limit(1).execute()).data)
-    if not g or g["status"] != "active":
+    if not g or g["status"] != "active" or _ended(g, None, CLOSE_GRACE_HOURS):
         raise GiveawayFull()
     if entry.get("contact_phone") and _phone_holds_slot(db, g["id"], entry["contact_phone"], entry["id"]):
         raise GiveawayDuplicate()

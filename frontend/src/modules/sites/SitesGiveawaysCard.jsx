@@ -7,6 +7,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Gift, Plus } from 'lucide-react'
 import { listGiveaways, createGiveaway, closeGiveaway, reopenGiveaway, listGiveawayEntries, voidGiveawaySlot, resendGiveawayLink, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty } from './sitesUi'
+import GiveawayFlier from './GiveawayFlier'
 import { T, INPUT } from './sitesKit'
 
 const Th = ({ children }) => <th style={{ textAlign: 'left', padding: '10px 14px', fontSize: 11.5, color: T.muted, fontWeight: 600 }}>{children}</th>
@@ -17,10 +18,11 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState({ partner_id: '', title: 'Free Website Giveaway', total_slots: 5, fee_ngn: 24500, renewal_ngn: 25000, pay_by_days: 3 })
+  const [form, setForm] = useState({ partner_id: '', title: 'Free Website Giveaway', total_slots: 5, fee_ngn: 24500, renewal_ngn: 25000, pay_by_days: 3, campaign_name: '', ends_at: '' })
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(null)       // giveaway id whose winners are shown
   const [winners, setWinners] = useState([])
+  const [flier, setFlier] = useState(null)       // the giveaway whose flier is open
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -32,7 +34,8 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
     setBusy(true)
     try {
       await createGiveaway({ partner_id: form.partner_id, title: form.title.trim(), total_slots: Number(form.total_slots),
-        fee_ngn: Number(form.fee_ngn) || undefined, renewal_ngn: Number(form.renewal_ngn) || undefined, pay_by_days: Number(form.pay_by_days) || undefined })
+        fee_ngn: Number(form.fee_ngn) || undefined, renewal_ngn: Number(form.renewal_ngn) || undefined, pay_by_days: Number(form.pay_by_days) || undefined,
+        campaign_name: form.campaign_name.trim() || undefined, ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : undefined })
       showToast('Giveaway created'); setAdding(false); await load()
     } catch (e) { showToast(errorMessage(e, 'Could not create the giveaway.'), 'bad') } finally { setBusy(false) }
   }
@@ -79,6 +82,10 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
               <input style={{ ...INPUT, marginTop: 4 }} type="number" min="1000" value={form.fee_ngn} onChange={(e) => setForm({ ...form, fee_ngn: e.target.value })} /></label>
             <label style={{ fontSize: 12.5, color: T.muted }}>Yearly renewal (₦)
               <input style={{ ...INPUT, marginTop: 4 }} type="number" min="1000" value={form.renewal_ngn} onChange={(e) => setForm({ ...form, renewal_ngn: e.target.value })} /></label>
+            <label style={{ fontSize: 12.5, color: T.muted }}>Campaign name (on the flier and page)
+              <input style={{ ...INPUT, marginTop: 4 }} maxLength={60} placeholder="e.g. Lagos Hustlers Free Website Week" value={form.campaign_name} onChange={(e) => setForm({ ...form, campaign_name: e.target.value })} /></label>
+            <label style={{ fontSize: 12.5, color: T.muted }}>Closes on (optional)
+              <input style={{ ...INPUT, marginTop: 4 }} type="datetime-local" value={form.ends_at} onChange={(e) => setForm({ ...form, ends_at: e.target.value })} /></label>
             <label style={{ fontSize: 12.5, color: T.muted }}>Days to pay after preview
               <input style={{ ...INPUT, marginTop: 4 }} type="number" min="1" max="30" value={form.pay_by_days} onChange={(e) => setForm({ ...form, pay_by_days: e.target.value })} /></label>
             <Button variant="primary" loading={busy} disabled={!form.partner_id || form.title.trim().length < 3} onClick={create}>Create giveaway</Button>
@@ -95,11 +102,12 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
             <tbody>{rows.map((g) => (
               <Fragment key={g.id}>
                 <tr style={{ borderTop: `1px solid ${T.line}` }}>
-                  <Td>{g.title}</Td><Td>{g.owner_name || '—'}</Td>
+                  <Td>{g.campaign_name ? <><strong>{g.campaign_name}</strong><div style={{ fontSize: 11.5, color: T.muted }}>{g.title}</div></> : g.title}{g.ends_at && <div style={{ fontSize: 11.5, color: T.muted }}>Closes {new Date(g.ends_at).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })}</div>}</Td><Td>{g.owner_name || '—'}</Td>
                   <Td><strong>{g.taken}</strong> / {g.total_slots} taken · {g.left} left<div style={{ fontSize: 11.5, color: T.muted }}>Fee ₦{Number(g.fee_ngn || 24500).toLocaleString()} · renewal ₦{Number(g.renewal_ngn || 25000).toLocaleString()} · pay within {g.pay_by_days || 3} days</div></Td>
                   <Td><Badge tone={g.status === 'active' && g.left > 0 ? 'good' : 'neutral'}>{g.status !== 'active' ? 'Closed' : g.left === 0 ? 'Full' : 'Open'}</Badge></Td>
                   <Td><div style={{ display: 'flex', gap: 4 }}>
                     <Button size="sm" variant="ghost" onClick={async () => { try { await navigator.clipboard.writeText(g.link_url); showToast('Link copied') } catch (_) { showToast('Could not copy', 'bad') } }}>Copy link</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setFlier(g)}>Flier</Button>
                     <Button size="sm" variant="ghost" onClick={() => showWinners(g)}>{open === g.id ? 'Hide winners' : 'Winners'}</Button>
                     {canEdit && <Button size="sm" variant="ghost" onClick={() => toggle(g)}>{g.status === 'active' ? 'Close' : 'Reopen'}</Button>}
                   </div></Td>
@@ -119,6 +127,7 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
             ))}</tbody>
           </table></div></Card>
       )}
+      {flier && <GiveawayFlier giveaway={flier} onClose={() => setFlier(null)} showToast={showToast} />}
     </div>
   )
 }
