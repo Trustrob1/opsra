@@ -15,6 +15,8 @@ The slot is claimed when the form is SUBMITTED (first N complete submissions win
                  and paying the giveaway fee through the normal order + hosting pipeline
   run_deadlines() hourly sweep: an unpaid winner is reminded 24h before the pay-by time, then the slot is released
   message_winner() order/hosting messages for a giveaway site go to the winner (email + WhatsApp), not the group owner
+  resend_link() / request_link()  a new private link (the old one stops working), sent to the winner's own email and
+                 WhatsApp - by staff, or by the winner asking with their WhatsApp number
   list/create/set_status/entries/void_slot   staff
 
 Atomic claim: (giveaway_id, position) is unique, so two simultaneous submissions can never take the same slot.
@@ -672,3 +674,54 @@ def run_deadlines(db: Any, now: Optional[datetime] = None) -> dict:
             logger.exception("[GIVEAWAY-2] deadline step failed entry=%s", e.get("id"))
             res["failed"] += 1
     return res
+
+
+# ───────────────────────────── lost link: send a new one ─────────────────────────────
+
+LINK_COOLDOWN_MINUTES = 10          # a winner who asks again sooner is told it is on its way
+
+
+def _reissue_and_send(db: Any, entry: dict, g: dict, now: Optional[datetime] = None) -> bool:
+    """New token (old link stops working), sent to the contact details the winner gave. Returns whether the email went."""
+    from app.models.sites import generate_form_token
+    raw, hashed = generate_form_token()
+    db.table("site_giveaway_entries").update({"winner_token_hash": hashed, "link_sent_at": _iso(now)}).eq("id", entry["id"]).execute()
+    first = (entry.get("contact_name") or "there").split(" ")[0]
+    return _send_to_contact(
+        db, entry, "Your private website page",
+        f"Hi {first}, here is your new private page for the free website slot in \"{g.get('title')}\":\n\n{winner_url(raw)}\n\n"
+        "Any earlier link no longer works. Please keep this one private.")
+
+
+def resend_link(db: Any, org_id: str, giveaway_id: str, position: int) -> dict:
+    """Staff: send the winner of this slot a fresh link."""
+    entry = _one((db.table("site_giveaway_entries").select("*").eq("org_id", org_id).eq("giveaway_id", giveaway_id)
+                  .eq("position", position).eq("status", "winner").limit(1).execute()).data)
+    if not entry:
+        raise GiveawayError("That slot isn't taken.")
+    g = _one((db.table("site_giveaways").select("*").eq("id", giveaway_id).eq("org_id", org_id).limit(1).execute()).data) or {}
+    emailed = _reissue_and_send(db, entry, g)
+    return {"position": position, "emailed": emailed, "email": entry.get("contact_email"), "phone": entry.get("contact_phone")}
+
+
+def request_link(db: Any, slug: str, phone: str, now: Optional[datetime] = None) -> bool:
+    """A winner who lost their link asks for a new one with the WhatsApp number they entered with.
+    Always returns True for a valid giveaway so nobody can use this to find out who won. Never raises."""
+    now = now or _now()
+    try:
+        from app.services import builder_login_service
+        g = _by_slug(db, slug)
+        variants = builder_login_service.phone_variants(str(phone or ""))
+        if not g or not variants:
+            return bool(g)
+        entry = _one((db.table("site_giveaway_entries").select("*").eq("giveaway_id", g["id"]).eq("status", "winner")
+                      .eq("contact_phone", variants[1]).limit(1).execute()).data)
+        if not entry:
+            return True
+        last = _parse(entry.get("link_sent_at"))
+        if last and now - last < timedelta(minutes=LINK_COOLDOWN_MINUTES):
+            return True
+        _reissue_and_send(db, entry, g, now)
+    except Exception:
+        logger.exception("[GIVEAWAY-3] request_link failed slug=%s", slug)
+    return True

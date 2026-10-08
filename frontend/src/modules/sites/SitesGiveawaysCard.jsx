@@ -5,7 +5,7 @@
  */
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Gift, Plus } from 'lucide-react'
-import { listGiveaways, createGiveaway, closeGiveaway, reopenGiveaway, listGiveawayEntries, voidGiveawaySlot, errorMessage } from '../../services/sites.service'
+import { listGiveaways, createGiveaway, closeGiveaway, reopenGiveaway, listGiveawayEntries, voidGiveawaySlot, resendGiveawayLink, errorMessage } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty } from './sitesUi'
 import { T, INPUT } from './sitesKit'
 
@@ -39,6 +39,12 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
   async function toggle(g) {
     try { await (g.status === 'active' ? closeGiveaway(g.id) : reopenGiveaway(g.id)); showToast(g.status === 'active' ? 'Giveaway closed' : 'Giveaway reopened'); await load() }
     catch (e) { showToast(errorMessage(e, 'That did not work.'), 'bad') }
+  }
+  async function resend(g, w) {
+    try {
+      const r = await resendGiveawayLink(g.id, w.position)
+      showToast(r?.emailed ? `New link sent to ${r.email}` : 'New link created. The email did not go, so check the WhatsApp message', r?.emailed ? undefined : 'bad')
+    } catch (e) { showToast(errorMessage(e, 'Could not send the link.'), 'bad') }
   }
   async function voidSlot(g, w) {
     if (!window.confirm(`Void slot #${w.position} (${w.business_name || w.contact_name || 'winner'})? Their private link stops working and the slot opens for the next member.`)) return
@@ -103,6 +109,7 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
                     {winners.length === 0 ? <span style={{ fontSize: 12.5, color: T.muted }}>No winners yet.</span> : winners.map((w) => (
                       <div key={w.position} style={{ fontSize: 13, padding: '4px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <span>#{w.position} · {w.business_name || '(site not created)'} · {w.site_status || '—'} · {w.paid ? 'paid' : `not paid${w.pay_by ? ` (pay by ${new Date(w.pay_by).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })})` : ''}`} · {w.contact_name || '—'} {w.contact_phone || ''} {w.contact_email || ''}</span>
+                        {canEdit && <Button size="sm" variant="ghost" onClick={() => resend(g, w)}>Resend link</Button>}
                         {canEdit && !w.paid && <Button size="sm" variant="ghost" onClick={() => voidSlot(g, w)}>Void slot</Button>}
                       </div>
                     ))}

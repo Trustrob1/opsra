@@ -486,3 +486,63 @@ class TestWinnerCatalog:
         assert svc.winner_catalog_checkout(db, tok)["items"] == 30
         v = svc.winner_view(db, tok)
         assert v["can_buy_items"] is True and v["terms"]["catalog_pack_items"] == 30 and v["terms"]["catalog_pack_price_ngn"] == 5000
+
+
+class TestLostLink:
+    def _sent(self, monkeypatch):
+        sent = []
+        monkeypatch.setattr(svc, "_send_to_contact", lambda db_, e, subj, text: sent.append((e["contact_email"], text)) or True)
+        return sent
+
+    def test_staff_resend_gives_a_new_working_link_and_kills_the_old_one(self, monkeypatch):
+        db, p, g = _setup()
+        old = _winner(db, g)
+        sent = self._sent(monkeypatch)
+        r = svc.resend_link(db, ORG, g["id"], 1)
+        assert r["emailed"] is True and r["email"] == "ada@example.com"
+        new = sent[0][1].split("/w/")[1].split()[0]
+        assert svc.winner_view(db, new)["business_name"] == "Zed Shop"
+        with pytest.raises(svc.WinnerError) as x:
+            svc.winner_view(db, old)
+        assert x.value.status_code == 404
+        with pytest.raises(svc.GiveawayError):
+            svc.resend_link(db, ORG, g["id"], 4)
+
+    def test_winner_asks_with_their_number_in_any_spelling(self, monkeypatch):
+        db, p, g = _setup()
+        e = svc.claim_slot(db, _open(db, g, "08031234567"))
+        old = e["_winner_token"]
+        db.table("sites").insert({"id": "s1", "org_id": ORG, "client_business_name": "Zed", "status": "brief_complete"}).execute()
+        svc.attach_site(db, e, "s1")
+        sent = self._sent(monkeypatch)
+        assert svc.request_link(db, g["slug"], "+234 803 123 4567", NOW) is True
+        assert len(sent) == 1 and sent[0][0] == "ada@example.com"       # goes to the email they entered with, never elsewhere
+        with pytest.raises(svc.WinnerError):
+            svc.winner_view(db, old)
+
+    def test_same_answer_for_a_stranger_and_nothing_is_sent(self, monkeypatch):
+        db, p, g = _setup()
+        _winner(db, g)
+        sent = self._sent(monkeypatch)
+        assert svc.request_link(db, g["slug"], "08099999999", NOW) is True
+        assert svc.request_link(db, g["slug"], "not a number", NOW) is True
+        assert svc.request_link(db, "no-such-giveaway", "08031234567", NOW) is False
+        assert sent == []
+
+    def test_cooldown_stops_repeated_requests(self, monkeypatch):
+        db, p, g = _setup()
+        e = svc.claim_slot(db, _open(db, g, "08031234567"))
+        sent = self._sent(monkeypatch)
+        svc.request_link(db, g["slug"], "08031234567", NOW)
+        svc.request_link(db, g["slug"], "08031234567", NOW + timedelta(minutes=2))
+        assert len(sent) == 1
+        svc.request_link(db, g["slug"], "08031234567", NOW + timedelta(minutes=11))
+        assert len(sent) == 2
+
+    def test_a_released_winner_gets_nothing(self, monkeypatch):
+        db, p, g = _setup()
+        svc.claim_slot(db, _open(db, g, "08031234567"))
+        svc.void_slot(db, ORG, g["id"], 1)
+        sent = self._sent(monkeypatch)
+        assert svc.request_link(db, g["slug"], "08031234567", NOW) is True
+        assert sent == []

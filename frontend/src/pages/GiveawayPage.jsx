@@ -5,7 +5,7 @@
  * A slot is only taken when the form is submitted, so opening the form never uses one up.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { getGiveaway, openGiveaway } from '../services/site_forms.service'
+import { getGiveaway, openGiveaway, requestLostLink } from '../services/site_forms.service'
 import { TermsList } from './giveawayTerms'
 
 const TEAL = '#028090'
@@ -44,6 +44,7 @@ export default function GiveawayPage({ slug }) {
   const [who, setWho] = useState({ name: '', phone: '', email: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [lost, setLost] = useState({ open: false, phone: '', busy: false, done: false, error: '' })
 
   const load = useCallback(() => {
     getGiveaway(slug)
@@ -72,6 +73,13 @@ export default function GiveawayPage({ slug }) {
       if (code === 'FULL' || code === 'CLOSED') load()
       setError(e?.response?.data?.detail?.message || 'We couldn’t open the form. Please check your connection and try again.')
     } finally { setBusy(false) }
+  }
+
+  async function sendLost() {
+    if (lost.phone.replace(/\D/g, '').length < 9) return setLost({ ...lost, error: 'Please enter the WhatsApp number you entered with.' })
+    setLost({ ...lost, busy: true, error: '' })
+    try { await requestLostLink(slug, lost.phone.trim()); setLost({ ...lost, busy: false, done: true, error: '' }) }
+    catch (e) { setLost({ ...lost, busy: false, error: e?.response?.data?.detail?.message || 'We couldn’t send that just now. Please try again in a minute.' }) }
   }
 
   return (
@@ -111,6 +119,22 @@ export default function GiveawayPage({ slug }) {
                 {g.left === 0 ? 'All the free slots have been taken. Thank you for your interest.' : 'This giveaway is closed.'}
               </div>
             )}
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #e3ebf0' }}>
+              {!lost.open ? (
+                <button type="button" onClick={() => setLost({ ...lost, open: true })} style={{ background: 'none', border: 0, padding: 0, color: TEAL, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Already won a slot? Lost your private link?
+                </button>
+              ) : lost.done ? (
+                <p style={S.p} role="status">If that number won a slot, a new link is on its way to the email and WhatsApp number you entered with. The old link no longer works.</p>
+              ) : (
+                <>
+                  <p style={S.p}>Enter the WhatsApp number you entered with. We’ll send a new link to the email and number you gave.</p>
+                  <input style={S.input} placeholder="WhatsApp number" inputMode="tel" autoComplete="tel" value={lost.phone} onChange={(e) => setLost({ ...lost, phone: e.target.value, error: '' })} />
+                  <p style={S.err} aria-live="polite">{lost.error}</p>
+                  <button type="button" style={{ ...S.btn, marginTop: 4, opacity: lost.busy ? 0.7 : 1 }} disabled={lost.busy} onClick={sendLost}>{lost.busy ? 'Sending…' : 'Send me a new link'}</button>
+                </>
+              )}
+            </div>
           </>
         )}
       </div>

@@ -197,3 +197,31 @@ def test_pay_by_days_and_winner_catalog_route(ctx, monkeypatch):
     db.table("site_orders").insert({"id": "o1", "site_id": db.rows("sites")[0]["id"], "kind": "initial", "status": "fulfilling"}).execute()
     r = client.post(f"/api/v1/giveaway-winner/{tok}/catalog-checkout")
     assert r.status_code == 200 and r.json()["data"]["items"] == 30
+
+
+def test_lost_link_routes(ctx, monkeypatch):
+    client, db = ctx
+    from app.services import site_giveaway_service as svc
+    sent = []
+    monkeypatch.setattr(svc, "_send_to_contact", lambda db_, e, subj, text: sent.append(text) or True)
+    g = _create(client, db, slots=2)
+    me = _who(phone="08031234567")
+    t1 = client.post(f"/api/v1/giveaways/{g['slug']}/open", json=me).json()["data"]["url"].rsplit("/", 1)[1]
+    _choose_preset(db)
+    first = client.post(f"/api/v1/forms/{t1}/submit", json={"client_business_name": "Zed Shop", "answers": {}}).json()["data"]["winner_url"].rsplit("/", 1)[1]
+    sent.clear()
+
+    r = client.post(f"/api/v1/giveaways/{g['slug']}/lost-link", json={"phone": "08031234567"})
+    assert r.status_code == 200 and len(sent) == 1
+    assert client.get(f"/api/v1/giveaway-winner/{first}").status_code == 404            # old link dead
+    new = sent[0].split("/w/")[1].split()[0]
+    assert client.get(f"/api/v1/giveaway-winner/{new}").status_code == 200
+    assert client.post("/api/v1/giveaways/nope-nope/lost-link", json={"phone": "08031234567"}).status_code == 404
+    assert client.post(f"/api/v1/giveaways/{g['slug']}/lost-link", json={"phone": "08000000000"}).status_code == 200      # same answer, nothing sent
+    assert len(sent) == 1
+
+    sent.clear()
+    assert client.post(f"/api/v1/giveaways/{g['id']}/entries/1/resend-link").status_code == 200 and len(sent) == 1
+    assert client.post(f"/api/v1/giveaways/{g['id']}/entries/9/resend-link").status_code == 422
+    app.dependency_overrides[get_current_org] = lambda: _org("sales_agent")
+    assert client.post(f"/api/v1/giveaways/{g['id']}/entries/1/resend-link").status_code == 403

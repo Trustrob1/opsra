@@ -64,6 +64,12 @@ export async function openGiveaway(slug, consent, contact = {}) {
   return res.data.data
 }
 
+/** GIVEAWAY-3 — a winner who lost their private link asks for a new one with their WhatsApp number. */
+export async function requestLostLink(slug, phone) {
+  const res = await axios.post(`${BASE}/giveaways/${encodeURIComponent(slug)}/lost-link`, { phone })
+  return res.data
+}
+
 /** GIVEAWAY-1 — the winner's private page (the token in the link is the credential). */
 export async function getGiveawayWinner(token) {
   const res = await axios.get(`${BASE}/giveaway-winner/${encodeURIComponent(token)}`)

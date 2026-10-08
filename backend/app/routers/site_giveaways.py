@@ -88,6 +88,16 @@ def public_open(slug: str, payload: dict, request: Request, db=Depends(get_supab
     raise HTTPException(code, detail={"code": c, "message": m})
 
 
+@public_router.post("/giveaways/{slug}/lost-link")
+def public_lost_link(slug: str, payload: dict, request: Request, db=Depends(get_supabase)):
+    """A winner asks for a new private link with their WhatsApp number. The answer is the same whether or not it matched."""
+    if _limited("lost:" + _ip(request), 5):
+        raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many requests. Please try again in a minute."})
+    if not svc.request_link(db, slug, str((payload or {}).get("phone") or "")):
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "This giveaway link isn't valid."})
+    return ok(data={"requested": True}, message="If that number won a slot, a new link is on its way to the email and WhatsApp number used to enter.")
+
+
 class GiveawayCreate(BaseModel):
     partner_id: str = Field(min_length=10, max_length=64)
     title: str = Field(min_length=3, max_length=120)
@@ -143,6 +153,15 @@ def void_slot(giveaway_id: str, position: int, org=Depends(get_current_org), db=
     _require(org, _WRITE_ROLES)
     try:
         return ok(data=svc.void_slot(db, org["org_id"], giveaway_id, position), message="Slot voided")
+    except svc.GiveawayError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+
+@router.post("/{giveaway_id}/entries/{position}/resend-link")
+def resend_link(giveaway_id: str, position: int, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _WRITE_ROLES)
+    try:
+        return ok(data=svc.resend_link(db, org["org_id"], giveaway_id, position), message="New link sent")
     except svc.GiveawayError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
 

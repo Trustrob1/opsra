@@ -184,4 +184,5 @@ export const createGiveaway = (payload) => unwrap(api.post('/api/v1/giveaways', 
 export const closeGiveaway = (id) => unwrap(api.post(`/api/v1/giveaways/${id}/close`))
 export const reopenGiveaway = (id) => unwrap(api.post(`/api/v1/giveaways/${id}/reopen`))
 export const listGiveawayEntries = (id) => unwrap(api.get(`/api/v1/giveaways/${id}/entries`))
+export const resendGiveawayLink = (id, position) => unwrap(api.post(`/api/v1/giveaways/${id}/entries/${position}/resend-link`))
 export const voidGiveawaySlot = (id, position) => unwrap(api.post(`/api/v1/giveaways/${id}/entries/${position}/void`))
