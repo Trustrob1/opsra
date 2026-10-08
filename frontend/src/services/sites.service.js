@@ -177,3 +177,11 @@ export const approvePartnerApplication = (id) => unwrap(api.post(`/api/v1/partne
 export const declinePartnerApplication = (id) => unwrap(api.post(`/api/v1/partners/applications/${id}/decline`))
 export const suspendPartner = (id) => unwrap(api.post(`/api/v1/partners/${id}/suspend`))
 export const reactivatePartner = (id) => unwrap(api.post(`/api/v1/partners/${id}/reactivate`))
+
+// ── GIVEAWAY-1 — group giveaways (staff) ────────────────────────────────────
+export const listGiveaways = () => unwrap(api.get('/api/v1/giveaways'))
+export const createGiveaway = (payload) => unwrap(api.post('/api/v1/giveaways', payload))
+export const closeGiveaway = (id) => unwrap(api.post(`/api/v1/giveaways/${id}/close`))
+export const reopenGiveaway = (id) => unwrap(api.post(`/api/v1/giveaways/${id}/reopen`))
+export const listGiveawayEntries = (id) => unwrap(api.get(`/api/v1/giveaways/${id}/entries`))
+export const voidGiveawaySlot = (id, position) => unwrap(api.post(`/api/v1/giveaways/${id}/entries/${position}/void`))

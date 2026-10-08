@@ -194,7 +194,7 @@ export default function SiteBriefFormPage({ token }) {
       const res = await submitBriefForm(token, {
         answers: withoutPhotos(answersRef.current), client_business_name: businessName, website,
       })
-      setForm(f => ({ ...f, message: res.message }))
+      setForm(f => ({ ...f, message: res.message, winner_url: res.winner_url }))
       setState('submitted')
     } catch (e) {
       setError(errorMessage(e))
@@ -275,6 +275,18 @@ export default function SiteBriefFormPage({ token }) {
             <div style={S.successIcon}>✅</div>
             <p style={S.successTitle}>All done!</p>
             <p style={S.successSub}>{form?.message || 'Thank you — this has been submitted.'}</p>
+            {(() => {
+              // GIVEAWAY-1: a winner gets a private page. Only follow a same-site /w/ path.
+              let path = ''
+              try { path = new URL(form?.winner_url || '', window.location.origin).pathname } catch (_) { /* ignore */ }
+              if (!/^\/w\/[A-Za-z0-9_-]{20,128}$/.test(path)) return null
+              return (
+                <>
+                  <a href={path} style={{ display: 'inline-block', marginTop: 12, padding: '12px 20px', background: '#028090', color: '#fff', borderRadius: 8, fontWeight: 700, textDecoration: 'none' }}>Open my private page</a>
+                  <p style={{ ...S.successSub, marginTop: 10 }}>Save this page or the link we sent you. Your preview will appear there.</p>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}

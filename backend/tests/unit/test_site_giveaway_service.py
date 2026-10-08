@@ -1,0 +1,341 @@
+"""
+tests/unit/test_site_giveaway_service.py
+GIVEAWAY-1 — slot counter: create, public status, consent-gated open, claim on submit (first N win), idempotency.
+"""
+from __future__ import annotations
+
+import pytest
+
+from app.services import site_giveaway_service as svc
+from app.services import site_partner_service
+from tests.funnel_fake_db import FakeDB
+
+ORG = "org-1"
+
+
+def _setup(slots=5):
+    db = FakeDB(site_builders=[], site_partners=[], site_giveaways=[], site_giveaway_entries=[], site_brief_forms=[], sites=[],
+                site_orders=[], site_builder_settings=[], site_presets=[], whatsapp_numbers=[], notifications=[])
+    partner = site_partner_service.create_partner(db, ORG, "Group Owner", "08030000001", "go@example.com", "Lagos Biz Hub")
+    g = svc.create_giveaway(db, ORG, partner["id"], "Free Website Giveaway", slots)
+    return db, partner, g
+
+
+_n = {"i": 0}
+
+
+def _c(phone=None):
+    """a fresh member contact (a new WhatsApp number each call unless one is given)"""
+    _n["i"] += 1
+    return {"name": "Ada Obi", "phone": phone or f"0803{_n['i']:07d}", "email": "ada@example.com"}
+
+
+def _open(db, g, phone=None):
+    r = svc.open_entry(db, g["slug"], True, _c(phone))
+    assert r["kind"] == "ok", r
+    form = db.rows("site_brief_forms")[-1]
+    return form
+
+
+class TestCreate:
+    def test_create_and_link(self):
+        db, p, g = _setup()
+        assert g["link_url"].endswith("/g/" + g["slug"]) and g["left"] == 5 and g["total_slots"] == 5
+
+    @pytest.mark.parametrize("title,slots", [("x", 5), ("Valid title", 0), ("Valid title", 101), ("Valid title", "abc")])
+    def test_validation(self, title, slots):
+        db, p, _ = _setup()
+        with pytest.raises(svc.GiveawayError):
+            svc.create_giveaway(db, ORG, p["id"], title, slots)
+
+    def test_unknown_or_suspended_partner(self):
+        db, p, _ = _setup()
+        with pytest.raises(svc.GiveawayError):
+            svc.create_giveaway(db, ORG, "nope", "Valid title", 5)
+        site_partner_service.set_status(db, ORG, p["id"], "suspended")
+        with pytest.raises(svc.GiveawayError):
+            svc.create_giveaway(db, ORG, p["id"], "Valid title", 5)
+
+
+class TestPublicAndOpen:
+    def test_public_status(self):
+        db, p, g = _setup()
+        d = svc.get_public(db, g["slug"])
+        assert d["left"] == 5 and d["open"] and d["owner_name"] == "Lagos Biz Hub"
+        assert "partner_id" not in d and "org_id" not in d
+        assert svc.get_public(db, "nope-nope") is None
+
+    def test_open_needs_consent(self):
+        db, p, g = _setup()
+        assert svc.open_entry(db, g["slug"], False, _c())["kind"] == "consent_required"
+        assert db.rows("site_brief_forms") == []
+
+    def test_open_makes_a_client_form_owned_by_the_group_owner(self):
+        db, p, g = _setup()
+        form = _open(db, g)
+        assert form["builder_id"] == p["builder_id"] and form["audience"] == "client"
+        e = db.rows("site_giveaway_entries")[0]
+        assert e["status"] == "opened" and e["consent_at"] and e.get("position") is None
+
+    def test_opening_does_not_use_a_slot(self):
+        db, p, g = _setup()
+        for _ in range(8):
+            _open(db, g)
+        assert svc.get_public(db, g["slug"])["left"] == 5
+
+    def test_closed_giveaway(self):
+        db, p, g = _setup()
+        svc.set_status(db, ORG, g["id"], "closed")
+        assert svc.open_entry(db, g["slug"], True, _c())["kind"] == "closed"
+
+    def test_suspended_owner_closes_it(self):
+        db, p, g = _setup()
+        site_partner_service.set_status(db, ORG, p["id"], "suspended")
+        assert svc.open_entry(db, g["slug"], True, _c())["kind"] == "closed"
+
+
+class TestClaim:
+    def test_first_n_win_then_full(self):
+        db, p, g = _setup(slots=3)
+        forms = [_open(db, g) for _ in range(5)]
+        for f in forms[:3]:
+            e = svc.claim_slot(db, f)
+            assert e["status"] == "winner"
+        assert sorted(e["position"] for e in db.rows("site_giveaway_entries") if e["status"] == "winner") == [1, 2, 3]
+        with pytest.raises(svc.GiveawayFull):
+            svc.claim_slot(db, forms[3])
+        d = svc.get_public(db, g["slug"])
+        assert d["left"] == 0 and d["open"] is False
+        assert svc.open_entry(db, g["slug"], True, _c())["kind"] == "full"
+
+    def test_opened_order_does_not_matter_only_submit_order(self):
+        db, p, g = _setup(slots=1)
+        a, b = _open(db, g), _open(db, g)
+        assert svc.claim_slot(db, b)["position"] == 1
+        with pytest.raises(svc.GiveawayFull):
+            svc.claim_slot(db, a)
+
+    def test_claim_is_idempotent(self):
+        db, p, g = _setup(slots=2)
+        f = _open(db, g)
+        first = svc.claim_slot(db, f)
+        again = svc.claim_slot(db, f)
+        assert first["id"] == again["id"] and svc.get_public(db, g["slug"])["taken"] == 1
+
+    def test_plain_form_is_not_a_giveaway(self):
+        db, p, g = _setup()
+        assert svc.claim_slot(db, {"id": "some-other-form"}) is None
+
+    def test_retries_when_a_position_was_taken_in_between(self, monkeypatch):
+        db, p, g = _setup(slots=3)
+        f = _open(db, g)
+        real = db.table
+        state = {"raced": False}
+
+        def racing_table(name):
+            q = real(name)
+            if name == "site_giveaway_entries" and not state["raced"]:
+                orig = q.update
+
+                def upd(payload):
+                    if payload.get("status") == "winner" and not state["raced"]:
+                        state["raced"] = True
+                        db.tables["site_giveaway_entries"].append(
+                            {"id": "rival", "giveaway_id": g["id"], "position": payload["position"], "status": "winner"})
+                    return orig(payload)
+                q.update = upd
+            return q
+        monkeypatch.setattr(db, "table", racing_table)
+        e = svc.claim_slot(db, f)
+        assert e["position"] == 2
+
+    def test_attach_site_and_entries_list(self):
+        db, p, g = _setup()
+        f = _open(db, g)
+        e = svc.claim_slot(db, f)
+        db.table("sites").insert({"id": "s1", "client_business_name": "Zed Shop", "status": "brief_complete"}).execute()
+        svc.attach_site(db, e, "s1")
+        rows = svc.entries(db, ORG, g["id"])
+        assert rows[0]["business_name"] == "Zed Shop" and rows[0]["position"] == 1
+        listed = svc.list_giveaways(db, ORG)[0]
+        assert listed["taken"] == 1 and listed["left"] == 4 and listed["owner_name"] == "Lagos Biz Hub"
+
+
+class TestFeeAndTerms:
+    def test_defaults_and_custom(self):
+        db, p, g = _setup()
+        assert g["fee_ngn"] == 24500 and g["renewal_ngn"] == 25000
+        g2 = svc.create_giveaway(db, ORG, p["id"], "Second giveaway", 3, 30000, 28000)
+        assert g2["fee_ngn"] == 30000 and g2["renewal_ngn"] == 28000
+
+    @pytest.mark.parametrize("fee", [500, 99_999_999, "abc"])
+    def test_fee_bounds(self, fee):
+        db, p, _ = _setup()
+        with pytest.raises(svc.GiveawayError):
+            svc.create_giveaway(db, ORG, p["id"], "Valid title", 5, fee)
+
+    def test_public_shows_fee_renewal_and_edit_terms(self):
+        db, p, g = _setup()
+        db.tables["site_presets"].extend([{"org_id": ORG, "is_active": True, "max_items": 40}, {"org_id": ORG, "is_active": True, "max_items": 30}])
+        d = svc.get_public(db, g["slug"])
+        assert d["fee_ngn"] == 24500 and d["renewal_ngn"] == 25000
+        t = d["terms"]
+        assert t["free_edits"] == 5 and t["care_price_ngn"] == 5000 and t["pack_price_ngn"] == 1500 and t["pack_edits"] == 5
+        assert t["edit_item_cap"] == 10 and t["max_items"] == 30
+
+
+class TestContact:
+    def test_name_email_whatsapp_required(self):
+        db, p, g = _setup()
+        for bad in ({"name": "", "phone": "08031234567", "email": "a@b.com"},
+                    {"name": "Ada", "phone": "08031234567", "email": "nope"},
+                    {"name": "Ada", "phone": "abc", "email": "a@b.com"}, None):
+            r = svc.open_entry(db, g["slug"], True, bad)
+            assert r["kind"] == "invalid" and r["message"]
+        assert db.rows("site_brief_forms") == []
+
+    def test_contact_saved_on_the_entry_with_one_phone_spelling(self):
+        db, p, g = _setup()
+        _open(db, g, "+234 803 123 4567")
+        assert db.rows("site_giveaway_entries")[0]["contact_phone"] == "2348031234567"
+
+    def test_one_slot_per_whatsapp_number(self):
+        db, p, g = _setup()
+        a, b = _open(db, g, "08031234567"), _open(db, g, "+2348031234567")
+        assert svc.claim_slot(db, a)["status"] == "winner"
+        with pytest.raises(svc.GiveawayDuplicate):
+            svc.claim_slot(db, b)
+        assert svc.open_entry(db, g["slug"], True, _c("08031234567"))["kind"] == "duplicate"
+        assert svc.get_public(db, g["slug"])["taken"] == 1
+
+
+class TestVoid:
+    def test_void_frees_slot_and_number_and_kills_the_link(self):
+        db, p, g = _setup(slots=1)
+        f = _open(db, g, "08031234567")
+        e = svc.claim_slot(db, f)
+        raw = e["_winner_token"]
+        db.table("sites").insert({"id": "s1", "org_id": ORG, "client_business_name": "Zed", "status": "brief_complete", "slug": "zed"}).execute()
+        svc.attach_site(db, e, "s1")
+        svc.void_slot(db, ORG, g["id"], 1)
+        assert svc.get_public(db, g["slug"])["left"] == 1
+        with pytest.raises(svc.WinnerError):
+            svc.winner_view(db, raw)
+        assert db.rows("sites")[0].get("deleted_at")
+        f2 = _open(db, g, "08031234567")                 # the same number may enter again
+        assert svc.claim_slot(db, f2)["position"] == 1
+
+    def test_cannot_void_after_payment(self):
+        db, p, g = _setup()
+        e = svc.claim_slot(db, _open(db, g))
+        db.table("sites").insert({"id": "s1", "client_business_name": "Zed", "status": "paid"}).execute()
+        svc.attach_site(db, e, "s1")
+        db.table("site_orders").insert({"id": "o1", "site_id": "s1", "kind": "initial", "status": "fulfilling"}).execute()
+        with pytest.raises(svc.GiveawayError):
+            svc.void_slot(db, ORG, g["id"], 1)
+        with pytest.raises(svc.GiveawayError):
+            svc.void_slot(db, ORG, g["id"], 4)
+
+
+def _winner(db, g, status="preview_ready"):
+    e = svc.claim_slot(db, _open(db, g))
+    db.table("sites").insert({"id": "s1", "client_business_name": "Zed Shop", "status": status, "slug": "zed-shop",
+                              "rendered_html": "<html></html>"}).execute()
+    svc.attach_site(db, e, "s1")
+    return e["_winner_token"]
+
+
+class TestWinnerPage:
+    def test_token_is_issued_once_and_only_its_hash_is_stored(self):
+        db, p, g = _setup()
+        e = svc.claim_slot(db, _open(db, g))
+        raw = e["_winner_token"]
+        stored = db.rows("site_giveaway_entries")[0]["winner_token_hash"]
+        assert stored and raw not in str(db.rows("site_giveaway_entries"))
+        with pytest.raises(svc.WinnerError) as x:
+            svc.winner_view(db, "wrong-token")
+        assert x.value.status_code == 404
+
+    def test_stages(self):
+        db, p, g = _setup()
+        tok = _winner(db, g, "generating")
+        assert svc.winner_view(db, tok)["stage"] == "building" and svc.winner_view(db, tok)["can_pay"] is False
+        db.table("sites").update({"status": "preview_ready"}).eq("id", "s1").execute()
+        v = svc.winner_view(db, tok)
+        assert v["stage"] == "preview" and v["can_pay"] and v["preview_url"].endswith("/s/zed-shop")
+        assert v["fee_ngn"] == 24500 and v["terms"]["edit_item_cap"] == 10
+        assert "winner_token_hash" not in v and "org_id" not in str(v.keys())
+        db.table("site_orders").insert({"id": "o1", "site_id": "s1", "kind": "initial", "status": "fulfilling"}).execute()
+        assert svc.winner_view(db, tok)["stage"] == "going_live"
+        db.table("sites").update({"status": "live", "live_url": "https://zed.ng"}).eq("id", "s1").execute()
+        v = svc.winner_view(db, tok)
+        assert v["stage"] == "live" and v["live_url"] == "https://zed.ng"
+
+    def test_on_won_sends_email_and_alerts_staff(self, monkeypatch):
+        db, p, g = _setup()
+        sent, alerts = [], []
+        from app.services import site_partner_apply_service as apply_svc, funnel_service
+        monkeypatch.setattr(apply_svc, "_send_email", lambda to, subj, text: sent.append((to, text)) or True)
+        monkeypatch.setattr(funnel_service, "notify_managers", lambda *a, **k: alerts.append(a))
+        e = svc.claim_slot(db, _open(db, g))
+        url = svc.on_won(db, e, "Zed Shop")
+        assert url and "/w/" in url and sent and url in sent[0][1] and sent[0][0] == "ada@example.com"
+        assert alerts and "Zed Shop" in alerts[0][2]
+        assert svc.on_won(db, None) is None and svc.on_won(db, {**e, "_winner_token": None}) is None
+
+
+class TestWinnerCheckout:
+    BODY = {"domain": "zedshop.ng", "backup_domain": "zedshop.com.ng", "accepted_terms": True,
+            "legal_owner": {"full_name": "Ada Obi", "email": "ada@example.com", "phone": "08031234567", "address": "1 Allen Ave, Ikeja"}}
+
+    def _patch(self, monkeypatch):
+        from app.services import site_order_service, site_access_service
+        calls = []
+        monkeypatch.setattr(site_access_service, "ensure_lead", lambda db, org, b: "lead-1")
+        monkeypatch.setattr(site_order_service, "create_checkout",
+                            lambda db, org, b, payload, fixed_amount=None: calls.append((payload, fixed_amount)) or
+                            {"checkout_url": "https://pay.test/x", "reference": "r1", "order_id": "o9", "amount": fixed_amount})
+        return calls
+
+    def test_pays_the_giveaway_fee_never_a_browser_amount(self, monkeypatch):
+        db, p, g = _setup()
+        db.table("site_giveaways").update({"fee_ngn": 31000}).eq("id", g["id"]).execute()
+        tok = _winner(db, g)
+        calls = self._patch(monkeypatch)
+        out = svc.winner_checkout(db, tok, {**self.BODY, "amount": 1, "fixed_amount": 1})
+        assert out["checkout_url"] == "https://pay.test/x" and out["amount"] == 31000
+        payload, fixed = calls[0]
+        assert fixed == 31000 and payload.site_id == "s1" and payload.route == "standard"
+
+    def test_blocked_until_preview_and_after_payment(self, monkeypatch):
+        db, p, g = _setup()
+        tok = _winner(db, g, "generating")
+        self._patch(monkeypatch)
+        with pytest.raises(svc.WinnerError) as x:
+            svc.winner_checkout(db, tok, self.BODY)
+        assert x.value.code == "NOT_READY"
+        db.table("sites").update({"status": "preview_ready"}).eq("id", "s1").execute()
+        db.table("site_orders").insert({"id": "o1", "site_id": "s1", "kind": "initial", "status": "awaiting_approval"}).execute()
+        with pytest.raises(svc.WinnerError) as x:
+            svc.winner_checkout(db, tok, self.BODY)
+        assert x.value.code == "ALREADY_PAID"
+
+    def test_bad_details_and_terms(self, monkeypatch):
+        db, p, g = _setup()
+        tok = _winner(db, g)
+        calls = self._patch(monkeypatch)
+        for bad in ({**self.BODY, "accepted_terms": False}, {**self.BODY, "backup_domain": "zedshop.ng"},
+                    {**self.BODY, "legal_owner": {**self.BODY["legal_owner"], "email": "nope"}}, {}):
+            with pytest.raises(svc.WinnerError) as x:
+                svc.winner_checkout(db, tok, bad)
+            assert x.value.status_code == 422
+        assert calls == []
+
+    def test_domain_check_uses_a_giveaway_rate_key(self, monkeypatch):
+        db, p, g = _setup()
+        tok = _winner(db, g)
+        from app.services import domain_check_service
+        seen = []
+        monkeypatch.setattr(domain_check_service, "check_domain", lambda db_, org, key, dom: seen.append((org, key, dom)) or {"domain": dom, "available": True})
+        assert svc.winner_domain_check(db, tok, "zedshop.ng")["available"] is True
+        assert seen[0][1].startswith("giveaway:")

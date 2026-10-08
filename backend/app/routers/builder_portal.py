@@ -522,14 +522,16 @@ def _refuse_if_premium(db, org_id: str, site: dict) -> None:
 def patch_my_content(site_id: str, payload: SiteContentPatch, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     org_id = builder["org_id"]
     site = _get_site(db, org_id, builder["id"], site_id)
+    new_content = payload.content.model_dump(mode="json")
     try:
-        site_care_plan_service.consume_edit(db, org_id, site)
+        items_changed = site_care_plan_service.count_item_changes(site.get("content"), new_content)
+        site_care_plan_service.consume_edit(db, org_id, site, items_changed=items_changed)
     except site_care_plan_service.EditLimitReached as exc:
         raise HTTPException(402, detail={"code": "EDIT_LIMIT_REACHED", "message": str(exc), "offer": exc.offer})
     except Exception as exc:  # fail open — a bug in the allowance code must never stop a builder saving
         logger.warning("care plan: consume_edit failed site=%s: %s", site_id, exc)
     _snapshot_for_undo(db, org_id, site)
-    updates = {"content": payload.content.model_dump(mode="json"), "updated_at": _now_iso(),
+    updates = {"content": new_content, "updated_at": _now_iso(),
                "revision_count": (site.get("revision_count") or 0) + 1}
     db.table("sites").update(updates).eq("id", site_id).eq("org_id", org_id).execute()
     site.update(updates)

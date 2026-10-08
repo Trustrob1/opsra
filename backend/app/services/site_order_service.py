@@ -108,7 +108,7 @@ def _parse_iso(value: Optional[str]) -> Optional[datetime]:
 # create_checkout — spec §11.3
 # ---------------------------------------------------------------------------
 
-def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
+def create_checkout(db: Any, org_id: str, builder: dict, payload, fixed_amount: Optional[float] = None) -> dict:
     """
     payload: models.sites.CheckoutRequest (already validated: route, domain,
     backup_domain != domain, legal_owner, accepted_terms == True).
@@ -116,6 +116,10 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
     Returns {"checkout_url", "reference", "order_id", "amount"}.
     Raises SiteOrderError / pricing_service.PricingError /
     paystack_storefront_service.PaystackLinkError — caller maps to 4xx.
+
+    `fixed_amount` (GIVEAWAY-1) is only ever passed by server code, never from a request: the winner of a
+    giveaway pays the giveaway's own fee instead of the quoted price. The quote is still computed and stored, so
+    staff see the real costs and the profit/loss. No discount code or Premium balance applies to a fixed amount.
     """
     from app.services import pricing_service, paystack_storefront_service
 
@@ -138,7 +142,10 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
     # SITE-DISCOUNT — re-validate the code here (never trust the quote the client saw).
     # The discount is stored in the order's quote; it only counts as a use once the order is PAID.
     discount = None
-    code_text = getattr(payload, "discount_code", None)
+    code_text = None if fixed_amount is not None else getattr(payload, "discount_code", None)
+    if fixed_amount is not None:
+        amount = round(float(fixed_amount), 2)
+        quoted = {**quoted, "fixed_amount": amount}
     if code_text and str(code_text).strip():
         from app.services import site_discount_service
         try:
@@ -153,7 +160,8 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
     premium_line = {"balance": 0}
     try:
         from app.services import site_premium_billing_service
-        premium_line = site_premium_billing_service.go_live_balance(db, org_id, site["id"])
+        if fixed_amount is None:
+            premium_line = site_premium_billing_service.go_live_balance(db, org_id, site["id"])
     except Exception as exc:  # S14 - a lookup problem must not block a normal checkout
         logger.warning("create_checkout: premium balance lookup failed site=%s: %s", site["id"], exc)
     if premium_line.get("balance"):
@@ -190,7 +198,8 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload) -> dict:
         "quote": quoted,
         "amount": amount,
         "cost_snapshot": quoted["cost"],
-        "expected_profit": round(float(quoted["profit"]) - (discount["discount"] if discount else 0.0) + float(premium_line.get("balance") or 0), 2),
+        "expected_profit": (round(float(amount) - float(quoted["cost"]["total"]), 2) if fixed_amount is not None
+                            else round(float(quoted["profit"]) - (discount["discount"] if discount else 0.0) + float(premium_line.get("balance") or 0), 2)),
         "payment_link_id": link.get("payment_link_id"),
         "payment_reference": link["reference"],
         "status": "pending_payment",

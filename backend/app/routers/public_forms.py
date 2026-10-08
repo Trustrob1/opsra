@@ -269,6 +269,18 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
     merged_answers.update({k: v for k, v in (payload.answers or {}).items() if k != "_photos"})  # see autosave
     photos = merged_answers.pop("_photos", {})
 
+    # GIVEAWAY-1: a form opened from a group giveaway takes one of its free slots now (first N complete submissions win).
+    from app.services import site_giveaway_service
+    try:
+        _giveaway_entry = site_giveaway_service.claim_slot(db, form)
+    except site_giveaway_service.GiveawayFull:
+        raise HTTPException(status_code=409, detail={"code": "GIVEAWAY_FULL", "message": "Sorry, all the free slots have just been taken. Your answers are saved."})
+    except site_giveaway_service.GiveawayDuplicate:
+        raise HTTPException(status_code=409, detail={"code": "ALREADY_ENTERED", "message": "This WhatsApp number has already won a slot in this giveaway. Each person can take one."})
+    except Exception:  # S14 - a counter problem must not lose a client's submission
+        logger.exception("[GIVEAWAY-1] claim failed form=%s", form.get("id"))
+        _giveaway_entry = None
+
     slug = site_renderer.generate_slug(payload.client_business_name)
     if (db.table("sites").select("id").eq("slug", slug).execute()).data:
         slug = site_renderer.generate_slug(payload.client_business_name)
@@ -282,6 +294,7 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
     }
     site_res = db.table("sites").insert(site_row).execute()
     site = _one(site_res.data) or site_row
+    site_giveaway_service.attach_site(db, _giveaway_entry, site.get("id"))
 
     for slot, uploads in (photos or {}).items():
         for u in uploads:
@@ -315,6 +328,12 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
     }).eq("id", form["id"]).execute()
 
     _notify_builder_of_submission(db, form)
+
+    # GIVEAWAY-1: the winner gets a private page link (also emailed / sent on WhatsApp). Never raises.
+    _winner_url = site_giveaway_service.on_won(db, _giveaway_entry, payload.client_business_name)
+    if _winner_url:
+        return ok(data={"submitted": True, "winner_url": _winner_url,
+                        "message": "You've got a slot! Your private page is below. Your preview will be ready there within 24 hours."})
 
     if form["audience"] == "client":
         builder = _one((db.table("site_builders").select("business_name").eq("id", form["builder_id"]).execute()).data) or {}

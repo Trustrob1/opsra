@@ -10,6 +10,7 @@ import {
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, Spinner, Empty } from './sitesUi'
 import { T, dateOnly } from './sitesKit'
+import SitesGiveawaysCard from './SitesGiveawaysCard'            // GIVEAWAY-1
 
 const Th = ({ children }) => <th style={{ textAlign: 'left', padding: '10px 14px', fontSize: 11.5, color: T.muted, fontWeight: 600 }}>{children}</th>
 const Td = ({ children, ...r }) => <td style={{ padding: '10px 14px', verticalAlign: 'middle' }} {...r}>{children}</td>
@@ -90,6 +91,7 @@ export default function SitesPartnersTab({ isActive, canEdit, showToast }) {
           )}
         </>
       )}
+      <SitesGiveawaysCard isActive={isActive} canEdit={canEdit} partners={partners} showToast={showToast} />
     </div>
   )
 }

@@ -447,3 +447,70 @@ def test_worker_tasks_and_beat_entries(env, monkeypatch):
     assert [l["worker_name"] for l in logged] == ["site_worker.care_cycle", "site_worker.asset_cleanup"]
     sched = celery_app.conf.beat_schedule
     assert sched["site-care-cycle"]["task"].endswith("run_care_cycle") and sched["site-asset-cleanup"]["task"].endswith("run_asset_cleanup")
+
+
+# ── GIVEAWAY-1: one edit covers at most 10 changed items ────────────────────
+
+def _items(n, tag="a"):
+    return {"items": [{"name": f"{tag}{i}", "desc": "", "price_ngn": 100} for i in range(n)], "categories": []}
+
+
+def test_count_item_changes():
+    assert cp.count_item_changes(_items(3), _items(3)) == 0
+    assert cp.count_item_changes(_items(3), _items(4)) == 1                       # one added
+    assert cp.count_item_changes(_items(4), _items(3)) == 1                       # one removed
+    assert cp.count_item_changes(_items(0), _items(25)) == 25
+    old, new = _items(3), _items(3)
+    new["items"][1]["name"] = "changed"
+    assert cp.count_item_changes(old, new) == 1                                   # an edited item counts once
+    rev = {"items": list(reversed(_items(3)["items"])), "categories": []}
+    assert cp.count_item_changes(_items(3), rev) == 0                             # reorder is not a change
+    assert cp.count_item_changes(None, None) == 0
+
+
+def test_ten_items_is_one_edit_and_eleven_is_two():
+    db = _db()
+    assert cp.consume_edit(db, ORG, db.rows("sites")[0], NOW, items_changed=10)["edits"] == 1
+    assert db.rows("site_care_plans")[0]["free_edits_used"] == 1
+    db = _db()
+    assert cp.consume_edit(db, ORG, db.rows("sites")[0], NOW, items_changed=11)["edits"] == 2
+    assert db.rows("site_care_plans")[0]["free_edits_used"] == 2
+
+
+def test_filling_25_items_in_one_sitting_costs_three_edits():
+    db = _db()
+    r = cp.consume_edit(db, ORG, db.rows("sites")[0], NOW, items_changed=25)
+    assert r["counted"] is True and r["edits"] == 3
+    assert db.rows("site_care_plans")[0]["free_edits_used"] == 3
+
+
+def test_items_add_up_inside_one_session():
+    db = _db()
+    site = db.rows("sites")[0]
+    assert cp.consume_edit(db, ORG, site, NOW, items_changed=6)["counted"] is True
+    assert cp.consume_edit(db, ORG, site, NOW + timedelta(minutes=5), items_changed=4)["counted"] is False   # 10 total: still one edit
+    r = cp.consume_edit(db, ORG, site, NOW + timedelta(minutes=8), items_changed=1)                          # 11 total: second edit
+    assert r["counted"] is True and r["edits"] == 1
+    assert db.rows("site_care_plans")[0]["free_edits_used"] == 2
+
+
+def test_text_only_saves_are_unchanged():
+    db = _db()
+    site = db.rows("sites")[0]
+    assert cp.consume_edit(db, ORG, site, NOW, items_changed=0)["counted"] is True
+    assert cp.consume_edit(db, ORG, site, NOW + timedelta(minutes=10), items_changed=0)["counted"] is False
+
+
+def test_big_change_is_refused_whole_when_allowance_is_short():
+    db = _db(care=[_care(free_edits_used=4)])                                   # one free edit left
+    with pytest.raises(cp.EditLimitReached) as exc:
+        cp.consume_edit(db, ORG, db.rows("sites")[0], NOW, items_changed=25)    # needs 3
+    assert exc.value.offer["edits_needed"] == 3 and exc.value.offer["item_cap"] == 10
+    assert db.rows("site_care_plans")[0]["free_edits_used"] == 4               # nothing was charged
+
+
+def test_big_change_draws_free_then_plan_then_pack():
+    db = _db(care=[_active(free_edits_used=4, plan_edits_used=9, extra_edits=2)])
+    r = cp.consume_edit(db, ORG, db.rows("sites")[0], NOW, items_changed=40)    # 4 edits: 1 free, 1 plan, 2 pack
+    row = db.rows("site_care_plans")[0]
+    assert r["edits"] == 4 and (row["free_edits_used"], row["plan_edits_used"], row["extra_edits"]) == (5, 10, 0)

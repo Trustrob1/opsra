@@ -182,6 +182,18 @@ export default function App() {
     const PartnerLinkPage = require('./pages/PartnerLinkPage').default
     return <PartnerLinkPage slug={_partnerMatch[1]} />
   }
+  // GIVEAWAY-1 — a group giveaway page with the live slot counter.
+  const _giveawayMatch = window.location.pathname.match(/^\/g\/([A-Za-z0-9_-]{6,64})$/)
+  if (_giveawayMatch) {
+    const GiveawayPage = require('./pages/GiveawayPage').default
+    return <GiveawayPage slug={_giveawayMatch[1]} />
+  }
+  // GIVEAWAY-1 — a winner's private page: preview, terms and payment.
+  const _winnerMatch = window.location.pathname.match(/^\/w\/([A-Za-z0-9_-]{20,128})$/)
+  if (_winnerMatch) {
+    const WinnerPage = require('./pages/WinnerPage').default
+    return <WinnerPage token={_winnerMatch[1]} />
+  }
   // PARTNER-1B — Partner sign in / apply (/partner) and the partner portal (/partner/login?t=…).
   if (window.location.pathname === '/partner' || window.location.pathname === '/partner/login') {
     const PartnerPage = require('./pages/PartnerPage').default

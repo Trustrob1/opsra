@@ -22,6 +22,7 @@ UNIQUE = {
     "funnel_payments": [("reference",)],
     "funnel_events": [("registration_id", "step_key")],   # partial: step_key not null
     "payment_links": [("reference",)],
+    "site_giveaway_entries": [("giveaway_id", "position")],   # partial: position not null
 }
 
 
@@ -126,6 +127,8 @@ class FakeDB:
     def _check_unique(self, name: str, row: dict, exclude: Optional[dict] = None):
         for cols in UNIQUE.get(name, []):
             if name == "funnel_events" and row.get("step_key") is None:
+                continue
+            if name == "site_giveaway_entries" and row.get("position") is None:
                 continue
             key = tuple(row.get(c) for c in cols)
             for other in self.tables.get(name, []):

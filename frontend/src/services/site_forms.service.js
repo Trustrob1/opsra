@@ -50,3 +50,31 @@ export async function openPartnerLink(slug) {
   const res = await axios.post(`${BASE}/partner-links/${encodeURIComponent(slug)}/open`)
   return res.data.data
 }
+
+/** GIVEAWAY-1 — public giveaway: slots left, and opening a form (needs the consent tick). */
+export async function getGiveaway(slug) {
+  const res = await axios.get(`${BASE}/giveaways/${encodeURIComponent(slug)}`)
+  return res.data.data
+}
+/** contact: { name, phone, email } — one slot per WhatsApp number. */
+export async function openGiveaway(slug, consent, contact = {}) {
+  const res = await axios.post(`${BASE}/giveaways/${encodeURIComponent(slug)}/open`, {
+    consent: consent === true, name: contact.name, phone: contact.phone, email: contact.email,
+  })
+  return res.data.data
+}
+
+/** GIVEAWAY-1 — the winner's private page (the token in the link is the credential). */
+export async function getGiveawayWinner(token) {
+  const res = await axios.get(`${BASE}/giveaway-winner/${encodeURIComponent(token)}`)
+  return res.data.data
+}
+export async function checkWinnerDomain(token, domain) {
+  const res = await axios.post(`${BASE}/giveaway-winner/${encodeURIComponent(token)}/domain-check`, { domain })
+  return res.data.data
+}
+/** body: { domain, backup_domain, legal_owner:{full_name,email,phone,address}, accepted_terms } — the amount is set by the server. */
+export async function payGiveawayWinner(token, body) {
+  const res = await axios.post(`${BASE}/giveaway-winner/${encodeURIComponent(token)}/checkout`, body)
+  return res.data.data
+}

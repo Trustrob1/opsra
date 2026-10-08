@@ -111,6 +111,29 @@ class TestCreateCheckout:
         assert moved["new_stage"] == "proposal_sent"
         assert moved["lead_id"] == LEAD_ID
 
+    def test_fixed_amount_replaces_the_quote_and_skips_discount_and_balance(self, monkeypatch):
+        """GIVEAWAY-1: a giveaway winner pays the giveaway's fee; the quote is kept so staff see real cost and loss."""
+        db = _db_mock(sites=_chain([_SITE_ROW]), site_orders=_chain([]))
+        monkeypatch.setattr(pricing_svc, "get_settings", lambda db, org_id: {"approval_required": False})
+        monkeypatch.setattr(pricing_svc, "quote", lambda *a, **k: _QUOTE)
+        paid_for = {}
+        monkeypatch.setattr(pay_svc, "generate_payment_link", lambda **k: paid_for.update(k) or {
+            "checkout_url": "https://paystack.test/pay/g", "reference": "ref_g", "payment_link_id": "pl-g"})
+        monkeypatch.setattr(lead_svc, "move_stage", lambda **k: {})
+        from app.services import site_discount_service, site_premium_billing_service
+        monkeypatch.setattr(site_discount_service, "validate", lambda *a, **k: pytest.fail("discount must not apply"))
+        monkeypatch.setattr(site_premium_billing_service, "go_live_balance", lambda *a, **k: pytest.fail("balance must not apply"))
+        payload = _Payload()
+        payload.discount_code = "FREE100"
+
+        result = svc.create_checkout(db, ORG_ID, _BUILDER, payload, fixed_amount=24500)
+
+        assert result["amount"] == 24500 and paid_for["amount"] == 24500
+        row = db.table("site_orders").insert.call_args[0][0]
+        assert row["amount"] == 24500 and row["quote"]["fixed_amount"] == 24500
+        assert row["expected_profit"] == 24500 - _QUOTE["cost"]["total"]          # a loss is shown as a negative number
+        assert row["cost_snapshot"] == _QUOTE["cost"]
+
     def test_site_not_found_raises(self, monkeypatch):
         db = _db_mock(sites=_chain([]))
         with pytest.raises(svc.SiteNotFound):

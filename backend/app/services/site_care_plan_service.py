@@ -34,6 +34,7 @@ DEFAULTS = {"price_ngn": 5000, "edits_per_month": 10, "pack_price_ngn": 1500, "p
             "grace_days": 5, "reminder_days": 5}
 PLAN_DAYS = 30
 SESSION_MINUTES = 30                       # saves inside one editing session count as one edit
+EDIT_ITEM_CAP = 10                         # one edit may change at most this many items/categories; more counts as another edit
 COUNTING_SITE_STATUSES = ("live", "renewal_due", "lapsed")
 CARE_TEMPLATE_ENV = "SITE_CARE_PLAN_TEMPLATE"
 DEFAULT_CARE_TEMPLATE = "site_care_plan_reminder"
@@ -205,41 +206,82 @@ def list_fields(view: dict) -> dict:
 # Counting an edit
 # ---------------------------------------------------------------------------
 
-def consume_edit(db: Any, org_id: str, site: dict, now: Optional[datetime] = None) -> dict:
-    """Called before a builder's content save. Returns {"counted": bool, "source": ...} or raises EditLimitReached."""
+def count_item_changes(old_content: Optional[dict], new_content: Optional[dict]) -> int:
+    """How many items/categories a save adds, removes or changes (a reorder changes nothing).
+    An edited item shows up as one removed + one added, which counts once."""
+    import json
+    from collections import Counter
+
+    def sigs(content, key):
+        out = []
+        for it in ((content or {}).get(key) or []):
+            if isinstance(it, dict):
+                out.append(json.dumps(it, sort_keys=True, default=str))
+        return out
+
+    total = 0
+    for key in ("items", "categories"):
+        co, cn = Counter(sigs(old_content, key)), Counter(sigs(new_content, key))
+        total += max(sum((cn - co).values()), sum((co - cn).values()))
+    return total
+
+
+def consume_edit(db: Any, org_id: str, site: dict, now: Optional[datetime] = None, items_changed: int = 0) -> dict:
+    """Called before a builder's content save. Returns {"counted": bool, "source": ...} or raises EditLimitReached.
+    `items_changed` (see count_item_changes): one edit covers up to EDIT_ITEM_CAP changed items per editing session;
+    a bigger change is charged as several edits, and nothing is charged if the allowance can't cover them all."""
+    import math
     now = now or _now()
     if site.get("status") not in COUNTING_SITE_STATUSES:
         return {"counted": False, "source": "preview"}          # editing a draft is free
     cfg = get_config(_settings(db, org_id))
+    try:
+        items_changed = max(0, int(items_changed or 0))
+    except (TypeError, ValueError):
+        items_changed = 0
     for _attempt in range(2):                                   # one retry if a concurrent save changed the counters
         row = _get_or_create_row(db, org_id, site["id"])
         last = _parse(row.get("last_edit_counted_at"))
-        if last and now - last <= timedelta(minutes=SESSION_MINUTES):
-            return {"counted": False, "source": "session"}      # same editing session — already paid for
+        in_session = bool(last and now - last <= timedelta(minutes=SESSION_MINUTES))
+        session_items = int(row.get("session_items_changed") or 0) if in_session else 0
+        total_items = session_items + items_changed
+        paid_before = (math.ceil(session_items / EDIT_ITEM_CAP) or 1) if in_session else 0
+        need = max(1, math.ceil(total_items / EDIT_ITEM_CAP)) - paid_before
+        if need <= 0:                                           # same editing session, still inside what was paid for
+            if items_changed:
+                try:
+                    db.table("site_care_plans").update({"session_items_changed": total_items, "updated_at": _iso(now)}) \
+                        .eq("id", row["id"]).execute()
+                except Exception:  # S14 - the cap is a soft guard; never block a save over bookkeeping
+                    logger.exception("care plan: session item count not saved site=%s", site.get("id"))
+            return {"counted": False, "source": "session"}
         status = effective_status(row, cfg, now)
         free_used = int(row.get("free_edits_used") or 0)
         plan_used = int(row.get("plan_edits_used") or 0)
         extra = int(row.get("extra_edits") or 0)
-
-        if free_used < cfg["free_edits"]:
-            source, field, old = "free", "free_edits_used", free_used
-            updates = {"free_edits_used": free_used + 1}
-        elif status == "active" and plan_used < cfg["edits_per_month"]:
-            source, field, old = "plan", "plan_edits_used", plan_used
-            updates = {"plan_edits_used": plan_used + 1}
-        elif extra > 0:
-            source, field, old = "pack", "extra_edits", extra
-            updates = {"extra_edits": extra - 1}
-        else:
+        free_left = max(0, cfg["free_edits"] - free_used)
+        plan_left = max(0, cfg["edits_per_month"] - plan_used) if status == "active" else 0
+        if need > free_left + plan_left + extra:
             raise EditLimitReached(
-                "You've used all the edits for this site. Add a care plan or buy extra edits to keep editing.",
+                "You've used all the edits for this site. Add a care plan or buy extra edits to keep editing."
+                if need == 1 else
+                f"This change counts as {need} edits (each edit covers up to {EDIT_ITEM_CAP} items) and you don't have enough left. "
+                "Add a care plan or buy extra edits, or make a smaller change.",
                 {"plan_price": cfg["price_ngn"], "edits_per_month": cfg["edits_per_month"],
                  "pack_price": cfg["pack_price_ngn"], "pack_edits": cfg["pack_edits"],
-                 "plan_status": status})
-        updates.update({"last_edit_counted_at": _iso(now), "updated_at": _iso(now)})
-        claimed = (db.table("site_care_plans").update(updates).eq("id", row["id"]).eq(field, old).execute()).data
+                 "plan_status": status, "edits_needed": need, "item_cap": EDIT_ITEM_CAP})
+        take_free = min(need, free_left)
+        take_plan = min(need - take_free, plan_left)
+        take_pack = need - take_free - take_plan
+        source = "free" if take_free else ("plan" if take_plan else "pack")
+        updates = {"free_edits_used": free_used + take_free, "plan_edits_used": plan_used + take_plan,
+                   "extra_edits": extra - take_pack, "session_items_changed": total_items, "updated_at": _iso(now)}
+        if not in_session:
+            updates["last_edit_counted_at"] = _iso(now)
+        claimed = (db.table("site_care_plans").update(updates).eq("id", row["id"])
+                   .eq("free_edits_used", free_used).eq("plan_edits_used", plan_used).eq("extra_edits", extra).execute()).data
         if claimed:
-            return {"counted": True, "source": source}
+            return {"counted": True, "source": source, "edits": need}
     raise CarePlanBlocked("Couldn't record that edit — please try again.")
 
 
