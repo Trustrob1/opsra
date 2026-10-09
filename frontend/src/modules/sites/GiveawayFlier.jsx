@@ -2,8 +2,8 @@
  * frontend/src/modules/sites/GiveawayFlier.jsx
  * GIVEAWAY-4 — a downloadable flier for ONE giveaway, drawn in the browser (no image service needed).
  * Light Trust Robert look: warm grey page, navy top strip, a big navy slot count, brand-blue accents, a real website
- * shown in a browser frame and a phone frame (screenshots of alfadiva.com.ng, used with the owner's permission, kept in
- * /public/flier), and a blue strip with the QR code. Everything else comes from the giveaway itself: slots, group,
+ * shown on a real laptop photo (screen already composited) and a phone (screenshots of alfadiva.com.ng, used with the
+ * owner's permission, kept in /public/flier), and a blue strip with the QR code. Everything else comes from the giveaway itself: slots, group,
  * campaign name, fee, closing date and the giveaway's own link.
  * Feed (1080x1350) or Stories (1080x1920, key content kept out of the top 250px and bottom 340px the app covers).
  */
@@ -20,7 +20,7 @@ const BODY = '"Hanken Grotesk", "DM Sans", system-ui, sans-serif'
 const MONO = '"JetBrains Mono", ui-monospace, monospace'
 const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Hanken+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap'
 const W = 1080
-const MOCK_SRC = { desktop: '/flier/alfa_desktop.jpg', phone: '/flier/alfa_phone.jpg' }
+const MOCK_SRC = { laptop: '/flier/laptop_alfa.png', phone: '/flier/alfa_phone_full.jpg' }
 
 function loadFonts() {
   if (!document.getElementById('flier-fonts')) {
@@ -88,37 +88,53 @@ function closesText(iso) {
   } catch { return '' }
 }
 
-function drawBrowser(ctx, img, x, y, s) {
-  const bw = 620 * s, bar = 46 * s, ch = 283 * s, bh = bar + ch
+/** the real laptop photo (the website is already on its screen), drawn at width 650*s with a soft shadow */
+function drawLaptop(ctx, img, x, y, s) {
+  const w = 650 * s, h = w * (855 / 1355)
+  if (!img) { rr(ctx, x, y, w, h, 18 * s); ctx.fillStyle = '#F1F2F9'; ctx.fill(); return }
   ctx.save()
-  ctx.translate(x + bw / 2, y + bh / 2); ctx.rotate((-3 * Math.PI) / 180); ctx.translate(-bw / 2, -bh / 2)
-  ctx.shadowColor = 'rgba(15,23,51,0.22)'; ctx.shadowBlur = 40 * s; ctx.shadowOffsetY = 24 * s
-  rr(ctx, 0, 0, bw, bh, 22 * s); ctx.fillStyle = '#FFFFFF'; ctx.fill()
-  ctx.shadowColor = 'transparent'
-  rr(ctx, 0, 0, bw, bh, 22 * s); ctx.clip()
-  ctx.fillStyle = '#EEF0F7'; ctx.fillRect(0, 0, bw, bar)
-  ctx.fillStyle = '#C9CEE3'
-  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc((24 + i * 21) * s, bar / 2, 6.5 * s, 0, Math.PI * 2); ctx.fill() }
-  rr(ctx, 86 * s, (bar - 26 * s) / 2, bw - 86 * s - 18 * s, 26 * s, 13 * s); ctx.fillStyle = '#FFFFFF'; ctx.fill()
-  ctx.font = `500 ${15 * s}px ${MONO}`; ctx.fillStyle = '#8A90AB'; ctx.textBaseline = 'middle'; ls(ctx, 0)
-  ctx.fillText('alfadiva.com.ng', 100 * s, bar / 2 + 1)
-  ctx.textBaseline = 'alphabetic'
-  if (img) coverTop(ctx, img, 0, bar, bw, ch)
-  else { ctx.fillStyle = '#F1F2F9'; ctx.fillRect(0, bar, bw, ch) }
+  ctx.shadowColor = 'rgba(15,23,51,0.26)'; ctx.shadowBlur = 24 * s; ctx.shadowOffsetY = 22 * s
+  ctx.drawImage(img, x, y, w, h)
   ctx.restore()
 }
 
-function drawPhone(ctx, img, cx, y, s) {
-  const pw = 270 * s, ph = 400 * s, b = 12 * s
+/** a phone (190x410*s) showing the mobile site */
+function drawPhone(ctx, img, x, y, s) {
+  const pw = 190 * s, ph = 410 * s, b = 8 * s
   ctx.save()
-  ctx.translate(cx, y + ph / 2); ctx.rotate((4 * Math.PI) / 180); ctx.translate(-pw / 2, -ph / 2)
-  ctx.shadowColor = 'rgba(15,23,51,0.28)'; ctx.shadowBlur = 40 * s; ctx.shadowOffsetY = 24 * s
-  rr(ctx, 0, 0, pw, ph, 52 * s); ctx.fillStyle = NAVY; ctx.fill()
+  ctx.translate(x, y)
+  ctx.shadowColor = 'rgba(15,23,51,0.34)'; ctx.shadowBlur = 40 * s; ctx.shadowOffsetY = 28 * s
+  const grad = ctx.createLinearGradient(0, 0, 0, ph); grad.addColorStop(0, '#171923'); grad.addColorStop(1, '#0B0D14')
+  rr(ctx, 0, 0, pw, ph, 42 * s); ctx.fillStyle = grad; ctx.fill()
   ctx.shadowColor = 'transparent'
-  rr(ctx, b, b, pw - 2 * b, ph - 2 * b, 40 * s); ctx.clip()
-  if (img) coverTop(ctx, img, b, b, pw - 2 * b, ph - 2 * b)
-  else { ctx.fillStyle = '#F1F2F9'; ctx.fillRect(b, b, pw - 2 * b, ph - 2 * b) }
+  rr(ctx, 1 * s, 1 * s, pw - 2 * s, ph - 2 * s, 41 * s); ctx.strokeStyle = '#323644'; ctx.lineWidth = 2 * s; ctx.stroke()
+  ctx.fillStyle = '#1D202B'
+  ;[[-3, 92, 3, 30], [-3, 134, 3, 52], [pw / s, 120, 3, 70]].forEach(([bx, by, bw, bh]) => ctx.fillRect(bx * s, by * s, bw * s, bh * s))
+  ctx.save()
+  rr(ctx, b, b, pw - 2 * b, ph - 2 * b, 34 * s); ctx.clip()
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(b, b, pw - 2 * b, ph - 2 * b)
+  const top = b + 34 * s
+  if (img) coverTop(ctx, img, b, top, pw - 2 * b, ph - b - top)
   ctx.restore()
+  rr(ctx, (pw - 58 * s) / 2, 10 * s, 58 * s, 16 * s, 9 * s); ctx.fillStyle = '#000'; ctx.fill()
+  ctx.restore()
+}
+
+/** top label: "{GROUP} × OPSRA". Shrinks, then cuts only the group name, so "× OPSRA" always stays. */
+function drawTopLabel(ctx, group, x, y, maxW) {
+  const name = String(group || '').trim().toUpperCase()
+  const set = (px) => { ctx.font = `500 ${px}px ${MONO}`; ls(ctx, px * 0.1) }
+  let px = 26
+  const text = (n) => (n ? `${n} × OPSRA` : 'OPSRA')
+  set(px)
+  while (px > 18 && ctx.measureText(text(name)).width > maxW) { px -= 1; set(px) }
+  let n = name
+  if (ctx.measureText(text(n)).width > maxW) {
+    n = n.slice(0, -1).trimEnd()
+    while (n.length > 1 && ctx.measureText(text(`${n}…`)).width > maxW) n = n.slice(0, -1).trimEnd()
+    n = `${n}…`
+  }
+  ctx.fillStyle = ON_NAVY; ctx.fillText(text(n), x, y)
 }
 
 export function drawFlier(canvas, g, opts, qrImg, mock = {}) {
@@ -139,11 +155,14 @@ export function drawFlier(canvas, g, opts, qrImg, mock = {}) {
 
   // top labels
   const labelY = story ? stripH - 48 : 70
-  ctx.font = `500 26px ${MONO}`; ls(ctx, 2.5)
-  ctx.fillStyle = ON_NAVY; ctx.fillText('TRUST ROBERT · OPSRA LAUNCH', M, labelY)
+  let closeW = 0
   if (g.ends_at) {
-    ctx.fillStyle = MUTED; ctx.textAlign = 'right'; ctx.fillText(`CLOSES ${closesText(g.ends_at)}`, W - M, labelY); ctx.textAlign = 'left'
+    ctx.font = `500 26px ${MONO}`; ls(ctx, 2.6)
+    const ct = `CLOSES ${closesText(g.ends_at)}`
+    closeW = ctx.measureText(ct).width + 40
+    ctx.fillStyle = MUTED; ctx.textAlign = 'right'; ctx.fillText(ct, W - M, labelY); ctx.textAlign = 'left'
   }
+  drawTopLabel(ctx, g.owner_name, M, labelY, W - 2 * M - closeW)
 
   // the big slot count
   const slots = String(g.total_slots || 5)
@@ -214,14 +233,16 @@ export function drawFlier(canvas, g, opts, qrImg, mock = {}) {
   while (cs > 16 && ctx.measureText(cap).width > rw) { cs -= 1; ctx.font = `500 ${cs}px ${MONO}`; ls(ctx, 2) }
   ctx.fillStyle = NAVY; ctx.fillText(cap, RX + 6, y)
 
-  // the real website, in a browser frame and a phone frame
+  // the real website on a real laptop, and on a phone
   const mockTop = Math.max(y, numBase) + 50
   const avail = barTop - 30 - mockTop
-  const s = Math.max(0.75, Math.min(1.0, avail / 400))
-  const used = 400 * s
+  const s = Math.max(0.75, Math.min(1.0, avail / 410))
+  const used = 410 * s
   const top = mockTop + Math.max(0, (avail - used) / 2)
-  drawBrowser(ctx, mock.desktop, M, top + 6 * s, s)
-  drawPhone(ctx, mock.phone, W - M - (270 * s) / 2 - 10, top, s)
+  const gap = 48 * s, total = (650 + 48 + 190) * s
+  const lx = (W - total) / 2
+  drawLaptop(ctx, mock.laptop, lx, top + 2 * s, s)
+  drawPhone(ctx, mock.phone, lx + 650 * s + gap, top, s)
 
   // bottom strip: QR + call to action + link
   const qb = 210
@@ -254,11 +275,17 @@ export default function GiveawayFlier({ giveaway, onClose, showToast }) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  useEffect(() => {
     let alive = true, url = null
     ;(async () => {
       await loadFonts()
-      const [desktop, phone] = await Promise.all([loadImage(MOCK_SRC.desktop), loadImage(MOCK_SRC.phone)])
-      if (alive) setMock({ desktop, phone })
+      const [laptop, phone] = await Promise.all([loadImage(MOCK_SRC.laptop), loadImage(MOCK_SRC.phone)])
+      if (alive) setMock({ laptop, phone })
       try {
         const res = await fetch(qrSvgUrl(giveaway.slug))
         if (res.ok) {
@@ -291,7 +318,7 @@ export default function GiveawayFlier({ giveaway, onClose, showToast }) {
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Giveaway flier" style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,35,0.6)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: 16 }}>
+    <div role="dialog" aria-modal="true" aria-label="Giveaway flier" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }} style={{ position: 'fixed', inset: 0, background: 'rgba(10,15,35,0.6)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: 16 }}>
       <div style={{ background: T.card || '#fff', borderRadius: 12, padding: 16, width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <strong style={{ fontSize: 15, color: T.ink }}>Flier: {giveaway.campaign_name || giveaway.title}</strong>
@@ -308,7 +335,10 @@ export default function GiveawayFlier({ giveaway, onClose, showToast }) {
           {!ready && <div style={{ padding: 40, textAlign: 'center', fontSize: 13, color: T.muted }}>Preparing…</div>}
           <canvas ref={canvasRef} style={{ width: '100%', height: 'auto', display: ready ? 'block' : 'none', borderRadius: 6 }} />
         </div>
-        <Button variant="primary" icon={Download} disabled={!ready} onClick={download}>Download PNG</Button>
+        <div style={{ display: 'flex', gap: 8, position: 'sticky', bottom: 0, background: T.card || '#fff', paddingTop: 4 }}>
+          <Button variant="primary" icon={Download} disabled={!ready} onClick={download}>Download PNG</Button>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </div>
       </div>
     </div>
   )
