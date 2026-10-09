@@ -8,8 +8,9 @@
  * Feed (1080x1350) or Stories (1080x1920, key content kept out of the top 250px and bottom 340px the app covers).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { X, Download } from 'lucide-react'
-import { qrSvgUrl } from '../../services/site_forms.service'
+import { X, Download, Copy } from 'lucide-react'
+import { qrSvgUrl, getGiveaway } from '../../services/site_forms.service'
+import { buildCaption } from './giveawayCaption'
 import { Button } from './sitesUi'
 import { T, INPUT } from './sitesKit'
 
@@ -273,6 +274,9 @@ export default function GiveawayFlier({ giveaway, onClose, showToast }) {
   const [qr, setQr] = useState(null)
   const [mock, setMock] = useState({})
   const [ready, setReady] = useState(false)
+  const [freeEdits, setFreeEdits] = useState(5)
+  const [caption, setCaption] = useState(() => buildCaption(giveaway))
+  const [edited, setEdited] = useState(false)
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
@@ -300,6 +304,18 @@ export default function GiveawayFlier({ giveaway, onClose, showToast }) {
     })()
     return () => { alive = false; if (url) URL.revokeObjectURL(url) }
   }, [giveaway.slug])
+
+  // the free-edit count comes from the live care-plan settings (same source as the terms page)
+  useEffect(() => {
+    let alive = true
+    getGiveaway(giveaway.slug).then((p) => { if (alive && p?.terms?.free_edits) setFreeEdits(p.terms.free_edits) }).catch(() => null)
+    return () => { alive = false }
+  }, [giveaway.slug])
+  useEffect(() => { if (!edited) setCaption(buildCaption(giveaway, freeEdits)) }, [giveaway, freeEdits, edited])
+
+  async function copyCaption() {
+    try { await navigator.clipboard.writeText(caption); showToast?.('Caption copied') } catch { showToast?.('Could not copy. Select the text and copy it.', 'bad') }
+  }
 
   const paint = useCallback(() => { if (canvasRef.current && ready) drawFlier(canvasRef.current, giveaway, { format, contact }, qr, mock) }, [giveaway, format, contact, qr, mock, ready])
   useEffect(() => { paint() }, [paint])
@@ -334,6 +350,13 @@ export default function GiveawayFlier({ giveaway, onClose, showToast }) {
         <div style={{ background: '#e8ebf5', borderRadius: 8, padding: 8 }}>
           {!ready && <div style={{ padding: 40, textAlign: 'center', fontSize: 13, color: T.muted }}>Preparing…</div>}
           <canvas ref={canvasRef} style={{ width: '100%', height: 'auto', display: ready ? 'block' : 'none', borderRadius: 6 }} />
+        </div>
+        <label style={{ fontSize: 12.5, color: T.muted }}>Caption to post with the flier (you can edit it)
+          <textarea style={{ ...INPUT, marginTop: 4, minHeight: 220, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.45 }} value={caption} onChange={(e) => { setCaption(e.target.value); setEdited(true) }} />
+        </label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button size="sm" variant="secondary" icon={Copy} onClick={copyCaption}>Copy caption</Button>
+          {edited && <Button size="sm" variant="ghost" onClick={() => setEdited(false)}>Reset caption</Button>}
         </div>
         <div style={{ display: 'flex', gap: 8, position: 'sticky', bottom: 0, background: T.card || '#fff', paddingTop: 4 }}>
           <Button variant="primary" icon={Download} disabled={!ready} onClick={download}>Download PNG</Button>
