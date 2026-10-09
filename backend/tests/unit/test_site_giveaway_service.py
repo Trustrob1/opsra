@@ -377,7 +377,7 @@ class TestPayByDeadline:
         assert r["reminded"] == 0 and r["released"] == 0
         assert db.rows("site_giveaway_entries")[0]["preview_ready_at"]
 
-    def test_reminder_once_with_a_day_left_then_release_at_the_deadline(self, monkeypatch):
+    def test_reminder_once_then_the_slot_lapses_at_the_pay_by_time(self, monkeypatch):
         db, p, g = _setup()
         tok, _ = _ready(db, g)
         sent, alerts = [], []
@@ -386,51 +386,97 @@ class TestPayByDeadline:
         monkeypatch.setattr(funnel_service, "notify_managers", lambda *a, **k: alerts.append(a))
         svc.run_deadlines(db, NOW)                                              # clock starts at NOW
         r = svc.run_deadlines(db, NOW + timedelta(days=2, hours=2))             # 22h left
-        assert r["reminded"] == 1 and "waiting" in sent[0][0]
+        assert r["reminded"] == 1 and "waiting" in sent[0][0] and "65,000" in sent[0][1]
         assert svc.run_deadlines(db, NOW + timedelta(days=2, hours=5))["reminded"] == 0     # only once
         r = svc.run_deadlines(db, NOW + timedelta(days=3, minutes=1))
-        assert r["released"] == 1 and "released" in sent[-1][0] and alerts
+        assert r["lapsed"] == 1 and r["released"] == 0 and "slot has ended" in sent[-1][0] and alerts
         e = db.rows("site_giveaway_entries")[0]
-        assert e["status"] == "voided" and e["void_reason"] == "expired" and e.get("position") is None
+        assert e["status"] == "lapsed" and e.get("position") is None and e.get("lapsed_at")
+        assert not db.rows("sites")[0].get("deleted_at")                        # the site is kept
+        assert svc.get_public(db, g["slug"])["left"] == 5                       # the slot is open again
+        v = svc.winner_view(db, tok, NOW + timedelta(days=3, minutes=2))        # the link still works, at the normal rate
+        assert v["stage"] == "preview" and v["can_pay"] is True
+        assert v["price_mode"] == "full" and v["fee_ngn"] == 65000 and v["slot_released"] is True
+
+    def test_normal_rate_is_charged_after_the_pay_by_time(self, monkeypatch):
+        db, p, g = _setup()
+        tok, _ = _ready(db, g)
+        svc.winner_view(db, tok, NOW)
+        before = svc.winner_view(db, tok, NOW + timedelta(days=1))
+        assert before["price_mode"] == "giveaway" and before["fee_ngn"] == before["giveaway_fee_ngn"]
+        late = svc.winner_view(db, tok, NOW + timedelta(days=3, hours=1))      # past the deadline, before the sweep runs
+        assert late["price_mode"] == "full" and late["fee_ngn"] == 65000
+
+    def test_takedown_reminder_then_takedown_after_the_extra_days(self, monkeypatch):
+        db, p, g = _setup()
+        tok, _ = _ready(db, g)
+        sent = []
+        monkeypatch.setattr(svc, "_send_to_contact", lambda db_, e, subj, text: sent.append(subj) or True)
+        from app.services import funnel_service
+        monkeypatch.setattr(funnel_service, "notify_managers", lambda *a, **k: None)
+        svc.run_deadlines(db, NOW)
+        svc.run_deadlines(db, NOW + timedelta(days=3, minutes=1))               # lapsed
+        r = svc.run_deadlines(db, NOW + timedelta(days=6, hours=2))             # 22h to takedown
+        assert r["reminded"] == 1 and "taken down soon" in sent[-1]
+        assert svc.run_deadlines(db, NOW + timedelta(days=6, hours=5))["reminded"] == 0
+        r = svc.run_deadlines(db, NOW + timedelta(days=7, minutes=1))
+        assert r["released"] == 1 and "taken down" in sent[-1]
+        e = db.rows("site_giveaway_entries")[0]
+        assert e["status"] == "voided" and e["void_reason"] == "expired"
         assert db.rows("sites")[0].get("deleted_at")
-        assert svc.get_public(db, g["slug"])["left"] == 5                                       # the slot is open again
-        v = svc.winner_view(db, tok)                                                            # the link explains what happened
+        v = svc.winner_view(db, tok, NOW + timedelta(days=7, minutes=2))
         assert v["stage"] == "expired" and v["can_pay"] is False
         with pytest.raises(svc.WinnerError) as x:
             svc.winner_checkout(db, tok, TestWinnerCheckout.BODY)
         assert x.value.status_code == 410
 
-    def test_released_number_can_enter_again(self, monkeypatch):
-        db, p, g = _setup(slots=1)
+    def test_lapsed_number_still_cannot_take_another_slot(self, monkeypatch):
+        db, p, g = _setup(slots=2)
         monkeypatch.setattr(svc, "_send_to_contact", lambda *a, **k: True)
-        f = _open(db, g, "08031234567")
-        e = svc.claim_slot(db, f)
+        from app.services import funnel_service
+        monkeypatch.setattr(funnel_service, "notify_managers", lambda *a, **k: None)
+        e = svc.claim_slot(db, _open(db, g, "08031234567"))
         db.table("sites").insert({"id": "s1", "org_id": ORG, "client_business_name": "Zed", "status": "preview_ready"}).execute()
         svc.attach_site(db, e, "s1")
         svc.run_deadlines(db, NOW)
         svc.run_deadlines(db, NOW + timedelta(days=4))
-        assert svc.claim_slot(db, _open(db, g, "08031234567"))["position"] == 1
+        assert svc.get_public(db, g["slug"])["left"] == 2
+        assert db.rows("site_giveaway_entries")[0]["status"] == "lapsed"
+        with pytest.raises(Exception):
+            svc.claim_slot(db, _open(db, g, "08031234567"))
 
-    def test_paid_winner_is_never_released(self, monkeypatch):
+    def test_paid_winner_is_never_touched(self, monkeypatch):
         db, p, g = _setup()
         _ready(db, g)
         db.table("site_orders").insert({"id": "o1", "site_id": "s1", "kind": "initial", "status": "fulfilling"}).execute()
         monkeypatch.setattr(svc, "_send_to_contact", lambda *a, **k: pytest.fail("must not message"))
         svc.run_deadlines(db, NOW)
-        assert svc.run_deadlines(db, NOW + timedelta(days=30))["released"] == 0
+        r = svc.run_deadlines(db, NOW + timedelta(days=30))
+        assert r["released"] == 0 and r["lapsed"] == 0
         assert db.rows("site_giveaway_entries")[0]["status"] == "winner"
 
     def test_a_payment_link_opened_in_the_last_day_gives_more_time(self, monkeypatch):
         db, p, g = _setup()
         _ready(db, g)
         monkeypatch.setattr(svc, "_send_to_contact", lambda *a, **k: True)
+        from app.services import funnel_service
+        monkeypatch.setattr(funnel_service, "notify_managers", lambda *a, **k: None)
         svc.run_deadlines(db, NOW)
         late = NOW + timedelta(days=3, hours=1)
         db.table("site_orders").insert({"id": "o1", "site_id": "s1", "kind": "initial", "status": "pending_payment",
                                         "created_at": (late - timedelta(hours=2)).isoformat()}).execute()
-        assert svc.run_deadlines(db, late)["released"] == 0
-        assert svc.run_deadlines(db, late + timedelta(hours=30))["released"] == 1
-        assert db.rows("site_orders")[0]["status"] == "expired"        # a late payment now triggers the existing late-payment alert
+        assert svc.run_deadlines(db, late)["lapsed"] == 0
+        assert svc.run_deadlines(db, late + timedelta(hours=30))["lapsed"] == 1
+        assert db.rows("site_orders")[0]["status"] == "expired"
+
+    def test_custom_normal_rate_and_days_with_bounds(self):
+        db, p, g = _setup()
+        assert g["full_price_ngn"] == 65000 and g["full_price_days"] == 4
+        r = svc.create_giveaway(db, ORG, p["id"], "Another one", 5, None, None, None, None, None, 50000, 6)
+        assert r["full_price_ngn"] == 50000 and r["full_price_days"] == 6
+        for bad_ngn, bad_days in ((500, 4), (65000, 0), (65000, 31)):
+            with pytest.raises(svc.GiveawayError):
+                svc.create_giveaway(db, ORG, p["id"], "Another one", 5, None, None, None, None, None, bad_ngn, bad_days)
 
     def test_site_not_ready_is_ignored(self):
         db, p, g = _setup()
@@ -442,7 +488,7 @@ class TestPayByDeadline:
         tok, _ = _ready(db, g)
         svc.winner_view(db, tok)
         rows = svc.entries(db, ORG, g["id"])
-        assert rows[0]["pay_by"] and rows[0]["paid"] is False
+        assert rows[0]["pay_by"] and rows[0]["paid"] is False and rows[0]["takedown_at"] is None
 
 
 class TestWinnerMessages:

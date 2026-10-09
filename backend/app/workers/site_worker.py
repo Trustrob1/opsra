@@ -504,11 +504,11 @@ def run_care_cycle() -> dict:
 
 @celery_app.task(name="app.workers.site_worker.run_giveaway_deadlines")
 def run_giveaway_deadlines() -> dict:
-    """GIVEAWAY-2: hourly. Unpaid giveaway winners get a reminder, then the slot is released when the pay-by time passes."""
+    """GIVEAWAY-2: hourly. Unpaid winners get a reminder, then at the pay-by time the slot is freed and the normal rate applies (lapsed); after the extra days the site is taken down (released)."""
     from app.services import site_giveaway_service
     db = get_supabase()
     started = _now()
-    total = {"checked": 0, "reminded": 0, "released": 0, "failed": 0}
+    total = {"checked": 0, "reminded": 0, "lapsed": 0, "released": 0, "failed": 0}
     try:
         total = site_giveaway_service.run_deadlines(db, started)
     except Exception as exc:  # S14

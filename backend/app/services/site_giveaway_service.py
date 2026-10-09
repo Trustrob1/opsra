@@ -34,6 +34,9 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 DEFAULT_PAY_BY_DAYS = 3
+DEFAULT_FULL_PRICE_NGN = 65000      # GIVEAWAY-5: the normal domain + hosting rate once the giveaway window has passed
+DEFAULT_FULL_PRICE_DAYS = 4         # days the winner may still pay the normal rate before the site is taken down (day 3 + 4 = day 7)
+LIVE_STATES = ("winner", "lapsed")  # lapsed = slot given back at the pay-by time, the site waits at the normal rate
 CLOSE_GRACE_HOURS = 6               # someone who opened the form before the closing time may still finish it
 REMINDER_HOURS = 24                 # reminder goes out this long before the pay-by time
 _PAID_STATES = ("awaiting_approval", "fulfilling", "live", "needs_builder_choice")
@@ -121,7 +124,8 @@ def _money_int(value, label: str, default: int) -> int:
 
 
 def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slots: int = 5,
-                    fee_ngn=None, renewal_ngn=None, pay_by_days=None, campaign_name=None, ends_at=None) -> dict:
+                    fee_ngn=None, renewal_ngn=None, pay_by_days=None, campaign_name=None, ends_at=None,
+                    full_price_ngn=None, full_price_days=None) -> dict:
     title = re.sub(r"\s+", " ", str(title or "")).strip()
     if not (3 <= len(title) <= 120):
         raise GiveawayError("Please enter a title for the giveaway.")
@@ -139,6 +143,13 @@ def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slo
         raise GiveawayError("The pay-by days must be a number.")
     if not (1 <= days <= 30):
         raise GiveawayError("The pay-by days must be between 1 and 30.")
+    full_price = _money_int(full_price_ngn, "The normal rate", DEFAULT_FULL_PRICE_NGN)
+    try:
+        full_days = DEFAULT_FULL_PRICE_DAYS if full_price_days in (None, "") else int(full_price_days)
+    except (TypeError, ValueError):
+        raise GiveawayError("The extra days at the normal rate must be a number.")
+    if not (1 <= full_days <= 30):
+        raise GiveawayError("The extra days at the normal rate must be between 1 and 30.")
     campaign = re.sub(r"\s+", " ", str(campaign_name or "")).strip() or None
     if campaign and not (3 <= len(campaign) <= 60):
         raise GiveawayError("The campaign name must be 3 to 60 characters.")
@@ -158,6 +169,7 @@ def create_giveaway(db: Any, org_id: str, partner_id: str, title: str, total_slo
     for _ in range(5):
         cand = {"org_id": org_id, "partner_id": partner_id, "title": title, "total_slots": slots,
                 "fee_ngn": fee, "renewal_ngn": renewal, "pay_by_days": days,
+                "full_price_ngn": full_price, "full_price_days": full_days,
                 "campaign_name": campaign, "ends_at": _iso(ends) if ends else None,
                 "slug": secrets.token_urlsafe(7), "status": "active", "created_at": _iso(), "updated_at": _iso()}
         try:
@@ -193,12 +205,14 @@ def set_status(db: Any, org_id: str, giveaway_id: str, status: str) -> Optional[
 
 def entries(db: Any, org_id: str, giveaway_id: str) -> list[dict]:
     rows = (db.table("site_giveaway_entries").select("*").eq("org_id", org_id).eq("giveaway_id", giveaway_id)
-            .eq("status", "winner").order("position").limit(200).execute()).data or []
+            .in_("status", list(LIVE_STATES)).limit(200).execute()).data or []
+    rows.sort(key=lambda r: (r.get("status") == "lapsed", r.get("position") or 0, r.get("claimed_at") or ""))
     g = _one((db.table("site_giveaways").select("*").eq("id", giveaway_id).eq("org_id", org_id).limit(1).execute()).data)
     out = []
     for e in rows:
         site = _one((db.table("sites").select("client_business_name,status,live_url").eq("id", e["site_id"]).limit(1).execute()).data) if e.get("site_id") else None
-        out.append({"position": e.get("position"), "claimed_at": e.get("claimed_at"), "site_id": e.get("site_id"),
+        out.append({"position": e.get("position"), "state": e.get("status"), "claimed_at": e.get("claimed_at"), "site_id": e.get("site_id"),
+                    "takedown_at": _iso(_takedown(e, g)) if (g and _takedown(e, g) and e.get("status") == "lapsed") else None,
                     "business_name": (site or {}).get("client_business_name"), "site_status": (site or {}).get("status"),
                     "live_url": (site or {}).get("live_url"),
                     "contact_name": e.get("contact_name"), "contact_phone": e.get("contact_phone"),
@@ -282,6 +296,7 @@ def get_public(db: Any, slug: str) -> Optional[dict]:
             "status": g["status"], "open": is_open,
             "fee_ngn": g.get("fee_ngn") or 24500, "renewal_ngn": g.get("renewal_ngn") or 25000,
             "pay_by_days": g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS,
+            "full_price_ngn": g.get("full_price_ngn") or DEFAULT_FULL_PRICE_NGN, "full_price_days": g.get("full_price_days") or DEFAULT_FULL_PRICE_DAYS,
             "terms": _terms(db, g["org_id"])}
 
 
@@ -301,7 +316,7 @@ def _clean_contact(contact: Optional[dict]) -> dict:
 
 
 def _phone_holds_slot(db: Any, giveaway_id: str, phone: str, exclude_entry_id: Optional[str] = None) -> bool:
-    rows = (db.table("site_giveaway_entries").select("id").eq("giveaway_id", giveaway_id).eq("status", "winner")
+    rows = (db.table("site_giveaway_entries").select("id").eq("giveaway_id", giveaway_id).in_("status", list(LIVE_STATES))
             .eq("contact_phone", phone).limit(5).execute()).data or []
     return any(r.get("id") != exclude_entry_id for r in rows)
 
@@ -464,7 +479,7 @@ def _winner_context(db: Any, raw_token: str, allow_expired: bool = False):
     if entry.get("status") == "voided" and entry.get("void_reason") == "expired":
         if not allow_expired:
             raise WinnerError("Your slot was released because payment wasn't made in time.", 410, "EXPIRED")
-    elif entry.get("status") != "winner":
+    elif entry.get("status") not in LIVE_STATES:
         raise WinnerError("This link isn't valid.", 404, "NOT_FOUND")
     g = _one((db.table("site_giveaways").select("*").eq("id", entry["giveaway_id"]).limit(1).execute()).data)
     if not g:
@@ -473,16 +488,24 @@ def _winner_context(db: Any, raw_token: str, allow_expired: bool = False):
     return entry, g, site
 
 
-def winner_view(db: Any, raw_token: str) -> dict:
+def winner_view(db: Any, raw_token: str, now: Optional[datetime] = None) -> dict:
     import os
+    now = now or _now()
     entry, g, site = _winner_context(db, raw_token, allow_expired=True)
     partner = _one((db.table("site_partners").select("full_name,agency_name").eq("id", g["partner_id"]).limit(1).execute()).data) or {}
-    if entry.get("status") == "voided":
+    full_ngn = int(g.get("full_price_ngn") or DEFAULT_FULL_PRICE_NGN)
+    contact = {"name": entry.get("contact_name"), "email": entry.get("contact_email"), "phone": entry.get("contact_phone")}
+
+    def expired_view():
         return {"stage": "expired", "group_name": g["title"], "business_name": None, "position": None, "preview_url": None,
                 "live_url": None, "can_pay": False, "fee_ngn": g.get("fee_ngn") or 24500, "renewal_ngn": g.get("renewal_ngn") or 25000,
                 "pay_by": None, "pay_by_days": g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS, "terms": _terms(db, g["org_id"]),
-                "contact": {"name": entry.get("contact_name"), "email": entry.get("contact_email"), "phone": entry.get("contact_phone")}}
-    stage, preview_url, can_pay, live_url = "building", None, False, None
+                "full_price_ngn": full_ngn, "full_price_days": g.get("full_price_days") or DEFAULT_FULL_PRICE_DAYS,
+                "contact": contact}
+
+    if entry.get("status") == "voided":
+        return expired_view()
+    stage, preview_url, can_pay, live_url, paid = "building", None, False, None, False
     if site:
         paid = _initial_order_paid(db, site["id"])
         st = site.get("status")
@@ -496,15 +519,23 @@ def winner_view(db: Any, raw_token: str) -> dict:
         if site.get("slug") and site.get("rendered_html"):
             base = os.getenv("PUBLIC_API_URL", "https://opsra.onrender.com").rstrip("/")
             preview_url = f"{base}/s/{site['slug']}"
+    td = _takedown(entry, g)
+    if stage == "preview" and td and now >= td:                 # past the last day: the hourly sweep has not run yet
+        return expired_view()
+    mode, amount, until = _pricing(entry, g, now) if stage == "preview" else ("giveaway", int(g.get("fee_ngn") or 24500), None)
     return {"stage": stage, "business_name": (site or {}).get("client_business_name"),
             "group_name": g["title"], "owner_name": partner.get("agency_name") or partner.get("full_name"),
             "position": entry.get("position"), "preview_url": preview_url, "live_url": live_url,
-            "can_pay": can_pay, "fee_ngn": g.get("fee_ngn") or 24500, "renewal_ngn": g.get("renewal_ngn") or 25000,
-            "pay_by": _iso(_deadline(entry, g)) if stage == "preview" and _deadline(entry, g) else None,
+            "can_pay": can_pay, "fee_ngn": amount, "giveaway_fee_ngn": g.get("fee_ngn") or 24500,
+            "renewal_ngn": g.get("renewal_ngn") or 25000,
+            "price_mode": mode, "slot_released": stage == "preview" and mode == "full",
+            "full_price_ngn": full_ngn, "full_price_days": g.get("full_price_days") or DEFAULT_FULL_PRICE_DAYS,
+            "pay_by": _iso(until) if stage == "preview" and until else None,
+            "takedown_at": _iso(td) if stage == "preview" and td else None,
             "pay_by_days": g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS,
             "can_buy_items": stage in ("going_live", "live"),
             "terms": _terms(db, g["org_id"]),
-            "contact": {"name": entry.get("contact_name"), "email": entry.get("contact_email"), "phone": entry.get("contact_phone")}}
+            "contact": contact}
 
 
 def winner_domain_check(db: Any, raw_token: str, domain: str) -> dict:
@@ -528,6 +559,11 @@ def winner_checkout(db: Any, raw_token: str, body: dict) -> dict:
         raise WinnerError("Your site is not ready yet. Please check back once your preview is ready.", 409, "NOT_READY")
     if _initial_order_paid(db, site["id"]):
         raise WinnerError("Payment has already been received for this site.", 409, "ALREADY_PAID")
+    now = _now()
+    td = _takedown(entry, g)
+    if td and now >= td:
+        raise WinnerError("This website offer has ended. Your site was taken down because payment wasn't made in time.", 410, "EXPIRED")
+    _mode, amount, _until = _pricing(entry, g, now)
     if site.get("status") not in ("preview_ready", "revising"):
         raise WinnerError("Your preview isn't ready yet. You can pay once you've seen it.", 409, "NOT_READY")
     body = body or {}
@@ -550,7 +586,7 @@ def winner_checkout(db: Any, raw_token: str, body: dict) -> dict:
     if not site_access_service.ensure_lead(db, g["org_id"], builder):
         raise WinnerError("We couldn't start your payment just now. Please try again shortly.", 503, "UNAVAILABLE")
     try:
-        return site_order_service.create_checkout(db, g["org_id"], builder, req, fixed_amount=g.get("fee_ngn") or 24500)
+        return site_order_service.create_checkout(db, g["org_id"], builder, req, fixed_amount=amount)
     except site_order_service.SiteNotFound:
         raise WinnerError("Site not found.", 404, "NOT_FOUND")
     except (site_order_service.CheckoutBlocked, pricing_service.PricingError) as exc:
@@ -590,6 +626,25 @@ def _deadline(entry: dict, g: Optional[dict]) -> Optional[datetime]:
     if not start or not g:
         return None
     return start + timedelta(days=int(g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS))
+
+
+def _takedown(entry: dict, g: Optional[dict]) -> Optional[datetime]:
+    """The last day the site is kept: pay-by days + the extra days at the normal rate, from the preview."""
+    start = _parse((entry or {}).get("preview_ready_at"))
+    if not start or not g:
+        return None
+    return start + timedelta(days=int(g.get("pay_by_days") or DEFAULT_PAY_BY_DAYS) + int(g.get("full_price_days") or DEFAULT_FULL_PRICE_DAYS))
+
+
+def _pricing(entry: dict, g: dict, now: Optional[datetime] = None):
+    """(mode, amount, ends_at): what the winner pays right now and until when. The giveaway fee runs to the pay-by
+    time; after that (or once the slot has lapsed) the normal rate applies until the takedown. Time-based, so it is
+    right even before the hourly sweep has run."""
+    now = now or _now()
+    dl = _deadline(entry, g)
+    if (entry or {}).get("status") == "lapsed" or (dl and now >= dl):
+        return "full", int(g.get("full_price_ngn") or DEFAULT_FULL_PRICE_NGN), _takedown(entry, g)
+    return "giveaway", int(g.get("fee_ngn") or 24500), dl
 
 
 def _start_clock(db: Any, entry: dict, site: dict, now: Optional[datetime] = None) -> dict:
@@ -632,7 +687,7 @@ def message_winner(db: Any, org_id: str, order: dict, text: str) -> bool:
     site_id = (order or {}).get("site_id")
     if not site_id:
         return False
-    entry = _one((db.table("site_giveaway_entries").select("*").eq("site_id", site_id).eq("status", "winner")
+    entry = _one((db.table("site_giveaway_entries").select("*").eq("site_id", site_id).in_("status", list(LIVE_STATES))
                   .limit(1).execute()).data)
     if not entry:
         return False
@@ -644,13 +699,53 @@ def message_winner(db: Any, org_id: str, order: dict, text: str) -> bool:
     return True
 
 
-def run_deadlines(db: Any, now: Optional[datetime] = None) -> dict:
-    """Hourly. For every winner whose preview is ready and who hasn't paid: start the clock, remind them with
-    REMINDER_HOURS left, and release the slot when the time is up. Never raises."""
-    now = now or _now()
-    res = {"checked": 0, "reminded": 0, "released": 0, "failed": 0}
+def _wat(dt: datetime) -> str:
+    return dt.astimezone(timezone(timedelta(hours=1))).strftime("%d %b %Y, %H:%M")
+
+
+def _first(entry: dict) -> str:
+    return (entry.get("contact_name") or "there").split(" ")[0]
+
+
+def _recent_payment_link(db: Any, site_id: str, now: datetime) -> bool:
+    """True when they opened a payment link in the last day: give the payment time to complete."""
+    recent = (db.table("site_orders").select("id,created_at").eq("site_id", site_id).eq("kind", "initial")
+              .eq("status", "pending_payment").limit(20).execute()).data or []
+    return any((_parse(o.get("created_at")) or now - timedelta(days=9)) > now - timedelta(hours=24) for o in recent)
+
+
+def _alert(db: Any, entry: dict, g: dict, site: dict, title: str) -> None:
     try:
-        rows = (db.table("site_giveaway_entries").select("*").eq("status", "winner").limit(1000).execute()).data or []
+        from app.services import funnel_service
+        funnel_service.notify_managers(db, entry["org_id"], title,
+                                       f"{g.get('title')} · {site.get('client_business_name')}", "giveaway_slot_released", None)
+    except Exception:
+        logger.warning("[GIVEAWAY-5] alert failed")
+
+
+def _lapse(db: Any, entry: dict, now: datetime) -> dict:
+    """The giveaway window is over and the fee wasn't paid: give the slot back, keep the site and the winner link.
+    The giveaway-fee payment links are cancelled; the page now charges the normal rate."""
+    if entry.get("site_id"):
+        pend = (db.table("site_orders").select("id").eq("site_id", entry["site_id"]).eq("kind", "initial")
+                .eq("status", "pending_payment").limit(50).execute()).data or []
+        for o in pend:
+            db.table("site_orders").update({"status": "expired", "updated_at": _iso()}).eq("id", o["id"]).execute()
+    upd = {"status": "lapsed", "position": None, "lapsed_at": _iso(now)}
+    db.table("site_giveaway_entries").update(upd).eq("id", entry["id"]).execute()
+    return {**entry, **upd}
+
+
+def run_deadlines(db: Any, now: Optional[datetime] = None) -> dict:
+    """Hourly. For every winner whose preview is ready and who hasn't paid (GIVEAWAY-5, two stages):
+    1. pay-by time: remind with REMINDER_HOURS left; at the time the slot is given back ("lapsed") and the site
+       waits at the normal rate;
+    2. takedown: remind with REMINDER_HOURS left; at the time the unpaid site is taken down.
+    Paid sites are never touched. Never raises."""
+    now = now or _now()
+    res = {"checked": 0, "reminded": 0, "lapsed": 0, "released": 0, "failed": 0}
+    try:
+        rows = (db.table("site_giveaway_entries").select("*").in_("status", list(LIVE_STATES)).limit(1000).execute()).data or []
     except Exception:
         logger.exception("[GIVEAWAY-2] deadline sweep could not read entries")
         res["failed"] += 1
@@ -670,37 +765,48 @@ def run_deadlines(db: Any, now: Optional[datetime] = None) -> dict:
             if _initial_order_paid(db, site["id"]):
                 continue
             e = _start_clock(db, e, site, now)
-            dl = _deadline(e, g)
-            if not dl:
+            dl, td = _deadline(e, g), _takedown(e, g)
+            if not dl or not td:
                 continue
-            if now >= dl:
-                recent = (db.table("site_orders").select("id,created_at").eq("site_id", site["id"]).eq("kind", "initial")
-                          .eq("status", "pending_payment").limit(20).execute()).data or []
-                if any((_parse(o.get("created_at")) or now - timedelta(days=9)) > now - timedelta(hours=24) for o in recent):
-                    continue                # they opened a payment link in the last day: give it time to complete
-                _release(db, e, "expired")
-                res["released"] += 1
-                _send_to_contact(db, e, "Your free website slot was released",
-                                 f"Hi {(e.get('contact_name') or 'there').split(' ')[0]}, your free website slot in "
-                                 f"\"{g.get('title')}\" has been released because the domain and hosting fee wasn't paid within "
-                                 f"{g.get('pay_by_days') or DEFAULT_PAY_BY_DAYS} days of your preview. Thank you for taking part.")
-                try:
-                    from app.services import funnel_service
-                    funnel_service.notify_managers(db, e["org_id"], "Giveaway slot released (unpaid)",
-                                                   f"{g.get('title')} · slot {e.get('position')} · {site.get('client_business_name')}",
-                                                   "giveaway_slot_released", None)
-                except Exception:
-                    logger.warning("[GIVEAWAY-2] release alert failed")
-            elif now >= dl - timedelta(hours=REMINDER_HOURS) and not e.get("deadline_reminder_at"):
-                _send_to_contact(db, e, "Your website preview is waiting",
-                                 f"Hi {(e.get('contact_name') or 'there').split(' ')[0]}, your free website preview is ready. "
-                                 f"Please pay the domain and hosting fee (₦{int(g.get('fee_ngn') or 24500):,}) by "
-                                 f"{dl.astimezone(timezone(timedelta(hours=1))).strftime('%d %b %Y, %H:%M')} (WAT), or the slot "
-                                 "is given to someone else. Open your private link to pay.")
-                db.table("site_giveaway_entries").update({"deadline_reminder_at": _iso(now)}).eq("id", e["id"]).execute()
-                res["reminded"] += 1
+            full_ngn = int(g.get("full_price_ngn") or DEFAULT_FULL_PRICE_NGN)
+
+            if e.get("status") == "winner":
+                if now >= dl:
+                    if _recent_payment_link(db, site["id"], now):
+                        continue
+                    e = _lapse(db, e, now)
+                    res["lapsed"] += 1
+                    _send_to_contact(db, e, "Your free website slot has ended",
+                                     f"Hi {_first(e)}, the free-slot window for \"{g.get('title')}\" has closed, so your slot has been "
+                                     f"given back. Your website is still saved. You can keep it by paying the normal rate for the domain "
+                                     f"and hosting (₦{full_ngn:,}) until {_wat(td)} (WAT). Open your private link to pay. "
+                                     "After that the website is taken down.")
+                    _alert(db, e, g, site, "Giveaway slot given back (unpaid)")
+                elif now >= dl - timedelta(hours=REMINDER_HOURS) and not e.get("deadline_reminder_at"):
+                    _send_to_contact(db, e, "Your website preview is waiting",
+                                     f"Hi {_first(e)}, your free website preview is ready. Please pay the domain and hosting fee "
+                                     f"(₦{int(g.get('fee_ngn') or 24500):,}) by {_wat(dl)} (WAT). After that your slot goes to someone "
+                                     f"else and the normal rate of ₦{full_ngn:,} applies. Open your private link to pay.")
+                    db.table("site_giveaway_entries").update({"deadline_reminder_at": _iso(now)}).eq("id", e["id"]).execute()
+                    res["reminded"] += 1
+            if e.get("status") == "lapsed":
+                if now >= td:
+                    if _recent_payment_link(db, site["id"], now):
+                        continue
+                    _release(db, e, "expired")
+                    res["released"] += 1
+                    _send_to_contact(db, e, "Your website has been taken down",
+                                     f"Hi {_first(e)}, your website from \"{g.get('title')}\" has been taken down because the domain "
+                                     "and hosting fee wasn't paid in time. Thank you for taking part.")
+                    _alert(db, e, g, site, "Giveaway site taken down (unpaid)")
+                elif now >= td - timedelta(hours=REMINDER_HOURS) and not e.get("takedown_reminder_at"):
+                    _send_to_contact(db, e, "Your website will be taken down soon",
+                                     f"Hi {_first(e)}, your website will be taken down on {_wat(td)} (WAT) unless the domain and hosting "
+                                     f"fee (₦{full_ngn:,}) is paid. Open your private link to pay and keep it.")
+                    db.table("site_giveaway_entries").update({"takedown_reminder_at": _iso(now)}).eq("id", e["id"]).execute()
+                    res["reminded"] += 1
         except Exception:
-            logger.exception("[GIVEAWAY-2] deadline step failed entry=%s", e.get("id"))
+            logger.exception("[GIVEAWAY-5] deadline step failed entry=%s", e.get("id"))
             res["failed"] += 1
     return res
 
@@ -743,7 +849,7 @@ def request_link(db: Any, slug: str, phone: str, now: Optional[datetime] = None)
         variants = builder_login_service.phone_variants(str(phone or ""))
         if not g or not variants:
             return bool(g)
-        entry = _one((db.table("site_giveaway_entries").select("*").eq("giveaway_id", g["id"]).eq("status", "winner")
+        entry = _one((db.table("site_giveaway_entries").select("*").eq("giveaway_id", g["id"]).in_("status", list(LIVE_STATES))
                       .eq("contact_phone", variants[1]).limit(1).execute()).data)
         if not entry:
             return True

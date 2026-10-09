@@ -122,6 +122,8 @@ class GiveawayCreate(BaseModel):
     pay_by_days: int | None = Field(default=None, ge=1, le=30)                # days to pay after the preview is ready; blank = 3
     campaign_name: str | None = Field(default=None, max_length=60)            # headline on the flier and page; blank = the title
     ends_at: datetime | None = None                                           # closing time; blank = open until full or closed
+    full_price_ngn: int | None = Field(default=None, ge=1000, le=10_000_000)  # normal rate after the pay-by time; blank = 65,000
+    full_price_days: int | None = Field(default=None, ge=1, le=30)            # days at the normal rate before takedown; blank = 4
 
 
 @router.get("")
@@ -136,7 +138,8 @@ def create(payload: GiveawayCreate, org=Depends(get_current_org), db=Depends(get
     try:
         row = svc.create_giveaway(db, org["org_id"], payload.partner_id, payload.title, payload.total_slots,
                                   payload.fee_ngn, payload.renewal_ngn, payload.pay_by_days,
-                                  payload.campaign_name, payload.ends_at)
+                                  payload.campaign_name, payload.ends_at,
+                                  payload.full_price_ngn, payload.full_price_days)
     except svc.GiveawayError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     return ok(data=row, message="Giveaway created")

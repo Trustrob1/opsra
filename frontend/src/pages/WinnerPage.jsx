@@ -94,7 +94,7 @@ export default function WinnerPage({ token }) {
 
             {v.stage === 'expired' && (
               <div style={{ ...S.note, background: '#fdf1f0', color: '#8a1c13' }} role="status">
-                This slot was released because the domain and hosting fee wasn’t paid within {v.pay_by_days} days of the preview. Thank you for taking part.
+                This website was taken down because the domain and hosting fee wasn’t paid in time. Thank you for taking part.
               </div>
             )}
             {v.stage === 'building' && (
@@ -111,12 +111,19 @@ export default function WinnerPage({ token }) {
               <a href={v.preview_url} target="_blank" rel="noopener noreferrer" style={S.btn}>See my website preview</a>
             )}
 
-            {v.stage === 'preview' && v.pay_by && (
-              <div style={S.note} role="status">Pay by <strong>{new Date(v.pay_by).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })}</strong>, or the slot is given to someone else.</div>
+            {v.stage === 'preview' && v.price_mode === 'full' && v.takedown_at && (
+              <div style={S.note} role="status">
+                The free-slot window has ended and your slot has been given to someone else. Your website is still saved. Pay the normal rate of <strong>{naira(v.fee_ngn)}</strong> by <strong>{new Date(v.takedown_at).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })}</strong> to keep it. After that it is taken down.
+              </div>
+            )}
+            {v.stage === 'preview' && v.price_mode !== 'full' && v.pay_by && (
+              <div style={S.note} role="status">
+                Pay {naira(v.fee_ngn)} by <strong>{new Date(v.pay_by).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })}</strong>. After that the slot is given to someone else and the normal rate of {naira(v.full_price_ngn)} applies{v.takedown_at ? <> until <strong>{new Date(v.takedown_at).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })}</strong>, when the website is taken down</> : null}.
+              </div>
             )}
 
             <h2 style={S.h2}>The terms</h2>
-            <TermsList fee={v.fee_ngn} renewal={v.renewal_ngn} terms={v.terms} payByDays={v.pay_by_days} />
+            <TermsList fee={v.fee_ngn} renewal={v.renewal_ngn} terms={v.terms} payByDays={v.pay_by_days} fullPrice={v.full_price_ngn} fullDays={v.full_price_days} normalRate={v.price_mode === 'full'} />
 
             {v.can_buy_items && v.terms?.catalog_pack_items ? (
               <>
