@@ -55,16 +55,6 @@
 .ow .ow-hero-phone{display:flex;justify-content:center}
 
 /* phone */
-.ow .ow-phone{width:min(100%,320px);background:#EFEAE2;border:10px solid var(--ink);border-radius:36px;overflow:hidden;box-shadow:0 24px 60px rgba(11,27,43,.18)}
-.ow .ow-phone-top{display:flex;align-items:center;gap:10px;background:var(--teal-deep);color:#fff;padding:14px 16px;font-weight:700;font-size:15px}
-.ow .ow-phone-top .ow-dot{width:28px;height:28px;border-radius:50%;background:#fff;opacity:.9;display:block}
-.ow .ow-phone-top em{margin-left:auto;font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;background:rgba(255,255,255,.18);padding:3px 8px;border-radius:999px}
-.ow .ow-chat{display:flex;flex-direction:column;gap:10px;padding:18px 14px;min-height:300px;justify-content:flex-start}
-.ow .ow-msg{max-width:86%;padding:10px 13px;border-radius:14px;font-size:15px;line-height:1.4;white-space:pre-line;box-shadow:0 1px 1px rgba(0,0,0,.06);animation:ow-in .5s var(--ease) both}
-.ow .ow-msg.ow-in{align-self:flex-end;background:#D9FDD3;border-bottom-right-radius:4px}
-.ow .ow-msg.ow-out{align-self:flex-start;background:#fff;border-bottom-left-radius:4px}
-.ow .ow-msg.ow-note{align-self:center;max-width:100%;background:var(--teal-tint);color:var(--teal-deep);font-family:var(--mono);font-size:12px;text-align:center;border-radius:999px;padding:7px 14px}
-@keyframes ow-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 /* problems */
 .ow .ow-problem{padding:var(--s9) 0;background:var(--ink);color:#fff}
@@ -158,8 +148,8 @@
   .ow .ow-hero-phone{justify-content:flex-end;margin-bottom:-120px}
   .ow .ow-how-grid{grid-template-columns:1fr 360px;gap:var(--s8);align-items:start}
   .ow .ow-how-phone{order:0;position:sticky;top:112px}
-  .ow .ow-steps{gap:var(--s5)}
-  .ow .ow-steps li{min-height:30vh;display:flex}
+  .ow .ow-steps{gap:var(--s3)}
+  .ow .ow-steps li{min-height:0;display:flex}
   .ow .ow-steps button{align-self:flex-start}
   .ow .ow-cards{grid-template-columns:repeat(3,1fr)}
   .ow .ow-faq-grid{grid-template-columns:.8fr 1.2fr;gap:var(--s8)}
@@ -202,7 +192,12 @@
 
 .ow .ow-stage{position:relative;justify-self:center;width:100%;max-width:560px}
 .ow .ow-photo{position:relative;aspect-ratio:4/5;border-radius:28px;overflow:hidden;background:linear-gradient(160deg,#0E6E7A,#028090 45%,#7FD8C0);box-shadow:0 40px 80px rgba(0,0,0,.45)}
-.ow .ow-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:70% 50%;animation:ow-kb 18s ease-in-out infinite alternate}
+.ow .ow-pan{position:absolute;inset:0;animation:ow-kb 18s ease-in-out infinite alternate}
+.ow .ow-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:70% 50%}
+.ow .ow-screen{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.ow .ow-b{opacity:0;animation:ow-bub 9s var(--ease) infinite}
+.ow .ow-b2{animation-delay:1.4s}.ow .ow-b3{animation-delay:3.2s}
+@keyframes ow-bub{0%{opacity:0;transform:translateY(8px)}6%,86%{opacity:1;transform:none}94%,100%{opacity:0;transform:none}}
 @keyframes ow-kb{from{transform:scale(1)}to{transform:scale(1.07)}}
 .ow .ow-photo::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,27,42,0) 55%,rgba(13,27,42,.35));pointer-events:none}
 .ow .ow-photo-fallback{position:absolute;inset:0}
@@ -246,7 +241,6 @@
 /* how it works: dark */
 .ow .ow-how{background:var(--navy);color:#fff}
 .ow .ow-how .ow-label{color:var(--jade)}
-.ow .ow-how .ow-phone{box-shadow:0 30px 80px rgba(0,0,0,.5);border-color:#050C14}
 .ow .ow-steps button{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.14);color:#fff}
 .ow .ow-steps small{color:#B6C5D0}
 .ow .ow-steps .ow-on button{background:rgba(2,128,144,.28);border-color:var(--jade)}
@@ -324,4 +318,47 @@
   .ow *,.ow *::before,.ow *::after{animation:none!important;transition:none!important}
   .ow .ow-btn,.ow .ow-btn:hover{transform:none!important}
 }
-.ow .ow-phone{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){.ow .ow-b{opacity:1!important}}
+
+/* ===== phone (OWNER-LANDING-2b): realistic handset with an animated chat ===== */
+.ow .ow-how-grid{align-items:center}
+.ow .ow-ph{position:relative;width:min(100%,292px);aspect-ratio:9/19.2;padding:10px;border-radius:52px;background:linear-gradient(145deg,#4A3556 0%,#1B1220 38%,#2E2037 100%);box-shadow:inset 0 0 0 1.5px #6B5278,0 40px 90px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
+.ow .ow-ph::before,.ow .ow-ph::after{content:"";position:absolute;width:4px;border-radius:3px;background:#3A2A44}
+.ow .ow-ph::before{left:-3px;top:17%;height:9%;box-shadow:0 52px 0 #3A2A44,0 104px 0 #3A2A44}
+.ow .ow-ph::after{right:-3px;top:27%;height:15%}
+.ow .ow-ph-screen{position:relative;height:100%;display:flex;flex-direction:column;border-radius:42px;overflow:hidden;background:#EFEAE2;color:var(--ink)}
+.ow .ow-ph-island{position:absolute;z-index:3;top:10px;left:50%;width:84px;height:24px;margin-left:-42px;border-radius:14px;background:#000}
+.ow .ow-ph-head{flex:none;background:var(--teal-deep);color:#fff;padding:12px 14px 10px}
+.ow .ow-ph-status{display:flex;justify-content:space-between;align-items:center;height:26px;padding:0 6px;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.ow .ow-ph-status svg{width:34px;height:12px}
+.ow .ow-ph-bar{display:flex;align-items:center;gap:8px;margin-top:6px}
+.ow .ow-ph-bar>svg{width:18px;height:18px;flex:none}
+.ow .ow-ph-av{width:40px;height:40px;border-radius:50%;flex:none;display:block}
+.ow .ow-ph-name{display:grid;line-height:1.15;min-width:0}
+.ow .ow-ph-name b{font-size:15px}
+.ow .ow-ph-name small{font-size:11px;opacity:.85}
+.ow .ow-ph-ex{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;background:rgba(255,255,255,.2);padding:3px 7px;border-radius:999px}
+.ow .ow-ph-chat{flex:1;display:flex;flex-direction:column;gap:8px;padding:14px 12px;overflow:hidden;background-color:#EFEAE2;background-image:radial-gradient(rgba(1,95,107,.07) 1.2px,transparent 1.3px);background-size:16px 16px}
+.ow .ow-m{position:relative;max-width:84%;padding:8px 11px 17px;border-radius:12px;font-size:14px;line-height:1.38;white-space:pre-line;box-shadow:0 1px 1px rgba(0,0,0,.08);animation:ow-pop .5s var(--ease) both;animation-delay:var(--d,0s)}
+.ow .ow-m i{position:absolute;right:9px;bottom:3px;font-style:normal;font-size:10px;color:#6B7B88;white-space:nowrap}
+.ow .ow-m-in{align-self:flex-end;background:#D9FDD3;border-top-right-radius:3px}
+.ow .ow-m-in i{color:#4FA3C7}
+.ow .ow-m-out{align-self:flex-start;background:#fff;border-top-left-radius:3px}
+.ow .ow-m-note{align-self:center;max-width:100%;padding:6px 12px;background:rgba(2,128,144,.14);color:var(--teal-deep);font-family:var(--mono);font-size:11px;text-align:center;border-radius:999px;box-shadow:none}
+.ow .ow-m-note i{display:none}
+.ow .ow-typing{align-self:flex-start;display:flex;gap:4px;padding:11px 13px;border-radius:12px;border-top-left-radius:3px;background:#fff;box-shadow:0 1px 1px rgba(0,0,0,.08);overflow:hidden;animation:ow-typ .95s ease both;animation-delay:var(--d,0s)}
+.ow .ow-typing b{width:7px;height:7px;border-radius:50%;background:#9AA7B2;animation:ow-dot 1s ease-in-out infinite}
+.ow .ow-typing b:nth-child(2){animation-delay:.15s}.ow .ow-typing b:nth-child(3){animation-delay:.3s}
+@keyframes ow-pop{from{opacity:0;transform:translateY(10px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes ow-typ{0%{opacity:0;max-height:0;padding-block:0;margin-bottom:-8px}12%{opacity:1;max-height:36px;padding-block:11px;margin-bottom:0}88%{opacity:1;max-height:36px;padding-block:11px;margin-bottom:0}100%{opacity:0;max-height:0;padding-block:0;margin-bottom:-8px}}
+@keyframes ow-dot{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(-3px);opacity:1}}
+.ow .ow-ph-input{flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px 6px;background:#F6F3EE}
+.ow .ow-ph-field{flex:1;height:34px;border-radius:17px;background:#fff;color:#8A97A3;font-size:13px;display:flex;align-items:center;padding:0 14px}
+.ow .ow-ph-mic{width:34px;height:34px;border-radius:50%;background:var(--teal);display:grid;place-items:center;flex:none}
+.ow .ow-ph-mic svg{width:16px;height:16px}
+.ow .ow-ph-home{flex:none;height:18px;background:#F6F3EE;display:grid;place-items:center}
+.ow .ow-ph-home::after{content:"";width:104px;height:4px;border-radius:2px;background:#0B1B2B;opacity:.85}
+.ow .ow-ph-cap{margin-top:14px;text-align:center;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8FA3B3}
+.ow .ow-how-phone{flex-direction:column;align-items:center}
+@media (prefers-reduced-motion:reduce){.ow .ow-typing{display:none}}
+.ow .ow-how-phone>[role=img]{width:100%;display:flex;justify-content:center}

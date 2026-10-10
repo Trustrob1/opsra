@@ -214,22 +214,99 @@ function Wa({ className = "", children, text = "Hi, I'd like to know more about 
   );
 }
 
-function Phone({ step }) {
+/* Illustrated profile picture for the example chat (a drawing, not a real person). */
+function Avatar() {
   return (
-    <div className="ow-phone" role="img" aria-label="Example WhatsApp chat">
-      <div className="ow-phone-top">
-        <i className="ow-dot" />
-        <span>Your business</span>
-        <em>Example</em>
-      </div>
-      <div className="ow-chat">
-        {SCREENS[step].map(([kind, text], i) => (
-          <p key={`${step}-${i}`} className={`ow-msg ow-${kind}`}>
-            {text}
-          </p>
-        ))}
+    <svg className="ow-ph-av" viewBox="0 0 40 40" aria-hidden="true">
+      <rect width="40" height="40" fill="#F4D9C6" />
+      <path d="M4 40c1-9 8-13 16-13s15 4 16 13z" fill="#0E6E7A" />
+      <rect x="16.5" y="21" width="7" height="8" rx="3" fill="#8A5A3C" />
+      <ellipse cx="20" cy="16.5" rx="7.4" ry="8.6" fill="#9A6644" />
+      <path d="M11.4 15.5c0-7.2 4.2-10.8 8.8-10.8s8.4 3.6 8.4 10.8c-1.6-3.2-4.6-4.9-8.4-4.9s-7 1.7-8.8 4.9z" fill="#E4572E" />
+      <path d="M12 12.5c3-4 13-4.6 16.4-.4" stroke="#F2B544" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+      <circle cx="17.2" cy="17" r=".9" fill="#2A1A12" />
+      <circle cx="22.8" cy="17" r=".9" fill="#2A1A12" />
+      <path d="M17.4 20.6q2.6 2 5.2 0" stroke="#2A1A12" strokeWidth="1" fill="none" strokeLinecap="round" />
+      <circle cx="12.6" cy="19.2" r="1.3" fill="#F2B544" />
+      <circle cx="27.4" cy="19.2" r="1.3" fill="#F2B544" />
+    </svg>
+  );
+}
+
+function Phone({ step }) {
+  let t = 0.25;
+  const rows = [];
+  SCREENS[step].forEach(([kind, text], i) => {
+    if (kind === "out") {
+      rows.push(<span key={`t${i}`} className="ow-typing" style={{ "--d": `${t}s` }}><b /><b /><b /></span>);
+      t += 0.95;
+    }
+    rows.push(
+      <p key={`m${i}`} className={`ow-m ow-m-${kind}`} style={{ "--d": `${t}s` }}>
+        {text}
+        <i>{kind === "in" ? "9:41 ✓✓" : "9:41"}</i>
+      </p>
+    );
+    t += kind === "out" ? 1.0 : 0.9;
+  });
+  return (
+    <div role="img" aria-label="Example WhatsApp chat on a phone">
+      <div className="ow-ph" aria-hidden="true">
+        <div className="ow-ph-screen">
+          <span className="ow-ph-island" />
+          <div className="ow-ph-head">
+            <div className="ow-ph-status">
+              <span>9:41</span>
+              <svg viewBox="0 0 34 12" fill="#fff"><rect x="0" y="7" width="3" height="5" rx="1" /><rect x="5" y="5" width="3" height="7" rx="1" /><rect x="10" y="2.5" width="3" height="9.5" rx="1" /><rect x="15" y="0" width="3" height="12" rx="1" /><rect x="21" y="1" width="12" height="10" rx="3" fill="none" stroke="#fff" strokeWidth="1.2" /><rect x="22.6" y="2.6" width="8" height="6.8" rx="1.6" /></svg>
+            </div>
+            <div className="ow-ph-bar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
+              <Avatar />
+              <span className="ow-ph-name"><b>Your business</b><small>online</small></span>
+              <em className="ow-ph-ex">Example</em>
+            </div>
+          </div>
+          <div className="ow-ph-chat">{rows}</div>
+          <div className="ow-ph-input">
+            <span className="ow-ph-field">Message</span>
+            <span className="ow-ph-mic"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12h-2Z" /></svg></span>
+          </div>
+          <div className="ow-ph-home" />
+        </div>
       </div>
     </div>
+  );
+}
+
+/* A chat drawn onto the blank phone screen in the hero photo. The numbers are the screen's corners
+   in the photo's own pixels (1536 x 1024); the viewBox is the part of the photo the 4:5 panel shows
+   (object-position 70%). If you replace the photo, re-measure these or delete <PhoneScreen />. */
+function PhoneScreen() {
+  return (
+    <svg className="ow-screen" viewBox="501.8 0 819.2 1024" aria-hidden="true" focusable="false">
+      <defs>
+        <clipPath id="ow-sc"><rect width="100" height="240" rx="10" /></clipPath>
+      </defs>
+      <g transform="matrix(0.81 -0.11 0.3375 0.9083 775 502)" clipPath="url(#ow-sc)">
+        <rect width="100" height="240" fill="#EFEAE2" />
+        <rect width="100" height="30" fill="#015F6B" />
+        <circle cx="14" cy="15" r="6" fill="#fff" />
+        <text x="26" y="19" fontSize="11" fontWeight="700" fill="#fff">Shop</text>
+        <g className="ow-b ow-b1">
+          <rect x="22" y="44" width="72" height="26" rx="7" fill="#D9FDD3" />
+          <text x="29" y="61" fontSize="12" fill="#0B1B2B">How much?</text>
+        </g>
+        <g className="ow-b ow-b2">
+          <rect x="6" y="80" width="76" height="46" rx="7" fill="#fff" />
+          <text x="13" y="102" fontSize="17" fontWeight="800" fill="#0B1B2B">₦25,000</text>
+          <text x="13" y="118" fontSize="11" fill="#4A5B6B">Pay link ›</text>
+        </g>
+        <g className="ow-b ow-b3">
+          <rect x="40" y="136" width="54" height="24" rx="7" fill="#D9FDD3" />
+          <text x="48" y="152" fontSize="12" fill="#0B1B2B">Yes please</text>
+        </g>
+      </g>
+    </svg>
   );
 }
 
@@ -303,6 +380,8 @@ export default function OwnerLandingPage() {
   const [open, setOpen] = useState(0);
   const [imgOk, setImgOk] = useState(true);
   const stepRefs = useRef([]);
+  const phoneBox = useRef(null);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     const prevTitle = document.title;
@@ -381,7 +460,16 @@ export default function OwnerLandingPage() {
       stepRefs.current.forEach((el) => el && io.observe(el));
     }
 
+    let pio = null;
+    if ("IntersectionObserver" in window && phoneBox.current) {
+      pio = new IntersectionObserver(([en]) => {
+        if (en.isIntersecting) { setTick((n) => n + 1); pio.disconnect(); }
+      }, { threshold: 0.5 });
+      pio.observe(phoneBox.current);
+    }
+
     return () => {
+      if (pio) pio.disconnect();
       document.title = prevTitle;
       if (metaDesc && prevDesc !== null) metaDesc.setAttribute("content", prevDesc);
       link.remove();
@@ -433,7 +521,10 @@ export default function OwnerLandingPage() {
             <div className="ow-stage ow-fade" style={{ "--d": "300ms" }}>
               <div className="ow-photo">
                 {imgOk && (
-                  <img src={HERO_IMG} alt="A shop owner checking her phone at the counter of her boutique (AI-generated illustration)" width="1200" height="800" fetchpriority="high" onError={() => setImgOk(false)} />
+                  <div className="ow-pan">
+                    <img src={HERO_IMG} alt="A shop owner checking her phone at the counter of her boutique (AI-generated illustration)" width="1536" height="1024" fetchpriority="high" onError={() => setImgOk(false)} />
+                    <PhoneScreen />
+                  </div>
                 )}
                 {!imgOk && <div className="ow-photo-fallback" aria-hidden="true"><i /><i /><i /></div>}
               </div>
@@ -485,7 +576,7 @@ export default function OwnerLandingPage() {
                   </li>
                 ))}
               </ol>
-              <div className="ow-how-phone"><Phone step={step} /></div>
+              <div className="ow-how-phone" ref={phoneBox}><Phone key={tick} step={step} /><p className="ow-ph-cap">Example chat</p></div>
             </div>
           </div>
         </section>
