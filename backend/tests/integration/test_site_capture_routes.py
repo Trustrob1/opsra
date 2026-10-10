@@ -160,3 +160,52 @@ def test_staff_roles_and_other_orgs(api):
     assert c.get("/api/v1/sites/nope/capture").status_code == 404
     h["db"].rows("site_builder_settings")[0]["enabled"] = False
     assert c.get("/api/v1/sites/site-1/capture").status_code == 404
+
+
+def _token(h):
+    key = _key(h)
+    return key, cap.leads_token(h["db"], "site-1")
+
+
+def test_my_leads_page_shows_leads_escaped_and_private(api):
+    h, c = api
+    key = _key(h)
+    c.post(f"/api/v1/public/site-leads/{key}", data=dict(FORM, name="<script>alert(1)</script>"))
+    tok = cap.leads_token(h["db"], "site-1")
+    r = c.get(f"/my-leads/{tok}")
+    assert r.status_code == 200
+    assert "<script>alert(1)</script>" not in r.text and "&lt;script&gt;" in r.text
+    assert "<script" not in r.text.lower().replace("&lt;script", "")
+    assert "noindex" in r.headers.get("x-robots-tag", "") + r.text and "no-store" in r.headers["cache-control"]
+    assert f"/sl/{key}/l/" in r.text and "Alfa &lt;b&gt;Cakes&lt;/b&gt;" in r.text
+
+
+def test_my_leads_with_a_wrong_link_is_a_404_page(api):
+    _, c = api
+    r = c.get("/my-leads/" + "z" * 32)
+    assert r.status_code == 404 and "<script" not in r.text.lower()
+
+
+def test_my_leads_empty_page_is_friendly(api):
+    h, c = api
+    key = _key(h)
+    c.post(f"/api/v1/public/site-leads/{key}", data=FORM)
+    h["db"].rows("leads").clear()
+    r = c.get(f"/my-leads/{cap.leads_token(h['db'], 'site-1')}")
+    assert r.status_code == 200 and "No enquiries yet" in r.text or "no enquiries" in r.text.lower()
+
+
+def test_my_leads_unavailable_when_the_plan_lacks_it(api):
+    h, c = api
+    key = _key(h)
+    c.post(f"/api/v1/public/site-leads/{key}", data=FORM)
+    tok = cap.leads_token(h["db"], "site-1")
+    h["db"].rows("site_builder_settings")[0]["pricing"] = {"tiers": {"capture": {"features": ["form_instant_reply"]}}}
+    r = c.get(f"/my-leads/{tok}")
+    assert r.status_code == 200 and "Alfa" in r.text and f"/sl/{key}/l/" not in r.text
+
+
+def test_my_leads_is_rate_limited(api):
+    _, c = api
+    codes = [c.get("/my-leads/" + "q" * 32).status_code for _ in range(320)]
+    assert 429 in codes

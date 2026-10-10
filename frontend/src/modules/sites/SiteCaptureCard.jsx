@@ -98,6 +98,19 @@ export default function SiteCaptureCard({ siteId, canEdit, showToast }) {
           <Kpi label="Spam blocked" value={num(ev.form_rejected)} />
         </div>
 
+        {data.leads_url && data.features?.my_leads_page && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Owner's private "My leads" page</div>
+            <p style={{ margin: 0, fontSize: 12.5, color: T.soft, lineHeight: 1.5 }}>
+              The owner opens this link to see every enquiry and reply with one tap. It is also added to their alerts. Anyone with the
+              link can see the leads, so share it only with the owner.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button size="sm" icon={Copy} onClick={() => copy(data.leads_url, 'Link')}>Copy My leads link</Button>
+            </div>
+          </div>
+        )}
+
         <details>
           <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: T.ink }}>For a site built somewhere else</summary>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>

@@ -309,7 +309,7 @@ def test_the_staff_summary_counts_the_last_30_days(sent):
     s = cap.summary(db, ORG, "site-1")
     assert s["key"] == k and s["workspace"] is True and s["leads_total"] == 1
     assert s["events"]["form_submit"] == 1 and s["events"]["wa_click"] == 1
-    assert s["features"] == {"form_instant_reply": True, "source_tracking": True, "speed_alerts": True}
+    assert s["features"] == {"form_instant_reply": True, "source_tracking": True, "speed_alerts": True, "my_leads_page": True}
     assert s["form_action"].endswith(f"/api/v1/public/site-leads/{k}") and s["wa_link"].endswith(f"/sl/{k}/wa")
 
 
@@ -327,3 +327,66 @@ def test_source_text_is_cleaned():
     cleaned = cap.clean_source("  product:<script>x</script> ")
     assert cleaned.startswith("product:") and "<" not in cleaned and ">" not in cleaned
     assert cap.clean_source("") is None and len(cap.clean_source("a" * 500)) == 120
+
+
+# -- the owner's "My leads" page -------------------------------------------------------------
+
+def test_no_leads_token_until_the_site_has_a_workspace(sent):
+    assert cap.leads_token(_db(), "site-1") is None
+
+
+def test_the_leads_token_is_made_once_and_kept(sent):
+    db = _db()
+    cap.submit(db, _key(db), GOOD)
+    t1 = cap.leads_token(db, "site-1")
+    assert t1 and len(t1) >= 20 and cap.leads_token(db, "site-1") == t1
+    assert cap.leads_url(t1).endswith("/my-leads/" + t1)
+
+
+def test_my_leads_lists_newest_first_with_answer_links(sent):
+    db = _db()
+    k = _key(db)
+    cap.submit(db, k, GOOD)
+    cap.submit(db, k, dict(GOOD, name="Bola Ade", phone="08037654321"))
+    for i, row in enumerate(db.rows("leads")):
+        row["created_at"] = f"2026-10-0{i + 1}T10:00:00+00:00"
+    db.rows("leads")[0]["answered_at"] = "2026-10-01T11:00:00+00:00"
+    page = cap.my_leads(db, cap.leads_token(db, "site-1"))
+    assert page["available"] is True and page["business"] == "Alfa Cakes" and page["total"] == 2
+    assert [x["name"] for x in page["leads"]] == ["Bola Ade", "Ada Obi"]
+    assert page["leads"][1]["answered"] is True and page["leads"][0]["answered"] is False
+    assert page["leads"][0]["reply_url"] == cap.answer_url(k, page["leads"][0]["id"])
+
+
+@pytest.mark.parametrize("bad", ["", "short", "x" * 200, None, "a" * 30])
+def test_my_leads_unknown_links_show_nothing(sent, bad):
+    db = _db()
+    cap.submit(db, _key(db), GOOD)
+    assert cap.my_leads(db, bad) is None
+
+
+def test_my_leads_never_shows_another_sites_leads(sent):
+    db = _db(sites=[_site(), _site("site-2", "Beta Bags")], tiers=[_tier(), _tier("site-2")])
+    cap.submit(db, _key(db), GOOD)
+    cap.submit(db, _key(db, "site-2"), dict(GOOD, name="Zed Other", phone="08039999999"))
+    page = cap.my_leads(db, cap.leads_token(db, "site-1"))
+    assert [x["name"] for x in page["leads"]] == ["Ada Obi"]
+
+
+def test_my_leads_is_hidden_when_the_plan_does_not_include_it(sent):
+    db = _db()
+    cap.submit(db, _key(db), GOOD)
+    tok = cap.leads_token(db, "site-1")
+    db.rows("site_builder_settings")[0]["pricing"] = {"tiers": {"capture": {"features": ["form_instant_reply"]}}}
+    page = cap.my_leads(db, tok)
+    assert page["available"] is False and page["leads"] == []
+
+
+def test_the_owner_alert_links_to_my_leads_when_the_plan_has_it(sent):
+    db = _db()
+    cap.submit(db, _key(db), GOOD)
+    tok = cap.leads_token(db, "site-1")
+    cap.submit(db, _key(db), dict(GOOD, phone="08035550000"))
+    alerts = [w for w in sent["wa"] if w[0] == "08030000009"]
+    assert any("/my-leads/" in w[1] for w in alerts) or any("/my-leads/" in e[2] for e in sent["email"])
+    assert tok

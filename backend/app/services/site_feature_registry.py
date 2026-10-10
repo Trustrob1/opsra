@@ -31,7 +31,7 @@ _F = {
     "source_tracking": ("Source tracking (page, product, button)", "capture", None, True),
     "speed_alerts": ("Speed-to-lead alerts", "capture", None, True),
     "wa_menu": ("WhatsApp menu with set answers", "capture", None, False),
-    "my_leads_page": ("My leads page", "capture", None, False),
+    "my_leads_page": ("My leads page", "capture", None, True),
     # Convert
     "ai_assistant": ("AI assistant from the business's own information", "convert", "ai_messages", False),
     "qualification": ("Qualification questions, scoring and hot-lead alerts", "convert", None, False),

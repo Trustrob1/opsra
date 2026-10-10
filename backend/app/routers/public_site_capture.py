@@ -6,6 +6,7 @@ only opens the capture features that site's plan includes.
 
   POST /api/v1/public/site-leads/{key}   the enquiry form (a plain HTML form post, no script, no CORS needed)
   GET  /sl/{key}/wa                      tracked WhatsApp link: logs the click, redirects to the site's own wa.me address
+  GET  /my-leads/{token}                 the owner's private list of enquiries (script-free page)
   GET  /sl/{key}/l/{lead_id}              the owner's "Answer now" link: marks the lead answered, opens WhatsApp to the visitor
 
 Unknown or switched-off keys all get the same "not valid" page. Nothing here returns lead data.
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import html
 import logging
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -105,3 +107,71 @@ def answer_now(key: str, lead_id: str, request: Request, db=Depends(get_supabase
     if not url or not (url.startswith("https://wa.me/") or url.startswith("mailto:")):
         return _not_valid()
     return RedirectResponse(url=url, status_code=302, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+# ---------------------------------------------------------------- the owner's My leads page
+
+_LAGOS = timezone(timedelta(hours=1))
+_LEADS_CSS = """
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f7f9;color:#111;padding:16px;box-sizing:border-box}
+.wrap{max-width:720px;margin:0 auto}
+h1{font-size:20px;margin:8px 0 4px} .sub{color:#555;margin:0 0 16px;font-size:14px}
+.lead{background:#fff;border-radius:12px;padding:16px;margin:0 0 12px;box-shadow:0 1px 6px rgba(0,0,0,.06)}
+.top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.name{font-weight:700;font-size:16px;margin:0} .when{color:#666;font-size:12.5px}
+.msg{margin:8px 0;line-height:1.5;color:#333;white-space:pre-wrap;overflow-wrap:anywhere}
+.meta{font-size:13px;color:#555;margin:4px 0} .tag{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px}
+.waiting{background:#fdf4e3;color:#9a6200} .done{background:#e8f6ee;color:#1e8e4f}
+a.btn{display:inline-block;margin-top:8px;margin-right:8px;background:#028090;color:#fff;text-decoration:none;padding:11px 16px;border-radius:9px;font-weight:600;font-size:14px}
+a.btn.alt{background:#fff;color:#028090;border:1px solid #028090}
+.empty{background:#fff;border-radius:12px;padding:28px;text-align:center;color:#555}
+@media (prefers-color-scheme:dark){body{background:#111;color:#eee}.lead,.empty{background:#1c1c1c}.msg{color:#ccc}.sub,.meta,.when{color:#aaa}a.btn.alt{background:transparent}}
+"""
+
+
+def _leads_doc(title: str, inner: str, status_code: int = 200) -> HTMLResponse:
+    doc = (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+           f'<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">'
+           f'<title>{html.escape(title)}</title><style>{_LEADS_CSS}</style></head><body><div class="wrap">{inner}</div></body></html>')
+    return HTMLResponse(content=doc, status_code=status_code, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+def _when(iso) -> str:
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        return dt.astimezone(_LAGOS).strftime("%d %b %Y, %I:%M %p").lstrip("0")
+    except Exception:
+        return ""
+
+
+@router.get("/my-leads/{token}", include_in_schema=False)
+def my_leads_page(token: str, request: Request, db=Depends(get_supabase)):
+    _limit(request, token[:24], "link")
+    try:
+        d = cap.my_leads(db, token)
+    except Exception:  # S14
+        logger.exception("[SITE-CAPTURE] my leads failed")
+        return _leads_doc("Try again", "<h1>Something went wrong</h1><p class=\"sub\">We couldn't open your enquiries right now. "
+                          "Please try again in a minute.</p>", 503)
+    if d is None:
+        return _leads_doc("Link not valid", "<h1>This link isn't valid</h1><p class=\"sub\">Please ask for a fresh link.</p>", 404)
+    biz = html.escape(d["business"])
+    if not d["available"]:
+        return _leads_doc("Not available", f"<h1>{biz}</h1><p class=\"sub\">The enquiries page is not part of the current plan. "
+                          "Your enquiries are kept safe.</p>")
+    if not d["leads"]:
+        return _leads_doc("My leads", f"<h1>Enquiries for {biz}</h1><div class=\"empty\"><p>No enquiries yet.</p>"
+                          "<p class=\"sub\">They will show here as soon as someone sends one from your website.</p></div>")
+    cards = []
+    for l in d["leads"]:
+        status = '<span class="tag done">Answered</span>' if l["answered"] else '<span class="tag waiting">Waiting for your reply</span>'
+        contact = " · ".join(html.escape(x) for x in (l["phone"], l["email"]) if x)
+        src = f'<p class="meta">From: {html.escape(l["source"])}</p>' if l["source"] else ""
+        msg = f'<p class="msg">{html.escape(l["message"])}</p>' if l["message"] else ""
+        reply = f'<a class="btn" href="{html.escape(l["reply_url"], quote=True)}">Reply on WhatsApp</a>' if l["phone"] else (
+            f'<a class="btn" href="{html.escape(l["reply_url"], quote=True)}">Reply by email</a>' if l["email"] else "")
+        cards.append(f'<article class="lead"><div class="top"><p class="name">{html.escape(l["name"] or "Visitor")}</p>'
+                     f'<span class="when">{html.escape(_when(l["created_at"]))}</span></div>'
+                     f'{f"<p class=meta>{contact}</p>" if contact else ""}{msg}{src}<p class="meta">{status}</p>{reply}</article>')
+    return _leads_doc("My leads", f'<h1>Enquiries for {biz}</h1><p class="sub">Your latest {d["total"]} enquiries, newest first.</p>'
+                      + "".join(cards))

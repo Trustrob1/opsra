@@ -316,11 +316,18 @@ def alert_owner(db: Any, org_id: str, site: dict, key: str, lead: dict, *, again
         text = f"{'Another enquiry' if again else 'New enquiry'} for {biz} from {who}" + (f" ({', '.join(bits)})" if bits else "") + "."
     if snippet:
         text += f' "{snippet}"'
+    all_link = ""
+    try:
+        if ent.has_feature(db, org_id, site["id"], "my_leads_page"):
+            tok = leads_token(db, site["id"])
+            all_link = f"\n\nAll your enquiries: {leads_url(tok)}" if tok else ""
+    except Exception as exc:  # S14
+        logger.warning("site_capture: my-leads link failed site=%s: %s", site.get("id"), exc)
     sent = False
     if c["email"]:
-        sent = _send_email(c["email"], f"{biz}: enquiry from {who}", f"{text}\n\nAnswer on WhatsApp: {link}") or sent
+        sent = _send_email(c["email"], f"{biz}: enquiry from {who}", f"{text}\n\nAnswer on WhatsApp: {link}{all_link}") or sent
     if c["phone"]:
-        sent = _send_whatsapp(db, org_id, c["phone"], text, cta=("Answer now", link), template_env=ALERT_TEMPLATE_ENV,
+        sent = _send_whatsapp(db, org_id, c["phone"], text + all_link, cta=("Answer now", link), template_env=ALERT_TEMPLATE_ENV,
                               template_params=[biz, who, link]) or sent
     return sent
 
@@ -515,6 +522,58 @@ def answer_redirect(db: Any, key: str, lead_id: str, ip: Optional[str] = None) -
 
 
 # ---------------------------------------------------------------------------
+# the owner's private "My leads" page
+# ---------------------------------------------------------------------------
+
+MY_LEADS_LIMIT = 100
+
+
+def leads_url(token: str) -> str:
+    return f"{public_base()}/my-leads/{token}"
+
+
+def leads_token(db: Any, site_id: str) -> Optional[str]:
+    """The site's My-leads token, made on first use. None until the site has a workspace (nothing to show before then)."""
+    ws = get_workspace(db, site_id)
+    if not ws:
+        return None
+    if ws.get("leads_token"):
+        return ws["leads_token"]
+    tok = secrets.token_urlsafe(24)
+    res = (db.table("site_workspaces").update({"leads_token": tok}).eq("site_id", site_id)
+           .is_("leads_token", "null").execute())
+    if res.data:
+        return tok
+    again = get_workspace(db, site_id) or {}          # another request made one first
+    return again.get("leads_token")
+
+
+def my_leads(db: Any, token: str) -> Optional[dict]:
+    """What the owner's page shows, from the private token. None = unknown link. `available` is False when the plan no
+    longer includes the page (the data is kept, just not shown)."""
+    if not isinstance(token, str) or not 20 <= len(token) <= 80:
+        return None
+    ws = _one((db.table("site_workspaces").select("*").eq("leads_token", token).limit(1).execute()).data)
+    if not ws:
+        return None
+    site = _one((db.table("sites").select("*").eq("id", ws["site_id"]).is_("deleted_at", "null").limit(1).execute()).data)
+    if not site:
+        return None
+    org_id = site["org_id"]
+    if not ent.has_feature(db, org_id, site["id"], "my_leads_page"):
+        return {"available": False, "business": _business(site), "leads": [], "total": 0}
+    krow = get_or_create_key(db, org_id, site["id"])
+    rows = (db.table("leads").select("id, full_name, phone, email, problem_stated, source_detail, created_at, answered_at")
+            .eq("org_id", ws["workspace_org_id"]).eq("site_id", site["id"]).is_("deleted_at", "null")
+            .order("created_at", desc=True).limit(MY_LEADS_LIMIT).execute()).data or []
+    leads = [{"id": r["id"], "name": r.get("full_name") or "", "phone": r.get("phone") or "", "email": r.get("email") or "",
+              "message": r.get("problem_stated") or "", "source": r.get("source_detail") or "",
+              "created_at": r.get("created_at"), "answered": bool(r.get("answered_at")),
+              "reply_url": answer_url(krow["key"], r["id"])} for r in rows]
+    return {"available": True, "business": _business(site), "leads": leads, "total": len(leads)}
+
+
+# ---------------------------------------------------------------------------
 # the reminder sweep (every few minutes)
 # ---------------------------------------------------------------------------
 
@@ -572,6 +631,8 @@ def summary(db: Any, org_id: str, site_id: str, days: int = 30) -> dict:
     if ws:
         leads = len((db.table("leads").select("id").eq("org_id", ws["workspace_org_id"]).eq("site_id", site_id)
                      .is_("deleted_at", "null").execute()).data or [])
+    tok = leads_token(db, site_id) if ws else None
     return {"key": k["key"], "form_action": form_action_url(k["key"]), "wa_link": wa_link_url(k["key"]),
+            "leads_url": leads_url(tok) if tok else None,
             "workspace": bool(ws), "leads_total": leads, "days": days, "events": counts,
-            "features": {f: ent.has_feature(db, org_id, site_id, f) for f in ("form_instant_reply", "source_tracking", "speed_alerts")}}
+            "features": {f: ent.has_feature(db, org_id, site_id, f) for f in ("form_instant_reply", "source_tracking", "speed_alerts", "my_leads_page")}}
