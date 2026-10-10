@@ -49,6 +49,7 @@ export default function SitesOverviewTab({ isActive, enabled, onGoSettings, onGo
   const byStatus = ov.sites_by_status || {}
   const statusEntries = Object.entries(byStatus)
   const o = ov.orders // null when the order figures couldn't be worked out
+  const pl = ov.plans // null when the plan numbers couldn't be worked out
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -91,6 +92,22 @@ export default function SitesOverviewTab({ isActive, enabled, onGoSettings, onGo
           <Kpi label="Open hosting jobs" icon={Server} value={num(o.hosting_jobs_open)}
             sub={o.hosting_jobs_overdue ? `${o.hosting_jobs_overdue} overdue` : 'none overdue'} tone={o.hosting_jobs_overdue ? 'bad' : undefined} />
         </div>
+      )}
+
+      {pl && (
+        <Card>
+          <SectionTitle title="Plans on client sites" hint="Capture, Convert and Grow, paid for by the clients." />
+          <div style={kpiGrid}>
+            <Kpi label="Sites on a plan" icon={Layers} value={num(pl.sites_on_plan)} />
+            {Object.entries(pl.tiers || {}).map(([k, t]) => (
+              <Kpi key={k} label={t.label} icon={Layers} value={num(t.active + t.grace)}
+                sub={[t.pending ? `${t.pending} waiting to pay` : '', t.paused ? `${t.paused} paused` : ''].filter(Boolean).join(' · ') || 'active sites'} />
+            ))}
+            <Kpi label="Plans paid for (monthly)" icon={Wallet} value={money(pl.monthly_value)} sub={`${num(pl.addons_active)} add-on${pl.addons_active === 1 ? '' : 's'} active`} />
+            <Kpi label="Overdue" icon={TriangleAlert} value={num(pl.overdue)} sub="in the grace period" tone={pl.overdue ? 'warn' : undefined} />
+            <Kpi label="Waiting for payment" icon={ClipboardList} value={num(pl.waiting_for_payment)} tone={pl.waiting_for_payment ? 'warn' : undefined} />
+          </div>
+        </Card>
       )}
 
       <div style={kpiGrid}>

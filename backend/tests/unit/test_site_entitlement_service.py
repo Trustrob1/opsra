@@ -376,3 +376,31 @@ def test_registry_is_consistent():
     for k in reg.ADDON_KEYS:
         assert reg.FEATURES[k]["group"] == "addon"
     assert all(v["cap"] is None or v["cap"] in reg.CAPS for v in reg.FEATURES.values())
+
+
+# -- staff overview numbers (A0-3) ----------------------------------------------------
+
+def test_overview_counts_plans_waiting_overdue_and_monthly_value():
+    pricing = {"tiers": {"capture": {"monthly_ngn": 15000}, "convert": {"monthly_ngn": 40000}},
+               "addons": {"extra_rep": {"monthly_ngn": 5000}}}
+    rows = [
+        _row("tier", "capture", paid_until=NOW + 10 * DAY),                          # active, paid by the client
+        _row("tier", "convert", paid_until=NOW - 2 * DAY, site="site-2"),           # past its end date, inside grace
+        _row("addon", "extra_rep", paid_until=NOW + 5 * DAY),                        # active add-on, paid
+        _row("tier", "grow", source="staff", site="site-3"),                         # free grant: counted, no value
+        _row("tier", "capture", status="pending", site="site-4"),                    # waiting for the first payment
+    ]
+    db = _db(pricing, rows, sites=[{"id": s, "org_id": ORG, "deleted_at": None} for s in (SITE, "site-2", "site-3", "site-4")])
+    o = ent.overview(db, ORG, NOW)
+    assert o["tiers"]["capture"] == {"label": "Capture", "active": 1, "grace": 0, "pending": 1, "paused": 0}
+    assert o["tiers"]["convert"]["grace"] == 1 and o["tiers"]["grow"]["active"] == 1
+    assert o["addons_active"] == 1 and o["overdue"] == 1 and o["waiting_for_payment"] == 1
+    assert o["sites_on_plan"] == 3
+    assert o["monthly_value"] == 15000 + 40000 + 5000
+
+
+def test_overview_with_nothing_is_all_zero_and_ignores_deleted_sites():
+    db = _db({}, [_row("tier", "capture", paid_until=NOW + DAY)],
+             sites=[{"id": SITE, "org_id": ORG, "deleted_at": "2026-10-01T00:00:00Z"}])
+    o = ent.overview(db, ORG, NOW)
+    assert o["sites_on_plan"] == 0 and o["monthly_value"] == 0 and all(t["active"] == 0 for t in o["tiers"].values())

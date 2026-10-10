@@ -210,8 +210,15 @@ def sites_overview(org=Depends(get_current_org), db=Depends(get_supabase)):
     except Exception:
         logger.exception("sites_overview: order KPIs failed org=%s", org_id)
         orders_kpis = None
+    try:  # SITE-ADDONS A0-3: plans on sites; never let it break the overview
+        from app.services import site_entitlement_service as _ent
+        plans = _ent.overview(db, org_id)
+    except Exception:
+        logger.exception("sites_overview: plan numbers failed org=%s", org_id)
+        plans = None
     return ok(data={
         "orders": orders_kpis,
+        "plans": plans,
         "sites_total": len(sites),
         "sites_by_status": by_status,
         "previews_shared": by_status.get("preview_ready", 0) + by_status.get("revising", 0),

@@ -507,3 +507,35 @@ def set_status(db: Any, org_id: str, site_id: str, addon_id: str, action: str, a
         raise EntitlementError("That can't be done in its current state.")
     _log_event(db, org_id, site_id, actor, f"site_addon_{action}", {"addon_id": addon_id, "key": row.get("key")})
     return get_entitlements(db, org_id, site_id, now)
+
+
+def overview(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
+    """Staff overview numbers for the Sites page: how many live sites are on each plan, how many are waiting for
+    payment or overdue, and the monthly value of what clients currently pay for. Raises on a database error (the
+    overview route catches it so the rest of the page still loads)."""
+    now = now or _now()
+    cfg = get_config(_settings(db, org_id))
+    live_sites = {s["id"] for s in (db.table("sites").select("id").eq("org_id", org_id).is_("deleted_at", "null")
+                                    .execute()).data or []}
+    rows = (db.table("site_addons").select("*").eq("org_id", org_id).neq("status", "cancelled").execute()).data or []
+    tiers = {k: {"label": cfg["tiers"][k]["label"], "active": 0, "grace": 0, "pending": 0, "paused": 0} for k in cfg["tiers"]}
+    addons_active = 0
+    waiting = overdue = value = 0
+    sites_on_plan: set = set()
+    for r in rows:
+        if r.get("site_id") not in live_sites:
+            continue
+        eff = effective_status(r, cfg, now)
+        if r.get("kind") == "tier" and r.get("key") in tiers:
+            tiers[r["key"]][eff] += 1
+            if eff in ("active", "grace"):
+                sites_on_plan.add(r["site_id"])
+        elif r.get("kind") == "addon" and eff in ("active", "grace"):
+            addons_active += 1
+        waiting += 1 if eff == "pending" else 0
+        overdue += 1 if eff == "grace" else 0
+        if eff in ("active", "grace") and r.get("source") == "paid":
+            d = (cfg["tiers"] if r.get("kind") == "tier" else cfg["addons"]).get(r.get("key")) or {}
+            value += int(d.get("monthly_ngn") or 0)
+    return {"tiers": tiers, "addons_active": addons_active, "sites_on_plan": len(sites_on_plan),
+            "waiting_for_payment": waiting, "overdue": overdue, "monthly_value": value}
