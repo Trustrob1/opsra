@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok
+from app.services import site_addon_billing_service as billing
 from app.services import site_entitlement_service as ent
 from app.services import site_feature_registry as reg
 
@@ -71,6 +72,16 @@ class ResumeRequest(BaseModel):
     until: Optional[datetime] = None
 
 
+class PurchaseRequest(BaseModel):
+    """A0-2: set up what the client will pay for. `send` also sends the pay link to the client now."""
+    kind: Literal["tier", "addon"]
+    key: str = Field(..., min_length=1, max_length=40)
+    picks: Optional[list[str]] = Field(None, max_length=4)
+    billing_mode: Literal["link", "auto"] = "link"
+    payer: Optional[Payer] = None
+    send: bool = False
+
+
 @router.get("/site-addons/catalog")
 def catalog(org=Depends(get_current_org), db=Depends(get_supabase)):
     _require(org, _READ_ROLES)
@@ -108,6 +119,35 @@ def grant_addon(site_id: str, payload: GrantRequest, org=Depends(get_current_org
     except ent.EntitlementError as exc:
         raise _fail(exc)
     return ok(data=data, message="Saved")
+
+
+@router.post("/sites/{site_id}/addons/checkout")
+def start_checkout(site_id: str, payload: PurchaseRequest, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """Set up (or change) a purchase and get the client's private pay link. Nothing is charged here."""
+    _require(org, _WRITE_ROLES)
+    _require_enabled(db, org["org_id"])
+    actor = f"user:{org.get('id')}"
+    try:
+        data = billing.start_purchase(
+            db, org["org_id"], site_id, actor, payload.kind, payload.key, picks=payload.picks,
+            billing_mode=payload.billing_mode, payer=payload.payer.model_dump() if payload.payer else None)
+        if payload.send and not data["scheduled"]:
+            data["sent"] = billing.send_link(db, org["org_id"], site_id, data["addon_id"], actor)["sent"]
+    except ent.EntitlementError as exc:
+        raise _fail(exc)
+    return ok(data=data, message="Payment link ready")
+
+
+@router.post("/sites/{site_id}/addons/{addon_id}/send-link")
+def send_pay_link(site_id: str, addon_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """Send (or re-send) the pay link to the client by email and, where WhatsApp allows, WhatsApp."""
+    _require(org, _WRITE_ROLES)
+    _require_enabled(db, org["org_id"])
+    try:
+        data = billing.send_link(db, org["org_id"], site_id, addon_id, f"user:{org.get('id')}")
+    except ent.EntitlementError as exc:
+        raise _fail(exc)
+    return ok(data=data, message="Sent" if data["sent"] else "Could not be delivered; share the link by hand")
 
 
 @router.post("/sites/{site_id}/addons/{addon_id}/{action}")

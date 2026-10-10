@@ -481,6 +481,47 @@ def list_my_sites(builder=Depends(get_current_builder), db=Depends(get_supabase)
     return ok(data=rows)
 
 
+# ── SITE-ADDONS A0-2: the builder sees what plans a site can have and sends the client the payment link ──
+
+@router.get("/sites/{site_id}/addons")
+def my_site_addons(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    from app.services import site_entitlement_service as ent
+    from app.services import site_feature_registry as reg
+    _get_site(db, builder["org_id"], builder["id"], site_id)
+    cfg = ent.get_config(ent._settings(db, builder["org_id"]))
+
+    def plan(d):
+        return {"key": d["key"], "label": d["label"], "monthly_ngn": d["monthly_ngn"],
+                "setup_fee_ngn": d.get("setup_fee_ngn", 0), "pick_one": d.get("pick_one", []),
+                "includes": [reg.FEATURES[k]["label"] for k in d["features"] if k in reg.FEATURES]}
+    data = ent.get_entitlements(db, builder["org_id"], site_id)
+    data["plans"] = [plan(d) for d in cfg["tiers"].values() if d["sellable"]]
+    data["addon_plans"] = [plan(d) for d in cfg["addons"].values() if d["sellable"]]
+    data["billing"] = cfg["billing"]
+    return ok(data=data)
+
+
+@router.post("/sites/{site_id}/addons/checkout")
+def my_site_addons_checkout(site_id: str, payload: dict, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    from app.routers.site_addons import PurchaseRequest
+    from app.services import site_addon_billing_service as billing
+    from app.services import site_entitlement_service as ent
+    from pydantic import ValidationError
+    _get_site(db, builder["org_id"], builder["id"], site_id)
+    try:
+        req = PurchaseRequest(**(payload or {}))
+        data = billing.start_purchase(
+            db, builder["org_id"], site_id, f"builder:{builder['id']}", req.kind, req.key, picks=req.picks,
+            billing_mode=req.billing_mode, payer=req.payer.model_dump() if req.payer else None)
+        if req.send and not data["scheduled"]:
+            data["sent"] = billing.send_link(db, builder["org_id"], site_id, data["addon_id"], f"builder:{builder['id']}")["sent"]
+    except ValidationError:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Please check the plan and the client's details."})
+    except ent.EntitlementError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    return ok(data=data)
+
+
 @router.get("/sites/{site_id}")
 def get_my_site(site_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     site = _get_site(db, builder["org_id"], builder["id"], site_id)

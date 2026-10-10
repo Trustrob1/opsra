@@ -206,6 +206,7 @@ from app.routers import site_partners as site_partners_router        # PARTNER-1
 from app.routers import partner_portal as partner_portal_router          # PARTNER-1B — /api/v1/partner-portal/*
 from app.routers import site_giveaways as site_giveaways_router          # GIVEAWAY-1 — /api/v1/giveaways/*
 from app.routers import site_addons as site_addons_router                # SITE-ADDONS A0-1 — /api/v1/site-addons/*, /api/v1/sites/{id}/addons
+from app.routers import public_site_pay as public_site_pay_router        # SITE-ADDONS A0-2 — GET /site-pay/{token}
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -255,6 +256,7 @@ app.include_router(partner_portal_router.router, prefix="/api/v1/partner-portal"
 app.include_router(site_giveaways_router.public_router, prefix="/api/v1", tags=["giveaways"])   # GIVEAWAY-1 — public
 app.include_router(site_giveaways_router.router, prefix="/api/v1/giveaways", tags=["giveaways"])   # GIVEAWAY-1 — staff
 app.include_router(site_addons_router.router,    prefix="/api/v1",           tags=["site_addons"])  # SITE-ADDONS A0-1 — staff
+app.include_router(public_site_pay_router.router, prefix="",                  tags=["public_site_pay"])  # SITE-ADDONS A0-2 — client pay page
 
 
 # ---------------------------------------------------------------------------

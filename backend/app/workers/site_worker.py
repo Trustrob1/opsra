@@ -502,6 +502,27 @@ def run_care_cycle() -> dict:
     return total
 
 
+@celery_app.task(name="app.workers.site_worker.run_addon_cycle")
+def run_addon_cycle() -> dict:
+    """SITE-ADDONS A0-2: daily. Tiers / add-ons move active -> grace -> paused by their dates; clients get renewal reminders."""
+    from app.services import site_addon_billing_service
+    db = get_supabase()
+    started = _now()
+    total = {"checked": 0, "to_grace": 0, "paused": 0, "reminders": 0, "failed": 0}
+    try:
+        org_active, _ = _org_cache(db)
+        total = site_addon_billing_service.run_cycle(db, started, org_active)
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] addon cycle failed: %s", exc)
+    write_worker_log(
+        db, worker_name="site_worker.addon_cycle", status="failed" if total["failed"] else "passed",
+        items_processed=total["checked"], items_failed=total["failed"], started_at=started,
+        run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return total
+
+
 @celery_app.task(name="app.workers.site_worker.run_giveaway_deadlines")
 def run_giveaway_deadlines() -> dict:
     """GIVEAWAY-2: hourly. Unpaid winners get a reminder, then at the pay-by time the slot is freed and the normal rate applies (lapsed); after the extra days the site is taken down (released)."""

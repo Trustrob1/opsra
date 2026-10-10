@@ -648,6 +648,16 @@ celery_app.conf.beat_schedule = {
     },
 
     # ------------------------------------------------------------------ #
+    # site-addon-cycle — Daily 06:50 UTC = 07:50 WAT  (SITE-ADDONS A0-2)  #
+    # Tiers / add-ons: active -> grace -> paused; renewal reminders to    #
+    # the client (email, WhatsApp inside the 24h window).                 #
+    # ------------------------------------------------------------------ #
+    "site-addon-cycle": {
+        "task": "app.workers.site_worker.run_addon_cycle",
+        "schedule": crontab(minute=50, hour=6),
+    },
+
+    # ------------------------------------------------------------------ #
     # site-asset-cleanup — Daily 03:00 UTC = 04:00 WAT  (SITE-4B)        #
     # Deletes uploaded images 90 days after a site is cancelled or its   #
     # domain lapsed; warns managers 7 days before. Text is kept.         #
