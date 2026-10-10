@@ -26,10 +26,10 @@ CAPS = {
 # key -> (label, group, cap_key or None, built)
 _F = {
     # Capture
-    "form_instant_reply": ("Enquiry form with instant reply", "capture", None, False),
+    "form_instant_reply": ("Enquiry form with instant reply", "capture", None, True),
     "wa_leads": ("WhatsApp messages saved as leads", "capture", None, False),
-    "source_tracking": ("Source tracking (page, product, button)", "capture", None, False),
-    "speed_alerts": ("Speed-to-lead alerts", "capture", None, False),
+    "source_tracking": ("Source tracking (page, product, button)", "capture", None, True),
+    "speed_alerts": ("Speed-to-lead alerts", "capture", None, True),
     "wa_menu": ("WhatsApp menu with set answers", "capture", None, False),
     "my_leads_page": ("My leads page", "capture", None, False),
     # Convert

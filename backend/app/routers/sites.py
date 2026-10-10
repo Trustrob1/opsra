@@ -170,6 +170,12 @@ def _sniff_image(file_bytes: bytes, declared_mime: str) -> bool:
     return True
 
 
+def _capture_cfg(db, org_id: str, site: dict):
+    """SITE-ADDONS A1-2: enquiry form and tracked links, when the site's plan includes them (never raises)."""
+    from app.services import site_capture_service
+    return site_capture_service.render_config(db, org_id, site)
+
+
 def _render_and_store(db, org_id: str, site: dict) -> dict:
     preset = _get_preset(db, org_id, site["preset_id"])
     assets_r = db.table("site_assets").select("id, public_url").eq("site_id", site["id"]).execute()
@@ -177,7 +183,8 @@ def _render_and_store(db, org_id: str, site: dict) -> dict:
     try:
         html = site_premium_service.render_if_premium(db, site, assets_by_id)   # SITE-PREMIUM P1
         if html is None:
-            html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id)
+            html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id,
+                                             capture=_capture_cfg(db, org_id, site))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     updates = {

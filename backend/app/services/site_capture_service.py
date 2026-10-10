@@ -148,6 +148,26 @@ def resolve_key(db: Any, key: str) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
+# what the page renderer needs
+# ---------------------------------------------------------------------------
+
+def render_config(db: Any, org_id: str, site: dict, return_to: Optional[str] = None) -> Optional[dict]:
+    """The capture settings for rendering a site's page, or None when the site's plan has no capture feature (the page
+    then renders exactly as before). Never raises: a problem here must not stop a preview or a publish (S14)."""
+    try:
+        form = ent.has_feature(db, org_id, site["id"], "form_instant_reply")
+        track = ent.has_feature(db, org_id, site["id"], "source_tracking")
+        if not (form or track):
+            return None
+        k = get_or_create_key(db, org_id, site["id"])
+        return {"key": k["key"], "form": form, "track": track, "form_action": form_action_url(k["key"]),
+                "wa_base": wa_link_url(k["key"]), "return_to": return_to}
+    except Exception as exc:  # S14
+        logger.warning("site_capture: render config failed site=%s: %s", site.get("id"), exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # the client workspace (decision D1)
 # ---------------------------------------------------------------------------
 

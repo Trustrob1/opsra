@@ -127,7 +127,9 @@ def preview_site(slug: str, request: Request, db=Depends(get_supabase)):
     try:
         html = site_premium_service.render_if_premium(db, site, assets_by_id)   # SITE-PREMIUM P1
         if html is None:
-            html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id)
+            from app.services import site_capture_service            # SITE-ADDONS A1-2
+            html = site_renderer.render_page(site["content"], site["recipe"], preset, assets_by_id,
+                                             capture=site_capture_service.render_config(db, site["org_id"], site))
     except Exception as exc:
         logger.error("preview_site: render failed for slug=%s: %s", slug, exc)
         raise HTTPException(status_code=500, detail="This preview couldn't be rendered right now")

@@ -198,3 +198,7 @@ export const sendSiteAddonLink = (siteId, addonId) => unwrap(api.post(`/api/v1/s
 /** action: 'pause' | 'resume' | 'cancel'; `until` (ISO) only for resume. */
 export const changeSiteAddon = (siteId, addonId, action, until) =>
   unwrap(api.post(`/api/v1/sites/${siteId}/addons/${addonId}/${action}`, until ? { until } : {}))
+
+// ── SITE-ADDONS A1-2 — lead capture (staff) ──────────────────────────────────
+export const getSiteCapture = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/capture`))
+export const rotateSiteCaptureKey = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/capture/rotate-key`))

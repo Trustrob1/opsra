@@ -29,9 +29,11 @@ Public API:
 """
 from __future__ import annotations
 
+import contextvars
 import re
 import secrets
 from html import escape
+from typing import Optional
 from urllib.parse import quote
 
 # SITE-1C-1: palettes, font pairings, tokens and theme rules live in the design registry.
@@ -260,7 +262,14 @@ class _Assets:
         return f'<div class="photo {css_class}" role="img" aria-label="{esc(label)}"><img src="{url}" alt="{esc(label)}" loading="lazy"></div>'
 
 
-def wa(business: dict, msg: str) -> str:
+# SITE-ADDONS A1-2: which part of the page a WhatsApp button sits in, so a tracked click can say where it came from.
+_SRC = contextvars.ContextVar("wa_src", default="")
+
+
+def wa(business: dict, msg: str, src: Optional[str] = None) -> str:
+    cap = business.get("_capture")
+    if cap and cap.get("track"):                       # a plan with source tracking: go through the tracked link
+        return esc(f"{cap['wa_base']}?src={quote(src or _SRC.get() or 'site', safe='')}&t={quote(msg)}")
     return f"https://wa.me/{esc(str(business['whatsapp_e164']).lstrip('+'))}?text={quote(msg)}"
 
 
@@ -268,8 +277,8 @@ WA_ICON = ('<svg class="wa-i" viewBox="0 0 24 24" fill="none" stroke="currentCol
            '<path d="M4 20l1.3-3.9A8 8 0 1 1 8 19Z"/></svg>')
 
 
-def btn_wa(business: dict, text: str, msg: str, cls: str = "btn btn-accent") -> str:
-    return f'<a class="{cls}" href="{wa(business, msg)}" target="_blank" rel="noopener">{WA_ICON}<span>{esc(text)}</span></a>'
+def btn_wa(business: dict, text: str, msg: str, cls: str = "btn btn-accent", src: Optional[str] = None) -> str:
+    return f'<a class="{cls}" href="{wa(business, msg, src)}" target="_blank" rel="noopener">{WA_ICON}<span>{esc(text)}</span></a>'
 
 
 def price_html(item: dict, price_style: str) -> str:
@@ -368,7 +377,7 @@ def _items(c: dict, variant: str, assets: "_Assets", labels: dict, wa_msgs: dict
             f'<article class="prow {"prow-flip" if i % 2 else ""}">{assets.img_or_placeholder(p.get("image_asset_id"), p["name"], "ph-row")}'
             f'<div class="prow-body">{tag_html(p)}'
             f'<h3>{esc(p["name"])}</h3><p class="desc">{esc(p.get("desc",""))}</p><div class="price big">{price_html(p, price_style)}</div>'
-            f'{btn_wa(b, labels["cta"], order_tpl.format(item=p["name"]))}</div></article>'
+            f'{btn_wa(b, labels["cta"], order_tpl.format(item=p["name"]), src="product:" + p["name"][:60])}</div></article>'
             for i, p in enumerate(items[:4]))
         more = "".join(f'<li><span>{esc(p["name"])}</span>{price_html(p, price_style)}</li>' for p in items[4:])
         more_html = f'<div class="more"><h3>Also available</h3><ul>{more}</ul></div>' if more else ""
@@ -378,10 +387,10 @@ def _items(c: dict, variant: str, assets: "_Assets", labels: dict, wa_msgs: dict
         f0, rest = items[0], items[1:]
         feat = (f'<article class="feat">{assets.img_or_placeholder(f0.get("image_asset_id"), f0["name"], "ph-feat")}<div class="feat-body">'
                 f'<p class="eyebrow">Featured</p><h3>{esc(f0["name"])}</h3><p class="desc">{esc(f0.get("desc",""))}</p>'
-                f'{price_html(f0, price_style)}{btn_wa(b, labels["cta"], order_tpl.format(item=f0["name"]))}</div></article>')
+                f'{price_html(f0, price_style)}{btn_wa(b, labels["cta"], order_tpl.format(item=f0["name"]), src="product:" + f0["name"][:60])}</div></article>')
         small = "".join(
             f'<article class="mini">{assets.img_or_placeholder(p.get("image_asset_id"), p["name"], "ph-mini")}<div><h3>{esc(p["name"])}</h3>'
-            f'{price_html(p, price_style)}<a class="text-link" href="{wa(b, order_tpl.format(item=p["name"]))}" target="_blank" rel="noopener">{esc(labels["cta"])} &rarr;</a></div></article>'
+            f'{price_html(p, price_style)}<a class="text-link" href="{wa(b, order_tpl.format(item=p["name"]), "product:" + p["name"][:60])}" target="_blank" rel="noopener">{esc(labels["cta"])} &rarr;</a></div></article>'
             for p in rest)
         return f'<section class="sec wrap" id="shop"><p class="eyebrow">{esc(labels["items"])}</p><h2>Our {esc(labels["items"])}</h2>{feat}<div class="minis">{small}</div></section>'
 
@@ -391,7 +400,7 @@ def _items(c: dict, variant: str, assets: "_Assets", labels: dict, wa_msgs: dict
         f'{tag_html(p)}'
         f'<div class="card-body"><h3>{esc(p["name"])}</h3><p class="desc">{esc(p.get("desc",""))}</p>'
         f'{price_html(p, price_style)}'
-        f'{btn_wa(b, labels["cta"], order_tpl.format(item=p["name"]), "btn btn-line")}</div></article>'
+        f'{btn_wa(b, labels["cta"], order_tpl.format(item=p["name"]), "btn btn-line", src="product:" + p["name"][:60])}</div></article>'
         for p in items)
     if variant == "scroll":
         holder = f'<div class="grid-scroll" role="group" tabindex="0" aria-label="{esc(labels["items"])}: scroll sideways for more">{cards}</div>'
@@ -441,6 +450,27 @@ def _order(c: dict, b: dict, labels: dict, wa_msgs: dict) -> str:
     msg = wa_msgs.get("start", DEFAULT_WA_MESSAGES["start"])
     return (f'<section class="sec wrap order" id="order"><h2>{esc(o.get("title") or "How to order")}</h2><ol class="steps">{steps_html}</ol>'
             f'<div class="row">{btn_wa(b, labels["cta"], msg)}</div></section>')
+
+
+# ---------------------------------------------------------------- SITE-ADDONS A1-2: the enquiry form
+# A plain HTML form post (no script). It exists only when the site's plan includes it at render time; the server checks
+# the plan again on every post, so a paused plan turns it off without a republish. Every string goes through esc().
+
+def _enquiry(c: dict, cap: dict) -> str:
+    biz = esc(c["business"]["name"])
+    ret = f'<input type="hidden" name="return_to" value="{esc(cap["return_to"])}">' if cap.get("return_to") else ""
+    return (f'<section class="sec wrap enq" id="enquire"><h2>Send us an enquiry</h2>'
+            f'<p class="lead">Tell us what you need and {biz} will get back to you.</p>'
+            f'<form class="enq-form" method="post" action="{esc(cap["form_action"])}" accept-charset="utf-8">'
+            f'<input type="hidden" name="src" value="enquiry-form">{ret}'
+            '<label>Your name<input name="name" required maxlength="120" autocomplete="name"></label>'
+            '<label>Phone or WhatsApp number<input name="phone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel"></label>'
+            '<label>Email (optional)<input name="email" type="email" maxlength="200" autocomplete="email"></label>'
+            '<label>Your message<textarea name="message" rows="4" maxlength="2000"></textarea></label>'
+            '<div class="enq-hp" aria-hidden="true"><label>Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label></div>'
+            f'<label class="enq-consent"><input type="checkbox" name="consent" value="on" required>'
+            f'<span>I agree that {biz} may contact me about my enquiry.</span></label>'
+            '<button class="btn btn-accent" type="submit">Send enquiry</button></form></section>')
 
 
 # ---------------------------------------------------------------- SITE-1C-3: extra sections
@@ -844,6 +874,16 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 .btn-ghost-light{{border-color:#fff;color:#fff}}
 .btn-small{{padding:10px 16px;font-size:.85rem}}
 .wa-i{{width:18px;height:18px;flex:none}}
+.enq{{max-width:700px}}
+.enq-form{{display:grid;gap:14px;margin-top:24px}}
+.enq-form label{{display:grid;gap:6px;font-size:.9rem;font-weight:600}}
+.enq-form input,.enq-form textarea{{font:inherit;font-weight:400;color:var(--ink);background:transparent;border:1.5px solid var(--line);border-radius:var(--r);padding:12px 14px;min-height:44px;width:100%}}
+.enq-form textarea{{min-height:110px;resize:vertical}}
+.enq-form input:focus,.enq-form textarea:focus{{outline:2px solid var(--accent);outline-offset:1px}}
+.enq-form .enq-consent{{display:flex;gap:10px;align-items:flex-start;font-weight:400;font-size:.85rem;color:var(--muted)}}
+.enq-form .enq-consent input{{width:20px;min-height:20px;margin-top:2px;flex:none}}
+.enq-form button{{cursor:pointer;justify-self:start;font-family:inherit}}
+.enq-hp{{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}}
 .text-link{{color:var(--accent);font-weight:600;font-size:.9rem}}
 .sec{{padding-top:80px;padding-bottom:80px}}
 .nav-bar{{border-bottom:1px solid var(--line);background:var(--ground)}}
@@ -1004,12 +1044,21 @@ h1{{font-size:clamp(2.6rem,6vw,4.6rem)}} h2{{font-size:clamp(1.9rem,4vw,2.8rem);
 
 # ---------------------------------------------------------------- top-level render
 
-def _render_body(content: dict, recipe: dict, preset: dict, assets: "_Assets") -> str:
+def _render_body(content: dict, recipe: dict, preset: dict, assets: "_Assets", capture: Optional[dict] = None) -> str:
     labels = {**DEFAULT_LABELS, **(preset.get("labels") or {})}
     wa_msgs = {**DEFAULT_WA_MESSAGES, **(preset.get("wa_messages") or {})}
     variants = recipe.get("variants") or {}
     hidden = set(recipe.get("hidden") or [])
+    if capture:                                         # SITE-ADDONS A1-2: carried in a copy, never saved into the content
+        content = {**content, "business": {**content["business"], "_capture": capture}}
     b = content["business"]
+
+    def at(name, fn):                                   # tells wa() which part of the page a button sits in
+        tok = _SRC.set(name)
+        try:
+            return fn()
+        finally:
+            _SRC.reset(tok)
 
     # `variants.get(key, default)` only falls back when the key is ABSENT, not
     # when it's present with value None — and every recipe's `variants` here
@@ -1039,27 +1088,30 @@ def _render_body(content: dict, recipe: dict, preset: dict, assets: "_Assets") -
     order = recipe.get("order", [])
     # The announcement bar always sits above the menu, wherever the template listed it.
     bar = _announcement(content) if ("announcement" in order and "announcement" not in hidden) else ""
-    parts = [bar, _nav(content, labels, wa_msgs)]
+    parts = [bar, at("nav", lambda: _nav(content, labels, wa_msgs))]
     visit_shown = False
     for sec in order:
         if sec in hidden or sec not in renderers:
             continue
-        html = renderers[sec]()
+        html = at(sec, renderers[sec])
         if sec == "visit" and html:
             visit_shown = True
         parts.append(html)
+    if capture and capture.get("form"):
+        parts.append(_enquiry(content, capture))
     parts.append(_footer(content, visit_shown))
     if (recipe.get("tokens") or {}).get("finish") == "refined":  # SITE-1C-3d: floating WhatsApp button
-        parts.append(f'<a class="wa-fab" href="{wa(b, wa_msgs.get("browse", DEFAULT_WA_MESSAGES["browse"]))}" '
+        parts.append(f'<a class="wa-fab" href="{wa(b, wa_msgs.get("browse", DEFAULT_WA_MESSAGES["browse"]), "floating-button")}" '
                      f'target="_blank" rel="noopener" aria-label="{esc(labels["cta"])}">{WA_ICON}</a>')
     return "\n".join(p for p in parts if p)
 
 
-def _render_page(content: dict, recipe: dict, preset: dict, assets: "_Assets", preview_bar: bool) -> str:
+def _render_page(content: dict, recipe: dict, preset: dict, assets: "_Assets", preview_bar: bool,
+                 capture: Optional[dict] = None) -> str:
     validate_recipe(preset, recipe)
     palette = resolve_recipe_colours(recipe)
     theme = THEMES[recipe["theme"]]
-    body = _render_body(content, recipe, preset, assets)
+    body = _render_body(content, recipe, preset, assets, capture)
     bar = ('<div style="background:#1b1b1b;color:#fff;text-align:center;font:600 12px/1 system-ui;padding:8px;letter-spacing:.06em">'
            'PREVIEW &mdash; NOT YET LIVE</div>') if preview_bar else ""
     seo = content.get("seo") or {}
@@ -1077,12 +1129,12 @@ def _render_page(content: dict, recipe: dict, preset: dict, assets: "_Assets", p
             f'<body>{bar}{body}</body></html>')
 
 
-def render_page(content: dict, recipe: dict, preset: dict, assets_by_id: dict) -> str:
+def render_page(content: dict, recipe: dict, preset: dict, assets_by_id: dict, capture: Optional[dict] = None) -> str:
     """The public preview (§8.5) — includes the neutral preview bar and noindex."""
-    return _render_page(content, recipe, preset, _Assets(assets_by_id, export_mode=False), preview_bar=True)
+    return _render_page(content, recipe, preset, _Assets(assets_by_id, export_mode=False), preview_bar=True, capture=capture)
 
 
-def render_export(content: dict, recipe: dict, preset: dict, assets_by_id: dict) -> str:
+def render_export(content: dict, recipe: dict, preset: dict, assets_by_id: dict, capture: Optional[dict] = None) -> str:
     """The export bundle's index.html (§8.6) — no preview bar, indexable, local image
     paths (each asset dict in assets_by_id must include 'export_path', e.g. 'images/hero.jpg')."""
-    return _render_page(content, recipe, preset, _Assets(assets_by_id, export_mode=True), preview_bar=False)
+    return _render_page(content, recipe, preset, _Assets(assets_by_id, export_mode=True), preview_bar=False, capture=capture)

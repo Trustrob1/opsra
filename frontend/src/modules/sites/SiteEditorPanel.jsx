@@ -23,6 +23,7 @@ import PremiumPanel from './PremiumPanel'
 import ImportPanel from './ImportPanel'
 import LibraryPanel from './LibraryPanel'
 import SiteAddonsCard from './SiteAddonsCard'
+import SiteCaptureCard from './SiteCaptureCard'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -172,6 +173,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
       </p>
 
       <SiteAddonsCard siteId={siteId} siteName={site.client_business_name} canEdit={canEdit} showToast={showToast} />
+      <SiteCaptureCard siteId={siteId} canEdit={canEdit} showToast={showToast} />
       <PremiumPanel siteId={siteId} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />
       <ImportPanel siteId={siteId} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />
       <LibraryPanel site={site} presetKey={preset?.key} canEdit={canEdit} showToast={showToast} onSiteChanged={refreshSite} />

@@ -979,7 +979,11 @@ def collect_export_files(db: Any, org_id: str, site_id: str) -> tuple:
             from app.services import site_premium_service   # SITE-PREMIUM P1
             html = site_premium_service.render_if_premium(db, site, assets_by_id, export=True, canonical_domain=domain)
             if html is None:
-                html = site_renderer.render_export(site["content"], site["recipe"], preset, assets_by_id)
+                from app.services import site_capture_service              # SITE-ADDONS A1-2
+                html = site_renderer.render_export(
+                    site["content"], site["recipe"], preset, assets_by_id,
+                    capture=site_capture_service.render_config(db, site["org_id"], site,
+                                                              return_to=(f"https://{domain}/" if domain else None)))
         except ValueError as exc:
             raise ValidationFailed(str(exc))
         files.append(("index.html", html))
