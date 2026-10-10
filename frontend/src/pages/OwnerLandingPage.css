@@ -1,6 +1,6 @@
-/* frontend/src/pages/OwnerLandingPage.css — OWNER-LANDING-1. Everything is scoped under .ow and every class is prefixed ow- so nothing leaks into (or from) the staff app or the /sites page. */
+/* frontend/src/pages/OwnerLandingPage.css — OWNER-LANDING-1 + OWNER-LANDING-2 (visual redesign: see the block at the bottom). Everything is scoped under .ow and every class is prefixed ow- so nothing leaks into (or from) the staff app or the /sites page. */
 .ow{--paper:#FAF9F7;--card:#fff;--ink:#0B1B2B;--ink2:#2B3B4B;--mute:#4A5B6B;--line:#E7E4DE;
-  --teal:#028090;--teal-deep:#015F6B;--teal-tint:#E4F3F5;--wa:#25D366;--wa-deep:#1FBE5C;--wa-ink:#06301A;
+  --teal:#028090;--teal-deep:#015F6B;--navy:#0D1B2A;--navy2:#122638;--jade:#7FD8C0;--teal-tint:#E4F3F5;--wa:#25D366;--wa-deep:#1FBE5C;--wa-ink:#06301A;
   --pad:clamp(16px,4vw,40px);--ease:cubic-bezier(.22,1,.36,1);
   --sans:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -171,6 +171,157 @@
 @media (max-width:380px){
   .ow .ow-btn{padding:0 18px;font-size:15px}
 }
+
+
+/* ================= OWNER-LANDING-2: premium redesign (overrides above) ================= */
+.ow{background:var(--paper)}
+.ow .ow-progress{position:fixed;left:0;right:0;top:0;height:3px;z-index:120;pointer-events:none}
+.ow .ow-progress i{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--jade));transform:scaleX(0);transform-origin:0 50%}
+
+/* nav sits on the navy hero */
+.ow .ow-nav{background:rgba(13,27,42,.94);color:#fff}
+.ow .ow-nav.ow-solid{border-bottom-color:rgba(255,255,255,.1)}
+.ow .ow-nav ul{color:#C9D5DD}
+.ow .ow-nav ul a:hover{color:#fff}
+.ow .ow-mark i{border-color:var(--jade)}
+
+/* hero */
+.ow .ow-hero{position:relative;background:var(--navy);color:#fff;padding:clamp(40px,6vw,80px) 0 clamp(64px,8vw,110px);isolation:isolate}
+.ow .ow-glow{position:absolute;z-index:-1;inset:-20% -10% auto auto;width:70vw;height:70vw;max-width:900px;max-height:900px;background:radial-gradient(closest-side,rgba(2,128,144,.55),rgba(2,128,144,0));filter:blur(10px);animation:ow-drift 14s ease-in-out infinite alternate}
+@keyframes ow-drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(-6%,8%,0) scale(1.12)}}
+.ow .ow-hero .ow-label{color:var(--jade)}
+.ow .ow-hero h1{max-width:11ch;font-size:clamp(44px,7.6vw,88px)}
+.ow .ow-lede{color:#C9D5DD}
+.ow .ow-link{border-bottom-color:var(--jade);color:#fff}
+.ow .ow-link:hover{color:var(--jade)}
+.ow .ow-w{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.08em}
+.ow .ow-w>span{display:inline-block;animation:ow-rise .9s var(--ease) both;animation-delay:var(--d)}
+@keyframes ow-rise{from{transform:translateY(105%)}to{transform:none}}
+.ow .ow-fade{animation:ow-fadeup .9s var(--ease) both;animation-delay:var(--d,0ms)}
+@keyframes ow-fadeup{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+
+.ow .ow-stage{position:relative;justify-self:center;width:100%;max-width:560px}
+.ow .ow-photo{position:relative;aspect-ratio:4/5;border-radius:28px;overflow:hidden;background:linear-gradient(160deg,#0E6E7A,#028090 45%,#7FD8C0);box-shadow:0 40px 80px rgba(0,0,0,.45)}
+.ow .ow-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:70% 50%;animation:ow-kb 18s ease-in-out infinite alternate}
+@keyframes ow-kb{from{transform:scale(1)}to{transform:scale(1.07)}}
+.ow .ow-photo::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,27,42,0) 55%,rgba(13,27,42,.35));pointer-events:none}
+.ow .ow-photo-fallback{position:absolute;inset:0}
+.ow .ow-photo-fallback i{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.35)}
+.ow .ow-photo-fallback i:nth-child(1){width:70%;aspect-ratio:1;left:-15%;top:-10%}
+.ow .ow-photo-fallback i:nth-child(2){width:55%;aspect-ratio:1;right:-12%;bottom:8%}
+.ow .ow-photo-fallback i:nth-child(3){width:30%;aspect-ratio:1;left:30%;top:40%;background:rgba(255,255,255,.12)}
+.ow .ow-float{position:absolute;display:grid;gap:2px;background:#fff;color:var(--ink);padding:12px 16px;border-radius:16px;box-shadow:0 18px 40px rgba(0,0,0,.28);font-size:14px;line-height:1.3;animation:ow-bob 6s ease-in-out infinite}
+.ow .ow-float b{font-size:14px}
+.ow .ow-float span{color:var(--mute);font-size:13px}
+.ow .ow-float::before{content:"";position:absolute;left:-6px;top:-6px;width:14px;height:14px;border-radius:50%;background:var(--wa);box-shadow:0 0 0 4px rgba(37,211,102,.25)}
+.ow .ow-f1{left:-6%;top:12%;animation-delay:0s}
+.ow .ow-f2{right:-4%;top:46%;animation-delay:-2s}
+.ow .ow-f3{left:4%;bottom:6%;animation-delay:-4s}
+@keyframes ow-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.ow .ow-credit{margin-top:12px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:#8FA3B3}
+
+/* ticker */
+.ow .ow-ticker{background:var(--teal-deep);color:#fff;overflow:hidden;border-block:1px solid rgba(255,255,255,.12)}
+.ow .ow-track{display:flex;gap:44px;width:max-content;padding:18px 0;animation:ow-marq 38s linear infinite}
+.ow .ow-track span{font-weight:700;font-size:17px;letter-spacing:-.01em;white-space:nowrap;display:inline-flex;align-items:center;gap:44px}
+.ow .ow-track span::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--jade)}
+.ow .ow-ticker:hover .ow-track{animation-play-state:paused}
+@keyframes ow-marq{to{transform:translateX(-50%)}}
+
+/* reveal on scroll (only when script has marked the page) */
+.ow.ow-js [data-rv]{opacity:0;transform:translateY(26px);transition:opacity .8s var(--ease),transform .8s var(--ease);transition-delay:var(--d,0ms)}
+.ow.ow-js [data-rv].ow-vis{opacity:1;transform:none}
+
+/* problems: light, big type */
+.ow .ow-problem{background:var(--paper);color:var(--ink)}
+.ow .ow-problem .ow-label{color:var(--teal-deep)}
+.ow .ow-rows{border-top-color:var(--ink)}
+.ow .ow-rows li{border-bottom-color:var(--line);position:relative;transition:padding-left .4s var(--ease)}
+.ow .ow-rows li::before{content:"";position:absolute;left:0;bottom:-1px;height:2px;width:0;background:var(--teal);transition:width .6s var(--ease)}
+.ow .ow-rows li:hover{padding-left:12px}
+.ow .ow-rows li:hover::before{width:100%}
+.ow .ow-rows strong{font-size:clamp(24px,4vw,44px);letter-spacing:-.03em}
+.ow .ow-rows span{color:var(--mute)}
+
+/* how it works: dark */
+.ow .ow-how{background:var(--navy);color:#fff}
+.ow .ow-how .ow-label{color:var(--jade)}
+.ow .ow-how .ow-phone{box-shadow:0 30px 80px rgba(0,0,0,.5);border-color:#050C14}
+.ow .ow-steps button{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.14);color:#fff}
+.ow .ow-steps small{color:#B6C5D0}
+.ow .ow-steps .ow-on button{background:rgba(2,128,144,.28);border-color:var(--jade)}
+.ow .ow-num{background:rgba(255,255,255,.14)}
+.ow .ow-steps .ow-on .ow-num{background:var(--jade);color:var(--navy)}
+
+/* board */
+.ow .ow-board{padding:var(--s9) 0;background:var(--paper)}
+.ow .ow-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--s4);margin-bottom:var(--s7)}
+.ow .ow-stats li{background:#fff;border:1px solid var(--line);border-radius:20px;padding:var(--s5)}
+.ow .ow-stats b{display:block;font-size:clamp(40px,6vw,72px);line-height:1;letter-spacing:-.05em;color:var(--teal-deep);font-variant-numeric:tabular-nums}
+.ow .ow-stats li>span{display:block;margin-top:8px;color:var(--mute);font-size:15px}
+.ow .ow-board-grid{display:grid;gap:var(--s5)}
+.ow .ow-cols{display:grid;grid-template-columns:1fr;gap:var(--s3)}
+.ow .ow-col{background:#fff;border:1px solid var(--line);border-radius:20px;padding:var(--s4);display:grid;gap:10px;align-content:start}
+.ow .ow-col h3{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.ow .ow-col h3::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--c)}
+.ow .ow-hot{--c:#E5484D}.ow .ow-warm{--c:#F2A93B}.ow .ow-cold{--c:#6B8CAE}
+.ow .ow-lead-card{display:grid;gap:2px;border-radius:14px;background:var(--paper);border-left:4px solid var(--c);padding:12px 14px}
+.ow .ow-lead-card b{font-size:16px}
+.ow .ow-lead-card small{color:var(--mute);font-size:14px}
+.ow.ow-js .ow-cols .ow-lead-card{opacity:0;transform:translateX(-14px)}
+.ow.ow-js .ow-cols.ow-vis .ow-lead-card{opacity:1;transform:none;transition:opacity .6s var(--ease),transform .6s var(--ease);transition-delay:var(--d)}
+.ow .ow-chartbox{background:var(--navy);color:#fff;border-radius:24px;padding:var(--s5)}
+.ow .ow-chartbox .ow-label{color:var(--jade)}
+.ow .ow-chart{width:100%;height:auto;margin-top:var(--s4);display:block}
+.ow .ow-chart .ow-grid{stroke:rgba(255,255,255,.12);stroke-width:1}
+.ow .ow-chart .ow-draw{stroke:var(--jade);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:0}
+.ow .ow-chart .ow-area{opacity:1}
+.ow .ow-chart .ow-pt{fill:var(--navy);stroke:var(--jade);stroke-width:3}
+.ow .ow-chart .ow-day{fill:#8FA3B3;font-family:var(--mono);font-size:11px}
+.ow.ow-js .ow-chartbox .ow-draw{stroke-dashoffset:1}
+.ow.ow-js .ow-chartbox .ow-area{opacity:0}
+.ow.ow-js .ow-chartbox .ow-pt{opacity:0}
+.ow.ow-js .ow-chartbox.ow-vis .ow-draw{stroke-dashoffset:0;transition:stroke-dashoffset 1.8s var(--ease) .2s}
+.ow.ow-js .ow-chartbox.ow-vis .ow-area{opacity:1;transition:opacity 1s ease 1.2s}
+.ow.ow-js .ow-chartbox.ow-vis .ow-pt{opacity:1;transition:opacity .4s ease var(--d)}
+
+/* plans: deck lift */
+.ow .ow-card,.ow .ow-site{transition:transform .5s var(--ease),box-shadow .5s var(--ease),opacity .8s var(--ease)}
+.ow .ow-card:hover,.ow .ow-site:hover{transform:translateY(-8px);box-shadow:0 28px 60px rgba(11,27,43,.14)}
+.ow.ow-js .ow-card[data-rv]{transform:translateY(40px) scale(.97)}
+.ow.ow-js .ow-card[data-rv].ow-vis{transform:none}
+.ow.ow-js .ow-card[data-rv].ow-vis:hover{transform:translateY(-8px)}
+.ow .ow-suggested{box-shadow:0 24px 64px rgba(2,128,144,.22)}
+.ow .ow-flag{background:linear-gradient(90deg,var(--teal),var(--teal-deep))}
+
+/* buttons */
+.ow .ow-btn{transform:translate(var(--mx,0),var(--my,0));position:relative;overflow:hidden}
+.ow .ow-wa::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.45) 50%,transparent 70%);transform:translateX(-120%);transition:transform .7s var(--ease)}
+.ow .ow-wa:hover::after{transform:translateX(120%)}
+.ow .ow-btn:hover{transform:translate(var(--mx,0),calc(var(--my,0) - 1px))}
+.ow .ow-hero .ow-wa,.ow .ow-big{box-shadow:0 0 0 0 rgba(37,211,102,.5);animation:ow-pulse 2.8s ease-out infinite}
+@keyframes ow-pulse{0%{box-shadow:0 0 0 0 rgba(37,211,102,.5)}70%,100%{box-shadow:0 0 0 18px rgba(37,211,102,0)}}
+
+/* closing band */
+.ow .ow-close{position:relative;overflow:hidden;isolation:isolate;background:linear-gradient(160deg,var(--teal-deep),var(--navy) 85%)}
+.ow .ow-glow2{inset:auto auto -40% -10%;opacity:.7}
+.ow .ow-close h2{font-size:clamp(34px,6vw,64px)}
+
+@media (min-width:640px){
+  .ow .ow-stats{grid-template-columns:repeat(4,1fr)}
+  .ow .ow-cols{grid-template-columns:repeat(3,1fr)}
+}
+@media (min-width:980px){
+  .ow .ow-hero-grid{grid-template-columns:1.05fr .95fr;gap:var(--s8)}
+  .ow .ow-hero-phone{margin-bottom:0}
+  .ow .ow-board-grid{grid-template-columns:1.1fr .9fr;align-items:stretch}
+  .ow .ow-cols{grid-template-columns:1fr 1fr 1fr}
+}
+@media (max-width:979px){
+  .ow .ow-f1{left:2%}.ow .ow-f2{right:2%}
+}
 @media (prefers-reduced-motion:reduce){
   .ow *,.ow *::before,.ow *::after{animation:none!important;transition:none!important}
+  .ow .ow-btn,.ow .ow-btn:hover{transform:none!important}
 }
+.ow .ow-phone{color:var(--ink)}

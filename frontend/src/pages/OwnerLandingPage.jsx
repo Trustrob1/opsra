@@ -1,6 +1,6 @@
 /**
  * frontend/src/pages/OwnerLandingPage.jsx
- * OWNER-LANDING-1 — public landing page + pricing for BUSINESS OWNERS.
+ * OWNER-LANDING-1 (+ OWNER-LANDING-2 visual redesign) — public landing page + pricing for BUSINESS OWNERS.
  * Registered in App.jsx at `/business`. Standalone page (no AppShell, no staff auth).
  * Styles: OwnerLandingPage.css, scoped under `.ow`, every class prefixed `ow-`.
  *
@@ -8,6 +8,10 @@
  * sits inside the page (#plans). Share https://<host>/business#plans.
  *
  * ---------------------------------------------------------------------------
+ * HERO PHOTO: save the image as  frontend/public/images/owner-hero.webp  (about 1600px wide,
+ * under 300 KB). Until the file exists the hero shows a branded panel instead (no broken image).
+ * The photo is an AI-generated illustration, not a real client; the page says so beside it.
+ *
  * THINGS TRUST EDITS (all at the top of this file):
  *   WHATSAPP_NUMBER   international format, digits only.
  *   WEBSITES / PLANS / ADDONS   PLACEHOLDER PRICES. Provisional, to be adjusted.
@@ -182,6 +186,23 @@ const QUOTE = {
   role: "[Business, city]",
 };
 
+const HERO_IMG = "/images/owner-hero.webp";
+const TICKER = ["Fashion shops", "Salons and barbers", "Schools and tutors", "Clinics and pharmacies", "Restaurants and bakers", "Real estate agents", "Electronics and phones", "Event planners", "Gyms and studios"];
+
+/* Example numbers for the demo strip and chart. Labelled “Example” on the page. */
+const EXAMPLE_WEEK = [
+  [18, "new leads"],
+  [7, "hot leads"],
+  [4, "sales"],
+  [0, "left unanswered"],
+];
+const CHART = [3, 5, 4, 8, 7, 12, 18];
+const BOARD = [
+  ["Hot", "ow-hot", [["Amaka", "Red ankara dress · website"], ["Tunde", "Ready to pay · Instagram ad"]]],
+  ["Warm", "ow-warm", [["Ngozi", "Asked about delivery · WhatsApp"], ["Bayo", "Comparing prices · website"]]],
+  ["Cold", "ow-cold", [["Hauwa", "Just browsing · Facebook ad"]]],
+];
+
 function Wa({ className = "", children, text = "Hi, I'd like to know more about your plans." }) {
   return (
     <a className={`ow-btn ow-wa ${className}`} href={waHref(text)} target="_blank" rel="noopener noreferrer">
@@ -212,11 +233,75 @@ function Phone({ step }) {
   );
 }
 
+/* Counts up once when scrolled into view. Shows the final number straight away if motion is reduced. */
+function Count({ to }) {
+  const ref = useRef(null);
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || !("IntersectionObserver" in window) || to === 0) { setN(to); return undefined; }
+    let raf = 0;
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      const t0 = performance.now();
+      const tick = (t) => {
+        const k = Math.min(1, (t - t0) / 1200);
+        setN(Math.round(to * (1 - Math.pow(1 - k, 3))));
+        if (k < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }, { threshold: 0.6 });
+    io.observe(el);
+    return () => { io.disconnect(); cancelAnimationFrame(raf); };
+  }, [to]);
+  return <span ref={ref}>{n}</span>;
+}
+
+function Words({ text }) {
+  return text.split(" ").map((w, i) => (
+    <span key={i}>
+      <span className="ow-w"><span style={{ "--d": `${120 + i * 90}ms` }}>{w}</span></span>{" "}
+    </span>
+  ));
+}
+
+function Chart() {
+  const W = 520, H = 200, P = 18, max = Math.max(...CHART);
+  const pts = CHART.map((v, i) => [P + (i * (W - 2 * P)) / (CHART.length - 1), H - P - (v / max) * (H - 2 * P)]);
+  const line = pts.map(([x, y]) => `${x},${y}`).join(" ");
+  const area = `${P},${H - P} ${line} ${W - P},${H - P}`;
+  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  return (
+    <svg className="ow-chart" viewBox={`0 0 ${W} ${H + 22}`} role="img" aria-label="Example chart: leads rising through the week">
+      <defs>
+        <linearGradient id="owg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#028090" stopOpacity=".35" />
+          <stop offset="1" stopColor="#028090" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {[0.25, 0.5, 0.75].map((f) => (
+        <line key={f} x1={P} x2={W - P} y1={P + f * (H - 2 * P)} y2={P + f * (H - 2 * P)} className="ow-grid" />
+      ))}
+      <polygon points={area} fill="url(#owg)" className="ow-area" />
+      <polyline points={line} pathLength="1" className="ow-draw" fill="none" />
+      {pts.map(([x, y], i) => (
+        <g key={i}>
+          <circle cx={x} cy={y} r="5" className="ow-pt" style={{ "--d": `${0.9 + i * 0.12}s` }} />
+          <text x={x} y={H + 14} textAnchor="middle" className="ow-day">{days[i]}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 export default function OwnerLandingPage() {
   const rootRef = useRef(null);
   const [solid, setSolid] = useState(false);
   const [step, setStep] = useState(0);
   const [open, setOpen] = useState(0);
+  const [imgOk, setImgOk] = useState(true);
   const stepRefs = useRef([]);
 
   useEffect(() => {
@@ -245,9 +330,43 @@ export default function OwnerLandingPage() {
     });
     document.head.appendChild(ld);
 
-    const onScroll = () => setSolid(window.scrollY > 8);
+    const root = rootRef.current;
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const bar = root.querySelector(".ow-progress i");
+    const onScroll = () => {
+      setSolid(window.scrollY > 8);
+      const h = document.documentElement.scrollHeight - window.innerHeight;
+      if (bar && h > 0) bar.style.transform = `scaleX(${Math.min(1, window.scrollY / h)})`;
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
+
+    /* Scroll reveal. Elements stay visible unless this script runs (class ow-js). */
+    let rv = null;
+    if ("IntersectionObserver" in window && !reduce) {
+      root.classList.add("ow-js");
+      rv = new IntersectionObserver(
+        (entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("ow-vis"); rv.unobserve(e.target); } }),
+        { threshold: 0.12, rootMargin: "0px 0px -6% 0px" }
+      );
+      root.querySelectorAll("[data-rv]").forEach((el) => rv.observe(el));
+    }
+
+    /* Buttons lean slightly toward the pointer. */
+    const onMove = (e) => {
+      if (reduce) return;
+      const b = e.target.closest && e.target.closest(".ow-btn");
+      if (!b) return;
+      const r = b.getBoundingClientRect();
+      b.style.setProperty("--mx", `${((e.clientX - r.left) / r.width - 0.5) * 8}px`);
+      b.style.setProperty("--my", `${((e.clientY - r.top) / r.height - 0.5) * 6}px`);
+    };
+    const onLeave = (e) => {
+      const b = e.target.closest && e.target.closest(".ow-btn");
+      if (b) { b.style.setProperty("--mx", "0px"); b.style.setProperty("--my", "0px"); }
+    };
+    root.addEventListener("mousemove", onMove);
+    root.addEventListener("mouseout", onLeave);
 
     let io = null;
     if ("IntersectionObserver" in window) {
@@ -268,13 +387,17 @@ export default function OwnerLandingPage() {
       link.remove();
       ld.remove();
       window.removeEventListener("scroll", onScroll);
+      root.removeEventListener("mousemove", onMove);
+      root.removeEventListener("mouseout", onLeave);
       if (io) io.disconnect();
+      if (rv) rv.disconnect();
     };
   }, []);
 
   return (
     <div className="ow" ref={rootRef}>
       <a className="ow-skip" href="#plans">Skip to the plans</a>
+      <div className="ow-progress" aria-hidden="true"><i /></div>
 
       <header className={`ow-nav${solid ? " ow-solid" : ""}`}>
         <div className="ow-wrap ow-nav-row">
@@ -292,30 +415,49 @@ export default function OwnerLandingPage() {
 
       <main>
         <section className="ow-hero">
+          <div className="ow-glow" aria-hidden="true" />
           <div className="ow-wrap ow-hero-grid">
-            <div>
-              <p className="ow-label">For shops, salons, schools and more</p>
-              <h1>Never lose a customer message again.</h1>
-              <p className="ow-lede">
+            <div className="ow-hero-copy">
+              <p className="ow-label ow-fade" style={{ "--d": "0ms" }}>For shops, salons, schools and more</p>
+              <h1><Words text="Never lose a customer message again." /></h1>
+              <p className="ow-lede ow-fade" style={{ "--d": "700ms" }}>
                 We set up your website and your WhatsApp so every enquiry is answered, followed up and
                 counted. You keep running the business.
               </p>
-              <div className="ow-cta-row">
+              <div className="ow-cta-row ow-fade" style={{ "--d": "850ms" }}>
                 <Wa>Message us on WhatsApp</Wa>
                 <a className="ow-link" href="#plans">See the plans &rarr;</a>
               </div>
             </div>
-            <div className="ow-hero-phone"><Phone step={1} /></div>
+
+            <div className="ow-stage ow-fade" style={{ "--d": "300ms" }}>
+              <div className="ow-photo">
+                {imgOk && (
+                  <img src={HERO_IMG} alt="A shop owner checking her phone at the counter of her boutique (AI-generated illustration)" width="1200" height="800" fetchpriority="high" onError={() => setImgOk(false)} />
+                )}
+                {!imgOk && <div className="ow-photo-fallback" aria-hidden="true"><i /><i /><i /></div>}
+              </div>
+              <div className="ow-float ow-f1"><b>New lead saved</b><span>Amaka · Dresses page</span></div>
+              <div className="ow-float ow-f2"><b>Replied straight away</b><span>“The red dress is ₦25,000…”</span></div>
+              <div className="ow-float ow-f3"><b>Hot lead</b><span>Tunde · ready to pay</span></div>
+              <p className="ow-credit">Illustration, not a real customer. Example messages.</p>
+            </div>
           </div>
         </section>
 
+        <div className="ow-ticker" aria-label="Kinds of business this suits">
+          <div className="ow-track">
+            {[...TICKER, ...TICKER].map((t, i) => (<span key={i} aria-hidden={i >= TICKER.length}>{t}</span>))}
+          </div>
+        </div>
+
         <section className="ow-problem" aria-labelledby="problem-h">
           <div className="ow-wrap">
-            <p className="ow-label">Sound familiar?</p>
-            <h2 id="problem-h" className="ow-h2">Four things owners say every week.</h2>
+            <p className="ow-label" data-rv>Sound familiar?</p>
+            <h2 id="problem-h" className="ow-h2" data-rv>Four things owners say every week.</h2>
             <ul className="ow-rows">
-              {PROBLEMS.map(([q, a]) => (
-                <li key={q}><strong>{q}</strong><span>{a}</span></li>
+              {PROBLEMS.map(([q, a], i) => (
+                <li key={q} data-rv style={{ "--d": `${i * 90}ms` }}><strong>{q}</strong><span>{a}</span></li>
               ))}
             </ul>
           </div>
@@ -323,7 +465,7 @@ export default function OwnerLandingPage() {
 
         <section id="how" className="ow-how" aria-labelledby="how-h">
           <div className="ow-wrap">
-            <div className="ow-head">
+            <div className="ow-head" data-rv>
               <p className="ow-label">How it works</p>
               <h2 id="how-h" className="ow-h2">From first message to a weekly summary.</h2>
             </div>
@@ -348,17 +490,48 @@ export default function OwnerLandingPage() {
           </div>
         </section>
 
+        <section className="ow-board" aria-labelledby="board-h">
+          <div className="ow-wrap">
+            <div className="ow-head" data-rv>
+              <p className="ow-label">What you see</p>
+              <h2 id="board-h" className="ow-h2">Every lead in one place, sorted for you.</h2>
+              <p className="ow-sub">Example week for a small fashion shop. Your own numbers will differ.</p>
+            </div>
+            <ul className="ow-stats" data-rv>
+              {EXAMPLE_WEEK.map(([n, l]) => (
+                <li key={l}><b><Count to={n} /></b><span>{l}</span></li>
+              ))}
+            </ul>
+            <div className="ow-board-grid">
+              <div className="ow-cols" data-rv>
+                {BOARD.map(([name, cls, cards]) => (
+                  <div key={name} className={`ow-col ${cls}`}>
+                    <h3>{name}</h3>
+                    {cards.map(([who, what], i) => (
+                      <p key={who} className="ow-lead-card" style={{ "--d": `${300 + i * 160}ms` }}><b>{who}</b><small>{what}</small></p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div className="ow-chartbox" data-rv>
+                <p className="ow-label">Leads this week · example</p>
+                <Chart />
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section id="plans" className="ow-plans" aria-labelledby="plans-h">
           <div className="ow-wrap">
-            <div className="ow-head">
+            <div className="ow-head" data-rv>
               <p className="ow-label">Plans and prices</p>
               <h2 id="plans-h" className="ow-h2">Start with a website. Add the rest when you are ready.</h2>
               <p className="ow-sub">Prices are in naira and may change before you start.</p>
             </div>
 
             <div className="ow-sites">
-              {WEBSITES.map((w) => (
-                <article key={w.name} className="ow-site">
+              {WEBSITES.map((w, i) => (
+                <article key={w.name} className="ow-site" data-rv style={{ "--d": `${i * 100}ms` }}>
                   <h3>{w.name}</h3>
                   <p className="ow-price"><b>{naira(w.price)}</b> <span>one time</span></p>
                   <p className="ow-note">{w.note}</p>
@@ -370,8 +543,8 @@ export default function OwnerLandingPage() {
             </div>
 
             <div className="ow-cards">
-              {PLANS.map((p) => (
-                <article key={p.key} className={`ow-card${p.suggested ? " ow-suggested" : ""}`}>
+              {PLANS.map((p, i) => (
+                <article key={p.key} className={`ow-card${p.suggested ? " ow-suggested" : ""}`} data-rv style={{ "--d": `${i * 130}ms` }}>
                   {p.suggested && <span className="ow-flag">Suggested starting point</span>}
                   <h3>{p.name}</h3>
                   <p className="ow-line">{p.line}</p>
@@ -386,7 +559,7 @@ export default function OwnerLandingPage() {
               ))}
             </div>
 
-            <div className="ow-addons">
+            <div className="ow-addons" data-rv>
               <h3>Add what you need</h3>
               <ul>
                 {ADDONS.map(([n, d, p]) => (
@@ -414,11 +587,11 @@ export default function OwnerLandingPage() {
 
         <section id="questions" className="ow-faq" aria-labelledby="faq-h">
           <div className="ow-wrap ow-faq-grid">
-            <div>
+            <div data-rv>
               <p className="ow-label">Questions</p>
               <h2 id="faq-h" className="ow-h2">Before you message us.</h2>
             </div>
-            <div className="ow-acc">
+            <div className="ow-acc" data-rv>
               {FAQ.map(([q, a], i) => (
                 <div key={q} className={`ow-qa${open === i ? " ow-open" : ""}`}>
                   <h3>
@@ -439,7 +612,8 @@ export default function OwnerLandingPage() {
         </section>
 
         <section className="ow-close" aria-labelledby="close-h">
-          <div className="ow-wrap">
+          <div className="ow-glow ow-glow2" aria-hidden="true" />
+          <div className="ow-wrap" data-rv>
             <h2 id="close-h">Tell us what you sell. We will show you how it would work.</h2>
             <Wa className="ow-big">Message us on WhatsApp</Wa>
           </div>
