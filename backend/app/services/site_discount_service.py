@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 MIN_PAYABLE_NGN = 100.0
 KINDS = ("percent", "fixed")
+APPLIES_TO = ("websites", "plans", "both")      # what a code can be used on (default websites = how codes always worked)
 
 
 class DiscountError(Exception):
@@ -80,8 +81,10 @@ def _uses(db: Any, code_id: str, builder_id: Optional[str] = None) -> int:
     return len(q.execute().data or [])
 
 
-def validate(db: Any, org_id: str, builder_id: Optional[str], code: str, total: float, now: Optional[datetime] = None) -> dict:
-    """Returns {code_id, code, kind, value, discount, amount_due}. Raises DiscountError."""
+def validate(db: Any, org_id: str, builder_id: Optional[str], code: str, total: float, now: Optional[datetime] = None,
+             scope: str = "websites") -> dict:
+    """Returns {code_id, code, kind, value, discount, amount_due}. Raises DiscountError.
+    `scope` is what is being bought: "websites" (a site order) or "plans" (a plan / add-on)."""
     now = now or _now()
     norm = normalise_code(code)
     if not norm:
@@ -90,6 +93,8 @@ def validate(db: Any, org_id: str, builder_id: Optional[str], code: str, total: 
                 .eq("code", norm).limit(1).execute()).data)
     # One message for unknown AND switched-off codes, so codes can't be guessed.
     if not row or not row.get("active"):
+        raise DiscountError("That code isn't valid.")
+    if (row.get("applies_to") or "websites") not in (scope, "both"):            # same message: a code is never described
         raise DiscountError("That code isn't valid.")
     exp = _parse_iso(row.get("expires_at"))
     if exp and exp <= now:
@@ -183,6 +188,11 @@ def _clean_payload(payload: dict, creating: bool) -> dict:
     kind = out.get("kind") or payload.get("kind")
     if kind == "percent" and out.get("value", 0) > 100:
         raise DiscountError("A percentage can't be more than 100.")
+    if "applies_to" in payload or creating:
+        at = payload.get("applies_to") or "websites"
+        if at not in APPLIES_TO:
+            raise DiscountError("Choose what the code is for: websites, plans or both.")
+        out["applies_to"] = at
     if "note" in payload:
         out["note"] = (payload.get("note") or "").strip()[:200] or None
     if "active" in payload:

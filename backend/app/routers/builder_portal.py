@@ -519,7 +519,8 @@ def my_site_addons_checkout(site_id: str, payload: dict, builder=Depends(get_cur
         req = PurchaseRequest(**(payload or {}))
         data = billing.start_purchase(
             db, builder["org_id"], site_id, f"builder:{builder['id']}", req.kind, req.key, picks=req.picks,
-            billing_mode=req.billing_mode, payer=req.payer.model_dump() if req.payer else None)
+            billing_mode=req.billing_mode, payer=req.payer.model_dump() if req.payer else None,
+            discount_code=req.discount_code)
         if req.send and not data["scheduled"]:
             data["sent"] = billing.send_link(db, builder["org_id"], site_id, data["addon_id"], f"builder:{builder['id']}")["sent"]
     except ValidationError:

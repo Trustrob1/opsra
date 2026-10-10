@@ -16,6 +16,7 @@ from __future__ import annotations
 import html
 import logging
 import time
+from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -84,7 +85,8 @@ def _not_valid() -> HTMLResponse:
 def site_pay_page(token: str, request: Request, db=Depends(get_supabase)):
     _check_rate_limit(request)
     try:
-        v = billing.pay_view(db, token)
+        code = (request.query_params.get("code") or "").strip()[:40]
+        v = billing.pay_view(db, token, code=code or None)
     except Exception:  # S14
         logger.exception("[SITE-PAY] view failed")
         return _page("Try again", "<h1>Something went wrong</h1><p>We couldn't open this page right now. "
@@ -107,11 +109,23 @@ def site_pay_page(token: str, request: Request, db=Depends(get_supabase)):
         lines.append(f"<div class=\"row\"><span>One-time set-up</span><span>{_money(v['setup_fee'])}</span></div>")
     if v["credit"]:
         lines.append(f"<div class=\"row\"><span>Credit for unused days</span><span>−{_money(v['credit'])}</span></div>")
+    if v.get("discount"):
+        lines.append(f"<div class=\"row\"><span>Code {html.escape(v['discount']['code'])}</span>"
+                     f"<span>−{_money(v['discount']['discount'])}</span></div>")
     lines.append(f"<div class=\"row tot\"><span>To pay now</span><span>{_money(v['amount_due'])}</span></div>")
+    applied = v["discount"]["code"] if v.get("discount") else ""
+    err = f"<p class=\"small\" style=\"color:#b3261e\">{html.escape(v['discount_error'])}</p>" if v.get("discount_error") else ""
+    codebox = ("" if v["kind"] != "new" else
+               f"<form method=\"get\" action=\"/site-pay/{html.escape(token, quote=True)}\" style=\"margin-top:14px\">"
+               f"<label class=\"small\" for=\"code\">Have a discount code?</label>"
+               f"<div style=\"display:flex;gap:8px;margin-top:6px\"><input id=\"code\" name=\"code\" maxlength=\"40\" autocomplete=\"off\" "
+               f"value=\"{html.escape(applied or code, quote=True)}\" style=\"flex:1;min-height:44px;padding:0 12px;font:inherit;border:1px solid #c9d6de;border-radius:8px;box-sizing:border-box\">"
+               f"<button type=\"submit\" style=\"min-height:44px;padding:0 16px;font:inherit;font-weight:600;border:1px solid #028090;background:#fff;color:#028090;border-radius:8px;cursor:pointer\">Apply</button></div>{err}</form>")
+    go = f"/site-pay/{html.escape(token, quote=True)}/go" + (f"?code={html.escape(quote(applied), quote=True)}" if applied else "")
     verb = {"upgrade": "Upgrade to", "renewal": "Renew"}.get(v["kind"], "Start")
     return _page(f"Pay for {v['label']}",
-                 f"<h1>{verb} {label}</h1><p>For {biz}.</p>{includes}{''.join(lines)}"
-                 f"<a class=\"btn\" href=\"/site-pay/{html.escape(token, quote=True)}/go\">Pay {_money(v['amount_due'])} securely</a>"
+                 f"<h1>{verb} {label}</h1><p>For {biz}.</p>{includes}{''.join(lines)}{codebox}"
+                 f"<a class=\"btn\" href=\"{go}\">Pay {_money(v['amount_due'])} securely</a>"
                  "<p class=\"small\" style=\"margin-top:14px\">You will pay on Paystack. Your plan starts as soon as the "
                  "payment is confirmed.</p>")
 
@@ -120,7 +134,7 @@ def site_pay_page(token: str, request: Request, db=Depends(get_supabase)):
 def site_pay_go(token: str, request: Request, db=Depends(get_supabase)):
     _check_rate_limit(request)
     try:
-        r = billing.pay_checkout(db, token)
+        r = billing.pay_checkout(db, token, code=(request.query_params.get("code") or "").strip()[:40] or None)
     except ent.EntitlementError as exc:
         return _page("Can't pay yet", f"<h1>We can't open the payment page</h1><p>{html.escape(str(exc))}</p>", 422)
     except Exception:  # S14

@@ -80,6 +80,7 @@ class PurchaseRequest(BaseModel):
     billing_mode: Literal["link", "auto"] = "link"
     payer: Optional[Payer] = None
     send: bool = False
+    discount_code: Optional[str] = Field(None, max_length=40)       # first payment only; checked on the server
 
 
 @router.get("/site-addons/catalog")
@@ -130,7 +131,8 @@ def start_checkout(site_id: str, payload: PurchaseRequest, org=Depends(get_curre
     try:
         data = billing.start_purchase(
             db, org["org_id"], site_id, actor, payload.kind, payload.key, picks=payload.picks,
-            billing_mode=payload.billing_mode, payer=payload.payer.model_dump() if payload.payer else None)
+            billing_mode=payload.billing_mode, payer=payload.payer.model_dump() if payload.payer else None,
+            discount_code=payload.discount_code)
         if payload.send and not data["scheduled"]:
             data["sent"] = billing.send_link(db, org["org_id"], site_id, data["addon_id"], actor)["sent"]
     except ent.EntitlementError as exc:

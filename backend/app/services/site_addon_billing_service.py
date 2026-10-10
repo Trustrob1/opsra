@@ -161,6 +161,38 @@ def quote_for(row: dict, cfg: dict, now: datetime) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# discount codes on the FIRST payment of a plan or add-on
+# ---------------------------------------------------------------------------
+
+def _plan_discount(db: Any, org_id: str, site: dict, qt: dict, code: Optional[str], now: datetime) -> Optional[dict]:
+    """The discount for this quote, or None when there is no code. A code that cannot be used raises AddonBillingError with a
+    plain message. Renewals, upgrades and changes are never discounted. The amount is always worked out here from the code row."""
+    from app.services import site_discount_service as dsc
+    if not dsc.normalise_code(code):
+        return None
+    if qt.get("kind") != "new":
+        raise AddonBillingError("Codes only work on the first payment of a plan.")
+    try:
+        return dsc.validate(db, org_id, site.get("builder_id"), code, qt["total"], now, scope="plans")
+    except dsc.DiscountError as exc:
+        raise AddonBillingError(str(exc))
+
+
+def _usable_discount(db: Any, org_id: str, site: dict, qt: dict, typed: Optional[str], stored: Optional[str], now: datetime) -> tuple:
+    """-> (discount | None, error message | None). A code the client typed that fails is reported; a code attached earlier by staff
+    that has since expired is quietly dropped (the client still pays the normal price)."""
+    if typed and typed.strip():
+        try:
+            return _plan_discount(db, org_id, site, qt, typed, now), None
+        except AddonBillingError as exc:
+            return None, str(exc)
+    try:
+        return _plan_discount(db, org_id, site, qt, stored, now), None
+    except AddonBillingError:
+        return None, None
+
+
+# ---------------------------------------------------------------------------
 # start a purchase / change (staff or builder) and the private pay link
 # ---------------------------------------------------------------------------
 
@@ -179,7 +211,7 @@ def _payer_from(site: dict, payer: Optional[dict]) -> dict:
 
 def start_purchase(db: Any, org_id: str, site_id: str, actor: str, kind: str, key: str, *,
                    payer: Optional[dict] = None, picks: Optional[list] = None, billing_mode: str = "link",
-                   now: Optional[datetime] = None) -> dict:
+                   now: Optional[datetime] = None, discount_code: Optional[str] = None) -> dict:
     """Prepare (or change) what a site will pay for and return its private pay link. Does not charge anything.
     Returns {addon_id, pay_url, scheduled, quote}. `scheduled` is True for a downgrade (nothing to pay now)."""
     now = now or _now()
@@ -252,8 +284,19 @@ def start_purchase(db: Any, org_id: str, site_id: str, actor: str, kind: str, ke
         row = _get_row(db, org_id, row["id"])
 
     ent._log_event(db, org_id, site_id, actor, event, {"kind": kind, "key": key, "addon_id": row["id"]})
-    return {"addon_id": row["id"], "pay_url": pay_url((row.get("config") or {}).get("pay_token")),
-            "scheduled": scheduled, "quote": quote_for(row, cfg, now)}
+    qt_out = quote_for(row, cfg, now)
+    disc_out = None
+    if discount_code and str(discount_code).strip() and not scheduled:
+        from app.services import site_discount_service as dsc
+        disc_out = _plan_discount(db, org_id, site, qt_out, discount_code, now)            # raises with a plain message if unusable
+        cfg_row = dict(row.get("config") or {})
+        cfg_row["discount_code"] = dsc.normalise_code(discount_code)
+        db.table("site_addons").update({"config": cfg_row, "updated_at": _iso(now)}).eq("id", row["id"]).eq("org_id", org_id).execute()
+    out = {"addon_id": row["id"], "pay_url": pay_url((row.get("config") or {}).get("pay_token")),
+           "scheduled": scheduled, "quote": qt_out}
+    if disc_out:
+        out["discount"] = {"code": disc_out["code"], "discount": disc_out["discount"], "amount_due": disc_out["amount_due"]}
+    return out
 
 
 def _new_token() -> tuple:
@@ -272,7 +315,7 @@ def _row_by_token(db: Any, token: str) -> Optional[dict]:
     return _one((db.table("site_addons").select("*").eq("payer_token_hash", hash_form_token(token)).limit(1).execute()).data)
 
 
-def pay_view(db: Any, token: str, now: Optional[datetime] = None) -> Optional[dict]:
+def pay_view(db: Any, token: str, now: Optional[datetime] = None, code: Optional[str] = None) -> Optional[dict]:
     """What the client sees. None = unknown link. Never returns org ids, prices of other plans or other clients' data."""
     now = now or _now()
     row = _row_by_token(db, token)
@@ -297,28 +340,32 @@ def pay_view(db: Any, token: str, now: Optional[datetime] = None) -> Optional[di
     state = "pay"
     if eff == "active" and not qt["change_kind"] and paid_until and (paid_until - now) > timedelta(days=renew_window):
         state = "paid_up"
+    disc, disc_err = (None, None)
+    if state == "pay":
+        disc, disc_err = _usable_discount(db, org_id, site, qt, code, (row.get("config") or {}).get("discount_code"), now)
     return {
         "state": state, "business": _business(site), "label": qt["label"], "payer_name": row.get("payer_name"),
-        "amount_due": qt["total"], "price": qt["price"], "setup_fee": qt["setup_fee"], "credit": qt["credit"],
+        "discount": ({"code": disc["code"], "discount": disc["discount"]} if disc else None), "discount_error": disc_err,
+        "amount_due": disc["amount_due"] if disc else qt["total"], "price": qt["price"], "setup_fee": qt["setup_fee"], "credit": qt["credit"],
         "days": qt["days"], "kind": qt["kind"], "status": eff, "paid_until": row.get("paid_until"),
         "includes": [reg.FEATURES[k]["label"] for k in feats if k in reg.FEATURES],
     }
 
 
-def pay_checkout(db: Any, token: str, now: Optional[datetime] = None) -> Optional[dict]:
+def pay_checkout(db: Any, token: str, now: Optional[datetime] = None, code: Optional[str] = None) -> Optional[dict]:
     """The pay page button: make (or reuse) the Paystack link and return {checkout_url}. None = unknown link."""
     now = now or _now()
     row = _row_by_token(db, token)
     if not row or row.get("status") == "cancelled":
         return None
-    return create_order(db, row["org_id"], row, now)
+    return create_order(db, row["org_id"], row, now, code=code)
 
 
 # ---------------------------------------------------------------------------
 # the order and the Paystack link
 # ---------------------------------------------------------------------------
 
-def create_order(db: Any, org_id: str, row: dict, now: Optional[datetime] = None) -> dict:
+def create_order(db: Any, org_id: str, row: dict, now: Optional[datetime] = None, code: Optional[str] = None) -> dict:
     from app.services import paystack_storefront_service as paystack
     from app.services import site_access_service
     now = now or _now()
@@ -327,10 +374,13 @@ def create_order(db: Any, org_id: str, row: dict, now: Optional[datetime] = None
     d = _defs(cfg, row["kind"]).get(qt["key"]) or {}
     if int(d.get("monthly_ngn") or 0) <= 0:
         raise AddonBillingError("This isn't for sale right now.")
-    amount = qt["total"]
+    site = _get_site(db, org_id, row["site_id"])
+    disc, disc_err = _usable_discount(db, org_id, site, qt, code, (row.get("config") or {}).get("discount_code"), now)
+    if disc_err:
+        raise AddonBillingError(disc_err)
+    amount = disc["amount_due"] if disc else qt["total"]
     if amount < MIN_AMOUNT_NGN:
         raise AddonBillingError("There is nothing to pay for this change.")
-    site = _get_site(db, org_id, row["site_id"])
     builder = _builder_of(db, org_id, site)
     if not builder:
         raise AddonBillingError("This site has no builder, so a payment can't be set up yet.")
@@ -343,7 +393,8 @@ def create_order(db: Any, org_id: str, row: dict, now: Optional[datetime] = None
                    if (o.get("quote") or {}).get("addon_id") == row["id"]]
     open_orders.sort(key=lambda o: str(o.get("created_at") or ""), reverse=True)
     for o in open_orders:
-        same = float(o.get("amount") or 0) == float(amount) and (o.get("quote") or {}).get("key") == qt["key"]
+        same = (float(o.get("amount") or 0) == float(amount) and (o.get("quote") or {}).get("key") == qt["key"]
+                and ((o.get("quote") or {}).get("discount") or {}).get("code_id") == (disc or {}).get("code_id"))
         if same and o.get("payment_link_id"):
             link = _one((db.table("payment_links").select("checkout_url").eq("id", o["payment_link_id"])
                          .eq("org_id", org_id).limit(1).execute()).data)
@@ -365,7 +416,9 @@ def create_order(db: Any, org_id: str, row: dict, now: Optional[datetime] = None
         "kind": KIND, "route": "standard", "domain": None, "backup_domain": None,
         "quote": {"kind": KIND, "addon_id": row["id"], "addon_kind": row["kind"], "key": qt["key"], "label": qt["label"],
                   "days": qt["days"], "price": qt["price"], "setup_fee": qt["setup_fee"], "credit": qt["credit"],
-                  "change_kind": qt["change_kind"], "picks": qt["picks"], "billing_mode": row.get("billing_mode")},
+                  "change_kind": qt["change_kind"], "picks": qt["picks"], "billing_mode": row.get("billing_mode"),
+                  **({"discount": {k: disc[k] for k in ("code_id", "code", "kind", "value", "discount")},
+                      "total_before_discount": qt["total"]} if disc else {})},
         "amount": amount, "cost_snapshot": {}, "expected_profit": amount,
         "payment_link_id": link.get("payment_link_id"), "payment_reference": link["reference"],
         "status": "pending_payment", "approval_required": False, "created_at": _iso(now), "updated_at": _iso(now),
@@ -395,7 +448,7 @@ def on_paid(db: Any, org_id: str, order: dict, now: Optional[datetime] = None) -
 
     config = dict(row.get("config") or {})
     config["setup_paid"] = True
-    for k in ("change", "pending_key", "pending_picks", "reminded"):
+    for k in ("change", "pending_key", "pending_picks", "reminded", "discount_code"):
         config.pop(k, None)
     if row["kind"] == "tier":
         config["picks"] = q.get("picks") if q.get("picks") is not None else config.get("picks", [])
@@ -406,6 +459,9 @@ def on_paid(db: Any, org_id: str, order: dict, now: Optional[datetime] = None) -
     ent._log_event(db, org_id, row["site_id"], "system", "site_addon_paid",
                    {"addon_id": row["id"], "key": key, "until": ent._iso(end), "amount": order.get("amount"),
                     "change_kind": change_kind})
+
+    from app.services import site_discount_service            # counts as a use only now that it is paid; never raises
+    site_discount_service.record_redemption(db, org_id, order)
 
     fresh = _get_row(db, org_id, row["id"])
     site = _get_site(db, org_id, row["site_id"])

@@ -20,6 +20,7 @@ export function PurchaseForm({ plans, labelOf, busy, error, canSend = true, onSu
   const [picks, setPicks] = useState({})
   const [payer, setPayer] = useState({ name: '', phone: '', email: '' })
   const [send, setSend] = useState(true)
+  const [code, setCode] = useState('')
 
   const plan = plans.find((p) => `${p.kind}:${p.key}` === planKey)
   const groups = plan?.pickGroups || []
@@ -35,6 +36,7 @@ export function PurchaseForm({ plans, labelOf, busy, error, canSend = true, onSu
     if (payer.phone.trim()) p.phone = payer.phone.trim()
     if (payer.email.trim()) p.email = payer.email.trim()
     if (Object.keys(p).length) body.payer = p
+    if (code.trim()) body.discount_code = code.trim()
     onSubmit(body)
   }
 
@@ -91,6 +93,11 @@ export function PurchaseForm({ plans, labelOf, busy, error, canSend = true, onSu
         Leave these blank to use the site owner's details. The client pays, so these are where the link and reminders go.
       </p>
 
+      <Field label="Discount code (optional)" hint="Takes money off the first payment only. The client can also type a code on their payment page.">
+        <input style={{ ...INPUT, maxWidth: 260 }} value={code} maxLength={40} autoComplete="off"
+          onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s/g, ''))} />
+      </Field>
+
       {canSend && (
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: T.ink, minHeight: 34 }}>
           <input type="checkbox" checked={send} onChange={(e) => setSend(e.target.checked)} />
@@ -129,7 +136,8 @@ export function PayLinkResult({ result, onCopied }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Notice tone="good">
-        {q.label || 'The plan'} is ready for the client to pay: <b>{money(q.total)}</b>
+        {q.label || 'The plan'} is ready for the client to pay: <b>{money(result.discount ? result.discount.amount_due : q.total)}</b>
+        {result.discount ? <> (code {result.discount.code} takes off {money(result.discount.discount)})</> : null}
         {q.days ? <> for {q.days} days</> : null}
         {q.setup_fee > 0 ? <> (includes a one-time set-up fee of {money(q.setup_fee)})</> : null}
         {q.credit > 0 ? <>, after {money(q.credit)} credit for unused days</> : null}.

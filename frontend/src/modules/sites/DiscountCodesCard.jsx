@@ -11,7 +11,8 @@ import {
 import { Card, SectionTitle, Button, Field, Segmented, Toggle, Badge, Notice, Spinner, Empty, Modal } from './sitesUi'
 import { T, INPUT, money, dateOnly } from './sitesKit'
 
-const EMPTY = { code: '', kind: 'percent', value: '', expires: '', max_uses: '', one_per_builder: false, note: '', active: true }
+const EMPTY = { code: '', kind: 'percent', value: '', expires: '', max_uses: '', one_per_builder: false, note: '', active: true, applies_to: 'websites' }
+const APPLIES = { websites: 'Websites', plans: 'Plans and add-ons', both: 'Websites and plans' }
 
 // Lagos is UTC+1 all year — the date picker's day ends at 23:59 Lagos time.
 const toIso = (d) => (d ? `${d}T23:59:59+01:00` : null)
@@ -48,7 +49,7 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
     setForm({
       code: c.code, kind: c.kind, value: String(Number(c.value)), expires: toDay(c.expires_at),
       max_uses: c.max_uses == null ? '' : String(c.max_uses), one_per_builder: !!c.one_per_builder,
-      note: c.note || '', active: !!c.active,
+      note: c.note || '', active: !!c.active, applies_to: c.applies_to || 'websites',
     })
     setFormError(null)
   }
@@ -62,7 +63,7 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
     if (form.kind === 'percent' && value > 100) { setFormError('A percentage can\'t be more than 100.'); return }
     const payload = {
       code: form.code, kind: form.kind, value, note: form.note, active: form.active,
-      one_per_builder: form.one_per_builder, expires_at: toIso(form.expires),
+      one_per_builder: form.one_per_builder, expires_at: toIso(form.expires), applies_to: form.applies_to,
       max_uses: form.max_uses === '' ? null : Number(form.max_uses),
     }
     setSaving(true)
@@ -100,7 +101,7 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
   return (
     <Card>
       <SectionTitle title="Discount codes"
-        hint="A builder types a code at checkout. It takes a percentage or a fixed amount off the whole order total of a first order (renewals aren't discounted). A code never takes an order below ₦100."
+        hint="A code takes a percentage or a fixed amount off a first payment: a builder's first website order, or the first payment of a plan or add-on (set-up fee and first month). Renewals aren't discounted. A code never takes a payment below ₦100."
         right={canEdit && <Button size="sm" variant="primary" icon={Plus} onClick={openNew}>New code</Button>} />
       {loadError && <Notice tone="bad">{loadError}</Notice>}
       {!codes && !loadError && <Spinner />}
@@ -120,6 +121,7 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
                     <span style={{ fontSize: 14, fontWeight: 700, color: T.ink, letterSpacing: '.4px' }}>{c.code}</span>
                     <Badge tone={st.tone}>{st.text}</Badge>
                     <span style={{ fontSize: 13, color: T.soft }}>{describe(c)}</span>
+                    <Badge tone="neutral">{APPLIES[c.applies_to || 'websites']}</Badge>
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
                     Used {c.uses}{c.max_uses != null ? ` of ${c.max_uses}` : ''} time{c.uses === 1 && c.max_uses == null ? '' : 's'}
@@ -161,6 +163,10 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
             <Field label="Code" hint="Letters and numbers, no spaces. Builders can type it in any case.">
               <input style={INPUT} value={form.code} maxLength={40} placeholder="WELCOME10"
                 onChange={(e) => set({ code: e.target.value.toUpperCase().replace(/\s/g, '') })} />
+            </Field>
+            <Field label="Works on" group hint="Plans and add-ons: the client types the code on their payment page, or you attach it when you send the link.">
+              <Segmented value={form.applies_to} onChange={(applies_to) => set({ applies_to })} ariaLabel="What the code works on"
+                options={[{ value: 'websites', label: 'Websites' }, { value: 'plans', label: 'Plans' }, { value: 'both', label: 'Both' }]} />
             </Field>
             <Field label="Takes off" group>
               <Segmented value={form.kind} onChange={(kind) => set({ kind })} ariaLabel="Discount type"
