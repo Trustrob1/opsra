@@ -523,6 +523,27 @@ def run_addon_cycle() -> dict:
     return total
 
 
+@celery_app.task(name="app.workers.site_worker.run_capture_reminders")
+def run_capture_reminders() -> dict:
+    """SITE-ADDONS A1-1: every 5 minutes. A site owner who has not tapped "Answer now" on an enquiry alert gets one reminder."""
+    from app.services import site_capture_service
+    db = get_supabase()
+    started = _now()
+    total = {"checked": 0, "sent": 0, "skipped": 0, "failed": 0}
+    try:
+        total = site_capture_service.run_reminders(db, started)
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] capture reminders failed: %s", exc)
+    if total["checked"] or total["failed"]:       # an idle run every 5 minutes would only fill the log
+        write_worker_log(
+            db, worker_name="site_worker.capture_reminders", status="failed" if total["failed"] else "passed",
+            items_processed=total["checked"], items_failed=total["failed"], started_at=started,
+            run_duration_ms=int((_now() - started).total_seconds() * 1000),
+        )
+    return total
+
+
 @celery_app.task(name="app.workers.site_worker.run_giveaway_deadlines")
 def run_giveaway_deadlines() -> dict:
     """GIVEAWAY-2: hourly. Unpaid winners get a reminder, then at the pay-by time the slot is freed and the normal rate applies (lapsed); after the extra days the site is taken down (released)."""

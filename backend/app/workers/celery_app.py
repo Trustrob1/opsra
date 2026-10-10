@@ -647,6 +647,13 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute=45, hour=6),
     },
 
+    # site-capture-reminders - every 5 minutes  (SITE-ADDONS A1-1)       #
+    # One reminder to a site owner who has not answered an enquiry alert. #
+    "site-capture-reminders": {
+        "task": "app.workers.site_worker.run_capture_reminders",
+        "schedule": crontab(minute="*/5"),
+    },
+
     # ------------------------------------------------------------------ #
     # site-addon-cycle — Daily 06:50 UTC = 07:50 WAT  (SITE-ADDONS A0-2)  #
     # Tiers / add-ons: active -> grace -> paused; renewal reminders to    #
