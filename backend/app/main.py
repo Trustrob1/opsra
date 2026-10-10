@@ -205,6 +205,7 @@ from app.routers import builder_portal as builder_portal_router    # SITE-2B —
 from app.routers import site_partners as site_partners_router        # PARTNER-1A — /api/v1/partners/* and /api/v1/partner-links/*
 from app.routers import partner_portal as partner_portal_router          # PARTNER-1B — /api/v1/partner-portal/*
 from app.routers import site_giveaways as site_giveaways_router          # GIVEAWAY-1 — /api/v1/giveaways/*
+from app.routers import site_addons as site_addons_router                # SITE-ADDONS A0-1 — /api/v1/site-addons/*, /api/v1/sites/{id}/addons
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -253,6 +254,7 @@ app.include_router(site_partners_router.router, prefix="/api/v1/partners", tags=
 app.include_router(partner_portal_router.router, prefix="/api/v1/partner-portal", tags=["partner_portal"])   # PARTNER-1B
 app.include_router(site_giveaways_router.public_router, prefix="/api/v1", tags=["giveaways"])   # GIVEAWAY-1 — public
 app.include_router(site_giveaways_router.router, prefix="/api/v1/giveaways", tags=["giveaways"])   # GIVEAWAY-1 — staff
+app.include_router(site_addons_router.router,    prefix="/api/v1",           tags=["site_addons"])  # SITE-ADDONS A0-1 — staff
 
 
 # ---------------------------------------------------------------------------

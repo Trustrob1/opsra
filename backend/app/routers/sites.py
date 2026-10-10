@@ -290,6 +290,15 @@ def _check_builder_access(pricing) -> None:
         ba[key] = int(v)
 
 
+def _check_site_tiers(pricing) -> None:
+    """SITE-ADDONS A0-1: rejects a nonsense pricing.tiers / addons / tier_billing block with a plain 422."""
+    from app.services import site_entitlement_service as _ent
+    try:
+        _ent.validate_pricing(pricing)
+    except _ent.EntitlementError as exc:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+
+
 # SITE-TOOLS: on/off switches for the design tools. Only the owner may flip them; each must be true or false.
 _DESIGN_TOOL_FLAGS = {
     "premium_enabled": "Premium designs",
@@ -318,6 +327,7 @@ def patch_settings(payload: dict, org=Depends(get_current_org), db=Depends(get_s
     updates.pop("org_id", None)
     _check_design_tools(updates, org)
     _check_builder_access(updates.get("pricing"))
+    _check_site_tiers(updates.get("pricing"))
     updates["updated_at"] = _now_iso()
     existing = _one((db.table("site_builder_settings").select("org_id").eq("org_id", org["org_id"]).limit(1).execute()).data)
     if existing:
