@@ -148,15 +148,45 @@ class TestSignInAndReferrals:
         svc.site_partner_service.set_status(db, ORG, p["id"], "suspended")
         assert svc.find_active_partner(db, "ada@example.com") is None
 
+    def _site(self, db, sid, builder_id, name, slug="x", **kw):
+        db.table("sites").insert({"id": sid, "org_id": ORG, "builder_id": builder_id, "client_business_name": name,
+                                  "slug": slug, "status": "preview_ready", "deleted_at": None, "created_at": NOW.isoformat(),
+                                  "content": {}, "live_url": None, **kw}).execute()
+
+    def _form(self, db, fid, builder_id, site_id, label):
+        db.table("site_brief_forms").insert({"id": fid, "org_id": ORG, "builder_id": builder_id, "site_id": site_id,
+                                             "client_label": label}).execute()
+
     def test_referrals_only_this_partners_clients(self):
-        db = _db()
+        db = _db(site_brief_forms=[])
         p = svc.site_partner_service.create_partner(db, ORG, "Ada Obi", "08030000001", "ada@example.com")
-        db.table("sites").insert({"id": "s1", "org_id": ORG, "builder_id": p["builder_id"], "client_business_name": "Zed Shop",
-                                  "slug": "zed", "status": "preview_ready", "deleted_at": None, "created_at": NOW.isoformat(),
-                                  "content": {"business": {"whatsapp_e164": "+2348090000000"}}, "live_url": None}).execute()
-        db.table("sites").insert({"id": "s2", "org_id": ORG, "builder_id": "someone-else", "client_business_name": "Other",
-                                  "slug": "o", "status": "live", "deleted_at": None, "created_at": NOW.isoformat()}).execute()
+        L = svc.site_partner_service.PARTNER_FORM_LABEL
+        self._site(db, "s1", p["builder_id"], "Zed Shop", "zed", content={"business": {"whatsapp_e164": "+2348090000000"}})
+        self._form(db, "f1", p["builder_id"], "s1", L)
+        self._site(db, "s2", "someone-else", "Other", "o", status="live")
+        self._form(db, "f2", "someone-else", "s2", L)
         out = svc.referrals(db, p)
         assert len(out) == 1
         assert out[0]["business_name"] == "Zed Shop" and out[0]["phone"] == "+2348090000000"
         assert out[0]["status_label"] == "Preview ready" and out[0]["preview_path"] == "/s/zed"
+
+    def test_partners_own_builder_account_other_sites_are_not_referrals(self):
+        # the partner login IS a builder account; sites that account made itself, or via an ordinary form, must not show
+        db = _db(site_brief_forms=[])
+        p = svc.site_partner_service.create_partner(db, ORG, "Ada Obi", "08030000001", "ada@example.com")
+        L = svc.site_partner_service.PARTNER_FORM_LABEL
+        self._site(db, "mine", p["builder_id"], "Made by staff", "m")
+        self._site(db, "plain", p["builder_id"], "Ordinary form", "p")
+        self._form(db, "f1", p["builder_id"], "plain", "client")
+        self._site(db, "ref", p["builder_id"], "Referral", "r")
+        self._form(db, "f2", p["builder_id"], "ref", L)
+        self._form(db, "f3", p["builder_id"], None, L)          # link opened, no site made yet
+        self._site(db, "gone", p["builder_id"], "Deleted", "g", deleted_at=NOW.isoformat())
+        self._form(db, "f4", p["builder_id"], "gone", L)
+        assert [r["business_name"] for r in svc.referrals(db, p)] == ["Referral"]
+
+    def test_no_partner_forms_means_no_referrals(self):
+        db = _db(site_brief_forms=[])
+        p = svc.site_partner_service.create_partner(db, ORG, "Ada Obi", "08030000001", "ada@example.com")
+        self._site(db, "mine", p["builder_id"], "Made by staff", "m")
+        assert svc.referrals(db, p) == []

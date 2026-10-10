@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+PARTNER_FORM_LABEL = "partner-link"   # stamped on every form opened through a partner link, so referrals can be told apart
 PARTNER_MAX_ACTIVE_SITES = 100000      # partners are never held to the builder free-site limit
 MAX_UNSUBMITTED_FORMS_PER_DAY = 200    # abuse cap: forms opened through one link and not yet submitted
 _CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"   # no 0/O/1/I/L
@@ -146,5 +147,5 @@ def open_link(db: Any, slug: str, now: Optional[datetime] = None) -> dict:
         return {"kind": "busy"}
 
     from app.services import site_chat_service
-    _form, url = site_chat_service.create_form_link(db, partner["org_id"], builder, "client")
+    _form, url = site_chat_service.create_form_link(db, partner["org_id"], builder, "client", client_label=PARTNER_FORM_LABEL)
     return {"kind": "ok", "url": url}

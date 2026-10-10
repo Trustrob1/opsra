@@ -116,6 +116,7 @@ class TestExchange:
         app.dependency_overrides[get_supabase] = lambda: db
         resp = client.post("/api/v1/builder/auth/exchange", json={"token": "does-not-exist"})
         assert resp.status_code == 401
+        assert "isn't valid" in resp.text
 
     def test_already_revoked_token_401(self, client):
         row = {"id": "tok-1", "org_id": ORG_ID, "builder_id": BUILDER_ID,
@@ -126,6 +127,7 @@ class TestExchange:
         app.dependency_overrides[get_supabase] = lambda: db
         resp = client.post("/api/v1/builder/auth/exchange", json={"token": "used"})
         assert resp.status_code == 401
+        assert "already been used" in resp.text
 
     def test_expired_token_401(self, client):
         row = {"id": "tok-1", "org_id": ORG_ID, "builder_id": BUILDER_ID,

@@ -77,6 +77,7 @@ class TestOpenLink:
         forms = db.rows("site_brief_forms")
         assert len(forms) == 2
         assert all(f["builder_id"] == p["builder_id"] and f["audience"] == "client" and f["status"] == "open" for f in forms)
+        assert all(f["client_label"] == svc.PARTNER_FORM_LABEL for f in forms)
 
     def test_unknown_or_malformed_slug_not_found(self):
         db, _ = self._setup()

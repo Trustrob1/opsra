@@ -29,7 +29,7 @@
  * `content`/`recipe` JSON shape (models/sites.py) so they stay compatible by
  * construction, not by shared code.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowLeft, Building2, ChevronDown, CreditCard, Eye, ExternalLink, ImagePlus, LogOut, Plus,
   RefreshCw, Save, Shuffle, ShoppingCart, Trash2, Undo2, User,
@@ -60,25 +60,25 @@ const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 export default function BuilderPortalPage() {
   const [session, setSession] = useState(null)      // { token, builder }
-  const [stage, setStage] = useState('exchanging')   // exchanging | error | app
-  const [error, setError] = useState('')
+  const hasCode = !!new URLSearchParams(window.location.search).get('t')
+  const [stage, setStage] = useState(hasCode ? 'confirm' : 'error')   // confirm | exchanging | error | app
+  const [error, setError] = useState(hasCode ? '' : 'This link is missing its access code. Please open the exact link your team sent you.')
   const [view, setView] = useState('mysites')        // mysites | editor | account
   const [selectedSiteId, setSelectedSiteId] = useState(null)
   const [waDismissed, setWaDismissed] = useState(false)
   const [toast, showToast] = useToast()
 
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search)
-    const t = q.get('t')
-    if (!t) {
-      setError("This link is missing its access code. Please open the exact link your team sent you.")
-      setStage('error')
-      return
-    }
+  // The sign-in link is single use, so it is used only when the person taps Continue. Opening the page (a link preview, an
+  // in-app browser that loads it twice, a mail scanner) never uses it up.
+  function signIn() {
+    const t = new URLSearchParams(window.location.search).get('t')
+    if (!t || stage === 'exchanging') return
+    setStage('exchanging')
     exchangeBuilderToken(t)
       .then((data) => {
         setSession({ token: data.access_token, builder: data.builder })
         setStage('app')
+        window.history.replaceState(null, '', window.location.pathname)
         // SITE-WEB-2: the full account (incl. whether they have messaged our WhatsApp yet). Never blocks sign-in.
         getMyAccount(data.access_token)
           .then((me) => setSession((s) => (s ? { ...s, builder: { ...s.builder, ...me } } : s)))
@@ -88,7 +88,7 @@ export default function BuilderPortalPage() {
         setError(errorMessage(e, "This link isn't valid — ask for a new one."))
         setStage('error')
       })
-  }, [])
+  }
 
   useEffect(() => {
     if (document.getElementById('bp-keyframes')) return
@@ -111,6 +111,14 @@ export default function BuilderPortalPage() {
     <div style={{ minHeight: '100vh', background: '#F5FAFB', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <Header builder={session?.builder} view={view} setView={setView} onBack={() => setSelectedSiteId(null)} onLogOut={logOut} showNav={stage === 'app'} />
       <main style={{ maxWidth: view === 'editor' || view === 'checkout' ? 1320 : 720, margin: '0 auto', padding: '20px 16px 60px' }}>
+        {stage === 'confirm' && (
+          <Card style={{ marginTop: 12 }}>
+            <h1 style={{ fontSize: 20, margin: '0 0 6px', color: T.ink }}>Sign in to your builder page</h1>
+            <p style={{ margin: '0 0 14px', fontSize: 14, color: T.muted }}>Tap Continue to open your sites. This link can be used once.</p>
+            <Button variant="primary" onClick={signIn}>Continue</Button>
+          </Card>
+        )}
+
         {stage === 'exchanging' && <Spinner label="Signing you in…" />}
 
         {stage === 'error' && (

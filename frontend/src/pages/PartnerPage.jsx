@@ -172,7 +172,7 @@ function Portal({ token, name }) {
     getPartnerReferrals(token).then(setRows).catch((e) => setError(errorMessage(e, 'We couldn’t load your referrals.')))
   }, [token])
   async function copy() {
-    try { await navigator.clipboard.writeText(me.link_url); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch (_) { /* select by hand */ }
+    try { await navigator.clipboard.writeText(me.link_url); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* select by hand */ }
   }
   return (
     <div style={S.page}>
@@ -225,14 +225,20 @@ export default function PartnerPage() {
   const isLogin = window.location.pathname === '/partner/login'
   const t = new URLSearchParams(window.location.search).get('t')
   const [session, setSession] = useState(null)
-  const [failed, setFailed] = useState('')
-  useEffect(() => {
-    if (!isLogin) return
-    if (!t) { setFailed('This link is missing its access code. Please request a new one.'); return }
+  const [failed, setFailed] = useState(t || !isLogin ? '' : 'This link is missing its access code. Please request a new one.')
+  const [busy, setBusy] = useState(false)
+
+  // The link is used up only when the partner taps Continue. Opening the page (a link preview, an in-app browser that loads it
+  // twice, a mail scanner) never uses it, so the same link still works for the person who actually taps it.
+  const signIn = () => {
+    if (busy || !t) return
+    setBusy(true)
+    setFailed('')
     exchangeBuilderToken(t)
       .then((d) => { setSession({ token: d.access_token, name: d.builder?.full_name }); window.history.replaceState(null, '', '/partner/login') })
-      .catch((e) => setFailed(errorMessage(e, 'This link isn’t valid — please request a new one.')))
-  }, [isLogin, t])
+      .catch((e) => { setFailed(errorMessage(e, 'This link isn’t valid — please request a new one.')); setBusy(false) })
+  }
+
   if (!isLogin) return <Landing />
   if (session) return <Portal token={session.token} name={session.name} />
   return (
@@ -245,7 +251,13 @@ export default function PartnerPage() {
             <p style={S.p}>{failed}</p>
             <a href="/partner" style={{ color: TEAL, fontWeight: 600 }}>Get a new sign-in link</a>
           </>
-        ) : <p style={S.p} role="status">Signing you in…</p>}
+        ) : (
+          <>
+            <h1 style={S.h1}>Sign in to your partner page</h1>
+            <p style={S.p}>Tap Continue to open your client link and referrals. This link can be used once.</p>
+            <button type="button" style={S.btn} onClick={signIn} disabled={busy}>{busy ? 'Signing you in…' : 'Continue'}</button>
+          </>
+        )}
       </div>
     </div>
   )

@@ -305,8 +305,16 @@ def _phone_of(site: dict) -> Optional[str]:
 
 
 def referrals(db: Any, partner: dict) -> list[dict]:
+    """Only the sites that came in through THIS partner's client link. A partner's login is a builder account, and that
+    account can own other sites (made by the builder or by staff); those are not referrals and are never listed here."""
+    forms = (db.table("site_brief_forms").select("site_id").eq("org_id", partner["org_id"])
+             .eq("builder_id", partner["builder_id"]).eq("client_label", site_partner_service.PARTNER_FORM_LABEL)
+             .limit(2000).execute()).data or []
+    ids = sorted({f["site_id"] for f in forms if f.get("site_id")})
+    if not ids:
+        return []
     rows = (db.table("sites").select("id,client_business_name,slug,status,content,brief,live_url,created_at,updated_at")
-            .eq("org_id", partner["org_id"]).eq("builder_id", partner["builder_id"])
+            .eq("org_id", partner["org_id"]).eq("builder_id", partner["builder_id"]).in_("id", ids)
             .is_("deleted_at", "null").order("created_at", desc=True).limit(500).execute()).data or []
     out = []
     for s in rows:

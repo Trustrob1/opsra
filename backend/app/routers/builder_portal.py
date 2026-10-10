@@ -134,8 +134,10 @@ def exchange_token(payload: dict, request: Request, db=Depends(get_supabase)):
 
     token_hash = hash_form_token(raw_token)   # same sha256 helper as site_brief_forms — generic by design
     row = _one((db.table("site_editor_tokens").select("*").eq("token_hash", token_hash).limit(1).execute()).data)
-    if not row or row.get("revoked_at"):
+    if not row:
         raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "This link isn't valid — ask for a new one."})
+    if row.get("revoked_at"):
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "This link has already been used — ask for a new one."})
 
     expires_at = row.get("expires_at")
     if expires_at:
