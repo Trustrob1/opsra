@@ -185,6 +185,13 @@ class TestSignInAndReferrals:
         self._form(db, "f4", p["builder_id"], "gone", L)
         assert [r["business_name"] for r in svc.referrals(db, p)] == ["Referral"]
 
+    def test_giveaway_winners_sites_are_listed_for_the_group_owner(self):
+        db = _db(site_brief_forms=[])
+        p = svc.site_partner_service.create_partner(db, ORG, "Ada Obi", "08030000001", "ada@example.com")
+        self._site(db, "w1", p["builder_id"], "Winner Shop", "w")
+        self._form(db, "f1", p["builder_id"], "w1", "Giveaway: Win a website")
+        assert [r["business_name"] for r in svc.referrals(db, p)] == ["Winner Shop"]
+
     def test_no_partner_forms_means_no_referrals(self):
         db = _db(site_brief_forms=[])
         p = svc.site_partner_service.create_partner(db, ORG, "Ada Obi", "08030000001", "ada@example.com")
