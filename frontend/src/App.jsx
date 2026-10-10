@@ -74,6 +74,7 @@ import {
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 import SiteLandingPage from './pages/SiteLandingPage'   // SITE-LANDING
+import OwnerLandingPage from './pages/OwnerLandingPage'   // OWNER-LANDING-1
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -210,6 +211,10 @@ export default function App() {
   // (`/b/login?t=<token>`); the page reads `t` itself and owns every other
   // screen (My sites / Editor / Account) as in-memory view state, same
   // standalone-page pattern as SiteBriefFormPage above.
+  // OWNER-LANDING-1 — public landing page + pricing for business owners.
+  if (window.location.pathname === '/business') {
+    return <OwnerLandingPage />
+  }
   // SITE-LANDING — public builder landing page + sign-in. `/b/*` with no magic-link
   // token (bookmarked, or the link was already used) lands here instead of a dead end.
   if (
