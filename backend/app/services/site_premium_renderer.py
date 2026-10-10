@@ -154,10 +154,11 @@ class Ctx:
     keep: frozenset = frozenset()                    # P4-3a: section names whose data-section marker stays in the page
     hidden: frozenset = frozenset()                  # P4-3b: sections the customer hid (left out of the page)
     removed: list = field(default_factory=list)      # ids of the sections left out, so links to them can go too
+    capture: Optional[dict] = None                   # SITE-ADDONS A1b: render_config(); tracked WhatsApp links when its plan has them
 
     def child(self, item: Any) -> "Ctx":
         return Ctx(self.content, self.assets, self.export, self.price_style, self.scopes + [item], self.keep,
-                   self.hidden, self.removed)
+                   self.hidden, self.removed, self.capture)
 
     def lookup(self, path: str) -> Any:
         if path == ".":
@@ -222,6 +223,10 @@ def build_link(kind: str, ctx: Ctx) -> Optional[tuple[str, bool]]:
             msg = DEFAULT_WA_MESSAGES["browse"]
         name = (item or {}).get("name", "")
         msg = msg.replace("{item}", str(name) if name else "item")
+        from app.services import site_capture_block                      # SITE-ADDONS A1b
+        tracked = site_capture_block.tracked_wa(ctx.capture, msg, f"product:{name}" if name else "premium")
+        if tracked:
+            return tracked, True
         return f"https://wa.me/{number}?text={quote(msg)}", True
     if base == "phone":
         number = _digits(biz.get("phone_display", "")) or _digits(biz.get("whatsapp_e164", ""))
@@ -348,9 +353,10 @@ def _drop_links_to(nodes: list, ids: set) -> list:
 
 
 def fill_slots(skeleton_html: str, content: dict, assets_by_id: dict, export: bool = False,
-               keep_sections: frozenset = frozenset(), hidden_sections: frozenset = frozenset()) -> str:
+               keep_sections: frozenset = frozenset(), hidden_sections: frozenset = frozenset(),
+               capture: Optional[dict] = None) -> str:
     ctx = Ctx(content=content or {}, assets=assets_by_id or {}, export=export, keep=frozenset(keep_sections),
-              hidden=frozenset(hidden_sections))
+              hidden=frozenset(hidden_sections), capture=capture)
     nodes = _transform(parse_fragment(skeleton_html), ctx)
     if ctx.removed:
         nodes = _drop_links_to(nodes, set(ctx.removed))
@@ -411,7 +417,7 @@ def _json_ld(content: dict, canonical: Optional[str]) -> str:
 
 
 def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, export: bool,
-                        canonical_domain: Optional[str] = None) -> str:
+                        canonical_domain: Optional[str] = None, capture: Optional[dict] = None) -> str:
     """The full page. `design` is a site_designs row (skeleton_html, skeleton_css, tokens, art_direction)."""
     art = design.get("art_direction") or {}
     headline_font = art.get("headline_font") or ""
@@ -435,9 +441,12 @@ def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, expo
     keep |= frozenset(sections.sizes(design)) if size_css else frozenset()
     hidden = frozenset(sections.hidden_names(design)) if art.get("section_hidden") else frozenset()
     body = fill_slots(design.get("skeleton_html") or "", content, assets_by_id, export=export, keep_sections=keep,
-                      hidden_sections=hidden)
-
+                      hidden_sections=hidden, capture=capture)
     biz = content.get("business") or {}
+    if capture and capture.get("form"):                                  # SITE-ADDONS A1b: the sanctioned enquiry form
+        from app.services import site_capture_block
+        body = site_capture_block.add_form_section(body, biz.get("name", ""), capture)
+
     seo = content.get("seo") or {}
     title = seo.get("title") or biz.get("name", "")
     description = seo.get("description") or ""
@@ -448,6 +457,10 @@ def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, expo
     robots = ('<meta name="robots" content="index, follow, max-image-preview:large">' if export
               else '<meta name="robots" content="noindex, nofollow">')
     used = behaviours.used_behaviours(body)
+    form_css = ""
+    if capture and capture.get("form"):
+        from app.services import site_capture_block
+        form_css = site_capture_block.FORM_CSS
     head = [
         '<meta charset="utf-8">',
         behaviours.csp_meta(used),
@@ -474,7 +487,7 @@ def render_premium_page(*, content: dict, design: dict, assets_by_id: dict, expo
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
         f'<link rel="stylesheet" href="{escape(font_link, quote=True)}">',
         f'<script type="application/ld+json">{_json_ld(content, canonical)}</script>',
-        f"<style>{_BASE_CSS}{behaviours.head_css(used)}{design.get('skeleton_css') or ''}{tokens_css}{section_css}{_REDUCED_MOTION_CSS}</style>",
+        f"<style>{_BASE_CSS}{behaviours.head_css(used)}{design.get('skeleton_css') or ''}{tokens_css}{section_css}{_REDUCED_MOTION_CSS}{form_css}</style>",
     ]
     return ('<!doctype html><html lang="en"><head>' + "".join(head) + "</head><body>"
             + preview_bar + body + behaviours.body_script(used) + "</body></html>")

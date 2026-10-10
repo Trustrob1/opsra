@@ -211,13 +211,25 @@ def editor_info(db: Any, org_id: str, site: dict) -> Optional[dict]:
             "used": used_top_level(row.get("slot_manifest"))}
 
 
+def _capture_config(db: Any, site: dict, export: bool, canonical_domain: Optional[str]) -> Optional[dict]:
+    """SITE-ADDONS A1b: the lead-capture settings for this render (None = the plan has none). Never raises."""
+    try:
+        from app.services import site_capture_service
+        return site_capture_service.render_config(db, site["org_id"], site,
+                                                  return_to=(f"https://{canonical_domain}/" if export and canonical_domain else None))
+    except Exception as exc:  # S14
+        logger.warning("site_premium: capture config failed site=%s: %s", site.get("id"), exc)
+        return None
+
+
 def render_if_premium(db: Any, site: dict, assets_by_id: dict, export: bool = False,
                       canonical_domain: Optional[str] = None) -> Optional[str]:
     """The Premium page for this site, or None when the site is Standard / has no usable design.
     Never raises - a problem is logged and the caller renders Standard instead."""
     if (site.get("tier") or "standard") == "imported":      # SITE-IMPORT 1b: an uploaded, finished site
         from app.services import site_import_render
-        return site_import_render.render_if_imported(db, site, assets_by_id, export=export, canonical_domain=canonical_domain)
+        return site_import_render.render_if_imported(db, site, assets_by_id, export=export, canonical_domain=canonical_domain,
+                                                     capture=_capture_config(db, site, export, canonical_domain))
     if (site.get("tier") or "standard") != "premium" or not site.get("current_design_id"):
         return None
     try:
@@ -229,7 +241,8 @@ def render_if_premium(db: Any, site: dict, assets_by_id: dict, export: bool = Fa
             return None
         return renderer.render_premium_page(content=site.get("content") or {}, design=design,
                                             assets_by_id=assets_by_id, export=export,
-                                            canonical_domain=canonical_domain)
+                                            canonical_domain=canonical_domain,
+                                            capture=_capture_config(db, site, export, canonical_domain))
     except Exception as exc:  # S14
         logger.warning("site_premium: premium render failed site=%s - rendering Standard: %s", site.get("id"), exc)
         return None

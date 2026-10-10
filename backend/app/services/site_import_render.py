@@ -63,7 +63,8 @@ def _hosts(allowed_hosts) -> list:
     return out
 
 
-def build_csp(allowed_hosts, accepted_rules=(), preview_origin: Optional[str] = None) -> str:
+def build_csp(allowed_hosts, accepted_rules=(), preview_origin: Optional[str] = None,
+              extra_form_targets=()) -> str:
     """The policy for a page. Published page: its own files ('self') plus the allow-list. Preview: the files come from the
     storage origin and the page itself has an opaque origin, so that origin is named instead of 'self'."""
     own = [preview_origin] if preview_origin else ["'self'"]
@@ -78,7 +79,7 @@ def build_csp(allowed_hosts, accepted_rules=(), preview_origin: Optional[str] = 
         "media-src " + " ".join(own + ["data:"]),
         "connect-src " + " ".join(own),
         "frame-src " + " ".join(EMBED_FRAMES),
-        "form-action " + " ".join(FORM_TARGETS),
+        "form-action " + " ".join(tuple(FORM_TARGETS) + tuple(extra_form_targets)),
         "base-uri 'none'",
         "object-src 'none'",
     ]
@@ -210,19 +211,45 @@ def _level2_page(design: dict, content: Optional[dict], assets_by_id: Optional[d
                                      placeholder_images=bool(meta.get("library")))
 
 
+def _apply_capture(html: str, capture: Optional[dict], identity: Optional[dict]) -> tuple:
+    """SITE-ADDONS A1b: contact forms become the sanctioned Opsra form and WhatsApp links to the site's own number go
+    through the tracked link, when the plan has those features. -> (html, extra form-action origins). Never raises."""
+    if not capture:
+        return html, ()
+    try:
+        from app.services import site_capture_block as block
+        identity = identity or {}
+        html, replaced = block.replace_contact_forms(html, identity.get("name") or "", capture)
+        html, _ = block.track_wa_links(html, capture, identity.get("wa") or "")
+        origin = block.form_target_origin(capture) if replaced else None
+        return html, ((origin,) if origin else ())
+    except Exception as exc:  # S14
+        logger.warning("site_import_render: capture step failed: %s", exc)
+        return html, ()
+
+
+def identity_of(site: dict) -> dict:
+    biz = ((site.get("content") or {}).get("business") or {})
+    return {"name": biz.get("name") or site.get("client_business_name") or "",
+            "wa": biz.get("whatsapp_e164") or ""}
+
+
 def render_imported_page(db: Any, design: dict, allowed_hosts, export: bool = False,
-                         content: Optional[dict] = None, assets_by_id: Optional[dict] = None) -> str:
+                         content: Optional[dict] = None, assets_by_id: Optional[dict] = None,
+                         capture: Optional[dict] = None, identity: Optional[dict] = None) -> str:
     html = _level2_page(design, content, assets_by_id, export) or design.get("skeleton_html") or ""
     if not html.strip():
         raise ImportRenderError("The imported design has no page.")
     accepted = _accepted_rules(design)
+    html, form_targets = _apply_capture(html, capture, identity)
     if export:
-        return _with_meta(html, build_csp(allowed_hosts, accepted))
+        return _with_meta(html, build_csp(allowed_hosts, accepted, extra_form_targets=form_targets))
     base = public_base(db, design)
     if not base:
         raise ImportRenderError("The imported files could not be located.")
     origin = "{u.scheme}://{u.netloc}".format(u=urlsplit(base))
-    return _with_meta(rewrite_for_preview(html, _stored_paths(design), base), build_csp(allowed_hosts, accepted, origin))
+    return _with_meta(rewrite_for_preview(html, _stored_paths(design), base),
+                      build_csp(allowed_hosts, accepted, origin, extra_form_targets=form_targets))
 
 
 def _current_design(db: Any, site: dict, design_id: Optional[str] = None) -> Optional[dict]:
@@ -235,7 +262,7 @@ def _current_design(db: Any, site: dict, design_id: Optional[str] = None) -> Opt
 
 
 def render_if_imported(db: Any, site: dict, assets_by_id: dict, export: bool = False,
-                       canonical_domain: Optional[str] = None) -> Optional[str]:
+                       canonical_domain: Optional[str] = None, capture: Optional[dict] = None) -> Optional[str]:
     """None when the site is not an imported one or its design cannot be used (the caller renders Standard)."""
     if (site.get("tier") or "standard") != "imported":
         return None
@@ -245,7 +272,8 @@ def render_if_imported(db: Any, site: dict, assets_by_id: dict, export: bool = F
             logger.warning("site_import_render: design missing for site %s - rendering Standard", site.get("id"))
             return None
         return render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=export,
-                                    content=site.get("content"), assets_by_id=assets_by_id)
+                                    content=site.get("content"), assets_by_id=assets_by_id,
+                                    capture=capture, identity=identity_of(site))
     except Exception as exc:  # S14
         logger.warning("site_import_render: render failed site=%s: %s", site.get("id"), exc)
         return None
@@ -264,14 +292,15 @@ def preview_design(db: Any, org_id: str, site: dict, design_id: str, assets_by_i
 # Export / publish
 # ---------------------------------------------------------------------------
 
-def export_bundle(db: Any, site: dict, assets_by_id: Optional[dict] = None) -> list:
+def export_bundle(db: Any, site: dict, assets_by_id: Optional[dict] = None, capture: Optional[dict] = None) -> list:
     """[(path, bytes_or_str)] for an imported site: the page as index.html and every stored file at its own path.
     Raises ImportRenderError when anything is missing."""
     design = _current_design(db, site)
     if not design:
         raise ImportRenderError("This site's imported design is missing. Open the Import panel and choose a design.")
     files = [("index.html", render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=True,
-                                                 content=site.get("content"), assets_by_id=assets_by_id))]
+                                                 content=site.get("content"), assets_by_id=assets_by_id,
+                                                 capture=capture, identity=identity_of(site)))]
     for f in ((design.get("import_meta") or {}).get("files") or []):
         if not f.get("stored"):
             continue
