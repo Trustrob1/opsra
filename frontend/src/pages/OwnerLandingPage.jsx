@@ -8,7 +8,7 @@
  * sits inside the page (#plans). Share https://<host>/business#plans.
  *
  * ---------------------------------------------------------------------------
- * HERO PHOTO: save the image as  frontend/public/images/owner-hero.webp  (about 1600px wide,
+ * HERO PHOTO: save the image as  frontend/public/images/owner-hero.jpg  (about 1600px wide,
  * under 300 KB). Until the file exists the hero shows a branded panel instead (no broken image).
  * The photo is an AI-generated illustration, not a real client; the page says so beside it.
  *
@@ -186,7 +186,7 @@ const QUOTE = {
   role: "[Business, city]",
 };
 
-const HERO_IMG = "/images/owner-hero.webp";
+const HERO_IMG = "/images/owner-hero.jpg";
 const TICKER = ["Fashion shops", "Salons and barbers", "Schools and tutors", "Clinics and pharmacies", "Restaurants and bakers", "Real estate agents", "Electronics and phones", "Event planners", "Gyms and studios"];
 
 /* Example numbers for the demo strip and chart. Labelled “Example” on the page. */
