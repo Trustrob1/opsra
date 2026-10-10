@@ -11,6 +11,7 @@ import { Card, SectionTitle, Button, Toggle, Notice, Spinner, Field } from './si
 import { T, TEXTAREA } from './sitesKit'
 import PricingForm from './PricingForm'
 import DiscountCodesCard from './DiscountCodesCard'
+import TiersCard from './TiersCard'
 
 const DESIGN_TOOLS = [
   { key: 'premium_enabled', title: 'Premium designs',
@@ -159,6 +160,9 @@ export default function SitesSettingsTab({ isActive, canEdit, isOwner = false, s
       </Card>
 
       <PricingForm pricing={settings?.pricing ?? {}} canEdit={canEdit} saving={saving} onSave={savePricingObject} />
+
+      <TiersCard pricing={settings?.pricing ?? {}} canEdit={canEdit} showToast={showToast}
+        onSaved={(row) => { setSettings(row); setPricingText(JSON.stringify(row?.pricing ?? {}, null, 2)) }} />
 
       <DiscountCodesCard isActive={isActive} canEdit={canEdit} showToast={showToast} />
 

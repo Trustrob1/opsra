@@ -52,6 +52,7 @@ import ExtraSectionCards from '../modules/sites/ExtraSectionCards'
 import PremiumLookCard from '../modules/sites/PremiumLookCard'
 import PremiumDesignsCard from '../modules/sites/PremiumDesignsCard'
 import PremiumOfferCard from '../modules/sites/PremiumOfferCard'
+import BuilderPlansCard from '../modules/sites/BuilderPlansCard'
 import NewSiteModal from '../modules/sites/NewSiteModal'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -883,6 +884,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
               onPreviewHtml={setLookPreviewHtml} previewingHtml={!!lookPreviewHtml} />
           )}
           {!fixedLook && <PremiumOfferCard token={token} siteId={siteId} onPremium={load} />}
+          <BuilderPlansCard token={token} siteId={siteId} />
           {!fixedLook && (
             <>
               <DesignCard recipe={recipe} setRecipe={setRecipe} designOptions={site?.design_options} onSuggest={() => setSuggestOpen(true)} />

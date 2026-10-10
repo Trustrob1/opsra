@@ -209,3 +209,9 @@ export const listMyForms = (token) => unwrap(axios.get(`${BASE}/forms`, authed(t
 /** payload: { audience: 'builder'|'client', preset_id?, client_label? } → { id, url, expires_at, ... } (link shown once) */
 export const createMyForm = (token, payload) => unwrap(axios.post(`${BASE}/forms`, payload, authed(token)))
 export const revokeMyForm = (token, formId) => unwrap(axios.post(`${BASE}/forms/${formId}/revoke`, null, authed(token)))
+
+// ── SITE-ADDONS A0-3 — plans for a client's site ──────────────────────────────
+export const getSiteAddonPlans = (token, siteId) => unwrap(axios.get(`${BASE}/sites/${siteId}/addons`, authed(token)))
+/** payload: { kind, key, picks?, payer?: {name, phone, email}, send? } — returns { addon_id, pay_url, scheduled, quote, sent? }. */
+export const startSiteAddonPlan = (token, siteId, payload) =>
+  unwrap(axios.post(`${BASE}/sites/${siteId}/addons/checkout`, payload, authed(token)))

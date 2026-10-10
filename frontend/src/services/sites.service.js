@@ -186,3 +186,15 @@ export const reopenGiveaway = (id) => unwrap(api.post(`/api/v1/giveaways/${id}/r
 export const listGiveawayEntries = (id) => unwrap(api.get(`/api/v1/giveaways/${id}/entries`))
 export const resendGiveawayLink = (id, position) => unwrap(api.post(`/api/v1/giveaways/${id}/entries/${position}/resend-link`))
 export const voidGiveawaySlot = (id, position) => unwrap(api.post(`/api/v1/giveaways/${id}/entries/${position}/void`))
+
+// ── SITE-ADDONS A0-3 — tiers and add-ons (staff) ──────────────────────────────
+export const getSiteAddonsCatalog = () => unwrap(api.get('/api/v1/site-addons/catalog'))
+export const getSiteAddons = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/addons`))
+/** payload: { kind: 'tier'|'addon', key, until?, picks?, payer? } — free access, nothing is charged. */
+export const grantSiteAddon = (siteId, payload) => unwrap(api.put(`/api/v1/sites/${siteId}/addons`, payload))
+/** payload: { kind, key, picks?, payer?: {name, phone, email}, send? } — returns { addon_id, pay_url, scheduled, quote, sent? }. */
+export const startSiteAddonCheckout = (siteId, payload) => unwrap(api.post(`/api/v1/sites/${siteId}/addons/checkout`, payload))
+export const sendSiteAddonLink = (siteId, addonId) => unwrap(api.post(`/api/v1/sites/${siteId}/addons/${addonId}/send-link`))
+/** action: 'pause' | 'resume' | 'cancel'; `until` (ISO) only for resume. */
+export const changeSiteAddon = (siteId, addonId, action, until) =>
+  unwrap(api.post(`/api/v1/sites/${siteId}/addons/${addonId}/${action}`, until ? { until } : {}))
