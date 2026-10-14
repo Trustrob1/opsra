@@ -219,7 +219,7 @@ export const closeOptionSet = (setId) => unwrap(api.post(`/api/v1/site-option-se
 // ── SITE-OPTIONS OPT-3 — version links (staff) ──────────────────────────────────────────
 export const listVersionShares = (builderId) =>
   unwrap(api.get('/api/v1/site-version-shares', { params: builderId ? { builder_id: builderId } : {} }))
-export const listVersionableSites = (builderId) => unwrap(api.get('/api/v1/site-version-shares/sites', { params: { builder_id: builderId } }))
+export const listVersionableSites = (builderId) => unwrap(api.get('/api/v1/site-version-shares/sites', { params: builderId ? { builder_id: builderId } : {} }))
 export const listSiteVersions = (siteId) => unwrap(api.get(`/api/v1/site-version-shares/sites/${siteId}/versions`))
 export const createVersionShare = (payload) => unwrap(api.post('/api/v1/site-version-shares', payload))
 export const getVersionShare = (id) => unwrap(api.get(`/api/v1/site-version-shares/${id}`))

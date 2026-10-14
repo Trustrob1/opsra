@@ -29,8 +29,9 @@ export default function SitesOptionsTab({ canEdit, showToast }) {
   }), [builderId])
   const versionsApi = useMemo(() => ({
     list: () => svc.listVersionShares(builderId || undefined),
-    sites: () => svc.listVersionableSites(builderId),
+    sites: () => svc.listVersionableSites(builderId || undefined),
     versions: (siteId) => svc.listSiteVersions(siteId),
+    preview: (siteId, designId) => svc.previewPremiumDesign(siteId, designId),
     create: (p) => svc.createVersionShare(p),
     get: (id) => svc.getVersionShare(id),
     add: (id, designId, label) => svc.addShareVersion(id, designId, label),
@@ -48,7 +49,7 @@ export default function SitesOptionsTab({ canEdit, showToast }) {
         </select>
       </Field>
       <DesignOptionsHub key={builderId} versionsApi={versionsApi} setsApi={setsApi} errorMessage={svc.errorMessage} canEdit={canEdit}
-        canCreate={!!builderId} builderId={builderId} builderNames={names} showToast={showToast} />
+        canCreate builderId={builderId} builderNames={names} showToast={showToast} />
     </div>
   )
 }

@@ -193,7 +193,9 @@ def test_staff_can_do_everything_for_any_builder(api):
     h, c = api
     sites = c.get(f"/api/v1/site-version-shares/sites?builder_id={B2}")
     assert sites.status_code == 200 and [s["site_id"] for s in sites.json()["data"]] == ["x1"]
-    assert c.get("/api/v1/site-version-shares/sites").status_code == 422                      # builder_id is required
+    every = c.get("/api/v1/site-version-shares/sites")                                         # no builder = every builder's sites
+    assert every.status_code == 200 and sorted(s["site_id"] for s in every.json()["data"]) == ["s1", "x1"]
+    assert {s["site_id"]: s["builder_name"] for s in every.json()["data"]} == {"s1": "Pixel Co", "x1": "Other"}
     assert [v["version"] for v in c.get("/api/v1/site-version-shares/sites/x1/versions").json()["data"]] == [3, 2, 1]
     r = c.post("/api/v1/site-version-shares", json={"site_id": "x1", "design_ids": ["x1-d1", "x1-d2"]})
     assert r.status_code == 201 and r.json()["data"]["builder_id"] == B2

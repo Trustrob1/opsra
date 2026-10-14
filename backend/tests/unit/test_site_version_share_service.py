@@ -70,12 +70,24 @@ def _site_row(db, sid="s1"):
 
 # -- listing what can be shared ------------------------------------------------------------
 
-def test_only_premium_sites_with_two_or_more_versions_are_offered():
+def test_premium_sites_say_which_site_they_are_and_how_many_versions_they_have():
     db = _db()
-    assert [s["site_id"] for s in ver.premium_sites(db, ORG, B1)] == ["s1"]
-    assert ver.premium_sites(db, ORG, B1)[0]["versions"] == 4
-    assert ver.premium_sites(_db(n_designs=1), ORG, B1) == []
+    rows = ver.premium_sites(db, ORG, B1)
+    assert [s["site_id"] for s in rows] == ["s1"]                      # the Standard site is not offered
+    r = rows[0]
+    assert r["business_name"] == "Biz s1" and r["versions"] == 4 and r["builder_name"] == "Pixel Co"
+    assert r["preview_url"].endswith("/s/slug-s1") and r["status"] == "preview_ready"
+    assert ver.premium_sites(_db(n_designs=1), ORG, B1)[0]["versions"] == 1      # still listed, the screen disables it
     assert ver.premium_sites(db, ORG, B2) == []
+
+
+def test_without_a_builder_every_builders_premium_sites_are_listed():
+    db = _db()
+    db.rows("sites").append(_site("s9", builder=B2))
+    db.rows("site_designs").extend([_design(1, "s9") | {"id": "n1"}, _design(2, "s9") | {"id": "n2"}])
+    rows = ver.premium_sites(db, ORG)
+    assert sorted(r["site_id"] for r in rows) == ["s1", "s9"]
+    assert {r["site_id"]: r["builder_name"] for r in rows} == {"s1": "Pixel Co", "s9": "Other"}
 
 
 def test_versions_are_listed_newest_first_and_held_back_ones_are_left_out():

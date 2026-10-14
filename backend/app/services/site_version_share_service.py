@@ -73,18 +73,29 @@ def site_versions(db: Any, org_id: str, site_id: str, builder_id: Optional[str] 
         return []
 
 
-def premium_sites(db: Any, org_id: str, builder_id: str, limit: int = 60) -> list:
-    """The builder's Premium sites with at least two saved versions (nothing to compare with one), newest first."""
-    rows = (db.table("sites").select("id, client_business_name, slug, status, tier, created_at")
-            .eq("org_id", org_id).eq("builder_id", builder_id).is_("deleted_at", "null").execute()).data or []
+def premium_sites(db: Any, org_id: str, builder_id: Optional[str] = None, limit: int = 60) -> list:
+    """Premium sites that could be shared, newest first: one builder's, or every builder's when builder_id is None (staff).
+    Each row says which site it is (business name, preview link, status, builder) and how many saved versions it has;
+    a site needs at least two versions to be worth sharing, the screen disables the ones with fewer."""
+    q = db.table("sites").select("id, builder_id, client_business_name, slug, status, tier, created_at") \
+        .eq("org_id", org_id).is_("deleted_at", "null")
+    if builder_id:
+        q = q.eq("builder_id", builder_id)
+    rows = q.execute().data or []
     rows = [r for r in rows if (r.get("tier") or "standard") == "premium" and r.get("status") != "cancelled"]
     rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    rows = rows[:limit]
+    names = {}
+    bids = list({r["builder_id"] for r in rows if r.get("builder_id")})
+    if bids:
+        for b in (db.table("site_builders").select("id, business_name, full_name").eq("org_id", org_id).in_("id", bids).execute()).data or []:
+            names[b["id"]] = b.get("business_name") or b.get("full_name")
     out = []
-    for r in rows[:limit]:
-        n = len(site_versions(db, org_id, r["id"]))
-        if n >= 2:
-            out.append({"site_id": r["id"], "business_name": r.get("client_business_name"), "status": r.get("status"),
-                        "versions": n})
+    for r in rows:
+        out.append({"site_id": r["id"], "business_name": r.get("client_business_name"), "status": r.get("status"),
+                    "builder_id": r.get("builder_id"), "builder_name": names.get(r.get("builder_id")),
+                    "preview_url": f"{public_base()}/s/{r['slug']}" if r.get("slug") else None,
+                    "versions": len(site_versions(db, org_id, r["id"])), "created_at": r.get("created_at")})
     return out
 
 

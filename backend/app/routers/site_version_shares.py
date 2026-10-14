@@ -5,7 +5,7 @@ SITE-OPTIONS OPT-3 - builder and staff routes for sharing several versions of on
 
 Builder (get_current_builder), prefix /api/v1/builder:
   GET    /version-shares                          my links
-  GET    /version-shares/sites                    my Premium sites with 2+ saved versions
+  GET    /version-shares/sites                    my Premium sites (with how many saved versions each has)
   GET    /version-shares/sites/{site_id}/versions the saved versions of one site
   POST   /version-shares                          {site_id, client_name?, design_ids}  (the link is in the result)
   GET    /version-shares/{share_id}               one link with its versions
@@ -13,7 +13,7 @@ Builder (get_current_builder), prefix /api/v1/builder:
   DELETE /version-shares/{share_id}/versions/{item_id}
   POST   /version-shares/{share_id}/choose        {item_id}   record the client's pick (makes it the live preview)
   POST   /version-shares/{share_id}/close
-Staff (get_current_org), prefix /api/v1: same under /site-version-shares; list/sites take builder_id.
+Staff (get_current_org), prefix /api/v1: same under /site-version-shares; list and sites take an optional builder_id (none = every builder).
 Static routes are declared before /{share_id} (Pattern 53). Pattern 28: org_id from the dependency only.
 Read owner/admin/ops_manager, write owner/ops_manager.
 """
@@ -137,7 +137,7 @@ def s_list(builder_id: Optional[str] = None, org=Depends(get_current_org), db=De
 
 
 @staff_router.get("/sites")
-def s_sites(builder_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+def s_sites(builder_id: Optional[str] = None, org=Depends(get_current_org), db=Depends(get_supabase)):
     _require(org, _READ_ROLES)
     _require_enabled(db, org["org_id"])
     return ok(data=ver.premium_sites(db, org["org_id"], builder_id))

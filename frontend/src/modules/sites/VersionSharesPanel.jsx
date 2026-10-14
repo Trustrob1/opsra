@@ -4,8 +4,8 @@
  * link. The client opens each version and picks one; the pick becomes the site's live preview. Used in the builder
  * portal and in the staff Sites area through an `api` adapter, so the builder token and staff session never mix.
  *
- *   api        { list, sites, versions(siteId), create({site_id, client_name, design_ids}), get, add(id, designId),
- *                remove(id, itemId), choose(id, itemId), close(id) }   (each returns the payload; memoise it)
+ *   api        { list, sites, versions(siteId), preview(siteId, designId) -> {html}, create({site_id, client_name, design_ids}),
+ *                get, add(id, designId), remove(id, itemId), choose(id, itemId), close(id) }   (each returns the payload; memoise it)
  *   errorMessage(err, fallback)
  *   canEdit    false = read only
  *   canCreate  false = creating is off (staff with "All builders" selected)
@@ -14,7 +14,7 @@
  *   showToast(text, tone)
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Check, ChevronLeft, Copy, ExternalLink, Layers, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronLeft, Copy, Eye, ExternalLink, Layers, Plus, Search, Trash2 } from 'lucide-react'
 import { Badge, Button, Card, Empty, Field, Modal, Notice, SectionTitle, Spinner } from './sitesUi'
 import { INPUT, T, dateOnly } from './sitesKit'
 import { copyText } from './siteAddonsKit'
@@ -220,7 +220,7 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
 
 // ── pickers ──────────────────────────────────────────────────────────────────────────
 
-function VersionRow({ v, children }) {
+function VersionRow({ v, children, onPreview, previewing }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '6px 0', borderBottom: `1px solid ${T.line}` }}>
       {children}
@@ -228,77 +228,150 @@ function VersionRow({ v, children }) {
         <div style={{ fontWeight: 600, color: T.ink, fontSize: 13.5 }}>{versionLine({ ...v, label: '' })}</div>
         <div style={{ fontSize: 12, color: T.muted }}>{[v.label, v.is_current ? 'showing now' : null].filter(Boolean).join(' · ')}</div>
       </div>
+      {onPreview && <Button size="sm" icon={Eye} loading={previewing} onClick={() => onPreview(v)}>Preview</Button>}
     </div>
   )
 }
 
+// A look at one version before it goes in the link. The page is drawn in a sandboxed frame: no scripts run in it.
+function PreviewModal({ preview, onClose }) {
+  return (
+    <Modal open={!!preview} onClose={onClose} title={preview ? preview.title : ''} width={920} footer={<Button onClick={onClose}>Close</Button>}>
+      {preview && (
+        <iframe title={preview.title} sandbox="" srcDoc={preview.html}
+          style={{ width: '100%', height: '65vh', minHeight: 360, border: `1px solid ${T.line}`, borderRadius: 8, display: 'block', background: '#fff' }} />
+      )}
+    </Modal>
+  )
+}
+
+function usePreview(api, errorMessage, setError) {
+  const [busyId, setBusyId] = useState('')
+  const [preview, setPreview] = useState(null)
+  const open = async (siteId, v, siteName) => {
+    setBusyId(v.id); setError('')
+    try {
+      const r = await api.preview(siteId, v.id)
+      setPreview({ html: r.html, title: `${siteName ? siteName + ' · ' : ''}Version ${v.version}` })
+    } catch (e) { setError(errorMessage(e, 'Could not show that version.')) } finally { setBusyId('') }
+  }
+  return { busyId, preview, open, close: () => setPreview(null) }
+}
+
 function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
   const [sites, setSites] = useState(null)
-  const [siteId, setSiteId] = useState('')
+  const [query, setQuery] = useState('')
+  const [site, setSite] = useState(null)
   const [versions, setVersions] = useState(null)
   const [picked, setPicked] = useState([])
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const pv = usePreview(api, errorMessage, setError)
 
   useEffect(() => {
     if (!open) return
-    setSites(null); setSiteId(''); setVersions(null); setPicked([]); setName(''); setError('')
-    api.sites().then((rows) => { setSites(rows); if (rows.length === 1) setSiteId(rows[0].site_id) })
-      .catch((e) => { setSites([]); setError(errorMessage(e, 'Could not load your Premium sites.')) })
+    setSites(null); setQuery(''); setSite(null); setVersions(null); setPicked([]); setName(''); setError('')
+    api.sites().then(setSites).catch((e) => { setSites([]); setError(errorMessage(e, 'Could not load the Premium sites.')) })
   }, [open, api, errorMessage])
 
   useEffect(() => {
-    if (!siteId) { setVersions(null); return }
-    setVersions(null); setPicked([])
-    api.versions(siteId)
+    if (!site) { setVersions(null); return }
+    setVersions(null); setPicked([]); setError('')
+    api.versions(site.site_id)
       .then((rows) => { setVersions(rows); setPicked(rows.slice(0, 3).map((r) => r.id)) })
       .catch((e) => { setVersions([]); setError(errorMessage(e, 'Could not load the versions.')) })
-  }, [siteId, api, errorMessage])
+  }, [site, api, errorMessage])
 
   const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
   async function create() {
     setBusy(true); setError('')
-    try { onCreated(await api.create({ site_id: siteId, client_name: name.trim() || undefined, design_ids: picked })) }
+    try { onCreated(await api.create({ site_id: site.site_id, client_name: name.trim() || undefined, design_ids: picked })) }
     catch (e) { setError(errorMessage(e, 'Could not create the link.')) }
     finally { setBusy(false) }
   }
+
+  const q = query.trim().toLowerCase()
+  const shown = (sites || []).filter((s) => !q || `${s.business_name || ''} ${s.builder_name || ''}`.toLowerCase().includes(q))
+  const showBuilder = (sites || []).some((s) => s.builder_name) && new Set((sites || []).map((s) => s.builder_id)).size > 1
+
   return (
-    <Modal open={open} onClose={onClose} title="Share versions of a site" width={520}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} disabled={!siteId || picked.length === 0} onClick={create}>Create link</Button></>}>
+    <Modal open={open} onClose={onClose} title={site ? `Versions of ${site.business_name || 'this site'}` : 'Choose a site'} width={560}
+      footer={site ? (
+        <>
+          <Button onClick={() => setSite(null)}>Back to sites</Button>
+          <Button variant="primary" loading={busy} disabled={picked.length === 0} onClick={create}>Create link</Button>
+        </>
+      ) : <Button onClick={onClose}>Cancel</Button>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {sites === null && <Spinner />}
-        {sites && sites.length === 0 && !error && (
-          <Notice tone="info">No Premium sites with two or more saved versions yet. Make another design of a Premium site, then come back.</Notice>
-        )}
-        {sites && sites.length > 0 && (
-          <Field label="Which site?">
-            <select value={siteId} onChange={(e) => setSiteId(e.target.value)} style={INPUT}>
-              <option value="">Choose a site…</option>
-              {sites.map((s) => <option key={s.site_id} value={s.site_id}>{s.business_name || 'Untitled site'} ({s.versions} versions)</option>)}
-            </select>
-          </Field>
-        )}
-        {siteId && (
-          <Field label="Versions to show your client" hint="Tick the ones to include." group>
-            {versions === null && <Spinner />}
-            <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-              {versions && versions.map((v) => (
-                <VersionRow key={v.id} v={v}>
-                  <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)}
-                    aria-label={`Include version ${v.version}`} style={{ width: 20, height: 20 }} />
-                </VersionRow>
-              ))}
+        {!site && (
+          <>
+            <p style={{ margin: 0, fontSize: 13, color: T.soft, lineHeight: 1.5 }}>
+              Pick the site you want to show versions of. Only Premium sites keep saved versions, and a site needs at least two.
+            </p>
+            {sites && sites.length > 5 && (
+              <div style={{ position: 'relative' }}>
+                <Search size={15} aria-hidden="true" style={{ position: 'absolute', left: 11, top: 12, color: T.muted }} />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by business or builder" aria-label="Search sites"
+                  style={{ ...INPUT, paddingLeft: 34 }} />
+              </div>
+            )}
+            {sites === null && <Spinner />}
+            {sites && sites.length === 0 && !error && (
+              <Notice tone="info">No Premium sites yet. Make a Premium design for a client’s site, then come back here.</Notice>
+            )}
+            {sites && sites.length > 0 && shown.length === 0 && <p style={{ margin: 0, fontSize: 13, color: T.muted }}>No site matches “{query}”.</p>}
+            <div style={{ maxHeight: 360, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {shown.map((s) => {
+                const ok = s.versions >= 2
+                return (
+                  <button key={s.site_id} type="button" disabled={!ok} onClick={() => setSite(s)}
+                    style={{ textAlign: 'left', background: '#fff', border: `1px solid ${T.line}`, borderRadius: 10, padding: '10px 12px', minHeight: 44,
+                      cursor: ok ? 'pointer' : 'not-allowed', opacity: ok ? 1 : 0.6, fontFamily: 'inherit', width: '100%' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, color: T.ink, fontSize: 14, wordBreak: 'break-word' }}>{s.business_name || 'Untitled site'}</span>
+                      <Badge tone={ok ? 'info' : 'neutral'}>{s.versions} {s.versions === 1 ? 'version' : 'versions'}</Badge>
+                    </div>
+                    <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
+                      {[showBuilder && s.builder_name ? `Builder: ${s.builder_name}` : null, String(s.status || '').replace(/_/g, ' '),
+                        s.created_at ? `made ${dateOnly(s.created_at)}` : null].filter(Boolean).join(' · ')}
+                    </div>
+                    {!ok && <div style={{ fontSize: 12, color: T.warn, marginTop: 3 }}>Needs a second version before it can be shared.</div>}
+                  </button>
+                )
+              })}
             </div>
-          </Field>
+          </>
         )}
-        {siteId && (
-          <Field label="Client name (only you see this)" hint="Optional. For example “Mrs Obi”.">
-            <input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} style={INPUT} />
-          </Field>
+
+        {site && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center', background: T.infoBg, borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: T.ink, wordBreak: 'break-word' }}>{site.business_name || 'Untitled site'}</div>
+                <div style={{ fontSize: 12, color: T.soft }}>{[site.builder_name ? `Builder: ${site.builder_name}` : null, String(site.status || '').replace(/_/g, ' ')].filter(Boolean).join(' · ')}</div>
+              </div>
+              {site.preview_url && <Button size="sm" icon={ExternalLink} onClick={() => window.open(site.preview_url, '_blank', 'noopener')}>Open site</Button>}
+            </div>
+            <Field label="Versions to show your client" hint="Tick the versions to include, and use Preview to look at one first." group>
+              {versions === null && <Spinner />}
+              <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                {versions && versions.map((v) => (
+                  <VersionRow key={v.id} v={v} onPreview={(x) => pv.open(site.site_id, x, site.business_name)} previewing={pv.busyId === v.id}>
+                    <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)}
+                      aria-label={`Include version ${v.version}`} style={{ width: 20, height: 20 }} />
+                  </VersionRow>
+                ))}
+              </div>
+            </Field>
+            <Field label="Client name (only you see this)" hint={`Optional. Leave empty to use “${site.business_name || 'the business name'}”.`}>
+              <input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} style={INPUT} />
+            </Field>
+          </>
         )}
         {error && <Notice tone="bad">{error}</Notice>}
       </div>
+      <PreviewModal preview={pv.preview} onClose={pv.close} />
     </Modal>
   )
 }
@@ -307,6 +380,7 @@ function AddVersionModal({ open, onClose, api, errorMessage, share, onAdd }) {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [busyId, setBusyId] = useState('')
+  const pv = usePreview(api, errorMessage, setErr)
   useEffect(() => {
     if (!open) return
     setRows(null); setErr(''); setBusyId('')
@@ -320,10 +394,11 @@ function AddVersionModal({ open, onClose, api, errorMessage, share, onAdd }) {
       {err && <Notice tone="bad">{err}</Notice>}
       {rows && free.length === 0 && !err && <p style={{ margin: 0, fontSize: 13, color: T.muted }}>Every saved version is already in this link.</p>}
       {free.map((v) => (
-        <VersionRow key={v.id} v={v}>
+        <VersionRow key={v.id} v={v} onPreview={(x) => pv.open(share.site_id, x, share.business_name)} previewing={pv.busyId === v.id}>
           <Button size="sm" loading={busyId === v.id} onClick={async () => { setBusyId(v.id); await onAdd(v.id); setBusyId('') }}>Add</Button>
         </VersionRow>
       ))}
+      <PreviewModal preview={pv.preview} onClose={pv.close} />
     </Modal>
   )
 }
