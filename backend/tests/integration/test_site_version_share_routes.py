@@ -216,3 +216,29 @@ def test_staff_roles_that_cannot_write_are_read_only(api):
     assert c.post("/api/v1/site-version-shares", json={"site_id": "s1", "design_ids": ["s1-d1"]}).status_code == 403
     h["role"] = "agent"
     assert c.get(f"/api/v1/site-version-shares/sites?builder_id={B1}").status_code == 403
+
+
+def test_versions_are_named_and_priced_on_create_edit_and_show_to_the_client(api):
+    holder, c = api
+    r = c.post("/api/v1/builder/version-shares", json={"site_id": "s1", "items": [
+        {"design_id": "s1-d2", "label": "Standard"}, {"design_id": "s1-d3", "label": "Luxury", "price_ngn": 75000}]})
+    assert r.status_code == 201, r.text
+    d = r.json()["data"]
+    token = d["link"].rsplit("/", 1)[1]
+    assert [(i["label"], i["price"]) for i in d["items"]] == [("Standard", 30000), ("Luxury", 75000)]
+    bad = c.post("/api/v1/builder/version-shares", json={"site_id": "x1", "items": [{"design_id": "x1-d2", "price_ngn": 1}]})
+    assert bad.status_code in (403, 404, 422)                       # not this builder's site / refused
+    page = c.get(f"/v/{token}").text
+    assert "Standard" in page and "₦30,000" in page and "Luxury" in page and "₦75,000" in page
+    item = d["items"][0]["id"]
+    e = c.patch(f"/api/v1/builder/version-shares/{d['id']}/versions/{item}", json={"label": "Premium", "price_ngn": 50000})
+    assert e.status_code == 200 and (e.json()["data"]["items"][0]["label"], e.json()["data"]["items"][0]["price"]) == ("Premium", 50000)
+    low = c.patch(f"/api/v1/builder/version-shares/{d['id']}/versions/{item}", json={"price_ngn": 100})
+    assert low.status_code == 422
+    back = c.patch(f"/api/v1/builder/version-shares/{d['id']}/versions/{item}", json={"clear_price": True})
+    assert back.json()["data"]["items"][0]["price"] == 30000
+    assert c.get("/api/v1/builder/version-shares/pricing").json()["data"]["system_price"] == 30000
+    holder["role"] = "owner"
+    assert c.get("/api/v1/site-version-shares/pricing").json()["data"]["system_price"] == 30000
+    s = c.patch(f"/api/v1/site-version-shares/{d['id']}/versions/{item}", json={"label": "Basic"})
+    assert s.status_code == 200 and s.json()["data"]["items"][0]["label"] == "Basic"

@@ -222,7 +222,7 @@ export const listVersionShares = (builderId) =>
 export const listVersionableSites = (builderId) => unwrap(api.get('/api/v1/site-version-shares/sites', { params: builderId ? { builder_id: builderId } : {} }))
 export const previewSiteVersion = (siteId, designId) => unwrap(api.get(`/api/v1/site-version-shares/sites/${siteId}/versions/${designId}/preview`))
 export const getVersionPricing = () => unwrap(api.get('/api/v1/site-version-shares/pricing'))
-export const setVersionSharePrice = (id, price) => unwrap(api.post(`/api/v1/site-version-shares/${id}/price`, { price_ngn: price }))
+export const editShareVersion = (id, itemId, body) => unwrap(api.patch(`/api/v1/site-version-shares/${id}/versions/${itemId}`, body))
 export const listSiteVersions = (siteId) => unwrap(api.get(`/api/v1/site-version-shares/sites/${siteId}/versions`))
 export const createVersionShare = (payload) => unwrap(api.post('/api/v1/site-version-shares', payload))
 export const getVersionShare = (id) => unwrap(api.get(`/api/v1/site-version-shares/${id}`))

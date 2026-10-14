@@ -30,9 +30,8 @@ def _heading(v: dict) -> str:
     who = _e(v.get("builder_name")) or "Your web designer"
     name = f" for {_e(v['client_name'])}" if v.get("client_name") else ""
     biz = f" The versions below are different looks for {_e(v['business_name'])}." if v.get("business_name") else ""
-    price = (f'<p class="note"><strong>Price for your website: ₦{int(v["price"]):,}</strong></p>' if v.get("price") else "")
     return (f"<h1>Choose your website design{name}</h1>"
-            f"<p>{who} has prepared the versions below.{biz} Open each one, then choose the one you like best.</p>{price}")
+            f"<p>{who} has prepared the versions below.{biz} Open each one, then choose the one you like best.</p>")
 
 
 def _cards(token: str, v: dict) -> str:
@@ -45,7 +44,8 @@ def _cards(token: str, v: dict) -> str:
             choose = (f'<form method="post" action="/v/{_e(token)}/choose"><input type="hidden" name="item_id" value="{_e(i["id"])}">'
                       f'<button type="submit">Choose this one</button></form>')
         pill = '<span class="pill">Your choice</span>' if sel else ""
-        out.append(f'<section class="card{" sel" if sel else ""}"><div class="lab">{_e(i["label"])}</div>'
+        cost = f'<div style="font-size:20px;font-weight:700;margin-top:6px">₦{int(i["price"]):,}</div>' if i.get("price") else ""
+        out.append(f'<section class="card{" sel" if sel else ""}"><div class="lab">{_e(i["label"])}</div>{cost}'
                    f'<div class="row" style="margin-top:12px">{view}{choose}{pill}</div></section>')
     out.append("</div>")
     return "".join(out)
@@ -103,7 +103,7 @@ def versions_choose(token: str, request: Request, db=Depends(get_supabase),
             return _doc("Not available", f'<h1>This choice is closed</h1><p>Please contact {_e(v.get("builder_name")) or "your designer"}.</p>', 409)
         if confirm != "1":
             return _doc("Confirm your choice",
-                        f'<h1>Confirm your choice</h1><p>You are choosing <strong>{_e(item["label"])}</strong>. '
+                        f'<h1>Confirm your choice</h1><p>You are choosing <strong>{_e(item["label"])}</strong>{(" at ₦" + format(int(item["price"]), ",")) if item.get("price") else ""}. '
                         'You can still change your mind later, until payment is made.</p>'
                         f'<form method="post" action="/v/{_e(token)}/choose"><input type="hidden" name="item_id" value="{_e(item_id)}">'
                         '<input type="hidden" name="confirm" value="1"><div class="row"><button type="submit">Yes, choose this design</button>'

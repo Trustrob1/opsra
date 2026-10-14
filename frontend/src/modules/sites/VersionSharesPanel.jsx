@@ -4,8 +4,8 @@
  * link. The client opens each version and picks one; the pick becomes the site's live preview. Used in the builder
  * portal and in the staff Sites area through an `api` adapter, so the builder token and staff session never mix.
  *
- *   api        { list, sites, versions(siteId), preview(siteId, designId) -> {html}, create({site_id, client_name, design_ids, price_ngn}),
- *                pricing() -> {system_price}, setPrice(id, priceOrNull),
+ *   api        { list, sites, versions(siteId), preview(siteId, designId) -> {html}, create({site_id, client_name, items:[{design_id, label, price_ngn}]}),
+ *                pricing() -> {system_price}, editItem(id, itemId, {label, price_ngn, clear_price}),
  *                get, add(id, designId), remove(id, itemId), choose(id, itemId), close(id) }   (each returns the payload; memoise it)
  *   errorMessage(err, fallback)
  *   canEdit    false = read only
@@ -34,27 +34,39 @@ function StatusBadge({ status }) {
 
 const money = (n) => `₦${Number(n || 0).toLocaleString('en-NG')}`
 
-// The price the client sees. Starts on the system price (shown first); the builder may choose their own, never below it.
-function PriceField({ system, own, setOwn, custom, setCustom }) {
+const NAMES = ['Standard', 'Premium', 'Luxury']
+
+// Name and price of ONE version, as the client will see them. A price left at the system price follows it; the builder may
+// charge more, never less.
+function NamePrice({ system, label, setLabel, price, setPrice, placeholder }) {
   const floor = Number(system) || 0
+  const low = price !== '' && Number(price) < floor
   return (
-    <Field label="Price for your client" hint={custom ? `Not less than the system price of ${money(floor)}. The client sees this price on the link.` : 'The client sees this price on the link.'} group>
-      <label style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 44, cursor: 'pointer', fontSize: 13.5, color: T.ink }}>
-        <input type="radio" name="price-mode" checked={!custom} onChange={() => setCustom(false)} style={{ width: 18, height: 18 }} />
-        Use the system price: <strong>{money(floor)}</strong>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0 12px 30px' }}>
+      <label style={{ fontSize: 12, fontWeight: 600, color: T.soft }}>Name the client sees
+        <input value={label} maxLength={60} placeholder={placeholder} onChange={(e) => setLabel(e.target.value)} style={{ ...INPUT, marginTop: 4 }} />
       </label>
-      <label style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 44, cursor: 'pointer', fontSize: 13.5, color: T.ink }}>
-        <input type="radio" name="price-mode" checked={custom} onChange={() => { setCustom(true); if (!own) setOwn(String(floor)) }} style={{ width: 18, height: 18 }} />
-        Set my own price
-      </label>
-      {custom && (
-        <input type="number" inputMode="numeric" min={floor} step={500} value={own} onChange={(e) => setOwn(e.target.value)}
-          aria-label="My price in naira" style={INPUT} />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {NAMES.map((n) => (
+          <button key={n} type="button" onClick={() => setLabel(n)} aria-label={`Name it ${n}`}
+            style={{ minHeight: 44, padding: '0 14px', borderRadius: 999, border: `1px solid ${label === n ? T.teal : T.line}`, background: label === n ? '#E6F4F1' : '#fff',
+              color: T.ink, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{n}</button>
+        ))}
+      </div>
+      {floor > 0 && (
+        <label style={{ fontSize: 12, fontWeight: 600, color: T.soft }}>Price for the client (₦)
+          <input type="number" inputMode="numeric" min={floor} step={500} value={price} onChange={(e) => setPrice(e.target.value)}
+            aria-label="Price in naira" style={{ ...INPUT, marginTop: 4 }} />
+          <span style={{ display: 'block', fontWeight: 400, color: low ? '#B42318' : T.muted, marginTop: 4 }}>
+            {low ? `Not less than the system price of ${money(floor)}.` : `System price: ${money(floor)}. You can charge more, not less.`}
+          </span>
+        </label>
       )}
-    </Field>
+    </div>
   )
 }
-const priceError = (system, custom, own) => (custom && !(Number(own) >= Number(system))) ? `The price can't be less than the system price of ${money(system)}.` : ''
+// null when the price is the system price (it then follows the system), else the builder's own whole-naira price
+const ownPrice = (system, price) => (price === '' || Number(price) <= Number(system) ? undefined : Number(price))
 
 const versionLine = (v) => `Version ${v.version}${v.created_at ? ` · ${dateOnly(v.created_at)}` : ''}${v.label && v.label !== `Version ${v.version}` ? ` · ${v.label}` : ''}`
 
@@ -100,7 +112,7 @@ export default function VersionSharesPanel({ api, errorMessage, canEdit = true, 
               <div style={{ fontSize: 12.5, color: T.muted, marginTop: 2 }}>
                 {s.business_name && s.client_name ? `${s.business_name} · ` : ''}{s.versions} {s.versions === 1 ? 'version' : 'versions'}
                 {builderNames && builderNames[s.builder_id] ? ` · ${builderNames[s.builder_id]}` : ''}
-                {s.price ? ` · ${money(s.price)}` : ''}
+                {s.price_from ? ` · from ${money(s.price_from)}` : ''}
                 {s.expires_at ? ` · link until ${dateOnly(s.expires_at)}` : ''}
               </div>
             </div>
@@ -122,7 +134,7 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
   const [busy, setBusy] = useState('')
   const [copied, setCopied] = useState(false)
   const [adding, setAdding] = useState(false)
-  const [pricing, setPricing] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [confirm, setConfirm] = useState(null)   // {kind:'choose'|'remove'|'close', item?}
 
   const load = useCallback(async () => {
@@ -183,19 +195,6 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
         </Card>
       )}
 
-      {share.price > 0 && (
-        <Card pad={14}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: 12.5, color: T.muted }}>Price your client sees</div>
-              <div style={{ fontWeight: 700, color: T.ink, fontSize: 18 }}>{money(share.price)}</div>
-              <div style={{ fontSize: 12, color: T.soft }}>{share.client_price != null ? `Your own price. The system price is ${money(share.system_price)}.` : 'The system price.'}</div>
-            </div>
-            {canEdit && live && !share.paid && <Button size="sm" onClick={() => setPricing(true)}>Change price</Button>}
-          </div>
-        </Card>
-      )}
-
       {share.status === 'chosen' && picked && (
         <Notice tone="good">
           <div>
@@ -216,7 +215,8 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: T.teal }}>{it.label}</div>
-              <div style={{ fontSize: 12.5, color: T.soft, marginTop: 2 }}>{it.created_at ? `Saved ${dateOnly(it.created_at)}` : ''}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.ink, marginTop: 4 }}>{money(it.price)}</div>
+              <div style={{ fontSize: 12.5, color: T.soft, marginTop: 2 }}>{[it.version ? `Version ${it.version}` : null, it.created_at ? `saved ${dateOnly(it.created_at)}` : null, it.own_price == null ? 'system price' : null].filter(Boolean).join(' · ')}</div>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {it.chosen && <Badge tone="good">Picked</Badge>}
@@ -225,6 +225,7 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
             {live && <Button size="sm" icon={ExternalLink} onClick={() => window.open(it.preview_url, '_blank', 'noopener')}>Open version</Button>}
+            {canEdit && live && !share.paid && <Button size="sm" onClick={() => setEditing(it)}>Edit name & price</Button>}
             {canEdit && live && !it.chosen && <Button size="sm" onClick={() => setConfirm({ kind: 'choose', item: it })}>Client picked this</Button>}
             {canEdit && live && !it.chosen && share.items.length > 1 && (
               <Button size="sm" variant="danger" icon={Trash2} onClick={() => setConfirm({ kind: 'remove', item: it })}>Remove</Button>
@@ -235,8 +236,8 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
 
       {canEdit && live && <div><Button variant="danger" onClick={() => setConfirm({ kind: 'close' })}>Close this link</Button></div>}
 
-      <PriceModal open={pricing} onClose={() => setPricing(false)} share={share} busy={busy === 'price'}
-        onSave={async (p) => { if (await run('price', () => api.setPrice(share.id, p), 'Price saved')) setPricing(false) }} />
+      <ItemModal item={editing} system={share.system_price} busy={busy === 'item'} onClose={() => setEditing(null)}
+        onSave={async (body) => { if (await run('item', () => api.editItem(share.id, editing.id, body), 'Saved')) setEditing(null) }} />
       <AddVersionModal open={adding} onClose={() => setAdding(false)} api={api} errorMessage={errorMessage} share={share}
         onAdd={async (designId) => { if (await run('add', () => api.add(share.id, designId), 'Version added')) setAdding(false) }} />
 
@@ -308,8 +309,7 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
   const [picked, setPicked] = useState([])
   const [name, setName] = useState('')
   const [system, setSystem] = useState(null)
-  const [custom, setCustom] = useState(false)
-  const [own, setOwn] = useState('')
+  const [det, setDet] = useState({})       // { [designId]: { label, price } } - the name and price per ticked version
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const pv = usePreview(api, errorMessage, setError)
@@ -317,7 +317,7 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
   useEffect(() => {
     if (!open) return
     setSites(null); setQuery(''); setSite(null); setVersions(null); setPicked([]); setName(''); setError('')
-    setCustom(false); setOwn('')
+    setDet({})
     if (api.pricing) api.pricing().then((r) => setSystem(r && r.system_price)).catch(() => setSystem(null))
     api.sites().then(setSites).catch((e) => { setSites([]); setError(errorMessage(e, 'Could not load the Premium sites.')) })
   }, [open, api, errorMessage])
@@ -326,16 +326,20 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
     if (!site) { setVersions(null); return }
     setVersions(null); setPicked([]); setError('')
     api.versions(site.site_id)
-      .then((rows) => { setVersions(rows); setPicked(rows.slice(0, 3).map((r) => r.id)) })
+      .then((rows) => { setVersions(rows); setPicked(rows.slice(0, 3).map((r) => r.id)); setDet({}) })
       .catch((e) => { setVersions([]); setError(errorMessage(e, 'Could not load the versions.')) })
   }, [site, api, errorMessage])
 
   const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
   async function create() {
-    const pe = priceError(system, custom, own)
-    if (pe) { setError(pe); return }
+    const items = picked.map((id) => {
+      const d = det[id] || {}
+      return { design_id: id, label: (d.label || '').trim() || undefined, price_ngn: ownPrice(system, d.price ?? '') }
+    })
+    const low = picked.find((id) => Number(system) > 0 && (det[id]?.price ?? '') !== '' && Number(det[id].price) < Number(system))
+    if (low) { setError(`A price can't be less than the system price of ${money(system)}.`); return }
     setBusy(true); setError('')
-    try { onCreated(await api.create({ site_id: site.site_id, client_name: name.trim() || undefined, design_ids: picked, price_ngn: custom ? Number(own) : undefined })) }
+    try { onCreated(await api.create({ site_id: site.site_id, client_name: name.trim() || undefined, items })) }
     catch (e) { setError(errorMessage(e, 'Could not create the link.')) }
     finally { setBusy(false) }
   }
@@ -402,18 +406,24 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
               </div>
               {site.preview_url && <Button size="sm" icon={ExternalLink} onClick={() => window.open(site.preview_url, '_blank', 'noopener')}>Open site</Button>}
             </div>
-            <Field label="Versions to show your client" hint="Tick the versions to include, and use Preview to look at one first." group>
+            <Field label="Versions to show your client" hint="Tick the versions to include and use Preview to look at one. Give each a name and a price for your client." group>
               {versions === null && <Spinner />}
-              <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+              <div style={{ maxHeight: 360, overflowY: 'auto' }}>
                 {versions && versions.map((v) => (
-                  <VersionRow key={v.id} v={v} onPreview={(x) => pv.open(site.site_id, x, site.business_name)} previewing={pv.busyId === v.id}>
-                    <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)}
-                      aria-label={`Include version ${v.version}`} style={{ width: 20, height: 20 }} />
-                  </VersionRow>
+                  <div key={v.id}>
+                    <VersionRow v={v} onPreview={(x) => pv.open(site.site_id, x, site.business_name)} previewing={pv.busyId === v.id}>
+                      <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)}
+                        aria-label={`Include version ${v.version}`} style={{ width: 20, height: 20 }} />
+                    </VersionRow>
+                    {picked.includes(v.id) && (
+                      <NamePrice system={system} placeholder={`Version ${v.version}`}
+                        label={det[v.id]?.label ?? ''} setLabel={(x) => setDet((d) => ({ ...d, [v.id]: { ...d[v.id], label: x } }))}
+                        price={det[v.id]?.price ?? String(system || '')} setPrice={(x) => setDet((d) => ({ ...d, [v.id]: { ...d[v.id], price: x } }))} />
+                    )}
+                  </div>
                 ))}
               </div>
             </Field>
-            {system > 0 && <PriceField system={system} own={own} setOwn={setOwn} custom={custom} setCustom={setCustom} />}
             <Field label="Client name (only you see this)" hint={`Optional. Leave empty to use “${site.business_name || 'the business name'}”.`}>
               <input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} style={INPUT} />
             </Field>
@@ -426,24 +436,26 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
   )
 }
 
-function PriceModal({ open, onClose, share, busy, onSave }) {
-  const [custom, setCustom] = useState(false)
-  const [own, setOwn] = useState('')
+function ItemModal({ item, system, busy, onClose, onSave }) {
+  const [label, setLabel] = useState('')
+  const [price, setPrice] = useState('')
   const [err, setErr] = useState('')
   useEffect(() => {
-    if (!open) return
-    setCustom(share.client_price != null); setOwn(share.client_price != null ? String(share.client_price) : ''); setErr('')
-  }, [open, share])
+    if (!item) return
+    setLabel(item.label || ''); setPrice(String(item.price || system || '')); setErr('')
+  }, [item, system])
   function save() {
-    const pe = priceError(share.system_price, custom, own)
-    if (pe) { setErr(pe); return }
-    onSave(custom ? Number(own) : null)
+    if (!label.trim()) { setErr('Give this version a name.'); return }
+    if (Number(system) > 0 && Number(price) < Number(system)) { setErr(`The price can't be less than the system price of ${money(system)}.`); return }
+    const own = ownPrice(system, price)
+    onSave({ label: label.trim(), ...(own === undefined ? { clear_price: true } : { price_ngn: own }) })
   }
   return (
-    <Modal open={open} onClose={onClose} title="Price for your client" width={460}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Save price</Button></>}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <PriceField system={share.system_price} own={own} setOwn={setOwn} custom={custom} setCustom={setCustom} />
+    <Modal open={!!item} onClose={onClose} title="Name and price" width={460}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Save</Button></>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <p style={{ margin: 0, fontSize: 13, color: T.soft }}>This is what the client sees on their link for this version.</p>
+        <div style={{ marginLeft: -30 }}><NamePrice system={system} label={label} setLabel={setLabel} price={price} setPrice={setPrice} placeholder="Standard, Premium, Luxury…" /></div>
         {err && <Notice tone="bad">{err}</Notice>}
       </div>
     </Modal>

@@ -40,20 +40,34 @@ def _fail(exc: opt.OptionError) -> HTTPException:
     return HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)})
 
 
+class ItemIn(BaseModel):
+    design_id: str
+    label: Optional[str] = Field(None, max_length=60)       # a name such as Standard, Premium, Luxury
+    price_ngn: Optional[int] = Field(None, ge=0)            # None = the system price; never below it
+
+
 class CreateShare(BaseModel):
     site_id: str
     client_name: Optional[str] = Field(None, max_length=120)
-    design_ids: List[str] = Field(default_factory=list, max_length=10)
-    price_ngn: Optional[int] = Field(None, ge=0)          # None = the system price
+    design_ids: List[str] = Field(default_factory=list, max_length=10)       # simple form: just the versions
+    items: List[ItemIn] = Field(default_factory=list, max_length=10)         # full form: versions with name and price
+
+    def ids_and_details(self):
+        if self.items:
+            return [i.design_id for i in self.items], {i.design_id: {"label": i.label, "price_ngn": i.price_ngn} for i in self.items}
+        return self.design_ids, {}
 
 
-class SetPrice(BaseModel):
-    price_ngn: Optional[int] = Field(None, ge=0)          # None = back to the system price
+class EditItem(BaseModel):
+    label: Optional[str] = Field(None, max_length=60)
+    price_ngn: Optional[int] = Field(None, ge=0)
+    clear_price: bool = False                                # true = back to the system price
 
 
 class AddVersion(BaseModel):
     design_id: str
     label: Optional[str] = Field(None, max_length=60)
+    price_ngn: Optional[int] = Field(None, ge=0)
 
 
 class ChooseItem(BaseModel):
@@ -97,8 +111,9 @@ def b_preview(site_id: str, design_id: str, builder=Depends(get_current_builder)
 @builder_router.post("/version-shares", status_code=201)
 def b_create(payload: CreateShare, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
-        return ok(data=ver.create_share(db, builder["org_id"], payload.site_id, payload.client_name, payload.design_ids,
-                                        f"builder:{builder['id']}", builder["id"], payload.price_ngn), message="Version link created")
+        ids, det = payload.ids_and_details()
+        return ok(data=ver.create_share(db, builder["org_id"], payload.site_id, payload.client_name, ids,
+                                        f"builder:{builder['id']}", builder["id"], det), message="Version link created")
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -115,7 +130,7 @@ def b_get(share_id: str, builder=Depends(get_current_builder), db=Depends(get_su
 def b_add(share_id: str, payload: AddVersion, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
         return ok(data=ver.add_version(db, builder["org_id"], share_id, payload.design_id, payload.label,
-                                       f"builder:{builder['id']}", builder["id"]), message="Version added")
+                                       f"builder:{builder['id']}", builder["id"], payload.price_ngn), message="Version added")
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -129,11 +144,12 @@ def b_remove(share_id: str, item_id: str, builder=Depends(get_current_builder), 
         raise _fail(exc)
 
 
-@builder_router.post("/version-shares/{share_id}/price")
-def b_price(share_id: str, payload: SetPrice, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+@builder_router.patch("/version-shares/{share_id}/versions/{item_id}")
+def b_edit_item(share_id: str, item_id: str, payload: EditItem, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
-        return ok(data=ver.set_price(db, builder["org_id"], share_id, payload.price_ngn, f"builder:{builder['id']}", builder["id"]),
-                  message="Price saved")
+        return ok(data=ver.update_item(db, builder["org_id"], share_id, item_id, payload.label, payload.price_ngn,
+                                       f"builder:{builder['id']}", builder["id"], set_price=payload.clear_price or payload.price_ngn is not None),
+                  message="Saved")
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -204,8 +220,9 @@ def s_create(payload: CreateShare, org=Depends(get_current_org), db=Depends(get_
     _require(org, _WRITE_ROLES)
     _require_enabled(db, org["org_id"])
     try:
-        return ok(data=ver.create_share(db, org["org_id"], payload.site_id, payload.client_name, payload.design_ids,
-                                        f"user:{org.get('id')}", None, payload.price_ngn), message="Version link created")
+        ids, det = payload.ids_and_details()
+        return ok(data=ver.create_share(db, org["org_id"], payload.site_id, payload.client_name, ids,
+                                        f"user:{org.get('id')}", None, det), message="Version link created")
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -225,8 +242,8 @@ def s_add(share_id: str, payload: AddVersion, org=Depends(get_current_org), db=D
     _require(org, _WRITE_ROLES)
     _require_enabled(db, org["org_id"])
     try:
-        return ok(data=ver.add_version(db, org["org_id"], share_id, payload.design_id, payload.label, f"user:{org.get('id')}"),
-                  message="Version added")
+        return ok(data=ver.add_version(db, org["org_id"], share_id, payload.design_id, payload.label, f"user:{org.get('id')}",
+                                       None, payload.price_ngn), message="Version added")
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -241,12 +258,13 @@ def s_remove(share_id: str, item_id: str, org=Depends(get_current_org), db=Depen
         raise _fail(exc)
 
 
-@staff_router.post("/{share_id}/price")
-def s_price(share_id: str, payload: SetPrice, org=Depends(get_current_org), db=Depends(get_supabase)):
+@staff_router.patch("/{share_id}/versions/{item_id}")
+def s_edit_item(share_id: str, item_id: str, payload: EditItem, org=Depends(get_current_org), db=Depends(get_supabase)):
     _require(org, _WRITE_ROLES)
     _require_enabled(db, org["org_id"])
     try:
-        return ok(data=ver.set_price(db, org["org_id"], share_id, payload.price_ngn, f"user:{org.get('id')}"), message="Price saved")
+        return ok(data=ver.update_item(db, org["org_id"], share_id, item_id, payload.label, payload.price_ngn, f"user:{org.get('id')}",
+                                       set_price=payload.clear_price or payload.price_ngn is not None), message="Saved")
     except opt.OptionError as exc:
         raise _fail(exc)
 

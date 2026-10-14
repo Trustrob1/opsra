@@ -323,35 +323,50 @@ def test_an_uploaded_site_is_offered_with_its_saved_versions_and_can_be_picked(s
         ver.preview_html(db, ORG, "s1", "d2", B2)
 
 
-# -- the builder's price for the site ------------------------------------------------------------
+# -- a name and a price for each version ------------------------------------------------------------
 
-def test_a_link_uses_the_system_price_unless_the_builder_sets_a_higher_one():
+def test_each_version_has_its_own_name_and_price_and_the_system_price_is_the_default():
     db = _db()
-    s = ver.create_share(db, ORG, "s1", None, ["d2", "d3"], "u", price_ngn=None)
-    assert (s["system_price"], s["client_price"], s["price"]) == (30000, None, 30000)    # default shown, nothing custom
-    assert ver.system_price(db, ORG) == 30000
-    s = ver.set_price(db, ORG, s["id"], 45000, "u")
-    assert (s["client_price"], s["price"]) == (45000, 45000)
-    assert ver.public_view(db, db.rows("site_version_shares")[0]["token"])["price"] == 45000
-    s = ver.set_price(db, ORG, s["id"], None, "u")                                          # back to the system price
-    assert (s["client_price"], s["price"]) == (None, 30000)
+    s = ver.create_share(db, ORG, "s1", None, ["d2", "d3", "d4"], "u",
+                         details={"d2": {"label": "Standard"}, "d3": {"label": "Premium", "price_ngn": 45000},
+                                  "d4": {"label": "Luxury", "price_ngn": 80000}})
+    assert s["system_price"] == 30000 and ver.system_price(db, ORG) == 30000
+    assert [(i["label"], i["price"], i["own_price"]) for i in s["items"]] == [
+        ("Standard", 30000, None), ("Premium", 45000, 45000), ("Luxury", 80000, 80000)]
+    pv = ver.public_view(db, db.rows("site_version_shares")[0]["token"])
+    assert [(i["label"], i["price"]) for i in pv["items"]] == [("Standard", 30000), ("Premium", 45000), ("Luxury", 80000)]
+    assert ver.list_shares(db, ORG)[0]["price_from"] == 30000
 
 
-def test_a_price_below_the_system_price_is_refused():
+def test_a_version_price_below_the_system_price_is_refused_and_nothing_is_saved():
     db = _db()
     with pytest.raises(opt.OptionError):
-        ver.create_share(db, ORG, "s1", None, ["d2"], "u", price_ngn=29999)
-    s = ver.create_share(db, ORG, "s1", None, ["d2"], "u", price_ngn=30000)
-    assert s["price"] == 30000
+        ver.create_share(db, ORG, "s1", None, ["d2", "d3"], "u", details={"d3": {"price_ngn": 29999}})
+    assert db.rows("site_version_shares") == []
+    s = ver.create_share(db, ORG, "s1", None, ["d2"], "u", details={"d2": {"price_ngn": 30000}})
+    item = s["items"][0]["id"]
     with pytest.raises(opt.OptionError):
-        ver.set_price(db, ORG, s["id"], 100, "u")
+        ver.update_item(db, ORG, s["id"], item, None, 100, "u")
     with pytest.raises(opt.OptionError):
-        ver.set_price(db, ORG, s["id"], "abc", "u")
+        ver.update_item(db, ORG, s["id"], item, None, "abc", "u")
+    with pytest.raises(opt.OptionError):
+        ver.add_version(db, ORG, s["id"], "d3", "Luxury", "u", price_ngn=5)
 
 
-def test_the_price_cannot_change_once_the_link_is_closed():
+def test_name_and_price_can_be_edited_until_the_link_is_closed():
     db = _db()
-    s = ver.create_share(db, ORG, "s1", None, ["d2"], "u")
+    s = ver.create_share(db, ORG, "s1", None, ["d2", "d3"], "u")
+    item = s["items"][0]["id"]
+    s = ver.update_item(db, ORG, s["id"], item, "Luxury", 90000, "u")
+    assert (s["items"][0]["label"], s["items"][0]["price"]) == ("Luxury", 90000)
+    s = ver.update_item(db, ORG, s["id"], item, None, None, "u")             # price back to the system price
+    assert s["items"][0]["price"] == 30000 and s["items"][0]["label"] == "Luxury"
+    s = ver.update_item(db, ORG, s["id"], item, "Standard", None, "u", set_price=False)   # rename only
+    assert s["items"][0]["label"] == "Standard"
+    s = ver.add_version(db, ORG, s["id"], "d4", "Premium", "u", price_ngn=50000)
+    assert [i["price"] for i in s["items"]] == [30000, 30000, 50000]
+    with pytest.raises(opt.OptionError):
+        ver.update_item(db, ORG, s["id"], item, "  ", None, "u", set_price=False)
     ver.close_share(db, ORG, s["id"], "u")
     with pytest.raises(opt.OptionConflict):
-        ver.set_price(db, ORG, s["id"], 40000, "u")
+        ver.update_item(db, ORG, s["id"], item, "X", 40000, "u")

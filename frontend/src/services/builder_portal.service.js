@@ -235,7 +235,7 @@ export const listVersionShares = (token) => unwrap(axios.get(`${BASE}/version-sh
 export const listVersionableSites = (token) => unwrap(axios.get(`${BASE}/version-shares/sites`, authed(token)))
 export const previewSiteVersion = (token, siteId, designId) => unwrap(axios.get(`${BASE}/version-shares/sites/${siteId}/versions/${designId}/preview`, authed(token)))
 export const getVersionPricing = (token) => unwrap(axios.get(`${BASE}/version-shares/pricing`, authed(token)))
-export const setVersionSharePrice = (token, id, price) => unwrap(axios.post(`${BASE}/version-shares/${id}/price`, { price_ngn: price }, authed(token)))
+export const editShareVersion = (token, id, itemId, body) => unwrap(axios.patch(`${BASE}/version-shares/${id}/versions/${itemId}`, body, authed(token)))
 export const listSiteVersions = (token, siteId) => unwrap(axios.get(`${BASE}/version-shares/sites/${siteId}/versions`, authed(token)))
 /** payload: { site_id, client_name?, design_ids } → the link, with its versions */
 export const createVersionShare = (token, payload) => unwrap(axios.post(`${BASE}/version-shares`, payload, authed(token)))
