@@ -211,6 +211,8 @@ from app.routers import public_site_capture as public_site_capture_router  # SIT
 from app.routers import site_capture as site_capture_router  # SITE-ADDONS A1-1 — staff capture routes
 from app.routers import public_site_options as public_site_options_router  # SITE-OPTIONS — GET /o/{token}
 from app.routers import site_options as site_options_router  # SITE-OPTIONS — builder + staff option-set routes
+from app.routers import public_site_versions as public_site_versions_router  # SITE-OPTIONS OPT-3 — GET /v/{token}
+from app.routers import site_version_shares as site_version_shares_router  # SITE-OPTIONS OPT-3 — builder + staff version links
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -266,6 +268,9 @@ app.include_router(site_capture_router.router,        prefix="/api/v1",         
 app.include_router(public_site_options_router.router, prefix="",                  tags=["public_site_options"])  # SITE-OPTIONS — client's choose page
 app.include_router(site_options_router.builder_router, prefix="/api/v1",          tags=["site_options_builder"])  # SITE-OPTIONS — /api/v1/builder/option-sets
 app.include_router(site_options_router.staff_router,   prefix="/api/v1",          tags=["site_options"])  # SITE-OPTIONS — /api/v1/site-option-sets
+app.include_router(public_site_versions_router.router, prefix="",                  tags=["public_site_versions"])  # SITE-OPTIONS OPT-3 — client's version page
+app.include_router(site_version_shares_router.builder_router, prefix="/api/v1",    tags=["site_versions_builder"])  # SITE-OPTIONS OPT-3 — /api/v1/builder/version-shares
+app.include_router(site_version_shares_router.staff_router,   prefix="/api/v1",    tags=["site_versions"])  # SITE-OPTIONS OPT-3 — /api/v1/site-version-shares
 
 
 # ---------------------------------------------------------------------------

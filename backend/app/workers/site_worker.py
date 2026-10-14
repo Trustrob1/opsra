@@ -556,6 +556,15 @@ def run_option_sweep() -> dict:
     except Exception as exc:  # S14
         total["failed"] += 1
         logger.warning("[site_worker] option sweep failed: %s", exc)
+    try:   # OPT-3: version links
+        from app.services import site_version_share_service
+        v = site_version_share_service.run_sweep(db, started)
+        total["expired"] += v["expired"]
+        total["closed"] += v["closed"]
+        total["failed"] += v["failed"]
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] version sweep failed: %s", exc)
     write_worker_log(
         db, worker_name="site_worker.option_sweep", status="failed" if total["failed"] else "passed",
         items_processed=total["expired"] + total["closed"] + total["cleaned"], items_failed=total["failed"], started_at=started,

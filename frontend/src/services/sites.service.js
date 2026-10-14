@@ -215,3 +215,16 @@ export const attachOptionSite = (setId, siteId, label) =>
 export const detachOptionSite = (setId, siteId) => unwrap(api.delete(`/api/v1/site-option-sets/${setId}/sites/${siteId}`))
 export const chooseOptionItem = (setId, itemId) => unwrap(api.post(`/api/v1/site-option-sets/${setId}/choose`, { item_id: itemId }))
 export const closeOptionSet = (setId) => unwrap(api.post(`/api/v1/site-option-sets/${setId}/close`))
+
+// ── SITE-OPTIONS OPT-3 — version links (staff) ──────────────────────────────────────────
+export const listVersionShares = (builderId) =>
+  unwrap(api.get('/api/v1/site-version-shares', { params: builderId ? { builder_id: builderId } : {} }))
+export const listVersionableSites = (builderId) => unwrap(api.get('/api/v1/site-version-shares/sites', { params: { builder_id: builderId } }))
+export const listSiteVersions = (siteId) => unwrap(api.get(`/api/v1/site-version-shares/sites/${siteId}/versions`))
+export const createVersionShare = (payload) => unwrap(api.post('/api/v1/site-version-shares', payload))
+export const getVersionShare = (id) => unwrap(api.get(`/api/v1/site-version-shares/${id}`))
+export const addShareVersion = (id, designId, label) =>
+  unwrap(api.post(`/api/v1/site-version-shares/${id}/versions`, { design_id: designId, ...(label ? { label } : {}) }))
+export const removeShareVersion = (id, itemId) => unwrap(api.delete(`/api/v1/site-version-shares/${id}/versions/${itemId}`))
+export const chooseShareVersion = (id, itemId) => unwrap(api.post(`/api/v1/site-version-shares/${id}/choose`, { item_id: itemId }))
+export const closeVersionShare = (id) => unwrap(api.post(`/api/v1/site-version-shares/${id}/close`))

@@ -229,3 +229,16 @@ export const detachOptionSite = (token, setId, siteId) =>
 export const chooseOptionItem = (token, setId, itemId) =>
   unwrap(axios.post(`${BASE}/option-sets/${setId}/choose`, { item_id: itemId }, authed(token)))
 export const closeOptionSet = (token, setId) => unwrap(axios.post(`${BASE}/option-sets/${setId}/close`, null, authed(token)))
+
+// ── SITE-OPTIONS OPT-3 — several VERSIONS of one Premium site behind one link ───────────
+export const listVersionShares = (token) => unwrap(axios.get(`${BASE}/version-shares`, authed(token)))
+export const listVersionableSites = (token) => unwrap(axios.get(`${BASE}/version-shares/sites`, authed(token)))
+export const listSiteVersions = (token, siteId) => unwrap(axios.get(`${BASE}/version-shares/sites/${siteId}/versions`, authed(token)))
+/** payload: { site_id, client_name?, design_ids } → the link, with its versions */
+export const createVersionShare = (token, payload) => unwrap(axios.post(`${BASE}/version-shares`, payload, authed(token)))
+export const getVersionShare = (token, id) => unwrap(axios.get(`${BASE}/version-shares/${id}`, authed(token)))
+export const addShareVersion = (token, id, designId, label) =>
+  unwrap(axios.post(`${BASE}/version-shares/${id}/versions`, { design_id: designId, ...(label ? { label } : {}) }, authed(token)))
+export const removeShareVersion = (token, id, itemId) => unwrap(axios.delete(`${BASE}/version-shares/${id}/versions/${itemId}`, authed(token)))
+export const chooseShareVersion = (token, id, itemId) => unwrap(axios.post(`${BASE}/version-shares/${id}/choose`, { item_id: itemId }, authed(token)))
+export const closeVersionShare = (token, id) => unwrap(axios.post(`${BASE}/version-shares/${id}/close`, null, authed(token)))
