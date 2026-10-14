@@ -129,6 +129,9 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload, fixed_amount: 
     if not site:
         raise SiteNotFound("Site not found")
 
+    if site.get("option_offered"):      # SITE-OPTIONS: one of several designs - checkout starts once the client has picked it
+        raise CheckoutBlocked("This design is one of several options for your client. Checkout opens after the client picks it.")
+
     lead_id = builder.get("lead_id")
     if not lead_id:
         raise CheckoutBlocked("This builder has no linked CRM lead yet — checkout can't be started.")

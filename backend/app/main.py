@@ -209,6 +209,8 @@ from app.routers import site_addons as site_addons_router                # SITE-
 from app.routers import public_site_pay as public_site_pay_router        # SITE-ADDONS A0-2 — GET /site-pay/{token}
 from app.routers import public_site_capture as public_site_capture_router  # SITE-ADDONS A1-1 — site form + tracked links
 from app.routers import site_capture as site_capture_router  # SITE-ADDONS A1-1 — staff capture routes
+from app.routers import public_site_options as public_site_options_router  # SITE-OPTIONS — GET /o/{token}
+from app.routers import site_options as site_options_router  # SITE-OPTIONS — builder + staff option-set routes
 
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
@@ -261,6 +263,9 @@ app.include_router(site_addons_router.router,    prefix="/api/v1",           tag
 app.include_router(public_site_pay_router.router, prefix="",                  tags=["public_site_pay"])  # SITE-ADDONS A0-2 — client pay page
 app.include_router(public_site_capture_router.router, prefix="",              tags=["public_site_capture"])  # SITE-ADDONS A1-1 — form + /sl/ links
 app.include_router(site_capture_router.router,        prefix="/api/v1",           tags=["site_capture"])  # SITE-ADDONS A1-1 — staff capture routes
+app.include_router(public_site_options_router.router, prefix="",                  tags=["public_site_options"])  # SITE-OPTIONS — client's choose page
+app.include_router(site_options_router.builder_router, prefix="/api/v1",          tags=["site_options_builder"])  # SITE-OPTIONS — /api/v1/builder/option-sets
+app.include_router(site_options_router.staff_router,   prefix="/api/v1",          tags=["site_options"])  # SITE-OPTIONS — /api/v1/site-option-sets
 
 
 # ---------------------------------------------------------------------------

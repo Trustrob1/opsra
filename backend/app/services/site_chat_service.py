@@ -188,7 +188,7 @@ def _preset_list_text(presets: list[dict]) -> str:
 # ─────────────────────────────── Brief form links ───────────────────────────────
 
 def _create_brief_form(db, org_id: str, builder: dict, audience: str, preset_id: Optional[str] = None,
-                        client_label: Optional[str] = None) -> tuple[dict, str]:
+                        client_label: Optional[str] = None, option_set_id: Optional[str] = None) -> tuple[dict, str]:
     raw_token, token_hash = generate_form_token()
     row = {
         "org_id": org_id, "builder_id": builder["id"], "audience": audience,
@@ -197,14 +197,17 @@ def _create_brief_form(db, org_id: str, builder: dict, audience: str, preset_id:
         "client_label": (client_label or "").strip()[:120] or None,
         "created_at": _now_iso(), "updated_at": _now_iso(),
     }
+    if option_set_id:       # SITE-OPTIONS: the site this form makes becomes one of the set's designs
+        row["option_set_id"] = option_set_id
     res = db.table("site_brief_forms").insert(row).execute()
     return (_one(res.data) or row), raw_token
 
 
 def create_form_link(db, org_id: str, builder: dict, audience: str, preset_id: Optional[str] = None,
-                      client_label: Optional[str] = None) -> tuple[dict, str]:
+                      client_label: Optional[str] = None, option_set_id: Optional[str] = None) -> tuple[dict, str]:
     """SITE-WEB-1: the builder portal's way to mint a brief-form link (same row the bot makes). Returns (form, url)."""
-    form, raw_token = _create_brief_form(db, org_id, builder, audience, preset_id=preset_id, client_label=client_label)
+    form, raw_token = _create_brief_form(db, org_id, builder, audience, preset_id=preset_id, client_label=client_label,
+                                         option_set_id=option_set_id)
     return form, _form_url({}, raw_token)
 
 

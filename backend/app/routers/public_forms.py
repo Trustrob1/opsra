@@ -254,7 +254,11 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
     except Exception:  # S14 - a lookup failure must not lose a client's submission
         logger.exception("[SITE-ACCESS] builder lookup failed on submit form=%s", form.get("id"))
         _builder_row = None
-    if _builder_row:
+    _option_set = None          # SITE-OPTIONS: a form made for an option set builds a design option, not a counted site
+    if _builder_row and form.get("option_set_id"):
+        from app.services import site_option_service
+        _option_set = site_option_service.usable_for_new_site(db, form["org_id"], form["option_set_id"], form["builder_id"])
+    if _builder_row and not _option_set:
         try:
             site_access_service.check_can_create(db, form["org_id"], _builder_row)
         except site_access_service.AccessBlocked:
@@ -295,6 +299,12 @@ def submit_form(token: str, payload: SiteBriefFormSubmit, db=Depends(get_supabas
     site_res = db.table("sites").insert(site_row).execute()
     site = _one(site_res.data) or site_row
     site_giveaway_service.attach_site(db, _giveaway_entry, site.get("id"))
+    if _option_set and site.get("id"):
+        try:
+            from app.services import site_option_service
+            site_option_service.attach_site(db, form["org_id"], _option_set["id"], site["id"], None, "brief_form")
+        except Exception:  # S14 - the site stays an ordinary (counted) site if it cannot join the set
+            logger.exception("[SITE-OPTIONS] attach after form submit failed site=%s", site.get("id"))
 
     for slot, uploads in (photos or {}).items():
         for u in uploads:

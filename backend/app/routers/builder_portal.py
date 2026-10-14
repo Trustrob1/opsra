@@ -436,10 +436,18 @@ def create_my_form(payload: dict, builder=Depends(get_current_builder), db=Depen
     if preset_id:
         _get_preset(db, org_id, str(preset_id))
 
-    try:
-        site_access_service.check_can_create(db, org_id, builder)
-    except site_access_service.AccessBlocked as exc:
-        raise HTTPException(403, detail={"code": "ACCESS_LIMIT", "message": str(exc), "access": exc.view})
+    option_set_id = str(payload.get("option_set_id") or "").strip() or None      # SITE-OPTIONS: a design option for a set
+    if option_set_id:
+        from app.services import site_option_service
+        try:
+            site_option_service.validate_set_for_builder(db, org_id, option_set_id, builder["id"])
+        except site_option_service.OptionError as exc:
+            raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
+    else:
+        try:
+            site_access_service.check_can_create(db, org_id, builder)
+        except site_access_service.AccessBlocked as exc:
+            raise HTTPException(403, detail={"code": "ACCESS_LIMIT", "message": str(exc), "access": exc.view})
 
     open_forms = (db.table("site_brief_forms").select("id").eq("org_id", org_id).eq("builder_id", builder["id"])
                   .eq("status", "open").execute()).data or []
@@ -447,7 +455,8 @@ def create_my_form(payload: dict, builder=Depends(get_current_builder), db=Depen
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR",
                                          "message": f"You have {_MAX_OPEN_FORMS} open links. Cancel the ones you no longer need first."})
 
-    form, url = site_chat_service.create_form_link(db, org_id, builder, audience, preset_id=preset_id, client_label=label)
+    extra = {"option_set_id": option_set_id} if option_set_id else {}       # SITE-OPTIONS: only passed when a set is named
+    form, url = site_chat_service.create_form_link(db, org_id, builder, audience, preset_id=preset_id, client_label=label, **extra)
     return ok(data={"id": form.get("id"), "audience": audience, "url": url, "expires_at": form.get("expires_at"),
                     "client_label": label}, message="Link created. Copy it now: it is only shown once.")
 

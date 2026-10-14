@@ -669,6 +669,10 @@ celery_app.conf.beat_schedule = {
     # Deletes uploaded images 90 days after a site is cancelled or its   #
     # domain lapsed; warns managers 7 days before. Text is kept.         #
     # ------------------------------------------------------------------ #
+    "site-option-sweep": {                # SITE-OPTIONS: hourly - expire unpicked sets, close paid picks, clean up unchosen options
+        "task": "app.workers.site_worker.run_option_sweep",
+        "schedule": crontab(minute=35),
+    },
     "site-giveaway-deadlines": {          # GIVEAWAY-2: hourly - remind unpaid giveaway winners, then release the slot
         "task": "app.workers.site_worker.run_giveaway_deadlines",
         "schedule": crontab(minute=20),

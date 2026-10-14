@@ -544,6 +544,26 @@ def run_capture_reminders() -> dict:
     return total
 
 
+@celery_app.task(name="app.workers.site_worker.run_option_sweep")
+def run_option_sweep() -> dict:
+    """SITE-OPTIONS: hourly. Unpicked sets expire, paid/overdue picks close, unchosen options are cleaned up after 14 days."""
+    from app.services import site_option_service
+    db = get_supabase()
+    started = _now()
+    total = {"expired": 0, "closed": 0, "cleaned": 0, "failed": 0}
+    try:
+        total = site_option_service.run_sweep(db, started)
+    except Exception as exc:  # S14
+        total["failed"] += 1
+        logger.warning("[site_worker] option sweep failed: %s", exc)
+    write_worker_log(
+        db, worker_name="site_worker.option_sweep", status="failed" if total["failed"] else "passed",
+        items_processed=total["expired"] + total["closed"] + total["cleaned"], items_failed=total["failed"], started_at=started,
+        run_duration_ms=int((_now() - started).total_seconds() * 1000),
+    )
+    return total
+
+
 @celery_app.task(name="app.workers.site_worker.run_giveaway_deadlines")
 def run_giveaway_deadlines() -> dict:
     """GIVEAWAY-2: hourly. Unpaid winners get a reminder, then at the pay-by time the slot is freed and the normal rate applies (lapsed); after the extra days the site is taken down (released)."""
