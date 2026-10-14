@@ -294,3 +294,30 @@ def test_sweep_expires_unpicked_links_and_closes_paid_ones():
     assert ver.run_sweep(db2, NOW)["closed"] == 0
     db2.rows("site_orders").append({"id": "o1", "org_id": ORG, "site_id": "s1", "kind": "initial", "status": "paid"})
     assert ver.run_sweep(db2, NOW)["closed"] == 1 and db2.rows("site_version_shares")[0]["status"] == "closed"
+
+
+# -- uploaded (imported) sites keep saved designs too ------------------------------------------
+
+def _imported_db():
+    db = _db(n_designs=0, tier="imported")
+    db.rows("site_designs").extend([_design(i, kind="import", files_prefix=f"p/{i}", import_meta={"filename": f"site{i}.zip"})
+                                    for i in (1, 2, 3)])
+    return db
+
+
+def test_an_uploaded_site_is_offered_with_its_saved_versions_and_can_be_picked(sent, monkeypatch):
+    db = _imported_db()
+    rows = ver.premium_sites(db, ORG, B1)
+    assert [(r["site_id"], r["versions"]) for r in rows] == [("s1", 3)]
+    assert [v["version"] for v in ver.site_versions(db, ORG, "s1")] == [3, 2, 1]
+    s = _share(db, ("d2", "d3"))
+    seen = {}
+    from app.services import site_import_render
+    monkeypatch.setattr(site_import_render, "activate", lambda db_, org, site, did, **kw: seen.setdefault("id", did))
+    monkeypatch.setattr(site_import_render, "preview_design", lambda db_, org, site, did, assets=None: f"<p>{did}</p>")
+    tok = db.rows("site_version_shares")[0]["token"]
+    ver.choose_by_token(db, tok, s["items"][1]["id"])
+    assert seen["id"] == s["items"][1]["design_id"]
+    assert ver.preview_html(db, ORG, "s1", "d2", B1) == "<p>d2</p>"
+    with pytest.raises(opt.OptionNotFound):
+        ver.preview_html(db, ORG, "s1", "d2", B2)

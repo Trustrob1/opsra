@@ -307,7 +307,7 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
         {!site && (
           <>
             <p style={{ margin: 0, fontSize: 13, color: T.soft, lineHeight: 1.5 }}>
-              Pick the site you want to show versions of. Only Premium sites keep saved versions, and a site needs at least two.
+              Pick the site you want to show versions of. Only Premium and uploaded sites keep saved versions, and a site needs at least two.
             </p>
             {sites && sites.length > 5 && (
               <div style={{ position: 'relative' }}>

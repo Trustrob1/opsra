@@ -60,14 +60,32 @@ def _items(db: Any, share_id: str) -> list:
     return sorted(rows, key=lambda r: (r.get("sort_order") or 0, str(r.get("created_at") or "")))
 
 
-def site_versions(db: Any, org_id: str, site_id: str, builder_id: Optional[str] = None) -> list:
-    """The saved versions of a Premium site that can be shared (newest first)."""
+SHAREABLE_TIERS = ("premium", "imported")     # the two kinds of site that keep several saved designs
+
+
+def _history(db: Any, org_id: str, site: dict) -> list:
+    """Saved versions of a Premium (written designs) or Imported (uploaded sites) site, newest first, never held-back ones."""
+    if (site.get("tier") or "standard") == "imported":
+        from app.services import site_import_render
+        out = []
+        for d in site_import_render.designs(db, org_id, site):
+            if d.get("staged") or d.get("status") != "ready":
+                continue
+            out.append({"id": d["id"], "version": d.get("version"), "kind": "import",
+                        "label": d.get("filename") or "Uploaded site", "created_at": d.get("created_at"),
+                        "is_current": bool(d.get("active")), "can_restore": not d.get("active")})
+        return out
     from app.services import site_premium_history
+    return site_premium_history.history(db, org_id, site)
+
+
+def site_versions(db: Any, org_id: str, site_id: str, builder_id: Optional[str] = None) -> list:
+    """The saved versions of a Premium or Imported site that can be shared (newest first)."""
     site = _site(db, org_id, site_id, builder_id)
-    if (site.get("tier") or "standard") != "premium":
+    if (site.get("tier") or "standard") not in SHAREABLE_TIERS:
         return []
     try:
-        return site_premium_history.history(db, org_id, site)
+        return _history(db, org_id, site)
     except Exception as exc:  # S14
         logger.warning("site_version: history failed site=%s: %s", site_id, exc)
         return []
@@ -82,7 +100,7 @@ def premium_sites(db: Any, org_id: str, builder_id: Optional[str] = None, limit:
     if builder_id:
         q = q.eq("builder_id", builder_id)
     rows = q.execute().data or []
-    rows = [r for r in rows if (r.get("tier") or "standard") == "premium" and r.get("status") != "cancelled"]
+    rows = [r for r in rows if (r.get("tier") or "standard") in SHAREABLE_TIERS and r.get("status") != "cancelled"]
     rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
     rows = rows[:limit]
     names = {}
@@ -156,8 +174,25 @@ def list_shares(db: Any, org_id: str, builder_id: Optional[str] = None, limit: i
 # ---------------------------------------------------------------------------
 
 def _usable_designs(db: Any, org_id: str, site: dict) -> dict:
-    from app.services import site_premium_history
-    return {h["id"]: h for h in site_premium_history.history(db, org_id, site)}
+    return {h["id"]: h for h in _history(db, org_id, site)}
+
+
+def preview_html(db: Any, org_id: str, site_id: str, design_id: str, builder_id: Optional[str] = None) -> str:
+    """One saved version of a site as a full page (for the builder / staff Preview button). Raises OptionNotFound."""
+    site = _site(db, org_id, site_id, builder_id)
+    if (site.get("tier") or "standard") not in SHAREABLE_TIERS or design_id not in {h["id"] for h in _history(db, org_id, site)}:
+        raise OptionNotFound("Version not found")
+    assets = (db.table("site_assets").select("id, public_url").eq("site_id", site["id"]).execute()).data or []
+    assets_by_id = {a["id"]: {"public_url": a["public_url"]} for a in assets}
+    try:
+        if (site.get("tier") or "standard") == "imported":
+            from app.services import site_import_render
+            return site_import_render.preview_design(db, org_id, site, design_id, assets_by_id)
+        from app.services import site_premium_service
+        return site_premium_service.preview_design(db, org_id, site, design_id, assets_by_id)
+    except Exception as exc:
+        logger.warning("site_version: preview failed site=%s design=%s: %s", site_id, design_id, exc)
+        raise OptionNotFound("That version can't be shown right now")
 
 
 def _label_for(version: Any, n: int, label: Optional[str]) -> str:
@@ -167,8 +202,8 @@ def _label_for(version: Any, n: int, label: Optional[str]) -> str:
 def create_share(db: Any, org_id: str, site_id: str, client_name: Optional[str], design_ids: list, actor: str,
                  builder_id: Optional[str] = None) -> dict:
     site = _site(db, org_id, site_id, builder_id)
-    if (site.get("tier") or "standard") != "premium":
-        raise OptionError("Only Premium sites keep saved versions to share.")
+    if (site.get("tier") or "standard") not in SHAREABLE_TIERS:
+        raise OptionError("Only Premium and uploaded sites keep saved versions to share.")
     if site.get("status") == "cancelled":
         raise OptionError("This site is cancelled.")
     if opt._site_paid_safe(db, org_id, site_id):
@@ -306,10 +341,12 @@ def render_version(db: Any, token: str, item_id: str) -> str:
     if not item:
         raise OptionNotFound("Version not found")
     site = _site(db, s["org_id"], s["site_id"])
-    from app.services import site_premium_service
+    from app.services import site_import_render, site_premium_service
     assets = (db.table("site_assets").select("id, public_url").eq("site_id", site["id"]).execute()).data or []
     assets_by_id = {a["id"]: {"public_url": a["public_url"]} for a in assets}
     try:
+        if (site.get("tier") or "standard") == "imported":
+            return site_import_render.preview_design(db, s["org_id"], site, item["design_id"], assets_by_id)
         return site_premium_service.preview_design(db, s["org_id"], site, item["design_id"], assets_by_id)
     except Exception as exc:
         logger.warning("site_version: render failed share=%s item=%s: %s", s["id"], item_id, exc)
@@ -352,8 +389,12 @@ def _choose(db: Any, s: dict, item_id: str, actor: str, now: datetime, notify: b
     if not (cas.execute()).data:
         raise OptionConflict("The choice was just changed. Please reload the page and try again.")
     try:
-        from app.services import site_premium_service
-        site_premium_service.use_design(db, org_id, site, item["design_id"])
+        if (site.get("tier") or "standard") == "imported":
+            from app.services import site_import_render
+            site_import_render.activate(db, org_id, site, item["design_id"], actor="client")
+        else:
+            from app.services import site_premium_service
+            site_premium_service.use_design(db, org_id, site, item["design_id"])
     except Exception as exc:
         # Put the share back as it was: the site still shows its old design, so nothing may claim otherwise.
         try:

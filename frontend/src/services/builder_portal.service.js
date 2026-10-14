@@ -233,6 +233,7 @@ export const closeOptionSet = (token, setId) => unwrap(axios.post(`${BASE}/optio
 // ── SITE-OPTIONS OPT-3 — several VERSIONS of one Premium site behind one link ───────────
 export const listVersionShares = (token) => unwrap(axios.get(`${BASE}/version-shares`, authed(token)))
 export const listVersionableSites = (token) => unwrap(axios.get(`${BASE}/version-shares/sites`, authed(token)))
+export const previewSiteVersion = (token, siteId, designId) => unwrap(axios.get(`${BASE}/version-shares/sites/${siteId}/versions/${designId}/preview`, authed(token)))
 export const listSiteVersions = (token, siteId) => unwrap(axios.get(`${BASE}/version-shares/sites/${siteId}/versions`, authed(token)))
 /** payload: { site_id, client_name?, design_ids } → the link, with its versions */
 export const createVersionShare = (token, payload) => unwrap(axios.post(`${BASE}/version-shares`, payload, authed(token)))

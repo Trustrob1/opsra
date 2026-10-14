@@ -31,7 +31,7 @@ export default function SitesOptionsTab({ canEdit, showToast }) {
     list: () => svc.listVersionShares(builderId || undefined),
     sites: () => svc.listVersionableSites(builderId || undefined),
     versions: (siteId) => svc.listSiteVersions(siteId),
-    preview: (siteId, designId) => svc.previewPremiumDesign(siteId, designId),
+    preview: (siteId, designId) => svc.previewSiteVersion(siteId, designId),
     create: (p) => svc.createVersionShare(p),
     get: (id) => svc.getVersionShare(id),
     add: (id, designId, label) => svc.addShareVersion(id, designId, label),

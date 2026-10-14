@@ -75,6 +75,14 @@ def b_site_versions(site_id: str, builder=Depends(get_current_builder), db=Depen
         raise _fail(exc)
 
 
+@builder_router.get("/version-shares/sites/{site_id}/versions/{design_id}/preview")
+def b_preview(site_id: str, design_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    try:
+        return ok(data={"html": ver.preview_html(db, builder["org_id"], site_id, design_id, builder["id"])})
+    except opt.OptionError as exc:
+        raise _fail(exc)
+
+
 @builder_router.post("/version-shares", status_code=201)
 def b_create(payload: CreateShare, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
@@ -149,6 +157,16 @@ def s_site_versions(site_id: str, org=Depends(get_current_org), db=Depends(get_s
     _require_enabled(db, org["org_id"])
     try:
         return ok(data=ver.site_versions(db, org["org_id"], site_id))
+    except opt.OptionError as exc:
+        raise _fail(exc)
+
+
+@staff_router.get("/sites/{site_id}/versions/{design_id}/preview")
+def s_preview(site_id: str, design_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _READ_ROLES)
+    _require_enabled(db, org["org_id"])
+    try:
+        return ok(data={"html": ver.preview_html(db, org["org_id"], site_id, design_id)})
     except opt.OptionError as exc:
         raise _fail(exc)
 
