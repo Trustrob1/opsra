@@ -25,6 +25,38 @@ logger = logging.getLogger(__name__)
 NO_VERSIONS = "That site has no saved versions to share yet."
 
 
+def system_price(db: Any, org_id: str) -> int:
+    """The fixed price in the system for a site: the Premium total fee in Sites settings. A builder may charge more, never less."""
+    try:
+        from app.services import site_premium_billing_service as billing
+        return int(billing.get_config(_settings(db, org_id))["total_fee_ngn"])
+    except Exception as exc:  # S14
+        logger.warning("site_version: system price lookup failed: %s", exc)
+        return 0
+
+
+def _check_price(db: Any, org_id: str, price: Any) -> Optional[int]:
+    """None = use the system price. Otherwise a whole naira amount, not below the system price."""
+    if price is None or price == "":
+        return None
+    try:
+        n = int(float(price))
+    except (TypeError, ValueError):
+        raise OptionError("Enter the price as a number.")
+    floor = system_price(db, org_id)
+    if n < floor:
+        raise OptionError(f"The price can't be less than the system price of ₦{floor:,.0f}.")
+    if n > 100_000_000:
+        raise OptionError("That price is too high.")
+    return n
+
+
+def price_fields(db: Any, org_id: str, s: dict) -> dict:
+    floor = system_price(db, org_id)
+    own = s.get("client_price_ngn")
+    return {"system_price": floor, "client_price": own, "price": max(int(own), floor) if own is not None else floor}
+
+
 def link_url(token: str) -> str:
     return f"{public_base()}/v/{token}"
 
@@ -146,7 +178,7 @@ def get_share(db: Any, org_id: str, share_id: str, builder_id: Optional[str] = N
             "client_name": s.get("client_name"), "status": s["status"], "chosen_design_id": s.get("chosen_design_id"),
             "chosen_at": s.get("chosen_at"), "expires_at": s.get("expires_at"), "link": link_url(s["token"]),
             "paid": bool(s.get("chosen_design_id")) and opt._site_paid_safe(db, org_id, s["site_id"]),
-            "items": out, "created_at": s.get("created_at")}
+            "items": out, "created_at": s.get("created_at"), **price_fields(db, org_id, s)}
 
 
 def list_shares(db: Any, org_id: str, builder_id: Optional[str] = None, limit: int = 100) -> list:
@@ -165,7 +197,7 @@ def list_shares(db: Any, org_id: str, builder_id: Optional[str] = None, limit: i
         out.append({"id": s["id"], "site_id": s["site_id"], "builder_id": s["builder_id"], "business_name": names.get(s["site_id"]),
                     "client_name": s.get("client_name"), "status": s["status"], "versions": n,
                     "chosen_design_id": s.get("chosen_design_id"), "expires_at": s.get("expires_at"),
-                    "link": link_url(s["token"]), "created_at": s.get("created_at")})
+                    "link": link_url(s["token"]), "created_at": s.get("created_at"), **price_fields(db, org_id, s)})
     return out
 
 
@@ -175,6 +207,34 @@ def list_shares(db: Any, org_id: str, builder_id: Optional[str] = None, limit: i
 
 def _usable_designs(db: Any, org_id: str, site: dict) -> dict:
     return {h["id"]: h for h in _history(db, org_id, site)}
+
+
+def site_tier(db: Any, org_id: str, site_id: str, builder_id: Optional[str] = None) -> str:
+    return _site(db, org_id, site_id, builder_id).get("tier") or "standard"
+
+
+def preview_headers_for(db: Any, token: str) -> Optional[dict]:
+    """Response headers for a client's full-page view when the site is an uploaded one (its scripts run, but sandboxed,
+    and its stored files may load). None for a Premium site: the strict script-free headers apply. Never raises."""
+    try:
+        s = _by_token(db, token)
+        site = _site(db, s["org_id"], s["site_id"]) if s else None
+        if not site or (site.get("tier") or "standard") != "imported":
+            return None
+        from urllib.parse import urlsplit
+        from app.services import site_import_render
+        item_design = None
+        d = site_import_render._current_design(db, site, item_design) if site.get("current_design_id") else None
+        if not d:
+            rows = (db.table("site_designs").select("*").eq("site_id", site["id"]).eq("org_id", site["org_id"])
+                    .eq("kind", "import").eq("status", "ready").order("version", desc=True).limit(1).execute()).data or []
+            d = rows[0] if rows and rows[0].get("files_prefix") else None
+        base = site_import_render.public_base(db, d) if d else None
+        origin = "{u.scheme}://{u.netloc}".format(u=urlsplit(base)) if base else None
+        return site_import_render.preview_headers(site_import_render._allowed_hosts(db, site["org_id"]), origin)
+    except Exception as exc:  # S14
+        logger.warning("site_version: imported headers failed: %s", exc)
+        return None
 
 
 def preview_html(db: Any, org_id: str, site_id: str, design_id: str, builder_id: Optional[str] = None) -> str:
@@ -200,8 +260,9 @@ def _label_for(version: Any, n: int, label: Optional[str]) -> str:
 
 
 def create_share(db: Any, org_id: str, site_id: str, client_name: Optional[str], design_ids: list, actor: str,
-                 builder_id: Optional[str] = None) -> dict:
+                 builder_id: Optional[str] = None, price_ngn: Optional[int] = None) -> dict:
     site = _site(db, org_id, site_id, builder_id)
+    own_price = _check_price(db, org_id, price_ngn)
     if (site.get("tier") or "standard") not in SHAREABLE_TIERS:
         raise OptionError("Only Premium and uploaded sites keep saved versions to share.")
     if site.get("status") == "cancelled":
@@ -230,7 +291,7 @@ def create_share(db: Any, org_id: str, site_id: str, client_name: Optional[str],
     now = _now()
     expires = now + timedelta(days=cfg["expires_days"])
     row = {"org_id": org_id, "site_id": site_id, "builder_id": owner, "client_name": (client_name or "").strip()[:120] or None,
-           "token": secrets.token_urlsafe(24), "status": "open", "expires_at": _iso(expires), "created_by": actor,
+           "token": secrets.token_urlsafe(24), "status": "open", "client_price_ngn": own_price, "expires_at": _iso(expires), "created_by": actor,
            "created_at": _iso(now), "updated_at": _iso(now)}
     created = _one(db.table("site_version_shares").insert(row).execute().data) or row
     for n, d in enumerate(chosen):
@@ -240,6 +301,20 @@ def create_share(db: Any, org_id: str, site_id: str, client_name: Optional[str],
     _keep_preview_alive(db, org_id, site, expires)
     _log_event(db, org_id, site_id, actor, "version_share_created", {"share_id": created["id"], "versions": len(chosen)})
     return get_share(db, org_id, created["id"])
+
+
+def set_price(db: Any, org_id: str, share_id: str, price_ngn: Optional[int], actor: str,
+              builder_id: Optional[str] = None) -> dict:
+    """Change the price the client sees on the link (None = back to the system price). Not once the site is paid."""
+    s = _share(db, org_id, share_id, builder_id)
+    if s["status"] not in OPEN_STATES:
+        raise OptionConflict("This link is closed, so its price can't be changed.")
+    if opt._site_paid_safe(db, org_id, s["site_id"]):
+        raise OptionConflict("This site has already been paid for, so the price can't be changed.")
+    own = _check_price(db, org_id, price_ngn)
+    db.table("site_version_shares").update({"client_price_ngn": own, "updated_at": _iso()}).eq("id", s["id"]).eq("org_id", org_id).execute()
+    _log_event(db, org_id, s["site_id"], actor, "version_share_price_set", {"share_id": s["id"], "price": own})
+    return get_share(db, org_id, s["id"])
 
 
 def _keep_preview_alive(db: Any, org_id: str, site: dict, until: datetime) -> None:
@@ -328,7 +403,7 @@ def public_view(db: Any, token: str) -> Optional[dict]:
     return {"status": s["status"], "expired": expired, "paid": paid,
             "can_choose": s["status"] in OPEN_STATES and not expired and not paid,
             "builder_name": builder.get("business_name") or builder.get("full_name"), "client_name": s.get("client_name"),
-            "business_name": full.get("business_name"), "chosen_design_id": s.get("chosen_design_id"),
+            "business_name": full.get("business_name"), "chosen_design_id": s.get("chosen_design_id"), "price": full["price"],
             "items": [{"id": i["id"], "label": i["label"], "version": i["version"], "chosen": i["chosen"]} for i in full["items"]]}
 
 

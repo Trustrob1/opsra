@@ -4,7 +4,8 @@
  * link. The client opens each version and picks one; the pick becomes the site's live preview. Used in the builder
  * portal and in the staff Sites area through an `api` adapter, so the builder token and staff session never mix.
  *
- *   api        { list, sites, versions(siteId), preview(siteId, designId) -> {html}, create({site_id, client_name, design_ids}),
+ *   api        { list, sites, versions(siteId), preview(siteId, designId) -> {html}, create({site_id, client_name, design_ids, price_ngn}),
+ *                pricing() -> {system_price}, setPrice(id, priceOrNull),
  *                get, add(id, designId), remove(id, itemId), choose(id, itemId), close(id) }   (each returns the payload; memoise it)
  *   errorMessage(err, fallback)
  *   canEdit    false = read only
@@ -30,6 +31,30 @@ function StatusBadge({ status }) {
   const [tone, text] = STATUS[status] || ['neutral', status || '—']
   return <Badge tone={tone}>{text}</Badge>
 }
+
+const money = (n) => `₦${Number(n || 0).toLocaleString('en-NG')}`
+
+// The price the client sees. Starts on the system price (shown first); the builder may choose their own, never below it.
+function PriceField({ system, own, setOwn, custom, setCustom }) {
+  const floor = Number(system) || 0
+  return (
+    <Field label="Price for your client" hint={custom ? `Not less than the system price of ${money(floor)}. The client sees this price on the link.` : 'The client sees this price on the link.'} group>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 44, cursor: 'pointer', fontSize: 13.5, color: T.ink }}>
+        <input type="radio" name="price-mode" checked={!custom} onChange={() => setCustom(false)} style={{ width: 18, height: 18 }} />
+        Use the system price: <strong>{money(floor)}</strong>
+      </label>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 44, cursor: 'pointer', fontSize: 13.5, color: T.ink }}>
+        <input type="radio" name="price-mode" checked={custom} onChange={() => { setCustom(true); if (!own) setOwn(String(floor)) }} style={{ width: 18, height: 18 }} />
+        Set my own price
+      </label>
+      {custom && (
+        <input type="number" inputMode="numeric" min={floor} step={500} value={own} onChange={(e) => setOwn(e.target.value)}
+          aria-label="My price in naira" style={INPUT} />
+      )}
+    </Field>
+  )
+}
+const priceError = (system, custom, own) => (custom && !(Number(own) >= Number(system))) ? `The price can't be less than the system price of ${money(system)}.` : ''
 
 const versionLine = (v) => `Version ${v.version}${v.created_at ? ` · ${dateOnly(v.created_at)}` : ''}${v.label && v.label !== `Version ${v.version}` ? ` · ${v.label}` : ''}`
 
@@ -75,6 +100,7 @@ export default function VersionSharesPanel({ api, errorMessage, canEdit = true, 
               <div style={{ fontSize: 12.5, color: T.muted, marginTop: 2 }}>
                 {s.business_name && s.client_name ? `${s.business_name} · ` : ''}{s.versions} {s.versions === 1 ? 'version' : 'versions'}
                 {builderNames && builderNames[s.builder_id] ? ` · ${builderNames[s.builder_id]}` : ''}
+                {s.price ? ` · ${money(s.price)}` : ''}
                 {s.expires_at ? ` · link until ${dateOnly(s.expires_at)}` : ''}
               </div>
             </div>
@@ -96,6 +122,7 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
   const [busy, setBusy] = useState('')
   const [copied, setCopied] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [pricing, setPricing] = useState(false)
   const [confirm, setConfirm] = useState(null)   // {kind:'choose'|'remove'|'close', item?}
 
   const load = useCallback(async () => {
@@ -156,6 +183,19 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
         </Card>
       )}
 
+      {share.price > 0 && (
+        <Card pad={14}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 12.5, color: T.muted }}>Price your client sees</div>
+              <div style={{ fontWeight: 700, color: T.ink, fontSize: 18 }}>{money(share.price)}</div>
+              <div style={{ fontSize: 12, color: T.soft }}>{share.client_price != null ? `Your own price. The system price is ${money(share.system_price)}.` : 'The system price.'}</div>
+            </div>
+            {canEdit && live && !share.paid && <Button size="sm" onClick={() => setPricing(true)}>Change price</Button>}
+          </div>
+        </Card>
+      )}
+
       {share.status === 'chosen' && picked && (
         <Notice tone="good">
           <div>
@@ -195,6 +235,8 @@ function ShareDetail({ shareId, api, errorMessage, canEdit, onPayLink, showToast
 
       {canEdit && live && <div><Button variant="danger" onClick={() => setConfirm({ kind: 'close' })}>Close this link</Button></div>}
 
+      <PriceModal open={pricing} onClose={() => setPricing(false)} share={share} busy={busy === 'price'}
+        onSave={async (p) => { if (await run('price', () => api.setPrice(share.id, p), 'Price saved')) setPricing(false) }} />
       <AddVersionModal open={adding} onClose={() => setAdding(false)} api={api} errorMessage={errorMessage} share={share}
         onAdd={async (designId) => { if (await run('add', () => api.add(share.id, designId), 'Version added')) setAdding(false) }} />
 
@@ -233,12 +275,12 @@ function VersionRow({ v, children, onPreview, previewing }) {
   )
 }
 
-// A look at one version before it goes in the link. The page is drawn in a sandboxed frame: no scripts run in it.
+// A look at one version before it goes in the link. Premium pages are drawn script-free; an uploaded site runs its own scripts and animations, but only inside a sandbox (same as the site editor).
 function PreviewModal({ preview, onClose }) {
   return (
     <Modal open={!!preview} onClose={onClose} title={preview ? preview.title : ''} width={920} footer={<Button onClick={onClose}>Close</Button>}>
       {preview && (
-        <iframe title={preview.title} sandbox="" srcDoc={preview.html}
+        <iframe title={preview.title} sandbox={preview.scripts ? 'allow-scripts allow-popups' : ''} srcDoc={preview.html}
           style={{ width: '100%', height: '65vh', minHeight: 360, border: `1px solid ${T.line}`, borderRadius: 8, display: 'block', background: '#fff' }} />
       )}
     </Modal>
@@ -252,7 +294,7 @@ function usePreview(api, errorMessage, setError) {
     setBusyId(v.id); setError('')
     try {
       const r = await api.preview(siteId, v.id)
-      setPreview({ html: r.html, title: `${siteName ? siteName + ' · ' : ''}Version ${v.version}` })
+      setPreview({ html: r.html, scripts: r.tier === 'imported', title: `${siteName ? siteName + ' · ' : ''}Version ${v.version}` })
     } catch (e) { setError(errorMessage(e, 'Could not show that version.')) } finally { setBusyId('') }
   }
   return { busyId, preview, open, close: () => setPreview(null) }
@@ -265,6 +307,9 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
   const [versions, setVersions] = useState(null)
   const [picked, setPicked] = useState([])
   const [name, setName] = useState('')
+  const [system, setSystem] = useState(null)
+  const [custom, setCustom] = useState(false)
+  const [own, setOwn] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const pv = usePreview(api, errorMessage, setError)
@@ -272,6 +317,8 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
   useEffect(() => {
     if (!open) return
     setSites(null); setQuery(''); setSite(null); setVersions(null); setPicked([]); setName(''); setError('')
+    setCustom(false); setOwn('')
+    if (api.pricing) api.pricing().then((r) => setSystem(r && r.system_price)).catch(() => setSystem(null))
     api.sites().then(setSites).catch((e) => { setSites([]); setError(errorMessage(e, 'Could not load the Premium sites.')) })
   }, [open, api, errorMessage])
 
@@ -285,8 +332,10 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
 
   const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
   async function create() {
+    const pe = priceError(system, custom, own)
+    if (pe) { setError(pe); return }
     setBusy(true); setError('')
-    try { onCreated(await api.create({ site_id: site.site_id, client_name: name.trim() || undefined, design_ids: picked })) }
+    try { onCreated(await api.create({ site_id: site.site_id, client_name: name.trim() || undefined, design_ids: picked, price_ngn: custom ? Number(own) : undefined })) }
     catch (e) { setError(errorMessage(e, 'Could not create the link.')) }
     finally { setBusy(false) }
   }
@@ -364,6 +413,7 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
                 ))}
               </div>
             </Field>
+            {system > 0 && <PriceField system={system} own={own} setOwn={setOwn} custom={custom} setCustom={setCustom} />}
             <Field label="Client name (only you see this)" hint={`Optional. Leave empty to use “${site.business_name || 'the business name'}”.`}>
               <input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} style={INPUT} />
             </Field>
@@ -372,6 +422,30 @@ function CreateModal({ open, onClose, api, errorMessage, onCreated }) {
         {error && <Notice tone="bad">{error}</Notice>}
       </div>
       <PreviewModal preview={pv.preview} onClose={pv.close} />
+    </Modal>
+  )
+}
+
+function PriceModal({ open, onClose, share, busy, onSave }) {
+  const [custom, setCustom] = useState(false)
+  const [own, setOwn] = useState('')
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    if (!open) return
+    setCustom(share.client_price != null); setOwn(share.client_price != null ? String(share.client_price) : ''); setErr('')
+  }, [open, share])
+  function save() {
+    const pe = priceError(share.system_price, custom, own)
+    if (pe) { setErr(pe); return }
+    onSave(custom ? Number(own) : null)
+  }
+  return (
+    <Modal open={open} onClose={onClose} title="Price for your client" width={460}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Save price</Button></>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <PriceField system={share.system_price} own={own} setOwn={setOwn} custom={custom} setCustom={setCustom} />
+        {err && <Notice tone="bad">{err}</Notice>}
+      </div>
     </Modal>
   )
 }

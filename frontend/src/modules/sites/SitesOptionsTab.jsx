@@ -33,6 +33,8 @@ export default function SitesOptionsTab({ canEdit, showToast }) {
     versions: (siteId) => svc.listSiteVersions(siteId),
     preview: (siteId, designId) => svc.previewSiteVersion(siteId, designId),
     create: (p) => svc.createVersionShare(p),
+    pricing: () => svc.getVersionPricing(),
+    setPrice: (id, price) => svc.setVersionSharePrice(id, price),
     get: (id) => svc.getVersionShare(id),
     add: (id, designId, label) => svc.addShareVersion(id, designId, label),
     remove: (id, itemId) => svc.removeShareVersion(id, itemId),

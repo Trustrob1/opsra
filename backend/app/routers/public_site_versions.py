@@ -30,8 +30,9 @@ def _heading(v: dict) -> str:
     who = _e(v.get("builder_name")) or "Your web designer"
     name = f" for {_e(v['client_name'])}" if v.get("client_name") else ""
     biz = f" The versions below are different looks for {_e(v['business_name'])}." if v.get("business_name") else ""
+    price = (f'<p class="note"><strong>Price for your website: ₦{int(v["price"]):,}</strong></p>' if v.get("price") else "")
     return (f"<h1>Choose your website design{name}</h1>"
-            f"<p>{who} has prepared the versions below.{biz} Open each one, then choose the one you like best.</p>")
+            f"<p>{who} has prepared the versions below.{biz} Open each one, then choose the one you like best.</p>{price}")
 
 
 def _cards(token: str, v: dict) -> str:
@@ -85,7 +86,8 @@ def version_page(token: str, item_id: str, request: Request, db=Depends(get_supa
     except Exception:  # S14
         logger.exception("[SITE-VERSIONS] render failed")
         raise HTTPException(status_code=503, detail="This version couldn't be shown right now")
-    return HTMLResponse(content=html, status_code=200, headers=_preview_headers())
+    headers = ver.preview_headers_for(db, token) or _preview_headers()      # an uploaded site's scripts run, sandboxed
+    return HTMLResponse(content=html, status_code=200, headers=headers)
 
 
 @router.post("/v/{token}/choose", include_in_schema=False)

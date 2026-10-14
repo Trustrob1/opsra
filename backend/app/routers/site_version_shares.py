@@ -44,6 +44,11 @@ class CreateShare(BaseModel):
     site_id: str
     client_name: Optional[str] = Field(None, max_length=120)
     design_ids: List[str] = Field(default_factory=list, max_length=10)
+    price_ngn: Optional[int] = Field(None, ge=0)          # None = the system price
+
+
+class SetPrice(BaseModel):
+    price_ngn: Optional[int] = Field(None, ge=0)          # None = back to the system price
 
 
 class AddVersion(BaseModel):
@@ -62,6 +67,11 @@ def b_list(builder=Depends(get_current_builder), db=Depends(get_supabase)):
     return ok(data=ver.list_shares(db, builder["org_id"], builder["id"]))
 
 
+@builder_router.get("/version-shares/pricing")
+def b_pricing(builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    return ok(data={"system_price": ver.system_price(db, builder["org_id"])})
+
+
 @builder_router.get("/version-shares/sites")
 def b_sites(builder=Depends(get_current_builder), db=Depends(get_supabase)):
     return ok(data=ver.premium_sites(db, builder["org_id"], builder["id"]))
@@ -78,7 +88,8 @@ def b_site_versions(site_id: str, builder=Depends(get_current_builder), db=Depen
 @builder_router.get("/version-shares/sites/{site_id}/versions/{design_id}/preview")
 def b_preview(site_id: str, design_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
-        return ok(data={"html": ver.preview_html(db, builder["org_id"], site_id, design_id, builder["id"])})
+        return ok(data={"html": ver.preview_html(db, builder["org_id"], site_id, design_id, builder["id"]),
+                        "tier": ver.site_tier(db, builder["org_id"], site_id, builder["id"])})
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -87,7 +98,7 @@ def b_preview(site_id: str, design_id: str, builder=Depends(get_current_builder)
 def b_create(payload: CreateShare, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
         return ok(data=ver.create_share(db, builder["org_id"], payload.site_id, payload.client_name, payload.design_ids,
-                                        f"builder:{builder['id']}", builder["id"]), message="Version link created")
+                                        f"builder:{builder['id']}", builder["id"], payload.price_ngn), message="Version link created")
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -118,6 +129,15 @@ def b_remove(share_id: str, item_id: str, builder=Depends(get_current_builder), 
         raise _fail(exc)
 
 
+@builder_router.post("/version-shares/{share_id}/price")
+def b_price(share_id: str, payload: SetPrice, builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    try:
+        return ok(data=ver.set_price(db, builder["org_id"], share_id, payload.price_ngn, f"builder:{builder['id']}", builder["id"]),
+                  message="Price saved")
+    except opt.OptionError as exc:
+        raise _fail(exc)
+
+
 @builder_router.post("/version-shares/{share_id}/choose")
 def b_choose(share_id: str, payload: ChooseItem, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
@@ -144,6 +164,13 @@ def s_list(builder_id: Optional[str] = None, org=Depends(get_current_org), db=De
     return ok(data=ver.list_shares(db, org["org_id"], builder_id))
 
 
+@staff_router.get("/pricing")
+def s_pricing(org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _READ_ROLES)
+    _require_enabled(db, org["org_id"])
+    return ok(data={"system_price": ver.system_price(db, org["org_id"])})
+
+
 @staff_router.get("/sites")
 def s_sites(builder_id: Optional[str] = None, org=Depends(get_current_org), db=Depends(get_supabase)):
     _require(org, _READ_ROLES)
@@ -166,7 +193,8 @@ def s_preview(site_id: str, design_id: str, org=Depends(get_current_org), db=Dep
     _require(org, _READ_ROLES)
     _require_enabled(db, org["org_id"])
     try:
-        return ok(data={"html": ver.preview_html(db, org["org_id"], site_id, design_id)})
+        return ok(data={"html": ver.preview_html(db, org["org_id"], site_id, design_id),
+                        "tier": ver.site_tier(db, org["org_id"], site_id)})
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -177,7 +205,7 @@ def s_create(payload: CreateShare, org=Depends(get_current_org), db=Depends(get_
     _require_enabled(db, org["org_id"])
     try:
         return ok(data=ver.create_share(db, org["org_id"], payload.site_id, payload.client_name, payload.design_ids,
-                                        f"user:{org.get('id')}"), message="Version link created")
+                                        f"user:{org.get('id')}", None, payload.price_ngn), message="Version link created")
     except opt.OptionError as exc:
         raise _fail(exc)
 
@@ -209,6 +237,16 @@ def s_remove(share_id: str, item_id: str, org=Depends(get_current_org), db=Depen
     _require_enabled(db, org["org_id"])
     try:
         return ok(data=ver.remove_version(db, org["org_id"], share_id, item_id, f"user:{org.get('id')}"), message="Version removed")
+    except opt.OptionError as exc:
+        raise _fail(exc)
+
+
+@staff_router.post("/{share_id}/price")
+def s_price(share_id: str, payload: SetPrice, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _WRITE_ROLES)
+    _require_enabled(db, org["org_id"])
+    try:
+        return ok(data=ver.set_price(db, org["org_id"], share_id, payload.price_ngn, f"user:{org.get('id')}"), message="Price saved")
     except opt.OptionError as exc:
         raise _fail(exc)
 

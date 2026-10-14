@@ -321,3 +321,37 @@ def test_an_uploaded_site_is_offered_with_its_saved_versions_and_can_be_picked(s
     assert ver.preview_html(db, ORG, "s1", "d2", B1) == "<p>d2</p>"
     with pytest.raises(opt.OptionNotFound):
         ver.preview_html(db, ORG, "s1", "d2", B2)
+
+
+# -- the builder's price for the site ------------------------------------------------------------
+
+def test_a_link_uses_the_system_price_unless_the_builder_sets_a_higher_one():
+    db = _db()
+    s = ver.create_share(db, ORG, "s1", None, ["d2", "d3"], "u", price_ngn=None)
+    assert (s["system_price"], s["client_price"], s["price"]) == (30000, None, 30000)    # default shown, nothing custom
+    assert ver.system_price(db, ORG) == 30000
+    s = ver.set_price(db, ORG, s["id"], 45000, "u")
+    assert (s["client_price"], s["price"]) == (45000, 45000)
+    assert ver.public_view(db, db.rows("site_version_shares")[0]["token"])["price"] == 45000
+    s = ver.set_price(db, ORG, s["id"], None, "u")                                          # back to the system price
+    assert (s["client_price"], s["price"]) == (None, 30000)
+
+
+def test_a_price_below_the_system_price_is_refused():
+    db = _db()
+    with pytest.raises(opt.OptionError):
+        ver.create_share(db, ORG, "s1", None, ["d2"], "u", price_ngn=29999)
+    s = ver.create_share(db, ORG, "s1", None, ["d2"], "u", price_ngn=30000)
+    assert s["price"] == 30000
+    with pytest.raises(opt.OptionError):
+        ver.set_price(db, ORG, s["id"], 100, "u")
+    with pytest.raises(opt.OptionError):
+        ver.set_price(db, ORG, s["id"], "abc", "u")
+
+
+def test_the_price_cannot_change_once_the_link_is_closed():
+    db = _db()
+    s = ver.create_share(db, ORG, "s1", None, ["d2"], "u")
+    ver.close_share(db, ORG, s["id"], "u")
+    with pytest.raises(opt.OptionConflict):
+        ver.set_price(db, ORG, s["id"], 40000, "u")

@@ -30,6 +30,8 @@ export default function BuilderOptionsView({ token, onPayLink, showToast }) {
     versions: (siteId) => svc.listSiteVersions(token, siteId),
     preview: (siteId, designId) => svc.previewSiteVersion(token, siteId, designId),
     create: (p) => svc.createVersionShare(token, p),
+    pricing: () => svc.getVersionPricing(token),
+    setPrice: (id, price) => svc.setVersionSharePrice(token, id, price),
     get: (id) => svc.getVersionShare(token, id),
     add: (id, designId, label) => svc.addShareVersion(token, id, designId, label),
     remove: (id, itemId) => svc.removeShareVersion(token, id, itemId),
