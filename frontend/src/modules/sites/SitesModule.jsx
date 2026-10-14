@@ -11,7 +11,7 @@
  * Roles: owner / ops_manager write; admin read-only (matches Event Funnels' convention).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { LayoutDashboard, Globe, Users, LayoutTemplate, Settings, Server, ClipboardList, CalendarClock, Handshake } from 'lucide-react'
+import { LayoutDashboard, Globe, Users, LayoutTemplate, Settings, Server, ClipboardList, CalendarClock, Handshake, Layers } from 'lucide-react'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { getSiteSettings, getSitesOverview } from '../../services/sites.service'
 import { Toast } from './sitesUi'
@@ -20,6 +20,7 @@ import SitesOverviewTab from './SitesOverviewTab'
 import SitesListTab from './SitesListTab'
 import SitesBuildersTab from './SitesBuildersTab'
 import SitesPartnersTab from './SitesPartnersTab'                         // PARTNER-1B
+import SitesOptionsTab from './SitesOptionsTab'                           // SITE-OPTIONS OPT-2
 import SitesTemplatesTab from './SitesTemplatesTab'
 import SitesSettingsTab from './SitesSettingsTab'
 import SitesOrdersTab from './SitesOrdersTab'
@@ -34,6 +35,7 @@ const TABS = [
   { id: 'sites', label: 'Sites', icon: Globe },
   { id: 'domains', label: 'Domains & renewals', icon: CalendarClock },
   { id: 'builders', label: 'Builders', icon: Users },
+  { id: 'options', label: 'Design options', icon: Layers },
   { id: 'partners', label: 'Partners', icon: Handshake },
   { id: 'templates', label: 'Templates', icon: LayoutTemplate },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -120,6 +122,9 @@ export default function SitesModule({ user }) {
       </Panel>
       <Panel on={tab === 'builders'}>
         <SitesBuildersTab isActive={tab === 'builders'} canEdit={canEdit} showToast={showToast} />
+      </Panel>
+      <Panel on={tab === 'options'}>
+        {tab === 'options' && <SitesOptionsTab canEdit={canEdit} showToast={showToast} />}
       </Panel>
       <Panel on={tab === 'partners'}>
         <SitesPartnersTab isActive={tab === 'partners'} canEdit={canEdit} showToast={showToast} />

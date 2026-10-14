@@ -6,6 +6,7 @@
  *   token       builder session token
  *   onCreated() called after a link is made, so the parent can refresh its lists
  *   onSubscribe() called when the builder has used their free sites and wants to subscribe
+ *   optionSetId  OPT-2: when set, the new site is a design OPTION for that set (it does not use a free-site slot)
  */
 import { useEffect, useState } from 'react'
 import { Check, Copy, ExternalLink } from 'lucide-react'
@@ -13,7 +14,7 @@ import { Button, Field, Modal, Notice, Segmented, Spinner } from './sitesUi'
 import { INPUT, T } from './sitesKit'
 import { accessLimit, createMyForm, errorMessage, listPresets } from '../../services/builder_portal.service'
 
-export default function NewSiteModal({ open, onClose, token, onCreated, onSubscribe }) {
+export default function NewSiteModal({ open, onClose, token, onCreated, onSubscribe, optionSetId }) {
   const [presets, setPresets] = useState(null)
   const [audience, setAudience] = useState('builder')
   const [presetId, setPresetId] = useState('')
@@ -37,6 +38,7 @@ export default function NewSiteModal({ open, onClose, token, onCreated, onSubscr
     try {
       const res = await createMyForm(token, {
         audience, ...(presetId ? { preset_id: presetId } : {}), ...(label.trim() ? { client_label: label.trim() } : {}),
+        ...(optionSetId ? { option_set_id: optionSetId } : {}),
       })
       setResult(res)
       onCreated && onCreated()
@@ -62,7 +64,7 @@ export default function NewSiteModal({ open, onClose, token, onCreated, onSubscr
   const forClient = audience === 'client'
 
   return (
-    <Modal open={open} onClose={onClose} title={result ? 'Your link is ready' : 'Start a new site'} width={520}
+    <Modal open={open} onClose={onClose} title={result ? 'Your link is ready' : optionSetId ? 'Make a new design for this set' : 'Start a new site'} width={520}
       footer={result ? (
         <Button variant="primary" onClick={onClose}>Done</Button>
       ) : (
@@ -96,6 +98,10 @@ export default function NewSiteModal({ open, onClose, token, onCreated, onSubscr
             <Field label="Your note for this client (optional)" hint="Only you see this, for example “Adaeze, boutique”.">
               <input value={label} maxLength={120} onChange={(e) => setLabel(e.target.value)} style={INPUT} />
             </Field>
+          )}
+
+          {optionSetId && (
+            <Notice tone="info">This design will join the option set and does not use one of your free sites. It appears in the set once the form is submitted.</Notice>
           )}
 
           <p style={{ margin: 0, fontSize: 12.5, color: T.soft, lineHeight: 1.5 }}>

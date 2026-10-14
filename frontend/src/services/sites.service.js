@@ -202,3 +202,16 @@ export const changeSiteAddon = (siteId, addonId, action, until) =>
 // ── SITE-ADDONS A1-2 — lead capture (staff) ──────────────────────────────────
 export const getSiteCapture = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/capture`))
 export const rotateSiteCaptureKey = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/capture/rotate-key`))
+
+// ── SITE-OPTIONS OPT-2 — option sets (staff) ─────────────────────────────────────────
+export const listOptionSets = (builderId) =>
+  unwrap(api.get('/api/v1/site-option-sets', { params: builderId ? { builder_id: builderId } : {} }))
+export const listOptionEligibleSites = (builderId) =>
+  unwrap(api.get('/api/v1/site-option-sets/eligible-sites', { params: { builder_id: builderId } }))
+export const createOptionSet = (payload) => unwrap(api.post('/api/v1/site-option-sets', payload))
+export const getOptionSet = (setId) => unwrap(api.get(`/api/v1/site-option-sets/${setId}`))
+export const attachOptionSite = (setId, siteId, label) =>
+  unwrap(api.post(`/api/v1/site-option-sets/${setId}/sites`, { site_id: siteId, ...(label ? { label } : {}) }))
+export const detachOptionSite = (setId, siteId) => unwrap(api.delete(`/api/v1/site-option-sets/${setId}/sites/${siteId}`))
+export const chooseOptionItem = (setId, itemId) => unwrap(api.post(`/api/v1/site-option-sets/${setId}/choose`, { item_id: itemId }))
+export const closeOptionSet = (setId) => unwrap(api.post(`/api/v1/site-option-sets/${setId}/close`))

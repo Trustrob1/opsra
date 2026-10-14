@@ -215,3 +215,17 @@ export const getSiteAddonPlans = (token, siteId) => unwrap(axios.get(`${BASE}/si
 /** payload: { kind, key, picks?, payer?: {name, phone, email}, send? } — returns { addon_id, pay_url, scheduled, quote, sent? }. */
 export const startSiteAddonPlan = (token, siteId, payload) =>
   unwrap(axios.post(`${BASE}/sites/${siteId}/addons/checkout`, payload, authed(token)))
+
+// ── SITE-OPTIONS OPT-2 — several designs for one client behind one link ──────────────
+export const listOptionSets = (token) => unwrap(axios.get(`${BASE}/option-sets`, authed(token)))
+export const listOptionEligibleSites = (token) => unwrap(axios.get(`${BASE}/option-sets/eligible-sites`, authed(token)))
+/** payload: { client_name?, site_ids? } → the set, with its link */
+export const createOptionSet = (token, payload) => unwrap(axios.post(`${BASE}/option-sets`, payload, authed(token)))
+export const getOptionSet = (token, setId) => unwrap(axios.get(`${BASE}/option-sets/${setId}`, authed(token)))
+export const attachOptionSite = (token, setId, siteId, label) =>
+  unwrap(axios.post(`${BASE}/option-sets/${setId}/sites`, { site_id: siteId, ...(label ? { label } : {}) }, authed(token)))
+export const detachOptionSite = (token, setId, siteId) =>
+  unwrap(axios.delete(`${BASE}/option-sets/${setId}/sites/${siteId}`, authed(token)))
+export const chooseOptionItem = (token, setId, itemId) =>
+  unwrap(axios.post(`${BASE}/option-sets/${setId}/choose`, { item_id: itemId }, authed(token)))
+export const closeOptionSet = (token, setId) => unwrap(axios.post(`${BASE}/option-sets/${setId}/close`, null, authed(token)))

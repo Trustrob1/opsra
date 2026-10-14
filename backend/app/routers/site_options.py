@@ -6,6 +6,7 @@ SITE-OPTIONS OPT-1 - builder and staff routes for option sets (several designs f
 Builder (get_current_builder), prefix /api/v1/builder:
   GET    /option-sets                         my sets
   POST   /option-sets                         {client_name?, site_ids?}  make a set (the link is in the result)
+  GET    /option-sets/eligible-sites          my sites that can be added to a set
   GET    /option-sets/{set_id}                one set with its designs and link
   POST   /option-sets/{set_id}/sites          {site_id, label?}          add one of my sites
   DELETE /option-sets/{set_id}/sites/{site_id}                            take a site out (free-sites limit applies again)
@@ -73,6 +74,11 @@ def b_create(payload: CreateSet, builder=Depends(get_current_builder), db=Depend
         raise _fail(exc)
 
 
+@builder_router.get("/option-sets/eligible-sites")
+def b_eligible(builder=Depends(get_current_builder), db=Depends(get_supabase)):
+    return ok(data=opt.eligible_sites(db, builder["org_id"], builder["id"]))
+
+
 @builder_router.get("/option-sets/{set_id}")
 def b_get(set_id: str, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
@@ -134,6 +140,13 @@ def s_create(payload: StaffCreateSet, org=Depends(get_current_org), db=Depends(g
                                       f"user:{org.get('id')}", payload.site_ids), message="Option set created")
     except opt.OptionError as exc:
         raise _fail(exc)
+
+
+@staff_router.get("/eligible-sites")
+def s_eligible(builder_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _require(org, _READ_ROLES)
+    _require_enabled(db, org["org_id"])
+    return ok(data=opt.eligible_sites(db, org["org_id"], builder_id))
 
 
 @staff_router.get("/{set_id}")

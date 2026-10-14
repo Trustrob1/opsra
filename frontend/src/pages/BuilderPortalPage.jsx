@@ -54,6 +54,7 @@ import PremiumDesignsCard from '../modules/sites/PremiumDesignsCard'
 import PremiumOfferCard from '../modules/sites/PremiumOfferCard'
 import BuilderPlansCard from '../modules/sites/BuilderPlansCard'
 import NewSiteModal from '../modules/sites/NewSiteModal'
+import BuilderOptionsView from '../modules/sites/BuilderOptionsView'   // SITE-OPTIONS OPT-2
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -63,8 +64,9 @@ export default function BuilderPortalPage() {
   const hasCode = !!new URLSearchParams(window.location.search).get('t')
   const [stage, setStage] = useState(hasCode ? 'confirm' : 'error')   // confirm | exchanging | error | app
   const [error, setError] = useState(hasCode ? '' : 'This link is missing its access code. Please open the exact link your team sent you.')
-  const [view, setView] = useState('mysites')        // mysites | editor | account
+  const [view, setView] = useState('mysites')        // mysites | options | editor | checkout | account
   const [selectedSiteId, setSelectedSiteId] = useState(null)
+  const [checkoutFromOptions, setCheckoutFromOptions] = useState(false)   // OPT-2: where Back goes from checkout
   const [waDismissed, setWaDismissed] = useState(false)
   const [toast, showToast] = useToast()
 
@@ -141,11 +143,16 @@ export default function BuilderPortalPage() {
 
         {stage === 'app' && view === 'editor' && selectedSiteId && (
           <EditorView token={session.token} siteId={selectedSiteId} onBack={() => setView('mysites')}
-            onCheckout={() => setView('checkout')} showToast={showToast} />
+            onCheckout={() => { setCheckoutFromOptions(false); setView('checkout') }} showToast={showToast} />
         )}
 
         {stage === 'app' && view === 'checkout' && selectedSiteId && (
-          <CheckoutView token={session.token} siteId={selectedSiteId} onBack={() => setView('editor')} showToast={showToast} />
+          <CheckoutView token={session.token} siteId={selectedSiteId} onBack={() => setView(checkoutFromOptions ? 'options' : 'editor')} showToast={showToast} />
+        )}
+
+        {stage === 'app' && view === 'options' && (
+          <BuilderOptionsView token={session.token} showToast={showToast}
+            onPayLink={(siteId) => { setSelectedSiteId(siteId); setCheckoutFromOptions(true); setView('checkout') }} />
         )}
 
         {stage === 'app' && view === 'account' && (
@@ -166,9 +173,11 @@ function Header({ builder, view, setView, onBack, onLogOut, showNav }) {
       </div>
       <div style={{ fontSize: 12, color: '#9fb4c0' }}>Builder portal{builder?.full_name ? ` — ${builder.full_name}` : ''}</div>
       {showNav && (
-        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <button type="button" onClick={() => { onBack(); setView('mysites') }}
             style={navBtn(view === 'mysites')}>My sites</button>
+          <button type="button" onClick={() => { onBack(); setView('options') }}
+            style={navBtn(view === 'options')}>Design options</button>
           <button type="button" onClick={() => setView('account')} style={navBtn(view === 'account')}>Account</button>
           <button type="button" onClick={onLogOut}
             style={{ ...navBtn(false), display: 'inline-flex', alignItems: 'center', gap: 5 }}>

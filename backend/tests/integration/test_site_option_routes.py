@@ -265,3 +265,28 @@ def test_checkout_is_blocked_until_the_client_has_picked_the_design(api):
         site_order_service.create_checkout(h["db"], ORG, _builder(B1), payload)
     c.post(f"/o/{tok}/choose", data={"item_id": d["items"][0]["id"], "confirm": "1"})
     assert h["db"].rows("sites")[0]["option_offered"] is False          # now past the option block (checkout itself is tested elsewhere)
+
+
+# -- the picker list (OPT-2) -----------------------------------------------------------
+
+def test_eligible_sites_lists_only_sites_that_can_be_added(api):
+    h, c = api
+    db = h["db"]
+    db.rows("sites").extend([_site("live1", status="live"), _site("gone", status="cancelled"),
+                             _site("paid1"), _site("del1", deleted_at="2026-01-01T00:00:00+00:00")])
+    db.rows("site_orders").append({"id": "o1", "org_id": ORG, "site_id": "paid1", "kind": "initial", "status": "paid"})
+    _make(h, c, ("s1",))                                   # s1 is now in a set
+    r = c.get("/api/v1/builder/option-sets/eligible-sites")
+    assert r.status_code == 200, r.text
+    ids = sorted(x["site_id"] for x in r.json()["data"])
+    assert ids == ["s2", "s3"]                              # not s1 (in a set), live1, gone, paid1, del1 or the other builder's x1
+    assert r.json()["data"][0]["preview_url"].endswith("/s/slug-" + r.json()["data"][0]["site_id"])
+
+
+def test_staff_eligible_sites_needs_a_builder_and_a_read_role(api):
+    h, c = api
+    assert c.get("/api/v1/site-option-sets/eligible-sites").status_code == 422
+    r = c.get(f"/api/v1/site-option-sets/eligible-sites?builder_id={B2}")
+    assert r.status_code == 200 and [x["site_id"] for x in r.json()["data"]] == ["x1"]
+    h["role"] = "agent"
+    assert c.get(f"/api/v1/site-option-sets/eligible-sites?builder_id={B2}").status_code == 403

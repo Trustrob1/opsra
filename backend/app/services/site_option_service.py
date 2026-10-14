@@ -434,6 +434,23 @@ def notify_builder(db: Any, org_id: str, s: dict, item: dict, site: dict) -> Non
 # forms: a brief-form link made for a set builds an option site without using up a free-site slot
 # ---------------------------------------------------------------------------
 
+def eligible_sites(db: Any, org_id: str, builder_id: str, limit: int = 60) -> list:
+    """The builder's sites that could be added to an option set: not live/cancelled, not in a set already, no payment.
+    Newest first. Same rules as _attach_check so the picker never offers a site the add would refuse."""
+    rows = (db.table("sites").select("id, client_business_name, slug, status, tier, option_set_id, created_at")
+            .eq("org_id", org_id).eq("builder_id", builder_id).is_("deleted_at", "null").execute()).data or []
+    rows = [r for r in rows if r.get("status") not in ("cancelled", "live") and not r.get("option_set_id")]
+    rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    out = []
+    for r in rows[:limit]:
+        if _site_paid_safe(db, org_id, r["id"]):
+            continue
+        out.append({"site_id": r["id"], "business_name": r.get("client_business_name"), "slug": r.get("slug"),
+                    "status": r.get("status"), "tier": r.get("tier") or "standard",
+                    "preview_url": f"{public_base()}/s/{r['slug']}" if r.get("slug") else None})
+    return out
+
+
 def usable_for_new_site(db: Any, org_id: str, set_id: Optional[str], builder_id: str) -> Optional[dict]:
     """The set (as a row) when a NEW site may be added to it right now (open/chosen, same builder, room left)."""
     if not set_id:
