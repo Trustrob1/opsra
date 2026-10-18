@@ -78,6 +78,10 @@ export const sendInstagramMessage = (leadId, message) =>
 export const sendMessengerMessage = (leadId, message) =>
   api.post('/api/v1/conversations/messenger/send', { lead_id: leadId, message })
 
+// WEBCHAT-1 — a rep's reply into a web chat (stored only; no Meta call)
+export const sendWebchatMessage = (leadId, message) =>
+  api.post('/api/v1/conversations/webchat/send', { lead_id: leadId, message })
+
 
 /**
  * GET /api/v1/messages/{message_id}/download-url

@@ -70,6 +70,7 @@ import LeadFormConfig          from './LeadFormConfig'
 import GrowthDashboardConfig   from './GrowthDashboardConfig'
 import WASalesModeConfig       from './WASalesModeConfig'
 import WhatsAppNumbers         from './WhatsAppNumbers'
+import WebChatSettings         from './WebChatSettings'   // WEBCHAT-1
 import AutomationConfig        from './AutomationConfig'
 import DemoSettings            from './DemoSettings'
 import CatalogConfig           from './CatalogConfig'
@@ -106,6 +107,7 @@ const TAB_GROUPS = [
       { id: 'whatsapp',         label: 'WhatsApp',      Icon: Smartphone },
       { id: 'whatsapp-menu',    label: 'WA Menu',       Icon: MenuIcon },
       { id: 'whatsapp-numbers', label: 'WA Numbers',    Icon: Smartphone },
+      { id: 'webchat',          label: 'Web Chat',      Icon: MessageSquare },   // WEBCHAT-1
       { id: 'wa-sales-mode',    label: 'WA Sales Mode', Icon: Bot },
       { id: 'messaging-limits', label: 'Msg Limits',    Icon: MessageSquare },
     ],
@@ -464,6 +466,7 @@ export default function AdminModule({ user }) {
           <LazyTab active={tab === 'payment-links'} visited={visited['payment-links']}> <PaymentLinkConfig /></LazyTab>
           <LazyTab active={tab === 'commerce'}      visited={visited['commerce']}>      <CommerceSettings /></LazyTab>
           <LazyTab active={tab === 'whatsapp-numbers'} visited={visited['whatsapp-numbers']}> <WhatsAppNumbers /></LazyTab>
+          <LazyTab active={tab === 'webchat'} visited={visited['webchat']}> <WebChatSettings /></LazyTab>
           <LazyTab active={tab === 'wa-sales-mode'} visited={visited['wa-sales-mode']}> <WASalesModeConfig /></LazyTab>
           <LazyTab active={tab === 'growth-config'} visited={visited['growth-config']}> <GrowthConfig /></LazyTab>
           <LazyTab active={tab === 'sales-log'}     visited={visited['sales-log']}>     <SalesLog /></LazyTab>

@@ -50,6 +50,7 @@ import {
   sendMediaMessage,
   sendInstagramMessage,
   sendMessengerMessage,
+  sendWebchatMessage,
   getMediaDownloadUrl,
 } from '../../services/conversations.service'
 import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
@@ -61,6 +62,7 @@ const CHANNEL = {
   whatsapp:  { label: 'WhatsApp',  icon: 'whatsapp',  IconComp: MessageCircle, color: '#25D366', bg: '#E8F8EE' },
   instagram: { label: 'Instagram', icon: 'instagram', IconComp: Camera,        color: '#C13584', bg: '#FCE4EC' },
   messenger: { label: 'Messenger', icon: 'messenger', IconComp: MessageCircle,      color: '#0084FF', bg: '#E3F2FD' },
+  webchat:   { label: 'Web chat',  icon: 'webchat',   IconComp: MessageCircle,      color: '#028090', bg: '#E0F4F6' },   // WEBCHAT-1
 }
 
 const THREAD_POLL_MS = 5000
@@ -598,7 +600,7 @@ function ListPanel({ conversations, allCount, loading, error, search, onSearch, 
         </div>
 
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-          {[{ v: 'all', l: 'All channels' }, { v: 'whatsapp', l: 'WA' }, { v: 'instagram', l: 'IG' }, { v: 'messenger', l: 'FB' }].map(({ v, l }) => (
+          {[{ v: 'all', l: 'All channels' }, { v: 'whatsapp', l: 'WA' }, { v: 'instagram', l: 'IG' }, { v: 'messenger', l: 'FB' }, { v: 'webchat', l: 'Web' }].map(({ v, l }) => (
             <Chip key={v} active={channelFilter === v} color={ds.teal} onClick={() => onChannelFilter(v)}>{l}</Chip>
           ))}
           {[{ v: 'all', l: 'All' }, { v: 'lead', l: 'Leads' }, { v: 'customer', l: 'Customers' }].map(({ v, l }) => (
@@ -826,7 +828,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
         leadId={isLead ? active.contact_id : undefined}
         customerId={!isLead ? active.contact_id : undefined}
         channel={active.channel || 'whatsapp'}
-        windowOpen={windowOpen}
+        windowOpen={windowOpen || active.channel === 'webchat'}
         statusLoading={statusLoading}
         templates={templates}
         onSent={onSent}
@@ -935,6 +937,9 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         } else if (channel === 'messenger') {
           // Facebook Messenger DM — routes to dedicated endpoint, lead only
           await sendMessengerMessage(leadId, text.trim())
+        } else if (channel === 'webchat') {
+          // Web chat — stored and shown on the visitor's page; no Meta call, no 24-hour window
+          await sendWebchatMessage(leadId, text.trim())
         } else {
           const payload = {}
           if (leadId)     payload.lead_id = leadId
@@ -1027,7 +1032,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         <div style={{ padding: mode === 'media' ? '4px 14px 10px' : '4px 14px 10px', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
 
           {/* Attachment button — hidden for Instagram (text only in UNIFIED-INBOX-1A) and in media mode */}
-          {mode === 'text' && channel !== 'instagram' && channel !== 'messenger' && (
+          {mode === 'text' && channel !== 'instagram' && channel !== 'messenger' && channel !== 'webchat' && (
             <>
               <input
                 ref={fileInputRef}

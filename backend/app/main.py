@@ -185,6 +185,8 @@ from app.routers import public_catalog as public_catalog_router
 from app.routers import catalog as catalog_router
 from app.routers import superadmin_health as superadmin_health_router
 from app.routers import superadmin_credits as superadmin_credits_router  # CREDITS-1
+from app.routers import public_webchat as public_webchat_router  # WEBCHAT-1
+from app.routers import webchat as webchat_router  # WEBCHAT-1
 from app.routers.push_notifications import router as push_notifications_router
 from app.routers import report_analytics as report_analytics_router
 from app.routers import internal_issues as internal_issues_router
@@ -273,6 +275,8 @@ app.include_router(public_site_versions_router.router, prefix="",               
 app.include_router(site_version_shares_router.builder_router, prefix="/api/v1",    tags=["site_versions_builder"])  # SITE-OPTIONS OPT-3 — /api/v1/builder/version-shares
 app.include_router(site_version_shares_router.staff_router,   prefix="/api/v1",    tags=["site_versions"])  # SITE-OPTIONS OPT-3 — /api/v1/site-version-shares
 app.include_router(superadmin_credits_router.router,          prefix="/api/v1",    tags=["superadmin_credits"])  # CREDITS-1 — /api/v1/superadmin/credits/*
+app.include_router(public_webchat_router.router,              prefix="/api/v1",    tags=["public_webchat"])  # WEBCHAT-1 — /api/v1/public/webchat/{key}/*
+app.include_router(webchat_router.router,                     prefix="/api/v1",    tags=["webchat"])  # WEBCHAT-1 — settings + rep reply
 
 
 # ---------------------------------------------------------------------------

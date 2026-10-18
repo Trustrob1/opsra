@@ -1361,6 +1361,36 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 )
             return
 
+    # ── WEBCHAT-2: WhatsApp redirect numbers ────────────────────────────
+    # Same early-return pattern as ai_agent / site_builder / event_funnel. The org is
+    # ALWAYS the number's own org (XORG-safe). ONE reply with the web chat link, then no
+    # automatic replies (so no Meta fee); the team is notified in-app.
+    if number_row and number_row.get("wa_sales_mode") == "webchat_redirect":
+        _wcr_org_id = number_row.get("org_id")
+        if _wcr_org_id:
+            if _is_org_owner(db, _wcr_org_id, sender_phone):
+                logger.info("[OQ] owner message org=%s — owner query handler (Web chat redirect number)", _wcr_org_id)
+                from app.services.owner_query_service import handle_owner_query
+                handle_owner_query(
+                    db=db, org_id=_wcr_org_id,
+                    message_text=(content or ""),
+                    sender_number=sender_phone,
+                )
+                return
+            if msg_type == "text" and content:
+                if _handle_opt_keywords(db, content, sender_phone, _wcr_org_id, customer_id, lead_id):
+                    return
+            try:
+                from app.services import webchat_redirect_service
+                webchat_redirect_service.handle_inbound(
+                    db=db, number_row=number_row, sender_phone=sender_phone,
+                    contact_name=contact_name, msg_type=msg_type, content=content, msg_id=msg_id,
+                )
+            except Exception:
+                # S14: never let the redirect break the webhook itself.
+                logger.exception("[WEBCHAT-2] handle_inbound failed org=%s", _wcr_org_id)
+            return
+
     # ── FUNNEL-1A: Event Funnel numbers ─────────────────────────────────
     # Same early-return pattern as ai_agent above. The org is ALWAYS the
     # number's own org — never the sender-lookup org (XORG-safe, spec F2).

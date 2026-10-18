@@ -561,6 +561,18 @@ def _get_lead_wa_credentials(db, org_id: str, lead_id: Optional[str]) -> tuple:
     return _get_org_wa_credentials(db, org_id)
 
 
+def _meta_msg_id(resp) -> Optional[str]:
+    """Meta's id for a message just sent (resp = the send API's JSON), or None."""
+    try:
+        if isinstance(resp, dict):
+            msgs = resp.get("messages") or []
+            if msgs and isinstance(msgs[0], dict):
+                return msgs[0].get("id") or None
+    except Exception:
+        pass
+    return None
+
+
 def _call_meta_send(phone_id: str, meta_payload: dict, token: str | None = None) -> dict:
     """
     Send a WhatsApp message via Meta Cloud API.
@@ -2673,7 +2685,7 @@ def send_outbound_image_url(
         if caption:
             image_payload["caption"] = caption[:1024]
 
-        _call_meta_send(phone_id, {
+        _resp = _call_meta_send(phone_id, {
             "messaging_product": "whatsapp",
             "to":    phone_number,
             "type":  "image",
@@ -2689,6 +2701,7 @@ def send_outbound_image_url(
                 "message_type":      "image",
                 "content":           caption or None,
                 "media_url":         image_url,
+                "meta_message_id":   _meta_msg_id(_resp),
                 "status":            "sent",
                 "window_open":       True,
                 "window_expires_at": _win_exp,
@@ -3017,7 +3030,7 @@ def send_agent_text_message(
             )
             return
 
-        _call_meta_send(phone_id, {
+        _resp = _call_meta_send(phone_id, {
             "messaging_product": "whatsapp",
             "to": phone_number,
             "type": "text",
@@ -3032,6 +3045,7 @@ def send_agent_text_message(
                 "direction":         "outbound",
                 "message_type":      "text",
                 "content":           message,
+                "meta_message_id":   _meta_msg_id(_resp),
                 "status":            "sent",
                 "window_open":       True,
                 "window_expires_at": _win_exp,
@@ -3182,7 +3196,7 @@ def send_agent_confirm_buttons(
             {"type": "reply", "reply": {"id": cancel_id, "title": cancel_label[:20]}},
         ]
 
-        _call_meta_send(phone_id, {
+        _resp = _call_meta_send(phone_id, {
             "messaging_product": "whatsapp",
             "to": phone_number,
             "type": "interactive",
@@ -3201,6 +3215,7 @@ def send_agent_confirm_buttons(
                 "direction":         "outbound",
                 "message_type":      "text",
                 "content":           body_text,
+                "meta_message_id":   _meta_msg_id(_resp),
                 "status":            "sent",
                 "window_open":       True,
                 "window_expires_at": _win_exp,

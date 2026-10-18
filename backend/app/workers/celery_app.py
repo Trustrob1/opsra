@@ -191,6 +191,7 @@ celery_app = Celery(
         "app.workers.site_premium_worker",               # ← SITE-PREMIUM P2
         "app.workers.site_import_worker",                # ← SITE-IMPORT 2 (make an uploaded site editable)
         "app.workers.credit_worker",                     # ← CREDITS-1 (expire lots + reconcile)
+        "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
     ],
 )
 
@@ -721,6 +722,15 @@ celery_app.conf.beat_schedule = {
     "credit-housekeeping": {
         "task": "app.workers.credit_worker.run_credit_housekeeping_task",
         "schedule": crontab(minute=0, hour=2),
+    },
+
+    # ------------------------------------------------------------------ #
+    # webchat-sweep — hourly at :20  (WEBCHAT-1)                          #
+    # Expires web chat sessions past their sliding 30-day life.           #
+    # ------------------------------------------------------------------ #
+    "webchat-sweep": {
+        "task": "app.workers.webchat_worker.run_webchat_sweep",
+        "schedule": crontab(minute=20),
     },
 }
 

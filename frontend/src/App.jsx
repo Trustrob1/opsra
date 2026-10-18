@@ -189,6 +189,12 @@ export default function App() {
     const GiveawayPage = require('./pages/GiveawayPage').default
     return <GiveawayPage slug={_giveawayMatch[1]} />
   }
+  // WEBCHAT-1 — a business's public chat page (the key names the business; no login).
+  const _chatMatch = window.location.pathname.match(/^\/c\/(wc_[A-Za-z0-9_-]{8,40})$/)
+  if (_chatMatch) {
+    const WebChatPage = require('./pages/WebChatPage').default
+    return <WebChatPage chatKey={_chatMatch[1]} />
+  }
   // GIVEAWAY-1 — a winner's private page: preview, terms and payment.
   const _winnerMatch = window.location.pathname.match(/^\/w\/([A-Za-z0-9_-]{20,128})$/)
   if (_winnerMatch) {
