@@ -190,6 +190,7 @@ celery_app = Celery(
         "app.workers.site_worker",                       # ← SITE-1B §7.7
         "app.workers.site_premium_worker",               # ← SITE-PREMIUM P2
         "app.workers.site_import_worker",                # ← SITE-IMPORT 2 (make an uploaded site editable)
+        "app.workers.credit_worker",                     # ← CREDITS-1 (expire lots + reconcile)
     ],
 )
 
@@ -711,6 +712,15 @@ celery_app.conf.beat_schedule = {
     "site-premium-stale-sweep": {
         "task": "app.workers.site_premium_worker.run_premium_stale_sweep",
         "schedule": crontab(minute="*/10"),
+    },
+
+    # ------------------------------------------------------------------ #
+    # credit-housekeeping — Daily 02:00 UTC = 03:00 WAT  (CREDITS-1)      #
+    # Expires 12-month-old credit lots and reconciles wallet vs ledger.   #
+    # ------------------------------------------------------------------ #
+    "credit-housekeeping": {
+        "task": "app.workers.credit_worker.run_credit_housekeeping_task",
+        "schedule": crontab(minute=0, hour=2),
     },
 }
 

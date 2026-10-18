@@ -244,8 +244,9 @@ class TestLogClaudeUsage:
         )
 
         row = db.table("claude_usage_log").insert.call_args[0][0]
-        # Haiku: input $0.80/M + output $4/M = $4.80 total for 1M each
-        assert float(row["estimated_cost_usd"]) == pytest.approx(4.80, abs=0.001)
+        # Haiku 4.5: input $1/M + output $5/M = $6.00 total for 1M each
+        # (CREDITS-1: the old $0.80/$4 table was stale)
+        assert float(row["estimated_cost_usd"]) == pytest.approx(6.00, abs=0.001)
 
     def test_writes_correct_fields(self):
         """_log_claude_usage writes org_id, function_name, model, tokens to DB."""

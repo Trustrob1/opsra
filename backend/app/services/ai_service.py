@@ -237,6 +237,17 @@ def call_claude(
         logger.warning("call_claude: hard token limit reached for org %s — returning fallback", org_id)
         return ""
 
+    # CREDITS-1: AI budget gate. Only the customer-facing agent turn is gated,
+    # and only for orgs whose wallet has metering switched on.
+    if org_id and db and function_name == "ai_agent_turn":
+        from app.services import credit_service as _credits
+        _level = _credits.get_ai_level(db, org_id)
+        if _level == _credits.LEVEL_MENU:
+            logger.info("call_claude: AI budget exhausted for org %s — returning fallback", org_id)
+            return ""
+        if _level == _credits.LEVEL_CHEAPER:
+            model = HAIKU
+
     client = _get_client()
     messages: list[dict] = [{"role": "user", "content": prompt}]
     kwargs: dict = {
@@ -294,6 +305,8 @@ def call_claude(
                 model=model,
                 input_tokens=response.usage.input_tokens or 0,
                 output_tokens=response.usage.output_tokens or 0,
+                cache_read_tokens=_int_or_zero(getattr(response.usage, "cache_read_input_tokens", 0)),
+                cache_creation_tokens=_int_or_zero(getattr(response.usage, "cache_creation_input_tokens", 0)),
             )
 
         return text
@@ -606,19 +619,24 @@ def generate_fix_hint(
 # SA-2A — _log_claude_usage: persist every Claude call to claude_usage_log
 # ---------------------------------------------------------------------------
 
-# Cost rates per million tokens — SA-2A spec Section §Modified: ai_service.py
+# CREDITS-1: prices now live in app/services/ai_cost.py (by model name, with
+# cache read/write pricing). _COST_RATES / _get_cost_rate are kept only so
+# older imports keep working; they are no longer used for the logged cost.
 _COST_RATES: dict[str, dict[str, float]] = {
-    "claude-sonnet": {"input": 3.00, "output": 15.00},   # per 1M tokens
-    "claude-haiku":  {"input": 0.80, "output": 4.00},    # per 1M tokens
+    "claude-sonnet": {"input": 3.00, "output": 15.00},
+    "claude-haiku":  {"input": 1.00, "output": 5.00},
 }
 
 
 def _get_cost_rate(model: str) -> dict[str, float]:
-    """Match model string to cost rate. Defaults to Haiku if unrecognised."""
-    model_lower = model.lower()
-    if "sonnet" in model_lower:
-        return _COST_RATES["claude-sonnet"]
-    return _COST_RATES["claude-haiku"]
+    from app.services.ai_cost import get_rate
+    inp, out, _ = get_rate(model)
+    return {"input": inp, "output": out}
+
+
+def _int_or_zero(value) -> int:
+    """Token counts from the SDK are ints; anything else (None, a mock) is 0."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
 def _log_claude_usage(
@@ -629,28 +647,28 @@ def _log_claude_usage(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
 ) -> None:
     """
     SA-2A: Persist a Claude API call record to claude_usage_log in Supabase.
 
-    Calculates estimated cost using the rates in _COST_RATES.
-    Called after every successful Claude API response.
+    CREDITS-1: cost now includes cache read/write tokens at the right
+    per-model price, the cache token counts are stored, and the call is
+    metered against the org's credit wallet when metering is on for that org.
 
     S14: never raises. A DB write failure must not break the caller.
     """
     try:
-        rates = _get_cost_rate(model)
+        from app.services.ai_cost import cost_usd as _cost_usd
         total_tokens = input_tokens + output_tokens
-        # Cost = (input_tokens / 1_000_000 * input_rate) + (output_tokens / 1_000_000 * output_rate)
-        estimated_cost = round(
-            (input_tokens / 1_000_000) * rates["input"]
-            + (output_tokens / 1_000_000) * rates["output"],
-            6,
+        estimated_cost = _cost_usd(
+            model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
         )
 
         from datetime import datetime, timezone as _tz
         now_iso = datetime.now(_tz.utc).isoformat()
-        db.table("claude_usage_log").insert({
+        row = {
             "org_id": org_id or None,
             # SA-2A column (new) + legacy column — both written for compatibility
             "function_name": function_name[:200],
@@ -663,7 +681,24 @@ def _log_claude_usage(
             "estimated_cost_usd": estimated_cost,
             "called_at": now_iso,
             "created_at": now_iso,
-        }).execute()
+        }
+        try:
+            db.table("claude_usage_log").insert({
+                **row,
+                "cache_read_tokens": cache_read_tokens,
+                "cache_creation_tokens": cache_creation_tokens,
+            }).execute()
+        except Exception as exc:
+            # Cache columns not migrated yet: keep logging without them.
+            logger.warning("_log_claude_usage: retrying without cache columns — %s", exc)
+            db.table("claude_usage_log").insert(row).execute()
+
+        # CREDITS-1: charge the org's wallet (no-op unless metering is on)
+        if org_id and estimated_cost > 0:
+            from app.services import credit_service as _credits
+            _credits.meter_ai_call(
+                db, org_id, function_name=function_name, model=model, cost_usd=estimated_cost,
+            )
 
     except Exception as exc:
         # S14: monitoring must never break the caller

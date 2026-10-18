@@ -3597,6 +3597,46 @@ def _handle_status_update(db, status_update: dict) -> None:
         db.table("whatsapp_messages").update(updates).eq("meta_message_id", meta_msg_id).execute()
     except Exception as exc:
         logger.warning("Status update failed for meta_message_id=%s: %s", meta_msg_id, exc)
+    _capture_meta_pricing(db, meta_msg_id, status_update)
+
+
+_META_CATEGORIES = {"service", "utility", "marketing", "authentication", "referral_conversion"}
+
+
+def _capture_meta_pricing(db, meta_msg_id: str, status_update: dict) -> None:
+    """
+    CREDITS-1: Meta's status webhook carries a `pricing` object
+    ({billable, pricing_model, category}). Store category + billable on the
+    message and let the credit service meter it. Kept separate from the status
+    update above so a missing column or any failure here can never lose a
+    delivery/read status. S14: never raises.
+    """
+    try:
+        pricing = status_update.get("pricing")
+        if not isinstance(pricing, dict) or not pricing:
+            return
+        category = str(pricing.get("category") or "").lower()
+        if category not in _META_CATEGORIES:
+            return
+        billable = bool(pricing.get("billable"))
+        rows = (
+            db.table("whatsapp_messages").select("org_id, meta_category")
+            .eq("meta_message_id", meta_msg_id).limit(1).execute()
+        )
+        data = rows.data if isinstance(rows.data, list) else []
+        if not data or data[0].get("meta_category") == category:
+            return  # unknown message, or already captured from an earlier status
+        org_id = data[0].get("org_id")
+        db.table("whatsapp_messages").update(
+            {"meta_category": category, "meta_billable": billable}
+        ).eq("meta_message_id", meta_msg_id).execute()
+        if org_id:
+            from app.services import credit_service
+            credit_service.meter_meta_message(
+                db, org_id, category=category, billable=billable, meta_message_id=meta_msg_id,
+            )
+    except Exception as exc:
+        logger.warning("Meta pricing capture failed for meta_message_id=%s: %s", meta_msg_id, exc)
 
 
 def _handle_template_status_update(db, value: dict) -> None:
