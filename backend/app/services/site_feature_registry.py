@@ -27,10 +27,10 @@ CAPS = {
 _F = {
     # Capture
     "form_instant_reply": ("Enquiry form with instant reply", "capture", None, True),
-    "wa_leads": ("WhatsApp messages saved as leads", "capture", None, False),
+    "wa_leads": ("WhatsApp messages saved as leads", "capture", None, True),
     "source_tracking": ("Source tracking (page, product, button)", "capture", None, True),
     "speed_alerts": ("Speed-to-lead alerts", "capture", None, True),
-    "wa_menu": ("WhatsApp menu with set answers", "capture", None, False),
+    "wa_menu": ("WhatsApp menu with set answers", "capture", None, True),
     "my_leads_page": ("My leads page", "capture", None, True),
     # Web chat (ACCOUNT-PLANS: an account feature, no site needed)
     "webchat_basic": ("Web chat page, menu answers and booking", "capture", None, True),

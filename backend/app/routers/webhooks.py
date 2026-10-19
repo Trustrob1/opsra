@@ -1598,6 +1598,12 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
 
         if behavior == "qualify_immediately":
             logger.info("[WH] qualify_immediately path")
+            from app.services import wa_plan_service as _wa_plan
+            if not _wa_plan.leads_on(db, org_id):
+                # AP-5a: the plan has no WhatsApp lead capture. The message is already saved in Conversations.
+                logger.info("[WH] wa_leads off for org=%s - not creating a lead", org_id)
+                _wa_plan.tell_team(db, org_id, sender_phone, contact_name, content)
+                return
             provisional_name = (contact_name or "").strip() or sender_phone
             try:
                 _referral = message.get("referral") or {}
@@ -1647,6 +1653,12 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     return
         else:
             logger.info("[WH] triage_first path — creating lead then sending menu")
+            from app.services import wa_plan_service as _wa_plan
+            if not _wa_plan.leads_on(db, org_id):
+                # AP-5a: the plan has no WhatsApp lead capture. The message is already saved in Conversations.
+                logger.info("[WH] wa_leads off for org=%s - not creating a lead", org_id)
+                _wa_plan.tell_team(db, org_id, sender_phone, contact_name, content)
+                return
             # Create the lead immediately so it appears in the pipeline on first message.
             # If the lead already exists (repeat message), DUPLICATE_DETECTED is caught silently.
             # The triage action handlers (_action_qualify, _action_route_to_role) will
@@ -1882,6 +1894,11 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                         return
                     # _triage_lead_id is None (duplicate lead) — fall through to triage menu
 
+            from app.services import wa_plan_service as _wa_plan
+            if not _wa_plan.menu_on(db, org_id):
+                # AP-5a: the plan has no WhatsApp menu. The lead already exists and the team sees it as usual.
+                logger.info("[WH] wa_menu off for org=%s - not sending the menu", org_id)
+                return
             from app.services.whatsapp_service import send_triage_menu
             try:
                 send_triage_menu(db=db, org_id=org_id, phone_number=sender_phone, section="unknown", contact_name=contact_name)
@@ -2573,7 +2590,8 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 org_triage_d = org_triage_d[0] if org_triage_d else None
             triage_cfg = (org_triage_d or {}).get("whatsapp_triage_config") or {}
             customer_menu = triage_cfg.get("customer") or {}
-            if customer_menu.get("items") and not ai_is_paused:
+            from app.services import wa_plan_service as _wa_plan_c
+            if customer_menu.get("items") and not ai_is_paused and _wa_plan_c.menu_on(db, org_id):
                 from app.services import whatsapp_service as _wa_svc
                 _wa_svc.send_triage_menu(
                     db=db, org_id=org_id, phone_number=sender_phone,
