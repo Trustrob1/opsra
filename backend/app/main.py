@@ -189,6 +189,7 @@ from app.routers import superadmin_plans as superadmin_plans_router  # ACCOUNT-P
 from app.routers import public_webchat as public_webchat_router  # WEBCHAT-1
 from app.routers import webchat as webchat_router  # WEBCHAT-1
 from app.routers import credits as credits_router  # CREDITS-2
+from app.routers import account_plan as account_plan_router  # ACCOUNT-PLANS AP-2
 from app.routers.push_notifications import router as push_notifications_router
 from app.routers import report_analytics as report_analytics_router
 from app.routers import internal_issues as internal_issues_router
@@ -281,6 +282,7 @@ app.include_router(superadmin_plans_router.router,            prefix="/api/v1", 
 app.include_router(public_webchat_router.router,              prefix="/api/v1",    tags=["public_webchat"])  # WEBCHAT-1 — /api/v1/public/webchat/{key}/*
 app.include_router(webchat_router.router,                     prefix="/api/v1",    tags=["webchat"])  # WEBCHAT-1 — settings + rep reply
 app.include_router(credits_router.router,                     prefix="/api/v1",    tags=["credits"])  # CREDITS-2 — /api/v1/credits/*
+app.include_router(account_plan_router.router,                prefix="/api/v1",    tags=["account_plan"])  # ACCOUNT-PLANS AP-2 — /api/v1/billing/plan/*
 
 
 # ---------------------------------------------------------------------------

@@ -3970,6 +3970,24 @@ async def receive_paystack_storefront_webhook(request: Request, db=Depends(get_s
                 logger.error("[PAYSTACK-STOREFRONT] credit top-up failed ref=%s: %s", reference, exc)
         return {"status": "ok"}
 
+    # ACCOUNT-PLANS AP-2: an organisation paying for its own plan (reference ap_...) is paid to OPSRA, so it is
+    # verified with Opsra's own key, exactly like a credit top-up.
+    if str(reference).startswith("ap_"):
+        if not _verify_paystack_signature(raw_body, request.headers.get("X-Paystack-Signature")):
+            logger.warning("[PAYSTACK-STOREFRONT] plan payment invalid signature ref=%s", reference)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Paystack signature")
+        _pd2 = payload.get("data") or {}
+        if payload.get("event") == "charge.success" and (_pd2.get("metadata") or {}).get("kind") == "account_plan":
+            try:
+                from app.services import account_plan_billing_service
+                _pres = account_plan_billing_service.mark_paid(db, reference, int(_pd2.get("amount") or 0))
+            except Exception as exc:
+                logger.error("[PAYSTACK-STOREFRONT] plan payment failed ref=%s: %s", reference, exc)
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="retry")
+            if _pres.get("reason") == "apply_failed":      # ask Paystack to send it again
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="retry")
+        return {"status": "ok"}
+
     link_r = (
         db.table("payment_links").select("org_id")
         .eq("reference", reference).maybe_single().execute()

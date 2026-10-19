@@ -192,6 +192,7 @@ celery_app = Celery(
         "app.workers.site_import_worker",                # ← SITE-IMPORT 2 (make an uploaded site editable)
         "app.workers.credit_worker",                     # ← CREDITS-1 (expire lots + reconcile)
         "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
+        "app.workers.account_plan_worker",               # ← ACCOUNT-PLANS AP-2 (plan lapse + reminders)
     ],
 )
 
@@ -664,6 +665,16 @@ celery_app.conf.beat_schedule = {
     "site-addon-cycle": {
         "task": "app.workers.site_worker.run_addon_cycle",
         "schedule": crontab(minute=50, hour=6),
+    },
+
+    # ------------------------------------------------------------------ #
+    # account-plan-cycle — Daily 07:10 UTC = 08:10 WAT  (ACCOUNT-PLANS AP-2) #
+    # An organisation's own plan: active -> grace -> paused, renewal      #
+    # reminders to the owner (email + in-app).                            #
+    # ------------------------------------------------------------------ #
+    "account-plan-cycle": {
+        "task": "app.workers.account_plan_worker.run_plan_cycle",
+        "schedule": crontab(minute=10, hour=7),
     },
 
     # ------------------------------------------------------------------ #
