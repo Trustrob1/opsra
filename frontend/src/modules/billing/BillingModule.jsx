@@ -338,7 +338,7 @@ export default function BillingModule() {
 
   if (denied) return <div style={{ padding: 20, color: ds.gray, fontFamily: ds.fontDm }}>Only the owner, an admin or an operations manager can see Billing.</div>
   return (
-    <div style={{ maxWidth: 900, fontFamily: ds.fontDm }}>
+    <div style={{ maxWidth: 1600, fontFamily: ds.fontDm }}>
       <h2 style={{ fontSize: 22, color: ds.dark, margin: '0 0 4px' }}>Billing</h2>
       <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 14px' }}>Your Opsra plan, what you have used, your credits and your payments.</p>
       <div role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>

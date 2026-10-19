@@ -106,11 +106,13 @@ export default function CreditsPanel() {
 
   const low = sum.low_balance_kobo > 0 && sum.balance_kobo <= sum.low_balance_kobo
   return (
-    <div style={{ maxWidth: 760, fontFamily: ds.fontDm }}>
+    <div style={{ maxWidth: 1600, fontFamily: ds.fontDm }}>
       <h2 style={{ fontSize: 20, color: ds.dark, margin: '0 0 4px' }}>Credits</h2>
       <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 16px' }}>Prepaid credit pays for AI replies and, where applicable, WhatsApp message fees. Credit lasts 12 months from purchase.</p>
       {msg && <div role="status" style={{ ...card, padding: 12, color: ds.dark }}>{msg}</div>}
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16, alignItems: 'start' }}>
+      <div>
       <div style={card}>
         <div style={{ fontSize: 12, color: ds.gray }}>Balance</div>
         <div style={{ fontSize: 30, fontWeight: 700, color: low ? ds.red : ds.dark }}>{naira(sum.balance_kobo)}</div>
@@ -158,6 +160,8 @@ export default function CreditsPanel() {
             </>)}
       </div>
 
+      </div>
+      <div>
       <div style={card}>
         <h3 style={h3}>Transactions</h3>
         {ledger.entries.length === 0 ? <p style={{ fontSize: 13, color: ds.gray }}>No transactions yet.</p> : (
@@ -191,6 +195,8 @@ export default function CreditsPanel() {
           ))}
         </div>
       )}
+      </div>
+      </div>
     </div>
   )
 }
