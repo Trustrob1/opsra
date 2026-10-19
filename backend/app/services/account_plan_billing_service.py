@@ -206,15 +206,16 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
         }
     plans = []
     for key, d in cfg["tiers"].items():
-        if int(d.get("monthly_ngn") or 0) <= 0:
-            continue
+        # Every tier is listed so the owner can compare what each includes; a tier with no price yet is shown as "not on sale".
+        item = {"key": key, "label": d["label"], "monthly_ngn": int(d.get("monthly_ngn") or 0), "includes": _includes(d),
+                "caps": d.get("caps") or {}, "is_current": bool(row and row["key"] == key and eff in acc.LIVE_STATES),
+                "for_sale": False, "action": None, "amount_due": 0}
         try:
             qt = quote_for(db, org_id, cfg, key, now, row)
+            item.update({"for_sale": True, "action": qt["kind"], "amount_due": qt["total"]})
         except PlanBillingError:
-            continue
-        plans.append({"key": key, "label": d["label"], "monthly_ngn": int(d["monthly_ngn"]), "includes": _includes(d),
-                      "caps": d.get("caps") or {}, "is_current": bool(row and row["key"] == key and eff in acc.LIVE_STATES),
-                      "action": qt["kind"], "amount_due": qt["total"]})
+            pass
+        plans.append(item)
     allowances: dict = {}
     try:        # plan allowances (AI replies, bulk recipients) for the Usage tab; never fails the page
         ents = acc.get_entitlements(db, org_id, now)

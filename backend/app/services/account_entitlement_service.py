@@ -68,7 +68,7 @@ def platform_org_id(db: Any) -> Optional[str]:
     if env:
         return env
     try:
-        row = _one((db.table("site_builder_settings").select("org_id").limit(1).execute()).data)
+        row = _one((db.table("site_builder_settings").select("org_id").order("created_at").limit(1).execute()).data)
         return (row or {}).get("org_id")
     except Exception as exc:
         logger.warning("account_entitlement.platform_org_id failed: %s", exc)

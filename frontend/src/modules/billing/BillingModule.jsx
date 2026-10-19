@@ -57,14 +57,18 @@ function PlanCard({ plan, busy, onPay }) {
           {(err || pv?.discount_error) && <div role="alert" style={{ fontSize: 12, color: ds.red, marginTop: 4 }}>{err || pv.discount_error}</div>}
         </div>
       )}
-      {plan.action === 'downgrade'
+      {!plan.for_sale
+        ? <p style={{ fontSize: 12, color: ds.gray, margin: '0 0 8px' }}>Not on sale yet.</p>
+        : plan.action === 'downgrade'
         ? <p style={{ fontSize: 12, color: ds.gray, margin: '0 0 8px' }}>Nothing to pay now. This applies when your current plan ends.</p>
         : plan.action === 'upgrade'
           ? <p style={{ fontSize: 12, color: ds.gray, margin: '0 0 8px' }}>You pay {ngn(due)} today — your unused days are credited. It starts at once.</p>
           : <p style={{ fontSize: 12, color: ds.gray, margin: '0 0 8px' }}>You pay {ngn(due)}.</p>}
-      <button type="button" style={{ ...btn(true), width: '100%' }} disabled={busy} onClick={() => onPay(plan, canCode ? code : '')}>
-        {busy ? 'Please wait…' : ACTION[plan.action] || 'Choose'}
-      </button>
+      {plan.for_sale && (
+        <button type="button" style={{ ...btn(true), width: '100%' }} disabled={busy} onClick={() => onPay(plan, canCode ? code : '')}>
+          {busy ? 'Please wait…' : ACTION[plan.action] || 'Choose'}
+        </button>
+      )}
     </div>
   )
 }
@@ -102,6 +106,12 @@ function PlanTab({ data, reload, setMsg }) {
             {cur.source !== 'paid'
               ? <p style={{ fontSize: 13, color: ds.gray, margin: '6px 0 0' }}>{cur.source === 'staff' ? 'Set up by Opsra.' : 'Included with your account.'}{cur.paid_until ? ` Runs until ${day(cur.paid_until)}.` : ''}</p>
               : <p style={{ fontSize: 13, color: ds.gray, margin: '6px 0 0' }}>{ngn(cur.monthly_ngn)} a month · {cur.status === 'active' ? `renews by ${day(cur.paid_until)} (${cur.days_left} days left)` : `ended ${day(cur.paid_until)}`}</p>}
+            {cur.includes?.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: ds.dark, marginBottom: 4 }}>What your plan includes</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: ds.dark }}>{cur.includes.map((f) => <li key={f}>{f}</li>)}</ul>
+              </div>
+            )}
             {cur.status === 'grace' && <div role="alert" style={{ marginTop: 8, color: '#b45309', fontSize: 13 }}>Your plan has ended. Renew below to keep everything on.</div>}
             {cur.status === 'paused' && <div role="alert" style={{ marginTop: 8, color: ds.red, fontSize: 13 }}>Your plan is paused and its features are off. Your data and login are safe — renew below to switch it back on.</div>}
             {cur.pending_change && (
@@ -113,8 +123,9 @@ function PlanTab({ data, reload, setMsg }) {
           </>
         )}
       </div>
+      <h3 style={{ ...h3, marginTop: 4 }}>All plans</h3>
       {data.plans.length === 0
-        ? <div style={card}><p style={{ margin: 0, fontSize: 13, color: ds.gray }}>No plans are on sale yet. Please check back soon.</p></div>
+        ? <div style={card}><p style={{ margin: 0, fontSize: 13, color: ds.gray }}>No plans have been set up yet. Please check back soon.</p></div>
         : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 16 }}>
             {data.plans.map((p) => <PlanCard key={p.key} plan={p} busy={busy} onPay={pay} />)}
           </div>}

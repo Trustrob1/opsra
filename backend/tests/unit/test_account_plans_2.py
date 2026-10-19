@@ -315,7 +315,8 @@ def test_summary_shows_only_the_callers_data():
     s = svc.summary(db, BIZ)
     assert s["current"]["key"] == "capture" and s["current"]["days_left"] >= 9
     keys = {p["key"]: p for p in s["plans"]}
-    assert set(keys) == {"capture", "convert"} and keys["capture"]["is_current"] and keys["convert"]["action"] == "upgrade"
+    assert set(keys) == {"capture", "convert", "grow"} and keys["capture"]["is_current"] and keys["convert"]["action"] == "upgrade"
+    assert keys["grow"]["for_sale"] is False and keys["grow"]["action"] is None and keys["capture"]["includes"]   # listed, not buyable
     assert all(o["id"] for o in s["orders"]) and s["enforced"] is False
 
 
