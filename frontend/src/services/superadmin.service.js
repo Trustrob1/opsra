@@ -168,3 +168,19 @@ export async function setOrgEnforced(orgId, enforced) {
   const res = await axios.patch(`${AP}/orgs/${orgId}/enforce`, { enforced }, { headers: _h() });
   return res.data.data;
 }
+
+
+// ---------------------------------------------------------------------------
+// Opsra Pricing — ACCOUNT-PLANS AP-8 (plan prices, ticks, seat price, discount codes). Superadmin JWT only.
+// ---------------------------------------------------------------------------
+const PR = `${BASE}/api/v1/superadmin/pricing`;
+const _d = (p) => p.then((r) => r.data?.data ?? r.data);
+
+export const getPricingContext = () => _d(axios.get(`${PR}/context`, { headers: _h() }));
+export const getPricingSettings = () => _d(axios.get(`${PR}/settings`, { headers: _h() }));
+export const savePricingSettings = (payload) => _d(axios.patch(`${PR}/settings`, payload, { headers: _h() }));
+export const getPricingCatalog = () => _d(axios.get(`${PR}/catalog`, { headers: _h() }));
+export const listPricingCodes = () => _d(axios.get(`${PR}/discount-codes`, { headers: _h() }));
+export const createPricingCode = (payload) => _d(axios.post(`${PR}/discount-codes`, payload, { headers: _h() }));
+export const updatePricingCode = (id, payload) => _d(axios.patch(`${PR}/discount-codes/${id}`, payload, { headers: _h() }));
+export const deletePricingCode = (id) => _d(axios.delete(`${PR}/discount-codes/${id}`, { headers: _h() }));

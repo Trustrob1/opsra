@@ -16,6 +16,8 @@ export const previewSeats = (add) => api.post('/api/v1/billing/team/seats/previe
 export const startSeatsCheckout = (add) => api.post('/api/v1/billing/team/seats/checkout', { add }).then((r) => r.data.data)
 export const setNextSeats = (quantity) => api.post('/api/v1/billing/team/seats/next', { quantity }).then((r) => r.data.data)
 
+export const getPlatformStatus = () => api.get('/api/v1/platform/status').then((r) => r.data.data)
+
 export const ngn = (n) => `₦${Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
 export const planError = (e, fallback = 'Something went wrong. Please try again.') => {
   const d = e?.response?.data?.detail

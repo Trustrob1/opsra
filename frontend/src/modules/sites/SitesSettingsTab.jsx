@@ -10,8 +10,6 @@ import { getSiteSettings, updateSiteSettings, errorMessage } from '../../service
 import { Card, SectionTitle, Button, Toggle, Notice, Spinner, Field } from './sitesUi'
 import { T, TEXTAREA } from './sitesKit'
 import PricingForm from './PricingForm'
-import DiscountCodesCard from './DiscountCodesCard'
-import TiersCard from './TiersCard'
 
 const DESIGN_TOOLS = [
   { key: 'premium_enabled', title: 'Premium designs',
@@ -161,10 +159,10 @@ export default function SitesSettingsTab({ isActive, canEdit, isOwner = false, s
 
       <PricingForm pricing={settings?.pricing ?? {}} canEdit={canEdit} saving={saving} onSave={savePricingObject} />
 
-      <TiersCard pricing={settings?.pricing ?? {}} canEdit={canEdit} showToast={showToast}
-        onSaved={(row) => { setSettings(row); setPricingText(JSON.stringify(row?.pricing ?? {}, null, 2)) }} />
-
-      <DiscountCodesCard isActive={isActive} canEdit={canEdit} showToast={showToast} />
+      <Card>
+        <SectionTitle>Plans, prices and discount codes</SectionTitle>
+        <p style={{ margin: 0, fontSize: 13, color: T.muted }}>These now live in Superadmin &gt; Opsra Pricing, so they apply to every business on Opsra and only Opsra staff can change them.</p>
+      </Card>
 
       <Card>
         <details>

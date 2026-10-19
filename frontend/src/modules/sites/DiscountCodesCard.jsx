@@ -27,7 +27,10 @@ function status(c) {
   return { tone: 'good', text: 'Active' }
 }
 
-export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
+const SITES_API = { list: listDiscountCodes, create: createDiscountCode, update: updateDiscountCode, remove: deleteDiscountCode }
+
+// `api` lets the Superadmin screen (Opsra Pricing) use the same card with its own signed-in calls.
+export default function DiscountCodesCard({ isActive, canEdit, showToast, api = SITES_API }) {
   const [codes, setCodes] = useState(null)
   const [loadError, setLoadError] = useState(null)
   const [form, setForm] = useState(null)        // null = closed; otherwise the modal's values
@@ -38,8 +41,8 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
 
   const load = useCallback(async () => {
     setLoadError(null)
-    try { setCodes(await listDiscountCodes()) } catch (e) { setLoadError(errorMessage(e, 'Could not load discount codes.')) }
-  }, [])
+    try { setCodes(await api.list()) } catch (e) { setLoadError(errorMessage(e, 'Could not load discount codes.')) }
+  }, [api])
 
   useEffect(() => { if (isActive) load() }, [isActive, load])
 
@@ -69,8 +72,8 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
     setSaving(true)
     setFormError(null)
     try {
-      if (editingId) await updateDiscountCode(editingId, payload)
-      else await createDiscountCode(payload)
+      if (editingId) await api.update(editingId, payload)
+      else await api.create(payload)
       showToast(editingId ? 'Code saved' : 'Code created')
       setForm(null)
       await load()
@@ -83,7 +86,7 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
 
   async function flip(c) {
     try {
-      await updateDiscountCode(c.id, { active: !c.active })
+      await api.update(c.id, { active: !c.active })
       showToast(c.active ? 'Code switched off' : 'Code switched on')
       await load()
     } catch (e) { showToast(errorMessage(e, 'Could not update the code.'), 'bad') }
@@ -91,7 +94,7 @@ export default function DiscountCodesCard({ isActive, canEdit, showToast }) {
 
   async function remove(c) {
     try {
-      await deleteDiscountCode(c.id)
+      await api.remove(c.id)
       showToast(c.uses > 0 ? 'Code switched off (it was already used, so it is kept in your history)' : 'Code removed')
       setConfirmId(null)
       await load()

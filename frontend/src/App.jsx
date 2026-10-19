@@ -57,7 +57,8 @@ import IOSInstallBanner from './components/IOSInstallBanner'
 import { getBriefing } from './services/assistant.service'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import CreateOrg from "./modules/superadmin/CreateOrg.jsx"
-import HealthDashboard from "./modules/superadmin/HealthDashboard.jsx"
+import SuperadminShell from "./modules/superadmin/SuperadminShell.jsx"   // ACCOUNT-PLANS AP-8
+import { getPlatformStatus } from "./services/accountPlan.service"      // ACCOUNT-PLANS AP-8
 import ConversationsModule from './modules/conversations/ConversationsModule'
 import TermsOfService from './pages/TermsOfService'
 import { _supabase } from './services/api'
@@ -668,6 +669,14 @@ function AppShell() {
   }, [clearAuth])
 
   const _userTemplate = user?.roles?.template ?? ''
+  // AP-8: Sites and Superadmin belong to Opsra's own organisation only. This hides them; the server checks again on every route.
+  const [isPlatformOrg, setIsPlatformOrg] = useState(false)
+  useEffect(() => {
+    let live = true
+    if (!user) { setIsPlatformOrg(false); return undefined }
+    getPlatformStatus().then((r) => { if (live) setIsPlatformOrg(!!r?.is_platform) }).catch(() => { if (live) setIsPlatformOrg(false) })
+    return () => { live = false }
+  }, [user?.id])
   // REPORTS-DEPT-1 Phase 2/3: a department-scoped role (department_id set
   // on their role, e.g. "Marketing Lead") can now also see Reports —
   // mirrors ReportsModule.jsx's own RBAC gate exactly, so nav visibility
@@ -678,7 +687,7 @@ function AppShell() {
     // FUNNEL-1B: Event Funnels — owner / ops_manager (edit) and admin (read-only)
     if (item.id === 'event-funnels' && !['owner', 'ops_manager', 'admin'].includes(_userTemplate)) return false
     // SITE-1A: Sites — owner / ops_manager (edit) and admin (read-only), same gate as Event Funnels
-    if (item.id === 'sites' && !['owner', 'ops_manager', 'admin'].includes(_userTemplate)) return false
+    if (item.id === 'sites' && (!isPlatformOrg || !['owner', 'ops_manager', 'admin'].includes(_userTemplate))) return false
     if (item.id === 'reports' && !['owner', 'ops_manager'].includes(_userTemplate) && !_departmentId) return false
     // Project Planner: owner + ops_manager only — a planning tool for leadership, not day-to-day staff
     if (item.id === 'project-planner' && !['owner', 'ops_manager'].includes(_userTemplate)) return false
@@ -996,10 +1005,9 @@ function AppShell() {
                 <div style={{ width: 8, height: 8, background: ds.green, borderRadius: '50%', animation: 'pulse 2s infinite' }} />
                 <span style={{ fontSize: 12, color: '#7A9BAD' }}>Live</span>
               </div>
-              {['owner', 'ops_manager'].includes(_userTemplate) && (
+              {isPlatformOrg && ['owner', 'ops_manager'].includes(_userTemplate) && (
                 <>
-                  <button onClick={() => { setView('superadmin_health'); setActiveNav('') }} style={topbarBtn}>Health</button>
-                  <button onClick={() => { setView('superadmin_create_org'); setActiveNav('') }} style={topbarBtn}>+ Org</button>
+                  <button onClick={() => { setView('superadmin'); setActiveNav('') }} style={topbarBtn}>Superadmin</button>
                 </>
               )}
             </>
@@ -1138,7 +1146,7 @@ function AppShell() {
         {view === 'event-funnels' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><EventFunnelsModule user={user} onOpenLead={openLeadProfile} /></div>
         )}
-        {view === 'sites' && (
+        {view === 'sites' && isPlatformOrg && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><SitesModule user={user} /></div>
         )}
         {view === 'tasks' && (
@@ -1167,13 +1175,10 @@ function AppShell() {
         {view === 'performance' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><PerformanceModule user={user} /></div>
         )}
-        {view === 'superadmin_create_org' && (
-          <div style={{ animation: 'fadeIn 0.25s ease' }}><CreateOrg /></div>
+        {(view === 'superadmin' || view === 'superadmin_health' || view === 'superadmin_create_org') && isPlatformOrg && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><SuperadminShell initial={view === 'superadmin_create_org' ? 'create' : 'health'} /></div>
         )}
-        {view === 'superadmin_health' && (
-          <div style={{ animation: 'fadeIn 0.25s ease' }}><HealthDashboard /></div>
-        )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

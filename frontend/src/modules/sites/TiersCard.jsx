@@ -52,7 +52,10 @@ function startState(cat) {
   }
 }
 
-export default function TiersCard({ pricing, canEdit, onSaved, showToast }) {
+const SITES_API = { catalog: getSiteAddonsCatalog, save: updateSiteSettings }
+
+// `api` lets the Superadmin screen (Opsra Pricing) use the same card with its own signed-in calls.
+export default function TiersCard({ pricing, canEdit, onSaved, showToast, api = SITES_API }) {
   const [cat, setCat] = useState(null)
   const [form, setForm] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -63,14 +66,14 @@ export default function TiersCard({ pricing, canEdit, onSaved, showToast }) {
   const load = useCallback(async () => {
     setLoading(true); setLoadError(null)
     try {
-      const c = await getSiteAddonsCatalog()
+      const c = await api.catalog()
       setCat(c); setForm(startState(c))
     } catch (e) {
       setLoadError(errorMessage(e, 'Could not load the plans.'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [api])
   useEffect(() => { load() }, [load])
 
   if (loading) return <Card><Spinner /></Card>
@@ -108,7 +111,7 @@ export default function TiersCard({ pricing, canEdit, onSaved, showToast }) {
       tier_billing: { period_days: form.billing.period_days, grace_days: form.billing.grace_days, reminder_days: rd.map(Number) } }
     setSaving(true)
     try {
-      const row = await updateSiteSettings({ pricing: next })
+      const row = await api.save({ pricing: next })
       onSaved?.(row)
       showToast?.('Plans and prices saved')
       await load()

@@ -29,6 +29,7 @@ from app.dependencies import get_current_org
 from app.models.common import ok
 from app.services import account_plan_billing_service as svc
 from app.services import account_seat_service as seatsvc
+from app.services import platform_guard
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -143,3 +144,10 @@ def seats_next(body: NextSeatsBody, db=Depends(get_supabase), org=Depends(get_cu
         return ok(seatsvc.set_next_seats(db, org["org_id"], body.quantity, org.get("id") or "owner"))
     except svc.PlanBillingError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/platform/status")
+def platform_status(db=Depends(get_supabase), org=Depends(get_current_org)):
+    """Is the signed-in organisation Opsra's own (the platform organisation)? The app uses this to show or hide Opsra-only
+    areas (Sites, Superadmin). It hides things; the server checks again on every protected route."""
+    return ok({"is_platform": platform_guard.is_platform(db, org.get("org_id"))})

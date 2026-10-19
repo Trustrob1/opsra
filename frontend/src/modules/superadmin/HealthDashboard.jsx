@@ -186,7 +186,9 @@ function LoginGate({ onAuthed }) {
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
-export default function HealthDashboard() {
+export default function HealthDashboard({ embedded = false }) {
+  // embedded: shown inside the Superadmin area, which has its own menu, sign-out, Credits and Plans pages.
+  const panels = embedded ? PANELS.filter(p => p.id !== "credits" && p.id !== "plans") : PANELS;
   const [authed, setAuthed] = useState(isSuperadminLoggedIn());
   const [activePanel, setActivePanel] = useState("summary");
   const [timeRange, setTimeRange] = useState("24h");
@@ -322,7 +324,7 @@ export default function HealthDashboard() {
             Platform monitoring across all organisations
           </p>
         </div>
-        <button
+        {!embedded && <button
           onClick={() => { clearSuperadminToken(); setAuthed(false); }}
           style={{
             background: "transparent", border: "1px solid #1e3a4f",
@@ -331,7 +333,7 @@ export default function HealthDashboard() {
           }}
         >
           Log out
-        </button>
+        </button>}
       </div>
 
       {/* ── Filter bar ────────────────────────────────────────────── */}
@@ -420,7 +422,7 @@ export default function HealthDashboard() {
 
       {/* ── Panel tabs ────────────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 4, marginBottom: 18, flexWrap: "wrap" }}>
-        {PANELS.map(p => (
+        {panels.map(p => (
           <button
             key={p.id}
             onClick={() => setActivePanel(p.id)}

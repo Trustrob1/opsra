@@ -22,7 +22,8 @@ import asyncio
 from contextlib import asynccontextmanager
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from app.services.platform_guard import platform_only  # ACCOUNT-PLANS AP-8
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -185,6 +186,7 @@ from app.routers import public_catalog as public_catalog_router
 from app.routers import catalog as catalog_router
 from app.routers import superadmin_health as superadmin_health_router
 from app.routers import superadmin_credits as superadmin_credits_router  # CREDITS-1
+from app.routers import superadmin_pricing as superadmin_pricing_router  # ACCOUNT-PLANS AP-8
 from app.routers import superadmin_plans as superadmin_plans_router  # ACCOUNT-PLANS AP-1
 from app.routers import public_webchat as public_webchat_router  # WEBCHAT-1
 from app.routers import webchat as webchat_router  # WEBCHAT-1
@@ -258,26 +260,27 @@ app.include_router(digital_campaigns_router.router, prefix="/api/v1", tags=["dig
 app.include_router(funnels_router.router,        prefix="/api/v1", tags=["funnels"])          # FUNNEL-1
 app.include_router(public_funnels_router.router, prefix="",        tags=["public_funnels"])   # FUNNEL-1A — GET /f/{token}
 app.include_router(funnel_tools_router.router,   prefix="/api/v1", tags=["funnel_tools"])     # FUNNEL-1B
-app.include_router(sites_router.router,          prefix="/api/v1", tags=["sites"])             # SITE-1A
+app.include_router(sites_router.router,          prefix="/api/v1", dependencies=[Depends(platform_only)], tags=["sites"])             # SITE-1A
 app.include_router(public_sites_router.router,   prefix="",        tags=["public_sites"])      # SITE-1A — GET /s/{slug}
 app.include_router(public_forms_router.router,   prefix="/api/v1", tags=["public_forms"])      # SITE-1B — /forms/{token}
 app.include_router(builder_portal_router.router, prefix="/api/v1/builder", tags=["builder_portal"])  # SITE-2B
 app.include_router(site_partners_router.public_router, prefix="/api/v1", tags=["partner_links"])   # PARTNER-1A — public
-app.include_router(site_partners_router.router, prefix="/api/v1/partners", tags=["partners"])         # PARTNER-1A — staff
+app.include_router(site_partners_router.router, prefix="/api/v1/partners", dependencies=[Depends(platform_only)], tags=["partners"])         # PARTNER-1A — staff
 app.include_router(partner_portal_router.router, prefix="/api/v1/partner-portal", tags=["partner_portal"])   # PARTNER-1B
 app.include_router(site_giveaways_router.public_router, prefix="/api/v1", tags=["giveaways"])   # GIVEAWAY-1 — public
-app.include_router(site_giveaways_router.router, prefix="/api/v1/giveaways", tags=["giveaways"])   # GIVEAWAY-1 — staff
-app.include_router(site_addons_router.router,    prefix="/api/v1",           tags=["site_addons"])  # SITE-ADDONS A0-1 — staff
+app.include_router(site_giveaways_router.router, prefix="/api/v1/giveaways", dependencies=[Depends(platform_only)], tags=["giveaways"])   # GIVEAWAY-1 — staff
+app.include_router(site_addons_router.router,    prefix="/api/v1",           dependencies=[Depends(platform_only)], tags=["site_addons"])  # SITE-ADDONS A0-1 — staff
 app.include_router(public_site_pay_router.router, prefix="",                  tags=["public_site_pay"])  # SITE-ADDONS A0-2 — client pay page
 app.include_router(public_site_capture_router.router, prefix="",              tags=["public_site_capture"])  # SITE-ADDONS A1-1 — form + /sl/ links
-app.include_router(site_capture_router.router,        prefix="/api/v1",           tags=["site_capture"])  # SITE-ADDONS A1-1 — staff capture routes
+app.include_router(site_capture_router.router,        prefix="/api/v1",           dependencies=[Depends(platform_only)], tags=["site_capture"])  # SITE-ADDONS A1-1 — staff capture routes
 app.include_router(public_site_options_router.router, prefix="",                  tags=["public_site_options"])  # SITE-OPTIONS — client's choose page
 app.include_router(site_options_router.builder_router, prefix="/api/v1",          tags=["site_options_builder"])  # SITE-OPTIONS — /api/v1/builder/option-sets
-app.include_router(site_options_router.staff_router,   prefix="/api/v1",          tags=["site_options"])  # SITE-OPTIONS — /api/v1/site-option-sets
+app.include_router(site_options_router.staff_router,   prefix="/api/v1",          dependencies=[Depends(platform_only)], tags=["site_options"])  # SITE-OPTIONS — /api/v1/site-option-sets
 app.include_router(public_site_versions_router.router, prefix="",                  tags=["public_site_versions"])  # SITE-OPTIONS OPT-3 — client's version page
 app.include_router(site_version_shares_router.builder_router, prefix="/api/v1",    tags=["site_versions_builder"])  # SITE-OPTIONS OPT-3 — /api/v1/builder/version-shares
-app.include_router(site_version_shares_router.staff_router,   prefix="/api/v1",    tags=["site_versions"])  # SITE-OPTIONS OPT-3 — /api/v1/site-version-shares
+app.include_router(site_version_shares_router.staff_router,   prefix="/api/v1",    dependencies=[Depends(platform_only)], tags=["site_versions"])  # SITE-OPTIONS OPT-3 — /api/v1/site-version-shares
 app.include_router(superadmin_credits_router.router,          prefix="/api/v1",    tags=["superadmin_credits"])  # CREDITS-1 — /api/v1/superadmin/credits/*
+app.include_router(superadmin_pricing_router.router,          prefix="/api/v1",    tags=["superadmin_pricing"])  # ACCOUNT-PLANS AP-8 — /api/v1/superadmin/pricing/*
 app.include_router(superadmin_plans_router.router,            prefix="/api/v1",    tags=["superadmin_plans"])  # ACCOUNT-PLANS AP-1 — /api/v1/superadmin/plans/*
 app.include_router(public_webchat_router.router,              prefix="/api/v1",    tags=["public_webchat"])  # WEBCHAT-1 — /api/v1/public/webchat/{key}/*
 app.include_router(webchat_router.router,                     prefix="/api/v1",    tags=["webchat"])  # WEBCHAT-1 — settings + rep reply
