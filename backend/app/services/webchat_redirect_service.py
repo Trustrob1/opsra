@@ -95,7 +95,8 @@ def handle_inbound(db, number_row: dict, sender_phone: str, contact_name: Option
         row = _redirect_row(db, org_id, phone)
         sent_at = _parse((row or {}).get("last_sent_at"))
         recently = bool(sent_at and _now() - sent_at < timedelta(hours=REDIRECT_COOLDOWN_H))
-        if recently or not cfg.get("enabled"):
+        from app.services import webchat_plan_service as plan       # ACCOUNT-PLANS AP-4: no chat in the plan = tell the team, no link
+        if recently or not cfg.get("enabled") or not plan.chat_allowed(db, org_id):
             if not row:
                 db.table("webchat_redirects").insert({"org_id": org_id, "phone": phone, "sent_count": 0,
                                                       "last_sent_at": (_now() - timedelta(days=3)).isoformat()}).execute()

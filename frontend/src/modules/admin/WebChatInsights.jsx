@@ -51,7 +51,7 @@ export default function WebChatInsights({ baseLink }) {
   useEffect(() => {
     let live = true
     setErr('')
-    getWebchatAnalytics(days).then((d) => live && setAn(d)).catch(() => live && setErr('Could not load the numbers. Try again in a moment.'))
+    getWebchatAnalytics(days).then((d) => live && setAn(d)).catch((e) => live && setErr(e?.response?.status === 403 && typeof e?.response?.data?.detail === 'string' ? e.response.data.detail : 'Could not load the numbers. Try again in a moment.'))
     return () => { live = false }
   }, [days, reload])
 

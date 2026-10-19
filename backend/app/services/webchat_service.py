@@ -297,6 +297,10 @@ def resolve_key(db, key: str) -> Optional[dict]:
     cfg = get_config(db, row["org_id"])
     if not cfg.get("enabled"):
         return None
+    from app.services import webchat_plan_service as plan        # ACCOUNT-PLANS AP-4: what the plan includes
+    cfg = plan.apply(db, row["org_id"], cfg)
+    if cfg is None:
+        return None
     return {"org_id": row["org_id"], "config": cfg, "key": key}
 
 

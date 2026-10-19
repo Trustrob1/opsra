@@ -63,6 +63,13 @@ def _require_manager(org: dict) -> None:
         raise HTTPException(status_code=403, detail="Only the owner or an operations manager can change web chat settings.")
 
 
+def _require_plan(db, org: dict, key: str) -> None:
+    """ACCOUNT-PLANS AP-4. A business that has not been switched on is always allowed."""
+    from app.services import webchat_plan_service as plan
+    if not plan.allowed(db, org["org_id"], key):
+        raise HTTPException(status_code=403, detail=plan.PLAN_MESSAGE)
+
+
 @router.post("/conversations/webchat/send")
 def send_webchat_reply(payload: WebchatSend, db=Depends(get_supabase), org=Depends(get_current_org)):
     """S1: org_id comes from the login, never the body."""
@@ -128,6 +135,7 @@ def stats(db=Depends(get_supabase), org=Depends(get_current_org)):
 @router.get("/webchat/analytics")
 def analytics(days: int = Query(default=30, ge=1, le=90), db=Depends(get_supabase), org=Depends(get_current_org)):
     _require_manager(org)
+    _require_plan(db, org, "webchat_insights")
     from app.services import webchat_analytics_service as an
     return ok(an.analytics(db, org["org_id"], days))
 
@@ -137,6 +145,7 @@ def qr_svg(s: str = Query(default="qr", max_length=30), download: bool = False, 
            org=Depends(get_current_org)):
     """QR code for this business's chat link, tagged with a source so the funnel shows where scans came from."""
     _require_manager(org)
+    _require_plan(db, org, "webchat_insights")
     import io
     import segno
     key = wc.get_or_create_key(db, org["org_id"])

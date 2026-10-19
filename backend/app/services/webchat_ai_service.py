@@ -195,6 +195,10 @@ def answer(db, s: dict, cfg: dict, text: str) -> Optional[dict]:
             wc.set_state(db, s, injection=strikes)
             return {"reply": INJECTION_DECLINE, "handoff": True} if strikes >= 2 else None
         level = credit_service.get_ai_level(db, s["org_id"])
+        from app.services import webchat_plan_service as plan      # ACCOUNT-PLANS AP-4: one AI answer from the plan's allowance
+        if not plan.use_ai_allowance(db, s["org_id"]):
+            logger.info("webchat ai skipped org=%s reason=plan_allowance", s.get("org_id"))
+            return None
         system = build_system_prompt(db, s, cfg, safe)
         hist = _history(db, s)
         prompt = (f"<conversation>\n{hist}\n</conversation>\n\n" if hist else "") + f"<customer_message>\n{safe}\n</customer_message>"

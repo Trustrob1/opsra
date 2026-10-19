@@ -21,6 +21,12 @@ from app.services import webchat_whatsapp_service as wa
 logger = logging.getLogger(__name__)
 
 
+def _plan_on(db, s: dict) -> bool:
+    """ACCOUNT-PLANS AP-4: follow-ups are part of the plan. Not switched on -> always True."""
+    from app.services import webchat_plan_service as plan
+    return plan.allowed(db, s.get("org_id"), "webchat_followups")
+
+
 def _gate(s: dict) -> bool:
     last = em._parse(s.get("last_activity_at"))
     if last and wc._now() - last < timedelta(minutes=em.AWAY_MIN):
@@ -32,6 +38,8 @@ def _gate(s: dict) -> bool:
 def notify_rep_reply(db, s: dict, cfg: dict, text: str) -> Optional[str]:
     """Returns 'email' | 'whatsapp' | None."""
     try:
+        if not _plan_on(db, s):
+            return None
         want_email, want_wa = em.can_email(s, cfg), wa.can_whatsapp(s, cfg)
         if not (want_email or want_wa) or not _gate(s):
             return None
@@ -55,6 +63,8 @@ def notify_rep_reply(db, s: dict, cfg: dict, text: str) -> Optional[str]:
 
 def send_booking_confirmation(db, s: dict, cfg: dict, summary: str) -> None:
     try:
+        if not _plan_on(db, s):
+            return
         sent = em.send_booking_confirmation(db, s, cfg, summary)
         if not sent:
             name = cfg.get("business_name") or "us"
@@ -65,6 +75,8 @@ def send_booking_confirmation(db, s: dict, cfg: dict, summary: str) -> None:
 
 def send_order_link(db, s: dict, cfg: dict, summary: str, url: str) -> None:
     try:
+        if not _plan_on(db, s):
+            return
         sent = em.send_order_link(db, s, cfg, summary, url)
         if not sent:
             wa.send_in_window(db, s, cfg, f"Your order with {cfg.get('business_name') or 'us'}:\n{summary[:600]}", cta=("Pay now", url))
