@@ -111,3 +111,34 @@ export async function getHealthOrgs(params = {}) {
   });
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// Credits — CREDITS-3
+// ---------------------------------------------------------------------------
+
+const CR = `${BASE}/api/v1/superadmin/credits`;
+
+export async function getCreditOrgs() {
+  const res = await axios.get(`${CR}/orgs`, { headers: _h() });
+  return res.data.data;
+}
+
+export async function getCreditMargin(days = 30) {
+  const res = await axios.get(`${CR}/margin`, { headers: _h(), params: { days } });
+  return res.data.data;
+}
+
+export async function getCreditReconcile() {
+  const res = await axios.get(`${CR}/reconcile`, { headers: _h() });
+  return res.data.data;
+}
+
+export async function setCreditMetering(orgId, enabled) {
+  const res = await axios.patch(`${CR}/orgs/${orgId}/wallet`, { metering_enabled: enabled }, { headers: _h() });
+  return res.data.data;
+}
+
+export async function adjustCredit(orgId, payload) {
+  const res = await axios.post(`${CR}/orgs/${orgId}/adjust`, payload, { headers: _h() });
+  return res.data.data;
+}
