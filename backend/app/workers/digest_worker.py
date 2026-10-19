@@ -184,6 +184,12 @@ def run_monday_digest(self):
                 )
                 continue
 
+            # ── AP-5c: the weekly owner report is a plan feature ──────────
+            from app.services import plan_gate_service as _plan_gate
+            if not _plan_gate.allowed(db, org_id, "weekly_report"):
+                logger.info("digest_worker: org %s skipped — plan has no weekly report", org_id)
+                continue
+
             try:
                 metrics: dict = {}
 

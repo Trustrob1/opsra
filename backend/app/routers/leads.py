@@ -847,6 +847,9 @@ async def score_lead(
     org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
+    from app.services import plan_gate_service
+    if not plan_gate_service.allowed(db, _org_id(org), "qualification"):
+        raise plan_gate_service.http_error()
     lead = lead_service.score_lead(
         db=db,
         org_id=_org_id(org),
@@ -1289,7 +1292,10 @@ async def create_demo_request(
     Admin/manager is notified via task + in-app notification to confirm.
     Accessible by: rep (own leads), admin/owner (any lead).
     """
-    
+    from app.services import plan_gate_service as _plan_gate   # AP-5b: booking is a plan feature
+    if not _plan_gate.allowed(db, _org_id(org), "selling_booking"):
+        raise _plan_gate.http_error()
+
     demo = demo_service.create_demo_request(
         db=db,
         org_id=_org_id(org),
@@ -1420,6 +1426,10 @@ async def send_payment_link(
     if isinstance(cfg_d2, list):
         cfg_d2 = cfg_d2[0] if cfg_d2 else None
     pay_cfg = (cfg_d2 or {}).get("payment_link_config") or {}
+
+    from app.services import plan_gate_service
+    if not plan_gate_service.allowed(db, _org_id(org), "payment_links"):
+        raise plan_gate_service.http_error()
 
     try:
         result = paystack_storefront_service.generate_payment_link(

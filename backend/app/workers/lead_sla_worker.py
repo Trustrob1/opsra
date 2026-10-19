@@ -453,8 +453,12 @@ def run_lead_sla_check(self):
         )
         orgs = orgs_result.data or []
 
+        from app.services import plan_gate_service as _plan_gate
         for org in orgs:
             org_id = org["id"]
+            # AP-5a: speed-to-lead alerts are a plan feature
+            if not _plan_gate.allowed(db, org_id, "speed_alerts"):
+                continue
             sla_hours = {
                 "hot":  int(org.get("sla_hot_hours")  or 1),
                 "warm": int(org.get("sla_warm_hours") or 4),

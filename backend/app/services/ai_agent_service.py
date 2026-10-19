@@ -1620,7 +1620,8 @@ def _handle_agent_confirmation(
                     if isinstance(integrations_data, list):
                         integrations_data = integrations_data[0] if integrations_data else None
 
-                    if integrations_data:
+                    from app.services import plan_gate_service as _plan_gate
+                    if integrations_data and _plan_gate.allowed(db, org_id, "payment_links"):
                         from app.services.commerce_service import get_or_create_commerce_session
                         from app.services.paystack_storefront_service import (
                             generate_payment_link, PaystackLinkError,

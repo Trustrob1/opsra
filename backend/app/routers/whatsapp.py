@@ -239,6 +239,9 @@ def create_broadcast(
     org=Depends(get_current_org),
 ):
     require_not_affiliate(org, "creating broadcasts")
+    from app.services import plan_gate_service as _plan_gate   # AP-5c
+    if not _plan_gate.allowed(db, org["org_id"], "bulk_messaging"):
+        raise _plan_gate.http_error()
     broadcast = whatsapp_service.create_broadcast(
         db=db,
         org_id=org["org_id"],

@@ -134,6 +134,14 @@ def run_broadcast_dispatcher(self):
                     total_skipped += 1
                     continue
 
+                # ── AP-5c: bulk messaging is a plan feature ───────────────
+                from app.services import plan_gate_service as _plan_gate
+                if not _plan_gate.allowed(db, org_id, "bulk_messaging"):
+                    logger.info("broadcast_worker: org %s skipped — plan has no bulk messaging", org_id)
+                    _set_broadcast_status(db, broadcast_id, "scheduled")
+                    total_skipped += 1
+                    continue
+
                 daily_limit = get_daily_customer_limit(org_row)
 
                 # ── Mark as sending ───────────────────────────────────────
@@ -203,6 +211,16 @@ def run_broadcast_dispatcher(self):
                 ]
 
                 recipient_count = len(recipients)
+                # AP-5c: the plan's monthly recipient allowance (not switched on = no limit, nothing counted)
+                if not _plan_gate.use(db, org_id, "bulk_messaging", n=recipient_count):
+                    logger.info("broadcast_worker: org %s over its monthly recipient allowance — broadcast %s cancelled", org_id, broadcast_id)
+                    _set_broadcast_status(db, broadcast_id, "cancelled")
+                    _plan_gate.tell_managers(
+                        db, org_id, "Broadcast not sent",
+                        f"This broadcast would reach {recipient_count} customers, which is more than your plan's monthly allowance has left. Open Billing to see the plans.",
+                        "broadcast_plan_limit")
+                    total_skipped += 1
+                    continue
                 sent_count      = 0
                 window_expires  = (
                     _now_dt() + timedelta(hours=24)

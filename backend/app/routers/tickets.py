@@ -51,7 +51,8 @@ from app.models.tickets import (
 from app.services import ticket_service
 from app.utils.rbac import get_role_template, is_scoped_role, require_permission_key
 
-router = APIRouter()
+from app.services import plan_gate_service as _plan_gate  # AP-5: the plan decides whether this screen is available
+router = APIRouter(dependencies=[Depends(_plan_gate.require("support_tickets"))])
 
 # ---------------------------------------------------------------------------
 # Tickets

@@ -30,7 +30,8 @@ from app.services.catalog_service import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+from app.services import plan_gate_service as _plan_gate  # AP-5: the plan decides whether this screen is available
+router = APIRouter(dependencies=[Depends(_plan_gate.require("selling_catalog"))])
 
 _CATALOG_ROLES  = {"owner", "ops_manager"}
 _MAX_IMAGE_SIZE = 5 * 1024 * 1024   # 5 MB — S10

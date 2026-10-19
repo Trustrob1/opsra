@@ -306,6 +306,11 @@ async def receive_meta_lead_ad(
             logger.info("No org found for page_id=%s — skipping", page_id)
             continue
         org_id = org_data["id"]
+        from app.services import plan_gate_service as _plan_gate_ads
+        if not _plan_gate_ads.allowed(db, org_id, "fb_ig_leads"):
+            # AP-5b: the plan has no Facebook / Instagram lead ads. The lead stays in Meta's own lead centre.
+            logger.warning("receive_meta_lead_ad: org %s plan has no lead ads — skipping", org_id)
+            continue
         token_result = (
             db.table("integrations")
             .select("access_token")
@@ -788,8 +793,12 @@ def _is_lead_pre_qualified(db, org_id: str, lead_id: str) -> bool:
     the lead, qualification bot is not needed.
     Returns True also if no flow is configured (nothing to collect).
     S14: returns False on any error — safe default is normal qualification.
+    AP-5b: returns True (skip the bot, the team follows up) when the plan has no qualification.
     """
     try:
+        from app.services import plan_gate_service as _plan_gate_q
+        if not _plan_gate_q.allowed(db, org_id, "qualification"):
+            return True
         org_r = (
             db.table("organisations")
             .select("qualification_flow")
@@ -1203,6 +1212,7 @@ def _route_to_ai_agent(
 
 def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_id: str) -> None:
     from datetime import datetime, timezone, timedelta
+    from app.services import plan_gate_service as _plan_gate
 
     sender_phone = normalize_phone(message.get("from", ""))
     msg_id       = message.get("id", "")
@@ -1288,7 +1298,8 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     # unchanged below — this block only intercepts numbers explicitly set
     # to 'ai_agent', and returns early so none of the existing triage/
     # qualification/bot/pre-qualified-lead code paths run for them.
-    if number_row and number_row.get("wa_sales_mode") == "ai_agent":
+    if number_row and number_row.get("wa_sales_mode") == "ai_agent" and _plan_gate.allowed(db, number_row.get("org_id"), "ai_assistant"):
+        # AP-5b: without ai_assistant in the plan the number falls through to the normal flow below
         # XORG-1: always the RECEIVING number's org — never the sender's org
         # from the phone lookup (matches the Event Funnel block below, which
         # already got this right). The scoped lookup above means org_id can
@@ -1311,14 +1322,16 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             if msg_type == "text" and content:
                 if _handle_opt_keywords(db, content, sender_phone, _agent_org_id, customer_id, lead_id):
                     return
-            _route_to_ai_agent(
-                db=db, org_id=_agent_org_id, number_row=number_row,
-                sender_phone=sender_phone, contact_name=contact_name,
-                msg_type=msg_type, content=content, msg_id=msg_id,
-                interactive_payload=interactive_payload,
-                customer_id=customer_id, lead_id=lead_id,
-            )
-            return
+            if _plan_gate.use(db, _agent_org_id, "ai_assistant"):
+                _route_to_ai_agent(
+                    db=db, org_id=_agent_org_id, number_row=number_row,
+                    sender_phone=sender_phone, contact_name=contact_name,
+                    msg_type=msg_type, content=content, msg_id=msg_id,
+                    interactive_payload=interactive_payload,
+                    customer_id=customer_id, lead_id=lead_id,
+                )
+                return
+            # AP-5b: this month's AI allowance is used up - the team replies as on a normal number (fall through)
 
     # ── SITE-1B: Site Builder numbers ────────────────────────────────────
     # Same early-return pattern as ai_agent/event_funnel above. The org is
@@ -1394,7 +1407,8 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     # ── FUNNEL-1A: Event Funnel numbers ─────────────────────────────────
     # Same early-return pattern as ai_agent above. The org is ALWAYS the
     # number's own org — never the sender-lookup org (XORG-safe, spec F2).
-    if number_row and number_row.get("wa_sales_mode") == "event_funnel":
+    if number_row and number_row.get("wa_sales_mode") == "event_funnel" and _plan_gate.allowed(db, number_row.get("org_id"), "event_funnel"):
+        # AP-5c: without the event-funnel add-on the number falls through to the normal flow
         _funnel_org_id = number_row.get("org_id")
         if _funnel_org_id:
             if _is_org_owner(db, _funnel_org_id, sender_phone):
@@ -2924,8 +2938,10 @@ def _handle_structured_qualification_turn(
 
     try:
         from app.services import lead_service
-        lead_service.score_lead(db=db, org_id=org_id, lead_id=lead_id, user_id=assigned_to)
-        logger.info("AI scoring triggered at structured qualification handoff for lead %s", lead_id)
+        from app.services import plan_gate_service as _plan_gate_s
+        if _plan_gate_s.allowed(db, org_id, "qualification"):   # AP-5b: scoring is part of qualification
+            lead_service.score_lead(db=db, org_id=org_id, lead_id=lead_id, user_id=assigned_to)
+            logger.info("AI scoring triggered at structured qualification handoff for lead %s", lead_id)
     except Exception as exc:
         logger.warning(
             "_handle_structured_qualification_turn: scoring failed for lead %s: %s", lead_id, exc,

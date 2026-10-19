@@ -156,6 +156,13 @@ def run_drip_scheduler(self):
                 skipped += 1
                 continue
 
+            # ── AP-5c: welcome / drip series is a plan feature ────────────
+            from app.services import plan_gate_service as _plan_gate
+            if not _plan_gate.allowed(db, org_id, "welcome_series"):
+                logger.info("drip_worker: org %s skipped — plan has no welcome series", org_id)
+                skipped += 1
+                continue
+
             # CONFIG-2: build label→key map once per org
             org_biz_types = org_row.get("drip_business_types") or []
             label_to_key  = _build_key_set(org_biz_types)

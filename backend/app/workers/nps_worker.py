@@ -84,6 +84,12 @@ def run_nps_scheduler(self):
                 )
                 continue
 
+            # ── AP-5c: satisfaction surveys are a plan feature ────────────
+            from app.services import plan_gate_service as _plan_gate
+            if not _plan_gate.allowed(db, org_id, "surveys"):
+                logger.info("nps_worker: org %s skipped — plan has no surveys", org_id)
+                continue
+
             daily_limit = get_daily_customer_limit(org_row)
 
             try:

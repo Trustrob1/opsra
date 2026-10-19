@@ -437,10 +437,14 @@ def run_demo_reminder_check(self):
         db = get_supabase()  # Pattern 48 Rule 1
         orgs = db.table("organisations").select("id, whatsapp_phone_id").execute().data or []
 
+        from app.services import plan_gate_service as _plan_gate
         for org_row in orgs:
             org_id   = org_row["id"]
             phone_id = (org_row.get("whatsapp_phone_id") or "").strip()
             summary["orgs_processed"] += 1
+            if not _plan_gate.allowed(db, org_id, "selling_booking"):   # AP-5b: booking with reminders
+                summary["skipped"] += 1
+                continue
 
             try:
                 now = _now()

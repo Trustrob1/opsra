@@ -71,10 +71,17 @@ def run_lead_nurture_send() -> dict:
             "failed":         1,
         }
 
+    from app.services import plan_gate_service as _plan_gate
     for org in orgs:
         org_id        = org["id"]
         interval_days = org.get("nurture_interval_days") or 7
         sequence      = org.get("nurture_sequence") or []
+
+        # AP-5b: follow-up and re-contact sequences are a plan feature
+        if not _plan_gate.allowed(db, org_id, "followups"):
+            logger.info("Nurture worker: org %s skipped — plan has no follow-up sequences", org_id)
+            orgs_processed += 1
+            continue
 
         if not sequence:
             logger.info(

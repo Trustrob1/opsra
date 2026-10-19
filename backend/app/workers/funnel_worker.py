@@ -69,6 +69,11 @@ def process_funnel(db, funnel: dict, now: datetime) -> dict:
         summary["skipped"] += 1
         return summary
 
+    from app.services import plan_gate_service as _plan_gate   # AP-5c: event funnels are an add-on
+    if not _plan_gate.allowed(db, org_id, "event_funnel"):
+        summary["skipped"] += 1
+        return summary
+
     number_row = funnel_service._number_row_by_id(db, org_id, funnel.get("whatsapp_number_id"))
     if not number_row or number_row.get("wa_sales_mode") != "event_funnel":
         logger.warning("funnel_worker: funnel %s has no event_funnel number — skipped", funnel.get("id"))

@@ -223,6 +223,12 @@ def send_renewal_reminders() -> dict:
             skipped_inactive += 1
             continue
 
+        # ── AP-5c: renewals and win-back is a plan feature ────────────────
+        from app.services import plan_gate_service as _plan_gate
+        if not _plan_gate.allowed(db, org_id, "renewals_winback"):
+            skipped_inactive += 1
+            continue
+
         reminder_days = _get_org_reminder_days(db, org_id)
 
         try:
@@ -313,6 +319,12 @@ def check_trial_expiry() -> dict:
             skipped_inactive += 1
             continue
 
+        # ── AP-5c: renewals and win-back is a plan feature ────────────────
+        from app.services import plan_gate_service as _plan_gate
+        if not _plan_gate.allowed(db, org_id, "renewals_winback"):
+            skipped_inactive += 1
+            continue
+
         try:
             result = (
                 db.table("subscriptions")
@@ -390,6 +402,12 @@ def schedule_win_back() -> dict:
             skipped_inactive += 1
             continue
 
+        # ── AP-5c: renewals and win-back is a plan feature ────────────────
+        from app.services import plan_gate_service as _plan_gate
+        if not _plan_gate.allowed(db, org_id, "renewals_winback"):
+            skipped_inactive += 1
+            continue
+
         try:
             result = (
                 db.table("subscriptions")
@@ -449,6 +467,12 @@ def monitor_payment_failures() -> dict:
 
         # ── D1: Subscription gate ─────────────────────────────────────────
         if not is_org_active(org_row):
+            skipped_inactive += 1
+            continue
+
+        # ── AP-5c: renewals and win-back is a plan feature ────────────────
+        from app.services import plan_gate_service as _plan_gate
+        if not _plan_gate.allowed(db, org_id, "renewals_winback"):
             skipped_inactive += 1
             continue
 

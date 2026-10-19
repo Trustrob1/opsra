@@ -25,7 +25,8 @@ from app.models.funnels import FunnelCreate, FunnelUpdate, GrantEarly, ManualPai
 from app.services import funnel_service
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+from app.services import plan_gate_service as _plan_gate  # AP-5c: event funnels are an add-on
+router = APIRouter(dependencies=[Depends(_plan_gate.require("event_funnel"))])
 
 _READ_ROLES = ("owner", "admin", "ops_manager")
 _WRITE_ROLES = ("owner", "ops_manager")

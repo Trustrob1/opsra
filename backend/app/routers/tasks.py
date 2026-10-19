@@ -30,7 +30,8 @@ from app.models.common import ok, paginated
 from app.models.tasks import CompleteRequest, SnoozeRequest, TaskCreate, TaskUpdate
 from app.services import task_service
 
-router = APIRouter()
+from app.services import plan_gate_service as _plan_gate  # AP-5: the plan decides whether this screen is available
+router = APIRouter(dependencies=[Depends(_plan_gate.require("team_tasks"))])
 
 
 @router.get("/tasks")

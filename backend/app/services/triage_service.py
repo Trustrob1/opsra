@@ -735,6 +735,27 @@ def _action_qualify(
         )
         return
 
+    # AP-5b: the plan has no qualification — keep the lead, tell the customer the team will reply, tell the team
+    from app.services import plan_gate_service as _plan_gate
+    if qualification_flow and not _plan_gate.allowed(db, org_id, "qualification"):
+        if phone_id:
+            try:
+                from app.services.whatsapp_service import _call_meta_send
+                _call_meta_send(phone_id, {
+                    "messaging_product": "whatsapp", "to": phone_number, "type": "text",
+                    "text": {"body": "Thanks for reaching out - our team will get back to you shortly."},
+                })
+            except Exception as exc:
+                logger.warning("_action_qualify: plan fallback message failed: %s", exc)
+        _notify_managers(
+            db, org_id,
+            title="New WhatsApp lead - follow up",
+            body="A new contact chose to talk to sales. Your plan has no automatic qualification, so please reply from Conversations.",
+            resource_type="lead",
+            resource_id=lead_id or "",
+        )
+        return
+
     # Onboarding gate — qualification_flow must be configured
     if not qualification_flow:
         logger.warning(

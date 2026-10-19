@@ -296,7 +296,9 @@ def run_owner_daily_report(self):
 
             # On Mondays: fetch weekly growth section to append
             weekly_section: str | None = None
-            if is_monday:
+            from app.services import plan_gate_service as _plan_gate
+            # AP-5c: the Monday growth section is a plan feature (the daily brief itself is not gated)
+            if is_monday and _plan_gate.allowed(db, org_id, "monday_summary"):
                 try:
                     from app.services.growth_insights_service import (
                         build_digest_context,

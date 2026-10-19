@@ -23,7 +23,8 @@ from app.services import funnel_tools_service as tools
 from app.services.funnel_tools_service import FunnelToolError
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+from app.services import plan_gate_service as _plan_gate  # AP-5c: event funnels are an add-on
+router = APIRouter(dependencies=[Depends(_plan_gate.require("event_funnel"))])
 
 
 def _raise(exc: FunnelToolError):

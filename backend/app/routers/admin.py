@@ -1370,6 +1370,9 @@ async def create_user(
     Admin only — requires manage_users permission.
     Writes to audit_logs.
     """
+    from app.services import plan_gate_service as _plan_gate   # AP-5b: users allowed by the plan
+    _plan_gate.check_can_add_user(db, org["org_id"])
+
     # Validate role belongs to this org
     role_check = (
         db.table("roles")
@@ -3295,6 +3298,9 @@ async def connect_whatsapp(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only owners and ops managers can connect WhatsApp.",
         )
+    from app.services import plan_gate_service as _plan_gate
+    if not _plan_gate.allowed(db, org["org_id"], "own_wa_number"):   # AP-5b (an already-connected number keeps working)
+        raise _plan_gate.http_error()
 
     # Verify credentials against Meta before saving
     try:
@@ -4733,6 +4739,15 @@ def create_whatsapp_number(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "FORBIDDEN", "message": "Only owners and ops managers can add WhatsApp numbers."},
         )
+    from app.services import plan_gate_service as _plan_gate   # AP-5b
+    if not _plan_gate.allowed(db, org["org_id"], "own_wa_number"):
+        raise _plan_gate.http_error()
+    try:
+        _existing_numbers = (db.table("whatsapp_numbers").select("id").eq("org_id", org["org_id"]).execute().data) or []
+    except Exception:
+        _existing_numbers = []
+    if _existing_numbers and not _plan_gate.allowed(db, org["org_id"], "extra_wa_number"):
+        raise _plan_gate.http_error()
 
     if payload.wa_sales_mode == "ai_agent":
         org_result = (

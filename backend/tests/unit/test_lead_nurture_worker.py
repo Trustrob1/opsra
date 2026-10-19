@@ -13,6 +13,13 @@ LEAD_ID2 = "00000000-0000-0000-0000-000000000005"
 USER_ID  = "00000000-0000-0000-0000-000000000003"
 NOW_TS   = "2026-04-12T07:00:00+00:00"
 
+@pytest.fixture(autouse=True)
+def _plan_allows_followups():
+    """AP-5b: the worker asks the plan before each business. These tests use a scripted DB, so the plan answer is fixed."""
+    with patch("app.services.plan_gate_service.allowed", return_value=True):
+        yield
+
+
 _SEQUENCE = [
     {"mode": "custom", "template": "Hi {{name}}!", "content_type": "tip"},
 ]
