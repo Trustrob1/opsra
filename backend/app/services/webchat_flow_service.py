@@ -23,6 +23,7 @@ from typing import Optional
 
 from app.services import webchat_service as wc
 from app.services import webchat_ai_service
+from app.services import webchat_shop_service
 
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         item = _match_item(cfg, visitor_text)
 
     form = None
+    cards: list = []
     if item and item.get("action") == "human":
         wc.set_state(db, s, human=True)
         out.append(wc.append_message(db, s, "bot", cfg["human_reply"]))
@@ -136,10 +138,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         ai = webchat_ai_service.answer(db, s, cfg, visitor_text) if kind == "text" else None
         if ai:
             out.append(wc.append_message(db, s, "bot", ai["reply"]))
+            if cfg.get("shop_enabled") and ai.get("products"):
+                cards = webchat_shop_service.cards_for(db, s["org_id"], ai["products"])
             if ai["handoff"]:
                 wc.set_state(db, s, human=True)
                 _notify_human(db, s, cfg, "The assistant could not answer: " + visitor_text)
-                return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
+                return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards}
         else:
             out.append(wc.append_message(db, s, "bot", cfg["fallback"]))
 
@@ -150,7 +154,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                  and not state.get("email_asked"))
     if ask_email:
         wc.set_state(db, s, email_asked=True)
-    return {"messages": out, "ask_contact": ask_contact, "ask_email": bool(ask_email), "form": form, "human": False}
+    return {"messages": out, "ask_contact": ask_contact, "ask_email": bool(ask_email), "form": form, "human": False, "cards": cards}
 
 
 def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool) -> dict:
@@ -161,7 +165,7 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
     if err:
         return {"error": err}
     s = wc.save_contact(db, s, clean)
-    out, form = [], None
+    out, form, cards = [], None, []
     pending = (s.get("state") or {}).get("pending")
     if pending == "booking":
         wc.set_state(db, s, pending=None)
@@ -175,10 +179,12 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
             ai = webchat_ai_service.answer(db, s, cfg, waiting)   # WEBCHAT-3: answer what they asked before the form
             if ai:
                 out.append(wc.append_message(db, s, "bot", ai["reply"]))
+                if cfg.get("shop_enabled") and ai.get("products"):
+                    cards = webchat_shop_service.cards_for(db, s["org_id"], ai["products"])
                 if ai["handoff"]:
                     wc.set_state(db, s, human=True)
                     _notify_human(db, s, cfg, "The assistant could not answer: " + waiting)
-    return {"messages": out, "form": form}
+    return {"messages": out, "form": form, "cards": cards}
 
 
 def handle_booking(db, s: dict, cfg: dict, fields: dict) -> dict:

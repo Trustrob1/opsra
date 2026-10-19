@@ -11,7 +11,7 @@
  * and the page works without it for the current visit.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { startChat, resumeChat, pollChat, sendChat, sendContact, sendBooking, chatErrorMessage } from '../services/webchat.service'
+import { startChat, resumeChat, pollChat, sendChat, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -19,11 +19,36 @@ const URL_RE = /(https?:\/\/[^\s<>"']+)/g
 function readStore(key) { try { return window.localStorage.getItem(key) } catch { return null } }
 function writeStore(key, v) { try { v ? window.localStorage.setItem(key, v) : window.localStorage.removeItem(key) } catch { /* private mode */ } }
 
+const naira = (n) => `₦${Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
+
 function Linkified({ text }) {
   const parts = String(text || '').split(URL_RE)
   return parts.map((p, i) => (/^https?:\/\//.test(p)
     ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', wordBreak: 'break-all' }}>{p}</a>
     : <span key={i}>{p}</span>))
+}
+
+function ProductCard({ p, S, brand, busy, picked, setPicked, onAdd, bare }) {
+  const vid = picked[p.id]
+  const shown = p.variants.length ? (p.variants.find((v) => v.id === vid)?.price ?? p.variants[0].price) : p.price
+  return (
+    <div style={{ ...(bare ? { borderTop: '1px solid #eef2f4', padding: '10px 0' } : S.card), display: 'flex', gap: 10 }}>
+      {p.image_url && <img src={p.image_url} alt={p.title} loading="lazy" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, color: '#1c2b36', overflowWrap: 'anywhere' }}>{p.title}</div>
+        {p.description && <div style={{ fontSize: 13, color: '#4a6375', margin: '2px 0' }}>{p.description}</div>}
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#1c2b36' }}>{p.variants.length > 1 && !vid ? 'From ' : ''}{naira(p.variants.length > 1 && !vid ? Math.min(...p.variants.map((v) => v.price)) : shown)}</div>
+        {p.variants.length > 1 && (
+          <select aria-label={`Option for ${p.title}`} style={{ ...S.full, minHeight: 40, marginTop: 6 }} value={vid || ''}
+            onChange={(e) => setPicked({ ...picked, [p.id]: e.target.value })}>
+            <option value="">Choose an option</option>
+            {p.variants.map((v) => <option key={v.id} value={v.id}>{v.label} - {naira(v.price)}</option>)}
+          </select>
+        )}
+        <button type="button" style={{ ...S.chip, marginTop: 8, background: brand, color: '#fff' }} disabled={busy} onClick={() => onAdd(p)}>Add to cart</button>
+      </div>
+    </div>
+  )
 }
 
 export default function WebChatPage({ chatKey }) {
@@ -39,6 +64,10 @@ export default function WebChatPage({ chatKey }) {
   const [error, setError] = useState('')
   const [contact, setContact] = useState({ name: '', phone: '', email: '', consent: false, website: '' })
   const [booking, setBooking] = useState({})
+  const [cards, setCards] = useState([])                   // AI-suggested product cards
+  const [products, setProducts] = useState([])
+  const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
+  const [picked, setPicked] = useState({})                 // product id -> chosen variant id
   const token = useRef(null)
   const listRef = useRef(null)
   const tokenKey = `wc_token_${chatKey}`
@@ -127,6 +156,7 @@ export default function WebChatPage({ chatKey }) {
   const handleReply = (res) => {
     merge(res.messages)
     if (typeof res.human === 'boolean') setHuman(res.human)
+    setCards(res.cards || [])
     if (res.form === 'booking') setPanel('booking')
     else if (res.ask_contact) setPanel('contact')
     else if (res.ask_email) setPanel('email')
@@ -155,6 +185,28 @@ export default function WebChatPage({ chatKey }) {
       setPanel(res.form === 'booking' ? 'booking' : null)
     })
   }
+  const openShop = () => act(async () => {
+    const r = await getChatProducts(chatKey, token.current)
+    setProducts(r.products || []); setCart(r.cart || { items: [], total: 0, count: 0 }); setPanel('shop')
+  })
+  const addToCart = (p) => act(async () => {
+    const vid = picked[p.id] || (p.variants.length === 1 ? p.variants[0].id : undefined)
+    if (p.variants.length && !vid) { setError('Please choose an option first.'); return }
+    setCart(await changeChatCart(chatKey, token.current, { action: 'add', product_id: p.id, variant_id: vid, qty: 1 }))
+  })
+  const removeLine = (line) => act(async () => {
+    setCart(await changeChatCart(chatKey, token.current, { action: 'remove', product_id: line.pid, variant_id: line.vid || undefined }))
+  })
+  const checkout = () => act(async () => {
+    if (!hasContact) { setPanel('contact'); setError('Please share your contact details first, then check out.'); return }
+    try {
+      const res = await chatCheckout(chatKey, token.current)
+      merge(res.messages); setCart(res.cart || { items: [], total: 0, count: 0 }); setPanel(null)
+      if (res.human) setHuman(true)
+    } catch (e) {
+      if (e?.response?.data?.detail?.ask_contact) { setPanel('contact'); setError('Please share your contact details first, then check out.') } else throw e
+    }
+  })
   const submitBooking = (e) => {
     e.preventDefault()
     act(async () => {
@@ -211,6 +263,34 @@ export default function WebChatPage({ chatKey }) {
             </div>
           ))}
 
+          {cards.length > 0 && !panel && cards.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} />)}
+
+          {panel === 'shop' && (
+            <div style={S.card}>
+              <div style={{ fontWeight: 700, color: '#1c2b36', marginBottom: 6 }}>Shop</div>
+              {products.length === 0 && <div style={{ fontSize: 14, color: '#4a6375' }}>No products to show right now.</div>}
+              {products.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} bare />)}
+              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={() => setPanel(null)}>Back to chat</button>
+            </div>
+          )}
+
+          {panel === 'cart' && (
+            <div style={S.card}>
+              <div style={{ fontWeight: 700, color: '#1c2b36', marginBottom: 6 }}>Your cart</div>
+              {cart.items.length === 0 && <div style={{ fontSize: 14, color: '#4a6375' }}>Your cart is empty.</div>}
+              {cart.items.map((i) => (
+                <div key={`${i.pid}-${i.vid}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #eef2f4', fontSize: 14 }}>
+                  <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{i.name} x{i.qty}</span>
+                  <span style={{ whiteSpace: 'nowrap' }}>{naira(i.price * i.qty)} <button type="button" aria-label={`Remove ${i.name}`} style={{ ...S.chip, minHeight: 32, padding: '2px 10px', marginLeft: 6 }} disabled={busy} onClick={() => removeLine(i)}>Remove</button></span>
+                </div>
+              ))}
+              {cart.items.length > 0 && <div style={{ fontWeight: 700, margin: '10px 0 0', textAlign: 'right' }}>Total {naira(cart.total)}</div>}
+              {cart.items.length > 0 && <button type="button" style={S.primary} disabled={busy} onClick={checkout}>Pay {naira(cart.total)}</button>}
+              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={openShop}>Keep shopping</button>
+              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={() => setPanel(null)}>Back to chat</button>
+            </div>
+          )}
+
           {panel === 'contact' && (
             <form style={S.card} onSubmit={submitContact}>
               <div style={{ fontSize: 14, color: '#2c4152', marginBottom: 4 }}>{cfg.contact_prompt}</div>
@@ -263,9 +343,11 @@ export default function WebChatPage({ chatKey }) {
 
         {error && <div style={S.err} role="alert">{error}</div>}
 
-        {!human && cfg.menu.length > 0 && (
+        {!human && (cfg.menu.length > 0 || cfg.shop_enabled) && (
           <div style={S.menu}>
             {cfg.menu.map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
+            {cfg.shop_enabled && <button type="button" style={{ ...S.chip, background: brand, color: '#fff' }} disabled={busy} onClick={openShop}>Shop</button>}
+            {cfg.shop_enabled && cart.count > 0 && <button type="button" style={S.chip} disabled={busy} onClick={() => setPanel('cart')}>Cart ({cart.count}) {naira(cart.total)}</button>}
           </div>
         )}
 

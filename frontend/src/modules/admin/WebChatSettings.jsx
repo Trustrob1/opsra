@@ -126,6 +126,15 @@ export default function WebChatSettings() {
 
       <div style={card}>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!cfg.shop_enabled} onChange={(e) => set('shop_enabled', e.target.checked)} /> Let visitors shop in the chat
+        </label>
+        <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>
+          Adds a Shop button with your products, a cart, and a Paystack payment link at checkout. Prices always come from your catalog. Checkout needs your Paystack storefront to be connected; if it is not, the chat hands the order to your team. Shopping itself is free and uses no AI credits. If AI answers are on, it can also suggest products from your catalog.
+        </p>
+      </div>
+
+      <div style={card}>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
           <input type="checkbox" checked={!!cfg.ai_enabled} onChange={(e) => set('ai_enabled', e.target.checked)} /> AI answers typed questions
         </label>
         <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>

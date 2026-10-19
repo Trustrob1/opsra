@@ -124,7 +124,19 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
     ]
     if extra:
         parts.append(f"<owner_notes>\n{extra}\n</owner_notes>")
-    parts.append('Reply with ONLY a JSON object: {"reply": "<your reply>", "handoff": true|false}.')
+    if cfg.get("shop_enabled"):
+        try:
+            from app.services import webchat_shop_service as shop
+            cat = shop.catalogue_for_prompt(db, s["org_id"], text)
+        except Exception:
+            cat = []
+        if cat:
+            lines = "\n".join(f"- id={c['id']} | {sanitise_for_prompt(c['title'], max_length=80)} | N{c['price']:,.0f}" for c in cat)
+            parts.append(f"<products>\n{lines}\n</products>\nIf the visitor is looking for something to buy, you may put up to "
+                         "three ids from <products> in \"products\" so they see product cards. Only use ids listed there. "
+                         "You cannot add to a cart or take payment; the visitor does that with the buttons.")
+    parts.append('Reply with ONLY a JSON object: {"reply": "<your reply>", "handoff": true|false'
+                 + (', "products": ["<id>"]' if cfg.get("shop_enabled") else '') + '}.')
     return "\n\n".join(parts)
 
 
@@ -142,12 +154,18 @@ def parse_reply(raw: str) -> Optional[dict]:
             obj = None
     if isinstance(obj, dict) and isinstance(obj.get("reply"), str):
         reply, handoff = obj["reply"], bool(obj.get("handoff"))
+        prods = [str(x) for x in obj["products"][:3]] if isinstance(obj.get("products"), list) else []
     elif raw.startswith("{"):
         return None                       # looked like JSON but broken: do not show it to a customer
     else:
-        reply, handoff = raw, False
+        reply, handoff, prods = raw, False, []
     reply = wc._clean_text(re.sub(r"[*_`#]+", "", reply), MAX_REPLY_CHARS)
-    return {"reply": reply, "handoff": handoff} if reply else None
+    if not reply:
+        return None
+    out = {"reply": reply, "handoff": handoff}
+    if prods:
+        out["products"] = prods
+    return out
 
 
 def _history(db, s: dict) -> str:

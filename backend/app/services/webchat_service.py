@@ -58,6 +58,7 @@ DEFAULT_CONFIG: dict = {
     "ai_model": "haiku",          # haiku (cheapest) | sonnet
     "ai_instructions": "",
     "ai_max_turns": 12,
+    "shop_enabled": False,        # WEBCHAT-3b: product cards, cart and checkout link in the chat
 }
 
 
@@ -137,6 +138,8 @@ def sanitise_config(raw: dict) -> dict:
     if "brand_color" in raw:
         c = str(raw["brand_color"] or "").strip()
         out["brand_color"] = c if re.match(r"^#[0-9a-fA-F]{6}$", c) else DEFAULT_CONFIG["brand_color"]
+    if "shop_enabled" in raw:
+        out["shop_enabled"] = bool(raw["shop_enabled"])
     if "ai_enabled" in raw:
         out["ai_enabled"] = bool(raw["ai_enabled"])
     if "ai_model" in raw:
@@ -216,7 +219,7 @@ def public_view(cfg: dict) -> dict:
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "greeting": cfg["greeting"],
         "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"],
-        "booking_fields": cfg["booking_fields"],
+        "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")),
     }
 
 

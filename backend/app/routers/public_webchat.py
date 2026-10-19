@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from app.database import get_supabase
 from app.models.common import ok
 from app.services import webchat_flow_service as flow
+from app.services import webchat_shop_service as shop
 from app.services import webchat_service as wc
 from app.services.site_capture_service import ip_hash
 
@@ -52,6 +53,13 @@ class ContactBody(BaseModel):
     email: Optional[str] = Field(default=None, max_length=200)
     consent: bool = False
     website: Optional[str] = Field(default=None, max_length=200)   # honeypot: real visitors leave it empty
+
+
+class CartBody(BaseModel):
+    action: Literal["add", "remove", "clear"]
+    product_id: Optional[str] = Field(default=None, max_length=60)
+    variant_id: Optional[str] = Field(default=None, max_length=80)
+    qty: int = Field(default=1, ge=1, le=10)
 
 
 class BookingBody(BaseModel):
@@ -183,4 +191,65 @@ def post_booking(key: str, body: BookingBody, response: Response, authorization:
     res = flow.handle_booking(db, s, found["config"], body.fields)
     if res.get("error"):
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"]})
+    return ok(res)
+
+
+# ── WEBCHAT-3b: shop (only when the business switched it on) ───────────────
+
+def _shop_on(found: dict) -> None:
+    if not found["config"].get("shop_enabled"):
+        raise NOT_FOUND
+
+
+@router.get("/public/webchat/{key}/products")
+def list_products(key: str, response: Response, q: Optional[str] = Query(default=None, max_length=60),
+                  authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
+    _nostore(response)
+    found = _chat(db, key)
+    _shop_on(found)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"shop:{s['id']}", 60, 60):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
+    return ok({"products": shop.search(db, s["org_id"], q), "cart": shop.view(s)})
+
+
+@router.get("/public/webchat/{key}/cart")
+def get_cart(key: str, response: Response, authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
+    _nostore(response)
+    found = _chat(db, key)
+    _shop_on(found)
+    return ok(shop.view(_session(db, found, authorization)))
+
+
+@router.post("/public/webchat/{key}/cart")
+def change_cart(key: str, body: CartBody, response: Response, authorization: Optional[str] = Header(default=None),
+                db=Depends(get_supabase)):
+    _nostore(response)
+    found = _chat(db, key)
+    _shop_on(found)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"cart:{s['id']}", 60, 60):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
+    if body.action == "add":
+        res = shop.add(db, s, body.product_id or "", body.variant_id, body.qty)
+    elif body.action == "remove":
+        res = shop.remove(db, s, body.product_id or "", body.variant_id)
+    else:
+        res = shop.clear(db, s)
+    if res.get("error"):
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"]})
+    return ok(res)
+
+
+@router.post("/public/webchat/{key}/checkout")
+def checkout(key: str, response: Response, authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
+    _nostore(response)
+    found = _chat(db, key)
+    _shop_on(found)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"checkout:{s['id']}", 5, 3600):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Too many attempts. Please contact us directly."})
+    res = shop.checkout(db, s, found["config"])
+    if res.get("error"):
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"], "ask_contact": bool(res.get("ask_contact"))})
     return ok(res)

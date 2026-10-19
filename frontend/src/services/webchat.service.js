@@ -75,3 +75,20 @@ export async function getWebchatStats() {
   const r = await api.get('/api/v1/webchat/stats')
   return r.data.data
 }
+
+// ── Shop (WEBCHAT-3b) ────────────────────────────────────────────────────────
+
+export async function getChatProducts(key, token, q) {
+  const res = await axios.get(`${BASE}/public/webchat/${key}/products`, { ...auth(token), params: q ? { q } : {} })
+  return res.data.data
+}
+
+export async function changeChatCart(key, token, payload) {
+  const res = await axios.post(`${BASE}/public/webchat/${key}/cart`, payload, auth(token))
+  return res.data.data
+}
+
+export async function chatCheckout(key, token) {
+  const res = await axios.post(`${BASE}/public/webchat/${key}/checkout`, {}, auth(token))
+  return res.data.data
+}
