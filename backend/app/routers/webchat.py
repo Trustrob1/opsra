@@ -8,6 +8,8 @@ WEBCHAT-1/2 — staff routes (login required). Prefix: /api/v1
   PUT  /webchat/settings             change settings (validated; unknown keys dropped)
   POST /webchat/settings/template    fill the menu from a starter template (salon) — answers are placeholders to edit
   GET  /webchat/stats                visits → started → contact → booked, last 30 days
+  GET  /webchat/analytics?days=30    WEBCHAT-5: funnel, by source, by day, chat facts, cost per chat, AI budget
+  GET  /webchat/qr.svg?s=tag&download=1   WEBCHAT-5: QR code for the chat link tagged with a source
 """
 from __future__ import annotations
 
@@ -15,7 +17,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from app.database import get_supabase
@@ -121,3 +123,28 @@ def stats(db=Depends(get_supabase), org=Depends(get_current_org)):
     for r in rows:
         counts[r["kind"]] = counts.get(r["kind"], 0) + 1
     return ok({"days": 30, "counts": counts})
+
+
+@router.get("/webchat/analytics")
+def analytics(days: int = Query(default=30, ge=1, le=90), db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    from app.services import webchat_analytics_service as an
+    return ok(an.analytics(db, org["org_id"], days))
+
+
+@router.get("/webchat/qr.svg")
+def qr_svg(s: str = Query(default="qr", max_length=30), download: bool = False, db=Depends(get_supabase),
+           org=Depends(get_current_org)):
+    """QR code for this business's chat link, tagged with a source so the funnel shows where scans came from."""
+    _require_manager(org)
+    import io
+    import segno
+    key = wc.get_or_create_key(db, org["org_id"])
+    tag = wc.clean_source(s)
+    link = f"{wc.public_base()}/c/{key}?s={tag}"
+    buf = io.BytesIO()
+    segno.make(link, error="m").save(buf, kind="svg", scale=10, border=2, dark="#0F1733", xmldecl=False)
+    headers = {"Cache-Control": "no-store"}
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="chat-qr-{tag}.svg"'
+    return Response(content=buf.getvalue(), media_type="image/svg+xml", headers=headers)

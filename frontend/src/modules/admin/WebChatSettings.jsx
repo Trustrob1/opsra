@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { getWebchatSettings, saveWebchatSettings, applyWebchatTemplate, getWebchatStats, testWebchatWhatsapp } from '../../services/webchat.service'
 import { ds } from '../../utils/ds'
+import WebChatInsights from './WebChatInsights'
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
 const label = { display: 'block', fontSize: 12, fontWeight: 600, color: ds.dark, margin: '10px 0 4px', fontFamily: ds.fontDm }
@@ -86,6 +87,8 @@ export default function WebChatSettings() {
           Last 30 days: {stats.counts.visit || 0} visits, {stats.counts.started || 0} started chatting, {stats.counts.contact || 0} gave contact, {stats.counts.booked || 0} booked, {stats.counts.redirect_sent || 0} WhatsApp redirects.
         </p>}
       </div>
+
+      <WebChatInsights baseLink={data.link} />
 
       <div style={card}>
         <label style={label} htmlFor="wc-bn">Business name shown at the top</label>

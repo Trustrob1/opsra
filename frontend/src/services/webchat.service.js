@@ -109,3 +109,16 @@ export async function testWebchatWhatsapp(phone) {
   const r = await api.post('/api/v1/webchat/settings/test-whatsapp', { phone })
   return r.data
 }
+
+// ── Insights, link builder and QR (WEBCHAT-5) ────────────────────────────────
+
+export async function getWebchatAnalytics(days = 30) {
+  const r = await api.get('/api/v1/webchat/analytics', { params: { days } })
+  return r.data.data
+}
+
+/** QR code as SVG text. Fetched with the login header, so it cannot be a plain <img src>. */
+export async function getWebchatQr(source, download = false) {
+  const r = await api.get('/api/v1/webchat/qr.svg', { params: { s: source, download: download ? 1 : undefined }, responseType: 'text', transformResponse: (d) => d })
+  return r.data
+}
