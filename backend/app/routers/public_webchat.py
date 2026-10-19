@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from app.database import get_supabase
 from app.models.common import ok
+from app.services import webchat_email_service as email_svc
 from app.services import webchat_flow_service as flow
 from app.services import webchat_shop_service as shop
 from app.services import webchat_service as wc
@@ -60,6 +61,11 @@ class CartBody(BaseModel):
     product_id: Optional[str] = Field(default=None, max_length=60)
     variant_id: Optional[str] = Field(default=None, max_length=80)
     qty: int = Field(default=1, ge=1, le=10)
+
+
+class SaveChatBody(BaseModel):
+    email: Optional[str] = Field(default=None, max_length=200)
+    consent: bool = False
 
 
 class BookingBody(BaseModel):
@@ -253,3 +259,29 @@ def checkout(key: str, response: Response, authorization: Optional[str] = Header
     if res.get("error"):
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"], "ask_contact": bool(res.get("ask_contact"))})
     return ok(res)
+
+
+# ── WEBCHAT-4: email follow-ups ─────────────────────────────────────────────
+
+@router.post("/public/webchat/{key}/save-chat")
+def save_chat(key: str, body: SaveChatBody, response: Response, authorization: Optional[str] = Header(default=None),
+              db=Depends(get_supabase)):
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"savechat:{s['id']}", 3, 3600):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Too many emails. Please try again later."})
+    res = email_svc.save_email(db, s, found["config"], body.email, body.consent)
+    if res.get("error"):
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"]})
+    return ok(res)
+
+
+@router.post("/public/webchat/{key}/email-optout")
+def email_optout(key: str, response: Response, authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"optout:{s['id']}", 10, 3600):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
+    return ok(email_svc.opt_out(db, s))

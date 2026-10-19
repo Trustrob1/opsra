@@ -211,5 +211,10 @@ def handle_booking(db, s: dict, cfg: dict, fields: dict) -> dict:
     wc.notify_managers(db, s["org_id"], f"Booking request: {s.get('contact_name') or 'web chat visitor'}", summary[:500],
                        s["lead_id"], "webchat_booking")
     wc.log_event(db, s["org_id"], s["id"], "booked", s.get("source"))
+    try:
+        from app.services import webchat_followup_service as fu
+        fu.send_booking_confirmation(db, s, cfg, summary)       # WEBCHAT-4/4b
+    except Exception as exc:
+        logger.warning("webchat booking email hook failed: %s", exc)
     out.append(wc.append_message(db, s, "bot", cfg["booking_done"]))
     return {"messages": out}

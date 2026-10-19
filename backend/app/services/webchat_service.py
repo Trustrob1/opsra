@@ -58,6 +58,12 @@ DEFAULT_CONFIG: dict = {
     "ai_model": "haiku",          # haiku (cheapest) | sonnet
     "ai_instructions": "",
     "ai_max_turns": 12,
+    "wa_followups": False,        # WEBCHAT-4b: OPT-IN WhatsApp follow-ups (each template message costs a Meta fee)
+    "wa_followup_mode": "fallback",   # fallback = email first | prefer = WhatsApp first
+    "wa_template_name": "",
+    "wa_template_lang": "en",
+    "wa_monthly_cap": 100,
+    "email_followups": True,      # WEBCHAT-4: email replies / confirmations to visitors who gave an email and consent
     "human_resume_min": 30,       # minutes of team silence after which the bot answers again
     "shop_enabled": False,        # WEBCHAT-3b: product cards, cart and checkout link in the chat
 }
@@ -139,6 +145,23 @@ def sanitise_config(raw: dict) -> dict:
     if "brand_color" in raw:
         c = str(raw["brand_color"] or "").strip()
         out["brand_color"] = c if re.match(r"^#[0-9a-fA-F]{6}$", c) else DEFAULT_CONFIG["brand_color"]
+    if "wa_followups" in raw:
+        out["wa_followups"] = bool(raw["wa_followups"])
+    if "wa_followup_mode" in raw:
+        out["wa_followup_mode"] = raw["wa_followup_mode"] if raw["wa_followup_mode"] in ("fallback", "prefer") else "fallback"
+    if "wa_template_name" in raw:
+        name = re.sub(r"[^a-z0-9_]", "", str(raw["wa_template_name"] or "").lower())[:100]
+        out["wa_template_name"] = name
+    if "wa_template_lang" in raw:
+        m = re.match(r"^[A-Za-z]{2,3}(_[A-Za-z]{2,4})?", str(raw["wa_template_lang"] or "").strip())
+        out["wa_template_lang"] = m.group(0) if m else "en"
+    if "wa_monthly_cap" in raw:
+        try:
+            out["wa_monthly_cap"] = max(1, min(int(raw["wa_monthly_cap"]), 5000))
+        except (TypeError, ValueError):
+            out["wa_monthly_cap"] = 100
+    if "email_followups" in raw:
+        out["email_followups"] = bool(raw["email_followups"])
     if "human_resume_min" in raw:
         try:
             out["human_resume_min"] = max(5, min(int(raw["human_resume_min"]), 1440))
@@ -225,7 +248,7 @@ def public_view(cfg: dict) -> dict:
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "greeting": cfg["greeting"],
         "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"],
-        "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")),
+        "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
     }
 
 
@@ -552,6 +575,11 @@ def rep_send(db, org_id: str, lead_id: str, text: str, user_id: str) -> dict:
         raise PermissionError("this web chat has ended")
     msg = append_message(db, s, "rep", text, sent_by=user_id)
     set_state(db, s, human=True, rep_last_at=_iso(_now()), human_at=_iso(_now()))
+    try:
+        from app.services import webchat_followup_service as fu
+        fu.notify_rep_reply(db, s, get_config(db, org_id), text)   # WEBCHAT-4/4b: email or WhatsApp when the visitor has left
+    except Exception as exc:
+        logger.warning("webchat rep email hook failed: %s", exc)
     return msg
 
 

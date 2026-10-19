@@ -11,7 +11,7 @@
  * and the page works without it for the current visit.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { startChat, resumeChat, pollChat, sendChat, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, chatErrorMessage } from '../services/webchat.service'
+import { startChat, resumeChat, pollChat, sendChat, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -64,6 +64,7 @@ export default function WebChatPage({ chatKey }) {
   const [error, setError] = useState('')
   const [contact, setContact] = useState({ name: '', phone: '', email: '', consent: false, website: '' })
   const [booking, setBooking] = useState({})
+  const [saveForm, setSaveForm] = useState({ email: '', consent: false })
   const [cards, setCards] = useState([])                   // AI-suggested product cards
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
@@ -185,6 +186,14 @@ export default function WebChatPage({ chatKey }) {
       setPanel(res.form === 'booking' ? 'booking' : null)
     })
   }
+  const submitSave = (e) => {
+    e.preventDefault()
+    act(async () => {
+      const res = await saveChatByEmail(chatKey, token.current, saveForm)
+      merge(res.messages); setPanel(null)
+    })
+  }
+  const stopEmails = () => act(async () => { merge((await stopChatEmails(chatKey, token.current)).messages); setPanel(null) })
   const openShop = () => act(async () => {
     const r = await getChatProducts(chatKey, token.current)
     setProducts(r.products || []); setCart(r.cart || { items: [], total: 0, count: 0 }); setPanel('shop')
@@ -291,6 +300,23 @@ export default function WebChatPage({ chatKey }) {
             </div>
           )}
 
+          {panel === 'save' && (
+            <form style={S.card} onSubmit={submitSave}>
+              <div style={{ fontSize: 14, color: '#2c4152' }}>We will email you this chat, and tell you if the team replies after you have left.</div>
+              <label style={S.lab} htmlFor="wc-save-email">Email</label>
+              <input id="wc-save-email" style={S.full} value={saveForm.email} maxLength={200} inputMode="email" autoComplete="email" required
+                onChange={(e) => setSaveForm({ ...saveForm, email: e.target.value })} />
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: '#4a6375', margin: '10px 0 0' }}>
+                <input type="checkbox" checked={saveForm.consent} style={{ marginTop: 3 }}
+                  onChange={(e) => setSaveForm({ ...saveForm, consent: e.target.checked })} />
+                <span>Email me this chat and any replies from {cfg.business_name}. I can stop these emails any time.</span>
+              </label>
+              <button type="submit" style={S.primary} disabled={busy}>Email me this chat</button>
+              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={stopEmails} disabled={busy}>Stop follow-ups</button>
+              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={() => setPanel(null)}>Back to chat</button>
+            </form>
+          )}
+
           {panel === 'contact' && (
             <form style={S.card} onSubmit={submitContact}>
               <div style={{ fontSize: 14, color: '#2c4152', marginBottom: 4 }}>{cfg.contact_prompt}</div>
@@ -348,6 +374,15 @@ export default function WebChatPage({ chatKey }) {
             {cfg.menu.map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
             {cfg.shop_enabled && <button type="button" style={{ ...S.chip, background: brand, color: '#fff' }} disabled={busy} onClick={openShop}>Shop</button>}
             {cfg.shop_enabled && cart.count > 0 && <button type="button" style={S.chip} disabled={busy} onClick={() => setPanel('cart')}>Cart ({cart.count}) {naira(cart.total)}</button>}
+          </div>
+        )}
+
+        {hasContact && cfg.email_enabled && !panel && (
+          <div style={{ padding: '0 12px 4px', background: '#fff', textAlign: 'right' }}>
+            <button type="button" onClick={() => setPanel('save')}
+              style={{ background: 'none', border: 0, color: brand, fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 32, fontFamily: 'inherit' }}>
+              Email me this chat
+            </button>
           </div>
         )}
 

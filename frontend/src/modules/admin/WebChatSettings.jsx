@@ -6,7 +6,7 @@
  * Backend: routers/webchat.py (owner / ops manager only).
  */
 import { useEffect, useState } from 'react'
-import { getWebchatSettings, saveWebchatSettings, applyWebchatTemplate, getWebchatStats } from '../../services/webchat.service'
+import { getWebchatSettings, saveWebchatSettings, applyWebchatTemplate, getWebchatStats, testWebchatWhatsapp } from '../../services/webchat.service'
 import { ds } from '../../utils/ds'
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
@@ -22,6 +22,7 @@ export default function WebChatSettings() {
   const [stats, setStats] = useState(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [testPhone, setTestPhone] = useState('')
 
   const load = async () => {
     try {
@@ -49,6 +50,12 @@ export default function WebChatSettings() {
     setBusy(true)
     try { const c = await applyWebchatTemplate('salon'); setCfg(c); setMsg('Starter menu added. Replace the [bracketed] answers with your own before you switch the chat on.') }
     catch { setMsg('Could not add the starter menu.') }
+    finally { setBusy(false) }
+  }
+  const sendTest = async () => {
+    setBusy(true); setMsg('')
+    try { await saveWebchatSettings(cfg); await testWebchatWhatsapp(testPhone); setMsg('Test message sent. It costs one WhatsApp message.') }
+    catch (e) { setMsg(e?.response?.data?.detail || 'Could not send the test message.') }
     finally { setBusy(false) }
   }
   const copy = (t) => { try { navigator.clipboard.writeText(t); setMsg('Link copied.') } catch { setMsg(t) } }
@@ -122,6 +129,49 @@ export default function WebChatSettings() {
           </div>
         ))}
         {cfg.menu.length < 12 && <button type="button" style={{ ...btn(false), marginTop: 12 }} onClick={() => set('menu', [...cfg.menu, blankItem()])}>Add a menu item</button>}
+      </div>
+
+      <div style={card}>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
+          <input type="checkbox" checked={cfg.email_followups !== false} onChange={(e) => set('email_followups', e.target.checked)} /> Email visitors who give their email
+        </label>
+        <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>
+          Sends a "we replied, continue your chat" email when your team writes after the visitor has left the page, a booking confirmation, and the payment link from the shop. Only to visitors who gave an email and ticked the consent box, at most one reply email per chat every 30 minutes, with a Stop emails option on the chat page. Visitors can also tap "Email me this chat" to get a copy.
+        </p>
+      </div>
+
+      <div style={card}>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!cfg.wa_followups} onChange={(e) => set('wa_followups', e.target.checked)} /> WhatsApp follow-ups (paid, optional)
+        </label>
+        <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>
+          Reach visitors on WhatsApp when your team replies after they have left the chat. Inside 24 hours of their last WhatsApp message it is a normal message. After that Meta charges for each template message, billed to your WhatsApp account, so this is off until you turn it on. It only messages visitors who gave their WhatsApp number and agreed to be contacted, and they can tap Stop follow-ups.
+        </p>
+        {cfg.wa_followups && (
+          <>
+            <label style={label} htmlFor="wc-wat">Template name (from your Meta WhatsApp Manager)</label>
+            <input id="wc-wat" style={input} value={cfg.wa_template_name || ''} maxLength={100} placeholder="e.g. chat_reply_v1"
+              onChange={(e) => set('wa_template_name', e.target.value)} />
+            <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>
+              Create a Utility template with exactly three variables and get it approved: <em>Hi {'{{1}}'}, {'{{2}}'} has replied to your chat. Tap here to continue: {'{{3}}'}</em> ({'{{1}}'} = first name, {'{{2}}'} = your business name, {'{{3}}'} = the chat link).
+            </p>
+            <label style={label} htmlFor="wc-wal">Template language code</label>
+            <input id="wc-wal" style={{ ...input, width: 140 }} value={cfg.wa_template_lang || 'en'} maxLength={10} onChange={(e) => set('wa_template_lang', e.target.value)} />
+            <label style={label} htmlFor="wc-wam">When to use WhatsApp</label>
+            <select id="wc-wam" style={input} value={cfg.wa_followup_mode || 'fallback'} onChange={(e) => set('wa_followup_mode', e.target.value)}>
+              <option value="fallback">Only when the visitor has no email (email first)</option>
+              <option value="prefer">WhatsApp first, email if WhatsApp is not possible</option>
+            </select>
+            <label style={label} htmlFor="wc-wac">Most template messages per month (1 to 5000)</label>
+            <input id="wc-wac" type="number" min={1} max={5000} style={{ ...input, width: 140 }} value={cfg.wa_monthly_cap ?? 100}
+              onChange={(e) => set('wa_monthly_cap', Number(e.target.value) || 100)} />
+            <label style={label} htmlFor="wc-wat2">Send yourself a test (saves first; costs one message)</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input id="wc-wat2" style={input} value={testPhone} inputMode="tel" placeholder="Your WhatsApp number" onChange={(e) => setTestPhone(e.target.value)} />
+              <button type="button" style={btn(false)} disabled={busy || !testPhone || !cfg.wa_template_name} onClick={sendTest}>Send test</button>
+            </div>
+          </>
+        )}
       </div>
 
       <div style={card}>

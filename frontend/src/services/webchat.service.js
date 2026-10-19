@@ -92,3 +92,20 @@ export async function chatCheckout(key, token) {
   const res = await axios.post(`${BASE}/public/webchat/${key}/checkout`, {}, auth(token))
   return res.data.data
 }
+
+// ── Email follow-ups (WEBCHAT-4) ────────────────────────────────────────────
+
+export async function saveChatByEmail(key, token, { email, consent }) {
+  const res = await axios.post(`${BASE}/public/webchat/${key}/save-chat`, { email, consent }, auth(token))
+  return res.data.data
+}
+
+export async function stopChatEmails(key, token) {
+  const res = await axios.post(`${BASE}/public/webchat/${key}/email-optout`, {}, auth(token))
+  return res.data.data
+}
+
+export async function testWebchatWhatsapp(phone) {
+  const r = await api.post('/api/v1/webchat/settings/test-whatsapp', { phone })
+  return r.data
+}

@@ -238,6 +238,11 @@ def checkout(db, s: dict, cfg: dict) -> dict:
         return {"messages": out, "cart": view(s), "human": True}
 
     out.append(wc.append_message(db, s, "bot", f"Your order:\n{_summary(cart)}\n\nPay securely here: {url}{note}"))
+    try:
+        from app.services import webchat_followup_service as fu
+        fu.send_order_link(db, s, cfg, _summary(cart), url)      # WEBCHAT-4/4b
+    except Exception as exc:
+        logger.warning("webchat order email hook failed: %s", exc)
     wc.set_state(db, s, cart=[], last_checkout={"total": total, "at": wc._iso(wc._now())})
     try:
         from app.services import lead_service

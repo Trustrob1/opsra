@@ -47,6 +47,10 @@ class WebchatSend(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
 
 
+class TestWhatsapp(BaseModel):
+    phone: str = Field(..., min_length=7, max_length=30)
+
+
 class TemplateBody(BaseModel):
     template: Literal["salon"]
 
@@ -92,6 +96,19 @@ def put_settings(changes: dict, db=Depends(get_supabase), org=Depends(get_curren
 def apply_template(body: TemplateBody, db=Depends(get_supabase), org=Depends(get_current_org)):
     _require_manager(org)
     return ok(wc.save_config(db, org["org_id"], SALON_TEMPLATE))
+
+
+@router.post("/webchat/settings/test-whatsapp")
+def test_whatsapp(body: TestWhatsapp, db=Depends(get_supabase), org=Depends(get_current_org)):
+    """Send the approved template once to a phone number, to check it works. Costs one Meta message."""
+    _require_manager(org)
+    if wc.rate_limited(f"watest:{org['org_id']}", 3, 3600):
+        raise HTTPException(status_code=429, detail="Too many test messages. Try again in an hour.")
+    from app.services import webchat_whatsapp_service as wa
+    res = wa.send_test(db, org["org_id"], wc.get_config(db, org["org_id"]), body.phone)
+    if res.get("error"):
+        raise HTTPException(status_code=422, detail=res["error"])
+    return ok(data=res, message="Test message sent")
 
 
 @router.get("/webchat/stats")
