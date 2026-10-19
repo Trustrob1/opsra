@@ -58,6 +58,13 @@ export default function CreditsPanel() {
     }
   }, [])
   useEffect(() => { load() }, [load])
+  // Coming back with the browser's Back button restores this page as it was (button still saying "Opening…"). Reset it.
+  useEffect(() => {
+    const reset = () => setBusy(false)
+    window.addEventListener('pageshow', reset)
+    document.addEventListener('visibilitychange', reset)
+    return () => { window.removeEventListener('pageshow', reset); document.removeEventListener('visibilitychange', reset) }
+  }, [])
   useEffect(() => { getCreditUsage(days).then(setUse).catch(() => {}) }, [days])
 
   // Coming back from Paystack: confirm the payment we were waiting for.
