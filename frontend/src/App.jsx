@@ -68,6 +68,7 @@ import EventFunnelsModule from './modules/funnels/EventFunnelsModule'   // FUNNE
 import SitesModule from './modules/sites/SitesModule'                   // SITE-1A
 import BillingModule from './modules/billing/BillingModule'             // ACCOUNT-PLANS AP-3
 import BillingBanner from './modules/billing/BillingBanner'             // ACCOUNT-PLANS AP-3
+import PlanNotice from './modules/billing/PlanNotice'                   // ACCOUNT-PLANS AP-6
 import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
@@ -1103,6 +1104,7 @@ function AppShell() {
         paddingBottom: isMobile ? 16 : 0,
       }}>
         <BillingBanner role={_userTemplate} onOpen={() => { setActiveNav('billing'); setView('billing') }} />
+        <PlanNotice role={_userTemplate} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} />
         {view === 'leads' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
             <LeadsPipeline onOpenLead={openLeadProfile} onOpenDemoQueue={openDemoQueue} />

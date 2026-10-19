@@ -14,6 +14,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './utils/planNotice.js'   // ACCOUNT-PLANS AP-6: must load before any service creates its axios client
 import App from './App.jsx'
 
 // ── Service worker registration ─────────────────────────────────────────────
