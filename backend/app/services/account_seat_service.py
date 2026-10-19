@@ -135,8 +135,9 @@ def quote_seats(db: Any, org_id: str, add: int, now: Optional[datetime] = None) 
     until = ent._parse(tier["paid_until"])
     period = cfg["billing"]["period_days"]
     remaining = min((until - now).total_seconds() / 86400.0, float(period))
-    total = max(int(math.ceil(price * add * remaining / period)), bill.MIN_AMOUNT_NGN)
-    return {"add": add, "price": price, "days": max(int(math.ceil(remaining)), 1), "total": total, "paid_until": tier["paid_until"],
+    days = min(max(int(math.ceil(remaining)), 1), period)          # whole days, rounded up: the price matches the days shown
+    total = max(int(math.ceil(price * add * days / period)), bill.MIN_AMOUNT_NGN)
+    return {"add": add, "price": price, "days": days, "total": total, "paid_until": tier["paid_until"],
             "tier_key": tier["key"], "plan_id": tier["id"], "seats_after": live_seats(db, org_id, cfg, now) + add}
 
 

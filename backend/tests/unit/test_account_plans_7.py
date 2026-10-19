@@ -38,6 +38,13 @@ def test_quote_is_prorated_to_the_days_left():
     assert seats.quote_seats(_sdb(tier_days=30), BIZ, 1)["total"] == 5000
 
 
+def test_price_is_for_whole_days_rounded_up():
+    db = _sdb(tier_days=12)
+    db.rows("org_plans")[0]["paid_until"] = _now(12.34).isoformat()
+    q = seats.quote_seats(db, BIZ, 1)
+    assert q["days"] == 13 and q["total"] == 2167          # 5000 x 13 / 30, the same days the screen shows
+
+
 def test_quote_refuses_bad_input_no_plan_or_no_price():
     with pytest.raises(bill.PlanBillingError):
         seats.quote_seats(_sdb(), BIZ, 0)
