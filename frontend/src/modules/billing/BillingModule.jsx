@@ -301,7 +301,7 @@ function PaymentsTab({ data }) {
 
 const TABS = [['plan', 'Plan'], ['team', 'Team'], ['usage', 'Usage'], ['credits', 'Credits'], ['payments', 'Payments']]
 
-function TeamTab({ data, reload, setMsg }) {
+function TeamTab({ data, reload, setMsg, onOpenAdmin }) {
   const t = data.team
   const [add, setAdd] = useState(1)
   const [quote, setQuote] = useState(null)
@@ -349,6 +349,12 @@ function TeamTab({ data, reload, setMsg }) {
           {t.paid_until && t.seats > 0 ? ` Your extra users run until ${day(t.paid_until)} and renew with your plan.` : ''}
         </p>
         {!t.enforced && <p style={{ fontSize: 13, color: ds.gray, margin: '8px 0 0' }}>Your account has no user limit at the moment.</p>}
+        {onOpenAdmin && (
+          <div style={{ marginTop: 12 }}>
+            <button type="button" style={btn(false)} onClick={onOpenAdmin}>Manage users</button>
+            <span style={{ fontSize: 12.5, color: ds.gray, marginLeft: 10 }}>New users are added in Admin Dashboard &gt; Users.</span>
+          </div>
+        )}
         {t.over_by > 0 && (
           <div role="alert" style={{ marginTop: 12, padding: 12, borderRadius: ds.radius.sm, background: '#FFF4E5', color: ds.dark, fontSize: 13 }}>
             {t.seats_lapsed ? 'Your extra users have ended. ' : ''}You have {t.over_by} more user{t.over_by === 1 ? '' : 's'} than your plan allows. Nobody has been removed,
@@ -393,7 +399,7 @@ function TeamTab({ data, reload, setMsg }) {
   )
 }
 
-export default function BillingModule() {
+export default function BillingModule({ onOpenAdmin }) {
   const [tab, setTab] = useState(() => {
     try { return new URLSearchParams(window.location.search).get('credits') ? 'credits' : 'plan' } catch { return 'plan' }
   })
@@ -443,7 +449,7 @@ export default function BillingModule() {
       {tab === 'credits' && <CreditsPanel />}
       {tab !== 'credits' && !data && <div style={{ color: ds.gray, fontSize: 13 }}>{msg ? '' : 'Loading…'}</div>}
       {data && tab === 'plan' && <PlanTab data={data} reload={load} setMsg={setMsg} />}
-      {data && tab === 'team' && <TeamTab data={data} reload={load} setMsg={setMsg} />}
+      {data && tab === 'team' && <TeamTab data={data} reload={load} setMsg={setMsg} onOpenAdmin={onOpenAdmin} />}
       {data && tab === 'usage' && <UsageTab data={data} />}
       {data && tab === 'payments' && <PaymentsTab data={data} />}
     </div>

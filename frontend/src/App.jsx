@@ -1156,7 +1156,7 @@ function AppShell() {
           <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} /></div>
         )}
         {view === 'billing' && ['owner', 'ops_manager', 'admin'].includes(_userTemplate) && (
-          <div style={{ animation: 'fadeIn 0.25s ease', padding: 24 }}><BillingModule /></div>
+          <div style={{ animation: 'fadeIn 0.25s ease', padding: 24 }}><BillingModule onOpenAdmin={() => { setActiveNav('admin'); setView('admin') }} /></div>
         )}
         {view === 'conversations' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>

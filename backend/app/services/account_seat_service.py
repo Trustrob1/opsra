@@ -76,9 +76,11 @@ def active_users(db: Any, org_id: str) -> int:
 
 
 def _live_paid_tier(db: Any, org_id: str, cfg: dict, now: datetime) -> Optional[dict]:
+    """The running plan extra users can be bought against: paid through Paystack OR given by Opsra staff, as long as it is
+    active and has an end date in the future (seats are charged for the days left and end with the plan)."""
     t = bill._tier_row(db, org_id)
     until = ent._parse(t.get("paid_until")) if t else None
-    if t and t.get("source") == "paid" and until and until > now and ent.effective_status(t, cfg, now) == "active":
+    if t and t.get("source") in ("paid", "staff") and until and until > now and ent.effective_status(t, cfg, now) == "active":
         return t
     return None
 
@@ -100,7 +102,7 @@ def team(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
     if price <= 0:
         reason = "Extra users are not for sale yet."
     elif not tier:
-        reason = "Extra users run on a paid plan. Choose or renew a plan first."
+        reason = "Extra users run on an active plan with an end date. Choose or renew a plan first."
     until = ent._parse(tier.get("paid_until")) if tier else None
     paid_seat = bool(row and row.get("source") == "paid")
     return {
@@ -129,7 +131,7 @@ def quote_seats(db: Any, org_id: str, add: int, now: Optional[datetime] = None) 
         raise bill.PlanBillingError("Extra users are not for sale yet.")
     tier = _live_paid_tier(db, org_id, cfg, now)
     if not tier:
-        raise bill.PlanBillingError("Extra users run on a paid plan. Choose or renew a plan first.")
+        raise bill.PlanBillingError("Extra users run on an active plan with an end date. Choose or renew a plan first.")
     until = ent._parse(tier["paid_until"])
     period = cfg["billing"]["period_days"]
     remaining = min((until - now).total_seconds() / 86400.0, float(period))

@@ -49,6 +49,20 @@ def test_quote_refuses_bad_input_no_plan_or_no_price():
         seats.quote_seats(nodb, BIZ, 1)
 
 
+def test_a_plan_given_by_staff_can_buy_seats_too():
+    db = _sdb(users=2, tier_days=15)
+    next(r for r in db.rows("org_plans") if r["key"] == "convert")["source"] = "staff"
+    assert seats.team(db, BIZ)["can_buy"] is True
+    seats.checkout_seats(db, BIZ, add=1)
+    _pay_last(db)
+    assert _seat(db)["config"]["quantity"] == 1
+    gate.check_can_add_user(db, BIZ)
+    nodate = _sdb(users=2)
+    t = next(r for r in nodate.rows("org_plans") if r["key"] == "convert")
+    t["source"], t["paid_until"] = "staff", None
+    assert seats.team(nodate, BIZ)["can_buy"] is False
+
+
 def test_pay_adds_seats_until_plan_end_and_allows_more_users():
     db = _sdb(users=2)
     with pytest.raises(HTTPException):
