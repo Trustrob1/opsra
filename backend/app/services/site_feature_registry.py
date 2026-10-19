@@ -32,6 +32,9 @@ _F = {
     "speed_alerts": ("Speed-to-lead alerts", "capture", None, True),
     "wa_menu": ("WhatsApp menu with set answers", "capture", None, False),
     "my_leads_page": ("My leads page", "capture", None, True),
+    # Web chat (ACCOUNT-PLANS: an account feature, no site needed)
+    "webchat_basic": ("Web chat page, menu answers and booking", "capture", None, True),
+    "webchat_insights": ("Web chat insights, tagged links and QR codes", "capture", None, True),
     # Convert
     "ai_assistant": ("AI assistant from the business's own information", "convert", "ai_messages", False),
     "qualification": ("Qualification questions, scoring and hot-lead alerts", "convert", None, False),
@@ -39,6 +42,7 @@ _F = {
     "payment_links": ("Paystack payment links in chat", "convert", None, False),
     "fb_ig_leads": ("Facebook and Instagram lead ads tagged by ad", "convert", None, False),
     "own_wa_number": ("Own WhatsApp number", "convert", None, False),
+    "webchat_followups": ("Web chat email and WhatsApp follow-ups", "convert", None, True),
     "selling_catalog": ("Catalog with recommendations", "convert", None, False),
     "selling_booking": ("Booking with reminders", "convert", None, False),
     # Grow
@@ -62,7 +66,17 @@ _F = {
     "extra_wa_number": ("Extra WhatsApp number", "addon", None, False),
 }
 
-FEATURES = {k: {"label": v[0], "group": v[1], "cap": v[2], "built": v[3]} for k, v in _F.items()}
+# ACCOUNT-PLANS: where a feature is checked. "site" needs a website (form, tracked links, per-site leads page);
+# "account" belongs to the organisation as a whole (web chat); "both" works for either (the default).
+_SITE_ONLY = ("form_instant_reply", "source_tracking", "my_leads_page")
+_ACCOUNT_ONLY = ("webchat_basic", "webchat_insights", "webchat_followups")
+
+
+def _scope(key: str) -> str:
+    return "site" if key in _SITE_ONLY else "account" if key in _ACCOUNT_ONLY else "both"
+
+
+FEATURES = {k: {"label": v[0], "group": v[1], "cap": v[2], "built": v[3], "scope": _scope(k)} for k, v in _F.items()}
 
 _CAPTURE = [k for k, v in FEATURES.items() if v["group"] == "capture"]
 _CONVERT = [k for k, v in FEATURES.items() if v["group"] == "convert" and k not in ("selling_catalog", "selling_booking")]
@@ -88,6 +102,11 @@ DEFAULT_ADDON_CAPS = {"extra_rep": {"reps": 1}}
 
 def is_feature(key) -> bool:
     return isinstance(key, str) and key in FEATURES
+
+
+def scope_of(key: str) -> str:
+    """'site', 'account' or 'both' (unknown keys are 'both' but is_feature() is False for them)."""
+    return (FEATURES.get(key) or {}).get("scope", "both")
 
 
 def cap_for_feature(key: str):
