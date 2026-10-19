@@ -22,6 +22,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.services import webchat_service as wc
+from app.services import webchat_ai_service
+
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +127,21 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     elif item:
         out.append(wc.append_message(db, s, "bot", _answer_text(item)))
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
+    elif kind == "text" and cfg.get("ai_enabled") and not _has_contact(s):
+        # WEBCHAT-3: AI needs a contact first, so ask for one instead of the generic fallback
+        out.append(wc.append_message(db, s, "bot", "Happy to help with that. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
+        wc.set_state(db, s, pending_question=visitor_text[:300])
+        return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": False}
     else:
-        out.append(wc.append_message(db, s, "bot", cfg["fallback"]))
+        ai = webchat_ai_service.answer(db, s, cfg, visitor_text) if kind == "text" else None
+        if ai:
+            out.append(wc.append_message(db, s, "bot", ai["reply"]))
+            if ai["handoff"]:
+                wc.set_state(db, s, human=True)
+                _notify_human(db, s, cfg, "The assistant could not answer: " + visitor_text)
+                return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
+        else:
+            out.append(wc.append_message(db, s, "bot", cfg["fallback"]))
 
     state = s.get("state") or {}
     answered = int(state.get("answers") or 0) >= 1
@@ -154,6 +169,15 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
         form = "booking"
     else:
         out.append(wc.append_message(db, s, "bot", "Thank you. We have your details."))
+        waiting = (s.get("state") or {}).get("pending_question")
+        if waiting:
+            wc.set_state(db, s, pending_question=None)
+            ai = webchat_ai_service.answer(db, s, cfg, waiting)   # WEBCHAT-3: answer what they asked before the form
+            if ai:
+                out.append(wc.append_message(db, s, "bot", ai["reply"]))
+                if ai["handoff"]:
+                    wc.set_state(db, s, human=True)
+                    _notify_human(db, s, cfg, "The assistant could not answer: " + waiting)
     return {"messages": out, "form": form}
 
 

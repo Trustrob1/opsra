@@ -125,6 +125,31 @@ export default function WebChatSettings() {
       </div>
 
       <div style={card}>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!cfg.ai_enabled} onChange={(e) => set('ai_enabled', e.target.checked)} /> AI answers typed questions
+        </label>
+        <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>
+          Menu taps and keyword matches are always answered free from your menu. AI only handles other typed questions, only after the visitor has given their contact details, and only from what you have written here. When it cannot answer, it hands the chat to your team. AI replies use your credits.
+        </p>
+        {cfg.ai_enabled && (
+          <>
+            <label style={label} htmlFor="wc-aim">AI model</label>
+            <select id="wc-aim" style={input} value={cfg.ai_model} onChange={(e) => set('ai_model', e.target.value)}>
+              <option value="haiku">Fast and low cost (recommended)</option>
+              <option value="sonnet">Smarter, costs about twice as much</option>
+            </select>
+            <label style={label} htmlFor="wc-ain">Extra guidance for the AI (optional)</label>
+            <textarea id="wc-ain" style={{ ...input, minHeight: 70 }} value={cfg.ai_instructions} maxLength={800}
+              onChange={(e) => set('ai_instructions', e.target.value)}
+              placeholder="e.g. We do not do home visits. Always suggest booking a call for custom quotes." />
+            <label style={label} htmlFor="wc-aimt">Most AI replies in one chat (1 to 30)</label>
+            <input id="wc-aimt" type="number" min={1} max={30} style={{ ...input, width: 120 }} value={cfg.ai_max_turns}
+              onChange={(e) => set('ai_max_turns', Number(e.target.value) || 12)} />
+          </>
+        )}
+      </div>
+
+      <div style={card}>
         <strong style={{ fontSize: 14, color: ds.dark }}>When someone messages your WhatsApp number</strong>
         <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>
           Applies to numbers set to “Web chat redirect” in WA Numbers. They get ONE reply with the chat link; after that nothing is sent automatically and your team is notified here.

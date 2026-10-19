@@ -54,6 +54,10 @@ DEFAULT_CONFIG: dict = {
     "booking_done": "Thank you. We have your request and will confirm shortly.",
     "redirect_mode": "always",
     "redirect_text": "",
+    "ai_enabled": False,          # WEBCHAT-3: AI answers typed questions (after contact details)
+    "ai_model": "haiku",          # haiku (cheapest) | sonnet
+    "ai_instructions": "",
+    "ai_max_turns": 12,
 }
 
 
@@ -133,6 +137,17 @@ def sanitise_config(raw: dict) -> dict:
     if "brand_color" in raw:
         c = str(raw["brand_color"] or "").strip()
         out["brand_color"] = c if re.match(r"^#[0-9a-fA-F]{6}$", c) else DEFAULT_CONFIG["brand_color"]
+    if "ai_enabled" in raw:
+        out["ai_enabled"] = bool(raw["ai_enabled"])
+    if "ai_model" in raw:
+        out["ai_model"] = raw["ai_model"] if raw["ai_model"] in ("haiku", "sonnet") else "haiku"
+    if "ai_instructions" in raw:
+        out["ai_instructions"] = _clean_text(raw["ai_instructions"], 800)
+    if "ai_max_turns" in raw:
+        try:
+            out["ai_max_turns"] = max(1, min(int(raw["ai_max_turns"]), 30))
+        except (TypeError, ValueError):
+            out["ai_max_turns"] = 12
     if "redirect_mode" in raw:
         out["redirect_mode"] = raw["redirect_mode"] if raw["redirect_mode"] in ("always", "menu_first") else "always"
     if "menu" in raw and isinstance(raw["menu"], list):
