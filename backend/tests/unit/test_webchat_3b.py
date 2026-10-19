@@ -329,3 +329,54 @@ class TestRoutes:
         assert bad.status_code == 422
         out = c.post(f"/api/v1/public/webchat/{key}/checkout", headers=h)
         assert out.status_code == 422
+
+
+class TestBotComesBack:
+    def _ago(self, minutes):
+        return (_now() - timedelta(minutes=minutes)).isoformat()
+
+    def test_recent_team_reply_keeps_bot_quiet(self):
+        from app.services import webchat_flow_service as f
+        db = _db(); s, cfg = _session(db, human=True, human_at=self._ago(5), rep_last_at=self._ago(2)), _cfg(db)
+        with _claude('{"reply": "AI", "handoff": false}') as cc:
+            r = f.handle_message(db, s, cfg, kind="text", text="are you there?")
+        assert r["human"] is True and not cc.called
+
+    def test_bot_resumes_after_team_silence(self):
+        from app.services import webchat_flow_service as f
+        db = _db(); s, cfg = _session(db, human=True, human_at=self._ago(90), rep_last_at=self._ago(45)), _cfg(db)
+        with _claude('{"reply": "Back with you.", "handoff": false}'):
+            r = f.handle_message(db, s, cfg, kind="text", text="what do you do?")
+        assert r["human"] is False and r["messages"][-1]["text"] == "Back with you." and not s["state"].get("human")
+
+    def test_no_reply_ever_still_lapses(self):
+        from app.services import webchat_service as wc
+        db = _db(); s, cfg = _session(db, human=True, human_at=self._ago(40)), _cfg(db)
+        assert wc.is_human(s, cfg) is False
+        s2 = _session(db, human=True, human_at=self._ago(3))
+        assert wc.is_human(s2, cfg) is True
+
+    def test_tapping_a_menu_option_brings_the_bot_back_early(self):
+        from app.services import webchat_flow_service as f
+        db = _db(); s, cfg = _session(db, human=True, human_at=self._ago(2), rep_last_at=self._ago(1)), _cfg(db)
+        r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
+        assert r["human"] is False and r["messages"][-1]["text"].startswith("We open 9 to 6")
+
+    def test_talk_to_us_stays_with_the_team(self):
+        from app.services import webchat_flow_service as f, webchat_service as wc
+        db = _db(); s, cfg = _session(db, human=True, human_at=self._ago(2), rep_last_at=self._ago(1)), _cfg(db)
+        with patch.object(wc, "notify_managers"):
+            r = f.handle_message(db, s, cfg, kind="menu", menu_id="team")
+        assert r["human"] is True
+
+    def test_rep_send_stamps_the_time(self):
+        from app.services import webchat_service as wc
+        db = _db(); s = _session(db)
+        db.tables.setdefault("webchat_sessions", []).append(s)
+        wc.rep_send(db, ORG, "L1", "hello", "u1")
+        assert wc.is_human(db.tables["webchat_sessions"][0], _cfg(db)) is True
+
+    def test_resume_minutes_setting_is_bounded(self):
+        from app.services import webchat_service as wc
+        assert wc.sanitise_config({"human_resume_min": 1})["human_resume_min"] == 5
+        assert wc.sanitise_config({"human_resume_min": 99999})["human_resume_min"] == 1440

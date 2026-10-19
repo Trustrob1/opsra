@@ -100,7 +100,7 @@ def _snapshot(s: dict, cfg: dict, messages: list) -> dict:
     return {
         "messages": messages, "has_contact": bool(s.get("lead_id")), "name": s.get("contact_name"),
         "verified_phone": bool(s.get("phone_verified")), "needs_email": bool(s.get("phone_verified") and not s.get("contact_email")),
-        "human": bool((s.get("state") or {}).get("human")), "config": wc.public_view(cfg),
+        "human": wc.is_human(s, cfg), "config": wc.public_view(cfg),
     }
 
 
@@ -150,7 +150,7 @@ def poll_messages(key: str, response: Response, after: Optional[str] = Query(def
     s = _session(db, found, authorization)
     if wc.rate_limited(f"poll:{s['id']}", 120, 60):
         raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
-    return ok({"messages": wc.list_messages(db, s, after=after), "human": bool((s.get("state") or {}).get("human"))})
+    return ok({"messages": wc.list_messages(db, s, after=after), "human": wc.is_human(s, found["config"])})
 
 
 @router.post("/public/webchat/{key}/message")

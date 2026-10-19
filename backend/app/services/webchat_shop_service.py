@@ -230,7 +230,7 @@ def checkout(db, s: dict, cfg: dict) -> dict:
         logger.warning("webchat checkout link failed org=%s: %s", s.get("org_id"), exc)
 
     if not url:
-        wc.set_state(db, s, human=True)
+        wc.set_human(db, s)
         out.append(wc.append_message(db, s, "bot", "Thank you. We could not make a payment link just now, so a team member will "
                                                    "complete your order with you here." + note))
         wc.notify_managers(db, s["org_id"], f"Order request: {s.get('contact_name') or 'web chat visitor'}",

@@ -58,6 +58,7 @@ DEFAULT_CONFIG: dict = {
     "ai_model": "haiku",          # haiku (cheapest) | sonnet
     "ai_instructions": "",
     "ai_max_turns": 12,
+    "human_resume_min": 30,       # minutes of team silence after which the bot answers again
     "shop_enabled": False,        # WEBCHAT-3b: product cards, cart and checkout link in the chat
 }
 
@@ -138,6 +139,11 @@ def sanitise_config(raw: dict) -> dict:
     if "brand_color" in raw:
         c = str(raw["brand_color"] or "").strip()
         out["brand_color"] = c if re.match(r"^#[0-9a-fA-F]{6}$", c) else DEFAULT_CONFIG["brand_color"]
+    if "human_resume_min" in raw:
+        try:
+            out["human_resume_min"] = max(5, min(int(raw["human_resume_min"]), 1440))
+        except (TypeError, ValueError):
+            out["human_resume_min"] = 30
     if "shop_enabled" in raw:
         out["shop_enabled"] = bool(raw["shop_enabled"])
     if "ai_enabled" in raw:
@@ -510,6 +516,33 @@ def latest_session_for_lead(db, org_id: str, lead_id: str) -> Optional[dict]:
                  .order("last_activity_at", desc=True).limit(1).execute()).data)
 
 
+def set_human(db, session: dict) -> dict:
+    """Hand the chat to the team; the bot stays quiet until the team has been silent for human_resume_min."""
+    return set_state(db, session, human=True, human_at=_iso(_now()))
+
+
+def is_human(session: dict, cfg: Optional[dict] = None) -> bool:
+    """True while a person is looking after the chat. Lapses after human_resume_min minutes without a team
+    message (or, if nobody ever replied, without the hand-over being fresh), so the bot never stays silent forever."""
+    state = session.get("state") or {}
+    if not state.get("human"):
+        return False
+    try:
+        mins = int((cfg or {}).get("human_resume_min") or DEFAULT_CONFIG["human_resume_min"])
+    except (TypeError, ValueError):
+        mins = DEFAULT_CONFIG["human_resume_min"]
+    stamps = []
+    for k in ("rep_last_at", "human_at"):
+        try:
+            if state.get(k):
+                stamps.append(datetime.fromisoformat(str(state[k]).replace("Z", "+00:00")))
+        except Exception:
+            pass
+    if not stamps:
+        return False
+    return _now() - max(stamps) < timedelta(minutes=mins)
+
+
 def rep_send(db, org_id: str, lead_id: str, text: str, user_id: str) -> dict:
     """A rep's reply into a web chat. Stored only; the visitor's page picks it up. No Meta call, no fee."""
     s = latest_session_for_lead(db, org_id, lead_id)
@@ -518,7 +551,7 @@ def rep_send(db, org_id: str, lead_id: str, text: str, user_id: str) -> dict:
     if s.get("status") != "active":
         raise PermissionError("this web chat has ended")
     msg = append_message(db, s, "rep", text, sent_by=user_id)
-    set_state(db, s, human=True)
+    set_state(db, s, human=True, rep_last_at=_iso(_now()), human_at=_iso(_now()))
     return msg
 
 

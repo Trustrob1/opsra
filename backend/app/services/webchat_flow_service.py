@@ -91,12 +91,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     if kind == "menu":
         item = next((m for m in cfg["menu"] if m["id"] == menu_id), None)
         if not item:
-            return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": bool((s.get("state") or {}).get("human"))}
+            return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": wc.is_human(s, cfg)}
         visitor_text = item["label"]
     else:
         visitor_text = wc._clean_text(text, wc.MAX_TEXT)
         if not visitor_text:
-            return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": bool((s.get("state") or {}).get("human"))}
+            return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": wc.is_human(s, cfg)}
 
     out = [wc.append_message(db, s, "visitor", visitor_text)]
     wc.update_session(db, s, {"turn_count": int(s.get("turn_count") or 0) + 1})
@@ -105,8 +105,11 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
 
     state = s.get("state") or {}
     if state.get("human"):
-        _notify_human(db, s, cfg, visitor_text)
-        return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
+        taps_option = kind == "menu" and item is not None and item.get("action") != "human"
+        if wc.is_human(s, cfg) and not taps_option:
+            _notify_human(db, s, cfg, visitor_text)
+            return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
+        wc.set_state(db, s, human=False)      # team quiet for a while, or the visitor chose an option: the bot is back
 
     if item is None:
         item = _match_item(cfg, visitor_text)
@@ -114,7 +117,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     form = None
     cards: list = []
     if item and item.get("action") == "human":
-        wc.set_state(db, s, human=True)
+        wc.set_human(db, s)
         out.append(wc.append_message(db, s, "bot", cfg["human_reply"]))
         _notify_human(db, s, cfg, "Asked to talk to the team.")
         return {"messages": out, "ask_contact": not _has_contact(s), "ask_email": False, "form": None, "human": True}
@@ -141,7 +144,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             if cfg.get("shop_enabled") and ai.get("products"):
                 cards = webchat_shop_service.cards_for(db, s["org_id"], ai["products"])
             if ai["handoff"]:
-                wc.set_state(db, s, human=True)
+                wc.set_human(db, s)
                 _notify_human(db, s, cfg, "The assistant could not answer: " + visitor_text)
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards}
         else:
@@ -182,7 +185,7 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
                 if cfg.get("shop_enabled") and ai.get("products"):
                     cards = webchat_shop_service.cards_for(db, s["org_id"], ai["products"])
                 if ai["handoff"]:
-                    wc.set_state(db, s, human=True)
+                    wc.set_human(db, s)
                     _notify_human(db, s, cfg, "The assistant could not answer: " + waiting)
     return {"messages": out, "form": form, "cards": cards}
 

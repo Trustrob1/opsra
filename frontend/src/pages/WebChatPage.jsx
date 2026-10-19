@@ -343,7 +343,7 @@ export default function WebChatPage({ chatKey }) {
 
         {error && <div style={S.err} role="alert">{error}</div>}
 
-        {!human && (cfg.menu.length > 0 || cfg.shop_enabled) && (
+        {(cfg.menu.length > 0 || cfg.shop_enabled) && (
           <div style={S.menu}>
             {cfg.menu.map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
             {cfg.shop_enabled && <button type="button" style={{ ...S.chip, background: brand, color: '#fff' }} disabled={busy} onClick={openShop}>Shop</button>}

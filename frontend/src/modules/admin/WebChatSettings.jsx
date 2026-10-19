@@ -125,6 +125,15 @@ export default function WebChatSettings() {
       </div>
 
       <div style={card}>
+        <label style={label} htmlFor="wc-hr">Bot comes back after the team has been quiet for (minutes)</label>
+        <input id="wc-hr" type="number" min={5} max={1440} style={{ ...input, width: 120 }} value={cfg.human_resume_min ?? 30}
+          onChange={(e) => set('human_resume_min', e.target.value)} />
+        <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>
+          When a visitor asks for a person, or your team replies, the bot stays quiet. If nobody from your team writes for this long, the bot answers the visitor's next message again. A visitor tapping a menu option also brings it back straight away.
+        </p>
+      </div>
+
+      <div style={card}>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
           <input type="checkbox" checked={!!cfg.shop_enabled} onChange={(e) => set('shop_enabled', e.target.checked)} /> Let visitors shop in the chat
         </label>
