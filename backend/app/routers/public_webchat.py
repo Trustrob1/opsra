@@ -261,6 +261,22 @@ def checkout(key: str, response: Response, authorization: Optional[str] = Header
     return ok(res)
 
 
+# ── WEBCHAT-5b: a visitor tapped a link in the chat (counted once per chat) ──
+
+@router.post("/public/webchat/{key}/tap")
+def tap(key: str, response: Response, authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"tap:{s['id']}", 20, 3600):
+        return ok({"counted": False})
+    if (s.get("state") or {}).get("tapped"):
+        return ok({"counted": False})
+    wc.set_state(db, s, tapped=True)
+    wc.log_event(db, s["org_id"], s["id"], "tap", s.get("source"))
+    return ok({"counted": True})
+
+
 # ── WEBCHAT-4: email follow-ups ─────────────────────────────────────────────
 
 @router.post("/public/webchat/{key}/save-chat")

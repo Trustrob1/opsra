@@ -17,8 +17,16 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("visit", "started", "contact", "booked", "handoff_sent", "redirect_sent")
-FUNNEL = ("visit", "started", "contact", "booked")
+KINDS = ("visit", "started", "contact", "booked", "handoff_sent", "redirect_sent", "order", "paid", "tap")
+# goal key -> (event kind, label, the step its rate is measured against)
+GOALS = {
+    "booking": ("booked", "Booked", "contact"),
+    "order": ("order", "Orders started", "contact"),
+    "paid": ("paid", "Paid", "order"),
+    "whatsapp": ("redirect_sent", "Moved to WhatsApp", "started"),
+    "tap": ("tap", "Tapped a link", "started"),
+}
+LABELS = {"visit": "Visits", "started": "Started chatting", "contact": "Gave contact"}
 AI_FUNCTION = "webchat_ai_turn"
 DEFAULT_FX = 1340.0
 CAP_ROWS = 20000
@@ -28,21 +36,39 @@ def _pct(a: int, b: int) -> Optional[float]:
     return round(100.0 * a / b, 1) if b else None
 
 
-def _rows(build) -> list:
+def _rows_or_none(build):
     """build is a zero-argument callable returning the query, so errors while building it are caught too."""
     try:
         return build().execute().data or []
     except Exception as exc:
         logger.warning("webchat analytics query failed: %s", exc)
-        return []
+        return None
 
 
-def _funnel(db, org_id: str, since: str) -> dict:
-    rows = _rows(lambda: db.table("webchat_events").select("kind, source, created_at").eq("org_id", org_id)
-                 .gte("created_at", since).limit(CAP_ROWS))
+def _rows(build) -> list:
+    return _rows_or_none(build) or []
+
+
+def goals_for(cfg: dict) -> list:
+    """The goals the business chose, or the automatic set: booking, plus orders and payments when the shop is on."""
+    chosen = [g for g in GOALS if g in (cfg.get("goals") or [])]       # always in funnel order
+    if chosen:
+        return chosen
+    return ["booking", "order", "paid"] if cfg.get("shop_enabled") else ["booking"]
+
+
+def _funnel(db, org_id: str, since: str, goals: list) -> dict:
+    # value_kobo exists only after the WEBCHAT-5b migration; fall back so the screen still works before it.
+    rows = _rows_or_none(lambda: db.table("webchat_events").select("kind, source, created_at, value_kobo").eq("org_id", org_id)
+                         .gte("created_at", since).limit(CAP_ROWS))
+    if rows is None:
+        rows = _rows(lambda: db.table("webchat_events").select("kind, source, created_at").eq("org_id", org_id)
+                     .gte("created_at", since).limit(CAP_ROWS))
     totals = {k: 0 for k in KINDS}
     by_source: dict = {}
     daily: dict = {}
+    revenue = 0
+    rev_by_source: dict = {}
     for r in rows:
         k = r.get("kind")
         if k not in totals:
@@ -53,12 +79,27 @@ def _funnel(db, org_id: str, since: str) -> dict:
         day = str(r.get("created_at") or "")[:10]
         if day:
             daily.setdefault(day, {kk: 0 for kk in KINDS})[k] += 1
+        if k == "paid":
+            v = int(r.get("value_kobo") or 0)
+            revenue += v
+            rev_by_source[src] = rev_by_source.get(src, 0) + v
     rates = {"started_of_visit": _pct(totals["started"], totals["visit"]),
              "contact_of_started": _pct(totals["contact"], totals["started"]),
              "booked_of_contact": _pct(totals["booked"], totals["contact"])}
-    sources = sorted(({"source": s, **c} for s, c in by_source.items()), key=lambda r: -r["visit"])
+
+    steps = [{"key": "visit", "label": LABELS["visit"], "count": totals["visit"], "rate": None, "of": None}]
+    for key, parent in (("started", "visit"), ("contact", "started")):
+        steps.append({"key": key, "label": LABELS[key], "count": totals[key], "rate": _pct(totals[key], totals[parent]),
+                      "of": LABELS[parent].lower()})
+    for g in goals:
+        kind, label, parent = GOALS[g]
+        steps.append({"key": g, "label": label, "count": totals[kind], "rate": _pct(totals[kind], totals[parent]),
+                      "of": ("orders" if parent == "order" else LABELS[parent].lower())})
+    sources = sorted(({"source": s, **c, "revenue_kobo": rev_by_source.get(s, 0)} for s, c in by_source.items()),
+                     key=lambda r: -r["visit"])
     days = [{"date": d, **daily[d]} for d in sorted(daily)]
-    return {"totals": totals, "rates": rates, "sources": sources, "daily": days}
+    return {"totals": totals, "rates": rates, "steps": steps, "goals": goals, "revenue_kobo": revenue,
+            "sources": sources, "daily": days}
 
 
 def _chats(db, org_id: str, since: str) -> dict:
@@ -116,11 +157,21 @@ def _wallet(db, org_id: str) -> dict:
 def analytics(db, org_id: str, days: int = 30) -> dict:
     days = max(1, min(int(days or 30), 90))
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    funnel, chats, ai, wallet = _funnel(db, org_id, since), _chats(db, org_id, since), _ai_cost(db, org_id, since), _wallet(db, org_id)
+    try:
+        from app.services import webchat_service as wc
+        cfg = wc.get_config(db, org_id)
+    except Exception:
+        cfg = {}
+    counting_from = cfg.get("stats_from")
+    if counting_from and counting_from > since:        # "start counting from now" hides older numbers
+        since = counting_from
+    goals = goals_for(cfg)
+    funnel, chats, ai, wallet = _funnel(db, org_id, since, goals), _chats(db, org_id, since), _ai_cost(db, org_id, since), _wallet(db, org_id)
     cost = {**ai,
             "per_chat_kobo": int(round(ai["cost_kobo"] / chats["chats"])) if chats["chats"] else None,
             "per_ai_chat_kobo": int(round(ai["cost_kobo"] / chats["ai_chats"])) if chats["ai_chats"] else None,
             "per_contact_kobo": int(round(ai["cost_kobo"] / chats["with_contact"])) if chats["with_contact"] else None}
-    return {"days": days, "since": since, "funnel": funnel, "chats": chats, "cost": cost, "wallet": wallet,
+    return {"days": days, "since": since, "counting_from": counting_from, "goals": goals,
+            "goals_auto": not (cfg.get("goals") or []), "funnel": funnel, "chats": chats, "cost": cost, "wallet": wallet,
             "notes": ["AI cost is what the model calls cost at today's exchange rate; it is logged even when billing is off.",
                       "WhatsApp template messages and Paystack fees are not included in cost per chat."]}

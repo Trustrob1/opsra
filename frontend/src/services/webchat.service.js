@@ -100,6 +100,11 @@ export async function saveChatByEmail(key, token, { email, consent }) {
   return res.data.data
 }
 
+/** WEBCHAT-5b: tell the server the visitor tapped a link (counted once per chat). Never throws. */
+export async function tapChat(key, token) {
+  try { await axios.post(`${BASE}/public/webchat/${key}/tap`, {}, auth(token)) } catch { /* not important */ }
+}
+
 export async function stopChatEmails(key, token) {
   const res = await axios.post(`${BASE}/public/webchat/${key}/email-optout`, {}, auth(token))
   return res.data.data

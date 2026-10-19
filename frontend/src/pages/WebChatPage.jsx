@@ -11,7 +11,7 @@
  * and the page works without it for the current visit.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { startChat, resumeChat, pollChat, sendChat, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, chatErrorMessage } from '../services/webchat.service'
+import { startChat, resumeChat, pollChat, sendChat, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -21,10 +21,10 @@ function writeStore(key, v) { try { v ? window.localStorage.setItem(key, v) : wi
 
 const naira = (n) => `₦${Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
 
-function Linkified({ text }) {
+function Linkified({ text, onTap }) {
   const parts = String(text || '').split(URL_RE)
   return parts.map((p, i) => (/^https?:\/\//.test(p)
-    ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', wordBreak: 'break-all' }}>{p}</a>
+    ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" onClick={onTap} style={{ color: 'inherit', textDecoration: 'underline', wordBreak: 'break-all' }}>{p}</a>
     : <span key={i}>{p}</span>))
 }
 
@@ -268,7 +268,7 @@ export default function WebChatPage({ chatKey }) {
           {messages.map((m, i) => (
             <div key={m.id}>
               {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <div style={S.who}>{cfg.business_name} team</div>}
-              <div style={S.bubble(m.role)}><Linkified text={m.text} /></div>
+              <div style={S.bubble(m.role)}><Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} /></div>
             </div>
           ))}
 

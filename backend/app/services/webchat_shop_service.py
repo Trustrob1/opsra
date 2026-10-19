@@ -221,13 +221,17 @@ def checkout(db, s: dict, cfg: dict) -> dict:
     out = [wc.append_message(db, s, "visitor", "Checkout:\n" + _summary(cart))]
     note = (f" (No longer available and removed: {', '.join(dropped)}.)" if dropped else "")
     url = None
+    ref = None
     try:
         from app.services.paystack_storefront_service import generate_payment_link
         res = generate_payment_link(db=db, org_id=s["org_id"], lead_id=s["lead_id"], amount=total,
                                     payment_type="full", currency="NGN")
         url = res.get("checkout_url")
+        ref = res.get("reference")
     except Exception as exc:
         logger.warning("webchat checkout link failed org=%s: %s", s.get("org_id"), exc)
+
+    wc.log_event(db, s["org_id"], s["id"], "order", s.get("source"), ref=ref)      # WEBCHAT-5b
 
     if not url:
         wc.set_human(db, s)
@@ -243,7 +247,7 @@ def checkout(db, s: dict, cfg: dict) -> dict:
         fu.send_order_link(db, s, cfg, _summary(cart), url)      # WEBCHAT-4/4b
     except Exception as exc:
         logger.warning("webchat order email hook failed: %s", exc)
-    wc.set_state(db, s, cart=[], last_checkout={"total": total, "at": wc._iso(wc._now())})
+    wc.set_state(db, s, cart=[], last_checkout={"total": total, "at": wc._iso(wc._now()), "reference": ref})
     try:
         from app.services import lead_service
         lead_service.write_timeline_event(db, s["org_id"], s["lead_id"], event_type="webchat_order", actor_id=None,

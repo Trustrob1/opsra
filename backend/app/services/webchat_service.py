@@ -66,7 +66,10 @@ DEFAULT_CONFIG: dict = {
     "email_followups": True,      # WEBCHAT-4: email replies / confirmations to visitors who gave an email and consent
     "human_resume_min": 30,       # minutes of team silence after which the bot answers again
     "shop_enabled": False,        # WEBCHAT-3b: product cards, cart and checkout link in the chat
+    "goals": None,                # WEBCHAT-5b: what counts as a win in the funnel; None = automatic (booking, plus orders and payments when the shop is on)
+    "stats_from": None,           # WEBCHAT-5b: ISO time; the numbers ignore anything before it (start counting from now)
 }
+GOAL_KEYS = ("booking", "order", "paid", "whatsapp", "tap")
 
 
 def _now() -> datetime:
@@ -169,6 +172,19 @@ def sanitise_config(raw: dict) -> dict:
             out["human_resume_min"] = 30
     if "shop_enabled" in raw:
         out["shop_enabled"] = bool(raw["shop_enabled"])
+    if "goals" in raw:
+        g = raw["goals"]
+        picked = [k for k in GOAL_KEYS if isinstance(g, list) and k in g]
+        out["goals"] = picked or None
+    if "stats_from" in raw:
+        v = raw["stats_from"]
+        if v == "now":
+            out["stats_from"] = _iso(_now())
+        else:
+            try:
+                out["stats_from"] = _iso(datetime.fromisoformat(str(v).replace("Z", "+00:00"))) if v else None
+            except (TypeError, ValueError):
+                out["stats_from"] = None
     if "ai_enabled" in raw:
         out["ai_enabled"] = bool(raw["ai_enabled"])
     if "ai_model" in raw:
@@ -291,12 +307,40 @@ def chat_link(db, org_id: str, source: Optional[str] = None) -> str:
 
 # ── Sessions ────────────────────────────────────────────────────────────────
 
-def log_event(db, org_id: str, session_id: Optional[str], kind: str, source: Optional[str] = None) -> None:
+def log_event(db, org_id: str, session_id: Optional[str], kind: str, source: Optional[str] = None,
+              ref: Optional[str] = None, value_kobo: Optional[int] = None) -> None:
     try:
-        db.table("webchat_events").insert({"org_id": org_id, "session_id": session_id, "kind": kind,
-                                           "source": (source or None) and source[:30]}).execute()
+        row = {"org_id": org_id, "session_id": session_id, "kind": kind, "source": (source or None) and source[:30]}
+        if ref:                      # WEBCHAT-5b columns, only sent when used so older events keep working
+            row["ref"] = str(ref)[:80]
+        if value_kobo is not None:
+            row["value_kobo"] = int(value_kobo)
+        db.table("webchat_events").insert(row).execute()
     except Exception as exc:
         logger.warning("webchat event failed: %s", exc)
+
+
+def on_payment_confirmed(db, org_id: str, reference: str) -> bool:
+    """WEBCHAT-5b: a Paystack payment came in. If it belongs to a web chat checkout, record 'paid' against the same
+    chat and source (once). No-op for any other payment. Never raises."""
+    try:
+        if not reference:
+            return False
+        order = _one((db.table("webchat_events").select("session_id, source").eq("org_id", org_id).eq("kind", "order")
+                      .eq("ref", reference).limit(1).execute()).data)
+        if not order:
+            return False
+        if _one((db.table("webchat_events").select("id").eq("org_id", org_id).eq("kind", "paid").eq("ref", reference)
+                 .limit(1).execute()).data):
+            return False
+        link = _one((db.table("payment_links").select("amount").eq("org_id", org_id).eq("reference", reference)
+                     .limit(1).execute()).data) or {}
+        value = int(round(float(link.get("amount") or 0) * 100))
+        log_event(db, org_id, order.get("session_id"), "paid", order.get("source"), ref=reference, value_kobo=value)
+        return True
+    except Exception as exc:
+        logger.warning("webchat on_payment_confirmed failed: %s", exc)
+        return False
 
 
 def clean_source(v: Optional[str]) -> str:

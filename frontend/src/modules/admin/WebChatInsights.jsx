@@ -3,7 +3,7 @@
  * Link and QR builder (any source tag) plus the numbers: funnel, by source, chat facts, cost per chat, AI budget.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { getWebchatAnalytics, getWebchatQr } from '../../services/webchat.service'
+import { getWebchatAnalytics, getWebchatQr, saveWebchatSettings } from '../../services/webchat.service'
 import { ds } from '../../utils/ds'
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
@@ -15,6 +15,16 @@ const small = { fontSize: 12, color: ds.gray, margin: '6px 0 0' }
 const naira = (kobo) => (kobo == null ? 'n/a' : `₦${(kobo / 100).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`)
 const pct = (v) => (v == null ? 'n/a' : `${v}%`)
 const cleanTag = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 30)
+
+const GOAL_OPTIONS = [
+  ['booking', 'Booking requests'],
+  ['order', 'Orders started (shop)'],
+  ['paid', 'Orders paid (shop)'],
+  ['whatsapp', 'Moved to WhatsApp'],
+  ['tap', 'Tapped a link in the chat'],
+]
+const GOAL_KIND = { booking: 'booked', order: 'order', paid: 'paid', whatsapp: 'redirect_sent', tap: 'tap' }
+const when = (iso) => { try { return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) } catch { return '' } }
 
 function Stat({ label, value, sub }) {
   return (
@@ -34,13 +44,30 @@ export default function WebChatInsights({ baseLink }) {
   const [qr, setQr] = useState('')
   const [qrErr, setQrErr] = useState('')
   const [copied, setCopied] = useState(false)
+  const [reload, setReload] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [note, setNote] = useState('')
 
   useEffect(() => {
     let live = true
     setErr('')
     getWebchatAnalytics(days).then((d) => live && setAn(d)).catch(() => live && setErr('Could not load the numbers. Try again in a moment.'))
     return () => { live = false }
-  }, [days])
+  }, [days, reload])
+
+  const change = async (changes, done) => {
+    setSaving(true); setNote('')
+    try { await saveWebchatSettings(changes); setNote(done); setReload((n) => n + 1) } catch { setNote('Could not save. Try again.') } finally { setSaving(false) }
+  }
+  const toggleGoal = (key) => {
+    const cur = an?.goals || []
+    const next = cur.includes(key) ? cur.filter((g) => g !== key) : [...cur, key]
+    if (next.length === 0) { setNote('Keep at least one.'); return }
+    change({ goals: next }, 'Saved.')
+  }
+  const startFresh = () => {
+    if (window.confirm('Start counting from now? Older numbers will be hidden here (nothing is deleted). Use this after you have finished testing.')) change({ stats_from: 'now' }, 'Counting from now.')
+  }
 
   const t = cleanTag(tag) || 'link'
   const link = useMemo(() => (baseLink ? `${baseLink.split('?')[0]}?s=${t}` : ''), [baseLink, t])
@@ -102,10 +129,23 @@ export default function WebChatInsights({ baseLink }) {
         {an && (
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-              <Stat label="Visits" value={f.totals.visit} />
-              <Stat label="Started chatting" value={f.totals.started} sub={`${pct(f.rates.started_of_visit)} of visits`} />
-              <Stat label="Gave contact" value={f.totals.contact} sub={`${pct(f.rates.contact_of_started)} of started`} />
-              <Stat label="Booked" value={f.totals.booked} sub={`${pct(f.rates.booked_of_contact)} of contacts`} />
+              {f.steps.map((s) => <Stat key={s.key} label={s.label} value={s.count} sub={s.rate == null ? undefined : `${pct(s.rate)} of ${s.of}`} />)}
+              {f.goals.includes('paid') && <Stat label="Paid in" value={naira(f.revenue_kobo)} />}
+            </div>
+            {an.counting_from && <p style={small}>Counting from {when(an.counting_from)}.</p>}
+
+            <p style={{ ...h, marginTop: 16 }}>What counts as a win for you?</p>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {GOAL_OPTIONS.map(([k, l]) => (
+                <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+                  <input type="checkbox" disabled={saving} checked={an.goals.includes(k)} onChange={() => toggleGoal(k)} /> {l}
+                </label>
+              ))}
+            </div>
+            <p style={small}>{an.goals_auto ? 'Chosen for you from your settings (booking, plus orders and payments when the shop is on). ' : ''}The steps above follow what you tick.</p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={btn(false)} disabled={saving} onClick={startFresh}>Start counting from now</button>
+              {note && <span role="status" style={{ fontSize: 12, color: ds.gray }}>{note}</span>}
             </div>
 
             <p style={{ ...h, marginTop: 16 }}>By where they came from</p>
@@ -113,13 +153,15 @@ export default function WebChatInsights({ baseLink }) {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead><tr style={{ textAlign: 'left', color: ds.gray }}>
-                    {['Source', 'Visits', 'Started', 'Contact', 'Booked'].map((x) => <th key={x} style={{ padding: '4px 8px', fontWeight: 600 }}>{x}</th>)}
+                    {['Source', 'Visits', 'Started', 'Contact', ...f.steps.slice(3).map((s) => s.label), ...(f.goals.includes('paid') ? ['Paid in'] : [])].map((x) => <th key={x} style={{ padding: '4px 8px', fontWeight: 600 }}>{x}</th>)}
                   </tr></thead>
                   <tbody>{f.sources.map((s) => (
                     <tr key={s.source} style={{ borderTop: `1px solid ${ds.border}` }}>
                       <td style={{ padding: '6px 8px', fontWeight: 600 }}>{s.source}</td>
                       <td style={{ padding: '6px 8px' }}>{s.visit}</td><td style={{ padding: '6px 8px' }}>{s.started}</td>
-                      <td style={{ padding: '6px 8px' }}>{s.contact}</td><td style={{ padding: '6px 8px' }}>{s.booked}</td>
+                      <td style={{ padding: '6px 8px' }}>{s.contact}</td>
+                      {f.goals.map((g) => <td key={g} style={{ padding: '6px 8px' }}>{s[GOAL_KIND[g]]}</td>)}
+                      {f.goals.includes('paid') && <td style={{ padding: '6px 8px' }}>{naira(s.revenue_kobo)}</td>}
                     </tr>))}</tbody>
                 </table>
               </div>

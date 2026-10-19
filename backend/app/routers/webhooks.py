@@ -4014,6 +4014,12 @@ async def receive_paystack_storefront_webhook(request: Request, db=Depends(get_s
             funnel_service.on_payment_confirmed(db=db, org_id=org_id, reference=reference)
         except Exception as exc:
             logger.error("[PAYSTACK-STOREFRONT] funnel hook failed org=%s ref=%s: %s", org_id, reference, exc)
+        # WEBCHAT-5b: count a paid web chat order in the funnel (no-op for other references). S14.
+        try:
+            from app.services import webchat_service as _wc
+            _wc.on_payment_confirmed(db, org_id, reference)
+        except Exception as exc:
+            logger.error("[PAYSTACK-STOREFRONT] web chat hook failed org=%s ref=%s: %s", org_id, reference, exc)
         # SITE-3: move a site order to awaiting_approval/fulfilling and start the
         # SLA clock (no-op for non-site-order references). S14.
         try:
