@@ -187,6 +187,7 @@ from app.routers import superadmin_health as superadmin_health_router
 from app.routers import superadmin_credits as superadmin_credits_router  # CREDITS-1
 from app.routers import public_webchat as public_webchat_router  # WEBCHAT-1
 from app.routers import webchat as webchat_router  # WEBCHAT-1
+from app.routers import credits as credits_router  # CREDITS-2
 from app.routers.push_notifications import router as push_notifications_router
 from app.routers import report_analytics as report_analytics_router
 from app.routers import internal_issues as internal_issues_router
@@ -277,6 +278,7 @@ app.include_router(site_version_shares_router.staff_router,   prefix="/api/v1", 
 app.include_router(superadmin_credits_router.router,          prefix="/api/v1",    tags=["superadmin_credits"])  # CREDITS-1 — /api/v1/superadmin/credits/*
 app.include_router(public_webchat_router.router,              prefix="/api/v1",    tags=["public_webchat"])  # WEBCHAT-1 — /api/v1/public/webchat/{key}/*
 app.include_router(webchat_router.router,                     prefix="/api/v1",    tags=["webchat"])  # WEBCHAT-1 — settings + rep reply
+app.include_router(credits_router.router,                     prefix="/api/v1",    tags=["credits"])  # CREDITS-2 — /api/v1/credits/*
 
 
 # ---------------------------------------------------------------------------

@@ -3912,7 +3912,13 @@ async def receive_paystack_webhook(request: Request, db=Depends(get_supabase)):
     payload: dict = json.loads(raw_body)
     _err = None
     try:
-        process_paystack_webhook(db=db, payload=payload)
+        _pd = payload.get("data") or {}
+        if payload.get("event") == "charge.success" and (_pd.get("metadata") or {}).get("kind") == "credit_topup":
+            # CREDITS-2: a credit top-up paid on Opsra's own Paystack account
+            from app.services import credit_order_service
+            credit_order_service.mark_paid(db, _pd.get("reference"), int(_pd.get("amount") or 0))
+        else:
+            process_paystack_webhook(db=db, payload=payload)
     except Exception as exc:
         logger.error("Paystack webhook processing error: %s", exc)
         _err = str(exc)[:500]
