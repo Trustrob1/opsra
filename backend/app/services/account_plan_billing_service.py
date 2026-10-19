@@ -140,8 +140,18 @@ def quote_for(db: Any, org_id: str, cfg: dict, key: str, now: datetime, row: Opt
     else:
         kind = "switch"
     first = kind == "new" and not _paid_before(db, org_id)
-    return {"key": key, "label": d["label"], "price": price, "credit": credit, "total": max(price - credit, 0),
-            "days": days, "kind": kind, "first": first}
+    seats, seat_price, seats_total = 0, 0, 0
+    if kind in ("renewal", "downgrade_renewal", "upgrade"):       # AP-7: paid extra users renew (or are re-priced) with the plan
+        try:
+            from app.services import account_seat_service as seatsvc
+            seats, seat_price, seat_credit = seatsvc.renewal_seats(db, org_id, cfg, row, now, kind)
+            credit += seat_credit
+            seats_total = seats * seat_price
+        except Exception as exc:
+            logger.warning("account_plan: seats not added to the quote org=%s: %s", org_id, exc)
+            seats, seat_price, seats_total = 0, 0, 0
+    return {"key": key, "label": d["label"], "price": price, "credit": credit, "total": max(price + seats_total - credit, 0),
+            "days": days, "kind": kind, "first": first, "seats": seats, "seat_price": seat_price, "seats_total": seats_total}
 
 
 def _discount(db: Any, qt: dict, code: Optional[str], now: datetime) -> Optional[dict]:
@@ -212,7 +222,8 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
                 "for_sale": False, "action": None, "amount_due": 0}
         try:
             qt = quote_for(db, org_id, cfg, key, now, row)
-            item.update({"for_sale": True, "action": qt["kind"], "amount_due": qt["total"]})
+            item.update({"for_sale": True, "action": qt["kind"], "amount_due": qt["total"],
+                         "seats": qt.get("seats", 0), "seats_total": qt.get("seats_total", 0)})
         except PlanBillingError:
             pass
         plans.append(item)
@@ -222,7 +233,13 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
         allowances = {k: v for k, v in (ents.get("usage") or {}).items() if (v or {}).get("cap")}
     except Exception as exc:
         logger.warning("account_plan.summary allowances failed org=%s: %s", org_id, exc)
-    return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans, "allowances": allowances,
+    team_info = None
+    try:        # users and seats for the Team tab; never fails the page
+        from app.services import account_seat_service as seatsvc
+        team_info = seatsvc.team(db, org_id, now)
+    except Exception as exc:
+        logger.warning("account_plan.summary team failed org=%s: %s", org_id, exc)
+    return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans, "allowances": allowances, "team": team_info,
             "billing": {"period_days": cfg["billing"]["period_days"], "grace_days": cfg["billing"]["grace_days"]},
             "orders": orders(db, org_id)}
 
@@ -283,6 +300,7 @@ def checkout(db: Any, org_id: str, *, key: str, email: str = "", user_id: Option
     reference = f"{PREFIX}{org_id[:8]}_{uuid.uuid4().hex[:12]}"
     quote = {"key": key, "label": qt["label"], "price": qt["price"], "credit": qt["credit"], "total": qt["total"],
              "days": qt["days"], "kind": qt["kind"], "plan_id": (row or {}).get("id"),
+             "seats": qt.get("seats", 0), "seat_price": qt.get("seat_price", 0), "seats_total": qt.get("seats_total", 0),
              **({"discount": {k: disc[k] for k in ("code_id", "code", "kind", "value", "discount")},
                  "total_before_discount": qt["total"]} if disc else {})}
     email = (email or "").strip()
@@ -372,6 +390,10 @@ def mark_paid(db: Any, reference: str, paid_kobo: int, now: Optional[datetime] =
 
 
 def _apply_paid(db: Any, order: dict, previous_status: str, now: datetime) -> None:
+    if order.get("change_kind") == "seats":        # AP-7: extra users bought part-way through a period
+        from app.services import account_seat_service as seatsvc
+        seatsvc.apply_paid_seats(db, order, previous_status, now)
+        return
     org_id = order["org_id"]
     q = order.get("quote") or {}
     key = q.get("key") or order["plan_key"]
@@ -405,6 +427,11 @@ def _apply_paid(db: Any, order: dict, previous_status: str, now: datetime) -> No
             db.table("org_plans").update(fields).eq("id", row["id"]).eq("org_id", org_id).execute()
 
     # Everything below is best-effort: the plan is already on, none of it may fail the payment.
+    try:
+        from app.services import account_seat_service as seatsvc
+        seatsvc.apply_renewal(db, org_id, kind, q, _iso(end), now)
+    except Exception as exc:
+        logger.warning("account_plan: seats not lined up order=%s: %s", order.get("id"), exc)
     acc._log_event(db, org_id, "system", "plan_paid", {"key": key, "kind": kind, "until": _iso(end), "amount_kobo": order.get("amount_kobo"),
                                                        "order_id": order.get("id"), "late": previous_status == "expired"})
     try:
@@ -528,7 +555,13 @@ def _process(db: Any, row: dict, cfg: dict, now: datetime, result: dict) -> None
     d = cfg["tiers"].get(row["key"]) or {}
     label = d.get("label") or row["key"]
     next_key = config.get("pending_key") or row["key"]
-    price = sab._money((cfg["tiers"].get(next_key) or {}).get("monthly_ngn") or row.get("price_ngn") or 0)
+    seat_extra = 0
+    try:
+        from app.services import account_seat_service as seatsvc
+        seat_extra = seatsvc.renewal_note(db, org_id, cfg, now)
+    except Exception:
+        seat_extra = 0
+    price = sab._money(int((cfg["tiers"].get(next_key) or {}).get("monthly_ngn") or row.get("price_ngn") or 0) + seat_extra)
     email = config.get("payer_email")
 
     if now > grace_end:

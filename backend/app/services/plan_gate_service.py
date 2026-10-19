@@ -61,26 +61,23 @@ def require(key: str):
     return _check
 
 
-INCLUDED_USERS = 2          # every plan: one admin and one staff member. Each extra seat is an extra_rep add-on.
-
-
 def check_can_add_user(db, org_id) -> None:
-    """Adding a user is allowed while the active users (the AI agent's system user does not count) are fewer than
-    INCLUDED_USERS plus the live extra_rep seats the business has bought. Not switched on = no limit. If the check
-    itself breaks the owner can still add people."""
+    """Adding a user is allowed while the active users (the AI agent's system user does not count) are fewer than the
+    plan's included users plus the live seats the business has bought. Not switched on = no limit. If the check itself
+    breaks the owner can still add people."""
     from fastapi import HTTPException, status
     try:
         if not acc.is_enforced(db, org_id):
             return
-        rows = (db.table("users").select("id, email").eq("org_id", org_id).eq("is_active", True).execute().data) or []
-        n = len([r for r in rows if not (r.get("email") or "").endswith("@system.opsra.internal")])
-        seats = len([a for a in (acc.get_entitlements(db, org_id).get("addons") or [])
-                     if a.get("key") == "extra_rep" and a.get("status") in acc.LIVE_STATES])
-        limit = INCLUDED_USERS + seats
-        if n >= limit:
+        from app.services import account_seat_service as seats
+        from datetime import datetime, timezone
+        cfg = acc.plan_config(db)
+        now = datetime.now(timezone.utc)
+        limit = seats.allowed_users(db, org_id, cfg, now)
+        if seats.active_users(db, org_id) >= limit:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={
                 "code": PLAN_CODE,
-                "message": f"Your plan includes {limit} user{'s' if limit != 1 else ''}. Contact Opsra to add more users."})
+                "message": f"Your plan includes {limit} user{'s' if limit != 1 else ''}. Open Billing > Team to add more users."})
     except HTTPException:
         raise
     except Exception as exc:

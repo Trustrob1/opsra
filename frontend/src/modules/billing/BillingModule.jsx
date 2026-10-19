@@ -1,12 +1,13 @@
 /**
  * frontend/src/modules/billing/BillingModule.jsx
  * ACCOUNT-PLANS AP-3 — the organisation-wide Billing area (owner / ops manager / admin).
- * Tabs: Plan · Usage · Credits · Payments. Backend: routers/account_plan.py and routers/credits.py.
+ * Tabs: Plan · Team · Usage · Credits · Payments. Backend: routers/account_plan.py and routers/credits.py.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 import {
   getPlan, previewPlan, startPlanCheckout, verifyPlanPayment, clearPendingPlanChange, ngn, planError, PENDING_PLAN_KEY,
+  previewSeats, startSeatsCheckout, setNextSeats,
 } from '../../services/accountPlan.service'
 import { naira } from '../../services/credits.service'
 import CreditsPanel from '../admin/CreditsPanel'
@@ -20,7 +21,7 @@ const lsSet = (v) => { try { v ? localStorage.setItem(PENDING_PLAN_KEY, v) : loc
 const day = (v) => (v ? String(v).slice(0, 10) : '—')
 const STATUS = { active: ['Active', '#00A896'], grace: ['Ended, still on for a few days', '#F4A261'], paused: ['Paused', '#FFB4B4'], pending: ['Not paid yet', '#9FB6C4'] }
 const ACTION = { new: 'Choose', renewal: 'Renew', upgrade: 'Upgrade', switch: 'Switch to this', downgrade_renewal: 'Renew at this price', downgrade: 'Switch at next renewal' }
-const ORDER_KIND = { new: 'New plan', renewal: 'Renewal', upgrade: 'Upgrade', switch: 'Switch', downgrade_renewal: 'Renewal (lower plan)' }
+const ORDER_KIND = { seats: 'Extra users', new: 'New plan', renewal: 'Renewal', upgrade: 'Upgrade', switch: 'Switch', downgrade_renewal: 'Renewal (lower plan)' }
 const CAP_LABEL = { ai_messages: 'AI replies this month', bulk_recipients: 'Bulk message recipients this month' }
 
 const FONT = ds.fontSyne
@@ -298,7 +299,99 @@ function PaymentsTab({ data }) {
   )
 }
 
-const TABS = [['plan', 'Plan'], ['usage', 'Usage'], ['credits', 'Credits'], ['payments', 'Payments']]
+const TABS = [['plan', 'Plan'], ['team', 'Team'], ['usage', 'Usage'], ['credits', 'Credits'], ['payments', 'Payments']]
+
+function TeamTab({ data, reload, setMsg }) {
+  const t = data.team
+  const [add, setAdd] = useState(1)
+  const [quote, setQuote] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [next, setNext] = useState(t ? t.seats_next : 0)
+  useEffect(() => { if (t) setNext(t.seats_next) }, [t])
+  useEffect(() => {
+    if (!t?.can_buy) { setQuote(null); return undefined }
+    let live = true
+    previewSeats(add).then((q) => { if (live) setQuote(q) }).catch(() => { if (live) setQuote(null) })
+    return () => { live = false }
+  }, [add, t?.can_buy])
+  if (!t) return <div style={card}><p style={{ margin: 0, fontSize: 13, color: ds.gray }}>Team details are not available right now.</p></div>
+  const buy = async () => {
+    setBusy(true); setMsg('')
+    try {
+      const r = await startSeatsCheckout(add)
+      lsSet(r.reference)
+      window.location.assign(r.checkout_url)
+    } catch (e) { setMsg(planError(e)); setBusy(false) }
+  }
+  const saveNext = async () => {
+    setBusy(true); setMsg('')
+    try { await setNextSeats(next); setMsg('Saved. Your next renewal will use this number of extra users.'); reload() } catch (e) { setMsg(planError(e)) }
+    setBusy(false)
+  }
+  const stat = (label, value) => (
+    <div style={{ flex: '1 1 140px' }}>
+      <div style={{ fontSize: 12, color: ds.gray }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: ds.dark, fontFamily: ds.fontSyne }}>{value}</div>
+    </div>
+  )
+  return (
+    <>
+      <div style={card}>
+        <h3 style={h3}>Users</h3>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          {stat('Users now', t.used)}
+          {stat('Users your plan allows', t.enforced ? t.allowed : 'No limit')}
+          {stat('Included with every plan', t.included)}
+          {stat('Extra users bought', t.seats)}
+        </div>
+        <p style={{ fontSize: 13, color: ds.gray, margin: '12px 0 0' }}>
+          Every plan includes {t.included} users (an admin and one staff member). Each extra user is {ngn(t.price_ngn)} a month.
+          {t.paid_until && t.seats > 0 ? ` Your extra users run until ${day(t.paid_until)} and renew with your plan.` : ''}
+        </p>
+        {!t.enforced && <p style={{ fontSize: 13, color: ds.gray, margin: '8px 0 0' }}>Your account has no user limit at the moment.</p>}
+        {t.over_by > 0 && (
+          <div role="alert" style={{ marginTop: 12, padding: 12, borderRadius: ds.radius.sm, background: '#FFF4E5', color: ds.dark, fontSize: 13 }}>
+            {t.seats_lapsed ? 'Your extra users have ended. ' : ''}You have {t.over_by} more user{t.over_by === 1 ? '' : 's'} than your plan allows. Nobody has been removed,
+            but you cannot add new users until you buy extra users or renew.
+          </div>
+        )}
+      </div>
+      <div style={card}>
+        <h3 style={h3}>Add users</h3>
+        {!t.can_buy
+          ? <p style={{ margin: 0, fontSize: 13, color: ds.gray }}>{t.reason}</p>
+          : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" aria-label="One fewer user" style={btn(false)} disabled={add <= 1 || busy} onClick={() => setAdd((a) => Math.max(1, a - 1))}>−</button>
+                <strong aria-live="polite" style={{ minWidth: 32, textAlign: 'center', fontSize: 18 }}>{add}</strong>
+                <button type="button" aria-label="One more user" style={btn(false)} disabled={add >= 50 || busy} onClick={() => setAdd((a) => Math.min(50, a + 1))}>+</button>
+                <span style={{ fontSize: 13, color: ds.gray }}>extra user{add === 1 ? '' : 's'}</span>
+              </div>
+              <p style={{ fontSize: 13, color: ds.dark, margin: '12px 0' }}>
+                {quote
+                  ? `${ngn(quote.total)} today, for the ${quote.days} day${quote.days === 1 ? '' : 's'} left on your plan (until ${day(quote.paid_until)}). After that they renew with your plan at ${ngn(t.price_ngn)} each a month.`
+                  : 'Working out the price…'}
+              </p>
+              <button type="button" className="bp-cta" style={btn(true)} disabled={busy || !quote} onClick={buy}>{busy ? 'Opening Paystack…' : 'Pay and add users'}</button>
+            </>
+          )}
+      </div>
+      {t.seats > 0 && !t.free_seats && (
+        <div style={card}>
+          <h3 style={h3}>At your next renewal</h3>
+          <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 10px' }}>Need fewer extra users next month? Choose how many to keep. They stay on until your plan ends.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" aria-label="Keep one fewer" style={btn(false)} disabled={next <= 0 || busy} onClick={() => setNext((n) => Math.max(0, n - 1))}>−</button>
+            <strong aria-live="polite" style={{ minWidth: 32, textAlign: 'center', fontSize: 18 }}>{next}</strong>
+            <button type="button" aria-label="Keep one more" style={btn(false)} disabled={next >= t.seats || busy} onClick={() => setNext((n) => Math.min(t.seats, n + 1))}>+</button>
+            <button type="button" style={btn(false)} disabled={busy || next === t.seats_next} onClick={saveNext}>Save</button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
 
 export default function BillingModule() {
   const [tab, setTab] = useState(() => {
@@ -350,6 +443,7 @@ export default function BillingModule() {
       {tab === 'credits' && <CreditsPanel />}
       {tab !== 'credits' && !data && <div style={{ color: ds.gray, fontSize: 13 }}>{msg ? '' : 'Loading…'}</div>}
       {data && tab === 'plan' && <PlanTab data={data} reload={load} setMsg={setMsg} />}
+      {data && tab === 'team' && <TeamTab data={data} reload={load} setMsg={setMsg} />}
       {data && tab === 'usage' && <UsageTab data={data} />}
       {data && tab === 'payments' && <PaymentsTab data={data} />}
     </div>

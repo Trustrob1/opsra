@@ -10,6 +10,10 @@ S1: the org always comes from the login, never from the request. Amounts are nev
   POST   /billing/plan/verify          {reference} after coming back from Paystack
   DELETE /billing/plan/pending-change  cancel a scheduled downgrade
   GET    /billing/plan/orders          recent plan payments
+  GET    /billing/team                 users, included and paid seats
+  POST   /billing/team/seats/preview   {add}
+  POST   /billing/team/seats/checkout  {add} -> Paystack checkout url
+  POST   /billing/team/seats/next      {quantity} fewer seats at next renewal
 """
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok
 from app.services import account_plan_billing_service as svc
+from app.services import account_seat_service as seatsvc
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -93,5 +98,48 @@ def clear_pending(db=Depends(get_supabase), org=Depends(get_current_org)):
     _require_manager(org)
     try:
         return ok(svc.clear_pending_change(db, org["org_id"], org.get("id") or "owner"))
+    except svc.PlanBillingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+class SeatsBody(BaseModel):
+    add: int = Field(ge=1, le=50)
+
+
+class NextSeatsBody(BaseModel):
+    quantity: int = Field(ge=0, le=500)
+
+
+@router.get("/billing/team")
+def get_team(db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    return ok(seatsvc.team(db, org["org_id"]))
+
+
+@router.post("/billing/team/seats/preview")
+def seats_preview(body: SeatsBody, db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    try:
+        return ok(seatsvc.preview_seats(db, org["org_id"], body.add))
+    except svc.PlanBillingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/billing/team/seats/checkout")
+def seats_checkout(body: SeatsBody, db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    try:
+        res = seatsvc.checkout_seats(db, org["org_id"], add=body.add, email=org.get("email") or "", user_id=org.get("id"),
+                                     callback_url=settings.FRONTEND_URL.rstrip("/") + "/?plan=1")
+    except svc.PlanBillingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return ok(res)
+
+
+@router.post("/billing/team/seats/next")
+def seats_next(body: NextSeatsBody, db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    try:
+        return ok(seatsvc.set_next_seats(db, org["org_id"], body.quantity, org.get("id") or "owner"))
     except svc.PlanBillingError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

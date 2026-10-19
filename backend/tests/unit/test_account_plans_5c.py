@@ -104,7 +104,7 @@ def test_every_plan_includes_two_users():
 
 
 def test_each_bought_seat_adds_one_user():
-    seats = lambda k: [_plan(key="extra_rep", kind="addon") for _ in range(k)]
+    seats = lambda k: [_plan(key="extra_rep", kind="addon", config={"quantity": k})] if k else []
     mk = lambda n, k, s=0: _db(enforced=True, plans=[_plan(key="convert")] + seats(k), features=["wa_leads"], users=_u(n, s))
     gate.check_can_add_user(mk(2, 1), BIZ)               # 2 + 1 seat = 3 allowed, third user fits
     with pytest.raises(HTTPException):

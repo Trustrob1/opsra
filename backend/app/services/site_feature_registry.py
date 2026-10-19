@@ -62,7 +62,7 @@ _F = {
     "renewals_winback": ("Renewals and win-back", "addon", None, True),
     "dashboard_ask_data": ("Dashboard and ask-your-data", "addon", None, False),
     "event_funnel": ("Paid event or class funnel", "addon", None, True),
-    "extra_rep": ("Extra rep", "addon", None, False),
+    "extra_rep": ("Extra rep", "addon", None, True),
     "extra_wa_number": ("Extra WhatsApp number", "addon", None, True),
 }
 

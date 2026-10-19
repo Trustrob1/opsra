@@ -11,6 +11,11 @@ export const startPlanCheckout = (key, code) => api.post('/api/v1/billing/plan/c
 export const verifyPlanPayment = (reference) => api.post('/api/v1/billing/plan/verify', { reference }).then((r) => r.data.data)
 export const clearPendingPlanChange = () => api.delete('/api/v1/billing/plan/pending-change').then((r) => r.data.data)
 
+export const getTeam = () => api.get('/api/v1/billing/team').then((r) => r.data.data)
+export const previewSeats = (add) => api.post('/api/v1/billing/team/seats/preview', { add }).then((r) => r.data.data)
+export const startSeatsCheckout = (add) => api.post('/api/v1/billing/team/seats/checkout', { add }).then((r) => r.data.data)
+export const setNextSeats = (quantity) => api.post('/api/v1/billing/team/seats/next', { quantity }).then((r) => r.data.data)
+
 export const ngn = (n) => `₦${Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
 export const planError = (e, fallback = 'Something went wrong. Please try again.') => {
   const d = e?.response?.data?.detail
