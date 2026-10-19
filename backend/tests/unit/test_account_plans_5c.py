@@ -94,23 +94,29 @@ def test_user_limit_not_switched_on_is_unlimited():
     gate.check_can_add_user(_db(enforced=False, users=_u(9)), BIZ)
 
 
-def test_user_limit_without_multi_rep_means_one_user():
-    db = _db(enforced=True, plans=[_plan(key="convert")], features=["wa_leads"], users=_u(1))
+def test_every_plan_includes_two_users():
+    mk = lambda n: _db(enforced=True, plans=[_plan(key="convert")], features=["wa_leads"], users=_u(n))
+    gate.check_can_add_user(mk(0), BIZ)
+    gate.check_can_add_user(mk(1), BIZ)                  # the second included user
     with pytest.raises(HTTPException) as e:
-        gate.check_can_add_user(db, BIZ)
-    assert e.value.detail["code"] == "PLAN_REQUIRED"
-    gate.check_can_add_user(_db(enforced=True, plans=[_plan(key="convert")], features=["wa_leads"], users=[]), BIZ)
+        gate.check_can_add_user(mk(2), BIZ)              # a third needs a bought seat
+    assert e.value.detail["code"] == "PLAN_REQUIRED" and "2 users" in e.value.detail["message"]
 
 
-def test_user_limit_follows_the_reps_allowance_and_ignores_the_ai_agent_user():
-    mk = lambda n, s=0: _db(enforced=True, plans=[_plan(key="convert")], features=["multi_rep_inbox"], caps={"reps": 3}, users=_u(n, s))
-    gate.check_can_add_user(mk(2, 1), BIZ)             # 2 people + the AI agent user: room for one more
+def test_each_bought_seat_adds_one_user():
+    seats = lambda k: [_plan(key="extra_rep", kind="addon") for _ in range(k)]
+    mk = lambda n, k, s=0: _db(enforced=True, plans=[_plan(key="convert")] + seats(k), features=["wa_leads"], users=_u(n, s))
+    gate.check_can_add_user(mk(2, 1), BIZ)               # 2 + 1 seat = 3 allowed, third user fits
     with pytest.raises(HTTPException):
         gate.check_can_add_user(mk(3, 1), BIZ)
+    gate.check_can_add_user(mk(4, 3), BIZ)
 
 
-def test_user_limit_with_the_feature_and_no_allowance_is_unlimited():
-    gate.check_can_add_user(_db(enforced=True, plans=[_plan(key="convert")], features=["multi_rep_inbox"], users=_u(20)), BIZ)
+def test_a_lapsed_seat_does_not_count_and_the_ai_agent_user_is_free():
+    lapsed = _plan(key="extra_rep", kind="addon", status="paused")
+    with pytest.raises(HTTPException):
+        gate.check_can_add_user(_db(enforced=True, plans=[_plan(key="convert"), lapsed], features=["wa_leads"], users=_u(2)), BIZ)
+    gate.check_can_add_user(_db(enforced=True, plans=[_plan(key="convert")], features=["wa_leads"], users=_u(1, 1)), BIZ)
 
 
 # -- rep screens ------------------------------------------------------------------------------------

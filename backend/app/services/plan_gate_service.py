@@ -61,26 +61,26 @@ def require(key: str):
     return _check
 
 
+INCLUDED_USERS = 2          # every plan: one admin and one staff member. Each extra seat is an extra_rep add-on.
+
+
 def check_can_add_user(db, org_id) -> None:
-    """Adding a second active user needs multi_rep_inbox in the plan, and the plan's `reps` allowance (when it sets one)
-    caps the total. Not switched on = no limit. If the check itself breaks the owner can still add people."""
+    """Adding a user is allowed while the active users (the AI agent's system user does not count) are fewer than
+    INCLUDED_USERS plus the live extra_rep seats the business has bought. Not switched on = no limit. If the check
+    itself breaks the owner can still add people."""
     from fastapi import HTTPException, status
     try:
         if not acc.is_enforced(db, org_id):
             return
         rows = (db.table("users").select("id, email").eq("org_id", org_id).eq("is_active", True).execute().data) or []
         n = len([r for r in rows if not (r.get("email") or "").endswith("@system.opsra.internal")])
-        limit = None
-        if not acc.has_feature(db, "multi_rep_inbox", org_id=org_id):
-            limit = 1
-        else:
-            cap = int((acc.get_entitlements(db, org_id).get("caps") or {}).get("reps") or 0)
-            if cap > 0:
-                limit = cap
-        if limit is not None and n >= limit:
+        seats = len([a for a in (acc.get_entitlements(db, org_id).get("addons") or [])
+                     if a.get("key") == "extra_rep" and a.get("status") in acc.LIVE_STATES])
+        limit = INCLUDED_USERS + seats
+        if n >= limit:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={
                 "code": PLAN_CODE,
-                "message": f"Your plan allows {limit} user{'s' if limit != 1 else ''}. Open Billing to see the plans."})
+                "message": f"Your plan includes {limit} user{'s' if limit != 1 else ''}. Contact Opsra to add more users."})
     except HTTPException:
         raise
     except Exception as exc:
