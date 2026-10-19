@@ -390,3 +390,35 @@ class TestWiring:
         import app.main as m
         paths = {r.path for r in m.app.routes}
         assert {"/api/v1/credits/summary", "/api/v1/credits/checkout", "/api/v1/credits/verify"} <= paths
+
+
+class TestStorefrontWebhookCredits:
+    def test_credit_reference_handled_before_business_lookup(self):
+        import inspect
+        from app.routers import webhooks
+        src = inspect.getsource(webhooks.receive_paystack_storefront_webhook)
+        assert src.index('startswith("cr_")') < src.index('db.table("payment_links")')
+        assert "_verify_paystack_signature" in src and "credit_order_service.mark_paid" in src
+
+    def test_signature_checked_with_platform_key(self, monkeypatch):
+        import asyncio, hashlib, hmac, json
+        from fastapi import HTTPException
+        from app.routers import webhooks
+        monkeypatch.setenv("PAYSTACK_SECRET_KEY", "sk_test_x")
+        body = json.dumps({"event": "charge.success", "data": {"reference": "cr_a_1", "amount": 500000,
+                           "metadata": {"kind": "credit_topup"}}}).encode()
+        good = hmac.new(b"sk_test_x", body, hashlib.sha512).hexdigest()
+
+        def req(sig):
+            r = MagicMock()
+            async def _b(): return body
+            r.body = _b
+            r.headers = {"X-Paystack-Signature": sig}
+            return r
+
+        with patch("app.services.credit_order_service.mark_paid") as mp:
+            with pytest.raises(HTTPException) as e:
+                asyncio.run(webhooks.receive_paystack_storefront_webhook(req("bad"), MagicMock()))
+            assert e.value.status_code == 401 and not mp.called
+            out = asyncio.run(webhooks.receive_paystack_storefront_webhook(req(good), MagicMock()))
+            assert out == {"status": "ok"} and mp.call_args.args[1:] == ("cr_a_1", 500000)

@@ -3954,6 +3954,22 @@ async def receive_paystack_storefront_webhook(request: Request, db=Depends(get_s
     if not reference:
         return {"status": "ok"}
 
+    # CREDITS-2: a credit top-up (reference cr_...) is paid to OPSRA, not to a business, so it is verified with
+    # Opsra's own key (env PAYSTACK_SECRET_KEY) instead of the business keys below. This lets one Paystack
+    # webhook URL (this one) serve both a business's payment links and credit top-ups.
+    if str(reference).startswith("cr_"):
+        if not _verify_paystack_signature(raw_body, request.headers.get("X-Paystack-Signature")):
+            logger.warning("[PAYSTACK-STOREFRONT] credit top-up invalid signature ref=%s", reference)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Paystack signature")
+        _cd = payload.get("data") or {}
+        if payload.get("event") == "charge.success" and (_cd.get("metadata") or {}).get("kind") == "credit_topup":
+            try:
+                from app.services import credit_order_service
+                credit_order_service.mark_paid(db, reference, int(_cd.get("amount") or 0))
+            except Exception as exc:
+                logger.error("[PAYSTACK-STOREFRONT] credit top-up failed ref=%s: %s", reference, exc)
+        return {"status": "ok"}
+
     link_r = (
         db.table("payment_links").select("org_id")
         .eq("reference", reference).maybe_single().execute()
