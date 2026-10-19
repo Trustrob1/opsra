@@ -215,7 +215,13 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
         plans.append({"key": key, "label": d["label"], "monthly_ngn": int(d["monthly_ngn"]), "includes": _includes(d),
                       "caps": d.get("caps") or {}, "is_current": bool(row and row["key"] == key and eff in acc.LIVE_STATES),
                       "action": qt["kind"], "amount_due": qt["total"]})
-    return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans,
+    allowances: dict = {}
+    try:        # plan allowances (AI replies, bulk recipients) for the Usage tab; never fails the page
+        ents = acc.get_entitlements(db, org_id, now)
+        allowances = {k: v for k, v in (ents.get("usage") or {}).items() if (v or {}).get("cap")}
+    except Exception as exc:
+        logger.warning("account_plan.summary allowances failed org=%s: %s", org_id, exc)
+    return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans, "allowances": allowances,
             "billing": {"period_days": cfg["billing"]["period_days"], "grace_days": cfg["billing"]["grace_days"]},
             "orders": orders(db, org_id)}
 

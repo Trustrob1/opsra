@@ -66,11 +66,13 @@ import ReportsModule from './modules/reports/ReportsModule'
 import PerformanceModule from './modules/performance/PerformanceModule'
 import EventFunnelsModule from './modules/funnels/EventFunnelsModule'   // FUNNEL-1B
 import SitesModule from './modules/sites/SitesModule'                   // SITE-1A
+import BillingModule from './modules/billing/BillingModule'             // ACCOUNT-PLANS AP-3
+import BillingBanner from './modules/billing/BillingBanner'             // ACCOUNT-PLANS AP-3
 import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe,
+  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 import SiteLandingPage from './pages/SiteLandingPage'   // SITE-LANDING
@@ -700,6 +702,16 @@ function AppShell() {
     try { return localStorage.getItem('aria_minimised') === '1' } catch { return false }
   })
 
+  // ACCOUNT-PLANS AP-3: coming back from Paystack after paying for a plan (?plan=1) lands on Billing.
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get('plan') && ['owner', 'ops_manager', 'admin'].includes(_userTemplate)) {
+        setActiveNav('billing'); setView('billing')
+      }
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     const token = useAuthStore.getState().token
     if (!token) return
@@ -869,6 +881,26 @@ function AppShell() {
       {collapsed && (
         <div style={{ height: 1, background: '#1a2f3f', margin: '14px 10px 6px' }} />
       )}
+
+      {['owner', 'ops_manager', 'admin'].includes(_userTemplate) && (() => {
+        const isActive = activeNav === 'billing'
+        return (
+          <div
+            onClick={() => { setActiveNav('billing'); setView('billing'); setSelectedLeadId(null); closeSidebarOnMobile() }}
+            title={collapsed ? 'Billing' : undefined}
+            style={{
+              display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              padding: collapsed ? '11px 0' : '11px 16px', margin: '2px 8px', borderRadius: 9,
+              cursor: 'pointer', transition: 'all 0.18s', fontSize: 13.5, fontWeight: 500,
+              color: isActive ? 'white' : '#7A9BAD', background: isActive ? ds.teal : 'none', minHeight: 44,
+            }}
+          >
+            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }}><CreditCard size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /></div>
+            {!collapsed && <span style={{ flex: 1 }}>Billing</span>}
+          </div>
+        )
+      })()}
 
       {(() => {
         const isActive = activeNav === 'admin'
@@ -1070,6 +1102,7 @@ function AppShell() {
         // Bottom padding on mobile to not clip content behind potential bottom bars
         paddingBottom: isMobile ? 16 : 0,
       }}>
+        <BillingBanner role={_userTemplate} onOpen={() => { setActiveNav('billing'); setView('billing') }} />
         {view === 'leads' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
             <LeadsPipeline onOpenLead={openLeadProfile} onOpenDemoQueue={openDemoQueue} />
@@ -1112,6 +1145,9 @@ function AppShell() {
         {view === 'admin' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} /></div>
         )}
+        {view === 'billing' && ['owner', 'ops_manager', 'admin'].includes(_userTemplate) && (
+          <div style={{ animation: 'fadeIn 0.25s ease', padding: 24 }}><BillingModule /></div>
+        )}
         {view === 'conversations' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
             <ConversationsModule user={user} onOpenAria={() => setAriaOpen(true)} />
@@ -1135,7 +1171,7 @@ function AppShell() {
         {view === 'superadmin_health' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><HealthDashboard /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

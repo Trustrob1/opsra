@@ -371,3 +371,11 @@ def test_one_bad_row_does_not_stop_the_sweep(monkeypatch):
     monkeypatch.setattr(svc, "_process", flaky)
     r = svc.run_cycle(db, _now())
     assert r["failed"] == 1 and r["checked"] == 2 and r["paused"] == 1
+
+
+def test_summary_lists_plan_allowances_only_where_a_cap_exists():
+    db = _full_db(enforced=True, plans=[_plan(key="convert", until=_now(10), price_ngn=30000)])
+    db.tables["org_usage_counters"] = [{"id": "u1", "org_id": BIZ, "cap_key": "ai_messages", "period_start": str(svc.ent.period_start(_now())), "used": 2}]
+    s = svc.summary(db, BIZ)
+    assert s["allowances"] == {"ai_messages": {"used": 2, "cap": 3}}
+    assert svc.summary(_full_db(), BIZ)["allowances"] == {}

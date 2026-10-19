@@ -142,3 +142,29 @@ export async function adjustCredit(orgId, payload) {
   const res = await axios.post(`${CR}/orgs/${orgId}/adjust`, payload, { headers: _h() });
   return res.data.data;
 }
+
+// ---------------------------------------------------------------------------
+// Account plans — ACCOUNT-PLANS AP-3 (routes from AP-1)
+// ---------------------------------------------------------------------------
+
+const AP = `${BASE}/api/v1/superadmin/plans`;
+
+export async function getPlanOrgs() {
+  const res = await axios.get(`${AP}/orgs`, { headers: _h() });
+  return res.data.data;
+}
+
+export async function grantOrgPlan(orgId, payload) {
+  const res = await axios.post(`${AP}/orgs/${orgId}/grant`, payload, { headers: _h() });
+  return res.data.data;
+}
+
+export async function setOrgPlanStatus(orgId, payload) {
+  const res = await axios.post(`${AP}/orgs/${orgId}/status`, payload, { headers: _h() });
+  return res.data.data;
+}
+
+export async function setOrgEnforced(orgId, enforced) {
+  const res = await axios.patch(`${AP}/orgs/${orgId}/enforce`, { enforced }, { headers: _h() });
+  return res.data.data;
+}

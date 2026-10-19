@@ -21,6 +21,7 @@ import {
 } from "../../services/superadmin.service";
 import { ds } from "../../utils/ds";
 import CreditsAdminPanel from "./CreditsAdminPanel.jsx";
+import PlansAdminPanel from "./PlansAdminPanel.jsx";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ const PANELS = [
   { id: "webhooks",     label: "Webhooks"      },
   { id: "orgs",         label: "Org Health"    },
   { id: "credits",      label: "Credits"       },
+  { id: "plans",        label: "Plans"         },
 ];
 
 function sinceFromRange(range) {
@@ -445,6 +447,9 @@ export default function HealthDashboard() {
 
       {/* CREDITS (CREDITS-3) - mounted only while open so it loads on demand */}
       {activePanel === "credits" && <CreditsAdminPanel />}
+
+      {/* PLANS (ACCOUNT-PLANS AP-3) - mounted only while open */}
+      {activePanel === "plans" && <PlansAdminPanel />}
 
       {/* INTEGRATIONS */}
       <div style={{ display: activePanel === "integrations" ? "block" : "none" }}>

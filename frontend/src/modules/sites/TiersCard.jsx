@@ -176,6 +176,8 @@ export default function TiersCard({ pricing, canEdit, onSaved, showToast }) {
                               onChange={(e) => toggleFeature(t.key, x.key, e.target.checked)} />
                             <span>{x.label}</span>
                             {!x.built && <span style={{ fontSize: 11, color: T.muted }}>not live yet</span>}
+                            <span style={{ fontSize: 10.5, color: T.muted, border: `1px solid ${T.line || '#d8dee4'}`, borderRadius: 4, padding: '0 5px' }}
+                              title="Where this feature applies">{x.scope === 'site' ? 'Website' : x.scope === 'account' ? 'Account' : 'Website + account'}</span>
                           </label>
                         ))}
                       </fieldset>
