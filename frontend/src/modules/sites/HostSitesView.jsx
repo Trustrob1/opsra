@@ -118,11 +118,12 @@ export default function HostSitesView({ token, showToast, onGoLive }) {
         </p>
 
         <Notice tone="warn" style={{ marginBottom: 12 }}>
-          <strong>Before you go live, make sure your domain name is free.</strong> You can upload and preview first, but you will need the
+          <strong>Want a new domain? Make sure it is free before you go live.</strong> You can upload and preview first, but you will need the
           exact domain at checkout. {remembered
             ? <>You checked <b>{remembered}</b> earlier. </>
             : null}
           <a href="/host#domain" target="_blank" rel="noopener noreferrer" style={{ color: T.teal, fontWeight: 700 }}>Check a domain</a>
+          {' '}<strong>Already own your domain?</strong> No check is needed. Choose “I already own my domain” at checkout and pay for hosting only.
         </Notice>
 
         {full && <Notice tone="warn">You have {cfg.used} hosted sites, which is the limit ({cfg.max_sites}). Please contact us to host more.</Notice>}

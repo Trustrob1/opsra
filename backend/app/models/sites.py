@@ -517,6 +517,7 @@ class QuoteRequest(BaseModel):
     domain: str = Field(..., min_length=3, max_length=253)
     kind: QuoteKind = "initial"
     discount_code: Optional[str] = Field(None, max_length=40)
+    own_domain: bool = False                                    # HOST-3b: the client already owns the domain (hosting only)
     site_id: Optional[str] = Field(None, max_length=64)       # P5: lets a Premium site's quote show the design balance
 
 
@@ -545,8 +546,9 @@ class CheckoutRequest(BaseModel):
     site_id: str
     route: RouteChoice
     domain: str = Field(..., min_length=3, max_length=253)
-    backup_domain: str = Field(..., min_length=3, max_length=253)
-    legal_owner: LegalOwnerDetails
+    backup_domain: Optional[str] = Field(None, max_length=253)
+    legal_owner: Optional[LegalOwnerDetails] = None
+    own_domain: bool = False                                    # HOST-3b: hosting only; no backup domain or legal owner needed
     accepted_terms: bool
     discount_code: Optional[str] = Field(None, max_length=40)   # SITE-DISCOUNT — re-validated server-side
 
@@ -559,6 +561,12 @@ class CheckoutRequest(BaseModel):
 
     @model_validator(mode="after")
     def _backup_differs(self):
+        if self.own_domain:
+            return self
+        if not self.backup_domain or len(self.backup_domain.strip()) < 3:
+            raise ValueError("Enter a backup domain.")
+        if self.legal_owner is None:
+            raise ValueError("Enter the client's legal-owner details.")
         if self.domain.strip().lower() == self.backup_domain.strip().lower():
             raise ValueError("The backup domain must be different from the main domain.")
         return self

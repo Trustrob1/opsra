@@ -132,9 +132,10 @@ export const uploadMySiteAsset = (token, siteId, slot, file) => {
 export const checkDomain = (token, domain) =>
   unwrap(axios.post(`${BASE}/domains/check`, { domain }, authed(token)))
 /** { domain, kind } → { standard: {...}|{error}, express: {...}|null|{error} } */
-export const getQuote = (token, domain, kind = 'initial', discountCode, siteId) =>
-  unwrap(axios.post(`${BASE}/quotes`, { domain, kind, ...(discountCode ? { discount_code: discountCode } : {}), ...(siteId && kind === 'initial' ? { site_id: siteId } : {}) }, authed(token)))
-/** payload: { site_id, route, domain, backup_domain, legal_owner, accepted_terms }
+export const getQuote = (token, domain, kind = 'initial', discountCode, siteId, ownDomain = false) =>
+  unwrap(axios.post(`${BASE}/quotes`, { domain, kind, ...(ownDomain ? { own_domain: true } : {}), ...(discountCode ? { discount_code: discountCode } : {}), ...(siteId && kind === 'initial' ? { site_id: siteId } : {}) }, authed(token)))
+/** payload: { site_id, route, domain, backup_domain, legal_owner, accepted_terms } or, for a domain the client already owns,
+ * { site_id, route: 'standard', domain, own_domain: true, accepted_terms } (no backup domain or legal owner)
  * → { checkout_url, reference, order_id, amount } */
 export const checkout = (token, payload) =>
   unwrap(axios.post(`${BASE}/checkout`, payload, authed(token)))

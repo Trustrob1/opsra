@@ -321,8 +321,53 @@ def quote(
     }
 
 
+def quote_own_domain(db: Any, org_id: str, domain: str, kind: Kind = "initial", settings: Optional[dict] = None) -> dict:
+    """Hosting only, for a domain the client already owns at another registrar (HOST-3b). One price for any ending,
+    set in pricing.routes.standard.own_domain_totals_ngn = {"initial": ..., "renewal": ...}. Same shape as quote(), with
+    no domain line. Raises PricingError when it is not priced yet."""
+    if kind not in ("initial", "renewal"):
+        raise PricingError(f"Unknown kind '{kind}'")
+    settings = settings if settings is not None else get_settings(db, org_id)
+    pricing = settings.get("pricing") or {}
+    if not pricing:
+        raise PricingError("Pricing is not configured for this organisation yet.")
+    domain_norm = _normalise_domain(domain)
+    route_cfg = (pricing.get("routes") or {}).get("standard") or {}
+    try:
+        total = float((route_cfg.get("own_domain_totals_ngn") or {}).get(kind) or 0)
+    except (TypeError, ValueError):
+        total = 0.0
+    if total <= 0:
+        raise PricingError("Hosting for a domain you already own isn't priced yet.")
+    vat_pct = float(pricing.get("vat_pct") or 0)
+    gw = pricing.get("gateway") or {}
+    floor = float((pricing.get("floors_after_fees") or {}).get(f"{kind}_ngn") or 0)
+    ai_est = float((pricing.get("ai_msg_cost_estimate_ngn") or {}).get(kind) or 0)
+    multiplier = float((pricing.get("suggested_client_multiplier") or {}).get(kind) or 1)
+    hosting_cost = _hosting_cost_ngn(route_cfg.get("hosting_items") or [], vat_pct)
+    total_cost = hosting_cost + ai_est
+    gateway_fee = _gateway_fee(total, gw)
+    profit = total - total_cost - gateway_fee
+    return {
+        "route": "standard", "kind": kind, "domain": domain_norm, "tld": "." + domain_norm.split(".")[-1],
+        "own_domain": True,
+        "cost": {"domain": 0.0, "hosting": round(hosting_cost, 2), "ai_messages": round(ai_est, 2), "total": round(total_cost, 2)},
+        "price": {"domain": 0.0, "hosting": total, "service_fee": 0.0, "renewal_adjustment": 0.0, "total": round(total, 2)},
+        "gateway_fee": round(gateway_fee, 2), "profit": round(profit, 2),
+        "suggested_client_price": _round_nearest(total * multiplier, 5000),
+        "fixed_price": True, "below_floor": profit < floor, "live_within_hours": 24,
+    }
+
+
+def quote_renewal(db: Any, org_id: str, domain: str, route: str, own_domain: bool = False, settings: Optional[dict] = None) -> dict:
+    """Renewal quote for a registered domain, or for a client-owned one (hosting only)."""
+    if own_domain:
+        return quote_own_domain(db, org_id, domain, "renewal", settings=settings)
+    return quote(db, org_id, domain, route or "standard", "renewal", settings=settings)
+
+
 def quote_both_routes(
-    db: Any, org_id: str, domain: str, kind: Kind = "initial", settings: Optional[dict] = None
+    db: Any, org_id: str, domain: str, kind: Kind = "initial", settings: Optional[dict] = None, own_domain: bool = False
 ) -> dict:
     """
     Spec §11.2 — "the builder sees both routes side by side". Returns
@@ -332,6 +377,12 @@ def quote_both_routes(
     """
     settings = settings if settings is not None else get_settings(db, org_id)
     out: dict = {"standard": None, "express": None}
+    if own_domain:
+        try:
+            out["standard"] = quote_own_domain(db, org_id, domain, kind, settings=settings)
+        except PricingError as exc:
+            out["standard"] = {"error": str(exc)}
+        return out
     try:
         out["standard"] = quote(db, org_id, domain, "standard", kind, settings=settings)
     except PricingError as exc:

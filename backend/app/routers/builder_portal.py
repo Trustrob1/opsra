@@ -1020,7 +1020,7 @@ def check_domain(payload: DomainCheckRequest, builder=Depends(get_current_builde
 @router.post("/quotes")
 def get_quote(payload: QuoteRequest, builder=Depends(get_current_builder), db=Depends(get_supabase)):
     try:
-        result = pricing_service.quote_both_routes(db, builder["org_id"], payload.domain, payload.kind)
+        result = pricing_service.quote_both_routes(db, builder["org_id"], payload.domain, payload.kind, own_domain=payload.own_domain)
     except pricing_service.PricingError as exc:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": str(exc)})
     # SITE-DISCOUNT — codes apply to initial orders only; a bad code never breaks pricing.

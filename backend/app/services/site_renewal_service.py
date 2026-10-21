@@ -249,7 +249,7 @@ def get_or_create_renewal_link(db: Any, org_id: str, domain_row: dict) -> dict:
 
     settings = pricing_service.get_settings(db, org_id)
     route = domain_row.get("route") or "standard"
-    quoted = pricing_service.quote(db, org_id, domain, route, "renewal", settings=settings)   # never trusted from a caller
+    quoted = pricing_service.quote_renewal(db, org_id, domain, route, bool(domain_row.get("own_domain")), settings=settings)   # never trusted from a caller
     amount = quoted["price"]["total"]
 
     try:

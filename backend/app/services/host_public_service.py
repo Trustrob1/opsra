@@ -83,7 +83,14 @@ def pricing_table(db: Any) -> dict:
         except PublicHostError:
             continue
         rows.append({"tld": tld, "first_year": q["first_year"], "renewal": q["renewal"]})
-    out = {"currency": "NGN", "endings": rows, "includes": _includes(settings),
+    own = None
+    try:
+        a = pricing_service.quote_own_domain(db, org, "yourname.com", "initial", settings=settings)
+        b = pricing_service.quote_own_domain(db, org, "yourname.com", "renewal", settings=settings)
+        own = {"first_year": a["price"]["total"], "renewal": b["price"]["total"]}
+    except pricing_service.PricingError:
+        own = None          # not priced yet: the page simply leaves the own-domain card out
+    out = {"currency": "NGN", "endings": rows, "includes": _includes(settings), "own_domain": own,
            "setup_note": "The setup fee is charged once, in the first year." if any(r["first_year"]["setup"] > 0 for r in rows) else ""}
     _cache["table"] = (time.monotonic(), out)
     return out

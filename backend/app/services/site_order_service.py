@@ -69,6 +69,19 @@ _HOSTING_CHECKLIST = [
 ]
 
 
+# HOST-3b: a domain the client already owns elsewhere. Nothing to register or re-check; the site goes live once the
+# client's DNS points at Opsra (the Publish popup shows the address), so ownership is proved by the DNS itself.
+_OWN_DOMAIN_CHECKLIST = [
+    {"key": "publish_site", "label": "Click Publish to Cloudflare (client keeps their own DNS).", "done": False},
+    {"key": "send_dns", "label": "Send the builder the CNAME from the popup. The client adds it where they manage the domain.", "done": False},
+    {"key": "mark_live", "label": "Click Check status, then Mark live once both addresses show Live.", "done": False},
+]
+_OWN_DOMAIN_RENEWAL_CHECKLIST = [
+    {"key": "renew_hosting", "label": "Renew the hosting package. The domain stays with the client's registrar.", "done": False},
+    {"key": "confirm_site", "label": "Confirm the site still loads over https.", "done": False},
+]
+
+
 class SiteOrderError(Exception):
     """Base for checkout errors — routers/builder_portal.py maps to a 4xx response."""
 
@@ -139,7 +152,17 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload, fixed_amount: 
     settings = pricing_service.get_settings(db, org_id)
 
     # Money: the price is always re-derived here, never trusted from the client (spec §18).
-    quoted = pricing_service.quote(db, org_id, payload.domain, payload.route, "initial", settings=settings)
+    own_domain = bool(getattr(payload, "own_domain", False))
+    if own_domain:
+        if payload.route != "standard":
+            raise CheckoutBlocked("A domain you already own is hosted on the standard route.")
+        quoted = pricing_service.quote_own_domain(db, org_id, payload.domain, "initial", settings=settings)
+        taken = _one((db.table("site_domains").select("site_id").eq("org_id", org_id)
+                      .eq("domain", quoted["domain"]).limit(1).execute()).data)
+        if taken and taken.get("site_id") != site["id"]:
+            raise CheckoutBlocked("That domain is already hosted with Opsra under another site. Contact us if it is yours.")
+    else:
+        quoted = pricing_service.quote(db, org_id, payload.domain, payload.route, "initial", settings=settings)
     amount = quoted["price"]["total"]
 
     # SITE-DISCOUNT — re-validate the code here (never trust the quote the client saw).
@@ -187,7 +210,7 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload, fixed_amount: 
     except paystack_storefront_service.PaystackLinkError as exc:
         raise CheckoutBlocked(str(exc))
 
-    legal_owner = payload.legal_owner.model_dump(mode="json")
+    legal_owner = payload.legal_owner.model_dump(mode="json") if getattr(payload, "legal_owner", None) else None
     now = _now_iso()
     order_row = {
         "org_id": org_id,
@@ -197,7 +220,7 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload, fixed_amount: 
         "kind": "initial",
         "route": payload.route,
         "domain": quoted["domain"],
-        "backup_domain": payload.backup_domain.strip().lower(),
+        "backup_domain": ((payload.backup_domain or "").strip().lower() or None),
         "quote": quoted,
         "amount": amount,
         "cost_snapshot": quoted["cost"],
@@ -216,8 +239,9 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload, fixed_amount: 
 
     # Keep the site's own legal_owner in step — needed later for domain registration.
     try:
-        db.table("sites").update({"legal_owner": legal_owner, "updated_at": now}) \
-            .eq("id", site["id"]).eq("org_id", org_id).execute()
+        if legal_owner:
+            db.table("sites").update({"legal_owner": legal_owner, "updated_at": now}) \
+                .eq("id", site["id"]).eq("org_id", org_id).execute()
     except Exception as exc:
         logger.warning("create_checkout: site legal_owner update failed site=%s: %s", site["id"], exc)
 
@@ -558,11 +582,12 @@ def create_hosting_job(db: Any, org_id: str, order: dict) -> dict:
         # Renewals get 72h from payment (the order keeps its 24h clock for the KPI maths).
         base = _parse_iso(sla_due_at) or _now()
         sla_due_at = (base + timedelta(hours=48)).isoformat()
+    own_domain = bool((order.get("quote") or {}).get("own_domain"))
     if is_renewal:
         from app.services.site_renewal_service import RENEWAL_CHECKLIST
-        checklist = [dict(item) for item in RENEWAL_CHECKLIST]
+        checklist = [dict(item) for item in (_OWN_DOMAIN_RENEWAL_CHECKLIST if own_domain else RENEWAL_CHECKLIST)]
     else:
-        checklist = [dict(item) for item in _HOSTING_CHECKLIST]
+        checklist = [dict(item) for item in (_OWN_DOMAIN_CHECKLIST if own_domain else _HOSTING_CHECKLIST)]
     job_row = {
         "org_id": org_id,
         "order_id": order["id"],
@@ -591,8 +616,12 @@ def create_hosting_job(db: Any, org_id: str, order: dict) -> dict:
             "org_id": org_id,
             "title": (f"Renew hosting: {order.get('domain') or order['site_id']}" if is_renewal
                       else f"Deploy hosting: {order.get('domain') or order['site_id']}"),
-            "description": ("Renewal job — renew the domain and the hosting package, confirm the site loads, "
-                            "then click Mark renewed in Opsra." if is_renewal else
+            "description": (("Renewal job — renew the hosting package (the client's domain stays at their registrar), confirm the site loads, "
+                             "then click Mark renewed in Opsra." if own_domain else
+                             "Renewal job — renew the domain and the hosting package, confirm the site loads, "
+                             "then click Mark renewed in Opsra.") if is_renewal else
+                            "Own-domain hosting job — click Publish to Cloudflare, send the builder the CNAME, then Mark live in Opsra "
+                            "once the client's DNS points at us." if own_domain else
                             "Standard hosting job — re-check the domain, register it, click Publish to Cloudflare, "
                             "set the nameservers at QServers, then Mark live in Opsra."),
             "task_type": "hosting_job",

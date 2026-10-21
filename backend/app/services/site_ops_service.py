@@ -799,7 +799,8 @@ def _record_domain(db: Any, org_id: str, order: dict, domain: str, now: datetime
         domain_cost = hosting_cost = None
         try:
             from app.services import pricing_service
-            q = pricing_service.quote(db, org_id, domain, order.get("route") or "standard", "renewal")
+            q = pricing_service.quote_renewal(db, org_id, domain, order.get("route") or "standard",
+                                              bool((order.get("quote") or {}).get("own_domain")))
             domain_cost, hosting_cost = q["cost"]["domain"], q["cost"]["hosting"]
         except Exception as exc:
             logger.warning("site_ops: renewal cost lookup failed domain=%s: %s", domain, exc)
@@ -812,6 +813,8 @@ def _record_domain(db: Any, org_id: str, order: dict, domain: str, now: datetime
             "hosting_renews_on": renews, "hosting_cost_renewal": hosting_cost, "status": "active",
             "created_at": _iso(now), "updated_at": _iso(now),
         }
+        if (order.get("quote") or {}).get("own_domain"):
+            row["own_domain"] = True        # needs 2026_10_21_host_only_2.sql; only sent for own-domain orders
         return _one(db.table("site_domains").insert(row).execute().data) or row
     except Exception as exc:  # S14 — the site is already live; a missing register row is recoverable by hand
         logger.warning("site_ops: site_domains insert failed order=%s: %s", order.get("id"), exc)
@@ -866,7 +869,8 @@ def mark_renewed(db: Any, org_id: str, job_id: str, user_id: str, now: Optional[
     updates = {"renews_on": new_domain_date.isoformat(), "hosting_renews_on": new_hosting_date.isoformat(),
                "status": "active", "updated_at": ts}
     try:
-        q = pricing_service.quote(db, org_id, domain, order.get("route") or "standard", "renewal")
+        q = pricing_service.quote_renewal(db, org_id, domain, order.get("route") or "standard",
+                                          bool(domain_row.get("own_domain")) or bool((order.get("quote") or {}).get("own_domain")))
         updates["registrar_cost_renewal"] = q["cost"]["domain"]
         updates["hosting_cost_renewal"] = q["cost"]["hosting"]
     except Exception as exc:  # S14 — keep the old cost figures

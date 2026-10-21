@@ -98,3 +98,15 @@ class TestDomainCheck:
             svc.check(db(), "another.com", "9.9.9.9")
         assert e.value.status_code == 429
         assert svc.check(db(), "another.com", "8.8.8.8")["status"] == "available"
+
+
+class TestOwnDomainPrice:
+    def test_listed_when_priced_and_hosting_only(self):
+        import copy
+        p = copy.deepcopy(PRICING)
+        p["routes"]["standard"]["own_domain_totals_ngn"] = {"initial": 25500, "renewal": 31500}
+        t = svc.pricing_table(db(p))
+        assert t["own_domain"] == {"first_year": 25500.0, "renewal": 31500.0}
+
+    def test_left_out_when_not_priced(self):
+        assert svc.pricing_table(db())["own_domain"] is None

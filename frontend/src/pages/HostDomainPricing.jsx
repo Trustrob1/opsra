@@ -59,6 +59,7 @@ export function DomainChecker({ endings }) {
       if (r.status === "available") {
         try {
           window.localStorage.setItem("opsra_host_domain", r.domain);
+        window.localStorage.setItem("opsra_host_mode", "new");
         } catch {
           /* storage blocked */
         }
@@ -167,7 +168,7 @@ export function DomainChecker({ endings }) {
   );
 }
 
-export function PricingTable({ data, error }) {
+export function PricingTable({ data, error, onUseOwn }) {
   if (error) return <p className="sl-err">{error}</p>;
   if (!data) return <p className="sl-h-muted">Loading prices…</p>;
   if (!data.endings.length) return <p className="sl-h-muted">Prices are being updated. Please check back shortly.</p>;
@@ -239,6 +240,21 @@ export function PricingTable({ data, error }) {
               <li key={n}>{explain(n)}</li>
             ))}
           </ul>
+        </div>
+      )}
+      {data.own_domain && (
+        <div className="sl-h-own" id="own-domain">
+          <h3>Already own your domain?</h3>
+          <p>
+            Bought it at QServers or anywhere else? Skip the availability check. Hosting with SSL and DNS management
+            costs <b>{naira(data.own_domain.first_year)}</b> for the first year, then <b>{naira(data.own_domain.renewal)}</b> a year. You add one
+            DNS record where you manage the domain, and your site goes live when it points to us. Your registrar keeps renewing the domain.
+          </p>
+          {onUseOwn && (
+            <button type="button" className="sl-btn sl-light sl-h-outline" onClick={onUseOwn}>
+              I already own my domain
+            </button>
+          )}
         </div>
       )}
       <p className="sl-h-muted">

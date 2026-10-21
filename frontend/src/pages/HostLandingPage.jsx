@@ -24,10 +24,10 @@ const DESC =
   "Built your website somewhere else? Upload the finished files to Opsra, preview them, then put the site on your own domain with hosting that renews simply.";
 
 const STEPS = [
-  ["01", "Check your domain is free", "Pick the address you want and check it right here, before you do anything else. No account needed."],
+  ["01", "Sort out your domain", "Want a new address? Check it is free right here, no account needed. Already own one at QServers or elsewhere? Skip the check."],
   ["02", "Create your account", "Enter your name, email and WhatsApp number. No password: we send a one-time code or link."],
   ["03", "Drop in your files", "Upload a .zip (with index.html inside) or one .html file. We check it and show you a preview straight away."],
-  ["04", "Pay and go live", "Enter your domain, see the exact price, pay securely. Your site goes on that domain."],
+  ["04", "Pay and go live", "Enter your domain, see the exact price, pay securely. If you own the domain, add one DNS record and your site goes live on it."],
 ];
 
 const WHAT = [
@@ -53,6 +53,10 @@ const FAQ = [
   [
     "How much does it cost?",
     "The same hosting and domain pricing as any Opsra site, shown in the price table above: domain, hosting with SSL and DNS management, and a setup fee where one applies. You see the exact total for your own domain before you pay.",
+  ],
+  [
+    "I already bought my domain somewhere else. Do I still have to check it?",
+    "No. The availability check is only for a new domain. If you own yours, choose I already own my domain at checkout. You pay for hosting only, then add one DNS record where you manage the domain. Your site goes live once it points to us, and your registrar keeps renewing the domain.",
   ],
   [
     "Do you have discount codes?",
@@ -95,6 +99,16 @@ export default function HostLandingPage() {
       link.remove();
     };
   }, []);
+
+  // Owners of a domain skip the availability check; the portal's checkout opens on "I already own my domain".
+  function useOwnDomain() {
+    try {
+      window.localStorage.setItem("opsra_host_mode", "own");
+    } catch {
+      /* storage blocked: they can still pick the option at checkout */
+    }
+    goSignIn();
+  }
 
   function goSignIn() {
     window.setTimeout(() => {
@@ -167,7 +181,7 @@ export default function HostLandingPage() {
             </button>
 
             <p className="sl-h-callout">
-              <b>Before you upload:</b> make sure the domain you want is free. You can check it below, with no account.
+              <b>Want a new domain?</b> Check it is free below, with no account. <b>Already own one?</b> No check needed, you just point it to us.
             </p>
             <div className="sl-prompt-row" style={{ justifyContent: "center", marginTop: 22 }}>
               <a className="sl-btn sl-teal" href="#domain">
@@ -221,7 +235,7 @@ export default function HostLandingPage() {
               <h2>What it costs, line by line.</h2>
               <p>Domain, hosting, SSL and DNS in one price. Got a discount code? Use it at checkout. Nothing hidden.</p>
             </div>
-            <PricingTable data={pricing.data} error={pricing.error} />
+            <PricingTable data={pricing.data} error={pricing.error} onUseOwn={useOwnDomain} />
           </div>
         </section>
 

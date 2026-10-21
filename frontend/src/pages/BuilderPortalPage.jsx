@@ -965,6 +965,8 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
 
 function CheckoutView({ token, siteId, onBack, showToast }) {
   const [domain, setDomain] = useState('')
+  // HOST-3b: a domain the client already owns elsewhere. No availability check, no backup domain, no legal owner; hosting only.
+  const [ownDomain, setOwnDomain] = useState(() => { try { return window.localStorage.getItem('opsra_host_mode') === 'own' } catch { return false } })
   const [domainCheck, setDomainCheck] = useState(null)
   const [checkingDomain, setCheckingDomain] = useState(false)
   const [backupDomain, setBackupDomain] = useState('')
@@ -995,13 +997,13 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
     const d = domain.trim().toLowerCase()
     setQuoting(true)
     const t = setTimeout(() => {
-      Promise.all([getQuote(token, d, 'initial', appliedCode, siteId), getQuote(token, d, 'renewal')])
+      Promise.all([getQuote(token, d, 'initial', appliedCode, siteId, ownDomain), getQuote(token, d, 'renewal', undefined, undefined, ownDomain)])
         .then(([q, rq]) => { setQuote(q); setRenewalQuote(rq); setQuoteError(null); setCodeError(q?.discount_error || null) })
         .catch((e) => { setQuote(null); setRenewalQuote(null); setQuoteError(errorMessage(e, 'Could not price this domain.')) })
         .finally(() => setQuoting(false))
     }, 500)
     return () => clearTimeout(t)
-  }, [domain, token, appliedCode, siteId])
+  }, [domain, token, appliedCode, siteId, ownDomain])
 
   async function runCheck(value, setChecking, setResult) {
     if (!isDomainLike(value)) { showToast('Enter a full domain, e.g. business.com.ng', 'bad'); return }
@@ -1021,10 +1023,10 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
   const renewalStandard = renewalQuote?.standard && !renewalQuote.standard.error ? renewalQuote.standard : null
   const amountDue = standard ? (standard.amount_due ?? standard.price.total) : null
 
-  const domainOk = domainCheck?.domain === domain.trim().toLowerCase() && domainCheck?.status === 'available'  // .ng names come back available but unconfirmed — that is allowed
-  const backupOk = backupCheck?.domain === backupDomain.trim().toLowerCase() && backupCheck?.status === 'available'
-  const sameDomain = domain.trim() !== '' && domain.trim().toLowerCase() === backupDomain.trim().toLowerCase()
-  const detailsOk = fullName.trim() && email.trim() && phone.trim() && address.trim()
+  const domainOk = ownDomain ? isDomainLike(domain) : (domainCheck?.domain === domain.trim().toLowerCase() && domainCheck?.status === 'available')  // .ng names come back available but unconfirmed — that is allowed
+  const backupOk = ownDomain || (backupCheck?.domain === backupDomain.trim().toLowerCase() && backupCheck?.status === 'available')
+  const sameDomain = !ownDomain && domain.trim() !== '' && domain.trim().toLowerCase() === backupDomain.trim().toLowerCase()
+  const detailsOk = ownDomain || (fullName.trim() && email.trim() && phone.trim() && address.trim())
   const canSubmit = Boolean(domainOk && backupOk && !sameDomain && standard && detailsOk && acceptedTerms && !submitting)
 
   // Plain reasons the payment button is still off, shown next to it so it never just looks broken.
@@ -1032,13 +1034,15 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
   const backupChecked = backupCheck?.domain === backupDomain.trim().toLowerCase()
   const blockers = []
   if (!isDomainLike(domain)) blockers.push('Enter your domain.')
-  else if (!domainChecked) blockers.push('Press Check next to your main domain.')
-  else if (!domainOk) blockers.push('Your main domain is not available. Pick another name.')
-  if (!isDomainLike(backupDomain)) blockers.push('Enter a backup domain.')
-  else if (!backupChecked) blockers.push('Press Check next to your backup domain.')
-  else if (!backupOk) blockers.push('Your backup domain is not available. Pick another name.')
-  if (sameDomain) blockers.push('Use a different backup domain.')
-  if (!detailsOk) blockers.push('Fill in all the legal-owner details.')
+  else if (!ownDomain && !domainChecked) blockers.push('Press Check next to your main domain.')
+  else if (!ownDomain && !domainOk) blockers.push('Your main domain is not available. Pick another name.')
+  if (!ownDomain) {
+    if (!isDomainLike(backupDomain)) blockers.push('Enter a backup domain.')
+    else if (!backupChecked) blockers.push('Press Check next to your backup domain.')
+    else if (!backupOk) blockers.push('Your backup domain is not available. Pick another name.')
+    if (sameDomain) blockers.push('Use a different backup domain.')
+    if (!detailsOk) blockers.push('Fill in all the legal-owner details.')
+  }
   if (!acceptedTerms) blockers.push('Tick the box to accept the refund rule.')
 
   async function submit() {
@@ -1049,8 +1053,12 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
         site_id: siteId,
         route: 'standard',
         domain: domain.trim().toLowerCase(),
-        backup_domain: backupDomain.trim().toLowerCase(),
-        legal_owner: { full_name: fullName.trim(), email: email.trim(), phone: phone.trim(), address: address.trim() },
+        ...(ownDomain
+          ? { own_domain: true }
+          : {
+              backup_domain: backupDomain.trim().toLowerCase(),
+              legal_owner: { full_name: fullName.trim(), email: email.trim(), phone: phone.trim(), address: address.trim() },
+            }),
         accepted_terms: true,
         ...(standard?.discount && appliedCode ? { discount_code: appliedCode } : {}),
       })
@@ -1087,16 +1095,30 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
       <div className="bp-checkout-shell">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card>
-            <SectionTitle title="Domain" hint="Confirm the domain and a backup, in case the first is taken." />
+            <SectionTitle title="Domain" hint={ownDomain ? 'Hosting only. Your domain stays where you bought it.' : 'Confirm the domain and a backup, in case the first is taken.'} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <DomainField label="Domain" value={domain} onChange={(v) => { setDomain(v); setDomainCheck(null) }}
+              <Segmented value={ownDomain ? 'own' : 'new'} ariaLabel="Where is your domain?"
+                onChange={(v) => { setOwnDomain(v === 'own'); setQuote(null); setRenewalQuote(null) }}
+                options={[{ value: 'new', label: 'Get me a new domain' }, { value: 'own', label: 'I already own my domain' }]} />
+              {ownDomain && (
+                <>
+                  <Field label="Your domain">
+                    <input style={INPUT} placeholder="business.com" value={domain} onChange={(e) => setDomain(e.target.value)} />
+                  </Field>
+                  <Notice tone="info">
+                    No availability check is needed. After you pay, we send you a short DNS record to add where you manage the domain
+                    (QServers, GoDaddy, Namecheap or any other). Your site goes live when it points to us. Renewals cover hosting only; your registrar renews the domain.
+                  </Notice>
+                </>
+              )}
+              {!ownDomain && <DomainField label="Domain" value={domain} onChange={(v) => { setDomain(v); setDomainCheck(null) }}
                 checking={checkingDomain} result={domainCheck} needsCheck={isDomainLike(domain) && !domainChecked}
                 onCheck={() => runCheck(domain, setCheckingDomain, setDomainCheck)}
-                onPickAlt={(d) => { setDomain(d); setDomainCheck(null) }} />
-              <DomainField label="Backup domain" value={backupDomain} onChange={(v) => { setBackupDomain(v); setBackupCheck(null) }}
+                onPickAlt={(d) => { setDomain(d); setDomainCheck(null) }} />}
+              {!ownDomain && <DomainField label="Backup domain" value={backupDomain} onChange={(v) => { setBackupDomain(v); setBackupCheck(null) }}
                 checking={checkingBackup} result={backupCheck} needsCheck={isDomainLike(backupDomain) && !backupChecked}
                 onCheck={() => runCheck(backupDomain, setCheckingBackup, setBackupCheck)}
-                onPickAlt={(d) => { setBackupDomain(d); setBackupCheck(null) }} />
+                onPickAlt={(d) => { setBackupDomain(d); setBackupCheck(null) }} />}
               {sameDomain && <Notice tone="bad">The backup domain must be different from the main domain.</Notice>}
             </div>
           </Card>
@@ -1145,7 +1167,7 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
             {standard && <SummaryCard quote={standard} renewalTotal={renewalStandard?.price?.total} />}
           </div>
 
-          <Card>
+          {!ownDomain && <Card>
             <SectionTitle title="Client's legal-owner details" hint="Used only to register the domain — never shared beyond that." />
             <Grid2>
               <Field label="Full name"><input style={INPUT} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
@@ -1153,7 +1175,7 @@ function CheckoutView({ token, siteId, onBack, showToast }) {
               <Field label="Phone"><input style={INPUT} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
               <Field label="Address"><input style={INPUT} value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
             </Grid2>
-          </Card>
+          </Card>}
 
           <Card>
             <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
@@ -1245,7 +1267,9 @@ function SummaryCard({ quote, renewalTotal, docked, onSubmit, submitting, canSub
         <Badge tone="info">{quote.live_within_hours}h</Badge>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
-        <SummaryRow label={`Domain (${quote.tld})`} value={money(p.domain)} />
+        {quote.own_domain
+          ? <SummaryRow label={`Domain (${quote.domain})`} value="You already own it" />
+          : <SummaryRow label={`Domain (${quote.tld})`} value={money(p.domain)} />}
         {p.hosting > 0 && <SummaryRow label="Hosting bundle" value={money(p.hosting)} />}
         {p.service_fee > 0 && <SummaryRow label="Service fee" value={money(p.service_fee)} />}
         {quote.discount && <SummaryRow label={`Code ${quote.discount.code}`} value={`−${money(quote.discount.discount)}`} />}
