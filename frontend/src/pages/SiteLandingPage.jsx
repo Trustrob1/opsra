@@ -257,7 +257,7 @@ function SignInForm({ inputRef }) {
   );
 }
 
-function AuthPanel({ inputRef }) {
+export function AuthPanel({ inputRef }) {
   const [mode, setMode] = useState("signin"); // signin | signup
   return (
     <>

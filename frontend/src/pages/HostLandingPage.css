@@ -1,0 +1,53 @@
+/* frontend/src/pages/HostLandingPage.css — HOST-1. Extends SiteLandingPage.css; every class is prefixed sl-h- and scoped under .sl. */
+.sl .sl-h-drop{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;max-width:640px;margin:34px auto 0;padding:34px 20px;background:#fff;border:2px dashed #BFD9DD;border-radius:22px;cursor:pointer;color:var(--ink);transition:border-color .25s,background .25s,transform .25s var(--ease)}
+.sl .sl-h-drop:hover{border-color:var(--teal);background:#F4FBFC;transform:translateY(-1px)}
+.sl .sl-h-drop svg{width:38px;height:38px;color:var(--teal)}
+.sl .sl-h-drop b{font-size:20px;font-weight:800;letter-spacing:-.02em}
+.sl .sl-h-drop span{font-size:14px;color:var(--mute)}
+.sl .sl-h-outline{border:1px solid var(--line)}
+.sl .sl-h-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px}
+.sl .sl-h-steps li{background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px}
+.sl .sl-h-steps h3{margin-top:8px;font-size:22px;letter-spacing:-.02em}
+.sl .sl-h-steps p{margin-top:8px;color:var(--mute);font-size:16px}
+.sl .sl-h-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:16px}
+.sl .sl-h-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px}
+.sl .sl-h-card h3{font-size:19px;letter-spacing:-.02em}
+.sl .sl-h-card p{margin-top:8px;color:var(--mute);font-size:15.5px}
+@media (max-width:760px){
+  .sl .sl-nav nav{display:none}
+}
+
+/* HOST-2: domain checker, pricing table, callout */
+.sl .sl-h-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.sl .sl-h-callout{margin:26px auto 0;max-width:640px;background:#FFF7E0;border:1px solid #F0DDA0;border-radius:14px;padding:12px 18px;font-size:15.5px;color:#5C4400}
+.sl .sl-h-check{max-width:720px;margin:0 auto}
+.sl .sl-h-checkrow{display:flex;gap:10px;flex-wrap:wrap}
+.sl .sl-h-checkrow input{flex:1 1 220px;min-height:52px;padding:0 16px;border:1px solid #CFCBC2;border-radius:14px;font:inherit;font-size:17px;background:#fff;color:var(--ink)}
+.sl .sl-h-checkrow select{min-height:52px;padding:0 12px;border:1px solid #CFCBC2;border-radius:14px;font:inherit;font-size:17px;background:#fff;color:var(--ink)}
+.sl .sl-h-checkrow .sl-btn{flex:1 1 100%}
+@media (min-width:640px){.sl .sl-h-checkrow .sl-btn{flex:0 0 auto}}
+.sl .sl-h-res{margin-top:16px;border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:6px;font-size:16px;border:1px solid var(--line);background:#fff}
+.sl .sl-h-res.sl-h-available{background:#EAF7EF;border-color:#B7E0C6}
+.sl .sl-h-res.sl-h-taken{background:#FDECEA;border-color:#F2C2BC}
+.sl .sl-h-res.sl-h-unknown{background:#FFF7E0;border-color:#F0DDA0}
+.sl .sl-h-resprice{font-weight:700}
+.sl .sl-h-resnote{font-size:14px;color:var(--mute)}
+.sl .sl-h-alts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sl .sl-h-alt{cursor:pointer;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid #DAD6CD;background:#fff;font-weight:600;font-size:14px}
+.sl .sl-h-alt:hover{border-color:var(--teal);color:var(--teal-deep)}
+.sl .sl-pricing{padding:clamp(40px,6vw,72px) 0}
+.sl .sl-h-tablewrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:18px}
+.sl .sl-h-table{width:100%;border-collapse:collapse;min-width:520px;font-size:16px}
+.sl .sl-h-table th,.sl .sl-h-table td{padding:14px 18px;text-align:right;border-bottom:1px solid #EFEDE8}
+.sl .sl-h-table thead th{font-family:var(--mono);font-size:13px;letter-spacing:.06em;color:var(--teal-deep);background:#FBFAF8}
+.sl .sl-h-table th[scope=row],.sl .sl-h-table thead th:first-child{text-align:left}
+.sl .sl-h-table th[scope=row]{font-weight:600}
+.sl .sl-h-table small{display:block;font-weight:400;font-size:13px;color:var(--mute)}
+.sl .sl-h-table tr:last-child th,.sl .sl-h-table tr:last-child td{border-bottom:0}
+.sl .sl-h-total th,.sl .sl-h-total td{font-weight:800;background:#F0FAFB}
+.sl .sl-h-incl{margin-top:22px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px 24px}
+.sl .sl-h-incl h3{font-size:19px;letter-spacing:-.02em}
+.sl .sl-h-incl ul{margin-top:10px;display:grid;gap:8px}
+.sl .sl-h-incl li{position:relative;padding-left:26px;font-size:16px;color:var(--ink2)}
+.sl .sl-h-incl li::before{content:"✓";position:absolute;left:0;color:var(--teal);font-weight:800}
+.sl .sl-h-muted{margin-top:14px;font-size:14.5px;color:var(--mute);text-align:center}

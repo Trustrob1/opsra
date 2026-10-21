@@ -95,9 +95,10 @@ def _settings(db: Any, org_id: str) -> dict:
 def count_sites(db: Any, org_id: str, builder_id: str) -> int:
     # SITE-OPTIONS: a site that is only one of several design options (option_offered) does not use a free-site slot;
     # it counts once the client picks it (option_offered turns false).
-    rows = (db.table("sites").select("id").eq("org_id", org_id).eq("builder_id", builder_id)
+    # HOST-1: a site uploaded from outside Opsra (tier 'imported') is hosted, not built here, so it uses no free-site slot.
+    rows = (db.table("sites").select("id, tier").eq("org_id", org_id).eq("builder_id", builder_id)
             .is_("deleted_at", "null").neq("status", "cancelled").neq("option_offered", True).execute()).data or []
-    return len(rows)
+    return len([r for r in rows if (r.get("tier") or "standard") != "imported"])
 
 
 def view(db: Any, org_id: str, builder: dict, now: Optional[datetime] = None,

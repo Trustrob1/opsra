@@ -245,3 +245,30 @@ export const addShareVersion = (token, id, designId, label) =>
 export const removeShareVersion = (token, id, itemId) => unwrap(axios.delete(`${BASE}/version-shares/${id}/versions/${itemId}`, authed(token)))
 export const chooseShareVersion = (token, id, itemId) => unwrap(axios.post(`${BASE}/version-shares/${id}/choose`, { item_id: itemId }, authed(token)))
 export const closeVersionShare = (token, id) => unwrap(axios.post(`${BASE}/version-shares/${id}/close`, null, authed(token)))
+
+// ── HOST-1: sites made outside Opsra ("Host with Opsra") ─────────────────────
+export const hostConfig = (token) => unwrap(axios.get(`${BASE}/host/config`, authed(token)))
+export const hostListSites = (token) => unwrap(axios.get(`${BASE}/host/sites`, authed(token)))
+export const hostSiteReport = (token, siteId) => unwrap(axios.get(`${BASE}/host/sites/${siteId}/report`, authed(token)))
+/** The page as HTML for a sandboxed iframe (srcDoc). */
+export const hostSitePreview = (token, siteId, designId) =>
+  unwrap(axios.get(`${BASE}/host/sites/${siteId}/preview`, { ...authed(token), params: designId ? { design_id: designId } : {} }))
+/** Upload a .zip or .html. A new site is made from `name`, or pass `siteId` to give an existing site new files.
+ * Content-Type is left to the browser (it must add the multipart boundary). */
+export const hostUploadSite = (token, file, { name, siteId, dryRun, onProgress } = {}) => {
+  const form = new FormData()
+  form.append('file', file)
+  if (name) form.append('name', name)
+  if (siteId) form.append('site_id', siteId)
+  if (dryRun) form.append('dry_run', 'true')
+  return unwrap(axios.post(`${BASE}/host/upload`, form, {
+    headers: authed(token).headers,
+    timeout: 5 * 60 * 1000,
+    onUploadProgress: onProgress ? (e) => onProgress(e.total ? Math.round((e.loaded / e.total) * 100) : null) : undefined,
+  }))
+}
+
+// ── HOST-2: public (no sign-in) price table and domain check for the /host page ─────────
+export const hostPublicPricing = () => unwrap(axios.get(`${BASE.replace(/\/builder$/, '')}/public/host/pricing`))
+export const hostPublicDomainCheck = (domain) =>
+  unwrap(axios.get(`${BASE.replace(/\/builder$/, '')}/public/host/domain-check`, { params: { domain } }))

@@ -55,6 +55,7 @@ import PremiumOfferCard from '../modules/sites/PremiumOfferCard'
 import BuilderPlansCard from '../modules/sites/BuilderPlansCard'
 import NewSiteModal from '../modules/sites/NewSiteModal'
 import BuilderOptionsView from '../modules/sites/BuilderOptionsView'   // SITE-OPTIONS OPT-2
+import HostSitesView from '../modules/sites/HostSitesView'             // HOST-1
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -64,9 +65,10 @@ export default function BuilderPortalPage() {
   const hasCode = !!new URLSearchParams(window.location.search).get('t')
   const [stage, setStage] = useState(hasCode ? 'confirm' : 'error')   // confirm | exchanging | error | app
   const [error, setError] = useState(hasCode ? '' : 'This link is missing its access code. Please open the exact link your team sent you.')
-  const [view, setView] = useState('mysites')        // mysites | options | editor | checkout | account
+  const [view, setView] = useState('mysites')        // mysites | host | options | editor | checkout | account
   const [selectedSiteId, setSelectedSiteId] = useState(null)
   const [checkoutFromOptions, setCheckoutFromOptions] = useState(false)   // OPT-2: where Back goes from checkout
+  const [checkoutFromHost, setCheckoutFromHost] = useState(false)         // HOST-1: Back returns to Host a site
   const [waDismissed, setWaDismissed] = useState(false)
   const [toast, showToast] = useToast()
 
@@ -80,6 +82,10 @@ export default function BuilderPortalPage() {
       .then((data) => {
         setSession({ token: data.access_token, builder: data.builder })
         setStage('app')
+        // HOST-1: people who arrived from the /host page open straight on "Host a site". The flag is not a secret.
+        try {
+          if (window.localStorage.getItem('opsra_entry') === 'host') { setView('host'); window.localStorage.removeItem('opsra_entry') }
+        } catch { /* storage blocked: they land on My sites, which has the same tab */ }
         window.history.replaceState(null, '', window.location.pathname)
         // SITE-WEB-2: the full account (incl. whether they have messaged our WhatsApp yet). Never blocks sign-in.
         getMyAccount(data.access_token)
@@ -143,16 +149,21 @@ export default function BuilderPortalPage() {
 
         {stage === 'app' && view === 'editor' && selectedSiteId && (
           <EditorView token={session.token} siteId={selectedSiteId} onBack={() => setView('mysites')}
-            onCheckout={() => { setCheckoutFromOptions(false); setView('checkout') }} showToast={showToast} />
+            onCheckout={() => { setCheckoutFromOptions(false); setCheckoutFromHost(false); setView('checkout') }} showToast={showToast} />
+        )}
+
+        {stage === 'app' && view === 'host' && (
+          <HostSitesView token={session.token} showToast={showToast}
+            onGoLive={(id) => { setSelectedSiteId(id); setCheckoutFromOptions(false); setCheckoutFromHost(true); setView('checkout') }} />
         )}
 
         {stage === 'app' && view === 'checkout' && selectedSiteId && (
-          <CheckoutView token={session.token} siteId={selectedSiteId} onBack={() => setView(checkoutFromOptions ? 'options' : 'editor')} showToast={showToast} />
+          <CheckoutView token={session.token} siteId={selectedSiteId} onBack={() => setView(checkoutFromHost ? 'host' : checkoutFromOptions ? 'options' : 'editor')} showToast={showToast} />
         )}
 
         {stage === 'app' && view === 'options' && (
           <BuilderOptionsView token={session.token} showToast={showToast}
-            onPayLink={(siteId) => { setSelectedSiteId(siteId); setCheckoutFromOptions(true); setView('checkout') }} />
+            onPayLink={(siteId) => { setSelectedSiteId(siteId); setCheckoutFromOptions(true); setCheckoutFromHost(false); setView('checkout') }} />
         )}
 
         {stage === 'app' && view === 'account' && (
@@ -176,6 +187,8 @@ function Header({ builder, view, setView, onBack, onLogOut, showNav }) {
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <button type="button" onClick={() => { onBack(); setView('mysites') }}
             style={navBtn(view === 'mysites')}>My sites</button>
+          <button type="button" onClick={() => { onBack(); setView('host') }}
+            style={navBtn(view === 'host')}>Host a site</button>
           <button type="button" onClick={() => { onBack(); setView('options') }}
             style={navBtn(view === 'options')}>Design options</button>
           <button type="button" onClick={() => setView('account')} style={navBtn(view === 'account')}>Account</button>

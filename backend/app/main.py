@@ -210,6 +210,8 @@ from app.routers import sites as sites_router                      # SITE-1A
 from app.routers import public_sites as public_sites_router        # SITE-1A — GET /s/{slug}
 from app.routers import public_forms as public_forms_router        # SITE-1B — /api/v1/forms/{token}
 from app.routers import builder_portal as builder_portal_router    # SITE-2B — /api/v1/builder/*
+from app.routers import host_portal as host_portal_router              # HOST-1 — /api/v1/builder/host/*
+from app.routers import public_host as public_host_router              # HOST-2 — /api/v1/public/host/*
 from app.routers import site_partners as site_partners_router        # PARTNER-1A — /api/v1/partners/* and /api/v1/partner-links/*
 from app.routers import partner_portal as partner_portal_router          # PARTNER-1B — /api/v1/partner-portal/*
 from app.routers import site_giveaways as site_giveaways_router          # GIVEAWAY-1 — /api/v1/giveaways/*
@@ -264,6 +266,8 @@ app.include_router(sites_router.router,          prefix="/api/v1", dependencies=
 app.include_router(public_sites_router.router,   prefix="",        tags=["public_sites"])      # SITE-1A — GET /s/{slug}
 app.include_router(public_forms_router.router,   prefix="/api/v1", tags=["public_forms"])      # SITE-1B — /forms/{token}
 app.include_router(builder_portal_router.router, prefix="/api/v1/builder", tags=["builder_portal"])  # SITE-2B
+app.include_router(host_portal_router.router,   prefix="/api/v1/builder", tags=["host_portal"])     # HOST-1
+app.include_router(public_host_router.router,   prefix="/api/v1",         tags=["public_host"])     # HOST-2
 app.include_router(site_partners_router.public_router, prefix="/api/v1", tags=["partner_links"])   # PARTNER-1A — public
 app.include_router(site_partners_router.router, prefix="/api/v1/partners", dependencies=[Depends(platform_only)], tags=["partners"])         # PARTNER-1A — staff
 app.include_router(partner_portal_router.router, prefix="/api/v1/partner-portal", tags=["partner_portal"])   # PARTNER-1B
