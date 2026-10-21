@@ -244,6 +244,9 @@ export function PricingTable({ data, error }) {
       <p className="sl-h-muted">
         Prices are in naira and are the same ones you’ll see at checkout. The exact total for your own domain shows before you pay.
       </p>
+      <p className="sl-h-code" id="discount">
+        <strong>Have a discount code?</strong> Enter it on the checkout screen, after you have seen your preview and before you pay. The saving shows straight away. Codes apply to the first-year payment, not to renewals.
+      </p>
     </>
   );
 }

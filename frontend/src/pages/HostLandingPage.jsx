@@ -52,7 +52,11 @@ const FAQ = [
   ],
   [
     "How much does it cost?",
-    "The same hosting and domain pricing as any Opsra site, shown in the price table above: domain, hosting with SSL and DNS, and a one-time setup fee. You see the exact total for your own domain before you pay.",
+    "The same hosting and domain pricing as any Opsra site, shown in the price table above: domain, hosting with SSL and DNS management, and a setup fee where one applies. You see the exact total for your own domain before you pay.",
+  ],
+  [
+    "Do you have discount codes?",
+    "Yes. If you have a code, type it into the Discount code box on the checkout screen, after your preview is ready and before you pay. The new total shows at once. A code takes money off your first payment and does not apply to renewals.",
   ],
   [
     "Can I change the site later?",
@@ -215,7 +219,7 @@ export default function HostLandingPage() {
             <div className="sl-head">
               <span className="sl-label">Pricing</span>
               <h2>What it costs, line by line.</h2>
-              <p>Domain, hosting with SSL and DNS, and a one-time setup fee. Nothing hidden.</p>
+              <p>Domain, hosting, SSL and DNS in one price. Got a discount code? Use it at checkout. Nothing hidden.</p>
             </div>
             <PricingTable data={pricing.data} error={pricing.error} />
           </div>

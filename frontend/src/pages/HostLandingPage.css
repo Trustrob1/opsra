@@ -51,3 +51,4 @@
 .sl .sl-h-incl li{position:relative;padding-left:26px;font-size:16px;color:var(--ink2)}
 .sl .sl-h-incl li::before{content:"✓";position:absolute;left:0;color:var(--teal);font-weight:800}
 .sl .sl-h-muted{margin-top:14px;font-size:14.5px;color:var(--mute);text-align:center}
+.sl .sl-h-code{margin:14px auto 0;max-width:620px;padding:12px 16px;border:1px dashed #BFD9DD;border-radius:8px;font-size:14.5px;color:var(--ink);text-align:center}
