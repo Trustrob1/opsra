@@ -148,6 +148,16 @@ def _extract_tld(domain: str, domains_cfg: dict) -> str:
     return "." + parts[-1] if parts else domain
 
 
+def _fixed_total(route_cfg: dict, tld: str, kind: str) -> Optional[float]:
+    """All-in total set by hand for one ending, or None. Bad or non-positive values are ignored (S14)."""
+    try:
+        v = ((route_cfg.get("fixed_totals_ngn") or {}).get(tld) or {}).get(kind)
+        v = float(v) if v is not None else None
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return v if v and v > 0 else None
+
+
 def _hosting_cost_ngn(hosting_items: list[dict], vat_pct: float) -> float:
     total = 0.0
     for item in hosting_items or []:
@@ -269,6 +279,17 @@ def quote(
             renewal_adjustment = _solve_extra_for_floor(base_price, total_cost, floor, gw, round_to)
 
     price = base_price + service_fee + renewal_adjustment
+
+    # Fixed all-in total for this ending (route.fixed_totals_ngn[tld][kind]). The domain line keeps its computed price and the
+    # hosting bundle carries the rest, so there is no setup fee or adjustment line. Profit is still reported so a total set
+    # below the profit floor is visible to staff (see `below_floor`).
+    fixed = _fixed_total(route_cfg, tld, kind)
+    if fixed is not None:
+        domain_price = min(domain_price, fixed)
+        hosting_price = fixed - domain_price
+        service_fee = 0.0
+        renewal_adjustment = 0.0
+        price = fixed
     gateway_fee = _gateway_fee(price, gw)
     profit = price - total_cost - gateway_fee
     suggested_client_price = _round_nearest(price * multiplier, 5000)
@@ -294,6 +315,8 @@ def quote(
         "gateway_fee": round(gateway_fee, 2),
         "profit": round(profit, 2),
         "suggested_client_price": suggested_client_price,
+        "fixed_price": fixed is not None,
+        "below_floor": profit < floor,
         "live_within_hours": 24 if route == "standard" else (24 if settings.get("approval_required") else 0),
     }
 

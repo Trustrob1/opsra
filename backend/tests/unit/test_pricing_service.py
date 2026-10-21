@@ -190,3 +190,31 @@ def test_quote_both_routes_includes_express_when_enabled(settings):
     both = ps.quote_both_routes(db=None, org_id="org1", domain="x.com.ng", kind="initial", settings=settings)
     assert both["express"] is not None
     assert "error" not in both["express"]
+
+
+def _fixed(settings):
+    settings["pricing"]["routes"]["standard"]["fixed_totals_ngn"] = {
+        ".com.ng": {"initial": 34000, "renewal": 40000},
+        ".com": {"initial": 42000, "renewal": 47000},
+        ".ng": {"initial": 48000, "renewal": 55000},
+    }
+    return settings
+
+
+@pytest.mark.parametrize("domain,initial,renewal", [
+    ("adaeze.com.ng", 34000, 40000), ("adaeze.com", 42000, 47000), ("adaeze.ng", 48000, 55000)])
+def test_fixed_totals_set_the_all_in_price(settings, domain, initial, renewal):
+    s = _fixed(settings)
+    a = ps.quote(None, "o", domain, "standard", "initial", settings=s)
+    b = ps.quote(None, "o", domain, "standard", "renewal", settings=s)
+    assert a["price"]["total"] == initial and b["price"]["total"] == renewal
+    for q in (a, b):
+        p = q["price"]
+        assert p["service_fee"] == 0 and p["renewal_adjustment"] == 0 and q["fixed_price"] is True
+        assert p["domain"] + p["hosting"] == p["total"] and p["hosting"] >= 0
+
+
+def test_bad_fixed_total_is_ignored(settings):
+    settings["pricing"]["routes"]["standard"]["fixed_totals_ngn"] = {".com.ng": {"initial": "abc", "renewal": -5}}
+    q = ps.quote(None, "o", "adaeze.com.ng", "standard", "initial", settings=settings)
+    assert q["fixed_price"] is False
