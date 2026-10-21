@@ -169,6 +169,7 @@ _REQUEST_LINK_PER_IP_HOUR = 10
 _REQUEST_LINK_PER_PHONE_HOUR = 3
 _request_link_ip_hits: dict[str, list[float]] = defaultdict(list)
 _request_link_phone_hits: dict[str, list[float]] = defaultdict(list)
+_login_verify_hits: dict[str, list[float]] = defaultdict(list)
 
 
 @router.post("/auth/request-link")
@@ -176,6 +177,17 @@ def request_login_link(payload: dict, request: Request, background_tasks: Backgr
     """Public landing-page sign-in. The reply is the same whether or not the number is a
     registered builder; the link goes only to the builder's own WhatsApp/email (never the browser)."""
     from app.services import builder_login_service
+    email = builder_login_service.clean_email(str((payload or {}).get("email") or ""))
+    if email:                                   # LOGIN-1: emailed code and link (the default way in)
+        ip = _client_ip(request)
+        if (_rate_limited(_request_link_ip_hits, ip, _REQUEST_LINK_PER_IP_HOUR, 3600.0)
+                or _rate_limited(_request_link_phone_hits, email, _REQUEST_LINK_PER_PHONE_HOUR, 3600.0)):
+            raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many requests — please try again in an hour."})
+        background_tasks.add_task(builder_login_service.send_login_code, email)
+        return ok(data={"sent": True, "via": "email"},
+                  message="If that email is registered, a sign-in code is on its way.")
+    if str((payload or {}).get("email") or "").strip():
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Enter the email you registered with."})
     variants = builder_login_service.phone_variants(str((payload or {}).get("phone") or ""))
     if not variants:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Enter the WhatsApp number you registered with."})
@@ -188,6 +200,24 @@ def request_login_link(payload: dict, request: Request, background_tasks: Backgr
     background_tasks.add_task(builder_login_service.send_login_link, variants[1])
     return ok(data={"sent": True},
               message="If that number is registered, a sign-in link is on its way to your WhatsApp and email.")
+
+
+@router.post("/auth/login/verify")
+def login_verify(payload: dict, request: Request, db=Depends(get_supabase)):
+    """Public. A correct emailed code returns a single-use portal sign-in token; the page opens /b/login?t=<token>,
+    exactly like the sign-up code and the WhatsApp link."""
+    from app.services import builder_login_service
+    ip = _client_ip(request)
+    payload = payload or {}
+    email = builder_login_service.clean_email(str(payload.get("email") or ""))
+    if _rate_limited(_login_verify_hits, ip, 30, 3600.0) or (email and _rate_limited(_login_verify_hits, "e:" + email, 15, 3600.0)):
+        raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many attempts. Please try again in an hour."})
+    try:
+        builder = builder_login_service.verify_login_code(db, payload.get("email"), payload.get("code"))
+        token = builder_signup_service.mint_login_token(db, builder)
+    except builder_login_service.LoginCodeError as exc:
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": str(exc)})
+    return ok(data={"token": token, "builder": {"id": builder["id"], "full_name": builder.get("full_name")}}, message="Signed in")
 
 
 # ─────────────── Web sign-up (SITE-WEB-1): emailed code, then straight into the portal ───────────────

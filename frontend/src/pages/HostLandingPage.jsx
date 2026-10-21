@@ -276,8 +276,8 @@ export default function HostLandingPage() {
               <span className="sl-label">Ready when you are</span>
               <h2 id="hsih">Sign in and upload your site.</h2>
               <p className="sl-sub">
-                New here? Create an account in a minute. Already have one? Sign in with your WhatsApp number and we send
-                you a link. You’ll land on the upload screen.
+                New here? Create an account in a minute. Already have one? Sign in with your email and we send you a code,
+                or use your WhatsApp number instead. You’ll land on the upload screen.
               </p>
             </div>
             <div className="sl-box-in" id="signin">

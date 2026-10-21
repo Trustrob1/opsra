@@ -474,12 +474,22 @@ class TestDomainCheckAndQuotes:
         fake_quote = {"route": "standard", "price": {"total": 79500}}
         monkeypatch.setattr(
             builder_portal.pricing_service, "quote_both_routes",
-            lambda db, org_id, domain, kind="initial": {"standard": fake_quote, "express": None},
+            lambda db, org_id, domain, kind="initial", own_domain=False: {"standard": fake_quote, "express": None},
         )
         resp = authed_client.post("/api/v1/builder/quotes", json={"domain": "adaezastyles.com.ng"})
         assert resp.status_code == 200
         assert resp.json()["data"]["standard"]["price"]["total"] == 79500
         assert resp.json()["data"]["express"] is None
+
+    def test_quotes_passes_own_domain_through(self, authed_client, monkeypatch):
+        app.dependency_overrides[get_supabase] = lambda: _db_mock()
+        seen = {}
+        monkeypatch.setattr(
+            builder_portal.pricing_service, "quote_both_routes",
+            lambda db, org_id, domain, kind="initial", own_domain=False: seen.update(own=own_domain) or {"standard": {"price": {"total": 25500}}, "express": None},
+        )
+        resp = authed_client.post("/api/v1/builder/quotes", json={"domain": "brand.com", "own_domain": True})
+        assert resp.status_code == 200 and seen["own"] is True
 
     def test_quotes_unsupported_domain_422(self, authed_client, monkeypatch):
         app.dependency_overrides[get_supabase] = lambda: _db_mock()

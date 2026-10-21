@@ -25,7 +25,7 @@
  * WhatsApp number) so "Start building" opens WhatsApp. Unset, it scrolls to the sign-in box.
  */
 import { useEffect, useId, useRef, useState } from "react";
-import { requestBuilderLink, errorMessage, whatsappLink } from "../services/builder_portal.service";
+import { requestBuilderLink, requestBuilderEmailCode, verifyBuilderLoginCode, errorMessage, whatsappLink } from "../services/builder_portal.service";
 import SiteSignUpForm from "./SiteSignUpForm";
 import "./SiteLandingPage.css";
 
@@ -165,7 +165,135 @@ const ARROW = (
   </svg>
 );
 
+/* LOGIN-1: the default way in. An emailed 6-digit code (the same email also holds a one-click link). */
+function EmailSignInForm({ inputRef }) {
+  const uid = useId();
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [stage, setStage] = useState("idle"); // idle | sending | code | verifying
+  const [error, setError] = useState("");
+  const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+
+  async function sendCode(e) {
+    if (e) e.preventDefault();
+    if (!validEmail) {
+      setError("Enter the email you registered with, for example you@example.com.");
+      return;
+    }
+    setStage("sending");
+    setError("");
+    try {
+      await requestBuilderEmailCode(email.trim().toLowerCase());
+      setStage("code");
+    } catch (err) {
+      setStage("idle");
+      setError(errorMessage(err, "We couldn’t send that just now. Please try again in a moment."));
+    }
+  }
+
+  async function submitCode(e) {
+    e.preventDefault();
+    const digits = code.replace(/\D/g, "");
+    if (digits.length !== 6) {
+      setError("Enter the 6-digit code from your email.");
+      return;
+    }
+    setStage("verifying");
+    setError("");
+    try {
+      const res = await verifyBuilderLoginCode(email.trim().toLowerCase(), digits);
+      window.location.assign(`/b/login?t=${encodeURIComponent(res.token)}`);
+    } catch (err) {
+      setStage("code");
+      setError(errorMessage(err, "That didn’t work. Check the code and try again."));
+    }
+  }
+
+  if (stage === "code" || stage === "verifying") {
+    return (
+      <form className="sl-sform" onSubmit={submitCode} noValidate>
+        <label htmlFor={`${uid}-code`}>Enter your code</label>
+        <input
+          id={`${uid}-code`}
+          className="sl-code"
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={7}
+          placeholder="000000"
+          value={code}
+          autoFocus
+          onChange={(e) => {
+            setCode(e.target.value);
+            setError("");
+          }}
+        />
+        <p className="sl-hint">
+          If {email.trim()} is registered, a 6-digit code is on its way. It works once and lasts 10 minutes. Check your spam
+          folder. The same email also has a link you can open instead.
+        </p>
+        <div aria-live="polite">
+          <p className="sl-err">{error}</p>
+        </div>
+        <button className="sl-btn sl-teal" type="submit" disabled={stage === "verifying"}>
+          <span>{stage === "verifying" ? "Checking…" : "Sign in"}</span>
+          {ARROW}
+        </button>
+        <button type="button" className="sl-linkbtn" onClick={() => { setCode(""); sendCode(); }}>
+          Send a new code
+        </button>
+        <button type="button" className="sl-linkbtn" onClick={() => { setStage("idle"); setCode(""); setError(""); }}>
+          Use a different email
+        </button>
+      </form>
+    );
+  }
+  return (
+    <form className="sl-sform" onSubmit={sendCode} noValidate>
+      <label htmlFor={`${uid}-email`}>Email</label>
+      <input
+        id={`${uid}-email`}
+        ref={inputRef}
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        placeholder="you@example.com"
+        value={email}
+        onChange={(e) => {
+          setEmail(e.target.value);
+          setError("");
+        }}
+      />
+      <p className="sl-hint">We’ll email you a 6-digit code. No password needed.</p>
+      <div aria-live="polite">
+        <p className="sl-err">{error}</p>
+      </div>
+      <button className="sl-btn sl-teal" type="submit" disabled={stage === "sending"}>
+        <span>{stage === "sending" ? "Sending…" : "Email me a code"}</span>
+        {ARROW}
+      </button>
+    </form>
+  );
+}
+
 function SignInForm({ inputRef }) {
+  const [method, setMethod] = useState("email"); // email (default) | whatsapp
+  return (
+    <>
+      <div className="sl-methods" role="group" aria-label="How do you want to sign in?">
+        <button type="button" aria-pressed={method === "email"} onClick={() => setMethod("email")}>
+          Email
+        </button>
+        <button type="button" aria-pressed={method === "whatsapp"} onClick={() => setMethod("whatsapp")}>
+          WhatsApp
+        </button>
+      </div>
+      {method === "email" ? <EmailSignInForm inputRef={inputRef} /> : <PhoneSignInForm inputRef={inputRef} />}
+    </>
+  );
+}
+
+function PhoneSignInForm({ inputRef }) {
   const uid = useId();
   const [phone, setPhone] = useState("");
   const [touched, setTouched] = useState(false);

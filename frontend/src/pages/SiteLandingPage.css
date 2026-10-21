@@ -262,3 +262,6 @@
 .sl .sl-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 .sl .sl-sform input.sl-code{letter-spacing:.4em;text-align:center;font-size:24px;font-weight:700}
 .sl .sl-sform .sl-linkbtn{align-self:flex-start;cursor:pointer;background:none;border:0;padding:8px 0;font:inherit;font-weight:700;color:var(--teal-deep);text-decoration:underline}
+.sl .sl-methods{display:flex;gap:6px;margin:6px 0 2px;align-self:flex-start}
+.sl .sl-methods button{min-height:36px;padding:0 14px;border:1px solid #CFCBC2;border-radius:999px;background:#fff;font:inherit;font-size:13.5px;font-weight:700;color:var(--mute);cursor:pointer}
+.sl .sl-methods button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}

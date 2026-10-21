@@ -185,6 +185,13 @@ export function errorMessage(err, fallback = 'Something went wrong. Please try a
 export const requestBuilderLink = (phone) =>
   unwrap(axios.post(`${BASE}/auth/request-link`, { phone }))
 
+/** LOGIN-1: sign in with email. Emails a 6-digit code (and a one-click link). The reply never says whether the email exists. */
+export const requestBuilderEmailCode = (email) =>
+  unwrap(axios.post(`${BASE}/auth/request-link`, { email }))
+/** → { token, builder }. Open `/b/login?t=<token>` to start the session. */
+export const verifyBuilderLoginCode = (email, code) =>
+  unwrap(axios.post(`${BASE}/auth/login/verify`, { email, code }))
+
 // ── Web sign-up (SITE-WEB-1) ────────────────────────────────────────────────
 /** payload: { full_name, email, phone, account_type: 'builder'|'owner', accept_terms, website (honeypot) }
  * → { request_id, email_hint }. A code is emailed; nothing is created yet. */
