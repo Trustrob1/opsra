@@ -11,12 +11,13 @@ import logging
 import re
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
 from pydantic import BaseModel, Field, field_validator
 
 from app.dependencies import get_current_org, get_supabase
 from app.services import catalog_storefront_service as storefront   # STORE-1
 from app.services import catalog_category_service as categories     # STORE-1b
+from app.services import catalog_share_service as share             # STORE-5
 from app.services.catalog_service import (
     SlugConflictError,
     create_catalog_item,
@@ -198,6 +199,42 @@ async def patch_config(
     except Exception as exc:
         logger.warning("patch_config failed org=%s: %s", current_org["org_id"], exc)
         raise HTTPException(status_code=500, detail="Failed to update catalog config.")
+
+
+# ── Share (STORE-5) — static routes ────────────────────────────────────────
+
+def _share_call(db, org_id: str, tag: Optional[str]) -> dict:
+    try:
+        return share.share_info(db, org_id, tag)
+    except share.ShareError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/share")
+async def get_share(
+    src: Optional[str] = Query(default=None, max_length=60),
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """Short link, tagged link and ready-made tags for the Share panel."""
+    _require_catalog_role(current_org)
+    return _share_call(db, current_org["org_id"], src)
+
+
+@router.get("/qr.svg")
+async def get_share_qr(
+    src: Optional[str] = Query(default=None, max_length=60),
+    download: bool = False,
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """QR code for the tagged short link (or the plain one when no tag is given)."""
+    _require_catalog_role(current_org)
+    info = _share_call(db, current_org["org_id"], src)
+    headers = {"Cache-Control": "no-store"}
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="store-qr-{info["tag"] or "link"}.svg"'
+    return Response(content=share.qr_svg(info["tagged_link"]), media_type="image/svg+xml", headers=headers)
 
 
 # ── Categories (STORE-1b) — static routes ──────────────────────────────────

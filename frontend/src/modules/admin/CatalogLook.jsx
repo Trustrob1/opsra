@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
 import { catalogErrorText } from './catalogErrors'
+import CatalogShare from './CatalogShare'
 import {
   ACCENT_PRESETS, ANNOUNCEMENT_MAX, TRUST_POINT_CHARS, DEFAULT_ACCENT, isHex,
   lookFromConfig, lookPayload, lookChanged, effectiveAccent, storefrontLocked,
@@ -55,7 +56,6 @@ export default function CatalogLook() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
-  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     adminSvc.getCatalogConfigFull()
@@ -92,34 +92,13 @@ export default function CatalogLook() {
     }
   }
 
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(config.catalog_url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch { setError('Could not copy. Select the link and copy it by hand.') }
-  }
-
   if (!loaded) return <div style={{ padding: 32, fontFamily: ds.fontDm, color: '#7A9BAD' }}>Loading…</div>
 
   const isStore = look.template === 'storefront'
 
   return (
     <div style={{ maxWidth: 680, padding: '4px 0 40px' }}>
-      {config.catalog_url && (
-        <div style={CARD}>
-          <h3 style={H}>Your catalog link</h3>
-          <p style={P}>Customers open this link and browse. Share it on WhatsApp, Instagram or your shop sign.</p>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ ...INPUT, flex: '1 1 260px', display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-              {config.catalog_url}
-            </div>
-            <button type="button" style={BTN} onClick={copyLink}>{copied ? 'Copied' : 'Copy link'}</button>
-            <a href={config.catalog_url} target="_blank" rel="noopener noreferrer"
-              style={{ ...BTN_GHOST, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>Open catalog</a>
-          </div>
-        </div>
-      )}
+      <CatalogShare fallbackUrl={config.catalog_url} />
 
       <div style={CARD}>
         <h3 style={H}>Catalog look</h3>
@@ -168,7 +147,7 @@ export default function CatalogLook() {
               })}
               <input aria-label="Colour code" value={look.accent} placeholder={DEFAULT_ACCENT}
                 onChange={(e) => set('accent', e.target.value)}
-                style={{ ...INPUT, width: 130, borderColor: look.accent && !isHex(look.accent) ? '#e05c5c' : '#D0E8F0' }} />
+                style={{ ...INPUT, width: 130, border: `1px solid ${look.accent && !isHex(look.accent) ? '#e05c5c' : '#D0E8F0'}` }} />
               {look.accent && <button type="button" style={BTN_GHOST} onClick={() => set('accent', '')}>Use default</button>}
             </div>
 

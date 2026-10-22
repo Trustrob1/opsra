@@ -12,6 +12,7 @@ import {
   whatsappOrderLink, relatedItems, trustPoints, categoryChips, tagValues, categoryNames,
 } from './storefrontLogic'
 import { INK, MUTED, LINE, FONT, placeholder, useManrope } from './storefrontTheme'
+import { cartVariantId } from './storefrontCart'
 import { Icon, WhatsAppIcon, ChromeStyles, Announcement, StorefrontHeader, StorefrontFooter } from './StorefrontChrome'
 
 function normaliseImages(raw) {
@@ -22,6 +23,7 @@ function normaliseImages(raw) {
 
 export default function StorefrontItemPage({
   orgName, waNumber, catalogConfig, style, item, items = [], onBack, onSelectItem, onShowCompare, onPickCategory,
+  cart, headerCart, onOpenCart,
 }) {
   useManrope()
   const accent = resolveAccent(style)
@@ -81,6 +83,17 @@ export default function StorefrontItemPage({
   else if (needsSize) buttonLabel = 'Pick a size to order'
   else if (!orderHref) buttonLabel = 'Ordering is not set up yet'
 
+  // STORE-4: with a cart, "Add to cart" leads and WhatsApp stays as the second way to order.
+  const cartOn = !!(cart && cart.enabled) && !catalogConfig?.price_on_request
+  const canAdd = inStock && !needsSize
+  let addLabel = 'Add to cart'
+  if (!inStock) addLabel = unavailLabel
+  else if (needsSize) addLabel = 'Pick a size to add to cart'
+  async function addToCart() {
+    const ok = await cart.add({ item, variantId: cartVariantId(item, selected), qty: 1 })
+    if (ok && onOpenCart) onOpenCart()
+  }
+
   const mainImg = images[photo]
 
   return (
@@ -106,7 +119,7 @@ export default function StorefrontItemPage({
       `}</style>
 
       <Announcement style={style} />
-      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={() => onBack()}>
+      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={() => onBack()} cart={headerCart}>
         <nav className="sf-nav" aria-label="Shop menu">
           <button onClick={() => onBack()} style={navBtn}>All {pluralLabel.toLowerCase()}</button>
           {menu.map((c) => (
@@ -240,7 +253,23 @@ export default function StorefrontItemPage({
             )}
 
             <div style={{ marginTop: 26 }}>
-              {canOrder ? (
+              {cartOn ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <button onClick={addToCart} disabled={!canAdd || cart.busy} aria-disabled={!canAdd || cart.busy} style={{
+                    width: '100%', height: 56, borderRadius: 14, border: 0, fontSize: 16, fontWeight: 700,
+                    background: canAdd ? accent : '#E6E4DF', color: canAdd ? onAccent : '#5C6166', cursor: canAdd && !cart.busy ? 'pointer' : 'not-allowed',
+                  }}>{cart.busy ? 'Adding…' : addLabel}</button>
+                  {canOrder && (
+                    <a href={orderHref} target="_blank" rel="noopener noreferrer" style={{
+                      height: 52, borderRadius: 14, border: `1.5px solid ${INK}`, color: INK, fontSize: 15, fontWeight: 700,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                    }}>
+                      <WhatsAppIcon stroke={INK} />Order on WhatsApp
+                    </a>
+                  )}
+                  {cart.error && <p role="alert" style={{ margin: 0, fontSize: 13, color: '#B3261E' }}>{cart.error}</p>}
+                </div>
+              ) : canOrder ? (
                 <a href={orderHref} target="_blank" rel="noopener noreferrer" style={{
                   height: 56, borderRadius: 14, background: accent, color: onAccent, fontSize: 16, fontWeight: 700,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,

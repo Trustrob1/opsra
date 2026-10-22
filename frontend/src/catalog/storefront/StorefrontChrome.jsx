@@ -56,7 +56,7 @@ export function Announcement({ style }) {
 /**
  * Header: brand on the left (goes to the full list), whatever the page needs after it (search or menu) in `children`.
  */
-export function StorefrontHeader({ orgName, style, accent, onHome, children }) {
+export function StorefrontHeader({ orgName, style, accent, onHome, cart, children }) {
   const onAccent = readableOn(accent)
   return (
     <header style={{ borderBottom: `1px solid ${LINE}`, background: '#fff' }}>
@@ -75,6 +75,19 @@ export function StorefrontHeader({ orgName, style, accent, onHome, children }) {
           <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.01em' }}>{orgName}</span>
         </button>
         {children}
+        {cart && (
+          <button onClick={cart.onOpen} aria-label={`Open cart, ${cart.count} ${cart.count === 1 ? 'item' : 'items'}`} style={{
+            marginLeft: 'auto', position: 'relative', width: 44, height: 44, border: 0, background: 'transparent', cursor: 'pointer', flexShrink: 0,
+          }}>
+            <Icon size={24} width={1.8}><path d="M6 8h12l-1 12H7L6 8z" /><path d="M9 8V6.5a3 3 0 0 1 6 0V8" /></Icon>
+            {cart.count > 0 && (
+              <span style={{
+                position: 'absolute', top: 2, right: 0, minWidth: 20, height: 20, padding: '0 5px', borderRadius: 10, boxSizing: 'border-box',
+                background: accent, color: onAccent, fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>{cart.count}</span>
+            )}
+          </button>
+        )}
       </div>
     </header>
   )

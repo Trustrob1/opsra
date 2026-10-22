@@ -83,6 +83,11 @@ export async function getChatProducts(key, token, q) {
   return res.data.data
 }
 
+export async function getChatCart(key, token) {
+  const res = await axios.get(`${BASE}/public/webchat/${key}/cart`, auth(token))
+  return res.data.data
+}
+
 export async function changeChatCart(key, token, payload) {
   const res = await axios.post(`${BASE}/public/webchat/${key}/cart`, payload, auth(token))
   return res.data.data

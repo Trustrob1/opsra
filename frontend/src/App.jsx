@@ -172,7 +172,7 @@ export default function App() {
     document.head.appendChild(style)
   }, [])
 
-  if (window.location.pathname.startsWith('/catalog/')) return <PublicCatalogShell />
+  if (window.location.pathname.startsWith('/catalog/') || window.location.pathname.startsWith('/shop/')) return <PublicCatalogShell />   // STORE-5: /shop/ is the short link
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />
   if (window.location.pathname.startsWith('/owner-dashboard/')) return <OwnerDashboardPage />
   if (window.location.pathname === '/terms') return <TermsOfService />

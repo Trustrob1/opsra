@@ -608,3 +608,8 @@ export const addCatalogCategory = (name) =>
 
 export const setCatalogCategoryItems = (name, itemIds) =>
   api.put(`/api/v1/catalog/categories/${encodeURIComponent(name)}/items`, { item_ids: itemIds }).then(r => r.data)
+
+// STORE-5: share links and QR code for the public catalog
+export const getCatalogShare = () => api.get('/api/v1/catalog/share').then(r => r.data)
+export const getCatalogQr = (src) =>
+  api.get('/api/v1/catalog/qr.svg', { params: src ? { src } : {}, responseType: 'text', transformResponse: (d) => d }).then(r => r.data)

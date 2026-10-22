@@ -88,7 +88,7 @@ function Finder({ questions, accent, onAnswer, onClear, done, matchCount, itemWo
 }
 
 export default function StorefrontListPage({
-  orgName, orgSlug, waNumber, catalogConfig, style, wizardQuestions = [], items = [], onSelectItem, onShowCompare,
+  orgName, orgSlug, waNumber, catalogConfig, style, wizardQuestions = [], items = [], onSelectItem, onShowCompare, headerCart,
 }) {
   useManrope()
   const accent = resolveAccent(style)
@@ -152,7 +152,7 @@ export default function StorefrontListPage({
       `}</style>
 
       <Announcement style={style} />
-      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={clearAll}>
+      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={clearAll} cart={headerCart}>
         <div className="sf-search-slot">
           <label style={{
             height: 44, border: '1px solid #C9C6BF', borderRadius: 22, display: 'flex', alignItems: 'center', gap: 10, padding: '0 18px', boxSizing: 'border-box', color: MUTED,

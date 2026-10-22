@@ -7,6 +7,8 @@
  * STORE-2/3: reads `template`, `shop` and `style` from the public API. When the
  * business uses the Storefront look, the list page and item page are the Storefront
  * ones; the size-compare page stays Classic. Classic is unchanged.
+ * STORE-4: Storefront shows the cart (web chat shop cart + Paystack checkout) when the business has it on.
+ * STORE-5: /shop/{slug} is the short link; it opens the same catalog and the address bar then shows /catalog/{slug}.
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState, useEffect } from 'react'
@@ -16,7 +18,10 @@ import CatalogItemPage from './CatalogItemPage'
 import CatalogSizeComparePage from './CatalogSizeComparePage'
 import StorefrontItemPage from './storefront/StorefrontItemPage'
 import StorefrontListPage from './storefront/StorefrontListPage'
-import { listUrl } from './storefront/storefrontLogic'
+import CartDrawer from './storefront/CartDrawer'
+import useStorefrontCart from './storefront/useStorefrontCart'
+import { listUrl, resolveAccent } from './storefront/storefrontLogic'
+import { cleanSource, canUseCart, decorateLines, catalogPathFromShort } from './storefront/storefrontCart'
 
 const C = {
   bg:   '#FAFAF8',
@@ -27,6 +32,9 @@ const C = {
 
 // Parse URL: /catalog/{org_slug} or /catalog/{org_slug}/{item_slug}
 function _parsePath() {
+  // STORE-5: /shop/{slug}/... is the short link; show it as /catalog/{slug}/... (keeps ?src= and anything after)
+  const asCatalog = catalogPathFromShort(window.location.pathname)
+  if (asCatalog) window.history.replaceState({}, '', asCatalog + window.location.search + window.location.hash)
   const parts = window.location.pathname.split('/').filter(Boolean)
   // parts[0] === 'catalog'
   const orgSlug  = parts[1] || null
@@ -51,6 +59,13 @@ export default function PublicCatalogShell() {
   const [compareItems, setCompareItems] = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
+  const [cartOpen, setCartOpen]         = useState(false)
+  const [source]                        = useState(() => cleanSource(window.location.search))
+
+  // STORE-4: the cart only exists for the Storefront look, when the business has the web chat shop on
+  const cartShop = catalogData && catalogData.template === 'storefront' && canUseCart(catalogData.shop, catalogData.catalogConfig)
+    ? catalogData.shop : null
+  const cartApi = useStorefrontCart({ shop: cartShop, source })
 
   // Load list data on mount
   useEffect(() => {
@@ -238,9 +253,29 @@ export default function PublicCatalogShell() {
     )
   }
 
+  const openCart = () => setCartOpen(true)
+  const headerCart = cartApi.enabled ? { count: cartApi.cart.count, onOpen: openCart } : null
+  const withCart = (page) => (
+    <>
+      {page}
+      {cartApi.enabled && (
+        <CartDrawer
+          open={cartOpen} onClose={() => setCartOpen(false)}
+          accent={resolveAccent(catalogData.style)} orgName={catalogData.orgName} waNumber={catalogData.waNumber}
+          template={catalogData.catalogConfig && catalogData.catalogConfig.price_label_template}
+          lines={decorateLines(cartApi.cart, catalogData.items)} total={cartApi.cart.total} count={cartApi.cart.count}
+          busy={cartApi.busy} error={cartApi.error} hasContact={cartApi.hasContact}
+          onSetQty={cartApi.setQty} onRemove={cartApi.remove} onSubmitContact={cartApi.submitContact}
+          onCheckout={cartApi.checkout} onClearError={cartApi.clearError}
+          onOpenItem={(l) => { setCartOpen(false); handleSelectItem({ slug: l.slug }) }}
+        />
+      )}
+    </>
+  )
+
   // ── Item page ──
   if (itemSlug && currentItem && catalogData.template === 'storefront') {
-    return (
+    return withCart(
       <StorefrontItemPage
         key={currentItem.slug}
         orgName={catalogData.orgName}
@@ -254,6 +289,9 @@ export default function PublicCatalogShell() {
         onSelectItem={handleSelectItem}
         onShowCompare={handleShowCompare}
         onPickCategory={handleOpenCategory}
+        cart={cartApi}
+        headerCart={headerCart}
+        onOpenCart={openCart}
       />
     )
   }
@@ -271,7 +309,7 @@ export default function PublicCatalogShell() {
 
   // ── List page (default) ──
   if (catalogData.template === 'storefront') {
-    return (
+    return withCart(
       <StorefrontListPage
         orgName={catalogData.orgName}
         orgSlug={orgSlug}
@@ -282,6 +320,7 @@ export default function PublicCatalogShell() {
         items={catalogData.items}
         onSelectItem={handleSelectItem}
         onShowCompare={handleShowCompare}
+        headerCart={headerCart}
       />
     )
   }

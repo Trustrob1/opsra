@@ -196,3 +196,30 @@ export const withoutCategory = (chosen, name) => chosen.filter((c) => c !== name
 
 /** Categories not yet on this product (the outlined chips). */
 export const remainingCategories = (all, chosen) => all.filter((n) => !chosen.includes(n))
+
+// ---------------------------------------------------------------------------
+// STORE-5: share links (the server cleans tags the same way)
+// ---------------------------------------------------------------------------
+
+export const SHARE_TAG_MAX = 30
+export const SHARE_PRESETS = [
+  { tag: 'instagram', label: 'Instagram' },
+  { tag: 'whatsapp', label: 'WhatsApp status' },
+  { tag: 'facebook', label: 'Facebook' },
+  { tag: 'flyer', label: 'Flyer or poster' },
+  { tag: 'shop', label: 'Shop sign or counter' },
+]
+
+/** Lowercase letters, digits, - and _ only, at most 30 characters. Empty when nothing usable is left. */
+export function cleanTag(v) {
+  return String(v ?? '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, SHARE_TAG_MAX)
+}
+
+/** The short link with its tag; the plain link when there is no usable tag. */
+export function taggedLink(shortLink, tag) {
+  const t = cleanTag(tag)
+  return t ? `${shortLink}?src=${t}` : shortLink
+}
+
+/** Is this tag one of the ready-made ones (so its button shows as chosen)? */
+export const isPresetTag = (tag) => SHARE_PRESETS.some((p) => p.tag === cleanTag(tag))
