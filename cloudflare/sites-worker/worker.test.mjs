@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { hostFolder, filePath } from './src/index.js';
+import worker, { hostFolder, filePath, showcaseKey } from './src/index.js';
 
 function bucket(files) {
   return {
@@ -23,6 +23,8 @@ const env = { SITES: bucket({
   'shop.com.ng/robots.txt': { body: 'User-agent: *', type: 'text/plain' },
   'other.ng/index.html': { body: 'other', type: 'text/html' },
   'other.ng/404.html': { body: 'custom 404', type: 'text/html' },
+  '_showcase/halcyon-p4J5NDLQi-RJ/index.html': { body: 'sample', type: 'text/html; charset=utf-8' },
+  '_showcase/halcyon-p4J5NDLQi-RJ/hero.webp': { body: 'IMG', type: 'image/webp' },
 }) };
 const get = (url, init = {}) => worker.fetch(new Request(url, init), env);
 
@@ -103,4 +105,27 @@ test('standby copy reads from the SITE_PREFIX folder', async () => {
   assert.equal(r.status, 200);
   assert.equal(await r.text(), 'standby');
   assert.equal((await worker.fetch(new Request('https://other.ng/'), standby)).status, 404);
+});
+
+test('showcaseKey', () => {
+  assert.deepEqual(showcaseKey('/ref/halcyon-p4J5NDLQi-RJ/'), { name: 'halcyon-p4J5NDLQi-RJ', key: '_showcase/halcyon-p4J5NDLQi-RJ/index.html', bare: false });
+  assert.equal(showcaseKey('/ref/short/'), null);
+  assert.equal(showcaseKey('/ref/halcyon-p4J5NDLQi-RJ/../x'), null);
+});
+
+test('showcase page is served on the allowed host only, unindexed', async () => {
+  const r = await get('https://velorastudio.com.ng/ref/halcyon-p4J5NDLQi-RJ/');
+  assert.equal(r.status, 200);
+  assert.equal(await r.text(), 'sample');
+  assert.match(r.headers.get('X-Robots-Tag'), /noindex/);
+  assert.equal((await get('https://www.velorastudio.com.ng/ref/halcyon-p4J5NDLQi-RJ/hero.webp')).status, 200);
+  assert.equal((await get('https://shop.com.ng/ref/halcyon-p4J5NDLQi-RJ/')).status, 404);
+});
+
+test('showcase: bare link redirects, wrong or short token is 404', async () => {
+  const r = await get('https://velorastudio.com.ng/ref/halcyon-p4J5NDLQi-RJ');
+  assert.equal(r.status, 301);
+  assert.equal(r.headers.get('Location'), '/ref/halcyon-p4J5NDLQi-RJ/');
+  assert.equal((await get('https://velorastudio.com.ng/ref/halcyon-AAAAAAAAAAAA/')).status, 404);
+  assert.equal((await get('https://velorastudio.com.ng/ref/')).status, 404);
 });

@@ -32,3 +32,10 @@ the Celery task `app.workers.site_worker.prepare_backup_host` (Render Shell on o
     python -c "from app.workers.site_worker import prepare_backup_host as p; print(p())"   # every backed-up site
 
 It reads only the backup bucket. Pointing a domain at the standby (DNS) is manual.
+
+## Unlisted reference pages (SHOWCASE-1)
+A sample/reference site can be shown on `velorastudio.com.ng` without being part of the Velora site: files live in the
+bucket at `_showcase/<name>/` (outside every domain folder, so publishing never removes them) and are served at
+`https://velorastudio.com.ng/ref/<name>/`. `<name>` must contain an unguessable token (16-64 letters, digits, `-`, `_`).
+Nothing links to them; responses carry `X-Robots-Tag: noindex`. Source files are kept in `showcase/<name>/`.
+To add another: copy a new folder into `showcase/`, add `wrangler r2 object put ... --remote` lines like `SHOWCASE-1_deploy.bat`.

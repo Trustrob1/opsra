@@ -1,0 +1,419 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Halcyon Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: a calm one-page practice site. A full-bleed photographic hero carries the headline and the two actions (book, shop) over a deep green shade. Below it: facts, four service cards in mint and peach, an about block, three steps, a green booking band with a working slot picker, a shop of materials, client notes, FAQ and a closing line. A slim black Velora bar sits on top. */
+:root{
+  --bg:#FFFFFF; --wash:#F2F8F6; --ink:#14211F; --grey:#52625D; --rule:rgba(20,33,31,.14);
+  --forest:#0F4A43; --forest-2:#17625A; --deep:#0B2F2A; --mint:#DDF3EC; --peach:#FBE6D8; --apricot:#E58A4E;
+  --on-forest:#F2FBF8; --on-forest-grey:#B7D6CE; --err:#A8321E;
+  --display:'Young Serif',Georgia,'Times New Roman',serif; --text:'Figtree',Arial,Helvetica,sans-serif;
+  --ease:cubic-bezier(.22,1,.36,1);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:16px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--text);font-size:17px;line-height:1.6;overflow-x:clip}
+::selection{background:var(--forest);color:#fff}
+a{color:inherit}
+a:focus-visible,button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--forest-2);outline-offset:3px}
+.hero a:focus-visible,.book a:focus-visible,.book button:focus-visible,.foot a:focus-visible,.vbar a:focus-visible{outline-color:#fff}
+h1,h2,h3{margin:0;font-family:var(--display);font-weight:400;text-wrap:balance}
+h1,h2,h3,p,li,summary{overflow-wrap:break-word}
+p{margin:0;text-wrap:pretty}
+ul{list-style:none;margin:0;padding:0}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.in{max-width:1240px;margin:0 auto}
+.eyebrow{font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.skip{position:absolute;left:-999px;top:8px;z-index:50;background:var(--forest);color:#fff;padding:10px 16px}
+.skip:focus{left:16px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 28px;border-radius:999px;border:1.5px solid var(--forest);background:var(--forest);color:#fff;font:600 16px var(--text);text-decoration:none;cursor:pointer;white-space:nowrap;transition:background .35s var(--ease),color .35s var(--ease),border-color .35s var(--ease)}
+.btn:hover{background:var(--forest-2);border-color:var(--forest-2)}
+.btn-ghost{background:transparent;color:var(--forest)}
+.btn-ghost:hover{background:var(--forest);color:#fff;border-color:var(--forest)}
+.btn-light{background:#fff;border-color:#fff;color:var(--forest)}
+.btn-light:hover{background:var(--mint);border-color:var(--mint);color:var(--forest)}
+.btn-line{background:transparent;border-color:rgba(255,255,255,.7);color:#fff}
+.btn-line:hover{background:#fff;border-color:#fff;color:var(--forest)}
+.btn[disabled]{opacity:.45;cursor:not-allowed;pointer-events:none}
+.btn-sm{min-height:44px;padding:0 20px;font-size:15px}
+.lnk{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-weight:600;text-decoration:none;border-bottom:1.5px solid currentColor;line-height:1.2;padding-top:2px}
+.lnk:hover{gap:12px}
+.lnk{transition:gap .3s var(--ease)}
+
+/* velora bar */
+.vbar{background:#0A0A0A;color:#F4F4F2;font-size:14px;padding-block:10px}
+.vbar .in{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 24px}
+.vbar a{font-weight:600;text-underline-offset:3px;display:inline-flex;align-items:center;min-height:44px}
+
+/* header */
+.hdr{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:14px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-family:var(--display);font-size:22px;min-height:44px}
+.brand svg{width:26px;height:26px;flex:none}
+.nav{display:flex;align-items:center;gap:6px}
+.nav a.t{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;text-decoration:none;font-weight:500;border-radius:999px}
+.nav a.t:hover{background:var(--wash)}
+
+/* hero */
+.hero{position:relative;isolation:isolate;color:#fff;min-height:clamp(620px,90svh,860px);display:flex;flex-direction:column;background-color:var(--forest);background-image:linear-gradient(135deg,var(--forest-2),var(--forest));background-size:cover;background-position:70% center;background-repeat:no-repeat}
+.hero.has-img{background-image:var(--hero-img)}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(11,47,42,.9) 0%,rgba(11,47,42,.7) 38%,rgba(11,47,42,.12) 72%,rgba(11,47,42,0) 100%)}
+.hero .brand{color:#fff}
+.hero .nav a.t{color:#fff}
+.hero .nav a.t:hover{background:rgba(255,255,255,.16)}
+.hcopy{margin-top:auto;padding-block:clamp(56px,9vw,130px) clamp(36px,6vw,84px)}
+.hcopy .in{display:flex;flex-direction:column;gap:clamp(18px,2.4vw,28px)}
+.hcopy .eyebrow{color:#fff;opacity:.9}
+.hcopy h1{font-size:clamp(42px,6.4vw,92px);line-height:1.02;letter-spacing:-.01em;max-width:13ch}
+.hcopy .sub{font-size:clamp(17px,1.5vw,20px);max-width:40ch;color:#E3F2EE}
+.acts{display:flex;flex-wrap:wrap;gap:12px}
+
+/* facts */
+.facts{padding-block:8px clamp(36px,5vw,64px)}
+.facts ul{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 24px;border-top:1px solid var(--rule);padding-top:20px}
+.facts li{font-weight:500;display:flex;align-items:baseline;gap:10px}
+.facts li:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--apricot);flex:none}
+
+/* services */
+.sec{padding-block:clamp(48px,6vw,96px)}
+.shead{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 40px;margin-bottom:clamp(28px,4vw,52px)}
+.shead h2{font-size:clamp(34px,4.6vw,64px);line-height:1.04;letter-spacing:-.01em;max-width:14ch}
+.shead p{max-width:44ch;color:var(--grey);font-size:19px}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(14px,2vw,24px)}
+.card{border-radius:24px;padding:clamp(22px,2.8vw,38px);min-height:300px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card.m{background:var(--mint)} .card.p{background:var(--peach)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:#fff;border-radius:999px;padding:3px 12px;font-size:13px;font-weight:600}
+.card h3{font-size:clamp(28px,3vw,40px);line-height:1.05;margin-top:6px}
+.card p{color:var(--grey);max-width:38ch}
+.cf{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+.cf svg{width:92px;height:92px;flex:none}
+
+/* about */
+.about{background:var(--wash)}
+.ag{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(28px,5vw,80px);align-items:center}
+.pt{display:flex;justify-content:center}
+.pimg{position:relative;width:min(100%,440px);aspect-ratio:4/5;border-radius:20px;overflow:hidden;background:linear-gradient(160deg,var(--forest-2),var(--forest));display:flex;align-items:center;justify-content:center}
+.pimg span{font-family:var(--display);font-size:96px;line-height:1;color:var(--peach)}
+.pimg.has-img{background-image:var(--p-img);background-size:cover;background-position:center}
+.pimg.has-img span{display:none}
+.about h2{font-size:clamp(34px,4.6vw,64px);line-height:1.04;letter-spacing:-.01em;margin-bottom:18px}
+.about .lead{font-size:19px;color:var(--grey);max-width:52ch}
+.cred{margin-top:24px;display:grid;gap:10px;border-top:1px solid var(--rule);padding-top:20px}
+.cred li{display:flex;gap:12px;align-items:baseline;font-weight:500}
+.cred li:before{content:"";width:7px;height:7px;background:var(--forest);flex:none;transform:translateY(-2px);border-radius:50%}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,3vw,40px)}
+.step{border-top:2px solid var(--forest);padding-top:18px}
+.step .n{font-family:var(--display);font-size:44px;line-height:1;color:var(--forest-2)}
+.step h3{font-size:clamp(22px,2.2vw,28px);margin:12px 0 8px;line-height:1.15}
+.step p{color:var(--grey);max-width:34ch}
+
+/* booking */
+.book{background:var(--forest);color:var(--on-forest);padding-block:clamp(48px,6vw,96px)}
+.bg{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(28px,5vw,72px);align-items:start}
+.book h2{font-size:clamp(34px,4.6vw,64px);line-height:1.04;letter-spacing:-.01em;margin:14px 0 16px}
+.book .eyebrow{color:var(--on-forest-grey)}
+.book .lead{color:var(--on-forest-grey);font-size:19px;max-width:36ch}
+.book ul{margin-top:22px;display:grid;gap:10px}
+.book li{display:flex;gap:12px;align-items:baseline}
+.book li:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--apricot);flex:none;transform:translateY(-2px)}
+.bc{background:#fff;color:var(--ink);border-radius:28px;padding:clamp(20px,3vw,36px);display:flex;flex-direction:column;gap:22px;min-width:0}
+.fld{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}
+.fld>label,.fld>legend{font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--grey);padding:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+select{width:100%;min-height:52px;padding:0 40px 0 16px;border:1.5px solid var(--ink);border-radius:14px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2314211F' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 16px center;appearance:none;-webkit-appearance:none;color:var(--ink);font:500 16px var(--text);cursor:pointer}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{position:relative}
+.opt input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.opt span{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border:1.5px solid var(--ink);border-radius:999px;font-weight:500;font-size:15px;background:#fff;transition:background .25s,color .25s,border-color .25s}
+.opt:hover span{background:var(--mint)}
+.opt input:checked+span{background:var(--forest);color:#fff;border-color:var(--forest)}
+.opt input:focus-visible+span{outline:3px solid var(--forest-2);outline-offset:2px}
+.sum{font-weight:600;min-height:26px}
+.conf{border-radius:18px;background:var(--mint);padding:18px 20px;display:flex;flex-direction:column;gap:6px}
+.conf h3{font-size:24px}
+.conf p{color:var(--grey)}
+
+/* shop */
+.shop{background:#fff}
+.pgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(14px,2vw,24px)}
+.prod{border:1px solid var(--rule);border-radius:22px;padding:14px 14px 20px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.cover{aspect-ratio:4/3;border-radius:14px;position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:14px}
+.cover.c1{background:var(--forest);color:var(--peach)}
+.cover.c2{background:var(--peach);color:var(--forest)}
+.cover.c3{background:var(--mint);color:var(--forest)}
+.cover.c4{background:var(--forest-2);color:var(--on-forest)}
+.cover b{font-family:var(--display);font-weight:400;font-size:22px;line-height:1.05;position:relative;z-index:1}
+.cover svg{position:absolute;right:-6px;top:-6px;width:60%;height:auto}
+.prod .kind{font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--grey);margin-top:6px}
+.prod h3{font-size:24px;line-height:1.1}
+.prod p{color:var(--grey);font-size:16px}
+.price{margin-top:auto;padding-top:8px;display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:19px}
+.price span{font-weight:500;color:var(--grey);font-size:16px}
+.snote{margin-top:22px;min-height:26px;color:var(--grey);font-size:16px}
+
+/* voices */
+.voices{background:var(--peach)}
+.qgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,3vw,40px)}
+.q{border-top:2px solid var(--forest);padding-top:18px;display:flex;flex-direction:column;gap:14px}
+.q p{font-family:var(--display);font-size:clamp(20px,1.9vw,25px);line-height:1.3}
+.q small{font-size:14px;color:var(--grey);font-weight:500}
+.sample{margin-top:28px;font-size:15px;color:var(--grey)}
+
+/* faq */
+.fq{max-width:860px}
+details{border-top:1px solid var(--rule)}
+details:last-of-type{border-bottom:1px solid var(--rule)}
+summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:64px;padding-block:12px;font-family:var(--display);font-size:clamp(20px,2vw,26px);line-height:1.2}
+summary::-webkit-details-marker{display:none}
+summary:after{content:"+";font-family:var(--text);font-size:28px;font-weight:400;color:var(--forest-2);flex:none;transition:transform .3s var(--ease)}
+details[open] summary:after{transform:rotate(45deg)}
+details p{padding-bottom:22px;color:var(--grey);max-width:60ch}
+
+/* closing + footer */
+.close{background:var(--mint);padding-block:clamp(40px,5vw,72px)}
+.close .in{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:20px 40px}
+.close h2{font-size:clamp(30px,4vw,54px);line-height:1.05;max-width:18ch}
+.foot{background:var(--deep);color:var(--on-forest);padding-block:clamp(36px,4vw,56px) 28px}
+.fg{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:24px 56px}
+.foot .brand{font-size:26px}
+.foot .small{color:var(--on-forest-grey);font-size:15px;max-width:48ch}
+.foot ul{display:grid;gap:4px;font-size:16px}
+.foot a{text-underline-offset:3px}
+.fine{margin-top:28px;padding-top:18px;border-top:1px solid rgba(242,251,248,.2);color:var(--on-forest-grey);font-size:14px;display:grid;gap:6px}
+
+@media (max-width:980px){
+  .pgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .facts ul{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:860px){
+  .ag,.bg,.fg{grid-template-columns:1fr}
+  .hero{background-position:80% center}
+  .hero::before{background:linear-gradient(180deg,rgba(11,47,42,.55) 0%,rgba(11,47,42,.9) 100%)}
+  .steps,.qgrid{grid-template-columns:1fr}
+  .nav a.t{display:none}
+  .pt{justify-content:flex-start}
+  .pimg{width:min(72%,320px)}
+}
+@media (max-width:640px){
+  .vbar{font-size:13px;line-height:1.4;padding-block:8px}
+  .hero{min-height:min(88svh,720px);background-position:66% center}
+  .hero::before{background:linear-gradient(180deg,rgba(11,47,42,.2) 0%,rgba(11,47,42,.35) 30%,rgba(11,47,42,.88) 66%,rgba(11,47,42,.95) 100%)}
+  .hcopy{padding-block:40px 32px}
+  .hcopy h1{font-size:clamp(34px,9.6vw,46px)}
+  .hcopy .eyebrow{font-size:12px;letter-spacing:.1em}
+  .btn-sm{padding:0 16px}
+  .facts li{font-size:15px;align-items:flex-start}
+  .facts li:before{margin-top:.6em}
+  .cover{aspect-ratio:16/8}
+  .prod{padding:12px 12px 18px}
+  .cards{grid-template-columns:1fr}
+  .card{min-height:0}
+  .two{grid-template-columns:1fr}
+  .acts .btn{flex:1 1 100%}
+  .pgrid{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="vbar wrap"><div class="in"><span>Sample site by Velora Studio. We build yours from your details, and you only pay if you like it.</span><a id="vlink" href="#" target="_blank" rel="noopener">Start your transformation</a></div></div>
+
+<header class="hero" id="top">
+  <div class="wrap"><div class="in hdr">
+    <a class="brand" href="#top"><svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="12" fill="#F2FBF8"/><circle cx="13" cy="13" r="5.5" fill="#E58A4E"/></svg>Halcyon Room</a>
+    <nav class="nav" aria-label="Main"><a class="t" href="#work">Work with me</a><a class="t" href="#about">About</a><a class="t" href="#shop">Shop</a><a class="t" href="#faq">FAQ</a><a class="btn btn-light btn-sm" href="#book">Book a session</a></nav>
+  </div></div>
+  <div class="wrap hcopy"><div class="in">
+    <span class="eyebrow">Therapy and coaching · Lagos and online</span>
+    <h1>Steady ground for a busy mind.</h1>
+    <p class="sub">Private sessions for founders and professionals who carry a lot. In Lagos, or online in your own time zone.</p>
+    <div class="acts"><a class="btn btn-light" href="#book">Book a session</a><a class="btn btn-line" href="#shop">Shop workbooks and audio</a></div>
+  </div></div>
+</header>
+<main id="main">
+
+<section class="facts wrap" aria-label="At a glance"><div class="in"><ul>
+  <li>Naira or dollars</li><li>Evenings and weekends</li><li>Online and in Lagos</li><li>Confidential, always</li>
+</ul></div></section>
+
+<section class="sec wrap" id="work" aria-labelledby="wh"><div class="in">
+  <div class="shead"><h2 id="wh">Where to begin.</h2><p>Four ways to work together. Not sure which fits? Start with a free 15-minute call.</p></div>
+  <div class="cards">
+    <article class="card m"><div class="chips"><span class="chip">Adults</span><span class="chip">Online or Lagos</span></div><h3>Individual therapy</h3><p>One-to-one sessions for anxiety, low mood and the weight of carrying everything yourself.</p>
+      <div class="cf"><a class="lnk" href="#book" data-session="individual">Book this &rarr;</a><svg viewBox="0 0 92 92" aria-hidden="true" fill="none" stroke="#17625A" stroke-width="3"><circle cx="46" cy="46" r="14"/><circle cx="46" cy="46" r="29"/><circle cx="46" cy="46" r="43" stroke-opacity=".5"/></svg></div></article>
+    <article class="card p"><div class="chips"><span class="chip">Two people</span><span class="chip">Online or Lagos</span></div><h3>Couples counselling</h3><p>Better conversations, fewer repeated arguments, and a plan you both agree to.</p>
+      <div class="cf"><a class="lnk" href="#book" data-session="couples">Book this &rarr;</a><svg viewBox="0 0 92 92" aria-hidden="true"><circle cx="34" cy="46" r="26" fill="#E58A4E" fill-opacity=".55"/><circle cx="58" cy="46" r="26" fill="#17625A" fill-opacity=".45"/></svg></div></article>
+    <article class="card p"><div class="chips"><span class="chip">Coaching</span><span class="chip">Six weeks</span></div><h3>Burnout coaching for founders</h3><p>Rebuild your week around energy, boundaries and work you can keep doing.</p>
+      <div class="cf"><a class="lnk" href="#book" data-session="burnout">Book this &rarr;</a><svg viewBox="0 0 92 92" aria-hidden="true"><path d="M12 80C12 40 40 14 80 12c0 40-26 68-68 68z" fill="#17625A" fill-opacity=".5"/><path d="M14 78C32 58 50 40 72 22" stroke="#FBE6D8" stroke-width="3" fill="none" stroke-linecap="round"/></svg></div></article>
+    <article class="card m"><div class="chips"><span class="chip">Adults</span><span class="chip">Short or long term</span></div><h3>Grief and life transitions</h3><p>Gentle support through a loss, a move, a new role or a change you did not choose.</p>
+      <div class="cf"><a class="lnk" href="#book" data-session="individual">Book this &rarr;</a><svg viewBox="0 0 92 92" aria-hidden="true" fill="none" stroke="#17625A" stroke-width="3" stroke-linecap="round"><path d="M6 30q10-12 20 0t20 0 20 0 20 0"/><path d="M6 46q10-12 20 0t20 0 20 0 20 0" stroke-opacity=".7"/><path d="M6 62q10-12 20 0t20 0 20 0 20 0" stroke-opacity=".4"/></svg></div></article>
+  </div>
+</div></section>
+
+<section class="sec about wrap" id="about" aria-labelledby="ah"><div class="in"><div class="ag">
+  <div class="pt"><div class="pimg" id="pimg" role="img" aria-label="Portrait of Tolu Bankole, illustrative"><span aria-hidden="true">TB</span></div></div>
+  <div>
+    <span class="eyebrow" style="color:var(--forest-2)">About</span>
+    <h2 id="ah" style="margin-top:14px">Hello, I’m Tolu Bankole.</h2>
+    <p class="lead">I am a counselling psychologist with eight years of practice, working with founders, professionals and couples in Lagos and abroad. My sessions are warm and structured. You leave each one with something to try, not only something to think about.</p>
+    <ul class="cred"><li>MSc Counselling Psychology</li><li>Cognitive behavioural therapy and trauma-informed care</li><li>Sessions in English and Yoruba</li></ul>
+  </div>
+</div></div></section>
+
+<section class="sec wrap" aria-labelledby="hh"><div class="in">
+  <div class="shead"><h2 id="hh">How it works.</h2><p>Three steps, and you decide the pace.</p></div>
+  <div class="steps">
+    <div class="step"><div class="n">1</div><h3>Book a free 15-minute call</h3><p>Tell me what is going on and ask anything. There is no commitment.</p></div>
+    <div class="step"><div class="n">2</div><h3>Your first session</h3><p>We agree what you want to change and how you will know it is changing.</p></div>
+    <div class="step"><div class="n">3</div><h3>Steady weekly sessions</h3><p>Online or in Lagos, at a time that works in your time zone.</p></div>
+  </div>
+</div></section>
+
+<section class="book wrap" id="book" aria-labelledby="bh"><div class="in"><div class="bg">
+  <div>
+    <span class="eyebrow">Book a session</span>
+    <h2 id="bh">Choose a time that suits you.</h2>
+    <p class="lead">Times show in your own time zone, so there is nothing to convert.</p>
+    <ul><li>Free 15-minute call to begin</li><li>Pay in naira or dollars</li><li>Reschedule up to 24 hours before</li></ul>
+  </div>
+  <div class="bc">
+    <div class="two">
+      <div class="fld"><label for="sType">Session</label>
+        <select id="sType"><option value="call">Free 15-minute call</option><option value="individual">Individual session, 50 minutes</option><option value="couples">Couples session, 60 minutes</option><option value="burnout">Burnout coaching intake, 45 minutes</option></select></div>
+      <div class="fld"><label for="sTz">Your time zone</label>
+        <select id="sTz"><option value="Africa/Lagos">Lagos (WAT)</option><option value="Europe/London">London</option><option value="Asia/Dubai">Dubai</option><option value="America/New_York">New York</option></select></div>
+    </div>
+    <fieldset class="fld"><legend>Pick a day</legend><div class="opts" id="days"></div></fieldset>
+    <fieldset class="fld"><legend>Pick a time</legend><div class="opts" id="slots"></div></fieldset>
+    <p class="sum" id="sum" aria-live="polite"></p>
+    <div id="confBox" class="conf" hidden><h3>Sample request</h3><p id="confText"></p></div>
+    <div><button type="button" class="btn" id="reqBtn">Request this time</button></div>
+  </div>
+</div></div></section>
+
+<section class="sec shop wrap" id="shop" aria-labelledby="sh"><div class="in">
+  <div class="shead"><h2 id="sh">Workbooks, courses and guided audio.</h2><p>Work through it on your own, at your own pace. Pay in naira or dollars.</p></div>
+  <div class="pgrid">
+    <article class="prod"><div class="cover c1"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="70" cy="30" r="26" fill="#E58A4E" fill-opacity=".75"/></svg><b>Burnout Reset</b></div><span class="kind">Workbook, PDF</span><h3>The Burnout Reset Workbook</h3><p>42 pages of exercises to rebuild your week around energy.</p><div class="price">₦12,500 <span>$9</span></div><button type="button" class="btn btn-ghost btn-sm" data-buy="The Burnout Reset Workbook">Buy now</button></article>
+    <article class="prod"><div class="cover c2"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="66" cy="34" r="24" fill="#0F4A43"/><path d="M60 24l18 10-18 10z" fill="#FBE6D8"/></svg><b>Boundaries at Work</b></div><span class="kind">Course, self-paced</span><h3>Boundaries at Work</h3><p>Six short video lessons on saying no without the guilt.</p><div class="price">₦45,000 <span>$32</span></div><button type="button" class="btn btn-ghost btn-sm" data-buy="Boundaries at Work">Buy now</button></article>
+    <article class="prod"><div class="cover c3"><svg viewBox="0 0 100 100" aria-hidden="true" fill="#17625A"><rect x="40" y="26" width="6" height="30" rx="3"/><rect x="52" y="16" width="6" height="50" rx="3"/><rect x="64" y="30" width="6" height="22" rx="3"/><rect x="76" y="22" width="6" height="38" rx="3"/></svg><b>Sleep and Settling</b></div><span class="kind">Guided audio</span><h3>Sleep and Settling</h3><p>Five calm tracks for winding down after a long day.</p><div class="price">₦8,000 <span>$6</span></div><button type="button" class="btn btn-ghost btn-sm" data-buy="Sleep and Settling">Buy now</button></article>
+    <article class="prod"><div class="cover c4"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="58" cy="36" r="22" fill="#FBE6D8" fill-opacity=".6"/><circle cx="78" cy="40" r="22" fill="#DDF3EC" fill-opacity=".5"/></svg><b>The Quiet Circle</b></div><span class="kind">Members community</span><h3>The Quiet Circle</h3><p>A monthly group session and a private space to talk it through.</p><div class="price">₦15,000 <span>$11 a month</span></div><button type="button" class="btn btn-ghost btn-sm" data-buy="The Quiet Circle">Join</button></article>
+  </div>
+  <p class="snote" id="snote" role="status" aria-live="polite"></p>
+</div></section>
+
+<section class="sec voices wrap" aria-labelledby="vh"><div class="in">
+  <div class="shead"><h2 id="vh">Kind words.</h2><p>Shared with permission. Names are withheld to protect privacy.</p></div>
+  <div class="qgrid">
+    <div class="q"><p>I stopped dreading Sundays. The sessions gave me a plan I could actually follow.</p><small>Founder, Lagos</small></div>
+    <div class="q"><p>Booking from London at my own time was simple. I never had to convert a time zone.</p><small>Product manager, London</small></div>
+    <div class="q"><p>The workbook alone was worth it. The sessions changed how I run my week.</p><small>Agency owner, Abuja</small></div>
+  </div>
+  <p class="sample">Sample content. Replaced with your own client notes on your site.</p>
+</div></section>
+
+<section class="sec wrap" id="faq" aria-labelledby="fh"><div class="in">
+  <div class="shead"><h2 id="fh">Questions people ask.</h2></div>
+  <div class="fq">
+    <details><summary>Is what I say confidential?</summary><p>Yes. What you share stays between us, apart from the rare cases where safety is at risk. I explain this fully on our first call.</p></details>
+    <details><summary>Do you see clients outside Nigeria?</summary><p>Yes. Sessions run online, and the booking page shows every time in your own time zone. You can pay in naira or dollars.</p></details>
+    <details><summary>How much is a session?</summary><p>An individual session is ₦40,000 or $30. The first 15-minute call is free. Couples and coaching rates are shown when you book.</p></details>
+    <details><summary>What if I need to change my time?</summary><p>You can reschedule up to 24 hours before your session, from the link in your confirmation message.</p></details>
+  </div>
+</div></section>
+
+<section class="close wrap"><div class="in"><h2>Start with a free 15-minute call.</h2><div class="acts"><a class="btn" href="#book">Book a session</a><a class="btn btn-ghost" href="#shop">Shop the materials</a></div></div></section>
+</main>
+
+<footer class="foot wrap"><div class="in">
+  <div class="fg">
+    <div><a class="brand" href="#top" style="color:#fff">Halcyon Room</a><p class="small" style="margin-top:12px">Therapy and coaching with Tolu Bankole. Lagos, Nigeria and online.</p></div>
+    <ul><li>hello@halcyonroom.example</li><li>Instagram @halcyonroom</li><li>Mon to Fri, 9:00 to 19:00 WAT. Saturdays by appointment.</li></ul>
+  </div>
+  <div class="fine"><span>This service is not for emergencies. If you are in immediate danger, contact your local emergency services.</span><span>Sample site made by Velora Studio. The practice, names, prices and client notes are fictional, and the photographs are AI-generated for illustration.</span></div>
+</div></footer>
+
+<script>
+(function(){
+'use strict';
+var WA='2349061221642';
+function $(id){return document.getElementById(id)}
+$('vlink').href='https://wa.me/'+WA+'?text='+encodeURIComponent('Hello Velora Studio, I saw the Halcyon Room sample site and I would like a site like it for my practice.');
+
+var SLOTS=[[9,0],[11,0],[14,0],[17,30],[19,0]];
+var TYPES={call:'Free 15-minute call',individual:'Individual session',couples:'Couples session',burnout:'Burnout coaching intake'};
+var days=[],st={day:0,slot:2};
+
+(function buildDays(){
+  var d=new Date();
+  while(days.length<5){
+    d=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1);
+    var w=d.getDay();if(w!==0&&w!==6)days.push(d);
+  }
+})();
+
+function tzOf(){return $('sTz').value}
+function tzName(){var s=$('sTz');return s.options[s.selectedIndex].text}
+function timeLabel(day,slot){
+  var t=new Date(Date.UTC(day.getFullYear(),day.getMonth(),day.getDate(),slot[0]-1,slot[1]));
+  try{return t.toLocaleTimeString('en-GB',{timeZone:tzOf(),hour:'2-digit',minute:'2-digit',hour12:false})}
+  catch(e){return t.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false})}
+}
+function radio(name,value,label,checked){
+  var l=document.createElement('label');l.className='opt';
+  var i=document.createElement('input');i.type='radio';i.name=name;i.value=value;i.checked=checked;
+  var s=document.createElement('span');s.textContent=label;
+  l.appendChild(i);l.appendChild(s);return l;
+}
+function renderDays(){
+  var box=$('days');box.textContent='';
+  days.forEach(function(d,i){
+    box.appendChild(radio('day',i,d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}),i===st.day));
+  });
+}
+function renderSlots(){
+  var box=$('slots');box.textContent='';
+  SLOTS.forEach(function(s,i){box.appendChild(radio('slot',i,timeLabel(days[st.day],s),i===st.slot))});
+  summary();
+}
+function summary(){
+  var d=days[st.day];
+  var line=d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})+', '+timeLabel(d,SLOTS[st.slot])+' ('+tzName()+')';
+  $('sum').textContent=line;
+  $('confBox').hidden=true;
+  return line;
+}
+$('days').addEventListener('change',function(e){if(e.target.name==='day'){st.day=+e.target.value;renderSlots()}});
+$('slots').addEventListener('change',function(e){if(e.target.name==='slot'){st.slot=+e.target.value;summary()}});
+$('sTz').addEventListener('change',renderSlots);
+$('sType').addEventListener('change',function(){$('confBox').hidden=true});
+$('reqBtn').addEventListener('click',function(){
+  var line=summary();
+  $('confText').textContent=TYPES[$('sType').value]+', '+line+'. This is a sample, so nothing was sent. On your site, a request like this reaches you on WhatsApp and email, and lands in your calendar.';
+  $('confBox').hidden=false;
+});
+Array.prototype.forEach.call(document.querySelectorAll('[data-session]'),function(a){
+  a.addEventListener('click',function(){$('sType').value=a.getAttribute('data-session');$('confBox').hidden=true});
+});
+Array.prototype.forEach.call(document.querySelectorAll('[data-buy]'),function(b){
+  b.addEventListener('click',function(){
+    $('snote').textContent=b.getAttribute('data-buy')+' selected. This is a sample, so no payment was taken. On your site, this opens a secure payment in naira or dollars.';
+  });
+});
+function loadBg(el,url,prop){var im=new Image();im.onload=function(){el.style.setProperty(prop,'url("'+url+'")');el.classList.add('has-img')};im.src=url}
+loadBg($('top'),'hero.webp','--hero-img');
+loadBg($('pimg'),'portrait.webp','--p-img');
+renderDays();renderSlots();
+})();
+</script>
+
+</body></html>

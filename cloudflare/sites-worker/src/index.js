@@ -25,6 +25,20 @@ export function filePath(pathname) {
   return p;
 }
 
+// Unlisted reference pages (for example a sample site shown to prospects). They live in the bucket under
+// `_showcase/<name>/`, outside every domain folder, so publishing a site never touches them. They are served
+// only on SHOWCASE_HOSTS, only at /ref/<name>/ where <name> carries an unguessable token, and are never indexed.
+// Nothing links to them: the only way in is the generated link.
+export const SHOWCASE_HOSTS = ['velorastudio.com.ng'];
+const SHOWCASE_RE = /^\/ref\/([A-Za-z0-9_-]{16,64})(\/.*)?$/;
+
+export function showcaseKey(pathname) {
+  const m = SHOWCASE_RE.exec(pathname);
+  if (!m) return null;
+  const rest = filePath(m[2] || '/');
+  return rest === null ? null : { name: m[1], key: `_showcase/${m[1]}/${rest}`, bare: m[2] === undefined };
+}
+
 function plain(status, text) {
   return new Response(text, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY } });
 }
@@ -38,6 +52,24 @@ export default {
     const folder = hostFolder(request.headers.get('Host') || url.hostname);
     const path = filePath(url.pathname);
     if (!folder || path === null) return plain(404, 'Not found');
+
+    if (url.pathname.startsWith('/ref/') && SHOWCASE_HOSTS.includes(folder)) {
+      const sc = showcaseKey(url.pathname);
+      if (!sc) return plain(404, 'Not found');
+      if (sc.bare) return new Response(null, { status: 301, headers: { Location: `${url.pathname}/${url.search}`, ...SECURITY } });
+      const obj = await env.SITES.get(sc.key, { onlyIf: request.headers, range: request.headers });
+      if (obj === null) return plain(404, 'Not found');
+      const h = new Headers();
+      if (obj.writeHttpMetadata) obj.writeHttpMetadata(h);
+      if (obj.httpEtag) h.set('ETag', obj.httpEtag);
+      for (const [k, v] of Object.entries(SECURITY)) h.set(k, v);
+      h.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      h.set('Referrer-Policy', 'no-referrer');
+      h.set('Cache-Control', 'private, max-age=300');
+      if (!obj.body) return new Response(null, { status: 304, headers: h });
+      const part = obj.range && request.headers.has('Range');
+      return new Response(request.method === 'HEAD' ? null : obj.body, { status: part ? 206 : 200, headers: h });
+    }
 
     // SITE_PREFIX is set only on the standby copy in the backup account ("live/"); the main Worker has none.
     const root = env.SITE_PREFIX || '';
