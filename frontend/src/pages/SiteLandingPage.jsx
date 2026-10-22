@@ -30,6 +30,9 @@ import SiteSignUpForm from "./SiteSignUpForm";
 import "./SiteLandingPage.css";
 
 const JOIN_URL = import.meta.env.VITE_BUILDER_JOIN_URL || "";
+/** HOST-4: signed in on this browser before? Then the nav offers "Open my portal" (the portal restores the session itself). */
+const SIGNED_IN = (() => { try { return window.localStorage.getItem("opsra_signed_in") === "1"; } catch { return false; } })();
+
 const START_HREF = JOIN_URL || "#start";
 const START_ATTRS = JOIN_URL ? { target: "_blank", rel: "noopener noreferrer" } : {};
 
@@ -621,9 +624,15 @@ export default function SiteLandingPage() {
             </ul>
           </nav>
           <div className="sl-right">
-            <button className="sl-signin-link" type="button" data-open-signin>
-              Sign in
-            </button>
+            {SIGNED_IN ? (
+              <a className="sl-signin-link" href="/b/login" style={{ textDecoration: "none", color: "inherit", fontWeight: 600 }}>
+                Open my portal
+              </a>
+            ) : (
+              <button className="sl-signin-link" type="button" data-open-signin>
+                Sign in
+              </button>
+            )}
             <a className="sl-signin-link" href="/partner" style={{ textDecoration: "none", color: "inherit" }}>
               Partner sign in
             </a>

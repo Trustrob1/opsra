@@ -30,7 +30,16 @@ const unwrap = (p) => p.then((r) => r.data?.data ?? r.data)
 /** Exchanges a magic-link token (the `t=` value from /b/login?t=...) for a
  * builder session. Returns { access_token, expires_at, builder }. */
 export const exchangeBuilderToken = (rawToken) =>
-  unwrap(axios.post(`${BASE}/auth/exchange`, { token: rawToken }))
+  unwrap(axios.post(`${BASE}/auth/exchange`, { token: rawToken }, { withCredentials: true }))
+
+/** HOST-4: signed in on this browser in the last 30 days? Trades the secure cookie for a fresh session.
+ * Rejects with 401 when there is no cookie or it has expired. */
+export const restoreBuilderSession = () =>
+  unwrap(axios.post(`${BASE}/auth/session`, {}, { withCredentials: true }))
+
+/** HOST-4: sign out for real: the server forgets this browser. Never throws. */
+export const builderLogout = () =>
+  axios.post(`${BASE}/auth/logout`, {}, { withCredentials: true }).catch(() => {})
 
 // ── Account ──────────────────────────────────────────────────────────────
 export const getMyAccount = (token) => unwrap(axios.get(`${BASE}/me`, authed(token)))

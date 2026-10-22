@@ -35,7 +35,7 @@ import {
   RefreshCw, Save, Shuffle, ShoppingCart, Tag, Trash2, Undo2, User,
 } from 'lucide-react'
 import {
-  exchangeBuilderToken, renewalCheckout, careCheckout, cancelCarePlan, editLimitOffer, catalogCheckout, catalogLimitOffer, getMyAccount, updateMyAccount, listMySites, getMySite,
+  exchangeBuilderToken, restoreBuilderSession, builderLogout, renewalCheckout, careCheckout, cancelCarePlan, editLimitOffer, catalogCheckout, catalogLimitOffer, getMyAccount, updateMyAccount, listMySites, getMySite,
   patchMySiteContent, patchMySiteRecipe, suggestMyDesigns, applyMyDesign, renderMySite, undoMySite, uploadMySiteAsset,
   getPremiumLook, previewPremiumLook, applyPremiumLook, undoPremiumLook,
   checkDomain, getQuote, checkout, errorMessage,
@@ -65,8 +65,8 @@ const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 export default function BuilderPortalPage() {
   const [session, setSession] = useState(null)      // { token, builder }
   const hasCode = !!new URLSearchParams(window.location.search).get('t')
-  const [stage, setStage] = useState(hasCode ? 'confirm' : 'error')   // confirm | exchanging | error | app
-  const [error, setError] = useState(hasCode ? '' : 'This link is missing its access code. Please open the exact link your team sent you.')
+  const [stage, setStage] = useState(hasCode ? 'confirm' : 'restoring')   // restoring | confirm | exchanging | error | app
+  const [error, setError] = useState('')
   const [view, setView] = useState('mysites')        // mysites | host | options | editor | checkout | account
   const [selectedSiteId, setSelectedSiteId] = useState(null)
   const [checkoutFromOptions, setCheckoutFromOptions] = useState(false)   // OPT-2: where Back goes from checkout
@@ -75,6 +75,38 @@ export default function BuilderPortalPage() {
   const [toast, showToast] = useToast()
   const isMobile = useIsMobile(900)
 
+  // Shared by the sign-in link and the 30-day "remember me" restore.
+  function enterApp(data) {
+    setSession({ token: data.access_token, builder: data.builder })
+    setStage('app')
+    try { window.localStorage.setItem('opsra_signed_in', '1') } catch { /* only used to show "Open my portal" on the landing pages */ }
+    // HOST-1: people who arrived from the /host page open straight on "Host a site". The flag is not a secret.
+    try {
+      if (window.localStorage.getItem('opsra_entry') === 'host') { setView('host'); window.localStorage.removeItem('opsra_entry') }
+    } catch { /* storage blocked: they land on My sites, which has the same tab */ }
+    window.history.replaceState(null, '', window.location.pathname)
+    // SITE-WEB-2: the full account (incl. whether they have messaged our WhatsApp yet). Never blocks sign-in.
+    getMyAccount(data.access_token)
+      .then((me) => setSession((s) => (s ? { ...s, builder: { ...s.builder, ...me } } : s)))
+      .catch(() => {})
+  }
+
+  // HOST-4: coming back with no link? If this browser signed in within the last 30 days, go straight in.
+  useEffect(() => {
+    if (hasCode) return
+    let alive = true
+    restoreBuilderSession()
+      .then((data) => { if (alive) enterApp(data) })
+      .catch(() => {
+        if (!alive) return
+        try { window.localStorage.removeItem('opsra_signed_in') } catch { /* ignore */ }
+        setError('Your session has ended. Please sign in again.')
+        setStage('error')
+      })
+    return () => { alive = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // The sign-in link is single use, so it is used only when the person taps Continue. Opening the page (a link preview, an
   // in-app browser that loads it twice, a mail scanner) never uses it up.
   function signIn() {
@@ -82,19 +114,7 @@ export default function BuilderPortalPage() {
     if (!t || stage === 'exchanging') return
     setStage('exchanging')
     exchangeBuilderToken(t)
-      .then((data) => {
-        setSession({ token: data.access_token, builder: data.builder })
-        setStage('app')
-        // HOST-1: people who arrived from the /host page open straight on "Host a site". The flag is not a secret.
-        try {
-          if (window.localStorage.getItem('opsra_entry') === 'host') { setView('host'); window.localStorage.removeItem('opsra_entry') }
-        } catch { /* storage blocked: they land on My sites, which has the same tab */ }
-        window.history.replaceState(null, '', window.location.pathname)
-        // SITE-WEB-2: the full account (incl. whether they have messaged our WhatsApp yet). Never blocks sign-in.
-        getMyAccount(data.access_token)
-          .then((me) => setSession((s) => (s ? { ...s, builder: { ...s.builder, ...me } } : s)))
-          .catch(() => {})
-      })
+      .then((data) => enterApp(data))
       .catch((e) => {
         setError(errorMessage(e, "This link isn't valid — ask for a new one."))
         setStage('error')
@@ -115,6 +135,8 @@ export default function BuilderPortalPage() {
 
   function logOut() {
     setSession(null)
+    try { window.localStorage.removeItem('opsra_signed_in') } catch { /* ignore */ }
+    builderLogout()
     window.location.href = '/sites#signin'   // SITE-LANDING: sign back in from the landing page
   }
 
@@ -129,7 +151,7 @@ export default function BuilderPortalPage() {
           </Card>
         )}
 
-        {stage === 'exchanging' && <Spinner label="Signing you in…" />}
+        {(stage === 'exchanging' || stage === 'restoring') && <Spinner label={stage === 'restoring' ? 'Opening your portal…' : 'Signing you in…'} />}
 
         {stage === 'error' && (
           <Card style={{ marginTop: 12 }}>

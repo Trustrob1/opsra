@@ -35,7 +35,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 
 from app.database import get_supabase
 from app.models.common import ok
@@ -53,6 +53,7 @@ from app.models.sites import (
 from app.services import (
     builder_auth_service,
     builder_phone_service,
+    builder_remember_service,
     builder_signup_service,
     site_access_service,
     site_chat_service,
@@ -123,7 +124,7 @@ def _rate_limited(bucket: dict, key: str, limit: int, window_s: float) -> bool:
 # ─────────────────────────────── Auth ───────────────────────────────
 
 @router.post("/auth/exchange")
-def exchange_token(payload: dict, request: Request, db=Depends(get_supabase)):
+def exchange_token(payload: dict, request: Request, response: Response, db=Depends(get_supabase)):
     raw_token = str((payload or {}).get("token") or "").strip()
     if not raw_token:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "token is required"})
@@ -156,13 +157,51 @@ def exchange_token(payload: dict, request: Request, db=Depends(get_supabase)):
     db.table("site_editor_tokens").update({"revoked_at": _now_iso(), "last_used_at": _now_iso(),
                                             "updated_at": _now_iso()}).eq("id", row["id"]).execute()
 
+    _remember_cookie(db, request, response, builder)        # HOST-4: stay signed in for 30 days (never blocks sign-in)
+    return ok(data=_session_payload(builder), message="Signed in")
+
+
+def _session_payload(builder: dict) -> dict:
     session = builder_auth_service.issue_builder_session(builder_id=builder["id"], org_id=builder["org_id"])
-    return ok(data={
+    return {
         "access_token": session["access_token"],
         "expires_at": session["expires_at"],
         "builder": {"id": builder["id"], "full_name": builder["full_name"],
                     "business_name": builder.get("business_name"), "email": builder.get("email")},
-    }, message="Signed in")
+    }
+
+
+def _remember_cookie(db, request: Request, response: Response, builder: dict) -> None:
+    try:
+        raw = builder_remember_service.create(db, builder_id=builder["id"], org_id=builder["org_id"],
+                                              user_agent=request.headers.get("user-agent", ""))
+        response.set_cookie(builder_remember_service.COOKIE_NAME, raw,
+                            **builder_remember_service.cookie_kwargs(request.headers.get("origin"), request.headers.get("host")))
+    except Exception:  # noqa: BLE001 - a missing cookie only means they sign in again next time
+        logger.warning("could not create a remembered builder session", exc_info=True)
+
+
+_session_hits: dict[str, list[float]] = defaultdict(list)
+
+
+@router.post("/auth/session")
+def restore_session(request: Request, db=Depends(get_supabase)):
+    """HOST-4: open the portal without a sign-in link when this browser signed in within the last 30 days."""
+    if _rate_limited(_session_hits, _client_ip(request), 60, 60.0):
+        raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "Too many attempts - please wait a moment."})
+    builder = builder_remember_service.restore(db, request.cookies.get(builder_remember_service.COOKIE_NAME))
+    if not builder:
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "Please sign in again."})
+    return ok(data=_session_payload(builder), message="Signed in")
+
+
+@router.post("/auth/logout")
+def logout(request: Request, response: Response, db=Depends(get_supabase)):
+    """HOST-4: sign out on this browser: revoke the remembered session and clear the cookie."""
+    builder_remember_service.revoke(db, request.cookies.get(builder_remember_service.COOKIE_NAME))
+    kw = builder_remember_service.cookie_kwargs(request.headers.get("origin"), request.headers.get("host"))
+    response.delete_cookie(builder_remember_service.COOKIE_NAME, path="/", secure=kw["secure"], httponly=True, samesite=kw["samesite"])
+    return ok(data=None, message="Signed out")
 
 
 _REQUEST_LINK_PER_IP_HOUR = 10

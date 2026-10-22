@@ -20,6 +20,9 @@ import { DomainChecker, usePricing } from "./HostDomainPricing";
 import "./SiteLandingPage.css";
 import "./HostLandingPage.css";
 
+/** HOST-4: signed in on this browser before? Then the nav offers "Open my portal" (the portal restores the session itself). */
+const SIGNED_IN = (() => { try { return window.localStorage.getItem("opsra_signed_in") === "1"; } catch { return false; } })();
+
 const TITLE = "Host your website with Opsra | Upload, preview, go live";
 const DESC =
   "Made your website with AI or a builder? Upload it to Opsra, preview it, then put it online on your own domain. Domain name, SSL and DNS are included.";
@@ -146,9 +149,15 @@ export default function HostLandingPage() {
             </ul>
           </nav>
           <div className="sl-right">
-            <a className="sl-btn sl-teal sl-sm" href="#start" onClick={goSignIn}>
-              Sign in to upload
-            </a>
+            {SIGNED_IN ? (
+              <a className="sl-btn sl-teal sl-sm" href="/b/login">
+                Open my portal
+              </a>
+            ) : (
+              <a className="sl-btn sl-teal sl-sm" href="#start" onClick={goSignIn}>
+                Sign in to upload
+              </a>
+            )}
           </div>
         </div>
       </header>
