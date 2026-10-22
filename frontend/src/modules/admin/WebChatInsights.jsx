@@ -153,11 +153,12 @@ export default function WebChatInsights({ baseLink }) {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead><tr style={{ textAlign: 'left', color: ds.gray }}>
-                    {['Source', 'Visits', 'Started', 'Contact', ...f.steps.slice(3).map((s) => s.label), ...(f.goals.includes('paid') ? ['Paid in'] : [])].map((x) => <th key={x} style={{ padding: '4px 8px', fontWeight: 600 }}>{x}</th>)}
+                    {['Source', 'Link opens', 'Visits', 'Started', 'Contact', ...f.steps.slice(3).map((s) => s.label), ...(f.goals.includes('paid') ? ['Paid in'] : [])].map((x) => <th key={x} style={{ padding: '4px 8px', fontWeight: 600 }}>{x}</th>)}
                   </tr></thead>
                   <tbody>{f.sources.map((s) => (
                     <tr key={s.source} style={{ borderTop: `1px solid ${ds.border}` }}>
                       <td style={{ padding: '6px 8px', fontWeight: 600 }}>{s.source}</td>
+                      <td style={{ padding: '6px 8px' }}>{s.catalog_visit || 0}</td>
                       <td style={{ padding: '6px 8px' }}>{s.visit}</td><td style={{ padding: '6px 8px' }}>{s.started}</td>
                       <td style={{ padding: '6px 8px' }}>{s.contact}</td>
                       {f.goals.map((g) => <td key={g} style={{ padding: '6px 8px' }}>{s[GOAL_KIND[g]]}</td>)}
@@ -166,6 +167,7 @@ export default function WebChatInsights({ baseLink }) {
                 </table>
               </div>
             )}
+            {f.sources.length > 0 && <p style={small}>Link opens counts each time a tagged store or product link is opened (once per visitor per session). Visits counts people who opened the chat.</p>}
 
             <p style={{ ...h, marginTop: 16 }}>What happened in the chats</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

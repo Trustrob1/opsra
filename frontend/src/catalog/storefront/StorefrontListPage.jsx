@@ -4,10 +4,11 @@
  * Search, category buttons, tag filters, "Help me choose" finder and size compare all keep working.
  * Buying is by WhatsApp from the product page; cart and checkout arrive in STORE-4.
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
-  resolveAccent, readableOn, categoryChips, otherFilterDims, filterItems, cardView, readUrlState, listUrl,
+  resolveAccent, readableOn, categoryChips, otherFilterDims, filterItems, cardView, readUrlState, listUrl, quickAddState,
 } from './storefrontLogic'
+import { cartVariantId } from './storefrontCart'
 import { INK, MUTED, LINE, FONT, placeholder, useManrope } from './storefrontTheme'
 import {
   Icon, WhatsAppIcon, ChromeStyles, Announcement, StorefrontHeader, StorefrontFooter,
@@ -88,10 +89,27 @@ function Finder({ questions, accent, onAnswer, onClear, done, matchCount, itemWo
 }
 
 export default function StorefrontListPage({
-  orgName, orgSlug, waNumber, catalogConfig, style, wizardQuestions = [], items = [], onSelectItem, onShowCompare, headerCart,
+  orgName, orgSlug, waNumber, catalogConfig, style, wizardQuestions = [], items = [], onSelectItem, onShowCompare, headerCart, cart,
 }) {
   useManrope()
   const accent = resolveAccent(style)
+  const onAccent = readableOn(accent)
+  // STORE-8: a small add button under each product. "added" shows for two seconds; a failure is shown on its own card.
+  const cartOn = !!(cart && cart.enabled)
+  const [addState, setAddState] = useState({ id: null, phase: '' })
+  const timer = useRef(null)
+  async function quickAdd(it) {
+    if (cart.busy) return
+    setAddState({ id: it.id, phase: 'adding' })
+    const ok = await cart.add({ item: it, variantId: cartVariantId(it, null), qty: 1 })
+    clearTimeout(timer.current)
+    if (ok) {
+      setAddState({ id: it.id, phase: 'added' })
+      timer.current = setTimeout(() => setAddState({ id: null, phase: '' }), 2000)
+    } else {
+      setAddState({ id: it.id, phase: 'failed' })
+    }
+  }
   const plural = catalogConfig?.catalog_item_label_plural || 'Products'
   const singular = catalogConfig?.catalog_item_label || 'Product'
 
@@ -257,9 +275,12 @@ export default function StorefrontListPage({
             {shown.map((it, i) => {
               const v = cardView(it, catalogConfig)
               const soldLabel = catalogConfig?.availability_labels?.unavailable || 'Out of stock'
+              const quick = quickAddState(it, { cartOn, config: catalogConfig })
+              const mine = addState.id === it.id ? addState.phase : ''
               return (
-                <button key={it.id || it.slug} onClick={() => onSelectItem(it)} style={{
-                  display: 'block', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: 0, color: INK,
+                <div key={it.id || it.slug}>
+                <button onClick={() => onSelectItem(it)} style={{
+                  display: 'block', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: 0, color: INK, width: '100%',
                 }}>
                   <div style={{ position: 'relative', aspectRatio: '1 / 1.1', borderRadius: 16, overflow: 'hidden', background: placeholder(i, 24) }}>
                     {v.cover && <img src={v.cover} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
@@ -279,6 +300,22 @@ export default function StorefrontListPage({
                     </div>
                   )}
                 </button>
+                {quick && (
+                  <button type="button" disabled={mine === 'adding'}
+                    aria-label={quick === 'add' ? `Add ${v.title} to cart` : `Choose a size for ${v.title}`}
+                    onClick={() => (quick === 'add' ? quickAdd(it) : onSelectItem(it))}
+                    style={{
+                      marginTop: 10, width: '100%', minHeight: 44, borderRadius: 12, fontSize: 14, fontWeight: 700,
+                      cursor: mine === 'adding' ? 'default' : 'pointer', fontFamily: 'inherit',
+                      ...(quick === 'add'
+                        ? { border: `1.5px solid ${accent}`, background: mine === 'added' ? accent : '#fff', color: mine === 'added' ? onAccent : accent }
+                        : { border: `1.5px solid ${LINE}`, background: '#fff', color: INK }),
+                    }}>
+                    {quick === 'choose' ? 'Choose size' : mine === 'adding' ? 'Adding…' : mine === 'added' ? 'Added \u2713' : 'Add to cart'}
+                  </button>
+                )}
+                {mine === 'failed' && cart && cart.error && <p role="alert" style={{ margin: '6px 0 0', fontSize: 12, color: '#B3261E' }}>{cart.error}</p>}
+                </div>
               )
             })}
           </div>

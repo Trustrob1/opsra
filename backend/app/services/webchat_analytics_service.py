@@ -17,7 +17,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("visit", "started", "contact", "booked", "handoff_sent", "redirect_sent", "order", "paid", "tap")
+KINDS = ("visit", "started", "contact", "booked", "handoff_sent", "redirect_sent", "order", "paid", "tap", "catalog_visit")   # STORE-7: catalog_visit
 # goal key -> (event kind, label, the step its rate is measured against)
 GOALS = {
     "booking": ("booked", "Booked", "contact"),
@@ -96,7 +96,7 @@ def _funnel(db, org_id: str, since: str, goals: list) -> dict:
         steps.append({"key": g, "label": label, "count": totals[kind], "rate": _pct(totals[kind], totals[parent]),
                       "of": ("orders" if parent == "order" else LABELS[parent].lower())})
     sources = sorted(({"source": s, **c, "revenue_kobo": rev_by_source.get(s, 0)} for s, c in by_source.items()),
-                     key=lambda r: -r["visit"])
+                     key=lambda r: -(r["visit"] + r["catalog_visit"]))
     days = [{"date": d, **daily[d]} for d in sorted(daily)]
     return {"totals": totals, "rates": rates, "steps": steps, "goals": goals, "revenue_kobo": revenue,
             "sources": sources, "daily": days}

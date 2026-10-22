@@ -269,3 +269,27 @@ def preview_html(p: dict) -> str:
         f"  <script>window.location.replace({json.dumps(url).replace('<', chr(92) + 'u003c')});</script>\n"
         "</body>\n</html>\n"
     )
+
+
+# ── Visits per tag (STORE-7) ────────────────────────────────────────────────
+
+def record_visit(db, org_slug_: str, src: Optional[str]) -> bool:
+    """Count one open of a tagged catalog link. Only tagged links are counted (an empty or unusable tag is ignored).
+    Never raises; before the STORE-7 migration the insert is refused by the database and only logged."""
+    tag = clean_tag(src)
+    slug = re.sub(r"[^A-Za-z0-9_-]", "", str(org_slug_ or ""))[:80]
+    if not tag or not slug:
+        return False
+    try:
+        rows = db.table("organisations").select("id").eq("slug", slug).limit(1).execute().data
+        if isinstance(rows, dict):
+            rows = [rows]
+        org = (rows or [None])[0]
+        if not org:
+            return False
+        from app.services import webchat_service as wc
+        wc.log_event(db, org["id"], None, "catalog_visit", tag)
+        return True
+    except Exception as exc:
+        logger.warning("catalog visit not recorded slug=%s: %s", slug, exc)
+        return False

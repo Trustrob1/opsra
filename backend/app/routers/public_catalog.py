@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, HTMLResponse
+from pydantic import BaseModel, Field
 
 from app.database import get_supabase
 from app.services import catalog_storefront_service as storefront   # STORE-1
@@ -245,6 +246,21 @@ async def _increment_catalog_views(org_id: str, item_id: str) -> None:
 # /api/v1/public/catalog/{org_slug}         ← parameterised (list)
 # /api/v1/public/catalog/{org_slug}/{item_slug} ← fully parameterised
 # ---------------------------------------------------------------------------
+
+class _VisitBody(BaseModel):
+    src: Optional[str] = Field(None, max_length=60)
+
+
+@router.post("/public/catalog/{org_slug}/visit")
+async def catalog_visit(org_slug: str, body: _VisitBody, request: Request):
+    """
+    STORE-7: the page tells us once per browser session that a tagged link was opened, so Admin > Web Chat >
+    Insights can show visits per tag even when nobody adds to the cart. No login. Untagged opens are not counted.
+    """
+    _check_rate_limit(request)
+    from app.services import catalog_share_service as share
+    return {"counted": share.record_visit(get_supabase(), org_slug, body.src)}
+
 
 @router.get("/og/shop/{org_slug}/{item_slug}", response_class=HTMLResponse)
 async def og_shop_item(

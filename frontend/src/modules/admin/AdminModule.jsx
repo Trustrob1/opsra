@@ -459,7 +459,7 @@ export default function AdminModule({ user }) {
           <LazyTab active={tab === 'catalog'} visited={visited['catalog']}>
             <SubTabBar tabs={CATALOG_SUB_TABS} active={catalogSubTab} onChange={setCatalogSubTab} />
             <div style={{ display: catalogSubTab === 'catalog-config' ? 'block' : 'none' }}><CatalogConfig /></div>
-            <div style={{ display: catalogSubTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems key={catalogItemsKey} /></div>
+            <div style={{ display: catalogSubTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems key={catalogItemsKey} onManageCategories={() => setCatalogSubTab('catalog-categories')} /></div>
             {catalogSubTab === 'catalog-categories' && <CatalogCategories onSaved={() => setCatalogItemsKey(k => k + 1)} />}
             {catalogSubTab === 'catalog-look' && <CatalogLook />}
           </LazyTab>

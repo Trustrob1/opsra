@@ -63,13 +63,14 @@ function Field({ label, children }) {
   )
 }
 
-export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSaved, onShare }) {
+export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSaved, onShare, onManageCategories }) {
   const [form, setForm]        = useState({})
   const [saving, setSaving]    = useState(false)
   const [uploading, setUpload] = useState(false)
   const [toast, setToast]      = useState('')
   const [error, setError]      = useState('')
   const fileRef                = useRef()
+  const baseline               = useRef('')   // STORE-9: the form as it was opened, to tell if there are unsaved changes
   const extraFileRef           = useRef()
 
   const isShopify = (config?.external_sync || 'none') === 'shopify'
@@ -77,7 +78,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
 
   useEffect(() => {
     if (!item) return
-    setForm({
+    const initial = {
       title:                item.title || '',
       price:                item.price ?? '',
       description:          item.description || '',
@@ -97,10 +98,19 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
         price:     v.price     !== undefined && v.price !== null ? String(v.price) : '',
         available: v.available !== false,
       })),
-    })
+    }
+    baseline.current = JSON.stringify(initial)
+    setForm(initial)
     setError('')
     setToast('')
   }, [item])
+
+  // STORE-9: Manage categories lives in its own screen. Leaving closes this editor, so ask first if there is unsaved work.
+  function manageCategories() {
+    const dirty = JSON.stringify(form) !== baseline.current
+    if (dirty && !window.confirm('You have unsaved changes to this product. Leave without saving?')) return
+    onManageCategories()
+  }
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
   function setField(key, val) { setForm(p => ({ ...p, [key]: val })) }
@@ -446,6 +456,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
               names={((config?.tag_dimensions || []).find(d => d.key === 'category') || {}).options || []}
               tags={form.tags}
               onChange={val => setTag('category', val)}
+              onManage={onManageCategories ? manageCategories : undefined}
             />
           </Field>
 

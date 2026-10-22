@@ -12,7 +12,8 @@
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState, useEffect } from 'react'
-import { getCatalogList, getCatalogItem, getCatalogCompare } from './catalog.service'
+import { getCatalogList, getCatalogItem, getCatalogCompare, postCatalogVisit } from './catalog.service'
+import { trackVisitOnce } from './catalogVisit'
 import CatalogListPage from './CatalogListPage'
 import CatalogItemPage from './CatalogItemPage'
 import CatalogSizeComparePage from './CatalogSizeComparePage'
@@ -84,12 +85,16 @@ export default function PublicCatalogShell() {
             style:           data.style || null,
           })
         setLoading(false)
+        // STORE-7: a tagged link that opens a real store is counted once per browser session
+        let storage = null
+        try { storage = window.sessionStorage } catch { /* blocked */ }
+        trackVisitOnce({ orgSlug, tag: source, storage, send: postCatalogVisit })
       })
       .catch(err => {
         setError(err.status === 404 ? 'not_found' : 'error')
         setLoading(false)
       })
-  }, [orgSlug])
+  }, [orgSlug, source])
 
   // Load individual item when itemSlug is set
   useEffect(() => {
@@ -321,6 +326,7 @@ export default function PublicCatalogShell() {
         onSelectItem={handleSelectItem}
         onShowCompare={handleShowCompare}
         headerCart={headerCart}
+        cart={cartApi}
       />
     )
   }

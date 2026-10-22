@@ -29,5 +29,11 @@ export const getCatalogItem = (orgSlug, itemSlug) =>
 export const searchCatalog = (orgSlug, q) =>
   _get(`/api/v1/public/catalog/${orgSlug}/search?q=${encodeURIComponent(q)}`)
 
+// STORE-7: counts one open of a tagged link. Fire and forget; the page never waits for it.
+export const postCatalogVisit = (orgSlug, src) =>
+  fetch(`${BASE}/api/v1/public/catalog/${orgSlug}/visit`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src }), keepalive: true,
+  })
+
 export const getCatalogCompare = (orgSlug, sizeValue) =>
   _get(`/api/v1/public/catalog/${orgSlug}?sizes=${encodeURIComponent(sizeValue)}`)

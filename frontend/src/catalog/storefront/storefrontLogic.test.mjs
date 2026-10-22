@@ -274,3 +274,22 @@ test('listUrl: category added, other query values kept, variant dropped', () => 
   assert.equal(listUrl('royal-rest', 'Back pain care', '?src=qr&variant=9'), '/catalog/royal-rest?src=qr&category=Back+pain+care')
   assert.equal(listUrl('royal-rest', null, ''), '/catalog/royal-rest')
 })
+
+// ── STORE-8 quick add ───────────────────────────────────────────────────────
+import { quickAddState } from './storefrontLogic.js'
+
+test('quickAddState: add / choose / none', () => {
+  const on = { cartOn: true, config: {} }
+  const plain = { price: 5000, available: true, variants: [{ id: 9, title: 'Default Title' }] }
+  assert.equal(quickAddState(plain, on), 'add')
+  assert.equal(quickAddState({ price: 5000 }, on), 'add')                                       // no options stored at all
+  assert.equal(quickAddState({ price: 5000, variants: [{ id: 1, title: 'Queen' }] }, on), 'choose')
+  assert.equal(quickAddState(plain, { cartOn: false, config: {} }), null)                       // cart off
+  assert.equal(quickAddState(plain, { cartOn: true, config: { price_on_request: true } }), null)
+  assert.equal(quickAddState({ ...plain, available: false }, on), null)                         // sold out
+  assert.equal(quickAddState({ price: 0 }, on), null)
+  assert.equal(quickAddState({ price: null }, on), null)
+  assert.equal(quickAddState({ price: 5000, variants: [{ id: 9, title: 'Default Title', available: false }] }, on), null)
+  assert.equal(quickAddState(null, on), null)
+  assert.equal(quickAddState(plain), null)
+})

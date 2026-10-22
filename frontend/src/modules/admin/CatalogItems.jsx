@@ -50,7 +50,7 @@ function TagSummary({ tags, config }) {
   )
 }
 
-export default function CatalogItems() {
+export default function CatalogItems({ onManageCategories }) {
   const [items, setItems]           = useState([])
   const [config, setConfig]         = useState(null)
   const [loading, setLoading]       = useState(true)
@@ -243,6 +243,7 @@ export default function CatalogItems() {
         onClose={() => setDrawerItem(null)}
         onSaved={handleSaved}
         onShare={setShareItem}
+        onManageCategories={onManageCategories ? () => { setDrawerItem(null); onManageCategories() } : undefined}
       />
       {shareItem && <CatalogShareProduct item={shareItem} onClose={() => setShareItem(null)} onItemChanged={handleSaved} />}
     </div>

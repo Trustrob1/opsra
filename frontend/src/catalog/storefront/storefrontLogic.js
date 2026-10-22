@@ -64,6 +64,21 @@ export function realVariants(item) {
 }
 
 /**
+ * STORE-8: what the small button under a product on the grid does.
+ *   'add'    a product with no sizes and a real price: one tap puts it in the cart
+ *   'choose' a product with sizes: the button opens the product page to pick one
+ *   null     no button (cart off, price on request, no price, sold out)
+ */
+export function quickAddState(item, { cartOn, config } = {}) {
+  if (!cartOn || !item || (config && config.price_on_request) || item.available === false) return null
+  if (realVariants(item).length > 0) return 'choose'
+  if (!(Number(item.price) > 0)) return null
+  const stored = ((item.variants) || []).find((v) => v && (v.id ?? v.variant_id) != null && String(v.id ?? v.variant_id).trim() !== '')
+  if (stored && !isVariantAvailable(stored)) return null
+  return 'add'
+}
+
+/**
  * What to show for price. Returns
  * { priceText, wasText, pct, rangeNote } and never invents a was-price:
  * wasText and pct are set only when compare-at is higher than the price.
