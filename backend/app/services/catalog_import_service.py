@@ -13,6 +13,8 @@ Columns (the heading can be written many ways; only Title is required):
   Photos           one or more https links, separated by spaces or commas (also see "drop a folder of photos")
   In stock         yes / no (empty means yes)
 
+A row whose title starts with the capital word EXAMPLE (the two sample rows in the template) is skipped, so sample rows
+can be left in the file by mistake without being added.
 The owner always sees a preview first. Nothing is guessed: a row with a problem is listed with the reason and skipped,
 and a product whose name already exists is skipped (never duplicated or overwritten).
 Photos are fetched one at a time by the page (progress bar), through fetch_image(), which refuses anything that is not a
@@ -35,13 +37,14 @@ MAX_ROWS = 500
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_SIZES = 20
 MAX_PHOTOS = 5
+EXAMPLE_RE = re.compile(r"^EXAMPLE\b")
 MAX_TITLE = 200
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 TEMPLATE_HEADERS = ["Title", "Price", "Description", "Category", "Sizes", "Photos", "In stock"]
 TEMPLATE_ROWS = [
-    ["Cloud 9 Mattress", "150000", "Soft, supportive and cool to sleep on.", "Mattresses",
+    ["EXAMPLE Cloud 9 Mattress", "150000", "Soft, supportive and cool to sleep on.", "Mattresses",
      "Single 3/4 ft=120000; Queen 5/6 ft=180000", "https://example.com/cloud9.jpg", "yes"],
-    ["Memory Foam Pillow", "12000", "", "Pillows, Bedding", "", "", "yes"],
+    ["EXAMPLE Memory Foam Pillow", "12000", "", "Pillows, Bedding", "", "", "yes"],
 ]
 
 ALIASES = {
@@ -242,7 +245,7 @@ def parse_table(table: List[List[str]]) -> dict:
         if price is None and not any(s["price"] for s in sizes) and not problems:
             notes.append("No price: customers will have to ask you about it.")
         rows.append({
-            "row": n, "title": title, "price": price, "description": str(cell(r, "description")).strip()[:5000],
+            "row": n, "example": bool(EXAMPLE_RE.match(title)), "title": title, "price": price, "description": str(cell(r, "description")).strip()[:5000],
             "categories": parse_list(cell(r, "category")), "sizes": sizes, "photos": photos,
             "available": parse_in_stock(cell(r, "in_stock")), "problems": problems, "notes": notes,
         })
@@ -258,11 +261,13 @@ def plan(db, org_id: str, parsed: dict) -> dict:
     """Marks each row ok / exists / duplicate / error and counts them. Writes nothing."""
     have = _existing_titles(db, org_id)
     seen = set()
-    counts = {"total": 0, "ok": 0, "exists": 0, "duplicate": 0, "error": 0}
+    counts = {"total": 0, "ok": 0, "exists": 0, "duplicate": 0, "error": 0, "example": 0}
     for r in parsed["rows"]:
         counts["total"] += 1
         low = r["title"].lower()
-        if r["problems"]:
+        if r.get("example"):
+            r["status"] = "example"
+        elif r["problems"]:
             r["status"] = "error"
         elif low in have:
             r["status"] = "exists"

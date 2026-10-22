@@ -170,7 +170,7 @@ def test_plan_marks_existing_duplicate_error_and_ok():
     db = _db([{"id": "1", "org_id": BIZ, "title": "Cloud 9"}, {"id": "2", "org_id": "other", "title": "Foam"}])
     pl = _plan(db, "Title,Price,Category", "cloud 9,5,", "Foam,6,\"Beds, Pillows\"", "foam,7,", "Bad,x,", "Ok,1,Beds")
     assert [r["status"] for r in pl["rows"]] == ["exists", "ok", "duplicate", "error", "ok"]       # another business's Foam does not count
-    assert pl["counts"] == {"total": 5, "ok": 2, "exists": 1, "duplicate": 1, "error": 1}
+    assert pl["counts"] == {"total": 5, "ok": 2, "exists": 1, "duplicate": 1, "error": 1, "example": 0}
     assert pl["categories"] == ["Beds", "Pillows"]
 
 
@@ -215,6 +215,20 @@ def test_template_opens_in_excel_and_reads_back():
     assert t.startswith("﻿")
     p = imp.parse_table(imp.read_table(t.encode("utf-8"), "t.csv"))
     assert len(p["rows"]) == 2 and p["rows"][0]["sizes"][1]["price"] == 180000.0 and all(not r["problems"] for r in p["rows"])
+
+
+def test_the_template_sample_rows_are_never_added():
+    db = _db()
+    pl = imp.plan(db, BIZ, imp.parse_table(imp.read_table(imp.template_csv().encode("utf-8"), "t.csv")))
+    assert [r["status"] for r in pl["rows"]] == ["example", "example"] and pl["counts"]["example"] == 2 and pl["counts"]["ok"] == 0
+    out = imp.run(db, BIZ, pl, svc.create_catalog_item, cats.ensure_categories)
+    assert out["created"] == [] and db.tables["products"] == [] and out["categories_added"] == []
+    assert pl["categories"] == [] and pl["photo_links"] == 0
+
+
+def test_only_the_capital_word_EXAMPLE_marks_a_sample_row():
+    pl = _plan(_db(), "Title,Price", "EXAMPLE Bed,1", "EXAMPLE: Bed,2", "Example Sofa,3", "EXAMPLES chair,4", "My EXAMPLE,5")
+    assert [r["status"] for r in pl["rows"]] == ["example", "example", "ok", "ok", "ok"]
 
 
 # ── pictures from links ─────────────────────────────────────────────────────

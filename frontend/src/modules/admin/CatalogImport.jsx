@@ -111,7 +111,7 @@ export default function CatalogImport({ onClose, onDone, onAddPhotos }) {
             <li><b>Photos</b>: web links starting with https:// (optional). You can also add photos afterwards by dropping a folder of pictures named after your products.</li>
             <li><b>In stock</b>: yes or no (empty means yes)</li>
           </ul>
-          <p style={P}>You will see exactly what will happen before anything is added. Products that already exist are never duplicated or changed.</p>
+          <p style={P}>You will see exactly what will happen before anything is added. Products that already exist are never duplicated or changed. The two sample rows in the template start with the word EXAMPLE and are skipped, so you can leave them or delete them.</p>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
             <button style={GHOST} onClick={download}>Download the template</button>
             <button style={BTN} disabled={busy} onClick={() => input.current && input.current.click()}>{busy ? 'Reading your file…' : 'Choose your file'}</button>

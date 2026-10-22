@@ -20,6 +20,9 @@ test('statusView and previewSummary', () => {
   assert.equal(previewSummary({ ok: 12, exists: 2, duplicate: 1, error: 3 }), '12 products will be added. 2 already in your catalog. 1 repeated in this file. 3 rows need fixing.')
   assert.equal(previewSummary({ ok: 0, error: 1 }), '0 products will be added. 1 row needs fixing.')
   assert.equal(previewSummary(null), '0 products will be added.')
+  assert.equal(statusView('example').tone, 'muted')
+  assert.equal(previewSummary({ ok: 2, example: 2 }), '2 products will be added. 2 example rows skipped.')
+  assert.equal(previewSummary({ ok: 0, example: 1 }), '0 products will be added. 1 example row skipped.')
 })
 
 test('photoJobs and withoutPhotos', () => {

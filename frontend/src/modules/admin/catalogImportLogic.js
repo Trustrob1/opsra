@@ -17,6 +17,7 @@ const STATUS = {
   exists: { label: 'Already in your catalog', tone: 'muted' },
   duplicate: { label: 'Repeated in this file', tone: 'muted' },
   error: { label: 'Needs fixing', tone: 'bad' },
+  example: { label: 'Example row (skipped)', tone: 'muted' },
 }
 export function statusView(status) {
   return STATUS[status] || STATUS.error
@@ -31,6 +32,7 @@ export function previewSummary(counts) {
   if (c.exists) parts.push(`${c.exists} already in your catalog`)
   if (c.duplicate) parts.push(`${c.duplicate} repeated in this file`)
   if (c.error) parts.push(`${plural(c.error, 'row needs', 'rows need')} fixing`)
+  if (c.example) parts.push(`${plural(c.example, 'example row', 'example rows')} skipped`)
   return parts.join('. ') + '.'
 }
 
