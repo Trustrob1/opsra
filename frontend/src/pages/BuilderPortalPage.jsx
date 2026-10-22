@@ -72,6 +72,7 @@ export default function BuilderPortalPage() {
   const [checkoutFromHost, setCheckoutFromHost] = useState(false)         // HOST-1: Back returns to Host a site
   const [waDismissed, setWaDismissed] = useState(false)
   const [toast, showToast] = useToast()
+  const isMobile = useIsMobile(900)
 
   // The sign-in link is single use, so it is used only when the person taps Continue. Opening the page (a link preview, an
   // in-app browser that loads it twice, a mail scanner) never uses it up.
@@ -118,8 +119,7 @@ export default function BuilderPortalPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#F5FAFB', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-      <Header builder={session?.builder} view={view} setView={setView} onBack={() => setSelectedSiteId(null)} onLogOut={logOut} showNav={stage === 'app'} />
-      <main style={{ maxWidth: view === 'editor' || view === 'checkout' ? 1320 : 720, margin: '0 auto', padding: '20px 16px 60px' }}>
+      <Shell builder={session?.builder} view={view} setView={setView} onBack={() => setSelectedSiteId(null)} onLogOut={logOut} showNav={stage === 'app'} isMobile={isMobile}>
         {stage === 'confirm' && (
           <Card style={{ marginTop: 12 }}>
             <h1 style={{ fontSize: 20, margin: '0 0 6px', color: T.ink }}>Sign in to your builder page</h1>
@@ -171,44 +171,90 @@ export default function BuilderPortalPage() {
           <AccountView token={session.token} builder={session.builder}
             onUpdated={(b) => setSession((s) => ({ ...s, builder: { ...s.builder, ...b } }))} showToast={showToast} />
         )}
-      </main>
+      </Shell>
       <Toast t={toast} />
     </div>
   )
 }
 
-function Header({ builder, view, setView, onBack, onLogOut, showNav }) {
-  return (
-    <header style={{ background: ds.dark, borderBottom: '1px solid #1a2f3f', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontFamily: ds.fontDm }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>
-        <div aria-hidden="true" style={{ width: 32, height: 32, background: ds.teal, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: 'white' }}>O</div>
-        Opsra
-      </div>
-      <div style={{ fontSize: 12, color: '#7A9BAD' }}>Builder portal{builder?.full_name ? ` — ${builder.full_name}` : ''}</div>
-      {showNav && (
-        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => { onBack(); setView('mysites') }}
-            style={navBtn(view === 'mysites')}>My sites</button>
-          <button type="button" onClick={() => { onBack(); setView('host') }}
-            style={navBtn(view === 'host')}>Host a site</button>
-          <button type="button" onClick={() => { onBack(); setView('options') }}
-            style={navBtn(view === 'options')}>Design options</button>
-          <button type="button" onClick={() => setView('account')} style={navBtn(view === 'account')}>Account</button>
+const NAV_ITEMS = [
+  ['mysites', 'My sites', Building2],
+  ['host', 'Host a site', Plus],
+  ['options', 'Design options', Shuffle],
+  ['account', 'Account', User],
+]
+
+// UI-1 (Option A): a left menu on wide screens; a slim header plus a bottom tab bar on phones. Sign out is always visible.
+function Shell({ builder, view, setView, onBack, onLogOut, showNav, isMobile, children }) {
+  const active = view === 'editor' ? 'mysites' : view === 'checkout' ? 'host' : view
+  const go = (v) => { if (v !== 'account') onBack(); setView(v) }
+  const logo = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>
+      <div aria-hidden="true" style={{ width: isMobile ? 28 : 32, height: isMobile ? 28 : 32, background: ds.teal, borderRadius: isMobile ? 6 : 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 12 : 14, fontWeight: 800, color: 'white' }}>O</div>
+      Opsra
+    </div>
+  )
+  const content = <div style={{ maxWidth: 1400, margin: '0 auto', width: '100%' }}>{children}</div>
+
+  if (!showNav) {
+    return (
+      <>
+        <header style={{ background: ds.dark, borderBottom: '1px solid #1a2f3f', padding: '12px 16px' }}>{logo}</header>
+        <main style={{ maxWidth: 560, margin: '0 auto', padding: '20px 16px 60px' }}>{children}</main>
+      </>
+    )
+  }
+
+  if (isMobile) {
+    const hideTabs = view === 'editor' || view === 'checkout'   // focused screens have their own bottom bars; Back returns to the menu
+    return (
+      <>
+        <header style={{ background: ds.dark, borderBottom: '1px solid #1a2f3f', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {logo}
           <button type="button" onClick={onLogOut}
-            style={{ ...navBtn(false), display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <LogOut size={13} aria-hidden="true" /> Sign out
+            style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', color: '#C7D7DE', border: '1px solid #1a2f3f', borderRadius: 8, padding: '8px 12px', minHeight: 36, fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>
+            <LogOut size={14} aria-hidden="true" /> Sign out
+          </button>
+        </header>
+        <main style={{ padding: hideTabs ? '20px 16px 60px' : '20px 16px 96px' }}>{content}</main>
+        {!hideTabs && <nav aria-label="Main" style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 20, background: ds.dark, borderTop: '1px solid #1a2f3f', display: 'flex', padding: '0 8px env(safe-area-inset-bottom, 0px)' }}>
+          {NAV_ITEMS.map(([key, label, Icon]) => (
+            <button key={key} type="button" onClick={() => go(key)} aria-current={active === key ? 'page' : undefined}
+              style={{ flex: 1, minHeight: 56, background: 'transparent', border: 'none', borderTop: `3px solid ${active === key ? ds.teal : 'transparent'}`, color: active === key ? 'white' : '#9FB4C0', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+              <Icon size={18} aria-hidden="true" />
+              {key === 'options' ? 'Designs' : label}
+            </button>
+          ))}
+        </nav>}
+      </>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
+      <aside style={{ flex: '0 0 248px', position: 'sticky', top: 0, height: '100vh', boxSizing: 'border-box', background: ds.dark, borderRight: '1px solid #1a2f3f', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 6, fontFamily: ds.fontDm }}>
+        <div style={{ padding: '4px 6px 22px' }}>{logo}</div>
+        <nav aria-label="Main" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {NAV_ITEMS.map(([key, label, Icon]) => (
+            <button key={key} type="button" onClick={() => go(key)} aria-current={active === key ? 'page' : undefined}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', border: 'none', borderRadius: 8, padding: '11px 14px', minHeight: 44, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', background: active === key ? ds.teal : 'transparent', color: active === key ? 'white' : '#C7D7DE' }}>
+              <Icon size={16} aria-hidden="true" /> {label}
+            </button>
+          ))}
+        </nav>
+        <div style={{ flexGrow: 1 }} />
+        <div style={{ borderTop: '1px solid #1a2f3f', padding: '14px 6px 0', fontSize: 13, color: '#C7D7DE' }}>
+          <div style={{ fontWeight: 600, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis' }}>{builder?.full_name || 'Builder'}</div>
+          {builder?.email && <div style={{ color: '#9FB4C0', overflow: 'hidden', textOverflow: 'ellipsis' }}>{builder.email}</div>}
+          <button type="button" onClick={onLogOut}
+            style={{ marginTop: 12, width: '100%', display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #1a2f3f', borderRadius: 8, padding: '11px 14px', minHeight: 44, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', background: 'transparent', color: '#C7D7DE' }}>
+            <LogOut size={16} aria-hidden="true" /> Sign out
           </button>
         </div>
-      )}
-    </header>
+      </aside>
+      <main style={{ flex: 1, minWidth: 0, padding: '32px 40px 60px', boxSizing: 'border-box' }}>{content}</main>
+    </div>
   )
-}
-
-function navBtn(active) {
-  return {
-    border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-    background: active ? ds.teal : 'transparent', color: active ? 'white' : '#C7D7DE', fontFamily: 'inherit',
-  }
 }
 
 // ─────────────────────────────── My sites ───────────────────────────────
@@ -318,12 +364,15 @@ function MySitesView({ token, onOpen, showToast }) {
 
   const header = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, color: T.soft }}>
-          {access && (access.subscribed
-            ? `Subscription active until ${dateOnly(access.subscribed_until)}`
-            : `${access.used} of ${access.free_sites} free sites used`)}
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: T.ink, fontFamily: ds.fontSyne }}>My sites</h1>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: T.soft }}>
+            {access && (access.subscribed
+              ? `Subscription active until ${dateOnly(access.subscribed_until)}`
+              : `${access.used} of ${access.free_sites} free sites used`)}
+          </p>
+        </div>
         <Button variant="primary" icon={Plus} onClick={() => setNewOpen(true)}>New site</Button>
       </div>
       {access && !access.can_create && (
@@ -370,15 +419,28 @@ function MySitesView({ token, onOpen, showToast }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {header}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 12 }}>
+        {[
+          ['Sites', sites.length],
+          ['Live', sites.filter((x) => ['live', 'renewal_due'].includes(x.status)).length],
+          ['Next renewal', (() => { const d = sites.map((x) => x.renews_on).filter(Boolean).sort()[0]; return d ? dateOnly(d) : 'None yet' })()],
+        ].map(([label, value]) => (
+          <div key={label} style={{ background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12, padding: '14px 18px' }}>
+            <div style={{ fontSize: 13, color: T.soft }}>{label}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: T.ink }}>{value}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 16, alignItems: 'start' }}>
       {sites.map((s) => {
         const st = SITE_STATUS[s.status] || SITE_STATUS.brief_in_progress
         return (
-          <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12, padding: 16 }}>
           <button type="button" onClick={() => onOpen(s.id)}
-            style={{ textAlign: 'left', background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12,
-              padding: 16, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center',
+            style={{ textAlign: 'left', background: 'transparent', border: 'none', borderRadius: 12,
+              padding: 0, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center',
               justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div>
               <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.ink }}>{s.client_business_name}</p>
@@ -424,6 +486,7 @@ function MySitesView({ token, onOpen, showToast }) {
           </div>
         )
       })}
+      </div>
       {waiting}
       {newSiteModal}
     </div>
@@ -524,7 +587,7 @@ function AccountView({ token, builder, onUpdated, showToast }) {
   }
 
   return (
-    <Card>
+    <Card style={{ maxWidth: 760 }}>
       <SectionTitle title="Account" hint="Shown to your clients and used to reach you." />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Field label="Your name"><input style={INPUT} value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>

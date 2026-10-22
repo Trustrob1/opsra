@@ -109,8 +109,8 @@ export default function HostSitesView({ token, showToast, onGoLive }) {
   const warnings = done?.report?.warnings || []
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <Card>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
+      <Card style={{ flex: '999 1 560px', minWidth: 0 }}>
         <h2 style={{ margin: '0 0 4px', fontSize: 19, color: T.ink }}>Host a site you built elsewhere</h2>
         <p style={{ margin: '0 0 14px', fontSize: 14, color: T.soft }}>
           Drop in your finished website. We check it, show you a preview, and when you’re happy you pick a domain and pay to put it live.
@@ -211,7 +211,7 @@ export default function HostSitesView({ token, showToast, onGoLive }) {
       </Card>
 
       {sites.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ flex: '1 1 340px', minWidth: 0, maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <p style={{ margin: '4px 0 0', fontSize: 13, fontWeight: 700, color: T.ink }}>Your hosted sites ({cfg.used} of {cfg.max_sites})</p>
           {sites.map((s) => {
             const st = SITE_STATUS[s.status] || { tone: 'neutral', label: s.status }

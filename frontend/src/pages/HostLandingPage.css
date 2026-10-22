@@ -20,7 +20,7 @@
 /* HOST-2: domain checker, pricing table, callout */
 .sl .sl-h-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .sl .sl-h-callout{margin:26px auto 0;max-width:640px;background:#FFF7E0;border:1px solid #F0DDA0;border-radius:14px;padding:12px 18px;font-size:15.5px;color:#5C4400}
-.sl .sl-h-check{max-width:720px;margin:0 auto}
+.sl .sl-h-check{max-width:1000px;margin:0 auto}
 .sl .sl-h-checkrow{display:flex;gap:10px;flex-wrap:wrap}
 .sl .sl-h-checkrow input{flex:1 1 220px;min-height:52px;padding:0 16px;border:1px solid #CFCBC2;border-radius:14px;font:inherit;font-size:17px;background:#fff;color:var(--ink)}
 .sl .sl-h-checkrow select{min-height:52px;padding:0 12px;border:1px solid #CFCBC2;border-radius:14px;font:inherit;font-size:17px;background:#fff;color:var(--ink)}
@@ -52,6 +52,6 @@
 .sl .sl-h-incl li::before{content:"✓";position:absolute;left:0;color:var(--teal);font-weight:800}
 .sl .sl-h-muted{margin-top:14px;font-size:14.5px;color:var(--mute);text-align:center}
 .sl .sl-h-code{margin:14px auto 0;max-width:620px;padding:12px 16px;border:1px dashed #BFD9DD;border-radius:8px;font-size:14.5px;color:var(--ink);text-align:center}
-.sl .sl-h-own{margin:22px auto 0;max-width:760px;padding:20px 22px;background:#fff;border:1px solid #BFD9DD;border-radius:14px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.sl .sl-h-own{margin:22px auto 0;max-width:1000px;padding:20px 22px;background:#fff;border:1px solid #BFD9DD;border-radius:14px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
 .sl .sl-h-own h3{margin:0;font-size:19px}
 .sl .sl-h-own p{margin:0;font-size:15.5px;color:var(--mute);line-height:1.6}
