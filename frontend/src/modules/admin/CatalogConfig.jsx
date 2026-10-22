@@ -117,7 +117,8 @@ export default function CatalogConfig() {
           ...DEFAULT_CONFIG, ...(c || {}),
           availability_labels: { ...DEFAULT_CONFIG.availability_labels, ...(c?.availability_labels || {}) },
           cta_buttons:    c?.cta_buttons    || DEFAULT_CONFIG.cta_buttons,
-          tag_dimensions: c?.tag_dimensions || [],
+          // STORE-6: categories are managed on the Categories tab; the server keeps that group safe
+          tag_dimensions: (c?.tag_dimensions || []).filter(d => d.key !== 'category'),
           _isFirstSetup:  !c,
         })
       })
@@ -147,8 +148,12 @@ export default function CatalogConfig() {
     }
     setSaving(true)
     try {
-      const saved = await adminSvc.updateCatalogConfig(config)
-      setConfig(prev => ({ ...prev, ...saved }))
+      // STORE-6: never send the Look settings from here; the Look tab owns them
+      const STORE_KEYS = ['template', 'announcement', 'trust_points', 'accent', 'logo_url', 'show_categories']
+      const payload = Object.fromEntries(Object.entries(config).filter(([k]) => !STORE_KEYS.includes(k)))
+      const saved = await adminSvc.updateCatalogConfig(payload)
+      const { tag_dimensions: _td, ...savedRest } = saved || {}
+      setConfig(prev => ({ ...prev, ...savedRest }))
       flash('Catalog config saved.')
     } catch {
       setError('Failed to save. Please try again.')

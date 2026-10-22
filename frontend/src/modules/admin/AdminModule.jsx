@@ -76,6 +76,8 @@ import AutomationConfig        from './AutomationConfig'
 import DemoSettings            from './DemoSettings'
 import CatalogConfig           from './CatalogConfig'
 import CatalogItems            from './CatalogItems'
+import CatalogLook             from './CatalogLook'
+import CatalogCategories       from './CatalogCategories'
 import PaymentLinkConfig       from './PaymentLinkConfig'
 import DirectSalesQuerySource  from './DirectSalesQuerySource'
 
@@ -160,6 +162,8 @@ const SALES_SUB_TABS = [
 const CATALOG_SUB_TABS = [
   { id: 'catalog-config', label: '⚙️ Config' },
   { id: 'catalog-items',  label: '📦 Items' },
+  { id: 'catalog-categories', label: '🗂️ Categories' },
+  { id: 'catalog-look',   label: '🎨 Look' },
 ]
 
 // ── Sidebar width constants ───────────────────────────────────────────────────
@@ -205,6 +209,7 @@ export default function AdminModule({ user }) {
   const [tab, setTab]                     = useState('users')
   const [salesSubTab, setSalesSubTab]     = useState('sales-mode')
   const [catalogSubTab, setCatalogSubTab] = useState('catalog-config')
+  const [catalogItemsKey, setCatalogItemsKey] = useState(0)
   const [accessDenied, setAccessDenied]   = useState(false)
   const [checking, setChecking]           = useState(true)
   const [visited, setVisited]             = useState({ users: true })
@@ -454,7 +459,9 @@ export default function AdminModule({ user }) {
           <LazyTab active={tab === 'catalog'} visited={visited['catalog']}>
             <SubTabBar tabs={CATALOG_SUB_TABS} active={catalogSubTab} onChange={setCatalogSubTab} />
             <div style={{ display: catalogSubTab === 'catalog-config' ? 'block' : 'none' }}><CatalogConfig /></div>
-            <div style={{ display: catalogSubTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems /></div>
+            <div style={{ display: catalogSubTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems key={catalogItemsKey} /></div>
+            {catalogSubTab === 'catalog-categories' && <CatalogCategories onSaved={() => setCatalogItemsKey(k => k + 1)} />}
+            {catalogSubTab === 'catalog-look' && <CatalogLook />}
           </LazyTab>
 
           <LazyTab active={tab === 'sales-system'} visited={visited['sales-system']}>

@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
+import CatalogCategoryField from './CatalogCategoryField'
 
 const INPUT = {
   width: '100%', padding: '9px 12px', borderRadius: 8,
@@ -433,11 +434,21 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
           <input ref={extraFileRef} type="file" accept="image/jpeg,image/png,image/webp"
             style={{ display: 'none' }} onChange={handleExtraImageUpload} />
 
+          {/* ── Section 4b: Categories (STORE-6) ── */}
+          <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>Categories</h3>
+          <Field label="Where this product shows in your store">
+            <CatalogCategoryField
+              names={((config?.tag_dimensions || []).find(d => d.key === 'category') || {}).options || []}
+              tags={form.tags}
+              onChange={val => setTag('category', val)}
+            />
+          </Field>
+
           {/* ── Section 5: Tags ── */}
-          {(config?.tag_dimensions || []).length > 0 && (
+          {(config?.tag_dimensions || []).filter(d => d.key !== 'category').length > 0 && (
             <>
               <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>Tags</h3>
-              {(config.tag_dimensions || []).map(dim => (
+              {(config.tag_dimensions || []).filter(d => d.key !== 'category').map(dim => (
                 <Field key={dim.key} label={dim.label || dim.key}>
                   {dim.type === 'single_select' ? (
                     <select style={{ ...INPUT, cursor: 'pointer' }}

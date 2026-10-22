@@ -591,3 +591,20 @@ export const getInternalIssueCategories = () =>
 export const updateInternalIssueCategories = (payload) =>
   api.patch('/api/v1/admin/internal-issue-categories', payload)
     .then(r => r.data.data)
+// ── STORE-6: Storefront look + product categories ─────────────────────────────
+// Full config response: { catalog_config, storefront_allowed } (getCatalogConfig above returns only the config).
+export const getCatalogConfigFull = () =>
+  api.get('/api/v1/catalog/config').then(r => r.data)
+
+export const getCatalogCategories = () =>
+  api.get('/api/v1/catalog/categories').then(r => r.data)
+
+// categories: [{ name, was? }] in order; showInMenu: boolean | undefined
+export const saveCatalogCategories = (categories, showInMenu) =>
+  api.put('/api/v1/catalog/categories', { categories, show_in_menu: showInMenu }).then(r => r.data)
+
+export const addCatalogCategory = (name) =>
+  api.post('/api/v1/catalog/categories', { name }).then(r => r.data)
+
+export const setCatalogCategoryItems = (name, itemIds) =>
+  api.put(`/api/v1/catalog/categories/${encodeURIComponent(name)}/items`, { item_ids: itemIds }).then(r => r.data)
