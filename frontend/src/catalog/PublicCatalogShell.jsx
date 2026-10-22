@@ -4,6 +4,9 @@
  * Detects org_slug from URL path (/catalog/{org_slug}/...).
  * Fetches catalog data and renders CatalogListPage or CatalogItemPage.
  * NO Zustand auth store dependency. NO login required.
+ * STORE-2: reads `template`, `shop` and `style` from the public API. When the
+ * business uses the Storefront look, the item page is StorefrontItemPage; the
+ * list and compare pages stay Classic until STORE-3. Classic is unchanged.
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState, useEffect } from 'react'
@@ -11,6 +14,7 @@ import { getCatalogList, getCatalogItem, getCatalogCompare } from './catalog.ser
 import CatalogListPage from './CatalogListPage'
 import CatalogItemPage from './CatalogItemPage'
 import CatalogSizeComparePage from './CatalogSizeComparePage'
+import StorefrontItemPage from './storefront/StorefrontItemPage'
 
 const C = {
   bg:   '#FAFAF8',
@@ -58,6 +62,9 @@ export default function PublicCatalogShell() {
             catalogConfig:   data.catalog_config,
             wizardQuestions: data.wizard_questions || [],
             items:           data.items || [],
+            template:        data.template === 'storefront' ? 'storefront' : 'classic',
+            shop:            data.shop || null,
+            style:           data.style || null,
           })
         setLoading(false)
       })
@@ -220,6 +227,23 @@ export default function PublicCatalogShell() {
   }
 
   // ── Item page ──
+  if (itemSlug && currentItem && catalogData.template === 'storefront') {
+    return (
+      <StorefrontItemPage
+        key={currentItem.slug}
+        orgName={catalogData.orgName}
+        waNumber={catalogData.waNumber}
+        catalogConfig={catalogData.catalogConfig}
+        style={catalogData.style}
+        shop={catalogData.shop}
+        item={currentItem}
+        items={catalogData.items}
+        onBack={handleBack}
+        onSelectItem={handleSelectItem}
+        onShowCompare={handleShowCompare}
+      />
+    )
+  }
   if (itemSlug && currentItem) {
     return (
       <CatalogItemPage
