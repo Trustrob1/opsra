@@ -8,6 +8,7 @@ import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
 import CatalogDialog from './CatalogDialog'
 import { catalogErrorText } from './catalogErrors'
+import { downloadImportTemplate } from './catalogTemplateDownload'
 import { previewSummary, statusView, photoJobs, runPool, finishedSummary, withoutPhotos } from './catalogImportLogic'
 
 const BTN = { minHeight: 48, padding: '0 20px', border: 'none', borderRadius: 12, background: ds.teal, color: 'white', fontFamily: ds.fontDm, fontSize: 14, fontWeight: 700, cursor: 'pointer' }
@@ -27,12 +28,7 @@ export default function CatalogImport({ onClose, onDone, onAddPhotos }) {
 
   async function download() {
     try {
-      const text = await adminSvc.getCatalogImportTemplate()
-      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'opsra-products-template.csv'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      await downloadImportTemplate()
     } catch (e) { setError(catalogErrorText(e, 'Could not download the template. Please try again.')) }
   }
 

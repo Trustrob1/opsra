@@ -4,7 +4,7 @@
  * Pattern 33: client-side search — no ILIKE.
  * Pattern 51: full rewrite only — never sed.
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
 import CatalogShareProduct from './CatalogShareProduct'
@@ -12,6 +12,7 @@ import CatalogImport from './CatalogImport'            // STORE-10
 import CatalogPhotoDrop from './CatalogPhotoDrop'      // STORE-12
 import { hasPhoto, needsPhotoCount } from './catalogImportLogic'
 import CatalogItemDrawer from './CatalogItemDrawer'
+import CatalogFirstProduct from './CatalogFirstProduct'   // STORE-13
 
 const BTN_PRIMARY = {
   background: ds.teal, color: 'white', border: 'none', borderRadius: 8,
@@ -53,7 +54,7 @@ function TagSummary({ tags, config }) {
   )
 }
 
-export default function CatalogItems({ onManageCategories }) {
+export default function CatalogItems({ onManageCategories, intent }) {
   const [items, setItems]           = useState([])
   const [config, setConfig]         = useState(null)
   const [loading, setLoading]       = useState(true)
@@ -86,6 +87,18 @@ export default function CatalogItems({ onManageCategories }) {
   }
 
   useEffect(() => { loadAll() }, [])
+
+  // STORE-13: the Get started tab can send the owner here to add, import or add photos.
+  // Each request has its own number so it runs once, even if the same button is pressed twice.
+  const handledIntent = useRef(0)
+  useEffect(() => {
+    if (!intent || !intent.n || handledIntent.current === intent.n || loading) return
+    handledIntent.current = intent.n
+    if (intent.type === 'import') setShowImport(true)
+    else if (intent.type === 'photos') setShowPhotos(true)
+    else if (intent.type === 'nophoto') setNeedsPhoto(true)
+    else if (intent.type === 'add') handleCreateItem()
+  }, [intent, loading])
 
   // Client-side filtering (Pattern 33)
   const filtered = items.filter(item => {
@@ -134,6 +147,14 @@ export default function CatalogItems({ onManageCategories }) {
         </div>
       )}
 
+      {items.length === 0 && !isShopify ? (
+        <CatalogFirstProduct
+          itemWord={(config?.catalog_item_label || '').trim().toLowerCase() || 'product'}
+          creating={creating}
+          onAdd={handleCreateItem}
+          onImport={() => setShowImport(true)}
+        />
+      ) : (<>
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <input
@@ -260,6 +281,8 @@ export default function CatalogItems({ onManageCategories }) {
           </table>
         </div>
       )}
+
+      </>)}
 
       {/* Drawer */}
       <CatalogItemDrawer

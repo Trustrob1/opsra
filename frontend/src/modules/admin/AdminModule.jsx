@@ -78,6 +78,9 @@ import CatalogConfig           from './CatalogConfig'
 import CatalogItems            from './CatalogItems'
 import CatalogLook             from './CatalogLook'
 import CatalogCategories       from './CatalogCategories'
+import CatalogGetStarted       from './CatalogGetStarted'   // STORE-13
+import useCatalogSetup         from './useCatalogSetup'      // STORE-13
+import { doneCount, STEP_TOTAL } from './catalogSetupLogic'  // STORE-13
 import PaymentLinkConfig       from './PaymentLinkConfig'
 import DirectSalesQuerySource  from './DirectSalesQuerySource'
 
@@ -159,11 +162,12 @@ const SALES_SUB_TABS = [
   { id: 'contact-menus', label: 'Contact Menus' },
 ]
 
+// STORE-13: tabs follow the order of the work. "Get started" is added while setup is unfinished.
 const CATALOG_SUB_TABS = [
-  { id: 'catalog-config', label: '⚙️ Config' },
-  { id: 'catalog-items',  label: '📦 Items' },
-  { id: 'catalog-categories', label: '🗂️ Categories' },
-  { id: 'catalog-look',   label: '🎨 Look' },
+  { id: 'catalog-items',      label: 'Products' },
+  { id: 'catalog-categories', label: 'Categories' },
+  { id: 'catalog-look',       label: 'Look' },
+  { id: 'catalog-config',     label: 'Settings' },
 ]
 
 // ── Sidebar width constants ───────────────────────────────────────────────────
@@ -208,11 +212,14 @@ function SubTabBar({ tabs, active, onChange }) {
 export default function AdminModule({ user }) {
   const [tab, setTab]                     = useState('users')
   const [salesSubTab, setSalesSubTab]     = useState('sales-mode')
-  const [catalogSubTab, setCatalogSubTab] = useState('catalog-config')
+  const [catalogSubTab, setCatalogSubTab] = useState('catalog-start')   // STORE-13: opens on Get started while setup is unfinished
+  const [itemsIntent, setItemsIntent]     = useState(null)                // STORE-13: "add / import / photos" sent from Get started
+  const [linkCopied, setLinkCopied]       = useState(false)
   const [catalogItemsKey, setCatalogItemsKey] = useState(0)
   const [accessDenied, setAccessDenied]   = useState(false)
   const [checking, setChecking]           = useState(true)
   const [visited, setVisited]             = useState({ users: true })
+  const setup = useCatalogSetup(user?.org_id ?? user?.organisation_id ?? user?.id ?? '', !!visited['catalog'])
 
   // Sidebar open/closed — persist preference
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -233,6 +240,47 @@ export default function AdminModule({ user }) {
   function handleTabChange(newTab) {
     setTab(newTab)
     setVisited(prev => ({ ...prev, [newTab]: true }))
+  }
+
+  // STORE-13: Get started shows only while it is useful; once it is not, the Products tab is the front door.
+  const startVisible = !setup.ready || setup.show
+  const activeCatalogTab = catalogSubTab === 'catalog-start' && !startVisible ? 'catalog-items' : catalogSubTab
+  const catalogTabs = startVisible
+    ? [{ id: 'catalog-start', label: setup.ready ? `Get started (${doneCount(setup.steps)}/${STEP_TOTAL})` : 'Get started' }, ...CATALOG_SUB_TABS]
+    : CATALOG_SUB_TABS
+
+  function changeCatalogTab(id) {
+    setCatalogSubTab(id)
+    if (id === 'catalog-start') setup.refresh()
+  }
+
+  function sendToItems(type) {
+    setItemsIntent({ type, n: Date.now() })
+    changeCatalogTab('catalog-items')
+  }
+
+  function startAction(stepId, which) {
+    if (which === 'review') {
+      changeCatalogTab({ products: 'catalog-items', photos: 'catalog-items', categories: 'catalog-categories', look: 'catalog-look', share: 'catalog-look' }[stepId])
+    } else if (stepId === 'products') sendToItems(which === 'secondary' ? 'import' : 'add')
+    else if (stepId === 'photos') sendToItems(which === 'secondary' ? 'nophoto' : 'photos')
+    else if (stepId === 'categories') changeCatalogTab('catalog-categories')
+    else if (stepId === 'look') changeCatalogTab('catalog-look')
+    else if (stepId === 'share') { setup.markShared(); changeCatalogTab('catalog-look') }
+  }
+
+  async function copyCatalogLink() {
+    try {
+      await navigator.clipboard.writeText(setup.link)
+      setup.markShared()
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    } catch { /* the link is shown on screen, so it can still be copied by hand */ }
+  }
+
+  function openCatalogLink() {
+    setup.markShared()
+    window.open(setup.link, '_blank', 'noopener')
   }
 
   useEffect(() => {
@@ -457,11 +505,21 @@ export default function AdminModule({ user }) {
           <LazyTab active={tab === 'automation'}       visited={visited['automation']}>       <AutomationConfig /></LazyTab>
 
           <LazyTab active={tab === 'catalog'} visited={visited['catalog']}>
-            <SubTabBar tabs={CATALOG_SUB_TABS} active={catalogSubTab} onChange={setCatalogSubTab} />
-            <div style={{ display: catalogSubTab === 'catalog-config' ? 'block' : 'none' }}><CatalogConfig /></div>
-            <div style={{ display: catalogSubTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems key={catalogItemsKey} onManageCategories={() => setCatalogSubTab('catalog-categories')} /></div>
-            {catalogSubTab === 'catalog-categories' && <CatalogCategories onSaved={() => setCatalogItemsKey(k => k + 1)} />}
-            {catalogSubTab === 'catalog-look' && <CatalogLook />}
+            <SubTabBar tabs={catalogTabs} active={activeCatalogTab} onChange={changeCatalogTab} />
+            {activeCatalogTab === 'catalog-start' && (setup.ready ? (
+              <CatalogGetStarted
+                steps={setup.steps} link={setup.link} copied={linkCopied}
+                onAction={startAction} onSkip={setup.skip}
+                onCopy={copyCatalogLink} onOpenLink={openCatalogLink}
+                onOpenSettings={() => changeCatalogTab('catalog-config')}
+              />
+            ) : (
+              <div style={{ padding: 32, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>Loading…</div>
+            ))}
+            <div style={{ display: activeCatalogTab === 'catalog-config' ? 'block' : 'none' }}><CatalogConfig /></div>
+            <div style={{ display: activeCatalogTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems key={catalogItemsKey} intent={itemsIntent} onManageCategories={() => changeCatalogTab('catalog-categories')} /></div>
+            {activeCatalogTab === 'catalog-categories' && <CatalogCategories onSaved={() => setCatalogItemsKey(k => k + 1)} />}
+            {activeCatalogTab === 'catalog-look' && <CatalogLook />}
           </LazyTab>
 
           <LazyTab active={tab === 'sales-system'} visited={visited['sales-system']}>
