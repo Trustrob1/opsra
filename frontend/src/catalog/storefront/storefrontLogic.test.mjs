@@ -163,3 +163,114 @@ test('trustPoints: clean, capped at 3, never invented', () => {
   assert.deepEqual(trustPoints(null), [])
   assert.deepEqual(trustPoints({ trust_points: 'x' }), [])
 })
+
+// ---------------------------------------------------------------- STORE-3
+import {
+  coverUrl, tagValues, categoryNames, categoryChips, otherFilterDims, matchesSearch, filterItems, cardView, readUrlState, listUrl,
+} from './storefrontLogic.js'
+
+const DIMS = [
+  { key: 'category', label: 'Category', type: 'multi_select', filterable: true, options: ['Mattresses', 'Pillows', 'Empty cat'] },
+  { key: 'mattress_feel', label: 'Mattress Feel', type: 'multi_select', filterable: true, options: ['Soft', 'Firm'] },
+  { key: 'sizes', label: 'Sizes', type: 'multi_select', filterable: true, options: ['Queen', 'King'] },
+  { key: 'hidden', label: 'Hidden', type: 'multi_select', filterable: false, options: ['x'] },
+  { key: 'noopts', label: 'No options', type: 'multi_select', filterable: true, options: [] },
+]
+const LCFG = { ...CFG, tag_dimensions: DIMS, availability_labels: { unavailable: 'Sold out' } }
+const ITEMS = [
+  { id: 1, slug: 'a', title: 'Cloud 9', description: 'Back support', price: 150000, compare_at_price: 180000, price_label: '₦150,000', available: true,
+    catalog_images: ['https://x/a.jpg'], tags: { category: ['Mattresses'], mattress_feel: ['Firm'], sizes: ['Queen', 'King'] } },
+  { id: 2, slug: 'b', title: 'Memory Pillow', description: 'Cool', price: 18000, price_label: '₦18,000', available: false,
+    catalog_images: [{ url: 'https://x/b.jpg' }], tags: { category: ['Pillows'], mattress_feel: 'Soft' } },
+  { id: 3, slug: 'c', title: 'Plain', price: 5000, price_label: '₦5,000', tags: {} },
+]
+
+test('coverUrl: string, object, none', () => {
+  assert.equal(coverUrl(ITEMS[0]), 'https://x/a.jpg')
+  assert.equal(coverUrl(ITEMS[1]), 'https://x/b.jpg')
+  assert.equal(coverUrl(ITEMS[2]), '')
+  assert.equal(coverUrl(null), '')
+})
+
+test('tagValues: list, single, missing, odd', () => {
+  assert.deepEqual(tagValues(ITEMS[0], 'sizes'), ['Queen', 'King'])
+  assert.deepEqual(tagValues(ITEMS[1], 'mattress_feel'), ['Soft'])
+  assert.deepEqual(tagValues(ITEMS[2], 'sizes'), [])
+  assert.deepEqual(tagValues({ tags: 'junk' }, 'x'), [])
+  assert.deepEqual(tagValues(null, 'x'), [])
+})
+
+test('categoryNames in the owner order; none when absent', () => {
+  assert.deepEqual(categoryNames(LCFG), ['Mattresses', 'Pillows', 'Empty cat'])
+  assert.deepEqual(categoryNames({}), [])
+  assert.deepEqual(categoryNames(null), [])
+})
+
+test('categoryChips: only categories with products, counts, owner order', () => {
+  assert.deepEqual(categoryChips(ITEMS, LCFG, { show_categories: true }), [{ name: 'Mattresses', count: 1 }, { name: 'Pillows', count: 1 }])
+})
+
+test('categoryChips: menu switched off or no style object', () => {
+  assert.deepEqual(categoryChips(ITEMS, LCFG, { show_categories: false }), [])
+  assert.equal(categoryChips(ITEMS, LCFG, null).length, 2)
+  assert.deepEqual(categoryChips([], LCFG, null), [])
+})
+
+test('otherFilterDims: filterable, not category, with options', () => {
+  assert.deepEqual(otherFilterDims(LCFG).map((d) => d.key), ['mattress_feel', 'sizes'])
+})
+
+test('matchesSearch: title and description, ignores capitals and blanks', () => {
+  assert.equal(matchesSearch(ITEMS[0], 'CLOUD'), true)
+  assert.equal(matchesSearch(ITEMS[0], 'support'), true)
+  assert.equal(matchesSearch(ITEMS[0], 'pillow'), false)
+  assert.equal(matchesSearch(ITEMS[0], '   '), true)
+  assert.equal(matchesSearch({}, 'x'), false)
+})
+
+test('filterItems: category, list tag, single tag (ignoring capitals), combined, empty filter ignored', () => {
+  const ids = (f) => filterItems(ITEMS, f).map((i) => i.id)
+  assert.deepEqual(ids({ filters: { category: 'Pillows' } }), [2])
+  assert.deepEqual(ids({ filters: { sizes: 'King' } }), [1])
+  assert.deepEqual(ids({ filters: { sizes: 'Queen', category: 'Pillows' } }), [])
+  assert.deepEqual(ids({ filters: { mattress_feel: 'soft' } }), [2])
+  assert.deepEqual(ids({ filters: { mattress_feel: 'soft' }, search: 'pillow' }), [2])
+  assert.deepEqual(ids({ filters: { category: '' } }), [1, 2, 3])
+  assert.deepEqual(ids({}), [1, 2, 3])
+  assert.deepEqual(ids({ search: 'zzz' }), [])
+  assert.deepEqual(filterItems(null, {}), [])
+})
+
+test('filterItems: a list tag needs an exact member (not a substring)', () => {
+  assert.deepEqual(filterItems(ITEMS, { filters: { sizes: 'Quee' } }), [])
+})
+
+test('cardView: discount, sold-out, note, cover', () => {
+  const a = cardView(ITEMS[0], LCFG)
+  assert.equal(a.priceText, '₦150,000'); assert.equal(a.wasText, '₦180,000'); assert.equal(a.pct, 17)
+  assert.equal(a.soldOut, false); assert.equal(a.note, 'Firm'); assert.equal(a.cover, 'https://x/a.jpg')
+  const b = cardView(ITEMS[1], LCFG)
+  assert.equal(b.soldOut, true); assert.equal(b.wasText, ''); assert.equal(b.pct, null); assert.equal(b.note, 'Soft')
+  const c = cardView(ITEMS[2], LCFG)
+  assert.equal(c.note, ''); assert.equal(c.cover, '')
+})
+
+test('cardView: price on request hides price and discount', () => {
+  const v = cardView(ITEMS[0], { ...LCFG, price_on_request: true })
+  assert.equal(v.priceText, 'Price on request'); assert.equal(v.wasText, ''); assert.equal(v.pct, null)
+})
+
+test('readUrlState: valid category (any capitals), size, junk ignored', () => {
+  assert.deepEqual(readUrlState('?category=pillows', LCFG), { category: 'Pillows' })
+  assert.deepEqual(readUrlState('?category=Nope', LCFG), {})
+  assert.deepEqual(readUrlState('?sizes=Queen&src=qr', LCFG), { sizes: 'Queen' })
+  assert.deepEqual(readUrlState('', LCFG), {})
+  assert.deepEqual(readUrlState(null, LCFG), {})
+})
+
+test('listUrl: category added, other query values kept, variant dropped', () => {
+  assert.equal(listUrl('royal-rest', 'Pillows', ''), '/catalog/royal-rest?category=Pillows')
+  assert.equal(listUrl('royal-rest', null, '?src=qr&category=Old'), '/catalog/royal-rest?src=qr')
+  assert.equal(listUrl('royal-rest', 'Back pain care', '?src=qr&variant=9'), '/catalog/royal-rest?src=qr&category=Back+pain+care')
+  assert.equal(listUrl('royal-rest', null, ''), '/catalog/royal-rest')
+})

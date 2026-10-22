@@ -87,7 +87,7 @@ def test_public_style_rejects_bad_logo(bad):
 
 
 def test_public_style_handles_junk_config():
-    assert sf.public_style(None) == {"announcement": None, "trust_points": [], "accent": None, "logo_url": None}
+    assert sf.public_style(None) == {"announcement": None, "trust_points": [], "accent": None, "logo_url": None, "show_categories": True}
     assert sf.public_style({"trust_points": "nope"})["trust_points"] == []
 
 

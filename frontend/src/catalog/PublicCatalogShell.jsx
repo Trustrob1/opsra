@@ -4,9 +4,9 @@
  * Detects org_slug from URL path (/catalog/{org_slug}/...).
  * Fetches catalog data and renders CatalogListPage or CatalogItemPage.
  * NO Zustand auth store dependency. NO login required.
- * STORE-2: reads `template`, `shop` and `style` from the public API. When the
- * business uses the Storefront look, the item page is StorefrontItemPage; the
- * list and compare pages stay Classic until STORE-3. Classic is unchanged.
+ * STORE-2/3: reads `template`, `shop` and `style` from the public API. When the
+ * business uses the Storefront look, the list page and item page are the Storefront
+ * ones; the size-compare page stays Classic. Classic is unchanged.
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState, useEffect } from 'react'
@@ -15,6 +15,8 @@ import CatalogListPage from './CatalogListPage'
 import CatalogItemPage from './CatalogItemPage'
 import CatalogSizeComparePage from './CatalogSizeComparePage'
 import StorefrontItemPage from './storefront/StorefrontItemPage'
+import StorefrontListPage from './storefront/StorefrontListPage'
+import { listUrl } from './storefront/storefrontLogic'
 
 const C = {
   bg:   '#FAFAF8',
@@ -126,6 +128,16 @@ export default function PublicCatalogShell() {
     setCompareMode(false)
     setSizeValue(null)
     window.history.pushState({}, '', `/catalog/${orgSlug}`)
+    window.scrollTo(0, 0)
+  }
+
+  // Storefront menu: open the list, optionally on one category (keeps ?src= etc.)
+  function handleOpenCategory(category) {
+    setItemSlug(null)
+    setCurrentItem(null)
+    setCompareMode(false)
+    setSizeValue(null)
+    window.history.pushState({}, '', listUrl(orgSlug, category, window.location.search))
     window.scrollTo(0, 0)
   }
 
@@ -241,6 +253,7 @@ export default function PublicCatalogShell() {
         onBack={handleBack}
         onSelectItem={handleSelectItem}
         onShowCompare={handleShowCompare}
+        onPickCategory={handleOpenCategory}
       />
     )
   }
@@ -257,6 +270,21 @@ export default function PublicCatalogShell() {
   }
 
   // ── List page (default) ──
+  if (catalogData.template === 'storefront') {
+    return (
+      <StorefrontListPage
+        orgName={catalogData.orgName}
+        orgSlug={orgSlug}
+        waNumber={catalogData.waNumber}
+        catalogConfig={catalogData.catalogConfig}
+        style={catalogData.style}
+        wizardQuestions={catalogData.wizardQuestions || []}
+        items={catalogData.items}
+        onSelectItem={handleSelectItem}
+        onShowCompare={handleShowCompare}
+      />
+    )
+  }
   return (
     <CatalogListPage
       orgName={catalogData.orgName}

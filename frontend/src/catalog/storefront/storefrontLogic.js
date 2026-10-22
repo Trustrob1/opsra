@@ -146,3 +146,115 @@ export function trustPoints(style) {
   const list = style && Array.isArray(style.trust_points) ? style.trust_points : []
   return list.filter((t) => typeof t === 'string' && t.trim()).slice(0, 3)
 }
+
+// ---------------------------------------------------------------------------
+// STORE-3: product list helpers (categories, search, filters, cards)
+// ---------------------------------------------------------------------------
+
+export const CATEGORY_KEY = 'category'
+const DESCRIPTIVE_KEYS = ['feel', 'firmness', 'health', 'purpose', 'type', 'pillow']
+
+/** Cover image URL of an item; images may be plain strings or { url }. */
+export function coverUrl(item) {
+  const first = ((item && item.catalog_images) || [])[0]
+  if (!first) return ''
+  return typeof first === 'string' ? first : first.url || ''
+}
+
+/** Value(s) of a tag on an item, always as a list of strings. */
+export function tagValues(item, key) {
+  const v = item && item.tags && typeof item.tags === 'object' ? item.tags[key] : undefined
+  if (v === undefined || v === null || v === '') return []
+  return (Array.isArray(v) ? v : [v]).map(String)
+}
+
+/** The owner's categories, in their order. */
+export function categoryNames(config) {
+  const dim = ((config && config.tag_dimensions) || []).find((d) => d && d.key === CATEGORY_KEY)
+  return dim && Array.isArray(dim.options) ? dim.options.map(String) : []
+}
+
+/**
+ * Category buttons for the public page: only categories that really have a product,
+ * in the owner's order, with counts. Empty when the owner turned the menu off.
+ */
+export function categoryChips(items, config, style) {
+  if (style && style.show_categories === false) return []
+  const counts = {}
+  for (const it of items || []) for (const c of tagValues(it, CATEGORY_KEY)) counts[c] = (counts[c] || 0) + 1
+  return categoryNames(config).filter((n) => counts[n] > 0).map((n) => ({ name: n, count: counts[n] }))
+}
+
+/** Filterable tag groups other than category (these go in the "Filters" panel). */
+export function otherFilterDims(config) {
+  return ((config && config.tag_dimensions) || []).filter(
+    (d) => d && d.filterable && d.key !== CATEGORY_KEY && Array.isArray(d.options) && d.options.length > 0
+  )
+}
+
+/** Same matching rule as Classic: list tags need an exact member, single tags compare ignoring capitals. */
+function matchesFilter(item, key, val) {
+  const vals = tagValues(item, key)
+  if (!vals.length) return false
+  const raw = item.tags[key]
+  if (Array.isArray(raw)) return vals.includes(val)
+  return vals[0].toLowerCase() === String(val).toLowerCase()
+}
+
+/** Search words are matched against the title and description, ignoring capitals. */
+export function matchesSearch(item, query) {
+  const q = String(query || '').trim().toLowerCase()
+  if (!q) return true
+  return (item.title || '').toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q)
+}
+
+/** filters is { tagKey: value }; empty values are ignored. */
+export function filterItems(items, { search = '', filters = {} } = {}) {
+  return (items || []).filter((it) => {
+    if (!matchesSearch(it, search)) return false
+    return Object.entries(filters).every(([k, v]) => !v || matchesFilter(it, k, v))
+  })
+}
+
+/** Everything a product card needs. */
+export function cardView(item, config) {
+  const pv = priceView(item, null, config)
+  const note = otherFilterDims(config)
+    .filter((d) => DESCRIPTIVE_KEYS.some((k) => d.key.toLowerCase().includes(k) || (d.label || '').toLowerCase().includes(k)))
+    .map((d) => tagValues(item, d.key)[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(', ')
+  return {
+    title: item.title || '',
+    cover: coverUrl(item),
+    priceText: pv.priceText,
+    wasText: pv.wasText,
+    pct: pv.pct,
+    soldOut: item.available === false,
+    note,
+  }
+}
+
+/** Starting state from the page address: ?category=Pillows&sizes=Queen */
+export function readUrlState(search, config) {
+  const p = new URLSearchParams(search || '')
+  const filters = {}
+  const cat = p.get('category')
+  if (cat && categoryNames(config).some((n) => n.toLowerCase() === cat.toLowerCase())) {
+    filters.category = categoryNames(config).find((n) => n.toLowerCase() === cat.toLowerCase())
+  }
+  const size = p.get('sizes')
+  if (size) filters.sizes = size
+  return filters
+}
+
+/** Address for the list page with an optional category, keeping other query values such as ?src=. */
+export function listUrl(orgSlug, category, currentSearch = '') {
+  const p = new URLSearchParams(currentSearch || '')
+  p.delete('category')
+  p.delete('variant')
+  if (category) p.set('category', category)
+  const qs = p.toString()
+  return `/catalog/${orgSlug}${qs ? '?' + qs : ''}`
+}

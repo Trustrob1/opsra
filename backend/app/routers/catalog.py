@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.dependencies import get_current_org, get_supabase
 from app.services import catalog_storefront_service as storefront   # STORE-1
+from app.services import catalog_category_service as categories     # STORE-1b
 from app.services.catalog_service import (
     SlugConflictError,
     create_catalog_item,
@@ -187,12 +188,87 @@ async def patch_config(
     # STORE-1: only a plan that includes the Storefront look can switch it on (switching back to classic is always allowed)
     if updates.get("template") == "storefront" and not storefront.storefront_allowed(db, current_org["org_id"]):
         raise _plan_gate.http_error()
+    # STORE-1b: the generic tag editor can never drop or change the category group
+    if "tag_dimensions" in updates:
+        updates["tag_dimensions"] = categories.keep_category(
+            get_catalog_config(db, current_org["org_id"]).get("tag_dimensions"), updates["tag_dimensions"])
     try:
         config = update_catalog_config(db, current_org["org_id"], updates)
         return {"catalog_config": config, "storefront_allowed": storefront.storefront_allowed(db, current_org["org_id"])}
     except Exception as exc:
         logger.warning("patch_config failed org=%s: %s", current_org["org_id"], exc)
         raise HTTPException(status_code=500, detail="Failed to update catalog config.")
+
+
+# ── Categories (STORE-1b) — static routes ──────────────────────────────────
+
+class CategoryEntry(BaseModel):
+    name: str = Field(..., max_length=200)
+    was:  Optional[str] = Field(None, max_length=200)      # the old name, when this is a rename
+
+
+class CategoriesSave(BaseModel):
+    categories:   List[CategoryEntry] = Field(..., max_length=categories.MAX_CATEGORIES)
+    show_in_menu: Optional[bool] = None
+
+
+class CategoryAdd(BaseModel):
+    name: str = Field(..., max_length=200)
+
+
+class CategoryItems(BaseModel):
+    item_ids: List[str] = Field(default_factory=list, max_length=2000)
+
+
+def _category_call(fn, *args):
+    try:
+        return fn(*args)
+    except categories.CategoryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.warning("categories call failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to update categories.")
+
+
+@router.get("/categories")
+async def get_categories(
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_catalog_role(current_org)
+    return categories.list_categories(db, current_org["org_id"])
+
+
+@router.put("/categories")
+async def save_categories(
+    body: CategoriesSave,
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_catalog_role(current_org)
+    return _category_call(categories.save_categories, db, current_org["org_id"],
+                          [e.model_dump() for e in body.categories], body.show_in_menu)
+
+
+@router.post("/categories", status_code=201)
+async def add_category(
+    body: CategoryAdd,
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_catalog_role(current_org)
+    return _category_call(categories.add_category, db, current_org["org_id"], body.name)
+
+
+@router.put("/categories/{name}/items")
+async def set_category_items(
+    name: str,
+    body: CategoryItems,
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_catalog_role(current_org)
+    return _category_call(categories.set_category_items, db, current_org["org_id"], name, body.item_ids)
 
 
 # ── Items — fully static routes ─────────────────────────────────────────────

@@ -56,6 +56,8 @@ def public_style(catalog_config: Optional[dict]) -> dict:
         "trust_points": [p for p in points if p],
         "accent": accent if isinstance(accent, str) and _HEX.match(accent) else None,
         "logo_url": clean_https_url(cfg.get("logo_url")),
+        # STORE-1b: show the category menu / buttons (default on; the owner can turn it off)
+        "show_categories": cfg.get("show_categories") is not False,
     }
 
 

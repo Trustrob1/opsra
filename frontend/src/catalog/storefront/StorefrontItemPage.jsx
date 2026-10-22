@@ -5,18 +5,14 @@
  * Paystack checkout arrive in STORE-4 (props.shop carries the web chat key then).
  * Rule: a was-price and "% off" show only when compare-at is higher than the price.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { sanitizeHtml } from '../../utils/sanitize'
 import {
   resolveAccent, readableOn, realVariants, isVariantAvailable, priceView,
-  whatsappOrderLink, initials, relatedItems, trustPoints,
+  whatsappOrderLink, relatedItems, trustPoints, categoryChips, tagValues, categoryNames,
 } from './storefrontLogic'
-
-const INK = '#14181B'
-const MUTED = '#5C6166'
-const LINE = '#E6E4DF'
-const TINTS = ['#E4E9E7', '#EAE6DE', '#E3E6EC', '#ECE4E4']
-const FONT = "'Manrope', system-ui, sans-serif"
+import { INK, MUTED, LINE, FONT, placeholder, useManrope } from './storefrontTheme'
+import { Icon, WhatsAppIcon, ChromeStyles, Announcement, StorefrontHeader, StorefrontFooter } from './StorefrontChrome'
 
 function normaliseImages(raw) {
   return (raw || [])
@@ -24,36 +20,8 @@ function normaliseImages(raw) {
     .filter((img) => img.url)
 }
 
-function placeholder(i, size = 16) {
-  return `repeating-linear-gradient(135deg, ${TINTS[i % TINTS.length]} 0 ${size / 2}px, #F4F2EE ${size / 2}px ${size}px)`
-}
-
-const Icon = ({ children, size = 22, stroke = INK, width = 1.8 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke}
-    strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    {children}
-  </svg>
-)
-
-const WhatsAppIcon = ({ stroke = '#fff' }) => (
-  <Icon size={20} stroke={stroke} width={1.9}>
-    <path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20.5l1.7-5A8.5 8.5 0 1 1 21 11.5z" />
-  </Icon>
-)
-
-function useManrope() {
-  useEffect(() => {
-    if (document.getElementById('sf-manrope')) return
-    const link = document.createElement('link')
-    link.id = 'sf-manrope'
-    link.rel = 'stylesheet'
-    link.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap'
-    document.head.appendChild(link)
-  }, [])
-}
-
 export default function StorefrontItemPage({
-  orgName, waNumber, catalogConfig, style, item, items = [], onBack, onSelectItem, onShowCompare,
+  orgName, waNumber, catalogConfig, style, item, items = [], onBack, onSelectItem, onShowCompare, onPickCategory,
 }) {
   useManrope()
   const accent = resolveAccent(style)
@@ -81,6 +49,9 @@ export default function StorefrontItemPage({
   const view = priceView(item, selected, catalogConfig)
   const points = trustPoints(style)
   const related = relatedItems(items, item, 4)
+  const crumbCategory = style?.show_categories === false ? '' : tagValues(item, 'category').find((c) => categoryNames(catalogConfig).includes(c)) || ''
+  const menu = categoryChips(items, catalogConfig, style).slice(0, 5)
+  const navBtn = { border: 0, background: 'transparent', cursor: 'pointer', fontSize: 14, fontWeight: 600, minHeight: 44, padding: '0 12px', whiteSpace: 'nowrap', color: INK }
 
   const description = sanitizeHtml(item.description)
   const intro = item.catalog_description || ''
@@ -114,11 +85,8 @@ export default function StorefrontItemPage({
 
   return (
     <div className="sf-root" style={{ minHeight: '100vh', background: '#fff', fontFamily: FONT, color: INK }}>
+      <ChromeStyles accent={accent} />
       <style>{`
-        .sf-root a { color: inherit; text-decoration: none }
-        .sf-root button { font-family: inherit }
-        .sf-root :focus-visible { outline: 3px solid ${accent}; outline-offset: 2px }
-        .sf-wrap { max-width: 1200px; margin: 0 auto; padding: 0 40px; box-sizing: border-box }
         .sf-top { display: flex; gap: 56px; flex-wrap: wrap; align-items: flex-start }
         .sf-gallery { display: flex; gap: 16px; flex: 1 1 520px; min-width: 0 }
         .sf-thumbs { display: flex; flex-direction: column; gap: 12px; width: 88px; flex-shrink: 0 }
@@ -129,7 +97,6 @@ export default function StorefrontItemPage({
         .sf-desc li { margin-bottom: 6px; font-size: 15px; line-height: 1.65; color: #3A3F44 }
         .sf-desc a { color: ${accent}; text-decoration: underline }
         @media (max-width: 900px) {
-          .sf-wrap { padding: 0 20px }
           .sf-top { gap: 28px }
           .sf-gallery { flex-direction: column-reverse; flex-basis: 100% }
           .sf-thumbs { flex-direction: row; width: auto; overflow-x: auto }
@@ -138,40 +105,29 @@ export default function StorefrontItemPage({
         }
       `}</style>
 
-      {style?.announcement && (
-        <div style={{ background: INK, color: '#fff', fontSize: 13, fontWeight: 600, textAlign: 'center', padding: '11px 24px' }}>
-          {style.announcement}
-        </div>
-      )}
-
-      <header style={{ borderBottom: `1px solid ${LINE}`, background: '#fff' }}>
-        <div className="sf-wrap" style={{ height: 72, display: 'flex', alignItems: 'center', gap: 24 }}>
-          <button onClick={onBack} aria-label={`${orgName} home`} style={{
-            display: 'flex', alignItems: 'center', gap: 10, border: 0, background: 'transparent', cursor: 'pointer', padding: 0, minHeight: 44,
-          }}>
-            {style?.logo_url ? (
-              <img src={style.logo_url} alt="" style={{ height: 36, width: 'auto', borderRadius: 8 }} />
-            ) : (
-              <span style={{
-                width: 36, height: 36, borderRadius: 10, background: accent, color: onAccent,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15,
-              }}>{initials(orgName)}</span>
-            )}
-            <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.01em' }}>{orgName}</span>
-          </button>
-          <nav style={{ flexGrow: 1, display: 'flex', gap: 28, fontSize: 14, fontWeight: 600 }}>
-            <button onClick={onBack} style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 14, fontWeight: 600, minHeight: 44, padding: 0 }}>
-              All {pluralLabel.toLowerCase()}
-            </button>
-          </nav>
-        </div>
-      </header>
+      <Announcement style={style} />
+      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={() => onBack()}>
+        <nav className="sf-nav" aria-label="Shop menu">
+          <button onClick={() => onBack()} style={navBtn}>All {pluralLabel.toLowerCase()}</button>
+          {menu.map((c) => (
+            <button key={c.name} onClick={() => (onPickCategory ? onPickCategory(c.name) : onBack())} style={navBtn}>{c.name}</button>
+          ))}
+        </nav>
+      </StorefrontHeader>
 
       <main className="sf-wrap">
         <nav aria-label="Breadcrumb" style={{ padding: '22px 0 20px', fontSize: 13, color: MUTED, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={onBack} style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 13, color: MUTED, padding: 0, minHeight: 32 }}>
             All {pluralLabel.toLowerCase()}
           </button>
+          {crumbCategory && (
+            <>
+              <span aria-hidden="true">/</span>
+              <button onClick={() => (onPickCategory ? onPickCategory(crumbCategory) : onBack())} style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 13, color: MUTED, padding: 0, minHeight: 32 }}>
+                {crumbCategory}
+              </button>
+            </>
+          )}
           <span aria-hidden="true">/</span>
           <span aria-current="page" style={{ color: INK, fontWeight: 600 }}>{item.title}</span>
         </nav>
@@ -373,9 +329,7 @@ export default function StorefrontItemPage({
           </section>
         )}
 
-        <footer style={{ marginTop: 88, borderTop: `1px solid ${LINE}`, padding: '28px 0 36px', textAlign: 'center', fontSize: 13, color: MUTED }}>
-          {orgName}{waNumber ? '. Message us on WhatsApp any time.' : ''}
-        </footer>
+        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} />
       </main>
     </div>
   )
