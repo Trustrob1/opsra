@@ -246,6 +246,24 @@ async def _increment_catalog_views(org_id: str, item_id: str) -> None:
 # /api/v1/public/catalog/{org_slug}/{item_slug} ← fully parameterised
 # ---------------------------------------------------------------------------
 
+@router.get("/og/shop/{org_slug}/{item_slug}", response_class=HTMLResponse)
+async def og_shop_item(
+    org_slug:  str,
+    item_slug: str,
+    request:   Request,
+    variant:   Optional[str] = Query(None, max_length=100),
+    src:       Optional[str] = Query(None, max_length=60),
+):
+    """
+    STORE-5c: link preview for one product. WhatsApp, Facebook and Instagram read the photo, name and price from
+    here; people are sent straight on to the product page (size and tag kept). Public, no login, never fails.
+    """
+    _check_rate_limit(request)
+    from app.services import catalog_share_service as share
+    page = share.preview_for(get_supabase(), org_slug, item_slug, variant, src)
+    return HTMLResponse(content=share.preview_html(page), status_code=200)
+
+
 @router.get("/og/catalog/{org_slug}/compare", response_class=HTMLResponse)
 async def og_catalog_compare(
     org_slug: str,

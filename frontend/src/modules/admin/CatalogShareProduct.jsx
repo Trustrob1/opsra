@@ -51,7 +51,8 @@ export default function CatalogShareProduct({ item, onClose, onItemChanged }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, tag, variant, reload])
 
-  const link = info && info.link
+  const link = info && info.link                         // the page itself: Open page and the QR code
+  const shareLink = (info && (info.share_link || info.link)) || ''   // STORE-5c: the one to send; chat apps show the photo from it
   useEffect(() => {
     if (!link) return undefined
     let alive = true
@@ -80,7 +81,7 @@ export default function CatalogShareProduct({ item, onClose, onItemChanged }) {
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(link)
+      await navigator.clipboard.writeText(shareLink)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch { setError('Could not copy. Select the link and copy it by hand.') }
@@ -146,14 +147,14 @@ export default function CatalogShareProduct({ item, onClose, onItemChanged }) {
 
           <div style={{ marginTop: 24 }}>
             <h3 style={H}>Product link</h3>
-            <p style={SUB}>Customers open this page, pick a size, add to cart and pay. No sign-up.</p>
+            <p style={SUB}>Send this link. WhatsApp, Facebook and Instagram show the photo, name and price. Customers pick a size, add to cart and pay. No sign-up.</p>
             <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
-              <div aria-label="Product link" style={{ ...INPUT, flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', fontSize: 13, fontWeight: 600, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{link || 'Making your link…'}</div>
-              <button onClick={copy} disabled={!link} style={BTN}>{copied ? 'Copied' : 'Copy link'}</button>
+              <div aria-label="Product link" style={{ ...INPUT, flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', fontSize: 13, fontWeight: 600, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shareLink || 'Making your link…'}</div>
+              <button onClick={copy} disabled={!shareLink} style={BTN}>{copied ? 'Copied' : 'Copy link'}</button>
             </div>
             <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {link ? <a href={link} target="_blank" rel="noopener noreferrer" style={OUTLINE}>Open page</a> : <span />}
-              {link && <a href={whatsappShareLink(link, it.title)} target="_blank" rel="noopener noreferrer" style={OUTLINE}>Send on WhatsApp</a>}
+              {link && <a href={whatsappShareLink(shareLink, it.title)} target="_blank" rel="noopener noreferrer" style={OUTLINE}>Send on WhatsApp</a>}
             </div>
           </div>
 
