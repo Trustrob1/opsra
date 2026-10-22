@@ -4,6 +4,7 @@
  */
 import { useState } from 'react'
 import { ds } from '../../utils/ds'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import { catalogErrorText } from './catalogErrors'
 import { downloadImportTemplate } from './catalogTemplateDownload'
 
@@ -29,6 +30,7 @@ function Icon({ children }) {
 
 export default function CatalogFirstProduct({ itemWord, creating, onAdd, onImport }) {
   const [error, setError] = useState('')
+  const phone = useIsMobile(640)
   const word = itemWord || 'product'
 
   async function template() {
@@ -47,13 +49,13 @@ export default function CatalogFirstProduct({ itemWord, creating, onAdd, onImpor
         <div role="alert" style={{ margin: '16px auto 0', maxWidth: 760, background: '#fff2f2', border: '1px solid #e05c5c', borderRadius: 8, padding: '10px 16px', fontFamily: ds.fontDm, fontSize: 13.5, color: '#c0392b' }}>{error}</div>
       )}
 
-      <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, maxWidth: 900, marginLeft: 'auto', marginRight: 'auto' }}>
+      <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 20, maxWidth: 900, marginLeft: 'auto', marginRight: 'auto' }}>
         <div style={CARD}>
           <Icon><path d="M12 5v14M5 12h14" /></Icon>
           <h3 style={H3}>Add one {word}</h3>
           <p style={P}>Best when you have a few. Type a name and price, and add a photo from your phone or computer.</p>
           <div style={{ flexGrow: 1, minHeight: 18 }} />
-          <div><button style={{ ...PRIMARY, opacity: creating ? 0.6 : 1 }} disabled={creating} onClick={onAdd}>{creating ? 'Creating…' : `Add a ${word}`}</button></div>
+          <div><button style={{ ...PRIMARY, width: phone ? '100%' : undefined, opacity: creating ? 0.6 : 1 }} disabled={creating} onClick={onAdd}>{creating ? 'Creating…' : `Add a ${word}`}</button></div>
         </div>
 
         <div style={CARD}>
@@ -62,15 +64,15 @@ export default function CatalogFirstProduct({ itemWord, creating, onAdd, onImpor
           <p style={P}>Best when you already have a list. Fill in our spreadsheet and upload it. Nothing is added until you have reviewed it.</p>
           <div style={{ flexGrow: 1, minHeight: 18 }} />
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button style={PRIMARY} onClick={template}>Download the template</button>
-            <button style={OUTLINE} onClick={onImport}>Upload my spreadsheet</button>
+            <button style={{ ...PRIMARY, flex: phone ? '1 1 100%' : undefined }} onClick={template}>Download the template</button>
+            <button style={{ ...OUTLINE, flex: phone ? '1 1 100%' : undefined }} onClick={onImport}>Upload my spreadsheet</button>
           </div>
         </div>
       </div>
 
       <div style={{ ...CARD, marginTop: 20, maxWidth: 900, marginLeft: 'auto', marginRight: 'auto', boxSizing: 'border-box' }}>
         <div style={{ fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4a7a8a' }}>How the spreadsheet works</div>
-        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
+        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: 20 }}>
           {HOW.map(([title, text], i) => (
             <div key={title} style={{ display: 'flex', gap: 12 }}>
               <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #C9D9E0', flexShrink: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontDm, fontSize: 13, fontWeight: 700, color: '#0a1a24' }}>{i + 1}</span>

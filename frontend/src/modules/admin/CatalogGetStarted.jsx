@@ -3,6 +3,7 @@
  * STORE-13: the "Get started" tab. Five steps with one clear next action, a progress bar, and the catalog link.
  */
 import { ds } from '../../utils/ds'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import { doneCount, progressPct, setupHeadline } from './catalogSetupLogic'
 
 const CARD = { background: 'white', borderRadius: 14, border: '1px solid #E2EFF4', padding: 20 }
@@ -29,32 +30,35 @@ function Optional() {
   return <span style={{ padding: '2px 8px', borderRadius: 10, border: '1px solid #C9D9E0', fontFamily: ds.fontDm, fontSize: 11, fontWeight: 700, color: '#4a7a8a' }}>Optional</span>
 }
 
-function Step({ s, onAction, onSkip }) {
+function Step({ s, onAction, onSkip, phone }) {
+  // on a phone the buttons drop under the text and fill the width, so they are easy to tap
+  const row = phone ? { flexWrap: 'wrap' } : {}
+  const fill = phone ? { flex: '1 1 100%' } : {}
   if (s.done) {
     return (
-      <div style={{ ...CARD, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px' }}>
+      <div style={{ ...CARD, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', ...row }}>
         <Tick />
-        <div style={{ flexGrow: 1, minWidth: 0 }}>
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div style={{ fontFamily: ds.fontDm, fontSize: 14.5, fontWeight: 700, color: '#0a1a24' }}>{s.title}</div>
           <div style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', marginTop: 2 }}>{s.summary}</div>
         </div>
-        <button style={SMALL} onClick={() => onAction(s.id, 'review')}>Review</button>
+        <button style={{ ...SMALL, ...fill }} onClick={() => onAction(s.id, 'review')}>Review</button>
       </div>
     )
   }
   if (s.now) {
     return (
-      <div style={{ ...CARD, display: 'flex', gap: 14, border: `2px solid ${ds.teal}`, background: '#F1F8F9' }}>
+      <div style={{ ...CARD, display: 'flex', gap: 14, border: `2px solid ${ds.teal}`, background: '#F1F8F9', padding: phone ? 16 : 20 }}>
         <Num n={s.n} active />
-        <div style={{ flexGrow: 1, minWidth: 0 }}>
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ fontFamily: ds.fontSyne, fontSize: 16, fontWeight: 700, color: '#0a1a24' }}>{s.title}</div>
             {s.optional && <Optional />}
           </div>
           <p style={{ margin: '6px 0 0', fontFamily: ds.fontDm, fontSize: 13.5, lineHeight: 1.5, color: '#3a5a6a' }}>{s.desc}</p>
           <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button style={PRIMARY} onClick={() => onAction(s.id, 'primary')}>{s.primary}</button>
-            {s.secondary && <button style={OUTLINE} onClick={() => onAction(s.id, 'secondary')}>{s.secondary}</button>}
+            <button style={{ ...PRIMARY, ...fill }} onClick={() => onAction(s.id, 'primary')}>{s.primary}</button>
+            {s.secondary && <button style={{ ...OUTLINE, ...fill }} onClick={() => onAction(s.id, 'secondary')}>{s.secondary}</button>}
             {s.optional && <button style={TEXT_BTN} onClick={() => onSkip(s.id)}>Skip for now</button>}
           </div>
         </div>
@@ -62,28 +66,29 @@ function Step({ s, onAction, onSkip }) {
     )
   }
   return (
-    <div style={{ ...CARD, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px' }}>
+    <div style={{ ...CARD, display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', ...row }}>
       <Num n={s.n} />
-      <div style={{ flexGrow: 1, minWidth: 0 }}>
+      <div style={{ flex: '1 1 0', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontFamily: ds.fontDm, fontSize: 14.5, fontWeight: 700, color: '#0a1a24' }}>{s.title}</div>
           {s.optional && <Optional />}
         </div>
         <div style={{ fontFamily: ds.fontDm, fontSize: 13, lineHeight: 1.45, color: '#4a7a8a', marginTop: 2 }}>{s.desc}</div>
       </div>
-      <button style={SMALL} onClick={() => onAction(s.id, 'primary')}>{s.primary}</button>
+      <button style={{ ...SMALL, ...fill }} onClick={() => onAction(s.id, 'primary')}>{s.primary}</button>
     </div>
   )
 }
 
 export default function CatalogGetStarted({ steps, link, copied, onAction, onSkip, onCopy, onOpenLink, onOpenSettings }) {
+  const phone = useIsMobile(640)
   const done = doneCount(steps)
   const hasProducts = !!(steps[0] && steps[0].done)
   const shortLink = (link || '').replace(/^https?:\/\//, '')
 
   return (
     <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap', paddingBottom: 40 }}>
-      <div style={{ flex: '1 1 460px', minWidth: 0, maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ flex: '1 1 min(460px, 100%)', minWidth: 0, maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={CARD}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontFamily: ds.fontSyne, fontSize: 15, fontWeight: 700, color: '#0a1a24' }}>{setupHeadline(steps)}</div>
@@ -93,10 +98,10 @@ export default function CatalogGetStarted({ steps, link, copied, onAction, onSki
             <div style={{ height: 8, borderRadius: 4, background: ds.teal, width: progressPct(steps) }} />
           </div>
         </div>
-        {steps.map((s) => <Step key={s.id} s={s} onAction={onAction} onSkip={onSkip} />)}
+        {steps.map((s) => <Step key={s.id} s={s} onAction={onAction} onSkip={onSkip} phone={phone} />)}
       </div>
 
-      <div style={{ flex: '0 1 320px', minWidth: 260, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: '1 1 min(300px, 100%)', maxWidth: phone ? 'none' : 320, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {hasProducts ? (
           <div style={CARD}>
             <div style={{ fontFamily: ds.fontSyne, fontSize: 15, fontWeight: 700, color: '#0a1a24' }}>Your catalog link</div>

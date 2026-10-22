@@ -80,6 +80,7 @@ import CatalogLook             from './CatalogLook'
 import CatalogCategories       from './CatalogCategories'
 import CatalogGetStarted       from './CatalogGetStarted'   // STORE-13
 import useCatalogSetup         from './useCatalogSetup'      // STORE-13
+import { useIsMobile }         from '../../hooks/useIsMobile'  // STORE-13b
 import { doneCount, STEP_TOTAL } from './catalogSetupLogic'  // STORE-13
 import PaymentLinkConfig       from './PaymentLinkConfig'
 import DirectSalesQuerySource  from './DirectSalesQuerySource'
@@ -187,7 +188,7 @@ function LazyTab({ active, visited, children }) {
 // ── Sub-tab bar ───────────────────────────────────────────────────────────────
 function SubTabBar({ tabs, active, onChange }) {
   return (
-    <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
+    <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       {tabs.map(st => (
         <button
           key={st.id}
@@ -199,7 +200,7 @@ function SubTabBar({ tabs, active, onChange }) {
             fontFamily: ds.fontDm, fontSize: 13.5,
             fontWeight: active === st.id ? 600 : 400,
             color: active === st.id ? ds.teal : '#5a8a9f',
-            marginBottom: -2, whiteSpace: 'nowrap',
+            marginBottom: -2, whiteSpace: 'nowrap', flexShrink: 0, minHeight: 44,
           }}
         >
           {st.label}
@@ -219,13 +220,15 @@ export default function AdminModule({ user }) {
   const [accessDenied, setAccessDenied]   = useState(false)
   const [checking, setChecking]           = useState(true)
   const [visited, setVisited]             = useState({ users: true })
+  const isMobile = useIsMobile()   // STORE-13b
   const setup = useCatalogSetup(user?.org_id ?? user?.organisation_id ?? user?.id ?? '', !!visited['catalog'])
 
   // Sidebar open/closed — persist preference
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try {
       const stored = localStorage.getItem('admin_sidebar_open')
-      return stored === null ? true : stored === 'true'
+      // STORE-13b: on a phone the menu starts folded away so the page has room, unless the person chose otherwise
+      return stored === null ? window.innerWidth >= 768 : stored === 'true'
     } catch { return true }
   })
 
@@ -477,7 +480,7 @@ export default function AdminModule({ user }) {
         </div>
 
         {/* Tab content */}
-        <div style={{ padding: 28, flex: 1, minWidth: 0 }}>
+        <div style={{ padding: isMobile ? 14 : 28, flex: 1, minWidth: 0 }}>
 
           <LazyTab active={tab === 'users'}            visited={visited['users']}>            <UserManagement /></LazyTab>
           <LazyTab active={tab === 'roles'}            visited={visited['roles']}>            <RoleBuilder /></LazyTab>

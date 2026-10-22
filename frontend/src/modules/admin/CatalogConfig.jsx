@@ -8,6 +8,7 @@
  */
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import * as adminSvc from '../../services/admin.service'
 import { PRICE_STYLES, priceStyleOf, nextButtonId } from './catalogConfigLogic'
 
@@ -71,11 +72,15 @@ const TOGGLE = ({ value, onChange, label }) => (
   </label>
 )
 
-const FIELD_ROW = ({ children, cols = 2 }) => (
-  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 16, marginBottom: 16 }}>
-    {children}
-  </div>
-)
+// STORE-13b: side by side on a computer, one under the other on a phone
+const FIELD_ROW = ({ children, cols = 2 }) => {
+  const phone = useIsMobile(640)
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: phone ? '1fr' : `repeat(${cols}, minmax(0, 1fr))`, gap: 16, marginBottom: 16 }}>
+      {children}
+    </div>
+  )
+}
 
 function Field({ label, htmlFor, children }) {
   return (
@@ -120,6 +125,8 @@ export default function CatalogConfig() {
   const [toast, setToast]     = useState('')
   const [error, setError]     = useState('')
   const [advOpen, setAdvOpen] = useState(false)
+  const phone = useIsMobile(640)
+  const sec = phone ? { ...SECTION, padding: 16 } : SECTION
 
   useEffect(() => {
     adminSvc.getCatalogConfig()
@@ -263,7 +270,7 @@ export default function CatalogConfig() {
 
   return (
     <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap', paddingBottom: 40 }}>
-      <div style={{ flex: '1 1 480px', minWidth: 0, maxWidth: 700 }}>
+      <div style={{ flex: '1 1 min(480px, 100%)', minWidth: 0, maxWidth: 700 }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
           <div>
@@ -272,7 +279,7 @@ export default function CatalogConfig() {
               Optional. Your catalog already works with the defaults. Change these only if you want the words to match your business.
             </p>
           </div>
-          <button style={{ ...BTN_PRIMARY, minHeight: 46, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+          <button style={{ ...BTN_PRIMARY, minHeight: 46, width: phone ? '100%' : undefined, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save settings'}
           </button>
         </div>
@@ -297,7 +304,7 @@ export default function CatalogConfig() {
         </div>
 
         {/* What you sell */}
-        <div style={SECTION}>
+        <div style={sec}>
           <h3 style={{ ...SECTION_TITLE, margin: '0 0 4px' }}>What you sell</h3>
           <p style={SECTION_HELP}>These words appear in headings, buttons and share messages.</p>
           <FIELD_ROW>
@@ -315,7 +322,7 @@ export default function CatalogConfig() {
         </div>
 
         {/* Prices */}
-        <div style={SECTION}>
+        <div style={sec}>
           <h3 style={SECTION_TITLE}>Prices</h3>
           <Field label="How prices look" htmlFor="cat-pstyle">
             <select id="cat-pstyle" style={{ ...INPUT, cursor: 'pointer', opacity: config.price_on_request ? 0.5 : 1 }}
@@ -339,7 +346,7 @@ export default function CatalogConfig() {
         </div>
 
         {/* Stock wording */}
-        <div style={SECTION}>
+        <div style={sec}>
           <h3 style={SECTION_TITLE}>Stock wording</h3>
           <FIELD_ROW>
             <Field label="When it is available" htmlFor="cat-avail">
@@ -356,7 +363,7 @@ export default function CatalogConfig() {
         </div>
 
         {/* Headings */}
-        <div style={SECTION}>
+        <div style={sec}>
           <h3 style={SECTION_TITLE}>Product page headings</h3>
           <FIELD_ROW>
             <Field label="Heading above the photos" htmlFor="cat-gallery">
@@ -371,7 +378,7 @@ export default function CatalogConfig() {
         </div>
 
         {/* Buttons */}
-        <div style={SECTION}>
+        <div style={sec}>
           <h3 style={{ ...SECTION_TITLE, margin: '0 0 4px' }}>Buttons on the product page</h3>
           <p style={SECTION_HELP}>Each button opens WhatsApp with a message from the customer, so you can tell which one they pressed. Keep two or three.</p>
           {buttons.map((btn, i) => (
@@ -397,7 +404,7 @@ export default function CatalogConfig() {
         </div>
 
         {/* Advanced */}
-        <div style={{ ...SECTION, padding: '6px 24px' }}>
+        <div style={{ ...sec, padding: phone ? '4px 16px' : '6px 24px' }}>
           <button aria-expanded={advOpen} onClick={() => setAdvOpen(o => !o)}
             style={{ width: '100%', minHeight: 56, border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>
             <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24' }}>
@@ -501,7 +508,7 @@ export default function CatalogConfig() {
       </div>
 
       {/* What customers will see */}
-      <aside aria-label="Preview" style={{ flex: '0 1 320px', minWidth: 260, position: 'sticky', top: 16, ...SECTION, marginBottom: 0 }}>
+      <aside aria-label="Preview" style={{ flex: '1 1 min(300px, 100%)', maxWidth: phone ? 'none' : 320, minWidth: 0, position: phone ? 'static' : 'sticky', top: 16, ...sec, marginBottom: 0 }}>
         <div style={{ fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4a7a8a' }}>What customers will see</div>
         <div style={{ marginTop: 14, fontFamily: ds.fontDm, fontSize: 13, fontWeight: 700, color: '#3a5a6a' }}>Showing all {word2.toLowerCase()}</div>
         <div style={{ marginTop: 10, border: '1px solid #E2EFF4', borderRadius: 12, overflow: 'hidden' }}>
