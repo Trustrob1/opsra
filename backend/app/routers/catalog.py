@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel, Field, field_validator
 
 from app.dependencies import get_current_org, get_supabase
+from app.services import catalog_storefront_service as storefront   # STORE-1
 from app.services.catalog_service import (
     SlugConflictError,
     create_catalog_item,
@@ -97,6 +98,31 @@ class CatalogConfigUpdate(BaseModel):
     availability_labels:       Optional[AvailabilityLabels]  = None
     cta_buttons:               Optional[List[CTAButton]]     = Field(None, min_length=2, max_length=3)
     tag_dimensions:            Optional[List[TagDimension]]  = Field(None, max_length=10)
+    # STORE-1: Storefront look (template needs the catalog_storefront plan feature to be set to "storefront")
+    template:                  Optional[Literal["classic", "storefront"]] = None
+    announcement:              Optional[str]                 = Field(None, max_length=storefront.ANNOUNCEMENT_MAX)
+    trust_points:              Optional[List[str]]           = Field(None, max_length=storefront.TRUST_POINTS_MAX)
+    accent:                    Optional[str]                 = Field(None, pattern=r'^(#[0-9a-fA-F]{6})?$')
+    logo_url:                  Optional[str]                 = Field(None, max_length=storefront.LOGO_URL_MAX)
+
+    @field_validator("trust_points")
+    @classmethod
+    def trust_points_short(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        out = [" ".join(str(p or "").split()) for p in v]
+        if any(len(p) > storefront.TRUST_POINT_CHARS for p in out):
+            raise ValueError(f"Each point must be {storefront.TRUST_POINT_CHARS} characters or fewer.")
+        return [p for p in out if p]
+
+    @field_validator("logo_url")
+    @classmethod
+    def logo_https(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        if storefront.clean_https_url(v) is None:
+            raise ValueError("Logo link must start with https:// and contain no spaces.")
+        return v
 
 
 class CatalogItemUpdate(BaseModel):
@@ -146,7 +172,7 @@ async def get_config(
 ):
     _require_catalog_role(current_org)
     config = get_catalog_config(db, current_org["org_id"])
-    return {"catalog_config": config}
+    return {"catalog_config": config, "storefront_allowed": storefront.storefront_allowed(db, current_org["org_id"])}
 
 
 @router.patch("/config")
@@ -158,9 +184,12 @@ async def patch_config(
     _require_catalog_role(current_org)
     # model_dump() in Pydantic v2 serialises nested models to plain dicts
     updates = body.model_dump(exclude_none=True)
+    # STORE-1: only a plan that includes the Storefront look can switch it on (switching back to classic is always allowed)
+    if updates.get("template") == "storefront" and not storefront.storefront_allowed(db, current_org["org_id"]):
+        raise _plan_gate.http_error()
     try:
         config = update_catalog_config(db, current_org["org_id"], updates)
-        return {"catalog_config": config}
+        return {"catalog_config": config, "storefront_allowed": storefront.storefront_allowed(db, current_org["org_id"])}
     except Exception as exc:
         logger.warning("patch_config failed org=%s: %s", current_org["org_id"], exc)
         raise HTTPException(status_code=500, detail="Failed to update catalog config.")

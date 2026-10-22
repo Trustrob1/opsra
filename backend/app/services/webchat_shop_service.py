@@ -55,6 +55,31 @@ def _variants(p: dict) -> list[dict]:
     return out
 
 
+def _variant_in_stock(v: dict) -> bool:
+    """Same rule the public catalog page uses: an explicit available flag wins, else Shopify inventory fields."""
+    if isinstance(v.get("available"), bool):
+        return v["available"]
+    if v.get("inventory_management") in (None, "") or v.get("inventory_policy") == "continue":
+        return True
+    try:
+        return int(v.get("inventory_quantity") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _stock_state(p: dict, variant_id) -> Optional[str]:
+    """STORE-1: None when the item (and chosen option) can be sold; else a short reason for the visitor.
+    A product marked unavailable, or an option with no stock, cannot be added or paid for."""
+    if p.get("available") is False:
+        return "That item is out of stock."
+    if variant_id is not None:
+        raw = next((v for v in (p.get("variants") or [])
+                    if str(v.get("id") or v.get("variant_id") or "") == str(variant_id)), None)
+        if raw is not None and not _variant_in_stock(raw):
+            return "That option is out of stock."
+    return None
+
+
 def _card(p: dict) -> dict:
     imgs = p.get("catalog_images") or []
     desc = (p.get("catalog_description") or p.get("description") or "").strip()
@@ -67,14 +92,14 @@ def _card(p: dict) -> dict:
 
 def _fetch_all(db, org_id: str) -> list[dict]:
     rows = (db.table("products")
-            .select("id, title, price, variants, catalog_images, description, catalog_description")
+            .select("id, title, price, variants, catalog_images, description, catalog_description, available")
             .eq("org_id", org_id).execute().data) or []
     return [r for r in rows if r.get("id") and (r.get("title") or "").strip()]
 
 
 def _fetch_one(db, org_id: str, product_id: str) -> Optional[dict]:
     rows = (db.table("products")
-            .select("id, title, price, variants, catalog_images, description, catalog_description")
+            .select("id, title, price, variants, catalog_images, description, catalog_description, available")
             .eq("org_id", org_id).eq("id", product_id).limit(1).execute().data) or []
     return rows[0] if rows else None
 
@@ -152,6 +177,9 @@ def add(db, s: dict, product_id: str, variant_id: Optional[str], qty: int = 1) -
         price, label = _num(p.get("price")), None
     if price <= 0:
         return {"error": "This item cannot be ordered online. Please ask our team."}
+    reason = _stock_state(p, chosen["id"] if chosen else None)          # STORE-1
+    if reason:
+        return {"error": reason}
     name = str(p.get("title"))[:80] + (f" - {label}" if label and label.lower() not in ("default", "default title", "standard") else "")
     cart = _cart(s)
     key = (str(p["id"]), chosen["id"] if chosen else None)
@@ -182,6 +210,8 @@ def _reprice(db, s: dict) -> tuple[list[dict], list[str]]:
     for line in _cart(s):
         p = _fetch_one(db, s["org_id"], str(line.get("pid") or ""))
         price = 0.0
+        if p and _stock_state(p, line.get("vid")):                       # STORE-1: sold out since it was added
+            p = None
         if p:
             vs = _variants(p)
             if vs:

@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 
 from app.database import get_supabase
+from app.services import catalog_storefront_service as storefront   # STORE-1
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -121,6 +122,9 @@ def _public_item_fields(
         "catalog_description": item.get("catalog_description") or None,
         "price":              item.get("price"),
         "price_label":        _format_price(item.get("price"), price_template, price_on_request),
+        # STORE-1: the old "was" price, shown crossed out only when it is really higher than the price
+        "compare_at_price":   None if price_on_request else item.get("compare_at_price"),
+        "discount_percent":   None if price_on_request else storefront.discount_percent(item.get("price"), item.get("compare_at_price")),
         "catalog_images":     shopify_images + extra_images,
         "tags":               item.get("tags") or {},
         "custom_fields":      item.get("custom_fields") or {},
@@ -201,7 +205,7 @@ def _fetch_visible_items(db, org_id: str) -> List[dict]:
     result = (
         db.table("products")
         .select(
-            "id, title, slug, description, catalog_description, price, catalog_images, "
+            "id, title, slug, description, catalog_description, price, compare_at_price, catalog_images, "
             "extra_catalog_images, tags, custom_fields, available, catalog_views, variants"
         )
         .eq("org_id", org_id)
@@ -406,6 +410,7 @@ async def search_catalog(
         "items":         [_public_item_fields(i, price_template, price_on_request) for i in matched],
         "count":         len(matched),
         "query":         q,
+        **storefront.public_extras(db, org_id, catalog_config),   # STORE-1
     }
 
 
@@ -474,6 +479,7 @@ async def list_catalog(
         "wizard_questions": _extract_wizard_questions(org.get("qualification_flow")),
         "items":           [_public_item_fields(i, price_template, price_on_request) for i in items],
         "count":           len(items),
+        **storefront.public_extras(db, org_id, catalog_config),   # STORE-1
     }
     _cache_set(_list_cache, cache_key, response)
     return response
@@ -514,7 +520,7 @@ async def get_catalog_item(
     result = (
         db.table("products")
         .select(
-            "id, title, slug, description, catalog_description, price, catalog_images, "
+            "id, title, slug, description, catalog_description, price, compare_at_price, catalog_images, "
             "extra_catalog_images, tags, custom_fields, available, catalog_views, variants"
         )
         .eq("org_id", org_id)
@@ -534,6 +540,7 @@ async def get_catalog_item(
         "catalog_config": pub_config,
         "wa_number":     org.get("org_whatsapp_number"),
         "item":           pub_item,
+        **storefront.public_extras(db, org_id, catalog_config),   # STORE-1
     }
 
     # Cache with internal org_id for view increment (stripped before return)

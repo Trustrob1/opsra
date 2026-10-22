@@ -45,6 +45,7 @@ _F = {
     "webchat_followups": ("Web chat email and WhatsApp follow-ups", "convert", None, True),
     "selling_catalog": ("Catalog with recommendations", "convert", None, True),
     "selling_booking": ("Booking with reminders", "convert", None, True),
+    "catalog_storefront": ("Storefront catalog template", "convert", None, True),   # STORE-1: not in any default tier; ticked in Billing
     # Grow
     "bulk_messaging": ("Bulk customer messaging", "grow", "bulk_recipients", True),
     "welcome_series": ("Welcome series", "grow", None, True),
@@ -69,7 +70,7 @@ _F = {
 # ACCOUNT-PLANS: where a feature is checked. "site" needs a website (form, tracked links, per-site leads page);
 # "account" belongs to the organisation as a whole (web chat); "both" works for either (the default).
 _SITE_ONLY = ("form_instant_reply", "source_tracking", "my_leads_page")
-_ACCOUNT_ONLY = ("webchat_basic", "webchat_insights", "webchat_followups")
+_ACCOUNT_ONLY = ("webchat_basic", "webchat_insights", "webchat_followups", "catalog_storefront")
 
 
 def _scope(key: str) -> str:
@@ -79,7 +80,7 @@ def _scope(key: str) -> str:
 FEATURES = {k: {"label": v[0], "group": v[1], "cap": v[2], "built": v[3], "scope": _scope(k)} for k, v in _F.items()}
 
 _CAPTURE = [k for k, v in FEATURES.items() if v["group"] == "capture"]
-_CONVERT = [k for k, v in FEATURES.items() if v["group"] == "convert" and k not in ("selling_catalog", "selling_booking")]
+_CONVERT = [k for k, v in FEATURES.items() if v["group"] == "convert" and k not in ("selling_catalog", "selling_booking", "catalog_storefront")]
 _GROW = [k for k, v in FEATURES.items() if v["group"] == "grow"]
 
 # Approved 10 Oct 2026. Convert gets ONE selling tool (catalog OR booking) chosen per site, so the two keys are a
