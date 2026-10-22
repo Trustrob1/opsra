@@ -223,3 +223,43 @@ export function taggedLink(shortLink, tag) {
 
 /** Is this tag one of the ready-made ones (so its button shows as chosen)? */
 export const isPresetTag = (tag) => SHARE_PRESETS.some((p) => p.tag === cleanTag(tag))
+
+// ---------------------------------------------------------------------------
+// STORE-5b: share one product
+// ---------------------------------------------------------------------------
+
+const PRODUCT_WARNINGS = {
+  hidden: {
+    title: 'This product is hidden.',
+    text: "Customers who open the link will land on your store's main page instead.",
+    fix: 'Show in catalog',
+  },
+  out_of_stock: {
+    title: 'This product is out of stock.',
+    text: 'The link works, but customers cannot add it to the cart until it is back in stock.',
+  },
+  classic_look: {
+    title: 'Your store uses the Classic look.',
+    text: 'The link works and customers order on WhatsApp. Choose Storefront in Look to let them add to cart and pay online.',
+  },
+  no_cart: {
+    title: 'Cart is not switched on for your store.',
+    text: 'The link works and customers can order on WhatsApp. Turn on the web chat shop to let them pay online.',
+  },
+}
+
+/** Notices for the share window, in the order the server sent them. Unknown codes are ignored. */
+export function productWarnings(codes) {
+  return (Array.isArray(codes) ? codes : [])
+    .filter((c) => Object.prototype.hasOwnProperty.call(PRODUCT_WARNINGS, c))
+    .map((c) => ({ code: c, ...PRODUCT_WARNINGS[c] }))
+}
+
+/** Opens WhatsApp with the product name and link ready to send to anyone. */
+export function whatsappShareLink(link, title) {
+  const text = [String(title || '').trim(), link].filter(Boolean).join('\n')
+  return `https://wa.me/?text=${encodeURIComponent(text)}`
+}
+
+/** File name for the product QR download. */
+export const productQrFileName = (slug) => `product-qr-${cleanTag(slug) || 'link'}.svg`

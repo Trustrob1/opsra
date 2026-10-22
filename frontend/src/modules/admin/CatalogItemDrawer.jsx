@@ -63,7 +63,7 @@ function Field({ label, children }) {
   )
 }
 
-export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSaved }) {
+export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSaved, onShare }) {
   const [form, setForm]        = useState({})
   const [saving, setSaving]    = useState(false)
   const [uploading, setUpload] = useState(false)
@@ -262,7 +262,12 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
               {item.title}
             </p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1 }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {onShare && (
+              <button onClick={() => onShare(item)} style={{ minHeight: 40, padding: '0 14px', border: `1px solid ${ds.teal}`, borderRadius: 8, background: 'white', color: ds.teal, fontFamily: ds.fontDm, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Share</button>
+            )}
+            <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1, minWidth: 40, minHeight: 40 }}>✕</button>
+          </div>
         </div>
 
         {/* Body */}

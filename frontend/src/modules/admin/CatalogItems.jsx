@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
+import CatalogShareProduct from './CatalogShareProduct'
 import CatalogItemDrawer from './CatalogItemDrawer'
 
 const BTN_PRIMARY = {
@@ -57,6 +58,7 @@ export default function CatalogItems() {
   const [showHidden, setShowHidden] = useState(false)
   const [showOOS, setShowOOS]       = useState(false)
   const [drawerItem, setDrawerItem] = useState(null)
+  const [shareItem, setShareItem]   = useState(null)   // STORE-5b
   const [creating, setCreating]     = useState(false)
   const [error, setError]           = useState('')
 
@@ -219,7 +221,11 @@ export default function CatalogItems() {
                     </td>
                     {/* Actions */}
                     <td style={{ padding: '10px 12px' }}>
-                      <button style={BTN_GHOST} onClick={() => setDrawerItem(item)}>Edit</button>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button style={BTN_GHOST} onClick={() => setDrawerItem(item)}>Edit</button>
+                        <button aria-label={`Share ${item.title}`} onClick={() => setShareItem(item)}
+                          style={{ ...BTN_GHOST, ...(item.catalog_visible ? { color: ds.teal, borderColor: ds.teal, fontWeight: 600 } : {}) }}>Share</button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -236,7 +242,9 @@ export default function CatalogItems() {
         isOpen={!!drawerItem}
         onClose={() => setDrawerItem(null)}
         onSaved={handleSaved}
+        onShare={setShareItem}
       />
+      {shareItem && <CatalogShareProduct item={shareItem} onClose={() => setShareItem(null)} onItemChanged={handleSaved} />}
     </div>
   )
 }

@@ -203,8 +203,10 @@ async def patch_config(
 
 # ── Share (STORE-5) — static routes ────────────────────────────────────────
 
-def _share_call(db, org_id: str, tag: Optional[str]) -> dict:
+def _share_call(db, org_id: str, tag: Optional[str], item: Optional[str] = None, variant: Optional[str] = None) -> dict:
     try:
+        if item:
+            return share.product_share_info(db, org_id, item, tag, variant)     # STORE-5b
         return share.share_info(db, org_id, tag)
     except share.ShareError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -213,28 +215,33 @@ def _share_call(db, org_id: str, tag: Optional[str]) -> dict:
 @router.get("/share")
 async def get_share(
     src: Optional[str] = Query(default=None, max_length=60),
+    item: Optional[str] = Query(default=None, max_length=60),
+    variant: Optional[str] = Query(default=None, max_length=100),
     current_org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    """Short link, tagged link and ready-made tags for the Share panel."""
+    """Short link, tagged link and ready-made tags for the Share panel. With ?item= it is the link for that one product."""
     _require_catalog_role(current_org)
-    return _share_call(db, current_org["org_id"], src)
+    return _share_call(db, current_org["org_id"], src, item, variant)
 
 
 @router.get("/qr.svg")
 async def get_share_qr(
     src: Optional[str] = Query(default=None, max_length=60),
+    item: Optional[str] = Query(default=None, max_length=60),
+    variant: Optional[str] = Query(default=None, max_length=100),
     download: bool = False,
     current_org: dict = Depends(get_current_org),
     db=Depends(get_supabase),
 ):
-    """QR code for the tagged short link (or the plain one when no tag is given)."""
+    """QR code for the tagged short link (or the plain one when no tag is given). With ?item= it opens that product."""
     _require_catalog_role(current_org)
-    info = _share_call(db, current_org["org_id"], src)
+    info = _share_call(db, current_org["org_id"], src, item, variant)
     headers = {"Cache-Control": "no-store"}
     if download:
-        headers["Content-Disposition"] = f'attachment; filename="store-qr-{info["tag"] or "link"}.svg"'
-    return Response(content=share.qr_svg(info["tagged_link"]), media_type="image/svg+xml", headers=headers)
+        name = f"product-qr-{info['item']['slug']}" if item else f"store-qr-{info['tag'] or 'link'}"
+        headers["Content-Disposition"] = f'attachment; filename="{name}.svg"'
+    return Response(content=share.qr_svg(info["link"] if item else info["tagged_link"]), media_type="image/svg+xml", headers=headers)
 
 
 # ── Categories (STORE-1b) — static routes ──────────────────────────────────
