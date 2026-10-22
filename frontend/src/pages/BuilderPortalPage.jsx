@@ -32,7 +32,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowLeft, Building2, ChevronDown, CreditCard, Eye, ExternalLink, ImagePlus, LogOut, Plus,
-  RefreshCw, Save, Shuffle, ShoppingCart, Trash2, Undo2, User,
+  RefreshCw, Save, Shuffle, ShoppingCart, Tag, Trash2, Undo2, User,
 } from 'lucide-react'
 import {
   exchangeBuilderToken, renewalCheckout, careCheckout, cancelCarePlan, editLimitOffer, catalogCheckout, catalogLimitOffer, getMyAccount, updateMyAccount, listMySites, getMySite,
@@ -56,6 +56,7 @@ import BuilderPlansCard from '../modules/sites/BuilderPlansCard'
 import NewSiteModal from '../modules/sites/NewSiteModal'
 import BuilderOptionsView from '../modules/sites/BuilderOptionsView'   // SITE-OPTIONS OPT-2
 import HostSitesView from '../modules/sites/HostSitesView'             // HOST-1
+import PricingView from '../modules/sites/PricingView'                 // UI-2
 import { useIsMobile } from '../hooks/useIsMobile'
 import { ds } from '../utils/ds'               // the same colours and logo block as the main Opsra top bar
 
@@ -158,6 +159,10 @@ export default function BuilderPortalPage() {
             onGoLive={(id) => { setSelectedSiteId(id); setCheckoutFromOptions(false); setCheckoutFromHost(true); setView('checkout') }} />
         )}
 
+        {stage === 'app' && view === 'pricing' && (
+          <PricingView onHost={() => { setSelectedSiteId(null); setView('host') }} />
+        )}
+
         {stage === 'app' && view === 'checkout' && selectedSiteId && (
           <CheckoutView token={session.token} siteId={selectedSiteId} onBack={() => setView(checkoutFromHost ? 'host' : checkoutFromOptions ? 'options' : 'editor')} showToast={showToast} />
         )}
@@ -180,6 +185,7 @@ export default function BuilderPortalPage() {
 const NAV_ITEMS = [
   ['mysites', 'My sites', Building2],
   ['host', 'Host a site', Plus],
+  ['pricing', 'Pricing', Tag],
   ['options', 'Design options', Shuffle],
   ['account', 'Account', User],
 ]
@@ -222,7 +228,7 @@ function Shell({ builder, view, setView, onBack, onLogOut, showNav, isMobile, ch
             <button key={key} type="button" onClick={() => go(key)} aria-current={active === key ? 'page' : undefined}
               style={{ flex: 1, minHeight: 56, background: 'transparent', border: 'none', borderTop: `3px solid ${active === key ? ds.teal : 'transparent'}`, color: active === key ? 'white' : '#9FB4C0', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
               <Icon size={18} aria-hidden="true" />
-              {key === 'options' ? 'Designs' : label}
+              {key === 'options' ? 'Designs' : key === 'host' ? 'Host' : label}
             </button>
           ))}
         </nav>}

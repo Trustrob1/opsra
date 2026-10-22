@@ -36,7 +36,7 @@ export function usePricing() {
   return { data, error };
 }
 
-export function DomainChecker({ endings }) {
+export function DomainChecker({ endings, hidePrice = false }) {
   const list = endings && endings.length ? endings : FALLBACK_ENDINGS;
   const [label, setLabel] = useState("");
   const [tld, setTld] = useState(list[0]);
@@ -123,7 +123,8 @@ export function DomainChecker({ endings }) {
               <>
                 <b>{res.domain} looks free.</b>
                 {!res.confirmed && <span> We double-check with the registry just before we register it for you.</span>}
-                {price && (
+                {hidePrice && <span className="sl-h-resprice">Your domain name is included in your hosting price.</span>}
+                {price && !hidePrice && (
                   <span className="sl-h-resprice">
                     First year {naira(price.first_year.total)} · then {naira(price.renewal.total)} a year, domain and hosting together.
                   </span>

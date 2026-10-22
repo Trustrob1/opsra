@@ -11,66 +11,61 @@
  * lands on My sites, which has the same "Host a site" tab.
  *
  * Styles: SiteLandingPage.css (scoped under .sl) plus HostLandingPage.css (classes prefixed sl-h-).
- * Prices: the table comes from the same pricing engine as the checkout (GET /api/v1/public/host/pricing), never typed here.
+ * Prices: the totals come from the same pricing engine as the checkout (GET /api/v1/public/host/pricing), never typed here.
+ * UI-2: the full line-by-line breakdown lives in the portal (Pricing); this page shows totals only and says the domain is included.
  */
 import { useEffect, useRef } from "react";
 import { AuthPanel } from "./SiteLandingPage";
-import { DomainChecker, PricingTable, usePricing } from "./HostDomainPricing";
+import { DomainChecker, usePricing } from "./HostDomainPricing";
 import "./SiteLandingPage.css";
 import "./HostLandingPage.css";
 
 const TITLE = "Host your website with Opsra | Upload, preview, go live";
 const DESC =
-  "Built your website somewhere else? Upload the finished files to Opsra, preview them, then put the site on your own domain with hosting that renews simply.";
+  "Made your website with AI or a builder? Upload it to Opsra, preview it, then put it online on your own domain. Domain name, SSL and DNS are included.";
 
-const STEPS = [
-  ["01", "Sort out your domain", "Want a new address? Check it is free right here, no account needed. Already own one at QServers or elsewhere? Skip the check."],
-  ["02", "Create your account", "Enter your name, email and WhatsApp number. No password: we send a one-time code or link."],
-  ["03", "Drop in your files", "Upload a .zip (with index.html inside) or one .html file. We check it and show you a preview straight away."],
-  ["04", "Pay and go live", "Enter your domain, see the exact price, pay securely. If you own the domain, add one DNS record and your site goes live on it."],
+const INCLUDED = [
+  ["Aa", "Domain name", "Your address on the internet, like brightpath.com.ng. It is what people type to find you.", "Renews yearly", "renew"],
+  ["Hs", "Hosting", "The always-on computer where your site lives, so it is open day and night.", "Renews yearly", "renew"],
+  ["Ss", "SSL padlock", "The little padlock in the browser. It tells visitors your site is safe to use.", "Free with hosting", "free"],
+  ["Dn", "DNS", "The signpost that sends visitors from your address to your site. We set it up and look after it.", "Managed for you", "free"],
 ];
 
-const WHAT = [
-  ["One page per site", "A single-page website: index.html plus its images, styles, scripts and fonts."],
-  ["Up to 25 MB", "A .zip of up to 25 MB, or a single .html file."],
-  ["Your scripts work", "JavaScript runs on your own domain. We block risky patterns, like code that sends visitors’ data elsewhere."],
-  ["Preview before paying", "You see it exactly as visitors will, on phone and desktop, before you spend anything."],
+const STEPS = [
+  ["01", "Pick your address", "Check a new one is free, or use one you already own."],
+  ["02", "Create your account", "Just your email. No password to remember."],
+  ["03", "Upload and preview", "Drop in your site and see it on phone and computer."],
+  ["04", "Go live", "You see the exact price first. Pay, and your site is online."],
 ];
 
 const FAQ = [
   [
-    "Do I have to build my site on Opsra?",
-    "No. This is for sites you made yourself, or had made, in any tool. You upload the finished files and Opsra hosts them.",
-  ],
-  [
-    "What can I upload?",
+    "What files can I upload?",
     "A single-page website as a .zip with index.html at the top, or one .html file. Images, CSS, JavaScript and fonts are fine. Multi-page sites are not supported yet.",
   ],
   [
+    "Do I have to buy my address (domain) from Opsra?",
+    "No. A new domain is included in your price, but if you already bought one somewhere else, choose I already own my domain at checkout. You pay for hosting only, then add one DNS record where you manage the domain.",
+  ],
+  [
+    "What happens when it is time to renew?",
+    "Your domain and hosting renew together once a year. We email and WhatsApp you before it is due, and you pay from your Opsra account. If you own your domain elsewhere, your registrar keeps renewing that part.",
+  ],
+  [
     "Will my JavaScript work?",
-    "Yes, on your live domain. During the preview, scripts run in a locked box that cannot touch your account. If something is unsafe, such as hidden code that sends data to another site, we tell you what to fix and nothing is saved.",
-  ],
-  [
-    "How much does it cost?",
-    "The same hosting and domain pricing as any Opsra site, shown in the price table above: domain, hosting with SSL and DNS management, and a setup fee where one applies. You see the exact total for your own domain before you pay.",
-  ],
-  [
-    "I already bought my domain somewhere else. Do I still have to check it?",
-    "No. The availability check is only for a new domain. If you own yours, choose I already own my domain at checkout. You pay for hosting only, then add one DNS record where you manage the domain. Your site goes live once it points to us, and your registrar keeps renewing the domain.",
+    "Yes, on your live domain. During the preview, scripts run in a locked box that cannot touch your account. If something is unsafe, we tell you what to fix and nothing is published.",
   ],
   [
     "Do you have discount codes?",
-    "Yes. If you have a code, type it into the Discount code box on the checkout screen, after your preview is ready and before you pay. The new total shows at once. A code takes money off your first payment and does not apply to renewals.",
+    "Yes. Type your code into the Discount code box at checkout, after your preview is ready and before you pay. The new total shows at once.",
   ],
   [
     "Can I change the site later?",
     "Yes. Upload new files for the same site at any time. Before it is paid for, the new version replaces the preview straight away. After it is live, your update is saved and our team publishes it.",
   ],
-  [
-    "Is this only for people who build websites for clients?",
-    "No. It works for your own site too. The account you create is the same builder account Opsra uses everywhere.",
-  ],
 ];
+
+const naira = (n) => `₦${Math.round(Number(n) || 0).toLocaleString("en-NG")}`;
 
 export default function HostLandingPage() {
   const inputRef = useRef(null);
@@ -118,6 +113,9 @@ export default function HostLandingPage() {
     }, 50);
   }
 
+  const endings = pricing.data ? pricing.data.endings : null;
+  const own = pricing.data ? pricing.data.own_domain : null;
+
   return (
     <div className="sl">
       <a className="sl-skip" href="#main">
@@ -131,16 +129,13 @@ export default function HostLandingPage() {
           <nav aria-label="Main">
             <ul>
               <li>
-                <a href="#domain">Check domain</a>
-              </li>
-              <li>
-                <a href="#how">How it works</a>
+                <a href="#included">What you get</a>
               </li>
               <li>
                 <a href="#pricing">Pricing</a>
               </li>
               <li>
-                <a href="#what">What we host</a>
+                <a href="#how">How it works</a>
               </li>
               <li>
                 <a href="#faq">Questions</a>
@@ -159,62 +154,119 @@ export default function HostLandingPage() {
       </header>
 
       <main id="main">
-        <section className="sl-hero" id="top">
-          <div className="sl-wrap">
-            <span className="sl-badge">
-              <i aria-hidden="true"></i>For websites you built somewhere else
-            </span>
-            <h1>
-              Already built it? <span className="sl-accent">We’ll host it.</span>
-            </h1>
-            <p className="sl-lede">
-              Upload your finished website, check it in a live preview, then put it on your own domain. No rebuilding, no new
-              tools to learn.
-            </p>
-
-            <button type="button" className="sl-h-drop" onClick={goSignIn} aria-label="Sign in to upload your website">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />
-              </svg>
-              <b>Drop your website here</b>
-              <span>.zip or .html · you’ll sign in first, then upload in one step</span>
-            </button>
-
-            <p className="sl-h-callout">
-              <b>Want a new domain?</b> Check it is free below, with no account. <b>Already own one?</b> No check needed, you just point it to us.
-            </p>
-            <div className="sl-prompt-row" style={{ justifyContent: "center", marginTop: 22 }}>
-              <a className="sl-btn sl-teal" href="#domain">
-                Check my domain
-              </a>
-              <a className="sl-btn sl-light sl-h-outline" href="#start" onClick={goSignIn}>
-                Sign in or create an account
-              </a>
+        <section className="sl-hero sl-h2-hero" id="top">
+          <div className="sl-wrap sl-h2-herogrid">
+            <div className="sl-h2-copy">
+              <span className="sl-badge">
+                <i aria-hidden="true"></i>Made your website with AI or a builder?
+              </span>
+              <h1>
+                Put it online. <span className="sl-accent">On your own domain.</span>
+              </h1>
+              <p className="sl-lede">
+                Upload your finished site, see a preview, then go live. We take care of the technical parts. No coding needed.
+              </p>
+              <div className="sl-prompt-row">
+                <a className="sl-btn sl-teal" href="#start" onClick={goSignIn}>
+                  Sign in and upload
+                </a>
+                <a className="sl-btn sl-light sl-h-outline" href="#included">
+                  What do I get?
+                </a>
+              </div>
+              <ul className="sl-h2-checks">
+                <li>Domain name included</li>
+                <li>Preview before you pay</li>
+                <li>Or use a domain you already own</li>
+              </ul>
             </div>
-            <div className="sl-meta">
-              <span>Preview before you pay</span>
-              <span>Your own domain</span>
-              <span>No password</span>
+            <div className="sl-h2-card" id="domain">
+              <h2>Is your web address free?</h2>
+              <p className="sl-h2-cardsub">Type the name you want. No account needed.</p>
+              <DomainChecker endings={endings ? endings.map((e) => e.tld) : null} hidePrice />
+              <p className="sl-h2-own">
+                Already bought your address somewhere else? Skip this.{" "}
+                <button type="button" className="sl-h2-link" onClick={useOwnDomain}>
+                  Just host my site
+                </button>
+              </p>
             </div>
           </div>
         </section>
 
-        <section className="sl-sites" id="domain">
+        <section className="sl-h2-included" id="included">
           <div className="sl-wrap">
             <div className="sl-head">
-              <span className="sl-label">Step 1</span>
-              <h2>Is your domain name free?</h2>
-              <p>Check it before you upload. If it’s taken, we’ll suggest names that are free.</p>
+              <span className="sl-label">What you get</span>
+              <h2>Four things that put your site online.</h2>
+              <p>All included. Here is what each one means, in plain words.</p>
             </div>
-            <DomainChecker endings={pricing.data ? pricing.data.endings.map((e) => e.tld) : null} />
+            <ul className="sl-h2-tiles">
+              {INCLUDED.map(([glyph, h, p, tag, tone]) => (
+                <li key={h} className="sl-h2-tile">
+                  <span className="sl-h2-ico" aria-hidden="true">
+                    {glyph}
+                  </span>
+                  <h3>{h}</h3>
+                  <p>{p}</p>
+                  <span className={`sl-h2-tag sl-h2-${tone}`}>{tag}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="sl-h2-why">
+              <b>Why every year?</b>
+              <p>
+                Think of it like a shop. The address is registered one year at a time, and the building is kept running for you.
+                Renew once a year and your site stays online. We remind you before it is due.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="sl-pricing" id="pricing">
+          <div className="sl-wrap">
+            <div className="sl-head">
+              <span className="sl-label">Pricing</span>
+              <h2>One price. Your domain name is included.</h2>
+              <p>You do not buy the domain separately. It comes with your hosting package, along with SSL and DNS.</p>
+            </div>
+            {pricing.error && <p className="sl-err">{pricing.error}</p>}
+            {!pricing.data && !pricing.error && <p className="sl-h-muted">Loading prices…</p>}
+            {pricing.data && (
+              <div className="sl-h2-prices">
+                {endings.map((e) => (
+                  <div key={e.tld} className="sl-h2-price">
+                    <h3>{e.tld}</h3>
+                    <b>{naira(e.first_year.total)}</b>
+                    <span>first year · then {naira(e.renewal.total)} a year</span>
+                    <span className="sl-h2-tag sl-h2-free">Domain name included</span>
+                  </div>
+                ))}
+                {own && (
+                  <div className="sl-h2-price sl-h2-priceown">
+                    <h3>I own a domain</h3>
+                    <b>{naira(own.first_year)}</b>
+                    <span>first year · then {naira(own.renewal)} a year</span>
+                    <p>Bought it elsewhere? Bring it. You only pay for hosting.</p>
+                    <button type="button" className="sl-h2-link" onClick={useOwnDomain}>
+                      Use my own domain
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="sl-h-muted">
+              SSL padlock and DNS are included in every option. Got a discount code? Use it at checkout. The full breakdown is
+              shown after you sign in.
+            </p>
           </div>
         </section>
 
         <section className="sl-how" id="how">
           <div className="sl-wrap">
             <div className="sl-head">
-              <span className="sl-label">Four steps</span>
-              <h2>From finished files to a live site.</h2>
+              <span className="sl-label">How it works</span>
+              <h2>Four simple steps.</h2>
             </div>
             <ol className="sl-h-steps">
               {STEPS.map(([n, h, p]) => (
@@ -225,34 +277,6 @@ export default function HostLandingPage() {
                 </li>
               ))}
             </ol>
-          </div>
-        </section>
-
-        <section className="sl-pricing" id="pricing">
-          <div className="sl-wrap">
-            <div className="sl-head">
-              <span className="sl-label">Pricing</span>
-              <h2>What it costs, line by line.</h2>
-              <p>Domain, hosting, SSL and DNS in one price. Got a discount code? Use it at checkout. Nothing hidden.</p>
-            </div>
-            <PricingTable data={pricing.data} error={pricing.error} onUseOwn={useOwnDomain} />
-          </div>
-        </section>
-
-        <section className="sl-sites" id="what">
-          <div className="sl-wrap">
-            <div className="sl-head">
-              <span className="sl-label">What we host</span>
-              <h2>Simple, and clear about the limits.</h2>
-            </div>
-            <div className="sl-h-grid">
-              {WHAT.map(([h, p]) => (
-                <div key={h} className="sl-h-card">
-                  <h3>{h}</h3>
-                  <p>{p}</p>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
 
@@ -274,10 +298,10 @@ export default function HostLandingPage() {
           <div className="sl-wrap sl-signin-grid">
             <div>
               <span className="sl-label">Ready when you are</span>
-              <h2 id="hsih">Sign in and upload your site.</h2>
+              <h2 id="hsih">Ready to put your site online?</h2>
               <p className="sl-sub">
                 New here? Create an account in a minute. Already have one? Sign in with your email and we send you a code,
-                or use your WhatsApp number instead. You’ll land on the upload screen.
+                or use your WhatsApp number instead. You will see the exact price before you pay.
               </p>
             </div>
             <div className="sl-box-in" id="signin">
@@ -299,6 +323,12 @@ export default function HostLandingPage() {
           </div>
         </div>
       </footer>
+
+      <div className="sl-h2-sticky">
+        <a className="sl-btn sl-teal" href="#start" onClick={goSignIn}>
+          Sign in and upload
+        </a>
+      </div>
     </div>
   );
 }
