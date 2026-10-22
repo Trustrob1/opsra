@@ -57,6 +57,7 @@ import NewSiteModal from '../modules/sites/NewSiteModal'
 import BuilderOptionsView from '../modules/sites/BuilderOptionsView'   // SITE-OPTIONS OPT-2
 import HostSitesView from '../modules/sites/HostSitesView'             // HOST-1
 import { useIsMobile } from '../hooks/useIsMobile'
+import { ds } from '../utils/ds'               // the same colours and logo block as the main Opsra top bar
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -178,11 +179,12 @@ export default function BuilderPortalPage() {
 
 function Header({ builder, view, setView, onBack, onLogOut, showNav }) {
   return (
-    <header style={{ background: '#0a1f2e', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <div style={{ fontFamily: "'Syne', system-ui, sans-serif", fontWeight: 800, fontSize: 17, color: '#1dc8a4', letterSpacing: '-0.4px' }}>
+    <header style={{ background: ds.dark, borderBottom: '1px solid #1a2f3f', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontFamily: ds.fontDm }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>
+        <div aria-hidden="true" style={{ width: 32, height: 32, background: ds.teal, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: 'white' }}>O</div>
         Opsra
       </div>
-      <div style={{ fontSize: 12, color: '#9fb4c0' }}>Builder portal{builder?.full_name ? ` — ${builder.full_name}` : ''}</div>
+      <div style={{ fontSize: 12, color: '#7A9BAD' }}>Builder portal{builder?.full_name ? ` — ${builder.full_name}` : ''}</div>
       {showNav && (
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <button type="button" onClick={() => { onBack(); setView('mysites') }}
@@ -205,7 +207,7 @@ function Header({ builder, view, setView, onBack, onLogOut, showNav }) {
 function navBtn(active) {
   return {
     border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-    background: active ? '#1dc8a4' : 'transparent', color: active ? '#0a1f2e' : '#c7d7de', fontFamily: 'inherit',
+    background: active ? ds.teal : 'transparent', color: active ? 'white' : '#C7D7DE', fontFamily: 'inherit',
   }
 }
 
