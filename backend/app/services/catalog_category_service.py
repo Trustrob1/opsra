@@ -205,6 +205,39 @@ def add_category(db, org_id: str, name: str) -> dict:
     return snap
 
 
+def ensure_categories(db, org_id: str, wanted: Iterable[str]) -> dict:
+    """
+    STORE-10: make sure these categories exist (one write). Returns {"names": {lowercase: stored name}, "added": [...],
+    "skipped": [...]}; names beyond the 20-category limit, or invalid ones, are skipped and listed, never an error.
+    """
+    config = get_catalog_config(db, org_id)
+    have = names_in(config)
+    index = _index(have)
+    added, skipped = [], []
+    for raw in wanted:
+        try:
+            clean = clean_name(raw)
+        except CategoryError:
+            skipped.append(str(raw))
+            continue
+        if clean.lower() in index:
+            continue
+        if len(have) + len(added) >= MAX_CATEGORIES:
+            skipped.append(clean)
+            continue
+        added.append(clean)
+        index[clean.lower()] = clean
+    if added:
+        try:
+            update_catalog_config(db, org_id, {"tag_dimensions": _write_dimension(config, have + added)})
+        except CategoryError:
+            skipped.extend(added)
+            for a in added:
+                index.pop(a.lower(), None)
+            added = []
+    return {"names": index, "added": added, "skipped": skipped}
+
+
 def set_category_items(db, org_id: str, name: str, item_ids: List[str]) -> dict:
     """Exactly these products are in the category afterwards."""
     config = get_catalog_config(db, org_id)

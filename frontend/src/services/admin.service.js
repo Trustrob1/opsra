@@ -614,3 +614,14 @@ export const setCatalogCategoryItems = (name, itemIds) =>
 export const getCatalogShare = (params = {}) => api.get('/api/v1/catalog/share', { params }).then(r => r.data)
 export const getCatalogQr = (src, extra = {}) =>
   api.get('/api/v1/catalog/qr.svg', { params: { ...(src ? { src } : {}), ...extra }, responseType: 'text', transformResponse: (d) => d }).then(r => r.data)
+
+// ── STORE-10: add products from a spreadsheet, photos from links ─────────────
+const _fileForm = (file) => { const f = new FormData(); f.append('file', file); return f }
+export const previewCatalogImport = (file) =>
+  api.post('/api/v1/catalog/import/preview', _fileForm(file)).then(r => r.data)
+export const importCatalogProducts = (file) =>
+  api.post('/api/v1/catalog/import', _fileForm(file)).then(r => r.data)
+export const getCatalogImportTemplate = () =>
+  api.get('/api/v1/catalog/import/template.csv', { responseType: 'text', transformResponse: (d) => d }).then(r => r.data)
+export const addCatalogImageFromUrl = (itemId, url) =>
+  api.post(`/api/v1/catalog/items/${itemId}/image-from-url`, { url }).then(r => r.data)

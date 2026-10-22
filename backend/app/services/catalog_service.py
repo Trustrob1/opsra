@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -160,6 +161,9 @@ def update_catalog_item(db, org_id: str, item_id: str, updates: dict) -> dict:
         if existing:
             raise SlugConflictError(f"Slug '{new_slug}' is already in use by another item.")
 
+    if isinstance(updates.get("variants"), list):
+        updates["variants"] = with_variant_ids(updates["variants"])
+
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     result = (
@@ -173,6 +177,25 @@ def update_catalog_item(db, org_id: str, item_id: str, updates: dict) -> dict:
     if isinstance(data, list):
         data = data[0] if data else {}
     return data or {}
+
+
+def with_variant_ids(variants) -> list:
+    """
+    Sizes entered by hand get a stable id (an existing id is kept). The cart and the share link find a size by this
+    id, and without one the cart would charge the product's base price whichever size the customer picked.
+    Only for businesses that manage their own sizes; Shopify sizes already carry Shopify's ids.
+    """
+    out, seen = [], set()
+    for v in variants or []:
+        if not isinstance(v, dict):
+            continue
+        row = dict(v)
+        key = str(row.get("id") if row.get("id") is not None else "").strip()
+        if not key or key in seen:
+            row["id"] = key = "v" + uuid.uuid4().hex[:10]       # a kept id is left exactly as it was (never re-typed)
+        seen.add(key)
+        out.append(row)
+    return out
 
 
 def create_catalog_item(db, org_id: str, payload: dict) -> dict:
@@ -198,7 +221,7 @@ def create_catalog_item(db, org_id: str, payload: dict) -> dict:
         "catalog_images":        [],
         "extra_catalog_images":  [],
         "catalog_description":   payload.get("catalog_description"),
-        "variants":              payload.get("variants") or [],
+        "variants":              with_variant_ids(payload.get("variants")),
         "catalog_views":         0,
         "is_active":             True,
         "status":          "active",

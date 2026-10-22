@@ -18,6 +18,7 @@ from app.dependencies import get_current_org, get_supabase
 from app.services import catalog_storefront_service as storefront   # STORE-1
 from app.services import catalog_category_service as categories     # STORE-1b
 from app.services import catalog_share_service as share             # STORE-5
+from app.services import catalog_import_service as importer         # STORE-10
 from app.services.catalog_service import (
     SlugConflictError,
     create_catalog_item,
@@ -148,6 +149,10 @@ class CatalogItemUpdate(BaseModel):
         if v is not None and not re.match(r'^[a-z0-9-]+$', v):
             raise ValueError("Slug must be lowercase letters, numbers, and hyphens only.")
         return v
+
+
+class ImageFromUrl(BaseModel):
+    url: str = Field(..., min_length=8, max_length=2000)
 
 
 class CatalogItemCreate(BaseModel):
@@ -317,6 +322,57 @@ async def set_category_items(
 
 # ── Items — fully static routes ─────────────────────────────────────────────
 
+# ── Import from a spreadsheet (STORE-10) — static paths, before /items/{item_id} ────────────────
+
+def _own_products_only(db, org_id: str) -> None:
+    config = get_catalog_config(db, org_id)
+    if (config.get("external_sync") or "none") == "shopify":
+        raise HTTPException(status_code=403, detail="Shopify-connected businesses add products in Shopify. They arrive here automatically.")
+
+
+async def _read_upload(file: UploadFile) -> dict:
+    data = await file.read()
+    try:
+        return importer.parse_table(importer.read_table(data, file.filename or ""))
+    except importer.FileProblem as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/import/template.csv")
+async def import_template(current_org: dict = Depends(get_current_org)):
+    _require_catalog_role(current_org)
+    return Response(content=importer.template_csv(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="opsra-products-template.csv"'})
+
+
+@router.post("/import/preview")
+async def import_preview(
+    file: UploadFile = File(...),
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """Reads the file and says what would happen. Writes nothing."""
+    _require_catalog_role(current_org)
+    _own_products_only(db, current_org["org_id"])
+    return importer.plan(db, current_org["org_id"], await _read_upload(file))
+
+
+@router.post("/import", status_code=201)
+async def import_products(
+    file: UploadFile = File(...),
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """Adds every row the preview marked ok. Rows that already exist or have a problem are skipped."""
+    _require_catalog_role(current_org)
+    org_id = current_org["org_id"]
+    _own_products_only(db, org_id)
+    planned = importer.plan(db, org_id, await _read_upload(file))
+    result = importer.run(db, org_id, planned, create_catalog_item, categories.ensure_categories)
+    result["counts"] = planned["counts"]
+    return result
+
+
 @router.get("/items")
 async def list_items(
     visible_only:   bool            = Query(False),
@@ -416,6 +472,31 @@ async def upload_image(
         return {"url": public_url}
     except Exception as exc:
         logger.warning("upload_image failed org=%s item=%s: %s", org_id, item_id, exc)
+        raise HTTPException(status_code=500, detail="Image upload failed.")
+
+
+@router.post("/items/{item_id}/image-from-url", status_code=201)
+async def image_from_url(
+    item_id: str,
+    body: ImageFromUrl,
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    """STORE-10: fetch one picture from a public https link and add it to the product."""
+    _require_catalog_role(current_org)
+    org_id = current_org["org_id"]
+    if not get_catalog_item(db, org_id, item_id):
+        raise HTTPException(status_code=404, detail="Item not found.")
+    try:
+        data, mime = importer.fetch_image(body.url)
+    except importer.PhotoError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
+    try:
+        import uuid
+        return {"url": upload_catalog_image(db, org_id, item_id, data, f"link-{uuid.uuid4().hex[:8]}.{ext}", mime)}
+    except Exception as exc:
+        logger.warning("image_from_url failed org=%s item=%s: %s", org_id, item_id, exc)
         raise HTTPException(status_code=500, detail="Image upload failed.")
 
 

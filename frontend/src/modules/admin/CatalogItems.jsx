@@ -8,6 +8,9 @@ import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
 import CatalogShareProduct from './CatalogShareProduct'
+import CatalogImport from './CatalogImport'            // STORE-10
+import CatalogPhotoDrop from './CatalogPhotoDrop'      // STORE-12
+import { hasPhoto, needsPhotoCount } from './catalogImportLogic'
 import CatalogItemDrawer from './CatalogItemDrawer'
 
 const BTN_PRIMARY = {
@@ -59,11 +62,14 @@ export default function CatalogItems({ onManageCategories }) {
   const [showOOS, setShowOOS]       = useState(false)
   const [drawerItem, setDrawerItem] = useState(null)
   const [shareItem, setShareItem]   = useState(null)   // STORE-5b
+  const [showImport, setShowImport] = useState(false)  // STORE-10
+  const [showPhotos, setShowPhotos] = useState(false)  // STORE-12
+  const [needsPhoto, setNeedsPhoto] = useState(false)  // STORE-11
   const [creating, setCreating]     = useState(false)
   const [error, setError]           = useState('')
 
-  async function loadAll() {
-    setLoading(true)
+  async function loadAll(quiet = false) {
+    if (quiet !== true) setLoading(true)      // a quiet refresh keeps an open window (import, photos) on screen
     setError('')
     try {
       const [itemsData, configData] = await Promise.all([
@@ -85,11 +91,13 @@ export default function CatalogItems({ onManageCategories }) {
   const filtered = items.filter(item => {
     if (!showHidden && !item.catalog_visible) return false
     if (!showOOS && !item.available) return false
+    if (needsPhoto && hasPhoto(item)) return false
     if (search && !item.title?.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
 
   const isShopify = (config?.external_sync || 'none') === 'shopify'
+  const noPhotoCount = needsPhotoCount(items)
 
   function formatPrice(price) {
     if (price == null) return '—'
@@ -141,12 +149,24 @@ export default function CatalogItems({ onManageCategories }) {
           <input type="checkbox" checked={showOOS} onChange={e => setShowOOS(e.target.checked)} />
           Show out of stock
         </label>
+        {(noPhotoCount > 0 || needsPhoto) && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={needsPhoto} onChange={e => setNeedsPhoto(e.target.checked)} />
+            Needs a photo ({noPhotoCount})
+          </label>
+        )}
+        {!isShopify && (
+          <>
+            <button style={BTN_GHOST} onClick={() => setShowImport(true)}>Import spreadsheet</button>
+            <button style={BTN_GHOST} onClick={() => setShowPhotos(true)}>Add photos in bulk</button>
+          </>
+        )}
         {!isShopify && (
           <button style={{ ...BTN_PRIMARY, opacity: creating ? 0.6 : 1 }} disabled={creating} onClick={handleCreateItem}>
             {creating ? 'Creating…' : `+ Add ${config?.catalog_item_label || 'Item'}`}
           </button>
         )}
-        <button style={BTN_GHOST} onClick={loadAll}>↻ Refresh</button>
+        <button style={BTN_GHOST} onClick={() => loadAll()}>↻ Refresh</button>
       </div>
 
       {/* Count */}
@@ -158,7 +178,10 @@ export default function CatalogItems({ onManageCategories }) {
       {/* Table */}
       {filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#7A9BAD', fontFamily: ds.fontDm, fontSize: 13.5 }}>
-          {items.length === 0 ? 'No catalog items yet.' : 'No items match your filters.'}
+          {items.length === 0 ? 'No catalog items yet.' : needsPhoto && noPhotoCount === 0 ? 'Every product has a photo.' : 'No items match your filters.'}
+          {items.length === 0 && !isShopify && (
+            <div style={{ marginTop: 12 }}>Add one with the button above, or <button style={{ ...BTN_GHOST, display: 'inline-block' }} onClick={() => setShowImport(true)}>import many from a spreadsheet</button></div>
+          )}
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -192,6 +215,9 @@ export default function CatalogItems({ onManageCategories }) {
                       </div>
                       {item.slug && (
                         <div style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#7A9BAD', marginTop: 2 }}>/{item.slug}</div>
+                      )}
+                      {!hasPhoto(item) && (
+                        <div style={{ fontFamily: ds.fontDm, fontSize: 11.5, fontWeight: 600, color: '#8a6a00', marginTop: 2 }}>No photo yet</div>
                       )}
                     </td>
                     {/* Tags */}
@@ -245,6 +271,8 @@ export default function CatalogItems({ onManageCategories }) {
         onShare={setShareItem}
         onManageCategories={onManageCategories ? () => { setDrawerItem(null); onManageCategories() } : undefined}
       />
+      {showImport && <CatalogImport onClose={() => setShowImport(false)} onDone={() => loadAll(true)} onAddPhotos={() => setShowPhotos(true)} />}
+      {showPhotos && <CatalogPhotoDrop items={items} onClose={() => setShowPhotos(false)} onDone={() => loadAll(true)} />}
       {shareItem && <CatalogShareProduct item={shareItem} onClose={() => setShareItem(null)} onItemChanged={handleSaved} />}
     </div>
   )

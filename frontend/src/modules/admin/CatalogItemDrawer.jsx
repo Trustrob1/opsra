@@ -94,6 +94,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
       // Variants: non-Shopify only. Normalise to {title, price, available}.
       // Shopify variants are managed by sync — never editable in the drawer.
       variants: isShopify ? [] : (item.variants || []).map(v => ({
+        ...(v.id !== undefined && v.id !== null && v.id !== '' ? { id: v.id } : {}),   // keep the size's id so carts and links stay valid
         title:     v.title     || '',
         price:     v.price     !== undefined && v.price !== null ? String(v.price) : '',
         available: v.available !== false,
@@ -163,6 +164,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
       payload.variants = (form.variants || [])
         .filter(v => v.title && v.title.trim())
         .map(v => ({
+          ...(v.id !== undefined && v.id !== null && v.id !== '' ? { id: v.id } : {}),
           title:     v.title.trim(),
           price:     (v.price === '' || v.price === null || v.price === undefined)
                        ? null : Number(v.price),
