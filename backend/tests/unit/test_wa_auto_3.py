@@ -155,3 +155,20 @@ def test_wizard_routes_stay_open_to_whatsapp_only_businesses():
     for r in m.app.routes:
         if getattr(r, "path", "").startswith("/api/v1/wa-onboarding"):
             assert not any(d.call is pm.crm_only for d in r.dependant.dependencies)
+
+
+def test_platform_owner_lookup_uses_the_real_roles_join():
+    """users has no 'roles' column: the owner lookup must ask for the joined roles(template), or the notification silently never goes out."""
+    seen = []
+
+    class Spy(FakeDB):
+        def table(self, name):
+            q = super().table(name)
+            if name == "users":
+                orig = q.select
+                q.select = lambda *a, **k: (seen.append(a[0]) or orig(*a, **k))
+            return q
+    base = _db()
+    db = Spy(**base.tables)
+    svc.request_setup(db, ORG, "u1", "2348012345678", "")
+    assert seen and all("roles(template)" in s for s in seen)

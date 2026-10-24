@@ -274,7 +274,7 @@ def _tell_platform(db: Any, org_id: str, req: dict) -> None:
         pid = pg.platform_id(db)
         if not pid:
             return
-        for u in db.table("users").select("id, roles").eq("org_id", pid).execute().data or []:
+        for u in db.table("users").select("id, roles(template)").eq("org_id", pid).execute().data or []:
             roles = u.get("roles") if isinstance(u.get("roles"), dict) else {}
             if (roles.get("template") or "") not in ("owner", "ops_manager"):
                 continue

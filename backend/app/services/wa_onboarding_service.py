@@ -126,7 +126,7 @@ def _notify_platform(db: Any, org_id: str, phone: str, note: str) -> int:
         if not pid:
             return 0
         name = _connection(db, org_id).get("business_name") or "A business"
-        users = db.table("users").select("id, roles").eq("org_id", pid).execute().data or []
+        users = db.table("users").select("id, roles(template)").eq("org_id", pid).execute().data or []
         sent = 0
         for u in users:
             template = ((u.get("roles") or {}).get("template") or "") if isinstance(u.get("roles"), dict) else ""

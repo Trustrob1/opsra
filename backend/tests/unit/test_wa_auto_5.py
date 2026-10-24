@@ -373,3 +373,19 @@ def test_signup_routes_are_not_behind_the_crm_guard_or_a_login():
         if getattr(r, "path", "").startswith("/api/v1/wa-signup"):
             deps = [d.call for d in r.dependant.dependencies]
             assert pm.crm_only not in deps and get_current_org not in deps
+
+
+def test_signup_notification_uses_the_real_roles_join(mail, auth):
+    seen = []
+
+    class Spy(SDB):
+        def table(self, name):
+            q = super().table(name)
+            if name == "users":
+                orig = q.select
+                q.select = lambda *a, **k: (seen.append(a[0]) or orig(*a, **k))
+            return q
+    db = Spy()
+    rid, code = _started(db, mail)
+    svc.verify(db, rid, code, "a-good-password", NOW)
+    assert any("roles(template)" in s for s in seen)
