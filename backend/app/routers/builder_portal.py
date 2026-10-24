@@ -582,7 +582,7 @@ def my_site_addons(site_id: str, builder=Depends(get_current_builder), db=Depend
                 "setup_fee_ngn": d.get("setup_fee_ngn", 0), "pick_one": d.get("pick_one", []),
                 "includes": [reg.FEATURES[k]["label"] for k in d["features"] if k in reg.FEATURES]}
     data = ent.get_entitlements(db, builder["org_id"], site_id)
-    data["plans"] = [plan(d) for d in cfg["tiers"].values() if d["sellable"]]
+    data["plans"] = [plan(d) for d in cfg["tiers"].values() if d["sellable"] and not d.get("wa_only")]
     data["addon_plans"] = [plan(d) for d in cfg["addons"].values() if d["sellable"]]
     data["billing"] = cfg["billing"]
     return ok(data=data)

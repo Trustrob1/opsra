@@ -68,11 +68,11 @@ export default function SiteAddonsCard({ siteId, siteName, canEdit, showToast })
     pickGroups: d.pick_one || [], includes: (d.features || []).map(featureLabel),
   })
   const sellable = useMemo(() => (cat ? [
-    ...cat.tiers.filter((t) => t.sellable).map(toPlan('tier')),
+    ...cat.tiers.filter((t) => t.sellable && !t.wa_only).map(toPlan('tier')),
     ...cat.addons.filter((a) => a.sellable).map(toPlan('addon')),
   ] : []), [cat, featureLabel]) // eslint-disable-line react-hooks/exhaustive-deps
   const allPlans = useMemo(() => (cat ? [
-    ...cat.tiers.map(toPlan('tier')), ...cat.addons.map(toPlan('addon')),
+    ...cat.tiers.filter((t) => !t.wa_only).map(toPlan('tier')), ...cat.addons.map(toPlan('addon')),
   ] : []), [cat, featureLabel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => { setModal(null); setError(null); setResult(null); setBusy(null) }

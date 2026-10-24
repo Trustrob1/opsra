@@ -160,8 +160,10 @@ def get_config(settings: Optional[dict]) -> dict:
             "setup_fee_ngn": _int(raw.get("setup_fee_ngn"), 0, 0),
             "features": _features(raw.get("features"), reg.DEFAULT_TIER_FEATURES[key]),
             "pick_one": _pick_one(raw.get("pick_one"), reg.DEFAULT_PICK_ONE[key]),
-            "caps": _caps(raw.get("caps")),
+            "caps": _caps(raw.get("caps")) if "caps" in raw else dict(reg.DEFAULT_TIER_CAPS.get(key, {})),
             "sellable": monthly > 0,
+            "wa_only": key in reg.WA_ONLY_TIERS,
+            "recommended": reg.RECOMMENDED_START.get(key),
         }
     addons: dict = {}
     for key in reg.ADDON_KEYS:
@@ -228,7 +230,7 @@ def validate_pricing(pricing) -> None:
     if "tiers" in pricing:
         t = pricing["tiers"]
         if not isinstance(t, dict) or any(k not in reg.TIER_KEYS for k in t):
-            raise EntitlementError("Tier settings must use the tiers Capture, Convert and Grow.")
+            raise EntitlementError("Tier settings must use the tiers Capture, Convert, Grow and Automate.")
         for k, v in t.items():
             check_item(v, reg.DEFAULT_LABELS[k], True)
     if "addons" in pricing:

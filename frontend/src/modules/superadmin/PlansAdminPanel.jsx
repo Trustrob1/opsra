@@ -16,7 +16,7 @@ const field = {
   minHeight: 36, padding: "6px 10px", background: "#0b1a24", color: "white", border: "1px solid #1e3a4f",
   borderRadius: 7, fontSize: 13, fontFamily: ds.fontDm, boxSizing: "border-box",
 };
-const TIERS = [["capture", "Capture"], ["convert", "Convert"], ["grow", "Grow"]];
+const TIERS = [["capture", "Capture"], ["convert", "Convert"], ["grow", "Grow"], ["automate", "Automate (WhatsApp only)"]];
 const errText = (e) => {
   const d = e?.response?.data?.detail;
   if (typeof d === "string") return d;

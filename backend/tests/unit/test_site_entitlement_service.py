@@ -47,7 +47,7 @@ def _row(kind="tier", key="capture", status="active", source="paid", paid_until=
 
 def test_defaults_are_the_approved_contents_with_every_price_at_zero():
     cfg = ent.get_config({})
-    assert list(cfg["tiers"]) == ["capture", "convert", "grow"]
+    assert list(cfg["tiers"]) == ["capture", "convert", "grow", "automate"]   # WA-AUTO-1b added automate
     assert all(t["monthly_ngn"] == 0 and t["setup_fee_ngn"] == 0 and not t["sellable"] for t in cfg["tiers"].values())
     cap, con, gro = (set(cfg["tiers"][k]["features"]) for k in ("capture", "convert", "grow"))
     assert cap < con < gro                                              # each tier includes the one below it
@@ -370,7 +370,7 @@ def test_a_cancelled_tier_can_be_replaced_by_a_new_one():
 
 
 def test_registry_is_consistent():
-    assert set(reg.TIER_KEYS) == {"capture", "convert", "grow"}
+    assert set(reg.TIER_KEYS) == {"capture", "convert", "grow", "automate"}
     for tier, feats in reg.DEFAULT_TIER_FEATURES.items():
         assert all(f in reg.FEATURES for f in feats), tier
     for k in reg.ADDON_KEYS:

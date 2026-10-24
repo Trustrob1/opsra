@@ -108,11 +108,18 @@ def _paid_before(db: Any, org_id: str) -> bool:
         return True       # when unsure, treat as "not the first payment" so no code is honoured
 
 
+def _tier_fits_org(db: Any, org_id: str, d: dict) -> bool:
+    """WA-AUTO-1b: a WhatsApp-automation-only business is offered the WhatsApp-only plan and nothing else; every other business
+    is never offered it. Any problem reading the mode counts as a normal business."""
+    from app.services import product_mode as pmode
+    return bool(d.get("wa_only")) == pmode.is_wa_automation(db, org_id)
+
+
 def quote_for(db: Any, org_id: str, cfg: dict, key: str, now: datetime, row: Optional[dict] = None) -> dict:
     """What choosing `key` costs right now. kind: new | renewal | upgrade | switch | downgrade_renewal | downgrade (scheduled, no order).
     Everything comes from Settings and the plan row, never from the caller."""
     d = cfg["tiers"].get(key)
-    if not d:
+    if not d or not _tier_fits_org(db, org_id, d):
         raise PlanBillingError("That plan isn't available any more.")
     price = int(d["monthly_ngn"])
     if price <= 0:
@@ -216,6 +223,8 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
         }
     plans = []
     for key, d in cfg["tiers"].items():
+        if not _tier_fits_org(db, org_id, d) and not (row and row["key"] == key):
+            continue
         # Every tier is listed so the owner can compare what each includes; a tier with no price yet is shown as "not on sale".
         item = {"key": key, "label": d["label"], "monthly_ngn": int(d.get("monthly_ngn") or 0), "includes": _includes(d),
                 "caps": d.get("caps") or {}, "is_current": bool(row and row["key"] == key and eff in acc.LIVE_STATES),

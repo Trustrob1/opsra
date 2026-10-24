@@ -13,7 +13,10 @@ tier and granted; nothing calls has_feature() for it yet, so it does nothing. It
 """
 from __future__ import annotations
 
-TIER_KEYS = ("capture", "convert", "grow")
+TIER_KEYS = ("capture", "convert", "grow", "automate")
+# WA-AUTO-1b: "automate" is the WhatsApp-automation-only plan. Only businesses whose product_mode is wa_automation can buy it, and
+# they can buy nothing else. Websites never offer it. Its price is set in Superadmin pricing settings (not for sale until then).
+WA_ONLY_TIERS = ("automate",)
 ADDON_KEYS = ("support_tickets", "renewals_winback", "dashboard_ask_data", "event_funnel", "extra_rep", "extra_wa_number")
 
 # Caps. "monthly" caps are consumed (site_usage_counters); "static" caps are a limit the feature reads (e.g. reps).
@@ -90,13 +93,19 @@ DEFAULT_TIER_FEATURES = {
     "capture": list(_CAPTURE),
     "convert": _CAPTURE + _CONVERT,
     "grow": _CAPTURE + _CONVERT + ["selling_catalog", "selling_booking"] + _GROW,
+    "automate": ["wa_leads", "wa_menu", "ai_assistant", "own_wa_number", "webchat_basic"],
 }
 DEFAULT_PICK_ONE = {
     "capture": [],
     "convert": [["selling_catalog", "selling_booking"]],
     "grow": [],
+    "automate": [],
 }
-DEFAULT_LABELS = {"capture": "Capture", "convert": "Convert", "grow": "Grow"}
+DEFAULT_LABELS = {"capture": "Capture", "convert": "Convert", "grow": "Grow", "automate": "Automate"}
+# Starting allowances, used until Superadmin saves its own. Prices are never defaulted.
+DEFAULT_TIER_CAPS = {"automate": {"ai_messages": 300, "users_included": 1}}
+# Shown in Superadmin pricing settings as a hint only (Trust, 24 Oct 2026: recommended start, price is fixed by Trust).
+RECOMMENDED_START = {"automate": {"monthly_ngn": 20000, "ai_messages": 300, "users_included": 1}}
 DEFAULT_ADDON_LABELS = {k: FEATURES[k]["label"] for k in ADDON_KEYS}
 # An add-on adds its own key, plus a cap for the ones that raise a limit.
 DEFAULT_ADDON_CAPS = {"extra_rep": {"reps": 1}}

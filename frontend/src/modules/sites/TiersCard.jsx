@@ -15,6 +15,7 @@ const CAP_LABELS = {
   ai_messages: 'AI replies per month',
   bulk_recipients: 'Bulk message recipients per month',
   reps: 'Team members (reps)',
+  users_included: 'Users included (blank = 2)',
 }
 const GROUP_LABELS = { capture: 'Capture', convert: 'Convert', grow: 'Grow' }
 
@@ -142,13 +143,26 @@ export default function TiersCard({ pricing, canEdit, onSaved, showToast, api = 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h4 style={{ margin: 0, fontSize: 14, color: T.ink }}>{f.label}</h4>
                 {f.monthly_ngn > 0 ? <Badge tone="good">For sale</Badge> : <Badge tone="neutral">Not for sale yet</Badge>}
+                {t.wa_only && <Badge tone="neutral">WhatsApp-only businesses</Badge>}
               </div>
+              {t.recommended && (
+                <p style={{ margin: 0, fontSize: 12.5, color: T.soft }}>
+                  Recommended starting point: ₦{Number(t.recommended.monthly_ngn).toLocaleString('en-NG')} a month, {t.recommended.ai_messages} AI replies, {t.recommended.users_included} user.
+                  The price is yours to set; nothing is applied until you save.{' '}
+                  {!disabled && (
+                    <button type="button" onClick={() => setTier(t.key, { monthly_ngn: t.recommended.monthly_ngn, caps: { ...f.caps, ai_messages: t.recommended.ai_messages, users_included: t.recommended.users_included } })}
+                      style={{ background: 'none', border: 'none', padding: 0, color: T.ink, textDecoration: 'underline', cursor: 'pointer', fontSize: 12.5 }}>
+                      Fill in these values
+                    </button>
+                  )}
+                </p>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
                 <Field label="Monthly price (₦)"><NumInput prefix="₦" ariaLabel={`${f.label} monthly price`} value={f.monthly_ngn} disabled={disabled}
                   onChange={(v) => setTier(t.key, { monthly_ngn: v })} /></Field>
                 <Field label="One-time set-up fee (₦)" hint="Charged once, with the first payment."><NumInput prefix="₦" ariaLabel={`${f.label} set-up fee`} value={f.setup_fee_ngn} disabled={disabled}
                   onChange={(v) => setTier(t.key, { setup_fee_ngn: v })} /></Field>
-                {['ai_messages', 'bulk_recipients', 'reps'].map((c) => (
+                {['ai_messages', 'bulk_recipients', 'reps', 'users_included'].map((c) => (
                   <Field key={c} label={CAP_LABELS[c]} hint={c === 'reps' ? undefined : 'Blank or 0 means none included.'}>
                     <NumInput ariaLabel={`${f.label} ${CAP_LABELS[c]}`} value={f.caps[c] || 0} disabled={disabled}
                       onChange={(v) => setCap(setTier, t.key, c, v)} />
