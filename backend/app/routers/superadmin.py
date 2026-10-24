@@ -13,7 +13,7 @@ import uuid
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional
+from typing import Literal, Optional
 
 from app.database import get_supabase
 from app.routers.superadmin_health import require_superadmin
@@ -233,6 +233,7 @@ class OrgProvisionPayload(BaseModel):
     owner_full_name: str = Field(..., max_length=255)
     owner_password: str = Field(..., min_length=8)
     owner_whatsapp: Optional[str] = Field(default=None, max_length=20)
+    product_mode: Literal["full", "wa_automation"] = "full"   # WA-AUTO-1
 
     @field_validator("slug")
     @classmethod
@@ -255,6 +256,25 @@ class OrgProvisionPayload(BaseModel):
 # ---------------------------------------------------------------------------
 # Route
 # ---------------------------------------------------------------------------
+
+class ProductModePayload(BaseModel):
+    product_mode: Literal["full", "wa_automation"]
+
+
+@router.patch("/superadmin/organisations/{org_id}/product-mode")
+async def set_product_mode(
+    org_id: str,
+    payload: ProductModePayload,
+    _: None = Depends(require_superadmin),
+    db=Depends(get_supabase),
+):
+    """WA-AUTO-1: switch a business between the normal app ('full') and WhatsApp automation only ('wa_automation')."""
+    from app.services import product_mode as _pm
+    rows = (db.table("organisations").select("id").eq("id", org_id).limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="organisation not found")
+    return _pm.set_mode(db, org_id, payload.product_mode)
+
 
 @router.post("/superadmin/organisations")
 async def provision_organisation(
@@ -326,6 +346,8 @@ async def provision_organisation(
                 "subscription_tier": payload.subscription_tier,
                 "subscription_status": "active",
                 "is_live": False,
+                # WA-AUTO-1: only sent when not the default, so creating a normal business works before the SQL is run
+                **({"product_mode": payload.product_mode} if payload.product_mode != "full" else {}),
                 "business_hours": {
                     "mon": {"start": "08:00", "end": "17:00"},
                     "tue": {"start": "08:00", "end": "17:00"},

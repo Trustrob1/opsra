@@ -29,6 +29,7 @@ export default function CreateOrg() {
     owner_email: "",
     owner_full_name: "",
     owner_password: "",
+    product_mode: "full",
   });
 
   const [loading, setLoading] = useState(false);
@@ -85,6 +86,7 @@ export default function CreateOrg() {
         owner_email: "",
         owner_full_name: "",
         owner_password: "",
+        product_mode: "full",
       });
     } catch (err) {
       // If JWT expired, drop back to login gate
@@ -246,6 +248,17 @@ export default function CreateOrg() {
         <FormInput name="slug" placeholder="Slug" value={form.slug} onChange={handleChange} disabled />
         <FormInput name="industry" placeholder="Industry" value={form.industry} onChange={handleChange} />
         <FormInput name="ticket_prefix" placeholder="Ticket Prefix" value={form.ticket_prefix} onChange={handleChange} disabled />
+        <label style={{ display: "block", fontSize: 12, color: "#7A9BAD", margin: "10px 0 4px" }} htmlFor="product_mode">Product</label>
+        <select
+          id="product_mode"
+          name="product_mode"
+          value={form.product_mode}
+          onChange={handleChange}
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #1e3a4f", background: ds.dark2, color: "white", fontSize: 14 }}
+        >
+          <option value="full">Full Opsra (CRM and automation)</option>
+          <option value="wa_automation">WhatsApp automation only</option>
+        </select>
 
         <div style={{ height: 1, background: "#1e3a4f", margin: "18px 0" }} />
 

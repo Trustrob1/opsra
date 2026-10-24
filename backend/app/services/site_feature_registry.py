@@ -21,6 +21,7 @@ CAPS = {
     "ai_messages": "monthly",
     "bulk_recipients": "monthly",
     "reps": "static",
+    "users_included": "static",   # WA-AUTO-1: users a plan includes (default 2, 1 for the WhatsApp automation plan)
 }
 
 # key -> (label, group, cap_key or None, built)

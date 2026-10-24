@@ -676,10 +676,21 @@ function AppShell() {
   const _userTemplate = user?.roles?.template ?? ''
   // AP-8: Sites and Superadmin belong to Opsra's own organisation only. This hides them; the server checks again on every route.
   const [isPlatformOrg, setIsPlatformOrg] = useState(false)
+  // WA-AUTO-1: 'wa_automation' orgs see the inbox, billing and admin only. Remembered locally so the first paint is right; the server is the real gate.
+  const [productMode, setProductMode] = useState(() => {
+    try { return localStorage.getItem('opsra_product_mode') === 'wa_automation' ? 'wa_automation' : 'full' } catch { return 'full' }
+  })
+  const isWaOnly = productMode === 'wa_automation'
   useEffect(() => {
     let live = true
     if (!user) { setIsPlatformOrg(false); return undefined }
-    getPlatformStatus().then((r) => { if (live) setIsPlatformOrg(!!r?.is_platform) }).catch(() => { if (live) setIsPlatformOrg(false) })
+    getPlatformStatus().then((r) => {
+      if (!live) return
+      setIsPlatformOrg(!!r?.is_platform)
+      const m = r?.product_mode === 'wa_automation' ? 'wa_automation' : 'full'
+      setProductMode(m)
+      try { localStorage.setItem('opsra_product_mode', m) } catch {}
+    }).catch(() => { if (live) setIsPlatformOrg(false) })
     return () => { live = false }
   }, [user?.id])
   // REPORTS-DEPT-1 Phase 2/3: a department-scoped role (department_id set
@@ -688,6 +699,7 @@ function AppShell() {
   // and actual page access never disagree.
   const _departmentId = user?.roles?.department_id ?? null
   const visibleNav = NAV.filter(item => {
+    if (isWaOnly) return item.id === 'conversations'
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
     // FUNNEL-1B: Event Funnels — owner / ops_manager (edit) and admin (read-only)
     if (item.id === 'event-funnels' && !['owner', 'ops_manager', 'admin'].includes(_userTemplate)) return false
@@ -706,6 +718,11 @@ function AppShell() {
   })
 
   const [view, setView]                     = useState('leads')
+  // WA-AUTO-1: keep wa_automation orgs on screens they own.
+  useEffect(() => {
+    if (!isWaOnly) return
+    if (!['conversations', 'billing', 'admin'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
+  }, [isWaOnly, view])
   const [selectedLeadId, setSelectedLeadId] = useState(null)
   const [showNotif, setShowNotif]           = useState(false)
   const [unreadCount, setUnreadCount]       = useState(0)
@@ -1194,7 +1211,7 @@ function AppShell() {
       )}
 
       {/* Aria AI Assistant (M01-10b) */}
-      <AriaButton
+      {!isWaOnly && <AriaButton
         onClick={() => setAriaOpen(prev => !prev)}
         hasBadge={ariaBadge}
         panelOpen={ariaOpen}
@@ -1205,8 +1222,8 @@ function AppShell() {
           setAriaMinimised(next)
           try { localStorage.setItem('aria_minimised', next ? '1' : '0') } catch {}
         }}
-      />
-      <AriaPanel open={ariaOpen} onClose={() => setAriaOpen(false)} briefing={ariaBriefing} onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }} />
+      />}
+      {!isWaOnly && <AriaPanel open={ariaOpen} onClose={() => setAriaOpen(false)} briefing={ariaBriefing} onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }} />}
 
       {/* Onboarding Checklist (ORG-ONBOARDING-B) */}
       <IOSInstallBanner />

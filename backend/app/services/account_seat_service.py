@@ -66,8 +66,19 @@ def live_seats(db: Any, org_id: str, cfg: dict, now: datetime) -> int:
     return _qty(row)
 
 
+def included_users(db: Any, org_id: str) -> int:
+    """Users the plan includes. A plan can set its own number with the users_included cap (WA-AUTO-1: 1 for the WhatsApp
+    automation plan); otherwise INCLUDED_USERS. Any problem answers INCLUDED_USERS."""
+    try:
+        n = int((acc._compute(db, org_id, bill._now()).get("caps") or {}).get("users_included") or 0)
+        return n if n > 0 else INCLUDED_USERS
+    except Exception as exc:
+        logger.warning("account_seat: included_users failed org=%s - using %s: %s", org_id, INCLUDED_USERS, exc)
+        return INCLUDED_USERS
+
+
 def allowed_users(db: Any, org_id: str, cfg: dict, now: datetime) -> int:
-    return INCLUDED_USERS + live_seats(db, org_id, cfg, now)
+    return included_users(db, org_id) + live_seats(db, org_id, cfg, now)
 
 
 def active_users(db: Any, org_id: str) -> int:
@@ -97,7 +108,8 @@ def team(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
     price = seat_price(cfg)
     seats = live_seats(db, org_id, cfg, now)
     used = active_users(db, org_id)
-    allowed = INCLUDED_USERS + seats
+    included = included_users(db, org_id)
+    allowed = included + seats
     reason = None
     if price <= 0:
         reason = "Extra users are not for sale yet."
@@ -106,7 +118,7 @@ def team(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
     until = ent._parse(tier.get("paid_until")) if tier else None
     paid_seat = bool(row and row.get("source") == "paid")
     return {
-        "enforced": acc.is_enforced(db, org_id), "included": INCLUDED_USERS, "seats": seats, "allowed": allowed, "used": used,
+        "enforced": acc.is_enforced(db, org_id), "included": included, "seats": seats, "allowed": allowed, "used": used,
         "over_by": max(used - allowed, 0), "price_ngn": price, "can_buy": reason is None, "reason": reason,
         "paid_until": tier.get("paid_until") if tier else None,
         "days_left": max(int((until - now).total_seconds() // 86400), 0) if until else 0,
@@ -235,7 +247,7 @@ def apply_paid_seats(db: Any, order: dict, previous_status: str, now: datetime) 
     acc._log_event(db, org_id, "system", "seats_paid", {"add": add, "seats": qty, "until": until, "amount_kobo": order.get("amount_kobo"),
                                                          "order_id": order.get("id")})
     bill._notify(db, org_id, "Extra users added",
-                 f"Payment received. You can now have {INCLUDED_USERS + qty} users until {sab._pretty(ent._parse(until))}. Thank you.",
+                 f"Payment received. You can now have {included_users(db, org_id) + qty} users until {sab._pretty(ent._parse(until))}. Thank you.",
                  "seats_paid", order.get("payer_email"), "Your Opsra users")
 
 

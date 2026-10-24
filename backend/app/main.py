@@ -24,6 +24,7 @@ from contextlib import asynccontextmanager
 import sentry_sdk
 from fastapi import Depends, FastAPI
 from app.services.platform_guard import platform_only  # ACCOUNT-PLANS AP-8
+from app.services.product_mode import crm_only  # WA-AUTO-1: CRM routers are closed to WhatsApp-only businesses
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -227,41 +228,41 @@ from app.routers import site_version_shares as site_version_shares_router  # SIT
 app.include_router(auth_router.router,          prefix="/api/v1",               tags=["auth"])
 app.include_router(admin_router.router,         prefix="/api/v1/admin",         tags=["admin"])
 app.include_router(webhooks_router.router,      prefix="/webhooks",             tags=["webhooks"])
-app.include_router(leads_router.router,         prefix="/api/v1/leads",         tags=["leads"])
-app.include_router(customers_router.router,     prefix="/api/v1/customers",     tags=["customers"])
+app.include_router(leads_router.router, dependencies=[Depends(crm_only)],         prefix="/api/v1/leads",         tags=["leads"])
+app.include_router(customers_router.router, dependencies=[Depends(crm_only)],     prefix="/api/v1/customers",     tags=["customers"])
 app.include_router(whatsapp_router.router,      prefix="/api/v1",               tags=["whatsapp"])
-app.include_router(tickets_router.router,       prefix="/api/v1",               tags=["tickets"])
-app.include_router(subscriptions_router.router, prefix="/api/v1/subscriptions", tags=["subscriptions"])
-app.include_router(ops_router.router,           prefix="/api/v1",               tags=["ops"])
-app.include_router(tasks_router.router,         prefix="/api/v1",               tags=["tasks"])
+app.include_router(tickets_router.router, dependencies=[Depends(crm_only)],       prefix="/api/v1",               tags=["tickets"])
+app.include_router(subscriptions_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1/subscriptions", tags=["subscriptions"])
+app.include_router(ops_router.router, dependencies=[Depends(crm_only)],           prefix="/api/v1",               tags=["ops"])
+app.include_router(tasks_router.router, dependencies=[Depends(crm_only)],         prefix="/api/v1",               tags=["tasks"])
 app.include_router(notifications_router.router, prefix="/api/v1",               tags=["notifications"])
-app.include_router(commissions_router.router,   prefix="/api/v1",               tags=["commissions"])
-app.include_router(assistant_router.router,     prefix="/api/v1",               tags=["assistant"])
+app.include_router(commissions_router.router, dependencies=[Depends(crm_only)],   prefix="/api/v1",               tags=["commissions"])
+app.include_router(assistant_router.router, dependencies=[Depends(crm_only)],     prefix="/api/v1",               tags=["assistant"])
 app.include_router(superadmin_router.router,    prefix="/api/v1",               tags=["superadmin"])
 app.include_router(onboarding_router.router,    prefix="/api/v1",               tags=["onboarding"])
 app.include_router(shopify_router.router,       prefix="/api/v1/admin",         tags=["shopify"])
-app.include_router(growth_analytics_router.router, prefix="/api/v1",           tags=["growth_analytics"])
-app.include_router(growth_config_router.router, prefix="/api/v1",              tags=["growth_config"])
-app.include_router(growth_insights_router.router,                              tags=["growth_insights"])
+app.include_router(growth_analytics_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1",           tags=["growth_analytics"])
+app.include_router(growth_config_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1",              tags=["growth_config"])
+app.include_router(growth_insights_router.router, dependencies=[Depends(crm_only)],                              tags=["growth_insights"])
 app.include_router(commerce_router.router,      prefix="/api/v1/commerce",      tags=["commerce"])
 app.include_router(public_catalog_router.router, prefix="/api/v1",              tags=["public_catalog"])
 app.include_router(public_catalog_router.router, prefix="",                     tags=["public_catalog_og"])
 app.include_router(catalog_router.router,        prefix="/api/v1/catalog",      tags=["catalog"])
 app.include_router(superadmin_health_router.router, prefix="/api/v1",           tags=["superadmin_health"])
 app.include_router(push_notifications_router)
-app.include_router(report_analytics_router.router, prefix="/api/v1", tags=["reports"])
-app.include_router(internal_issues_router.router,  prefix="/api/v1", tags=["internal-issues"])
-app.include_router(activity_logs_router.router,    prefix="/api/v1", tags=["activity-logs"])
-app.include_router(contractors_router.router,          prefix="/api/v1", tags=["contractors"])
-app.include_router(performance_logs_router.router,     prefix="/api/v1", tags=["performance-logs"])
-app.include_router(performance_hub_router.router,      prefix="/api/v1", tags=["performance-hub"])
+app.include_router(report_analytics_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1", tags=["reports"])
+app.include_router(internal_issues_router.router, dependencies=[Depends(crm_only)],  prefix="/api/v1", tags=["internal-issues"])
+app.include_router(activity_logs_router.router, dependencies=[Depends(crm_only)],    prefix="/api/v1", tags=["activity-logs"])
+app.include_router(contractors_router.router, dependencies=[Depends(crm_only)],          prefix="/api/v1", tags=["contractors"])
+app.include_router(performance_logs_router.router, dependencies=[Depends(crm_only)],     prefix="/api/v1", tags=["performance-logs"])
+app.include_router(performance_hub_router.router, dependencies=[Depends(crm_only)],      prefix="/api/v1", tags=["performance-hub"])
 app.include_router(public_performance_router.router,   prefix="/api/v1", tags=["public-performance"])
-app.include_router(project_planner_router.router,      prefix="/api/v1/project-planner", tags=["project-planner"])
-app.include_router(business_activities_report_router.router, prefix="/api/v1", tags=["business-activities-report"])
-app.include_router(digital_campaigns_router.router, prefix="/api/v1", tags=["digital-campaigns"])
-app.include_router(funnels_router.router,        prefix="/api/v1", tags=["funnels"])          # FUNNEL-1
+app.include_router(project_planner_router.router, dependencies=[Depends(crm_only)],      prefix="/api/v1/project-planner", tags=["project-planner"])
+app.include_router(business_activities_report_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1", tags=["business-activities-report"])
+app.include_router(digital_campaigns_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1", tags=["digital-campaigns"])
+app.include_router(funnels_router.router, dependencies=[Depends(crm_only)],        prefix="/api/v1", tags=["funnels"])          # FUNNEL-1
 app.include_router(public_funnels_router.router, prefix="",        tags=["public_funnels"])   # FUNNEL-1A — GET /f/{token}
-app.include_router(funnel_tools_router.router,   prefix="/api/v1", tags=["funnel_tools"])     # FUNNEL-1B
+app.include_router(funnel_tools_router.router, dependencies=[Depends(crm_only)],   prefix="/api/v1", tags=["funnel_tools"])     # FUNNEL-1B
 app.include_router(sites_router.router,          prefix="/api/v1", dependencies=[Depends(platform_only)], tags=["sites"])             # SITE-1A
 app.include_router(public_sites_router.router,   prefix="",        tags=["public_sites"])      # SITE-1A — GET /s/{slug}
 app.include_router(public_forms_router.router,   prefix="/api/v1", tags=["public_forms"])      # SITE-1B — /forms/{token}

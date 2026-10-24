@@ -780,19 +780,25 @@ def create_lead(
     # PERF-1: runs in a daemon thread so the HTTP response is not blocked
     # by Meta WhatsApp API calls. S14 guarantee is preserved — lead is
     # already committed to DB before this thread starts.
-    threading.Thread(
-        target=_notify_new_lead,
-        args=(db, org_id, lead, lead_id),
-        daemon=True,
-    ).start()
+    # WA-AUTO-1: a WhatsApp-only business has no CRM, so a new chat is not announced as a "new lead" and is not auto-assigned.
+    from app.services import product_mode as _product_mode
+    _wa_only = _product_mode.is_wa_automation(db, org_id)
 
-    # ASSIGN-1: auto-assign lead to rep if org is in auto mode (S14 — never blocks)
-    try:
-        from app.services.lead_assignment_service import auto_assign_lead
-        source_val = data.get("source", "")
-        auto_assign_lead(db, org_id, lead_id, source_val, user_id)
-    except Exception as _assign_exc:
-        logger.warning("create_lead: auto_assign_lead failed — %s", _assign_exc)
+    if not _wa_only:
+        threading.Thread(
+            target=_notify_new_lead,
+            args=(db, org_id, lead, lead_id),
+            daemon=True,
+        ).start()
+
+    if not _wa_only:
+        # ASSIGN-1: auto-assign lead to rep if org is in auto mode (S14 — never blocks)
+        try:
+            from app.services.lead_assignment_service import auto_assign_lead
+            source_val = data.get("source", "")
+            auto_assign_lead(db, org_id, lead_id, source_val, user_id)
+        except Exception as _assign_exc:
+            logger.warning("create_lead: auto_assign_lead failed — %s", _assign_exc)
 
     # ATTRIB-1: open first assignment history window
     assigned_to = lead.get("assigned_to") or data.get("assigned_to")
