@@ -7,6 +7,8 @@
 import { useEffect, useState } from 'react'
 import { ds } from '../../utils/ds'
 import { connectWhatsApp } from '../../services/admin.service'
+import { getPlan, ngn } from '../../services/accountPlan.service'
+import { getCreditSummary } from '../../services/credits.service'
 import {
   getWaOnboarding, saveWaBasics, requestWaSetup, getWaTestStatus, completeWaOnboarding, waError,
 } from '../../services/waOnboarding.service'
@@ -25,7 +27,7 @@ const input = { width: '100%', boxSizing: 'border-box', border: `1.5px solid ${d
 const primary = (off) => ({ background: off ? ds.gray : ds.teal, color: '#fff', border: 'none', borderRadius: 9, padding: '11px 18px', fontSize: 14, fontWeight: 600, cursor: off ? 'default' : 'pointer', minHeight: 44 })
 const ghost = { background: 'none', border: `1px solid ${ds.border}`, borderRadius: 9, padding: '10px 16px', fontSize: 14, color: ds.dark, cursor: 'pointer', minHeight: 44 }
 
-export default function WaSetupWizard({ onDone, onSkip }) {
+export default function WaSetupWizard({ onDone, onSkip, onOpenBilling }) {
   const [st, setSt] = useState(null)
   const [step, setStep] = useState(0)
   const [err, setErr] = useState(null)
@@ -71,6 +73,14 @@ export default function WaSetupWizard({ onDone, onSkip }) {
     setStep(2)
   })
   const askHelp = () => run(async () => { await requestWaSetup(help); setHelpSent(true) })
+  // Go live (WA-AUTO-5): show the plan (free trial or paid) and the credit balance, with a way to pay for either.
+  const [money, setMoney] = useState(null)
+  useEffect(() => {
+    if (step !== 3) return undefined
+    let live = true
+    Promise.all([getPlan().catch(() => null), getCreditSummary().catch(() => null)]).then(([plan, credits]) => { if (live) setMoney({ plan, credits }) })
+    return () => { live = false }
+  }, [step])
   const finish = () => run(async () => { await completeWaOnboarding(); onDone && onDone() })
 
   if (!st && !err) return <div style={{ padding: 28, color: ds.gray }}>Loading…</div>
@@ -180,8 +190,29 @@ export default function WaSetupWizard({ onDone, onSkip }) {
           <div>
             <h2 style={{ fontFamily: ds.fontSyne, fontSize: 20, margin: '8px 0 2px', color: ds.dark }}>Go live</h2>
             <p style={{ color: ds.gray, fontSize: 13.5, margin: 0 }}>
-              Your bot answers customers on your number. Replies from the AI use your credit balance, so add credits from Billing when you are ready. You can change everything later in Admin.
+              Your bot answers customers on your number. Replies from the AI use your credit balance, so add credits before you start. You can change everything later in Admin.
             </p>
+            {money && (() => {
+              const cur = money.plan?.current
+              const trial = cur && cur.source === 'trial'
+              const live = cur && ['active', 'grace'].includes(cur.status)
+              const bal = money.credits ? ngn((money.credits.balance_kobo || 0) / 100) : null
+              return (
+                <div style={{ marginTop: 14, background: ds.light, borderRadius: 10, padding: '12px 14px', fontSize: 14, color: ds.dark, lineHeight: 1.7 }} aria-live="polite">
+                  <div>
+                    Plan: <strong>{cur ? cur.label : 'none yet'}</strong>
+                    {live ? (trial ? ` (free trial, ${cur.days_left} day${cur.days_left === 1 ? '' : 's'} left)` : ` (paid, ${cur.days_left} days left)`) : cur ? ' (not active)' : ''}
+                  </div>
+                  {bal !== null && <div>Credit balance: <strong>{bal}</strong></div>}
+                  {trial && <div style={{ fontSize: 13, color: ds.gray }}>Pay for the plan before the trial ends so the bot keeps answering.</div>}
+                </div>
+              )
+            })()}
+            {onOpenBilling && (
+              <div style={{ marginTop: 12 }}>
+                <button type="button" style={ghost} onClick={onOpenBilling}>Choose a plan or buy credits</button>
+              </div>
+            )}
             <div style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button type="button" style={ghost} onClick={() => setStep(2)}>Back</button>
               <button type="button" style={primary(busy)} disabled={busy} onClick={finish}>Finish set-up</button>

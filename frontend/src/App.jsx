@@ -69,6 +69,7 @@ import PublicCatalogShell from './catalog/PublicCatalogShell'
 import ReportsModule from './modules/reports/ReportsModule'
 import PerformanceModule from './modules/performance/PerformanceModule'
 import EventFunnelsModule from './modules/funnels/EventFunnelsModule'   // FUNNEL-1B
+import WaSignupPage from './pages/WaSignupPage'                      // WA-AUTO-5
 import SitesModule from './modules/sites/SitesModule'                   // SITE-1A
 import BillingModule from './modules/billing/BillingModule'             // ACCOUNT-PLANS AP-3
 import BillingBanner from './modules/billing/BillingBanner'             // ACCOUNT-PLANS AP-3
@@ -230,6 +231,10 @@ export default function App() {
   // HOST-1 — public "Host with Opsra" page for people who built their site elsewhere: sign in, then upload.
   if (window.location.pathname === '/host') {
     return <HostLandingPage />
+  }
+  // WA-AUTO-5 — public sign-up for WhatsApp-automation-only businesses.
+  if (window.location.pathname === '/start/whatsapp') {
+    return <WaSignupPage />
   }
   // OWNER-LANDING-1 — public landing page + pricing for business owners.
   if (window.location.pathname === '/business') {
@@ -1198,7 +1203,7 @@ function AppShell() {
         {view === 'conversations' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
             {isWaOnly && waWizard === 'show'
-              ? <WaSetupWizard onDone={() => setWaWizard('hide')} onSkip={() => setWaWizard('hide')} />
+              ? <WaSetupWizard onDone={() => setWaWizard('hide')} onSkip={() => setWaWizard('hide')} onOpenBilling={() => { setWaWizard('hide'); setActiveNav('billing'); setView('billing') }} />
               : <ConversationsModule user={user} simple={isWaOnly} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} onOpenAria={() => setAriaOpen(true)} />}
           </div>
         )}

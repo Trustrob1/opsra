@@ -184,3 +184,14 @@ export const listPricingCodes = () => _d(axios.get(`${PR}/discount-codes`, { hea
 export const createPricingCode = (payload) => _d(axios.post(`${PR}/discount-codes`, payload, { headers: _h() }));
 export const updatePricingCode = (id, payload) => _d(axios.patch(`${PR}/discount-codes/${id}`, payload, { headers: _h() }));
 export const deletePricingCode = (id) => _d(axios.delete(`${PR}/discount-codes/${id}`, { headers: _h() }));
+
+// WA-AUTO-5 - switches for the public WhatsApp sign-up
+export async function getWaSignupSettings() {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/wa-signup/settings`, { headers: _h() });
+  return res.data.data;
+}
+
+export async function saveWaSignupSettings(payload) {
+  const res = await axios.put(`${BASE}/api/v1/superadmin/wa-signup/settings`, payload, { headers: _h() });
+  return res.data.data;
+}
