@@ -194,6 +194,7 @@ celery_app = Celery(
         "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
         "app.workers.account_plan_worker",               # ← ACCOUNT-PLANS AP-2 (plan lapse + reminders)
         "app.workers.knowledge_refresh_worker",          # ← WA-AUTO-4c (re-read website / Google Doc sources)
+        "app.workers.notification_retention_worker",     # ← NOTIF-CLEANUP (old notifications)
     ],
 )
 
@@ -676,6 +677,12 @@ celery_app.conf.beat_schedule = {
     "account-plan-cycle": {
         "task": "app.workers.account_plan_worker.run_plan_cycle",
         "schedule": crontab(minute=10, hour=7),
+    },
+
+    # notification-retention - Daily 03:15 UTC = 04:15 WAT (NOTIF-CLEANUP). Read notifications over 90 days, any over 180 days.
+    "notification-retention": {
+        "task": "app.workers.notification_retention_worker.run_notification_retention",
+        "schedule": crontab(minute=15, hour=3),
     },
 
     # knowledge-refresh - Daily 02:30 UTC = 03:30 WAT (WA-AUTO-4c). Re-reads website and Google Doc sources

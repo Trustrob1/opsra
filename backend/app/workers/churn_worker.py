@@ -431,6 +431,7 @@ def run_lead_aging_checker(self):
     flagged = 0
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        renotify_cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         orgs = (db.table("organisations").select("id").execute().data or [])
 
         for org_row in orgs:
@@ -438,7 +439,7 @@ def run_lead_aging_checker(self):
             try:
                 leads = (
                     db.table("leads")
-                    .select("id, full_name, assigned_to, last_activity_at, stage")
+                    .select("id, full_name, assigned_to, last_activity_at, stage, aging_notified_at")
                     .eq("org_id", org_id)
                     .execute()
                     .data or []
@@ -450,6 +451,8 @@ def run_lead_aging_checker(self):
                     for l in leads
                     if l.get("stage") not in ("won", "lost")
                     and (l.get("last_activity_at") or "") <= cutoff
+                    # a stale lead is flagged once a week, not every day (it used to add a notification AND a task daily)
+                    and (not l.get("aging_notified_at") or str(l.get("aging_notified_at")) <= renotify_cutoff)
                 ]
 
                 for lead in aged:
@@ -494,6 +497,7 @@ def run_lead_aging_checker(self):
                             "created_at":       _now_iso(),
                             "updated_at":       _now_iso(),
                         }).execute()
+                        db.table("leads").update({"aging_notified_at": _now_iso()}).eq("id", lead["id"]).eq("org_id", org_id).execute()
                         flagged += 1
                     except Exception as exc:
                         logger.warning(

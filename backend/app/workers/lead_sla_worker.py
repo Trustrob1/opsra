@@ -227,6 +227,11 @@ def _insert_notification(db, org_id: str, user_id: str, notif_type: str,
     }).execute()
 
 
+def _mark_lead(db, org_id: str, lead_id: str, **fields) -> None:
+    """Remembers on the lead that an alert was sent, so the next run (every 5 minutes) does not send it again."""
+    db.table("leads").update(fields).eq("id", lead_id).eq("org_id", org_id).execute()
+
+
 # ── Helper — auto-close stuck qualification sessions ─────────────────────────
 
 def _close_stuck_sessions(db) -> dict:
@@ -362,9 +367,12 @@ def _process_lead(
         tier_label = score.capitalize()
         elapsed_display = int(elapsed_hours)
 
+        # Each alert is sent ONCE per lead (WA-AUTO housekeeping): the lead remembers it in sla_breach_notified_at /
+        # sla_escalated_at. Before this, every 5-minute run inserted the same alerts again (millions of rows).
+        now_iso = now.isoformat()
         if elapsed_hours >= threshold_2:
             # ── 2× threshold: breach + escalation ─────────────────────────
-            if rep_id:
+            if rep_id and not lead.get("sla_breach_notified_at"):
                 _insert_notification(
                     db, org_id, rep_id, _NOTIF_BREACH,
                     title=f"⚠️ SLA Breach: {lead_name}",
@@ -375,25 +383,31 @@ def _process_lead(
                     ),
                     lead_id=lead_id,
                 )
+                _mark_lead(db, org_id, lead_id, sla_breach_notified_at=now_iso)
                 result["breach"] = True
 
-            manager_id = _get_org_manager_id(db, org_id, exclude_user_id=rep_id)
-            if manager_id:
-                _insert_notification(
-                    db, org_id, manager_id, _NOTIF_ESCALATION,
-                    title=f"🚨 SLA Escalation: {lead_name}",
-                    body=(
-                        f"{tier_label} lead '{lead_name}' is {elapsed_display}h business hours old "
-                        f"and has not been contacted (2× SLA threshold reached). "
-                        f"Assigned rep has been notified."
-                    ),
-                    lead_id=lead_id,
-                )
-                result["escalation"] = True
+            if not lead.get("sla_escalated_at"):
+                manager_id = _get_org_manager_id(db, org_id, exclude_user_id=rep_id)
+                if manager_id:
+                    _insert_notification(
+                        db, org_id, manager_id, _NOTIF_ESCALATION,
+                        title=f"🚨 SLA Escalation: {lead_name}",
+                        body=(
+                            f"{tier_label} lead '{lead_name}' is {elapsed_display}h business hours old "
+                            f"and has not been contacted (2× SLA threshold reached). "
+                            f"Assigned rep has been notified."
+                        ),
+                        lead_id=lead_id,
+                    )
+                    result["escalation"] = True
+                _mark_lead(db, org_id, lead_id, sla_escalated_at=now_iso)   # also when there is no manager: do not look again every run
+
+            if not (result["breach"] or result["escalation"]):
+                result["skipped"] = True
 
         else:
             # ── 1× threshold: breach alert to rep only ────────────────────
-            if rep_id:
+            if rep_id and not lead.get("sla_breach_notified_at"):
                 _insert_notification(
                     db, org_id, rep_id, _NOTIF_BREACH,
                     title=f"⏰ Contact Required: {lead_name}",
@@ -404,6 +418,7 @@ def _process_lead(
                     ),
                     lead_id=lead_id,
                 )
+                _mark_lead(db, org_id, lead_id, sla_breach_notified_at=now_iso)
                 result["breach"] = True
             else:
                 result["skipped"] = True
@@ -470,7 +485,7 @@ def run_lead_sla_check(self):
             # Fetch uncontacted, scored, assigned leads for this org
             leads_result = (
                 db.table("leads")
-                .select("id, org_id, full_name, score, assigned_to, created_at")
+                .select("id, org_id, full_name, score, assigned_to, created_at, sla_breach_notified_at, sla_escalated_at")
                 .eq("org_id", org_id)
                 .is_("first_contacted_at", "null")
                 .is_("deleted_at", "null")
