@@ -207,6 +207,27 @@ def list_conversations(
     return ok(data=conversations)
 
 
+@router.get("/contacts/export")
+def export_contacts(
+    db=Depends(get_supabase),
+    org=Depends(get_current_org),
+):
+    """WA-AUTO-2: the owner's contact list as a CSV. Owner only; each export is written to the audit log first."""
+    from fastapi.responses import Response
+    from app.services import contact_export_service as cx
+    template = ((org.get("roles") or {}).get("template") or "").lower() if isinstance(org.get("roles"), dict) else ""
+    if template != "owner":
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only the owner can export contacts."})
+    text, count = cx.build_csv(db, org["org_id"])
+    try:
+        cx.write_audit(db, org["org_id"], org["id"], count)
+    except Exception:
+        # The export is a copy of private data: if it cannot be recorded, it is not handed over.
+        raise HTTPException(status_code=500, detail={"code": "AUDIT_FAILED", "message": "Could not record the export, so it was not sent. Please try again."})
+    return Response(content=text, media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="contacts.csv"', "Cache-Control": "no-store"})
+
+
 # ---------------------------------------------------------------------------
 # Broadcasts
 # ---------------------------------------------------------------------------

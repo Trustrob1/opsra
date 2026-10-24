@@ -1182,7 +1182,7 @@ function AppShell() {
         )}
         {view === 'conversations' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
-            <ConversationsModule user={user} onOpenAria={() => setAriaOpen(true)} />
+            <ConversationsModule user={user} simple={isWaOnly} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} onOpenAria={() => setAriaOpen(true)} />
           </div>
         )}
         {view === 'commissions' && (

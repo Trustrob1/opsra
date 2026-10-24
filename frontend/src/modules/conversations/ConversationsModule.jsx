@@ -52,7 +52,9 @@ import {
   sendMessengerMessage,
   sendWebchatMessage,
   getMediaDownloadUrl,
+  exportContactsCsv,
 } from '../../services/conversations.service'
+import { getCreditSummary, naira } from '../../services/credits.service'
 import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
 import { getCustomerMessages, sendMessage } from '../../services/whatsapp.service'
 
@@ -142,8 +144,37 @@ function formatHumanModeDuration(ms) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ConversationsModule({ onOpenAria }) {
+// `simple` (WA-AUTO-2): the trimmed inbox for WhatsApp-automation-only businesses - three tabs, credit balance, contact export.
+export default function ConversationsModule({ onOpenAria, simple = false, onOpenBilling, user }) {
   const isMobile = useIsMobile()
+  const [tab, setTab]                     = useState('all')       // all | needs | bot (simple mode only)
+  const [balance, setBalance]             = useState(null)
+  const [exporting, setExporting]         = useState(false)
+  const [exportError, setExportError]     = useState(null)
+  const canExport = simple && (user?.roles?.template ?? '') === 'owner'
+
+  useEffect(() => {
+    if (!simple) return undefined
+    let live = true
+    getCreditSummary().then(s => { if (live) setBalance(s) }).catch(() => { if (live) setBalance(null) })
+    return () => { live = false }
+  }, [simple])
+
+  const handleExport = async () => {
+    setExporting(true); setExportError(null)
+    try {
+      const blob = await exportContactsCsv()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'contacts.csv'
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportError('Could not export your contacts. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // Conversation list
   const [conversations, setConversations] = useState([])
@@ -499,6 +530,8 @@ export default function ConversationsModule({ onOpenAria }) {
     if (channelFilter !== 'all' && c.channel !== channelFilter) return false
     if (typeFilter !== 'all' && c.contact_type !== typeFilter) return false
     if (unreadOnly && !c.unread_count) return false
+    if (simple && tab === 'needs' && !c.ai_paused) return false
+    if (simple && tab === 'bot' && c.ai_paused) return false
     return true
   })
 
@@ -519,6 +552,9 @@ export default function ConversationsModule({ onOpenAria }) {
       active={active}
       onSelect={openConversation}
       totalUnread={totalUnread}
+      simple={simple} tab={tab} onTab={setTab}
+      balance={balance} onOpenBilling={onOpenBilling}
+      canExport={canExport} onExport={handleExport} exporting={exporting} exportError={exportError}
     />
   )
 
@@ -576,7 +612,7 @@ export default function ConversationsModule({ onOpenAria }) {
 
 // ─── List Panel ───────────────────────────────────────────────────────────────
 
-function ListPanel({ conversations, allCount, loading, error, search, onSearch, channelFilter, onChannelFilter, typeFilter, onTypeFilter, unreadOnly, onUnreadOnly, active, onSelect, totalUnread }) {
+function ListPanel({ conversations, allCount, loading, error, search, onSearch, channelFilter, onChannelFilter, typeFilter, onTypeFilter, unreadOnly, onUnreadOnly, active, onSelect, totalUnread, simple, tab, onTab, balance, onOpenBilling, canExport, onExport, exporting, exportError }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${ds.border}`, flexShrink: 0 }}>
@@ -589,6 +625,24 @@ function ListPanel({ conversations, allCount, loading, error, search, onSearch, 
           )}
         </div>
 
+        {simple && (balance || canExport) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10, fontSize: 12.5, color: ds.gray }}>
+            {balance && (
+              <span>
+                Credit balance <strong style={{ color: ds.dark }}>{naira(balance.balance_kobo)}</strong>
+                {onOpenBilling && <> · <button type="button" onClick={onOpenBilling} style={{ background: 'none', border: 'none', padding: 0, color: ds.teal, cursor: 'pointer', fontSize: 12.5, textDecoration: 'underline' }}>Buy credits</button></>}
+              </span>
+            )}
+            {canExport && (
+              <button type="button" onClick={onExport} disabled={exporting}
+                style={{ marginLeft: 'auto', background: 'none', border: `1px solid ${ds.border}`, borderRadius: 7, padding: '4px 9px', fontSize: 12, color: ds.dark, cursor: exporting ? 'default' : 'pointer' }}>
+                {exporting ? 'Preparing…' : 'Export contacts'}
+              </button>
+            )}
+            {exportError && <span role="alert" style={{ color: ds.red, width: '100%' }}>{exportError}</span>}
+          </div>
+        )}
+
         <div style={{ position: 'relative', marginBottom: 9 }}>
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: ds.gray, pointerEvents: 'none', display:'flex', alignItems:'center' }}><Search size={13} /></span>
           <input
@@ -599,6 +653,14 @@ function ListPanel({ conversations, allCount, loading, error, search, onSearch, 
           />
         </div>
 
+        {simple ? (
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {[{ v: 'all', l: 'All' }, { v: 'needs', l: 'Needs you' }, { v: 'bot', l: 'Bot handled' }].map(({ v, l }) => (
+              <Chip key={v} active={tab === v} color={ds.teal} onClick={() => onTab(v)}>{l}</Chip>
+            ))}
+            <Chip active={unreadOnly} color='#E53E3E' onClick={() => onUnreadOnly(!unreadOnly)}><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Circle size={8} fill='currentColor' strokeWidth={0} />Unread</span></Chip>
+          </div>
+        ) : (
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {[{ v: 'all', l: 'All channels' }, { v: 'whatsapp', l: 'WA' }, { v: 'instagram', l: 'IG' }, { v: 'messenger', l: 'FB' }, { v: 'webchat', l: 'Web' }].map(({ v, l }) => (
             <Chip key={v} active={channelFilter === v} color={ds.teal} onClick={() => onChannelFilter(v)}>{l}</Chip>
@@ -608,6 +670,7 @@ function ListPanel({ conversations, allCount, loading, error, search, onSearch, 
           ))}
           <Chip active={unreadOnly} color='#E53E3E' onClick={() => onUnreadOnly(!unreadOnly)}><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Circle size={8} fill='currentColor' strokeWidth={0} />Unread</span></Chip>
         </div>
+        )}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>

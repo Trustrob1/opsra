@@ -34,6 +34,10 @@ api.interceptors.response.use(
 )
 
 /** GET /api/v1/conversations */
+/** WA-AUTO-2: owner-only contact list (CSV text). */
+export const exportContactsCsv = () =>
+  api.get('/api/v1/contacts/export', { responseType: 'blob' }).then(r => r.data)
+
 export const getConversations = (params = {}) =>
   api.get('/api/v1/conversations', { params })
 
