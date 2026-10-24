@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { ds } from '../../utils/ds'
-import { listKnowledge, addKnowledgeFile, addKnowledgeText, activateKnowledge, removeKnowledge, knowledgeError } from '../../services/knowledge.service'
+import { listKnowledge, addKnowledgeFile, addKnowledgeText, addKnowledgeWebsite, addKnowledgeGdoc, getKnowledgeSource, activateKnowledge, removeKnowledge, knowledgeError } from '../../services/knowledge.service'
 
 const card = { background: ds.white, border: `1px solid ${ds.border}`, borderRadius: 14, padding: 20, marginBottom: 16 }
 const input = { width: '100%', boxSizing: 'border-box', border: `1.5px solid ${ds.border}`, borderRadius: 9, padding: '10px 12px', fontSize: 14, fontFamily: ds.fontDm, color: ds.dark, background: ds.light }
@@ -15,7 +15,8 @@ export default function KnowledgeModule() {
   const [items, setItems] = useState(null)
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [mode, setMode] = useState('file')          // file | text
+  const [mode, setMode] = useState('file')          // file | text | url | gdoc
+  const [link, setLink] = useState('')
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
   const [draft, setDraft] = useState(null)          // the source being previewed
@@ -23,6 +24,13 @@ export default function KnowledgeModule() {
 
   const load = () => listKnowledge().then(setItems).catch((e) => setErr(knowledgeError(e)))
   useEffect(() => { load() }, [])
+  // A website or Google Doc is read after you add it; check back every few seconds until it is done.
+  const reading = (items || []).some((s) => s.status === 'processing')
+  useEffect(() => {
+    if (!reading) return undefined
+    const id = setInterval(load, 4000)
+    return () => clearInterval(id)
+  }, [reading])
 
   const run = async (fn) => {
     setBusy(true); setErr(null)
@@ -36,6 +44,11 @@ export default function KnowledgeModule() {
     await load()
   })
   const saveText = () => run(async () => { setDraft(await addKnowledgeText(title.trim(), text)); setText(''); await load() })
+  const addLink = () => run(async () => {
+    if (mode === 'url') await addKnowledgeWebsite(link.trim()); else await addKnowledgeGdoc(link.trim())
+    setLink(''); await load()
+  })
+  const review = (id) => run(async () => { setDraft(await getKnowledgeSource(id)) })
   const start = () => run(async () => { await activateKnowledge(draft.id); setDraft(null); setTitle(''); await load() })
   const discard = (id) => run(async () => { await removeKnowledge(id); if (draft?.id === id) setDraft(null); await load() })
 
@@ -66,10 +79,25 @@ export default function KnowledgeModule() {
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <button type="button" style={btn(mode === 'file', false)} onClick={() => setMode('file')}>Upload a file</button>
             <button type="button" style={btn(mode === 'text', false)} onClick={() => setMode('text')}>Type answers</button>
+            <button type="button" style={btn(mode === 'url', false)} onClick={() => setMode('url')}>Website</button>
+            <button type="button" style={btn(mode === 'gdoc', false)} onClick={() => setMode('gdoc')}>Google Doc</button>
           </div>
+          {(mode === 'file' || mode === 'text') && (<>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: ds.dark, marginBottom: 5 }} htmlFor="k-title">Name {mode === 'file' ? '(optional)' : ''}</label>
           <input id="k-title" style={input} value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} placeholder={mode === 'file' ? 'Price list 2026' : 'Delivery and returns'} />
-          {mode === 'file' ? (
+          </>)}
+          {(mode === 'url' || mode === 'gdoc') && (
+            <>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: ds.dark, marginBottom: 5 }} htmlFor="k-link">{mode === 'url' ? 'Your website address' : 'Link of the Google Doc'}</label>
+              <input id="k-link" style={input} value={link} maxLength={500} inputMode="url" onChange={(e) => setLink(e.target.value)}
+                placeholder={mode === 'url' ? 'https://www.yourshop.com' : 'https://docs.google.com/document/d/...'} />
+              <p style={{ fontSize: 12.5, color: ds.gray, margin: '8px 0 0' }}>
+                {mode === 'url' ? 'We read up to 20 pages of this website only. It takes under a minute.' : 'In Google Docs choose Share and set General access to Anyone with the link (Viewer).'}
+              </p>
+              <div style={{ marginTop: 14 }}><button type="button" style={btn(true, busy || !link.trim())} disabled={busy || !link.trim()} onClick={addLink}>{busy ? 'Starting…' : 'Read it'}</button></div>
+            </>
+          )}
+          {mode === 'url' || mode === 'gdoc' ? null : mode === 'file' ? (
             <>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: ds.dark, margin: '14px 0 5px' }} htmlFor="k-file">PDF, Word (.docx), .txt, .md or .csv, up to 10 MB</label>
               <input id="k-file" ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md,.csv" />
@@ -93,10 +121,11 @@ export default function KnowledgeModule() {
           <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: `1px solid ${ds.border}`, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 180 }}>
               <div style={{ fontWeight: 600, fontSize: 14, color: ds.dark }}>{s.title}</div>
-              <div style={{ fontSize: 12.5, color: ds.gray }}>{s.kind === 'file' ? 'File' : 'Typed'} · {s.chunk_count} parts · {day(s.created_at)}</div>
+              <div style={{ fontSize: 12.5, color: ds.gray }}>{({ file: 'File', text: 'Typed', url: 'Website', gdoc: 'Google Doc' })[s.kind] || 'Item'} · {s.chunk_count} parts{s.page_count > 1 ? ` · ${s.page_count} pages` : ''} · {day(s.created_at)}</div>
+              {s.status === 'failed' && s.error && <div role="alert" style={{ fontSize: 12.5, color: ds.red, marginTop: 2 }}>{s.error}</div>}
             </div>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: s.status === 'active' ? ds.green : ds.gray }}>{s.status === 'active' ? 'In use' : s.status === 'draft' ? 'Waiting for you' : 'Failed'}</span>
-            <button type="button" style={btn(false, busy)} disabled={busy} onClick={() => (s.status === 'draft' ? setDraft(s) : discard(s.id))}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: s.status === 'active' ? ds.green : ds.gray }}>{s.status === 'active' ? 'In use' : s.status === 'draft' ? 'Waiting for you' : s.status === 'processing' ? 'Reading…' : 'Failed'}</span>
+            <button type="button" style={btn(false, busy)} disabled={busy || s.status === 'processing'} onClick={() => (s.status === 'draft' ? review(s.id) : discard(s.id))}>
               {s.status === 'draft' ? 'Review' : 'Remove'}
             </button>
           </div>

@@ -12,6 +12,9 @@ export const addKnowledgeFile = (file, title) => {
   return api.post('/api/v1/knowledge/sources/file', form).then((r) => r.data.data)
 }
 export const addKnowledgeText = (title, content) => api.post('/api/v1/knowledge/sources/text', { title, content }).then((r) => r.data.data)
+export const addKnowledgeWebsite = (url) => api.post('/api/v1/knowledge/sources/url', { url }).then((r) => r.data.data)
+export const addKnowledgeGdoc = (url) => api.post('/api/v1/knowledge/sources/gdoc', { url }).then((r) => r.data.data)
+export const getKnowledgeSource = (id) => api.get(`/api/v1/knowledge/sources/${id}`).then((r) => r.data.data)
 export const activateKnowledge = (id) => api.post(`/api/v1/knowledge/sources/${id}/activate`).then((r) => r.data.data)
 export const removeKnowledge = (id) => api.delete(`/api/v1/knowledge/sources/${id}`).then((r) => r.data.data)
 

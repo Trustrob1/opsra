@@ -15,7 +15,7 @@ from __future__ import annotations
 import io
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -30,6 +30,7 @@ MAX_PDF_PAGES = 300
 MAX_SOURCE_CHARS = 400_000      # about 330 chunks from one file
 MAX_ORG_CHUNKS = 5000           # safety cap on a whole library
 MAX_TITLE = 120
+STALE_MINUTES = 5
 PINNED_TITLE = "About our business"   # the wizard's answers; always given to the bot (one chunk), so it knows what the business is
 FILE_TYPES = {".pdf", ".docx", ".txt", ".md", ".csv"}
 
@@ -143,7 +144,21 @@ def _org_chunk_total(db: Any, org_id: str) -> int:
     return sum(int(r.get("chunk_count") or 0) for r in rows)
 
 
-def _create(db: Any, org_id: str, user_id: Optional[str], kind: str, title: str, file_name: Optional[str], text: str) -> dict:
+def new_source(db: Any, org_id: str, user_id: Optional[str], kind: str, title: str, file_name: Optional[str] = None,
+               source_url: Optional[str] = None, status: str = "draft") -> str:
+    now = _now()
+    row = {"org_id": org_id, "kind": kind, "title": title[:MAX_TITLE], "file_name": (file_name or None), "status": status,
+           "chunk_count": 0, "char_count": 0, "created_by": user_id, "created_at": now, "updated_at": now}
+    if source_url:
+        row["source_url"] = source_url[:500]
+    sid = _one(db.table("knowledge_sources").insert(row).execute()).get("id")
+    if not sid:
+        _fail(500, "SAVE_FAILED", "Could not save that. Please try again.")
+    return sid
+
+
+def fill_source(db: Any, org_id: str, source_id: str, text: str, page_count: int = 0) -> None:
+    """Cuts `text` into chunks, saves them and makes the source a draft. Raises HTTPException with a plain message when it cannot."""
     text = clean_text(text)
     if len(text) < 20:
         _fail(422, "NO_TEXT", "We found no readable text. If this is a scanned PDF (a picture of pages), upload a version with real text.")
@@ -152,26 +167,44 @@ def _create(db: Any, org_id: str, user_id: Optional[str], kind: str, title: str,
     chunks = chunk_text(text)
     if _org_chunk_total(db, org_id) + len(chunks) > MAX_ORG_CHUNKS:
         _fail(409, "LIBRARY_FULL", "Your knowledge library is full. Remove something you no longer need first.")
-    now = _now()
-    src = _one(db.table("knowledge_sources").insert({
-        "org_id": org_id, "kind": kind, "title": title[:MAX_TITLE], "file_name": (file_name or None), "status": "draft",
-        "chunk_count": len(chunks), "char_count": len(text), "created_by": user_id, "created_at": now, "updated_at": now,
-    }).execute())
-    sid = src.get("id")
-    if not sid:
-        _fail(500, "SAVE_FAILED", "Could not save that. Please try again.")
     try:
         for i in range(0, len(chunks), 200):
             db.table("knowledge_chunks").insert([
-                {"org_id": org_id, "source_id": sid, "position": i + j, "content": c} for j, c in enumerate(chunks[i:i + 200])
+                {"org_id": org_id, "source_id": source_id, "position": i + j, "content": c} for j, c in enumerate(chunks[i:i + 200])
             ]).execute()
     except Exception as exc:
-        logger.warning("knowledge: chunk save failed org=%s source=%s: %s", org_id, sid, exc)
+        logger.warning("knowledge: chunk save failed org=%s source=%s: %s", org_id, source_id, exc)
+        try:
+            db.table("knowledge_chunks").delete().eq("source_id", source_id).eq("org_id", org_id).execute()
+        except Exception:
+            pass
+        _fail(500, "SAVE_FAILED", "Could not save that. Please try again.")
+    fields = {"status": "draft", "chunk_count": len(chunks), "char_count": len(text), "error": None, "updated_at": _now()}
+    if page_count:
+        fields["page_count"] = page_count
+    db.table("knowledge_sources").update(fields).eq("id", source_id).eq("org_id", org_id).execute()
+
+
+def mark_failed(db: Any, org_id: str, source_id: str, message: str) -> None:
+    try:
+        db.table("knowledge_sources").update({"status": "failed", "error": message[:300], "updated_at": _now()}).eq("id", source_id).eq("org_id", org_id).execute()
+    except Exception as exc:
+        logger.warning("knowledge: could not mark source failed org=%s: %s", org_id, exc)
+
+
+def _create(db: Any, org_id: str, user_id: Optional[str], kind: str, title: str, file_name: Optional[str], text: str) -> dict:
+    text = clean_text(text)
+    if len(text) < 20:                      # checked before a row exists, so a refused source leaves nothing behind
+        _fail(422, "NO_TEXT", "We found no readable text. If this is a scanned PDF (a picture of pages), upload a version with real text.")
+    sid = new_source(db, org_id, user_id, kind, title, file_name)
+    try:
+        fill_source(db, org_id, sid, text)
+    except HTTPException:
         try:
             db.table("knowledge_sources").delete().eq("id", sid).eq("org_id", org_id).execute()
         except Exception:
             pass
-        _fail(500, "SAVE_FAILED", "Could not save that. Please try again.")
+        raise
     return preview(db, org_id, sid)
 
 
@@ -203,18 +236,24 @@ def preview(db: Any, org_id: str, source_id: str) -> dict:
 
 
 def _public(src: dict) -> dict:
-    return {k: src.get(k) for k in ("id", "kind", "title", "file_name", "status", "chunk_count", "char_count", "error", "created_at", "activated_at")}
+    return {k: src.get(k) for k in ("id", "kind", "title", "file_name", "status", "chunk_count", "char_count", "error", "created_at", "activated_at",
+                                     "source_url", "page_count")}
 
 
 def list_sources(db: Any, org_id: str) -> list:
     rows = db.table("knowledge_sources").select("*").eq("org_id", org_id).order("created_at", desc=True).limit(200).execute().data or []
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=STALE_MINUTES)).isoformat()
+    for r in rows:      # a website read that never finished (the server restarted, say) is shown as failed, not "reading" forever
+        if r.get("status") == "processing" and str(r.get("created_at") or "") < cutoff:
+            mark_failed(db, org_id, r["id"], "This took too long and was stopped. Please try again.")
+            r["status"], r["error"] = "failed", "This took too long and was stopped. Please try again."
     return [_public(r) for r in rows]
 
 
 def activate(db: Any, org_id: str, source_id: str) -> dict:
     src = get_source(db, org_id, source_id)
-    if src.get("status") == "failed":
-        _fail(409, "FAILED_SOURCE", "That item could not be read, so it cannot be used.")
+    if src.get("status") in ("failed", "processing"):
+        _fail(409, "NOT_READY", "That item is not ready to use." if src.get("status") == "processing" else "That item could not be read, so it cannot be used.")
     now = _now()
     db.table("knowledge_sources").update({"status": "active", "activated_at": now, "updated_at": now}).eq("id", source_id).eq("org_id", org_id).execute()
     return preview(db, org_id, source_id)
