@@ -1194,7 +1194,7 @@ function AppShell() {
           <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} onOpenLead={(leadId) =>openLeadProfile(leadId)} /></div>
         )}
         {view === 'admin' && (
-          <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} /></div>
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} waOnly={isWaOnly} /></div>
         )}
         {view === 'billing' && ['owner', 'ops_manager', 'admin'].includes(_userTemplate) && (
           <div style={{ animation: 'fadeIn 0.25s ease', padding: 24 }}><BillingModule onOpenAdmin={() => { setActiveNav('admin'); setView('admin') }} /></div>
