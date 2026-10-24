@@ -39,7 +39,7 @@ def test_automate_tier_exists_with_no_hardcoded_price():
     assert t["wa_only"] is True
     assert t["caps"] == {"ai_messages": 300, "users_included": 1}
     assert t["recommended"] == {"monthly_ngn": 20000, "ai_messages": 300, "users_included": 1}
-    assert set(t["features"]) == {"wa_leads", "wa_menu", "ai_assistant", "own_wa_number", "webchat_basic"}
+    assert set(t["features"]) == {"wa_leads", "wa_menu", "ai_assistant", "own_wa_number", "webchat_basic", "knowledge_base"}
 
 
 def test_price_and_caps_come_from_settings():

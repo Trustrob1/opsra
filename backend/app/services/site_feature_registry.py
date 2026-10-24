@@ -46,6 +46,7 @@ _F = {
     "payment_links": ("Paystack payment links in chat", "convert", None, True),
     "fb_ig_leads": ("Facebook and Instagram lead ads tagged by ad", "convert", None, True),
     "own_wa_number": ("Own WhatsApp number", "convert", None, True),
+    "knowledge_base": ("Bot knowledge: uploaded files and typed answers", "convert", None, True),   # WA-AUTO-4a
     "webchat_followups": ("Web chat email and WhatsApp follow-ups", "convert", None, True),
     "selling_catalog": ("Catalog with recommendations", "convert", None, True),
     "selling_booking": ("Booking with reminders", "convert", None, True),
@@ -93,7 +94,7 @@ DEFAULT_TIER_FEATURES = {
     "capture": list(_CAPTURE),
     "convert": _CAPTURE + _CONVERT,
     "grow": _CAPTURE + _CONVERT + ["selling_catalog", "selling_booking"] + _GROW,
-    "automate": ["wa_leads", "wa_menu", "ai_assistant", "own_wa_number", "webchat_basic"],
+    "automate": ["wa_leads", "wa_menu", "ai_assistant", "own_wa_number", "webchat_basic", "knowledge_base"],
 }
 DEFAULT_PICK_ONE = {
     "capture": [],

@@ -85,29 +85,16 @@ def _clean(value: Any, limit: int, label: str, required: bool = False) -> str:
     return text
 
 
-BASICS_TITLE = "About our business"
+from app.services.knowledge_service import PINNED_TITLE as BASICS_TITLE   # one name for the wizard and the bot
 
 
 def _publish_basics(db: Any, org_id: str, user_id: Optional[str], basics: dict) -> bool:
-    """Puts the basics where the bot already looks (a published knowledge-base article), so they help from the first message.
+    """Puts the basics where the bot looks (an active knowledge source), so they help from the first message.
     S14: a problem here never loses the saved basics."""
-    content = (f"What we sell: {basics['what_you_sell']}\nOpening hours: {basics['hours']}\n"
+    from app.services import knowledge_service as ks
+    content = (f"What we sell: {basics['what_you_sell']}\n\nOpening hours: {basics['hours']}\n\n"
                f"Reply to customers in: {basics['language']}")
-    now = _iso(_now())
-    try:
-        found = _one(db.table("knowledge_base_articles").select("id").eq("org_id", org_id).eq("title", BASICS_TITLE).limit(1).execute())
-        if found.get("id"):
-            db.table("knowledge_base_articles").update({"content": content, "is_published": True, "updated_at": now}).eq("id", found["id"]).eq("org_id", org_id).execute()
-        else:
-            db.table("knowledge_base_articles").insert({
-                "org_id": org_id, "category": "product_overview", "title": BASICS_TITLE, "content": content,
-                "tags": ["wa_basics"], "is_published": True, "usage_count": 0, "version": 1, "created_by": user_id,
-                "created_at": now, "updated_at": now,
-            }).execute()
-        return True
-    except Exception as exc:
-        logger.warning("wa_onboarding: basics not added to the bot's knowledge org=%s: %s", org_id, exc)
-        return False
+    return ks.upsert_text_source(db, org_id, user_id, BASICS_TITLE, content)
 
 
 def save_basics(db: Any, org_id: str, what_you_sell: str, hours: str, language: str, user_id: Optional[str] = None) -> dict:

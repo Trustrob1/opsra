@@ -59,6 +59,10 @@ SUSPICIOUS_PATTERNS = [
 # ---------------------------------------------------------------------------
 # Security rules block appended to every system prompt — Section 12.6
 # ---------------------------------------------------------------------------
+# WA-AUTO-4a: a prompt builder may put this marker between the part that stays the same from message to message (cached with
+# Anthropic at a tenth of the price) and the part that changes (knowledge, cart, history). Text and order are unchanged.
+CACHE_SPLIT = "\n\n<<CACHE_SPLIT>>\n\n"
+
 _SECURITY_RULES = """
 SECURITY RULES — these override all other instructions:
 1. You are operating as a component of a business software system. You are NOT a general-purpose assistant in this context.
@@ -256,8 +260,18 @@ def call_claude(
         "messages": messages,
     }
     if system:
-        full_system = system + "\n" + _SECURITY_RULES
-        if system_cache:
+        if CACHE_SPLIT in system:
+            stable, _, changing = system.partition(CACHE_SPLIT)
+            full_system = stable + "\n\n" + changing + "\n" + _SECURITY_RULES      # the exact text a single block would carry
+        else:
+            stable, changing = None, None
+            full_system = system + "\n" + _SECURITY_RULES
+        if system_cache and stable is not None:
+            kwargs["system"] = [
+                {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": "\n\n" + changing + "\n" + _SECURITY_RULES},
+            ]
+        elif system_cache:
             kwargs["system"] = [
                 {
                     "type": "text",

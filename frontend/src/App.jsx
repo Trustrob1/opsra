@@ -60,6 +60,7 @@ import CreateOrg from "./modules/superadmin/CreateOrg.jsx"
 import SuperadminShell from "./modules/superadmin/SuperadminShell.jsx"   // ACCOUNT-PLANS AP-8
 import { getPlatformStatus } from "./services/accountPlan.service"      // ACCOUNT-PLANS AP-8
 import ConversationsModule from './modules/conversations/ConversationsModule'
+import KnowledgeModule from './modules/knowledge/KnowledgeModule'                 // WA-AUTO-4a
 import WaSetupWizard from './modules/waonboarding/WaSetupWizard'                // WA-AUTO-3
 import { getWaOnboarding } from './services/waOnboarding.service'              // WA-AUTO-3
 import TermsOfService from './pages/TermsOfService'
@@ -76,7 +77,7 @@ import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard,
+  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard, BookOpen,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 import SiteLandingPage from './pages/SiteLandingPage'   // SITE-LANDING
@@ -104,6 +105,7 @@ const SIDEBAR_W_CLOSED = 72
 const NAV = [
   { id: 'leads',    label: 'Lead Center', icon: 'leads', module: '01', active: true, group: 'sales_marketing' },
   { id: 'conversations', label: 'Conversations',      icon: 'conversations', module: '02',  active: true, group: 'sales_marketing' },
+  { id: 'knowledge', label: 'Knowledge', icon: 'knowledge', module: '15', active: true, group: 'sales_marketing' },   // WA-AUTO-4a (WhatsApp-only businesses)
   { id: 'whatsapp', label: 'WhatsApp Engine',      icon: 'whatsapp', module: '03', active: true, group: 'sales_marketing' },
   { id: 'event-funnels', label: 'Event Funnels', icon: 'event-funnels', module: '13', active: true, group: 'sales_marketing' },   // FUNNEL-1B
   { id: 'sites', label: 'Sites', icon: 'sites', module: '14', active: true, group: 'sales_marketing' },   // SITE-1A
@@ -130,6 +132,7 @@ const NAV_GROUPS = [
 const NAV_ICONS = {
   leads:         Target,
   conversations: MessageSquare,
+  knowledge:     BookOpen,
   whatsapp:      MessageCircle,
   support:       Ticket,
   renewal:       RefreshCw,
@@ -709,7 +712,8 @@ function AppShell() {
   // and actual page access never disagree.
   const _departmentId = user?.roles?.department_id ?? null
   const visibleNav = NAV.filter(item => {
-    if (isWaOnly) return item.id === 'conversations'
+    if (isWaOnly) return item.id === 'conversations' || item.id === 'knowledge'
+    if (item.id === 'knowledge') return false
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
     // FUNNEL-1B: Event Funnels — owner / ops_manager (edit) and admin (read-only)
     if (item.id === 'event-funnels' && !['owner', 'ops_manager', 'admin'].includes(_userTemplate)) return false
@@ -731,7 +735,7 @@ function AppShell() {
   // WA-AUTO-1: keep wa_automation orgs on screens they own.
   useEffect(() => {
     if (!isWaOnly) return
-    if (!['conversations', 'billing', 'admin'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
+    if (!['conversations', 'knowledge', 'billing', 'admin'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
   }, [isWaOnly, view])
   const [selectedLeadId, setSelectedLeadId] = useState(null)
   const [showNotif, setShowNotif]           = useState(false)
@@ -1190,6 +1194,7 @@ function AppShell() {
         {view === 'billing' && ['owner', 'ops_manager', 'admin'].includes(_userTemplate) && (
           <div style={{ animation: 'fadeIn 0.25s ease', padding: 24 }}><BillingModule onOpenAdmin={() => { setActiveNav('admin'); setView('admin') }} /></div>
         )}
+        {view === 'knowledge' && isWaOnly && <KnowledgeModule />}
         {view === 'conversations' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
             {isWaOnly && waWizard === 'show'
@@ -1212,7 +1217,7 @@ function AppShell() {
         {(view === 'superadmin' || view === 'superadmin_health' || view === 'superadmin_create_org') && isPlatformOrg && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><SuperadminShell initial={view === 'superadmin_create_org' ? 'create' : 'health'} /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing', 'knowledge'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

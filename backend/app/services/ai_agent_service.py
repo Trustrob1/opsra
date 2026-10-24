@@ -78,6 +78,8 @@ _SECURITY_DECLINE_MESSAGE = (
 _MAX_HISTORY_TURNS = 20
 _MAX_KB_ARTICLES = 3
 _MAX_KB_CHARS = 500
+_MAX_KB_CHUNKS = 5            # WA-AUTO-4a: most knowledge chunks given to the bot for one message
+_MAX_KB_CHUNK_CHARS = 1400
 _MAX_CATALOG_PRODUCTS = 5
 
 # Named sales methodologies — translates each framework's core principles
@@ -203,7 +205,14 @@ def _get_or_create_ai_agent_user(db, org_id: str) -> Optional[str]:
 # easy to correct without touching the main functions)
 # ---------------------------------------------------------------------------
 def _fetch_kb_articles(db, org_id: str, inbound_text: str) -> list[dict]:
-    """Top 3 KB articles, keyword-matched against inbound_text. S14: [] on failure."""
+    """Top 3 KB articles, keyword-matched against inbound_text. S14: [] on failure.
+    WA-AUTO-4a: a business that has added knowledge sources gets the best few chunks from them instead (full-text search, no AI)."""
+    try:
+        from app.services import knowledge_service as _knowledge
+        if _knowledge.has_active(db, org_id):
+            return _knowledge.retrieve(db, org_id, inbound_text)
+    except Exception as exc:
+        logger.warning("_fetch_kb_articles: knowledge lookup failed org=%s - using articles: %s", org_id, exc)
     try:
         result = (
             db.table("knowledge_base_articles")
@@ -553,11 +562,16 @@ def build_agent_system_prompt(
             safe_tone = sanitise_for_prompt(tone, max_length=1500)
             parts.append(f"Tone and brand voice: {safe_tone}")
 
+        # WA-AUTO-4a: everything above is the same from message to message and is cached; everything below changes.
+        from app.services.ai_service import CACHE_SPLIT as _CACHE_SPLIT
+        parts.append(_CACHE_SPLIT.strip())
+
         if kb_articles:
             kb_lines = []
-            for a in kb_articles[:_MAX_KB_ARTICLES]:
+            _is_chunks = any(a.get("chunk") for a in kb_articles)
+            for a in kb_articles[:(_MAX_KB_CHUNKS if _is_chunks else _MAX_KB_ARTICLES)]:
                 title = sanitise_for_prompt(a.get("title") or "", max_length=100)
-                content = sanitise_for_prompt(a.get("content") or "", max_length=_MAX_KB_CHARS)
+                content = sanitise_for_prompt(a.get("content") or "", max_length=(_MAX_KB_CHUNK_CHARS if a.get("chunk") else _MAX_KB_CHARS))
                 kb_lines.append(f"- {title}: {content}")
             parts.append("<knowledge_base>\n" + "\n".join(kb_lines) + "\n</knowledge_base>")
 

@@ -98,9 +98,11 @@ def _knowledge(db, s: dict, cfg: dict, text: str) -> str:
             lines.append(f"- {sanitise_for_prompt(m['label'], max_length=60)}: {sanitise_for_prompt(m['answer'], max_length=700)}")
     try:
         from app.services.ai_agent_service import _fetch_kb_articles
-        for a in _fetch_kb_articles(db, s["org_id"], text)[:3]:
+        found = _fetch_kb_articles(db, s["org_id"], text)
+        for a in found[:(5 if any(x.get("chunk") for x in found) else 3)]:      # WA-AUTO-4a: knowledge chunks are longer
+            size = 1400 if a.get("chunk") else 500
             lines.append(f"- {sanitise_for_prompt(a.get('title') or '', max_length=80)}: "
-                         f"{sanitise_for_prompt((a.get('content') or '')[:500], max_length=500)}")
+                         f"{sanitise_for_prompt((a.get('content') or '')[:size], max_length=size)}")
     except Exception as exc:
         logger.warning("webchat ai kb failed: %s", exc)
     return "\n".join(lines) or "(nothing written yet)"

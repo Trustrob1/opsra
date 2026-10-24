@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.services import product_mode as pm
 from app.services import wa_onboarding_service as svc
 from tests.unit.test_account_plans_1 import FakeDB
+from tests.unit.test_wa_auto_4a import KDB
 
 if True:
     from tests.unit.test_account_plans_1 import _Q
@@ -22,7 +23,7 @@ PLAT = "00000000-0000-0000-0000-0000000000aa"
 def _db(connected=False, **extra):
     org = {"id": ORG, "name": "Glow Salon", "product_mode": "wa_automation",
            "whatsapp_phone_id": "123" if connected else None, "whatsapp_access_token": "tok" if connected else None}
-    return FakeDB(organisations=[org, {"id": FULL, "name": "Full", "product_mode": "full"}, {"id": PLAT, "name": "Opsra"}],
+    return KDB(organisations=[org, {"id": FULL, "name": "Full", "product_mode": "full"}, {"id": PLAT, "name": "Opsra"}],
                   wa_onboarding=[], knowledge_base_articles=[], notifications=[], whatsapp_messages=[],
                   users=[{"id": "p1", "org_id": PLAT, "roles": {"template": "owner"}},
                          {"id": "p2", "org_id": PLAT, "roles": {"template": "sales_agent"}}],
@@ -44,10 +45,11 @@ def test_basics_are_saved_and_given_to_the_bot_once():
     out = svc.save_basics(db, ORG, "  Braids and wigs ", "Mon-Sat 9-6", "English", "u1")
     assert out == {"what_you_sell": "Braids and wigs", "hours": "Mon-Sat 9-6", "language": "English"}
     svc.save_basics(db, ORG, "Braids, wigs and nails", "Mon-Sat 9-6", "Pidgin", "u1")
-    arts = db.tables["knowledge_base_articles"]
-    assert len(arts) == 1                                   # updated, not duplicated
-    assert arts[0]["is_published"] is True and arts[0]["title"] == svc.BASICS_TITLE
-    assert "nails" in arts[0]["content"] and "Pidgin" in arts[0]["content"]
+    srcs = db.tables["knowledge_sources"]
+    assert len(srcs) == 1                                   # replaced, not duplicated
+    assert srcs[0]["status"] == "active" and srcs[0]["title"] == svc.BASICS_TITLE
+    text = " ".join(c["content"] for c in db.tables["knowledge_chunks"])
+    assert "nails" in text and "Pidgin" in text and "Braids and wigs" not in text
     assert len(db.tables["wa_onboarding"]) == 1
 
 
@@ -62,7 +64,7 @@ def test_bad_basics_are_refused(sell, hours, lang):
 def test_a_knowledge_problem_does_not_lose_the_basics():
     class Broken(FakeDB):
         def table(self, name):
-            if name == "knowledge_base_articles":
+            if name == "knowledge_sources":
                 raise RuntimeError("down")
             return super().table(name)
     db = Broken(wa_onboarding=[], organisations=[{"id": ORG}])
