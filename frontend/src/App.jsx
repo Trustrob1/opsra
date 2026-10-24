@@ -60,6 +60,8 @@ import CreateOrg from "./modules/superadmin/CreateOrg.jsx"
 import SuperadminShell from "./modules/superadmin/SuperadminShell.jsx"   // ACCOUNT-PLANS AP-8
 import { getPlatformStatus } from "./services/accountPlan.service"      // ACCOUNT-PLANS AP-8
 import ConversationsModule from './modules/conversations/ConversationsModule'
+import WaSetupWizard from './modules/waonboarding/WaSetupWizard'                // WA-AUTO-3
+import { getWaOnboarding } from './services/waOnboarding.service'              // WA-AUTO-3
 import TermsOfService from './pages/TermsOfService'
 import { _supabase } from './services/api'
 import PublicCatalogShell from './catalog/PublicCatalogShell'
@@ -681,6 +683,14 @@ function AppShell() {
     try { return localStorage.getItem('opsra_product_mode') === 'wa_automation' ? 'wa_automation' : 'full' } catch { return 'full' }
   })
   const isWaOnly = productMode === 'wa_automation'
+  // WA-AUTO-3: the owner of a WhatsApp-only business sees the set-up wizard until it is finished (or put off for now).
+  const [waWizard, setWaWizard] = useState('unknown')   // unknown | show | hide
+  useEffect(() => {
+    if (!isWaOnly || !user || !['owner', 'ops_manager'].includes(user?.roles?.template ?? '')) { setWaWizard('hide'); return undefined }
+    let live = true
+    getWaOnboarding().then((s) => { if (live) setWaWizard(s?.completed ? 'hide' : 'show') }).catch(() => { if (live) setWaWizard('hide') })
+    return () => { live = false }
+  }, [isWaOnly, user?.id])
   useEffect(() => {
     let live = true
     if (!user) { setIsPlatformOrg(false); return undefined }
@@ -1182,7 +1192,9 @@ function AppShell() {
         )}
         {view === 'conversations' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
-            <ConversationsModule user={user} simple={isWaOnly} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} onOpenAria={() => setAriaOpen(true)} />
+            {isWaOnly && waWizard === 'show'
+              ? <WaSetupWizard onDone={() => setWaWizard('hide')} onSkip={() => setWaWizard('hide')} />
+              : <ConversationsModule user={user} simple={isWaOnly} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} onOpenAria={() => setAriaOpen(true)} />}
           </div>
         )}
         {view === 'commissions' && (

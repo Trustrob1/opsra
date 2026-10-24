@@ -178,6 +178,7 @@ from app.routers import commissions as commissions_router
 from app.routers import assistant as assistant_router
 from app.routers import superadmin as superadmin_router
 from app.routers import onboarding as onboarding_router
+from app.routers import wa_onboarding as wa_onboarding_router   # WA-AUTO-3
 from app.routers import shopify as shopify_router
 from app.routers import growth_analytics as growth_analytics_router
 from app.routers import growth_config as growth_config_router
@@ -240,6 +241,7 @@ app.include_router(commissions_router.router, dependencies=[Depends(crm_only)], 
 app.include_router(assistant_router.router, dependencies=[Depends(crm_only)],     prefix="/api/v1",               tags=["assistant"])
 app.include_router(superadmin_router.router,    prefix="/api/v1",               tags=["superadmin"])
 app.include_router(onboarding_router.router,    prefix="/api/v1",               tags=["onboarding"])
+app.include_router(wa_onboarding_router.router, prefix="/api/v1",               tags=["wa-onboarding"])   # WA-AUTO-3
 app.include_router(shopify_router.router,       prefix="/api/v1/admin",         tags=["shopify"])
 app.include_router(growth_analytics_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1",           tags=["growth_analytics"])
 app.include_router(growth_config_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1",              tags=["growth_config"])
