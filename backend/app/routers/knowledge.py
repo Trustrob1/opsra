@@ -6,12 +6,16 @@ Owner, ops manager or admin. Needs the knowledge_base feature on the plan. Audit
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok
+from app.services import knowledge_gap_service as gaps
+from app.services import knowledge_refresh_service as refresh
 from app.services import knowledge_service as ks
 from app.services import knowledge_web_service as web
 from app.services import plan_gate_service
@@ -112,3 +116,67 @@ def remove(source_id: str, org=Depends(get_current_org), db=Depends(get_supabase
     out = ks.remove(db, org["org_id"], source_id)
     _audit(db, org, "knowledge.removed", source_id, {})
     return ok(data=out)
+
+
+# -- WA-AUTO-4c: keeping sources fresh, the "Not answered" list, and the product catalogue the bot already knows ----------------
+class AutoRefreshPayload(BaseModel):
+    enabled: bool
+
+
+@router.post("/knowledge/sources/{source_id}/refresh")
+def refresh_now(source_id: str, tasks: BackgroundTasks, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _guard(org, db)
+    src = ks.get_source(db, org["org_id"], source_id)
+    if src.get("kind") not in refresh.REFRESHABLE or not src.get("source_url"):
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": "Only a website or a Google Doc can be read again."})
+    if src.get("status") != "active":
+        raise HTTPException(status_code=409, detail={"code": "NOT_READY", "message": "Start using this item first, then it can be updated."})
+    last = src.get("last_refreshed_at")
+    if last and str(last) > (datetime.now(timezone.utc) - timedelta(minutes=refresh.MANUAL_COOLDOWN_MIN)).isoformat():
+        raise HTTPException(status_code=409, detail={"code": "TOO_SOON", "message": "It was checked a moment ago. Please try again in a few minutes."})
+    db.table("knowledge_sources").update({"last_refreshed_at": datetime.now(timezone.utc).isoformat()}).eq("id", source_id).eq("org_id", org["org_id"]).execute()
+    tasks.add_task(refresh.refresh_source, db, src)
+    return ok(data={"started": True})
+
+
+@router.patch("/knowledge/sources/{source_id}/auto-refresh")
+def set_auto_refresh(source_id: str, payload: AutoRefreshPayload, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _guard(org, db)
+    ks.get_source(db, org["org_id"], source_id)
+    db.table("knowledge_sources").update({"auto_refresh": payload.enabled}).eq("id", source_id).eq("org_id", org["org_id"]).execute()
+    return ok(data={"auto_refresh": payload.enabled})
+
+
+class AnswerPayload(BaseModel):
+    answer: str = Field(..., max_length=gaps.MAX_ANSWER_CHARS + 200)
+
+
+@router.get("/knowledge/gaps")
+def list_gaps(org=Depends(get_current_org), db=Depends(get_supabase)):
+    _guard(org, db)
+    return ok(data=gaps.list_open(db, org["org_id"]))
+
+
+@router.post("/knowledge/gaps/{gap_id}/answer")
+def answer_gap(gap_id: str, payload: AnswerPayload, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _guard(org, db)
+    out = gaps.answer(db, org["org_id"], org["id"], gap_id, payload.answer)
+    _audit(db, org, "knowledge.added", out["source_id"], {"kind": "text", "from": "not_answered"})
+    return ok(data=out)
+
+
+@router.post("/knowledge/gaps/{gap_id}/dismiss")
+def dismiss_gap(gap_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    _guard(org, db)
+    return ok(data=gaps.dismiss(db, org["org_id"], gap_id))
+
+
+@router.get("/knowledge/catalog")
+def catalog_summary(org=Depends(get_current_org), db=Depends(get_supabase)):
+    """How many products the bot can already look up (Opsra catalogue and Shopify products live in the same place)."""
+    _guard(org, db)
+    try:
+        rows = db.table("products").select("id").eq("org_id", org["org_id"]).limit(5000).execute().data or []
+    except Exception:
+        rows = []
+    return ok(data={"product_count": len(rows)})

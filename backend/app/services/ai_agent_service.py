@@ -239,6 +239,30 @@ def _fetch_kb_articles(db, org_id: str, inbound_text: str) -> list[dict]:
         return []
 
 
+_MAX_CATALOG_SCAN = 2000     # WA-AUTO-4c: most products read to find the best five (the model still sees at most five)
+_CATALOG_STOP = {"the", "and", "for", "you", "your", "are", "have", "has", "can", "how", "much", "what", "with", "this", "that", "from",
+                 "please", "hello", "need", "want", "like", "any", "there", "does", "price", "cost", "available", "buy", "order"}
+
+
+def _catalog_words(text: str) -> set:
+    """Search words from a customer message: 3+ letters (so 'wig', 'bag' count), common words dropped, plurals folded."""
+    out = set()
+    for w in re.findall(r"\w+", (text or "").lower()):
+        if len(w) < 3 or w in _CATALOG_STOP or w.isdigit():
+            continue
+        out.add(w[:-1] if len(w) > 3 and w.endswith("s") else w)
+    return out
+
+
+def _tags_text(tags) -> str:
+    if isinstance(tags, dict):
+        parts = []
+        for v in tags.values():
+            parts += [str(x) for x in v] if isinstance(v, list) else [str(v)]
+        return " ".join(parts)
+    return ""
+
+
 def _fetch_catalog_products(
     db, org_id: str, catalog_config: dict, inbound_text: str,
     known_tag_values: Optional[dict] = None,
@@ -259,6 +283,7 @@ def _fetch_catalog_products(
             db.table("products")
             .select("id, title, price, variants, catalog_images, description, catalog_description, tags")
             .eq("org_id", org_id)
+            .limit(_MAX_CATALOG_SCAN)
             .execute()
         )
         products = result.data or []
@@ -285,7 +310,7 @@ def _fetch_catalog_products(
             # combination not in stock) — fall through to the full catalog
             # rather than showing the model nothing at all.
 
-        words = {w.lower() for w in re.findall(r"\w+", inbound_text or "") if len(w) > 3}
+        words = _catalog_words(inbound_text)
         trimmed = []
         for p in products:
             raw_variants = p.get("variants") or []
@@ -311,11 +336,13 @@ def _fetch_catalog_products(
         if not words:
             return trimmed[:_MAX_CATALOG_PRODUCTS]
         scored = []
-        for p in trimmed:
-            blob = (p.get("title") or "").lower()
-            score = sum(1 for w in words if w in blob)
+        for p, raw in zip(trimmed, products):
+            title = (p.get("title") or "").lower()
+            rest = " ".join([(p.get("description") or ""), _tags_text(raw.get("tags"))]).lower()
+            # a word in the product name counts 3, a word in its description or tags counts 1
+            score = sum((3 if w in title else 0) + (1 if w in rest else 0) for w in words)
             scored.append((score, p))
-        scored.sort(key=lambda t: t[0], reverse=True)
+        scored.sort(key=lambda t: t[0], reverse=True)       # stable: equal scores keep catalogue order
         return [p for _, p in scored[:_MAX_CATALOG_PRODUCTS]]
     except Exception as exc:
         logger.warning("_fetch_catalog_products failed org=%s: %s", org_id, exc)
@@ -1416,6 +1443,13 @@ def _escalate_to_rep(
             }).eq("id", session["id"]).execute()
         except Exception as exc:
             logger.warning("_escalate_to_rep: session update failed: %s", exc)
+
+        if reason == "unanswered_factual_question":
+            try:      # WA-AUTO-4c: the "Not answered" list (never raises)
+                from app.services import knowledge_gap_service
+                knowledge_gap_service.record(db, org_id, escalation_data.get("question") or "", lead_id)
+            except Exception as exc:
+                logger.warning("_escalate_to_rep: gap record failed: %s", exc)
 
         if not lead_id:
             return

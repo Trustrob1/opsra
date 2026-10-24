@@ -18,6 +18,13 @@ export const getKnowledgeSource = (id) => api.get(`/api/v1/knowledge/sources/${i
 export const activateKnowledge = (id) => api.post(`/api/v1/knowledge/sources/${id}/activate`).then((r) => r.data.data)
 export const removeKnowledge = (id) => api.delete(`/api/v1/knowledge/sources/${id}`).then((r) => r.data.data)
 
+export const refreshKnowledge = (id) => api.post(`/api/v1/knowledge/sources/${id}/refresh`).then((r) => r.data.data)
+export const setKnowledgeAutoRefresh = (id, enabled) => api.patch(`/api/v1/knowledge/sources/${id}/auto-refresh`, { enabled }).then((r) => r.data.data)
+export const listKnowledgeGaps = () => api.get('/api/v1/knowledge/gaps').then((r) => r.data.data)
+export const answerKnowledgeGap = (id, answer) => api.post(`/api/v1/knowledge/gaps/${id}/answer`, { answer }).then((r) => r.data.data)
+export const dismissKnowledgeGap = (id) => api.post(`/api/v1/knowledge/gaps/${id}/dismiss`).then((r) => r.data.data)
+export const getKnowledgeCatalog = () => api.get('/api/v1/knowledge/catalog').then((r) => r.data.data)
+
 export const knowledgeError = (e, fallback = 'Something went wrong. Please try again.') => {
   const d = e?.response?.data?.detail
   if (typeof d === 'string') return d

@@ -12,6 +12,7 @@ what a reply costs stays flat however much the owner uploads. Nothing here calls
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 import re
@@ -157,6 +158,42 @@ def new_source(db: Any, org_id: str, user_id: Optional[str], kind: str, title: s
     return sid
 
 
+def text_hash(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8", errors="replace")).hexdigest()
+
+
+def replace_chunks(db: Any, org_id: str, source_id: str, text: str) -> int:
+    """Swaps the saved text of a source for a new text WITHOUT a gap: new parts are saved first, the old ones removed after.
+    If saving fails the old parts stay and the error is raised. Returns the number of parts."""
+    text = clean_text(text)
+    if len(text) < 20:
+        _fail(422, "NO_TEXT", "We found no readable text.")
+    if len(text) > MAX_SOURCE_CHARS:
+        _fail(422, "TOO_MUCH_TEXT", "That is too much text for one source.")
+    chunks = chunk_text(text)
+    old = [r["id"] for r in (db.table("knowledge_chunks").select("id").eq("source_id", source_id).eq("org_id", org_id).execute().data or [])]
+    if _org_chunk_total(db, org_id) - len(old) + len(chunks) > MAX_ORG_CHUNKS:
+        _fail(409, "LIBRARY_FULL", "Your knowledge library is full.")
+    new_ids = []
+    try:
+        for i in range(0, len(chunks), 200):
+            rows = db.table("knowledge_chunks").insert([
+                {"org_id": org_id, "source_id": source_id, "position": i + j, "content": c} for j, c in enumerate(chunks[i:i + 200])
+            ]).execute().data or []
+            new_ids += [r["id"] for r in rows if r.get("id")]
+    except Exception as exc:
+        logger.warning("knowledge: replace failed org=%s source=%s: %s", org_id, source_id, exc)
+        if new_ids:
+            try:
+                db.table("knowledge_chunks").delete().in_("id", new_ids).eq("org_id", org_id).execute()
+            except Exception:
+                pass
+        _fail(500, "SAVE_FAILED", "Could not save that.")
+    if old:
+        db.table("knowledge_chunks").delete().in_("id", old).eq("org_id", org_id).execute()
+    return len(chunks)
+
+
 def fill_source(db: Any, org_id: str, source_id: str, text: str, page_count: int = 0) -> None:
     """Cuts `text` into chunks, saves them and makes the source a draft. Raises HTTPException with a plain message when it cannot."""
     text = clean_text(text)
@@ -179,7 +216,8 @@ def fill_source(db: Any, org_id: str, source_id: str, text: str, page_count: int
         except Exception:
             pass
         _fail(500, "SAVE_FAILED", "Could not save that. Please try again.")
-    fields = {"status": "draft", "chunk_count": len(chunks), "char_count": len(text), "error": None, "updated_at": _now()}
+    fields = {"status": "draft", "chunk_count": len(chunks), "char_count": len(text), "error": None, "updated_at": _now(),
+              "content_hash": text_hash(text), "last_refreshed_at": _now(), "refresh_error": None}
     if page_count:
         fields["page_count"] = page_count
     db.table("knowledge_sources").update(fields).eq("id", source_id).eq("org_id", org_id).execute()
@@ -237,7 +275,7 @@ def preview(db: Any, org_id: str, source_id: str) -> dict:
 
 def _public(src: dict) -> dict:
     return {k: src.get(k) for k in ("id", "kind", "title", "file_name", "status", "chunk_count", "char_count", "error", "created_at", "activated_at",
-                                     "source_url", "page_count")}
+                                     "source_url", "page_count", "auto_refresh", "last_refreshed_at", "refresh_error")}
 
 
 def list_sources(db: Any, org_id: str) -> list:

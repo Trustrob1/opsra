@@ -193,6 +193,7 @@ celery_app = Celery(
         "app.workers.credit_worker",                     # ← CREDITS-1 (expire lots + reconcile)
         "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
         "app.workers.account_plan_worker",               # ← ACCOUNT-PLANS AP-2 (plan lapse + reminders)
+        "app.workers.knowledge_refresh_worker",          # ← WA-AUTO-4c (re-read website / Google Doc sources)
     ],
 )
 
@@ -675,6 +676,13 @@ celery_app.conf.beat_schedule = {
     "account-plan-cycle": {
         "task": "app.workers.account_plan_worker.run_plan_cycle",
         "schedule": crontab(minute=10, hour=7),
+    },
+
+    # knowledge-refresh - Daily 02:30 UTC = 03:30 WAT (WA-AUTO-4c). Re-reads website and Google Doc sources
+    # whose last check is over 6 days old (so each is read about weekly), at most 40 per run.
+    "knowledge-refresh": {
+        "task": "app.workers.knowledge_refresh_worker.run_knowledge_refresh",
+        "schedule": crontab(minute=30, hour=2),
     },
 
     # ------------------------------------------------------------------ #
