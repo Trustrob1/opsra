@@ -132,6 +132,8 @@ def start(db: Any, org_id: str, site: dict, actor: str, design_id: Optional[str]
     design = _import_design(db, org_id, site["id"], design_id)
     if not design:
         raise NotFound("Upload a site first. There is no imported design to make editable.")
+    if sum(1 for f in ((design.get("import_meta") or {}).get("files") or []) if f.get("page")) > 1:
+        raise ValidationFailed("This site has several pages. Making pages editable works on single-page sites only for now.")
     sweep_stale(db, org_id, site["id"])
     design = _import_design(db, org_id, site["id"], design["id"])
     for r in (db.table("site_designs").select("id, org_id, import_meta").eq("site_id", site["id"]).eq("org_id", org_id)

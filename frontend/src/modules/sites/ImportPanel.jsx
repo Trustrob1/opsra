@@ -1,6 +1,6 @@
 /**
  * frontend/src/modules/sites/ImportPanel.jsx
- * SITE-IMPORT 1b - the staff Import panel on a site: upload a finished single-page site made outside Opsra (.zip or one
+ * SITE-IMPORT 1b - the staff Import panel on a site: upload a finished site (one or several pages) made outside Opsra (.zip or one
  * .html), read the safety report, accept named overridable findings, copy pictures/stylesheets/fonts the page loads
  * from unlisted websites, preview it in a sandbox, and make it the site's page.
  *
@@ -161,7 +161,7 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
     <Card>
       <SectionTitle
         title="Import a finished site"
-        hint="Upload a single-page site made outside Opsra (a .zip with index.html at the top, or one .html file). It is checked and cleaned first. Scripts run only on the client's own domain."
+        hint="Upload a site made outside Opsra (a .zip with index.html at the top and any other pages beside or below it, or one .html file). It is checked and cleaned first. Scripts run only on the client's own domain."
         right={<Badge tone={isImported ? 'good' : 'neutral'}>{isImported ? 'Imported page in use' : 'Not in use'}</Badge>}
       />
       {error && <Notice tone="bad">{error}</Notice>}

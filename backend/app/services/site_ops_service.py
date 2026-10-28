@@ -977,7 +977,8 @@ def collect_export_files(db: Any, org_id: str, site_id: str) -> tuple:
             from app.services import site_capture_service           # SITE-ADDONS A1b
             imported = site_import_render.export_bundle(
                 db, site, assets_by_id,
-                capture=site_capture_service.render_config(db, site["org_id"], site, return_to=(f"https://{domain}/" if domain else None)))
+                capture=site_capture_service.render_config(db, site["org_id"], site, return_to=(f"https://{domain}/" if domain else None)),
+                domain=domain)
         except site_import_render.ImportRenderError as exc:
             raise ValidationFailed(str(exc))
         files.extend(imported)

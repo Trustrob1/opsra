@@ -165,8 +165,9 @@ class TestAnalyse:
             self.run({**GOOD, "fonts/a.woff2": b"PK\x03\x04"})
 
     def test_two_pages_rejected_and_page_must_be_at_top(self):
-        with pytest.raises(svc.ImportRejected, match="Only one page"):
-            self.run({**GOOD, "about.html": PAGE})
+        # MULTIPAGE-1: several pages are accepted now; only the home page must be index.html at the top
+        r = self.run({**GOOD, "about.html": PAGE})["report"]
+        assert r["ok"] and [p["path"] for p in r["pages"]] == ["about.html", "index.html"]
         with pytest.raises(svc.ImportRejected, match="top"):
             self.run({"site/index.html": PAGE, "site/css/style.css": CSS})
         with pytest.raises(svc.ImportRejected, match="no HTML"):

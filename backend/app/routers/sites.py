@@ -892,7 +892,7 @@ def premium_force_standard(site_id: str, org=Depends(get_current_org), db=Depend
     return ok(data={"tier": "standard"}, message="Site is back on the Standard design")
 
 
-# ── SITE-IMPORT 1a: upload a finished single-page site made outside Opsra (staff only) ──────────────
+# ── SITE-IMPORT 1a: upload a finished site made outside Opsra (staff only; one or several pages) ──────────────
 
 def _import_org(org, db, roles):
     """Role check + the site engine switch + the import switch (off except where staff turn it on)."""

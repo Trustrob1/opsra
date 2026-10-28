@@ -92,9 +92,27 @@ class TestUrls:
         out = run("<svg><use href='https://evil.example/s.svg#a'/><use href='sprite.svg#icon'/><use href='#local'/></svg>").html
         assert "evil.example" not in out and "sprite.svg#icon" in out and "#local" in out
 
-    def test_other_page_link_warns(self):
-        r = run("<a href='about.html'>x</a>", files={**FILES, "about.html": b""})
-        assert "other_page_link" in rules(r, "warning")
+    def test_link_to_another_page_is_fine_and_broken_link_warns(self):
+        # MULTIPAGE-1: pages are now supported, so a link to a page in the upload is not a warning
+        r = run("<a href='about.html'>x</a><a href='/services/'>s</a>",
+                files={**FILES, "about.html": b"", "services/index.html": b""})
+        assert "other_page_link" not in rules(r, "warning") and "broken_page_link" not in rules(r, "warning")
+        r2 = run("<a href='nowhere.html'>x</a>", files=FILES)
+        assert "broken_page_link" in rules(r2, "warning")
+
+    def test_resolve_page_link(self):
+        from app.services.site_import_sanitiser import resolve_page_link as rp
+        pages = ["index.html", "about/index.html", "contact.html"]
+        assert rp("/", "about/index.html", pages) == "index.html"
+        assert rp("../", "about/index.html", pages) == "index.html"
+        assert rp("/about/", "index.html", pages) == "about/index.html"
+        assert rp("about", "index.html", pages) == "about/index.html"
+        assert rp("contact", "about/index.html", pages) is None
+        assert rp("/contact", "about/index.html", pages) == "contact.html"
+        assert rp("contact.html#form", "index.html", pages) == "contact.html"
+        assert rp("/missing/", "index.html", pages) is None
+        assert rp("#top", "index.html", pages) is None
+        assert rp("../../x", "index.html", pages) is None
 
 
 class TestScriptsAndHandlers:

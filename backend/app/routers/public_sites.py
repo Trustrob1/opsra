@@ -76,7 +76,7 @@ def preview_site(slug: str, request: Request, db=Depends(get_supabase)):
 
     site_r = (
         db.table("sites")
-        .select("id, org_id, preset_id, status, content, recipe, preview_expires_at, deleted_at, tier, current_design_id")
+        .select("id, org_id, slug, preset_id, status, content, recipe, preview_expires_at, deleted_at, tier, current_design_id")
         .eq("slug", slug)
         .is_("deleted_at", "null")
         .maybe_single()
@@ -146,4 +146,44 @@ def preview_site(slug: str, request: Request, db=Depends(get_supabase)):
             headers = site_import_render.preview_headers(site_import_render._allowed_hosts(db, site["org_id"]), origin)
         except Exception as exc:  # S14: keep the strict script-free headers
             logger.warning("preview_site: imported headers failed slug=%s: %s", slug, exc)
+    return HTMLResponse(content=html, status_code=200, headers=headers)
+
+
+@router.get("/s/{slug}/p/{page_path:path}", include_in_schema=False)
+def preview_site_page(slug: str, page_path: str, request: Request, db=Depends(get_supabase)):
+    """MULTIPAGE-1: another page of an uploaded (imported) multi-page site, same rules and headers as /s/{slug}."""
+    _check_rate_limit(request)
+    site_r = (
+        db.table("sites")
+        .select("id, org_id, slug, status, content, preview_expires_at, deleted_at, tier, current_design_id")
+        .eq("slug", slug).is_("deleted_at", "null").maybe_single().execute()
+    )
+    site = site_r.data
+    if isinstance(site, list):
+        site = site[0] if site else None
+    if not site or (site.get("tier") or "standard") != "imported":
+        raise HTTPException(status_code=404, detail="Not found")
+    if site["status"] == "cancelled" or site["status"] not in _LIVE_STATUSES:
+        raise HTTPException(status_code=410, detail="This preview is no longer available")
+    expires_at = site.get("preview_expires_at")
+    if expires_at and site["status"] != "live":
+        from datetime import datetime, timezone
+        try:
+            if datetime.fromisoformat(expires_at.replace("Z", "+00:00")) < datetime.now(timezone.utc):
+                raise HTTPException(status_code=410, detail="This preview has expired")
+        except (ValueError, AttributeError):
+            pass
+    from app.services import site_import_render
+    try:
+        html = site_import_render.preview_page(db, site, page_path)
+        d = site_import_render._current_design(db, site)
+        base = site_import_render.public_base(db, d) if d else None
+        from urllib.parse import urlsplit
+        origin = "{u.scheme}://{u.netloc}".format(u=urlsplit(base)) if base else None
+        headers = site_import_render.preview_headers(site_import_render._allowed_hosts(db, site["org_id"]), origin)
+    except site_import_render.ImportRenderError:
+        raise HTTPException(status_code=404, detail="Not found")
+    except Exception as exc:
+        logger.error("preview_site_page: render failed slug=%s page=%s: %s", slug, page_path, exc)
+        raise HTTPException(status_code=500, detail="This preview couldn't be rendered right now")
     return HTMLResponse(content=html, status_code=200, headers=headers)

@@ -44,7 +44,7 @@ const STEPS = [
 const FAQ = [
   [
     "What files can I upload?",
-    "A single-page website as a .zip with index.html at the top, or one .html file. Images, CSS, JavaScript and fonts are fine. Multi-page sites are not supported yet.",
+    "A website as a .zip with index.html at the top and your other pages beside or below it (for example about/index.html), or one .html file. Images, CSS, JavaScript and fonts are fine. Give each page its own title and description.",
   ],
   [
     "Do I have to buy my address (domain) from Opsra?",

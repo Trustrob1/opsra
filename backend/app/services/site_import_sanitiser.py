@@ -1,7 +1,7 @@
 """
 app/services/site_import_sanitiser.py
 --------------------------------------
-SITE-IMPORT 1a: the import profile for an uploaded page (spec sections 4, 6, 7, 17).
+SITE-IMPORT 1a (multi-page since MULTIPAGE-1): the import profile for an uploaded page (spec sections 4, 6, 7, 17).
 
 This is NOT the Premium sanitiser and shares none of its allow-lists: Premium strips every script, an import
 keeps them (they run on the client's own domain only). Nothing here may call or change site_premium_sanitiser.
@@ -83,6 +83,37 @@ def normalise_local(url: str, base_dir: str = "") -> Optional[str]:
     return norm
 
 
+def resolve_page_link(url: str, from_path: str, page_paths) -> Optional[str]:
+    """SITE-IMPORT multi-page: the page (one of `page_paths`) that an <a href> points at, or None.
+    Understands '/', 'about.html', '/about/', 'about' and '../services/' (relative to the page the link is on).
+    Query and fragment are ignored. `page_paths` is any iterable of page paths such as 'index.html', 'about/index.html'."""
+    try:
+        parts = urlsplit((url or "").strip())
+    except ValueError:
+        return None
+    raw = unquote(parts.path)
+    if not raw:
+        return None
+    base_dir = posixpath.dirname(from_path or "")
+    joined = raw.lstrip("/") if raw.startswith("/") else (posixpath.join(base_dir, raw) if base_dir else raw)
+    norm = posixpath.normpath(joined) if joined else "."
+    if norm.startswith(".."):
+        return None
+    lookup = {p.lower(): p for p in page_paths}
+    if norm == ".":
+        candidates = ["index.html", "index.htm"]
+    elif raw.endswith("/"):
+        candidates = [norm + "/index.html", norm + "/index.htm"]
+    elif norm.lower().endswith((".html", ".htm")):
+        candidates = [norm]
+    else:
+        candidates = [norm + ".html", norm + "/index.html"]
+    for c in candidates:
+        if c.lower() in lookup:
+            return lookup[c.lower()]
+    return None
+
+
 def parse_srcset(value: str) -> list:
     out = []
     for item in (value or "").split(","):
@@ -132,7 +163,7 @@ class _Sanitiser(HTMLParser):
         cls = scan.classify_url(url, self.hosts)
         entry = {"url": url, "tag": tag, "attr": attr, "kind": kind, "class": cls, "file": self.filename, "path": None}
         if cls == "local":
-            path = normalise_local(url)
+            path = normalise_local(url, posixpath.dirname(self.filename))      # relative to the page the address is on
             entry["path"] = self.files.get(path.lower()) if path else None
             entry["missing"] = entry["path"] is None
         self.refs.append(entry)
@@ -450,12 +481,16 @@ class _Sanitiser(HTMLParser):
                     self.refs.append({"url": value, "tag": "a", "attr": "href", "kind": "link", "class": cls,
                                       "file": self.filename, "path": None})
                     if cls == "local":
-                        path = normalise_local(value)
-                        real = self.files.get(path.lower()) if path else None
+                        pages = [orig for low, orig in self.files.items() if low.endswith((".html", ".htm"))]
+                        page = resolve_page_link(value, self.filename, pages)
+                        path = normalise_local(value, posixpath.dirname(self.filename))
+                        real = page or (self.files.get(path.lower()) if path else None)
                         self.refs[-1]["path"] = real
-                        if real and real.lower().endswith((".html", ".htm")):
-                            self._note("warning", "other_page_link",
-                                       "A link points to another page. Only one page is supported, so this link will not work.", value)
+                        if page:
+                            self.refs[-1]["page"] = page
+                        elif not real and path and not value.strip().startswith(("?", "#")):
+                            self._note("warning", "broken_page_link",
+                                       "A link points to a page or file that is not in the upload, so it will lead nowhere.", value)
                 parts.append(f' {name}="{escape(value, quote=True)}"')
                 continue
             if name in flags or value == "":
@@ -468,7 +503,7 @@ class _Sanitiser(HTMLParser):
 
 
 def sanitise_page(html: str, files: dict, allowed_hosts: Iterable[str], filename: str = "index.html") -> SanitiseResult:
-    """Cleans the entry page. `files` maps relative path -> bytes (or anything) for every file in the upload."""
+    """Cleans one page of the upload (called once per HTML file). `files` maps relative path -> bytes (or anything) for every file in the upload."""
     p = _Sanitiser(files, allowed_hosts, filename)
     p.feed(html)
     p.close()

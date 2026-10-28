@@ -1,7 +1,8 @@
 """
 app/services/site_import_service.py
 ------------------------------------
-SITE-IMPORT 1a: staff upload of a finished single-page site (a .zip, or one .html file) made outside Opsra.
+SITE-IMPORT 1a: staff upload of a finished site (a .zip, or one .html file) made outside Opsra.
+MULTIPAGE-1: a site may have several HTML pages (index.html at the top, others such as about/index.html or about.html).
 Spec: website-business/SITE-IMPORT_Spec.md (sections 3, 4, 6, 17).
 
 What 1a does: reads the upload safely, scans and cleans it, stores the extracted files and the raw upload,
@@ -21,6 +22,7 @@ import io
 import logging
 import mimetypes
 import posixpath
+import re
 import secrets
 import stat
 import zipfile
@@ -44,7 +46,8 @@ LIMITS = {
     "max_ratio": 100,                     # compression ratio guard
     "max_html_bytes": 1 * MB,
     "max_css_each": 1 * MB,
-    "max_css_html_total": 2 * MB,
+    "max_css_html_total": 6 * MB,         # MULTIPAGE-1: was 2 MB for one page
+    "max_pages": 30,                      # MULTIPAGE-1: HTML pages in one site
     "max_js_total": int(1.5 * MB),
     "max_image_each": 5 * MB,
     "max_font_each": 5 * MB,
@@ -302,16 +305,19 @@ def analyse(files: dict, allowed_hosts, accepted: Optional[dict] = None, limits:
     accepted = accepted or {}
     errors: list = []
 
-    # one page only; it must be at the top level
+    # MULTIPAGE-1: one or more pages; index.html must be at the top level
     pages = sorted(p for p in files if kind_of(p) == "html")
     if not pages:
         raise ImportRejected("The upload has no HTML page. Include an index.html at the top level.")
-    if len(pages) > 1:
-        raise ImportRejected("Only one page is supported for now. Found: " + ", ".join(pages[:6])
-                             + ". Keep one index.html and remove the others.")
-    entry = pages[0]
-    if "/" in entry:
-        raise ImportRejected(f"The page must be at the top of the zip (found {entry}). Move it to the top level, keep its folders beside it.")
+    entry = next((p for p in pages if p.lower() in ("index.html", "index.htm")), None)
+    if not entry:
+        raise ImportRejected("The home page must be called index.html and sit at the top of the zip (found: "
+                             + ", ".join(pages[:6]) + "). Rename the home page to index.html and keep the other pages beside or below it.")
+    if len(pages) > lim["max_pages"]:
+        raise ImportRejected(f"The site has {len(pages)} pages. The limit is {lim['max_pages']}.")
+    clash = _page_url_clash(pages)
+    if clash:
+        raise ImportRejected(clash)
 
     errors.extend(_size_checks(files, lim))
     if errors:
@@ -335,11 +341,25 @@ def analyse(files: dict, allowed_hosts, accepted: Optional[dict] = None, limits:
         raise ImportRejected(errors)
 
     notes: list = []
-    html_text = _decode(entry, kept[entry], notes)
+    cleaned: dict = {}                      # page path -> cleaned document
+    page = None                             # the home page's result (its stats describe "the page" in the report)
+    refs: list = []
+    scripts_seen: list = []
+    sheets_seen: list = []
+    page_stats: dict = {}
+    for pth in pages:
+        res = sanitiser.sanitise_page(_decode(pth, kept[pth], notes), kept, hosts, filename=pth)
+        cleaned[pth] = res.html
+        findings.extend(res.findings)
+        refs.extend(res.refs)
+        scripts_seen.extend(res.scripts)
+        sheets_seen.extend(res.stylesheets)
+        page_stats[pth] = res.stats
+        if pth == entry:
+            page = res
     findings.extend(notes)
-    page = sanitiser.sanitise_page(html_text, kept, hosts, filename=entry)
-    findings.extend(page.findings)
-    refs = list(page.refs)
+    seo = seo_report(cleaned)
+    findings.extend(seo["findings"])
 
     # stylesheets and scripts that are in the upload: scan them all, whether or not the page links them
     css_refs_seen = set()
@@ -370,7 +390,7 @@ def analyse(files: dict, allowed_hosts, accepted: Optional[dict] = None, limits:
     allowed_ext = sorted({_host_of(r["url"]) for r in refs if r["class"] == "external_allowed"} - {""})
     missing = sorted({r["url"] for r in refs if r.get("missing")})
     referenced = {r["path"] for r in refs if r.get("path")}
-    unreferenced = sorted(p for p in kept if p != entry and p not in referenced
+    unreferenced = sorted(p for p in kept if p not in pages and p not in referenced
                           and kind_of(p) in ("css", "js", "image", "font"))
     counts = {"files": len(kept), "bytes": sum(len(b) for b in kept.values())}
     for k in ("html", "css", "js", "image", "font", "data"):
@@ -381,10 +401,97 @@ def analyse(files: dict, allowed_hosts, accepted: Optional[dict] = None, limits:
         "errors": errs, "warnings": warns, "accepted": accepted_log,
         "external": {"allowed_hosts_used": allowed_ext, "unknown": unknown[:50]},
         "missing_files": missing[:50], "unreferenced": unreferenced[:100], "skipped": sorted(skipped)[:100],
-        "scripts": sorted(set(page.scripts)), "stylesheets": sorted(set(page.stylesheets)),
+        "scripts": sorted(set(scripts_seen)), "stylesheets": sorted(set(sheets_seen)),
         "page": {k: v for k, v in page.stats.items()},
+        "pages": [{"path": pth, "bytes": len(cleaned[pth].encode("utf-8")), "url": page_url_path(pth),
+                   "inline_scripts": page_stats[pth].get("inline_scripts", 0)} for pth in pages],
+        "seo": seo["pages"],
     }
-    return {"report": report, "html": page.html, "entry": entry, "files": kept}
+    others = {pth: cleaned[pth] for pth in pages if pth != entry}
+    return {"report": report, "html": cleaned[entry], "entry": entry, "files": kept, "pages": others}
+
+
+def page_url_path(page_path: str) -> str:
+    """The address a page is served at: index.html -> '/', about/index.html -> '/about/', contact.html -> '/contact.html'."""
+    if page_path.lower() in ("index.html", "index.htm"):
+        return "/"
+    if posixpath.basename(page_path).lower() in ("index.html", "index.htm"):
+        return "/" + posixpath.dirname(page_path) + "/"
+    return "/" + page_path
+
+
+def _page_url_clash(pages: list) -> Optional[str]:
+    seen: dict = {}
+    for p in pages:
+        u = page_url_path(p).lower()
+        if u in seen:
+            return f"Two pages would have the same address ({u}): {seen[u]} and {p}."
+        seen[u] = p
+    return None
+
+
+_TITLE_RX = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
+_META_RX = re.compile(r"<meta\b[^>]*>", re.I)
+_ATTR_RX = re.compile(r"""([a-zA-Z:_-]+)\s*=\s*("([^"]*)"|'([^']*)')""")
+_H1_RX = re.compile(r"<h1\b", re.I)
+
+
+def _meta_map(html: str) -> dict:
+    out: dict = {}
+    for tag in _META_RX.findall(html):
+        attrs = {m.group(1).lower(): (m.group(3) if m.group(3) is not None else m.group(4)) for m in _ATTR_RX.finditer(tag)}
+        key = (attrs.get("property") or attrs.get("name") or "").lower()
+        if key and "content" in attrs:
+            out.setdefault(key, attrs["content"])
+    return out
+
+
+def seo_report(cleaned: dict) -> dict:
+    """MULTIPAGE-1: per page title / description / share image / H1 and plain-words warnings (never errors).
+    Returns {"pages": [...], "findings": [...]}."""
+    pages_out: list = []
+    findings: list = []
+    titles: dict = {}
+
+    def warn(path, rule, message, snippet=""):
+        findings.append({"rule": rule, "severity": "warning", "file": path, "line": 0, "message": message,
+                         "snippet": snippet[:160], "overridable": False})
+
+    for path, html in sorted(cleaned.items()):
+        m = _TITLE_RX.search(html)
+        title = re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+        meta = _meta_map(html)
+        desc = (meta.get("description") or "").strip()
+        og_image = (meta.get("og:image") or "").strip()
+        h1 = len(_H1_RX.findall(html))
+        issues: list = []
+        if not title:
+            issues.append("no_title"); warn(path, "seo_no_title", "The page has no <title>. Search results and shared links will look empty.")
+        elif len(title) > 70:
+            issues.append("long_title"); warn(path, "seo_long_title", f"The title is {len(title)} characters; search results cut it near 60.", title)
+        if not desc:
+            issues.append("no_description"); warn(path, "seo_no_description", "The page has no meta description.")
+        elif len(desc) > 170:
+            issues.append("long_description"); warn(path, "seo_long_description", f"The description is {len(desc)} characters; search results cut it near 155.", desc)
+        if not og_image:
+            issues.append("no_share_image"); warn(path, "seo_no_share_image", "The page has no og:image, so shared links show no picture.")
+        elif og_image.lower().startswith(("http://", "https://")):
+            issues.append("absolute_share_image")
+            warn(path, "seo_absolute_share_image",
+                 "og:image is a full web address, so Opsra cannot move it to the live domain. Use a relative path such as images/og.jpg and Opsra makes it absolute.", og_image)
+        if h1 == 0:
+            issues.append("no_h1"); warn(path, "seo_no_h1", "The page has no <h1> heading.")
+        elif h1 > 1:
+            issues.append("many_h1"); warn(path, "seo_many_h1", f"The page has {h1} <h1> headings; use one per page.")
+        if title:
+            titles.setdefault(title.lower(), []).append(path)
+        pages_out.append({"path": path, "url": page_url_path(path), "title": title, "description_length": len(desc),
+                          "og_image": og_image, "h1": h1, "issues": issues})
+    for t, ps in titles.items():
+        if len(ps) > 1:
+            for pth in ps:
+                warn(pth, "seo_duplicate_title", "Another page has the same title. Give each page its own.", t)
+    return {"pages": pages_out, "findings": findings}
 
 
 def _host_of(url: str) -> str:
@@ -448,16 +555,20 @@ def import_site(db: Any, org_id: str, site: dict, actor: str, data: bytes, filen
         raw_done = True
         for path, body in sorted(result["files"].items()):
             if path == result["entry"]:
-                body_out = result["html"].encode("utf-8")      # the page is stored in the design row, not as a file
+                body_out = result["html"].encode("utf-8")      # the home page is stored in the design row, not as a file
                 manifest.append({"path": path, "bytes": len(body_out), "sha256": hashlib.sha256(body_out).hexdigest(),
-                                 "mime": "text/html", "stored": False})
+                                 "mime": "text/html", "stored": False, "page": True})
                 continue
+            is_page = path in result.get("pages", {})
+            if is_page:
+                body = result["pages"][path].encode("utf-8")   # MULTIPAGE-1: other pages are stored already cleaned
             key = f"{prefix}/{path}"
             db.storage.from_(BUCKET_FILES).upload(path=key, file=body,
-                                                  file_options={"content-type": _content_type(path), "upsert": "true"})
+                                                  file_options={"content-type": "text/html" if is_page else _content_type(path), "upsert": "true"})
             uploaded_files.append(key)
             manifest.append({"path": path, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(),
-                             "mime": _content_type(path), "stored": True, "storage_path": key})
+                             "mime": "text/html" if is_page else _content_type(path), "stored": True, "storage_path": key,
+                             **({"page": True} if is_page else {})})
         row = {
             "org_id": org_id, "site_id": site["id"], "version": version, "kind": "import",
             "parent_id": None,

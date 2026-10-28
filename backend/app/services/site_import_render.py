@@ -18,13 +18,18 @@ that allows scripts from the page itself and the allow-listed hosts, and the pre
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
+import posixpath
 import re
+from html import escape
 from typing import Any, Optional
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 from app.services import site_import_scan as scan
 from app.services import site_import_sanitiser as sanitiser
+from app.services.site_import_service import page_url_path
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +122,12 @@ _URL_RX = re.compile(r"""url\(\s*(["']?)(.*?)\1\s*\)""", re.I | re.S)
 _SCHEME_RX = re.compile(r"^[a-z][a-z0-9+.-]*:", re.I)
 
 
-def _map_one(url: str, lookup: dict, base: str) -> str:
+def _map_one(url: str, lookup: dict, base: str, base_dir: str = "") -> str:
     u = url.strip()
     if not u or u[0] in "#?" or u.startswith("//") or _SCHEME_RX.match(u):
         return url
     parts = urlsplit(u)
-    norm = sanitiser.normalise_local(parts.path if parts.path.startswith("/") else parts.path)
+    norm = sanitiser.normalise_local(parts.path, base_dir)
     real = lookup.get((norm or "").lower())
     if not real:
         return url
@@ -134,7 +139,7 @@ def _map_one(url: str, lookup: dict, base: str) -> str:
     return out
 
 
-def rewrite_for_preview(html: str, stored_paths, base: str) -> str:
+def rewrite_for_preview(html: str, stored_paths, base: str, base_dir: str = "") -> str:
     lookup = {p.lower(): p for p in stored_paths}
     if not lookup:
         return html
@@ -146,15 +151,15 @@ def rewrite_for_preview(html: str, stored_paths, base: str) -> str:
             for item in val.split(","):
                 bits = item.strip().split(None, 1)
                 if bits:
-                    bits[0] = _map_one(bits[0], lookup, base)
+                    bits[0] = _map_one(bits[0], lookup, base, base_dir)
                     items.append(" ".join(bits))
             val = ", ".join(items)
         else:
-            val = _map_one(val, lookup, base)
+            val = _map_one(val, lookup, base, base_dir)
         return f"{name}{q}{val}{q}"
 
     def css(m):
-        return f"url({m.group(1)}{_map_one(m.group(2), lookup, base)}{m.group(1)})"
+        return f"url({m.group(1)}{_map_one(m.group(2), lookup, base, base_dir)}{m.group(1)})"
 
     return _URL_RX.sub(css, _ATTR_RX.sub(attr, html))
 
@@ -164,7 +169,130 @@ def rewrite_for_preview(html: str, stored_paths, base: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _stored_paths(design: dict) -> list:
-    return [f["path"] for f in ((design.get("import_meta") or {}).get("files") or []) if f.get("stored")]
+    """Stored files that are NOT pages (pages are reached through page links, never as files)."""
+    return [f["path"] for f in ((design.get("import_meta") or {}).get("files") or []) if f.get("stored") and not f.get("page")]
+
+
+def page_paths(design: dict) -> list:
+    """MULTIPAGE-1: every HTML page of an uploaded site, home page first. A design made before multi-page support has
+    one page, index.html."""
+    pages = [f["path"] for f in ((design.get("import_meta") or {}).get("files") or []) if f.get("page")]
+    if not pages:
+        return ["index.html"]
+    pages.sort(key=lambda p: (p.lower() not in ("index.html", "index.htm"), p.lower()))
+    return pages
+
+
+def entry_path(design: dict) -> str:
+    return page_paths(design)[0]
+
+
+def _load_page(db: Any, design: dict, path: str) -> str:
+    want = (path or "").lower()
+    for f in ((design.get("import_meta") or {}).get("files") or []):
+        if f.get("page") and f.get("stored") and f["path"].lower() == want:
+            try:
+                body = db.storage.from_(BUCKET_FILES).download(f["storage_path"])
+            except Exception as exc:  # S14
+                logger.warning("site_import_render: page download failed %s: %s", f.get("storage_path"), exc)
+                raise ImportRenderError(f"A page of the imported site could not be read ({path}).")
+            return body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else str(body)
+    raise ImportRenderError("That page is not part of this site.")
+
+
+def public_api_base() -> str:
+    return (os.getenv("PUBLIC_API_URL") or "https://opsra.onrender.com").strip().rstrip("/")
+
+
+# ---------------------------------------------------------------------------
+# MULTIPAGE-1: share tags, canonical, links between pages
+# ---------------------------------------------------------------------------
+
+_META_TAG_RX = re.compile(r"<meta\b[^>]*>", re.I)
+_CONTENT_ATTR_RX = re.compile(r"""(\scontent\s*=\s*)(["'])(.*?)\2""", re.I | re.S)
+_KEY_ATTR_RX = re.compile(r"""\s(?:property|name)\s*=\s*(["'])(.*?)\1""", re.I | re.S)
+_SHARE_IMAGE_KEYS = {"og:image", "og:image:url", "og:image:secure_url", "twitter:image", "twitter:image:src"}
+_LD_RX = re.compile(r"""(<script\b[^>]*type\s*=\s*["']application/ld\+json["'][^>]*>)(.*?)(</script>)""", re.I | re.S)
+_LD_URL_KEYS = {"image", "logo", "thumbnailUrl", "contentUrl", "url"}
+_A_HREF_RX = re.compile(r"""(<a\b[^>]*?\shref\s*=\s*)(["'])(.*?)\2""", re.I | re.S)
+
+
+def _is_relative(u: str) -> bool:
+    u = (u or "").strip()
+    return bool(u) and not u.startswith("//") and not _SCHEME_RX.match(u) and not u.startswith("#")
+
+
+def absolutise_meta(html: str, to_abs) -> str:
+    """Relative og:image / twitter:image values and relative image/logo/url values inside JSON-LD become absolute
+    (social sites and search engines need full addresses). `to_abs(value) -> str`. Never raises."""
+    try:
+        def meta(m):
+            tag = m.group(0)
+            k = _KEY_ATTR_RX.search(tag)
+            if not k or k.group(2).strip().lower() not in _SHARE_IMAGE_KEYS:
+                return tag
+            def one(c):
+                return c.group(1) + c.group(2) + escape(to_abs(c.group(3)), quote=True) + c.group(2) if _is_relative(c.group(3)) else c.group(0)
+            return _CONTENT_ATTR_RX.sub(one, tag, count=1)
+
+        def walk(obj, key=None):
+            if isinstance(obj, dict):
+                return {k: walk(v, k) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [walk(v, key) for v in obj]
+            if isinstance(obj, str) and key in _LD_URL_KEYS and _is_relative(obj):
+                return to_abs(obj)
+            return obj
+
+        def ld(m):
+            try:
+                data = json.loads(m.group(2))
+            except ValueError:
+                return m.group(0)
+            out = json.dumps(walk(data), ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+            return m.group(1) + out + m.group(3)
+
+        return _LD_RX.sub(ld, _META_TAG_RX.sub(meta, html))
+    except Exception as exc:  # S14
+        logger.warning("site_import_render: absolutise_meta failed: %s", exc)
+        return html
+
+
+def seo_head(html: str, canonical_url: Optional[str]) -> str:
+    """The tags Opsra owns on a live page: <link rel=canonical> and (when the author gave none) og:url."""
+    if not canonical_url:
+        return ""
+    href = escape(canonical_url, quote=True)
+    out = f'<link rel="canonical" href="{href}">'
+    has_og_url = any((_KEY_ATTR_RX.search(t) or [None, None, ""])[2].strip().lower() == "og:url" for t in _META_TAG_RX.findall(html) if _KEY_ATTR_RX.search(t))
+    if not has_og_url:
+        out += f'<meta property="og:url" content="{href}">'
+    return out
+
+
+def rewrite_page_links(html: str, from_path: str, pages, slug: str, api_base: str) -> str:
+    """Preview only: links to other pages of the site point at /s/{slug}/p/{page} (the home page at /s/{slug})."""
+    pages = list(pages)
+    home = pages[0] if pages else "index.html"
+
+    def one(m):
+        val = m.group(3)
+        if not _is_relative(val) or val.strip().startswith("?"):
+            return m.group(0)
+        page = sanitiser.resolve_page_link(val, from_path, pages)
+        if not page:
+            return m.group(0)
+        frag = "#" + urlsplit(val.strip()).fragment if urlsplit(val.strip()).fragment else ""
+        target = f"{api_base}/s/{slug}" if page == home else f"{api_base}/s/{slug}/p/{quote(page, safe='/')}"
+        return f"{m.group(1)}{m.group(2)}{target}{frag}{m.group(2)}"
+
+    return _A_HREF_RX.sub(one, html)
+
+
+def sitemap_xml(origin: str, pages) -> str:
+    urls = "".join(f"<url><loc>{escape(origin + page_url_path(p))}</loc></url>" for p in pages)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n')
 
 
 def _accepted_rules(design: dict) -> list:
@@ -236,19 +364,41 @@ def identity_of(site: dict) -> dict:
 
 def render_imported_page(db: Any, design: dict, allowed_hosts, export: bool = False,
                          content: Optional[dict] = None, assets_by_id: Optional[dict] = None,
-                         capture: Optional[dict] = None, identity: Optional[dict] = None) -> str:
-    html = _level2_page(design, content, assets_by_id, export) or design.get("skeleton_html") or ""
+                         capture: Optional[dict] = None, identity: Optional[dict] = None,
+                         page_path: Optional[str] = None, domain: Optional[str] = None,
+                         slug: Optional[str] = None) -> str:
+    """One page of an imported site. page_path None = the home page. domain (export) gives the canonical address and
+    makes relative share-image addresses absolute; slug (preview) points links between pages at /s/{slug}/p/..."""
+    pages = page_paths(design)
+    home = pages[0]
+    path = home
+    if page_path and page_path.lower() != home.lower():
+        path = next((p for p in pages if p.lower() == page_path.lower()), None)
+        if not path:
+            raise ImportRenderError("That page is not part of this site.")
+        html = _load_page(db, design, path)
+    else:
+        html = _level2_page(design, content, assets_by_id, export) or design.get("skeleton_html") or ""
     if not html.strip():
         raise ImportRenderError("The imported design has no page.")
     accepted = _accepted_rules(design)
     html, form_targets = _apply_capture(html, capture, identity)
     if export:
-        return _with_meta(html, build_csp(allowed_hosts, accepted, extra_form_targets=form_targets))
+        origin = f"https://{domain}" if domain else None
+        page_url = (origin + page_url_path(path)) if origin else None
+        if origin:
+            html = absolutise_meta(html, lambda u: urljoin(page_url, u.strip()))
+        return _with_meta(html, build_csp(allowed_hosts, accepted, extra_form_targets=form_targets), seo_head(html, page_url))
     base = public_base(db, design)
     if not base:
         raise ImportRenderError("The imported files could not be located.")
     origin = "{u.scheme}://{u.netloc}".format(u=urlsplit(base))
-    return _with_meta(rewrite_for_preview(html, _stored_paths(design), base),
+    folder = posixpath.dirname(path)
+    lookup = {p.lower(): p for p in _stored_paths(design)}
+    if slug and len(pages) > 1:
+        html = rewrite_page_links(html, path, pages, slug, public_api_base())
+    html = absolutise_meta(html, lambda u: _map_one(u, lookup, base, folder))
+    return _with_meta(rewrite_for_preview(html, _stored_paths(design), base, folder),
                       build_csp(allowed_hosts, accepted, origin, extra_form_targets=form_targets))
 
 
@@ -273,7 +423,8 @@ def render_if_imported(db: Any, site: dict, assets_by_id: dict, export: bool = F
             return None
         return render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=export,
                                     content=site.get("content"), assets_by_id=assets_by_id,
-                                    capture=capture, identity=identity_of(site))
+                                    capture=capture, identity=identity_of(site),
+                                    domain=canonical_domain if export else None, slug=site.get("slug"))
     except Exception as exc:  # S14
         logger.warning("site_import_render: render failed site=%s: %s", site.get("id"), exc)
         return None
@@ -284,25 +435,43 @@ def preview_design(db: Any, org_id: str, site: dict, design_id: str, assets_by_i
     if not design:
         raise ImportRenderError("Imported design not found.")
     extracted = (design.get("import_meta") or {}).get("extracted_content")
+    is_current = site.get("current_design_id") == design_id and (site.get("tier") or "") == "imported"
     return render_imported_page(db, design, _allowed_hosts(db, org_id), export=False,
-                                content=extracted, assets_by_id=assets_by_id)
+                                content=extracted, assets_by_id=assets_by_id,
+                                slug=site.get("slug") if is_current else None)
+
+
+def preview_page(db: Any, site: dict, page_path: str) -> str:
+    """MULTIPAGE-1: one non-home page of the site's current imported design, for /s/{slug}/p/{page}."""
+    design = _current_design(db, site)
+    if not design:
+        raise ImportRenderError("This site has no imported design.")
+    return render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=False,
+                                content=site.get("content"), page_path=page_path, slug=site.get("slug"),
+                                identity=identity_of(site))
 
 
 # ---------------------------------------------------------------------------
 # Export / publish
 # ---------------------------------------------------------------------------
 
-def export_bundle(db: Any, site: dict, assets_by_id: Optional[dict] = None, capture: Optional[dict] = None) -> list:
-    """[(path, bytes_or_str)] for an imported site: the page as index.html and every stored file at its own path.
+def export_bundle(db: Any, site: dict, assets_by_id: Optional[dict] = None, capture: Optional[dict] = None,
+                  domain: Optional[str] = None) -> list:
+    """[(path, bytes_or_str)] for an imported site: every page at its own path (home page as index.html) and every stored
+    file at its own path; with a domain, each page gets a canonical address and a sitemap.xml lists all pages.
     Raises ImportRenderError when anything is missing."""
     design = _current_design(db, site)
     if not design:
         raise ImportRenderError("This site's imported design is missing. Open the Import panel and choose a design.")
-    files = [("index.html", render_imported_page(db, design, _allowed_hosts(db, site["org_id"]), export=True,
-                                                 content=site.get("content"), assets_by_id=assets_by_id,
-                                                 capture=capture, identity=identity_of(site)))]
+    hosts = _allowed_hosts(db, site["org_id"])
+    pages = page_paths(design)
+    files = []
+    for pth in pages:
+        files.append((pth, render_imported_page(db, design, hosts, export=True, content=site.get("content"),
+                                                assets_by_id=assets_by_id, capture=capture, identity=identity_of(site),
+                                                page_path=pth, domain=domain)))
     for f in ((design.get("import_meta") or {}).get("files") or []):
-        if not f.get("stored"):
+        if not f.get("stored") or f.get("page"):
             continue
         try:
             body = db.storage.from_(BUCKET_FILES).download(f["storage_path"])
@@ -312,6 +481,8 @@ def export_bundle(db: Any, site: dict, assets_by_id: Optional[dict] = None, capt
         if f["path"].lower() == "index.html":
             continue
         files.append((f["path"], body))
+    if domain:
+        files.append(("sitemap.xml", sitemap_xml(f"https://{domain}", pages)))
     return files
 
 
@@ -337,7 +508,7 @@ def designs(db: Any, org_id: str, site: dict) -> list:
         out.append({"id": r["id"], "version": r.get("version"), "status": r.get("status"), "staged": bool(r.get("staged")),
                     "created_at": r.get("created_at"), "created_by": r.get("created_by"), "filename": meta.get("filename"),
                     "active": r["id"] == site.get("current_design_id") and site.get("tier") == "imported",
-                    "counts": rep.get("counts"), "warnings": len(rep.get("warnings") or []),
+                    "counts": rep.get("counts"), "warnings": len(rep.get("warnings") or []), "pages": len(rep.get("pages") or []) or 1,
                     "scripts": len(rep.get("scripts") or []) + (rep.get("page") or {}).get("inline_scripts", 0),
                     "external_unknown": len((rep.get("external") or {}).get("unknown") or []),
                     "missing_files": len(rep.get("missing_files") or []),
