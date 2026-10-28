@@ -233,6 +233,9 @@ def get_or_create_renewal_link(db: Any, org_id: str, domain_row: dict) -> dict:
         raise RenewalBlocked("This domain has been transferred away, so there is nothing to renew.")
     site, builder = _load_site_and_builder(db, org_id, domain_row)
     lead_id = builder.get("lead_id")
+    if not lead_id:      # builders added by hand never got one: link or create it now
+        from app.services import site_access_service
+        lead_id = site_access_service.ensure_lead(db, org_id, builder)
     if not lead_id:
         raise RenewalBlocked("This builder has no linked CRM lead yet — a payment link can't be created.")
 

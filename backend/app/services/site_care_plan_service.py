@@ -298,6 +298,9 @@ def create_checkout(db: Any, org_id: str, builder: dict, site_id: str, what: str
     if site.get("status") not in COUNTING_SITE_STATUSES:
         raise CarePlanBlocked("Care plans and extra edits are available once the site is live.")
     lead_id = builder.get("lead_id")
+    if not lead_id:      # builders added by hand never got one: link or create it now
+        from app.services import site_access_service
+        lead_id = site_access_service.ensure_lead(db, org_id, builder)
     if not lead_id:
         raise CarePlanBlocked("This builder has no linked CRM lead yet — a payment link can't be created.")
     return _checkout_for(db, org_id, site, builder, what, paystack_storefront_service)
@@ -401,6 +404,9 @@ def send_care_link(db: Any, org_id: str, site_id: str, what: str, now: Optional[
         raise CarePlanBlocked("Care plans and extra edits are available once the site is live.")
     builder = _one((db.table("site_builders").select("*").eq("id", site.get("builder_id")).eq("org_id", org_id)
                     .limit(1).execute()).data)
+    if builder and not builder.get("lead_id"):
+        from app.services import site_access_service
+        site_access_service.ensure_lead(db, org_id, builder)
     if not builder or not builder.get("lead_id"):
         raise CarePlanBlocked("This site's builder has no linked CRM lead yet — a payment link can't be created.")
     link = _checkout_for(db, org_id, site, builder, what, paystack_storefront_service)

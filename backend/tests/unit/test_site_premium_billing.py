@@ -151,7 +151,9 @@ class TestCheckout:
         with pytest.raises(ops.NotFound):
             bill.create_checkout(db, ORG, {**BUILDER, "id": "b-2"}, "site-1", "design")
 
-    def test_no_crm_lead_means_no_link(self):
+    def test_no_crm_lead_means_no_link(self, monkeypatch):
+        from app.services import site_access_service
+        monkeypatch.setattr(site_access_service, "ensure_lead", lambda *a, **k: None)      # no lead can be found or made
         db = make_db()
         with pytest.raises(bill.PremiumBillingBlocked):
             bill.create_checkout(db, ORG, {**BUILDER, "lead_id": None}, "site-1", "design")

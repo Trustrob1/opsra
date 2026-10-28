@@ -236,6 +236,9 @@ def create_checkout(db: Any, org_id: str, builder: dict, site_id: str, what: str
     if what not in ("design", "redesign"):
         raise PremiumBillingBlocked("Unknown purchase.")
     site = _load_site(db, org_id, site_id, builder.get("id"))
+    if not builder.get("lead_id"):      # builders added by hand never got one: link or create it now
+        from app.services import site_access_service
+        site_access_service.ensure_lead(db, org_id, builder)
     if not builder.get("lead_id"):
         raise PremiumBillingBlocked("This builder has no linked CRM lead yet, so a payment link can't be created.")
     cfg = get_config(_settings(db, org_id))

@@ -200,7 +200,9 @@ def test_checkout_creates_plan_and_pack_orders_and_reuses_open_links(env):
     assert db.rows("site_orders")[1]["quote"]["edits"] == 5
 
 
-def test_checkout_rules(env):
+def test_checkout_rules(env, monkeypatch):
+    from app.services import site_access_service
+    monkeypatch.setattr(site_access_service, "ensure_lead", lambda *a, **k: None)      # no lead can be found or made
     db = _db([_site("preview_ready")])
     builder = db.rows("site_builders")[0]
     with pytest.raises(cp.CarePlanBlocked):

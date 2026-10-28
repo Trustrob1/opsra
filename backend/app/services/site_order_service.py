@@ -146,6 +146,9 @@ def create_checkout(db: Any, org_id: str, builder: dict, payload, fixed_amount: 
         raise CheckoutBlocked("This design is one of several options for your client. Checkout opens after the client picks it.")
 
     lead_id = builder.get("lead_id")
+    if not lead_id:      # builders added by hand never got one: link or create it now
+        from app.services import site_access_service
+        lead_id = site_access_service.ensure_lead(db, org_id, builder)
     if not lead_id:
         raise CheckoutBlocked("This builder has no linked CRM lead yet — checkout can't be started.")
 

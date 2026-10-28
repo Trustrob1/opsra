@@ -142,11 +142,42 @@ def check_can_create(db: Any, org_id: str, builder: dict, now: Optional[datetime
 # CRM lead (needed for a Paystack link)
 # ---------------------------------------------------------------------------
 
+def _existing_lead_id(db: Any, org_id: str, builder: dict) -> Optional[str]:
+    """The oldest lead of this business with the builder's email or number, or None. Never raises."""
+    try:
+        email = (builder.get("email") or "").strip()
+        phone = str(builder.get("phone_number") or "").strip()
+        candidates = []
+        if email:
+            candidates.append(("email", email.lower()))
+        for col in ("phone", "whatsapp"):
+            if phone:
+                candidates.append((col, phone))
+                candidates.append((col, phone[1:] if phone.startswith("+") else "+" + phone))
+        for col, val in candidates:
+            q = db.table("leads").select("id").eq("org_id", org_id)
+            q = q.ilike(col, val) if col == "email" else q.eq(col, val)
+            rows = q.order("created_at").limit(1).execute().data or []
+            if rows:
+                return rows[0]["id"]
+    except Exception as exc:  # S14
+        logger.warning("site_access: existing lead lookup failed builder=%s: %s", builder.get("id"), exc)
+    return None
+
+
 def ensure_lead(db: Any, org_id: str, builder: dict) -> Optional[str]:
     """Every builder has one CRM lead (spec 5.2). Self-registered builders may not: make it now. Best effort."""
     if builder.get("lead_id"):
         return builder["lead_id"]
     try:
+        # A lead with the same email or number may already exist (a builder added by hand, or a person who first wrote on
+        # WhatsApp). Creating another one is refused as a duplicate, so link the builder to the existing lead instead.
+        existing = _existing_lead_id(db, org_id, builder)
+        if existing:
+            db.table("site_builders").update({"lead_id": existing, "updated_at": _iso()}) \
+                .eq("id", builder["id"]).eq("org_id", org_id).execute()
+            builder["lead_id"] = existing
+            return existing
         from app.models.leads import LeadCreate, LeadSource
         from app.services import lead_service
         phone = str(builder.get("phone_number") or "")

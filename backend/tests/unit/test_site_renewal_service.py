@@ -245,7 +245,9 @@ def test_one_bad_domain_does_not_stop_the_rest(env):
     assert db.rows("site_domains")[1]["status"] == "expiring"
 
 
-def test_builder_without_lead_is_flagged_not_crashed(env):
+def test_builder_without_lead_is_flagged_not_crashed(env, monkeypatch):
+    from app.services import site_access_service
+    monkeypatch.setattr(site_access_service, "ensure_lead", lambda *a, **k: None)      # no lead can be found or made
     db = _db([_domain(days=30)])
     db.tables["site_builders"][0]["lead_id"] = None
     r = _run(db)
