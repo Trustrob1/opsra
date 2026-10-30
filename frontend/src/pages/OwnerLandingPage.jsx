@@ -1,61 +1,41 @@
 /**
  * frontend/src/pages/OwnerLandingPage.jsx
- * OWNER-LANDING-1 (+ OWNER-LANDING-2 visual redesign) — public landing page + pricing for BUSINESS OWNERS.
+ * OWNER-LANDING-3 — public landing page + pricing for BUSINESS OWNERS (service businesses first).
  * Registered in App.jsx at `/business`. Standalone page (no AppShell, no staff auth).
  * Styles: OwnerLandingPage.css, scoped under `.ow`, every class prefixed `ow-`.
- *
- * ONE page on purpose: the only action is "Message us on WhatsApp", so the pricing
- * sits inside the page (#plans). Share https://<host>/business#plans.
- *
- * ---------------------------------------------------------------------------
- * HERO PHOTO: save the image as  frontend/public/images/owner-hero.jpg  (about 1600px wide,
- * under 300 KB). Until the file exists the hero shows a branded panel instead (no broken image).
- * The photo is an AI-generated illustration, not a real client; the page says so beside it.
+ * Replaces OWNER-LANDING-2 (git history has it). Design: Option A "Bright".
  *
  * THINGS TRUST EDITS (all at the top of this file):
- *   WHATSAPP_NUMBER   international format, digits only.
- *   WEBSITES / PLANS / ADDONS   PLACEHOLDER PRICES. Provisional, to be adjusted.
- *   SHOW_SAMPLE_QUOTE  false = no testimonial shown. A made-up SAMPLE quote exists
- *                      only to preview the layout. NEVER ship it as a real quote:
- *                      replace QUOTE with a real customer's words and set REAL_QUOTE true.
- * ---------------------------------------------------------------------------
+ *   SALES_WA / DEMO_WA   international format, digits only. SALES_WA takes "Book a demo / Choose plan" messages,
+ *                        DEMO_WA is the live demo number people message to try the bot.
+ *   PLANS / ADDONS       monthly prices from, in naira. Setup fees are agreed separately and are NOT shown as numbers.
+ *
+ * IMAGES (frontend/public/images): usecase-coaches.jpg, usecase-counsellors.jpg, usecase-clinics.jpg,
+ *   usecase-agencies.jpg, lead-center.jpg. The Lead Center screenshot shows real first names and amounts
+ *   from a client org (used with that client's permission). Blur or replace it if that permission changes.
+ *
+ * No testimonials yet: the "founding clients" block replaces them. Add real quotes only when you have them.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import "./OwnerLandingPage.css";
 
-const WHATSAPP_NUMBER = "2348056055896";
+const SALES_WA = "2348056055896";
+const DEMO_WA = "14753274055";
+const DEMO_DISPLAY = "+1 475 327 4055";
 
-const waHref = (text) =>
-  `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+const waHref = (num, text) => `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
+const naira = (n) => `₦${n.toLocaleString("en-NG")}`;
 
-const TITLE = "Opsra | Never lose a customer message again";
+const TITLE = "Opsra | Every enquiry answered. Every lead qualified.";
 const DESC =
-  "We set up your website and your WhatsApp so every enquiry is answered, followed up and counted. Plans for shops, salons, schools and other Nigerian businesses.";
-
-/* ---- PLACEHOLDER PRICES (naira). Provisional. Change here only. ---- */
-const WEBSITES = [
-  {
-    name: "Starter website",
-    price: 80000,
-    note: "Domain and one year of hosting included",
-    body: "One page with your products or services, a WhatsApp button and a live address of your own.",
-  },
-  {
-    name: "Standard website",
-    price: 150000,
-    note: "Domain and one year of hosting included",
-    body: "Everything in Starter, plus up to 24 products in categories, customer reviews and Google set-up.",
-  },
-];
-const RENEWAL = { price: 50000, label: "Domain and hosting renewal, from year two, per year" };
+  "Opsra replies on WhatsApp the moment someone reaches out, asks the right questions, scores every lead and keeps your bookings and follow-ups moving. For coaches, counsellors, clinics, agencies and other service businesses.";
 
 const PLANS = [
   {
-    key: "capture",
-    name: "Capture",
+    key: "starter",
+    name: "Starter",
     line: "Never miss an enquiry",
-    setup: 0,
-    monthly: 15000,
+    monthly: 50000,
     lead: "Included",
     items: [
       "Contact form on your website with an instant reply",
@@ -65,89 +45,81 @@ const PLANS = [
       "A WhatsApp menu with set answers to common questions",
       "A simple page where you see all your leads",
     ],
-    msg: "Hi, I'm interested in the Capture plan.",
   },
   {
-    key: "convert",
-    name: "Convert",
+    key: "growth",
+    name: "Growth",
     line: "Turn more enquiries into sales",
-    setup: 50000,
-    monthly: 40000,
+    monthly: 100000,
     suggested: true,
-    lead: "Everything in Capture, plus",
+    lead: "Everything in Starter, plus",
     items: [
       "Answers to common questions, written from your own information (monthly message limit applies)",
       "A few questions asked to each new lead, then scored hot, warm or cold",
       "Follow-up messages to people who go quiet",
       "Payment links sent inside the chat",
-      "Leads from Facebook and Instagram ads, tagged by ad",
       "Your own WhatsApp number",
-      "Your choice of a product catalog, or booking with reminders",
+      "CRM to manage every lead and customer in one place",
+      "A product catalog for your products and prices",
     ],
-    msg: "Hi, I'm interested in the Convert plan.",
   },
   {
-    key: "grow",
-    name: "Grow",
+    key: "established",
+    name: "Established",
     line: "Keep customers and run a team",
-    setup: 100000,
-    monthly: 90000,
-    lead: "Everything in Convert, plus",
+    monthly: 150000,
+    lead: "Everything in Growth, plus",
     items: [
       "Both the product catalog and booking with reminders",
-      "Messages to many customers at once, with opt-outs handled",
+      "Bulk WhatsApp messaging to many customers at once, with opt-outs handled",
       "Review and repeat-purchase reminders",
       "A weekly summary of leads and sales sent to your WhatsApp",
       "Several staff replying from one shared inbox, with tasks and call logs",
     ],
-    msg: "Hi, I'm interested in the Grow plan.",
   },
 ];
 
 const ADDONS = [
-  ["Support tickets", "Every complaint gets an owner and a deadline", "₦15,000 a month"],
-  ["Renewals and win-back", "Reminders before customers lapse, and messages to bring them back", "₦15,000 a month"],
-  ["Dashboard and ask-your-data", "See your numbers and ask questions in plain English", "₦10,000 a month"],
-  ["Extra staff member", "Another person on the shared inbox", "₦5,000 a month each"],
-  ["Extra WhatsApp number", "A second number for another branch or team", "₦10,000 a month"],
-  ["Paid event or class funnel", "Registration, payment and reminders on one WhatsApp number", "₦50,000 per event"],
-];
-/* ---- end placeholder prices ---- */
-
-const naira = (n) => `₦${Number(n).toLocaleString("en-NG")}`;
-
-const PROBLEMS = [
-  ["“How much is this?”", "The fifth time today, typed out again by hand."],
-  ["“I’ll get back to you.”", "Then nobody does, and the customer goes elsewhere."],
-  ["“Which ad brought this customer?”", "No idea. The money is spent either way."],
-  ["“How did the week go?”", "You would have to count it yourself."],
+  ["Support tickets", "₦15,000/month"],
+  ["Renewals and win-back", "₦15,000/month"],
+  ["Dashboard and ask-your-data", "₦10,000/month"],
+  ["Extra staff member", "₦5,000/month each"],
+  ["Extra WhatsApp number", "₦10,000/month"],
+  ["Paid event or class funnel", "₦50,000 per event"],
 ];
 
-const STEPS = [
-  ["A customer messages you", "From your website, WhatsApp or an ad. Their name, number and where they came from are saved."],
-  ["They get an answer straight away", "A menu and set answers, or replies written from your own information."],
-  ["Nobody goes quiet", "People who stop replying get a follow-up. You get an alert when one is waiting."],
-  ["You see what happened", "A weekly summary on your WhatsApp: leads, where they came from, and sales."],
+const AUDIENCE = ["Coaches", "Counsellors", "Clinics", "Consultants", "Schools", "Agencies"];
+
+const FEATURES = [
+  ["01", "Greets every new contact", "A branded menu opens the conversation, even at 2am."],
+  ["02", "Asks the right questions", "Five short questions capture what you need to know."],
+  ["03", "Scores and sorts", "Hot, warm and cold leads land in the right pipeline stage."],
+  ["04", "Books the consultation", "Confirmation and reminder messages go out on their own."],
+  ["05", "Follows up for you", "Quiet leads get timely check-ins until they reply."],
+  ["06", "Hands over when it matters", "You step in with the full conversation in front of you."],
 ];
 
-/* Example chat shown in the phone. Clearly labelled “Example” on the page. */
-const SCREENS = [
-  [
-    ["in", "Hi, how much is the red ankara dress?"],
-    ["note", "New lead saved · Amaka · Source: website, Dresses page"],
-  ],
-  [
-    ["in", "Hi, how much is the red ankara dress?"],
-    ["out", "Hello Amaka! The red dress is ₦25,000. Want a payment link or to see more colours?"],
-  ],
-  [
-    ["out", "Hi Amaka, still thinking about the red dress? Reply YES and we will hold it for you today."],
-    ["in", "YES please"],
-  ],
-  [
-    ["note", "Your week"],
-    ["out", "18 new leads · 7 hot · 4 sales\nBest source: Instagram ad"],
-  ],
+const CAPS = [
+  ["Hand off to a human", "Sensitive or complex? The conversation passes to you or your team with the full history attached.", "M5 5h14v10H10l-5 4z"],
+  ["Lead scoring you control", "Define what a hot lead looks like for your business, and Opsra applies it to every enquiry.", "M4 19V9M10 19V5M16 19v-7M22 19H2"],
+  ["Confirmations and reminders", "Approved WhatsApp templates confirm every booking and remind clients before the session.", "M3 8a3 3 0 013-3h12a3 3 0 013 3v10a3 3 0 01-3 3H6a3 3 0 01-3-3zM8 3v4M16 3v4M3 10h18"],
+  ["Automatic nurture", "Check-ins, tips and stories go out on a schedule to leads who are not ready yet.", "M12 3a6 6 0 00-6 6c0 5-2 6-2 6h16s-2-1-2-6a6 6 0 00-6-6zM10 19a2 2 0 004 0"],
+  ["Built for your team", "Assign leads, share one inbox and see who is handling what, with roles for each person.", "M9 12a4 4 0 100-8 4 4 0 000 8zM2 21c0-4 3-6 7-6s7 2 7 6M17 11a3 3 0 100-6M22 21c0-3-2-5-4-5.6"],
+  ["Your data stays yours", "Each business has its own private workspace, number and customer records.", "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4"],
+];
+
+const USECASES = [
+  ["Coaches", "ow-c-blue", "Discovery calls, booked", "Turn curious messages into scheduled conversations without the back and forth.", "/images/usecase-coaches.jpg", "A coach taking notes during a one-to-one session", 547, 365],
+  ["Counsellors", "ow-c-purple", "Gentle, careful intake", "Welcome new clients warmly, and hand sensitive messages to a person straight away.", "/images/usecase-counsellors.jpg", "A counsellor speaking with a young client in a calm room", 678, 452],
+  ["Clinics", "ow-c-green", "Fewer missed appointments", "Capture requests at any hour and remind patients before they are due.", "/images/usecase-clinics.jpg", "A doctor smiling with a patient during a consultation", 638, 480],
+  ["Agencies", "ow-c-orange", "Qualified before the first call", "Ask the right questions up front so every briefing starts with the facts.", "/images/usecase-agencies.jpg", "Two colleagues reviewing work on a tablet", 738, 414],
+];
+
+const CARDS = [
+  ["Respond", "ow-t-blue", "Instant replies, 24/7", "A friendly menu greets every new contact, so nobody waits until morning to hear back."],
+  ["Qualify", "ow-t-purple", "Smart questions, scored leads", "Short, friendly questions sort every lead into hot, warm or cold before you ever reply."],
+  ["Book", "ow-t-orange", "Bookings that show up", "Confirmations and reminders go out automatically, so fewer sessions end in a no-show."],
+  ["Follow up", "ow-t-green", "Nobody goes quiet", "Gentle check-ins nudge people who stopped replying, and hand back to you when they respond."],
 ];
 
 const FAQ = [
@@ -157,7 +129,7 @@ const FAQ = [
   ],
   [
     "How long does set-up take?",
-    "A full set-up takes about a week. Convert and Grow also need Meta to approve your own WhatsApp number, and that can take longer.",
+    "A full set-up takes about a week. Growth and Established also need Meta to approve your own WhatsApp number, and that can take longer.",
   ],
   [
     "What do I need to start?",
@@ -177,223 +149,44 @@ const FAQ = [
   ],
 ];
 
-/* Testimonial. Hidden by default. See the note at the top of this file. */
-const SHOW_SAMPLE_QUOTE = false;
-const REAL_QUOTE = false;
-const QUOTE = {
-  text: "[Replace with a real customer’s words.]",
-  who: "[Customer name]",
-  role: "[Business, city]",
-};
-
-const HERO_IMG = "/images/owner-hero.jpg";
-const TICKER = ["Fashion shops", "Salons and barbers", "Schools and tutors", "Clinics and pharmacies", "Restaurants and bakers", "Real estate agents", "Electronics and phones", "Event planners", "Gyms and studios"];
-
-/* Example numbers for the demo strip and chart. Labelled “Example” on the page. */
-const EXAMPLE_WEEK = [
-  [18, "new leads"],
-  [7, "hot leads"],
-  [4, "sales"],
-  [0, "left unanswered"],
-];
-const CHART = [3, 5, 4, 8, 7, 12, 18];
-const BOARD = [
-  ["Hot", "ow-hot", [["Amaka", "Red ankara dress · website"], ["Tunde", "Ready to pay · Instagram ad"]]],
-  ["Warm", "ow-warm", [["Ngozi", "Asked about delivery · WhatsApp"], ["Bayo", "Comparing prices · website"]]],
-  ["Cold", "ow-cold", [["Hauwa", "Just browsing · Facebook ad"]]],
-];
-
-function Wa({ className = "", children, text = "Hi, I'd like to know more about your plans." }) {
+function WaIcon() {
   return (
-    <a className={`ow-btn ow-wa ${className}`} href={waHref(text)} target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-        <path d="M12.04 2a9.9 9.9 0 0 0-8.5 14.95L2 22l5.2-1.5A9.9 9.9 0 1 0 12.04 2Zm5.8 14.1c-.25.7-1.4 1.3-1.95 1.35-.5.05-1.1.07-1.75-.1-.4-.12-.9-.3-1.55-.58-2.7-1.17-4.45-3.9-4.6-4.08-.13-.18-1.1-1.46-1.1-2.8 0-1.33.7-1.98.95-2.25.25-.27.55-.33.73-.33l.53.01c.17 0 .4-.06.62.48.25.57.84 1.98.9 2.12.08.15.12.32.02.5-.1.2-.15.32-.3.5l-.45.52c-.15.15-.3.31-.13.6.18.3.78 1.28 1.67 2.07 1.14 1 2.1 1.32 2.4 1.46.3.15.47.12.65-.07.18-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.7.8 2 .95.3.15.5.22.57.35.07.12.07.7-.18 1.4Z" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" width="20" height="20">
+      <path d="M12.04 2a9.9 9.9 0 0 0-8.5 14.95L2 22l5.2-1.5A9.9 9.9 0 1 0 12.04 2Zm5.8 14.1c-.25.7-1.4 1.3-1.95 1.35-.5.05-1.1.07-1.75-.1-.4-.12-.9-.3-1.55-.58-2.7-1.17-4.45-3.9-4.6-4.08-.13-.18-1.1-1.46-1.1-2.8 0-1.33.7-1.98.95-2.25.25-.27.55-.33.73-.33l.53.01c.17 0 .4-.06.62.48.25.57.84 1.98.9 2.12.08.15.12.32.02.5-.1.2-.15.32-.3.5l-.45.52c-.15.15-.3.31-.13.6.18.3.78 1.28 1.67 2.07 1.14 1 2.1 1.32 2.4 1.46.3.15.47.12.65-.07.18-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.7.8 2 .95.3.15.5.22.57.35.07.12.07.7-.18 1.4Z" />
+    </svg>
+  );
+}
+
+function Logo({ light }) {
+  return (
+    <a className={`ow-mark${light ? " ow-mark-light" : ""}`} href="/business" aria-label="Opsra home">
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="32" height="32" rx="10" fill={light ? "#2467E3" : "#fff"} />
+        <path d="M17 8c5 0 9 3.4 9 7.8 0 4.4-4 7.8-9 7.8-1 0-2-.1-2.9-.4L10 25l1-3.4C9.4 20.2 8 18.1 8 15.8 8 11.4 12 8 17 8z" stroke={light ? "#fff" : "#3E56B4"} strokeWidth="2.2" strokeLinejoin="round" />
       </svg>
-      {children}
+      Opsra
     </a>
   );
 }
 
-/* Illustrated profile picture for the example chat (a drawing, not a real person). */
-function Avatar() {
-  return (
-    <svg className="ow-ph-av" viewBox="0 0 40 40" aria-hidden="true">
-      <rect width="40" height="40" fill="#F4D9C6" />
-      <path d="M4 40c1-9 8-13 16-13s15 4 16 13z" fill="#0E6E7A" />
-      <rect x="16.5" y="21" width="7" height="8" rx="3" fill="#8A5A3C" />
-      <ellipse cx="20" cy="16.5" rx="7.4" ry="8.6" fill="#9A6644" />
-      <path d="M11.4 15.5c0-7.2 4.2-10.8 8.8-10.8s8.4 3.6 8.4 10.8c-1.6-3.2-4.6-4.9-8.4-4.9s-7 1.7-8.8 4.9z" fill="#E4572E" />
-      <path d="M12 12.5c3-4 13-4.6 16.4-.4" stroke="#F2B544" strokeWidth="1.6" fill="none" strokeLinecap="round" />
-      <circle cx="17.2" cy="17" r=".9" fill="#2A1A12" />
-      <circle cx="22.8" cy="17" r=".9" fill="#2A1A12" />
-      <path d="M17.4 20.6q2.6 2 5.2 0" stroke="#2A1A12" strokeWidth="1" fill="none" strokeLinecap="round" />
-      <circle cx="12.6" cy="19.2" r="1.3" fill="#F2B544" />
-      <circle cx="27.4" cy="19.2" r="1.3" fill="#F2B544" />
-    </svg>
-  );
-}
-
-function Phone({ step }) {
-  let t = 0.25;
-  const rows = [];
-  SCREENS[step].forEach(([kind, text], i) => {
-    if (kind === "out") {
-      rows.push(<span key={`t${i}`} className="ow-typing" style={{ "--d": `${t}s` }}><b /><b /><b /></span>);
-      t += 0.95;
-    }
-    rows.push(
-      <p key={`m${i}`} className={`ow-m ow-m-${kind}`} style={{ "--d": `${t}s` }}>
-        {text}
-        <i>{kind === "in" ? "9:41 ✓✓" : "9:41"}</i>
-      </p>
-    );
-    t += kind === "out" ? 1.0 : 0.9;
-  });
-  return (
-    <div role="img" aria-label="Example WhatsApp chat on a phone">
-      <div className="ow-ph" aria-hidden="true">
-        <div className="ow-ph-screen">
-          <span className="ow-ph-island" />
-          <div className="ow-ph-head">
-            <div className="ow-ph-status">
-              <span>9:41</span>
-              <svg viewBox="0 0 34 12" fill="#fff"><rect x="0" y="7" width="3" height="5" rx="1" /><rect x="5" y="5" width="3" height="7" rx="1" /><rect x="10" y="2.5" width="3" height="9.5" rx="1" /><rect x="15" y="0" width="3" height="12" rx="1" /><rect x="21" y="1" width="12" height="10" rx="3" fill="none" stroke="#fff" strokeWidth="1.2" /><rect x="22.6" y="2.6" width="8" height="6.8" rx="1.6" /></svg>
-            </div>
-            <div className="ow-ph-bar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
-              <Avatar />
-              <span className="ow-ph-name"><b>Your business</b><small>online</small></span>
-              <em className="ow-ph-ex">Example</em>
-            </div>
-          </div>
-          <div className="ow-ph-chat">{rows}</div>
-          <div className="ow-ph-input">
-            <span className="ow-ph-field">Message</span>
-            <span className="ow-ph-mic"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12h-2Z" /></svg></span>
-          </div>
-          <div className="ow-ph-home" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* A chat drawn onto the blank phone screen in the hero photo. The numbers are the screen's corners
-   in the photo's own pixels (1536 x 1024); the viewBox is the part of the photo the 4:5 panel shows
-   (object-position 70%). If you replace the photo, re-measure these or delete <PhoneScreen />. */
-function PhoneScreen() {
-  return (
-    <svg className="ow-screen" viewBox="501.8 0 819.2 1024" aria-hidden="true" focusable="false">
-      <defs>
-        <clipPath id="ow-sc"><rect width="100" height="240" rx="10" /></clipPath>
-      </defs>
-      <g transform="matrix(0.81 -0.11 0.3375 0.9083 775 502)" clipPath="url(#ow-sc)">
-        <rect width="100" height="240" fill="#EFEAE2" />
-        <rect width="100" height="30" fill="#015F6B" />
-        <circle cx="14" cy="15" r="6" fill="#fff" />
-        <text x="26" y="19" fontSize="11" fontWeight="700" fill="#fff">Shop</text>
-        <g className="ow-b ow-b1">
-          <rect x="22" y="44" width="72" height="26" rx="7" fill="#D9FDD3" />
-          <text x="29" y="61" fontSize="12" fill="#0B1B2B">How much?</text>
-        </g>
-        <g className="ow-b ow-b2">
-          <rect x="6" y="80" width="76" height="46" rx="7" fill="#fff" />
-          <text x="13" y="102" fontSize="17" fontWeight="800" fill="#0B1B2B">₦25,000</text>
-          <text x="13" y="118" fontSize="11" fill="#4A5B6B">Pay link ›</text>
-        </g>
-        <g className="ow-b ow-b3">
-          <rect x="40" y="136" width="54" height="24" rx="7" fill="#D9FDD3" />
-          <text x="48" y="152" fontSize="12" fill="#0B1B2B">Yes please</text>
-        </g>
-      </g>
-    </svg>
-  );
-}
-
-/* Counts up once when scrolled into view. Shows the final number straight away if motion is reduced. */
-function Count({ to }) {
-  const ref = useRef(null);
-  const [n, setN] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce || !("IntersectionObserver" in window) || to === 0) { setN(to); return undefined; }
-    let raf = 0;
-    const io = new IntersectionObserver(([e]) => {
-      if (!e.isIntersecting) return;
-      io.disconnect();
-      const t0 = performance.now();
-      const tick = (t) => {
-        const k = Math.min(1, (t - t0) / 1200);
-        setN(Math.round(to * (1 - Math.pow(1 - k, 3))));
-        if (k < 1) raf = requestAnimationFrame(tick);
-      };
-      raf = requestAnimationFrame(tick);
-    }, { threshold: 0.6 });
-    io.observe(el);
-    return () => { io.disconnect(); cancelAnimationFrame(raf); };
-  }, [to]);
-  return <span ref={ref}>{n}</span>;
-}
-
-function Words({ text }) {
-  return text.split(" ").map((w, i) => (
-    <span key={i}>
-      <span className="ow-w"><span style={{ "--d": `${120 + i * 90}ms` }}>{w}</span></span>{" "}
-    </span>
-  ));
-}
-
-function Chart() {
-  const W = 520, H = 200, P = 18, max = Math.max(...CHART);
-  const pts = CHART.map((v, i) => [P + (i * (W - 2 * P)) / (CHART.length - 1), H - P - (v / max) * (H - 2 * P)]);
-  const line = pts.map(([x, y]) => `${x},${y}`).join(" ");
-  const area = `${P},${H - P} ${line} ${W - P},${H - P}`;
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  return (
-    <svg className="ow-chart" viewBox={`0 0 ${W} ${H + 22}`} role="img" aria-label="Example chart: leads rising through the week">
-      <defs>
-        <linearGradient id="owg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#028090" stopOpacity=".35" />
-          <stop offset="1" stopColor="#028090" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[0.25, 0.5, 0.75].map((f) => (
-        <line key={f} x1={P} x2={W - P} y1={P + f * (H - 2 * P)} y2={P + f * (H - 2 * P)} className="ow-grid" />
-      ))}
-      <polygon points={area} fill="url(#owg)" className="ow-area" />
-      <polyline points={line} pathLength="1" className="ow-draw" fill="none" />
-      {pts.map(([x, y], i) => (
-        <g key={i}>
-          <circle cx={x} cy={y} r="5" className="ow-pt" style={{ "--d": `${0.9 + i * 0.12}s` }} />
-          <text x={x} y={H + 14} textAnchor="middle" className="ow-day">{days[i]}</text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
 export default function OwnerLandingPage() {
-  const rootRef = useRef(null);
   const [solid, setSolid] = useState(false);
-  const [step, setStep] = useState(0);
-  const [open, setOpen] = useState(0);
-  const [imgOk, setImgOk] = useState(true);
-  const stepRefs = useRef([]);
-  const phoneBox = useRef(null);
-  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     const prevTitle = document.title;
     document.title = TITLE;
-    const metaDesc = document.querySelector('meta[name="description"]');
+    let metaDesc = document.querySelector('meta[name="description"]');
     const prevDesc = metaDesc ? metaDesc.getAttribute("content") : null;
-    if (metaDesc) metaDesc.setAttribute("content", DESC);
+    if (!metaDesc) {
+      metaDesc = document.createElement("meta");
+      metaDesc.setAttribute("name", "description");
+      document.head.appendChild(metaDesc);
+    }
+    metaDesc.setAttribute("content", DESC);
 
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href =
-      "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap";
+    link.href = "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap";
     document.head.appendChild(link);
 
     const ld = document.createElement("script");
@@ -409,314 +202,299 @@ export default function OwnerLandingPage() {
     });
     document.head.appendChild(ld);
 
-    const root = rootRef.current;
-    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const bar = root.querySelector(".ow-progress i");
-    const onScroll = () => {
-      setSolid(window.scrollY > 8);
-      const h = document.documentElement.scrollHeight - window.innerHeight;
-      if (bar && h > 0) bar.style.transform = `scaleX(${Math.min(1, window.scrollY / h)})`;
-    };
+    const onScroll = () => setSolid(window.scrollY > 8);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
 
-    /* Scroll reveal. Elements stay visible unless this script runs (class ow-js). */
-    let rv = null;
-    if ("IntersectionObserver" in window && !reduce) {
-      root.classList.add("ow-js");
-      rv = new IntersectionObserver(
-        (entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("ow-vis"); rv.unobserve(e.target); } }),
-        { threshold: 0.12, rootMargin: "0px 0px -6% 0px" }
-      );
-      root.querySelectorAll("[data-rv]").forEach((el) => rv.observe(el));
-    }
-
-    /* Buttons lean slightly toward the pointer. */
-    const onMove = (e) => {
-      if (reduce) return;
-      const b = e.target.closest && e.target.closest(".ow-btn");
-      if (!b) return;
-      const r = b.getBoundingClientRect();
-      b.style.setProperty("--mx", `${((e.clientX - r.left) / r.width - 0.5) * 8}px`);
-      b.style.setProperty("--my", `${((e.clientY - r.top) / r.height - 0.5) * 6}px`);
-    };
-    const onLeave = (e) => {
-      const b = e.target.closest && e.target.closest(".ow-btn");
-      if (b) { b.style.setProperty("--mx", "0px"); b.style.setProperty("--my", "0px"); }
-    };
-    root.addEventListener("mousemove", onMove);
-    root.addEventListener("mouseout", onLeave);
-
-    let io = null;
-    if ("IntersectionObserver" in window) {
-      io = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((e) => {
-            if (e.isIntersecting) setStep(Number(e.target.dataset.i));
-          });
-        },
-        { rootMargin: "-45% 0px -45% 0px" }
-      );
-      stepRefs.current.forEach((el) => el && io.observe(el));
-    }
-
-    let pio = null;
-    if ("IntersectionObserver" in window && phoneBox.current) {
-      pio = new IntersectionObserver(([en]) => {
-        if (en.isIntersecting) { setTick((n) => n + 1); pio.disconnect(); }
-      }, { threshold: 0.5 });
-      pio.observe(phoneBox.current);
-    }
-
     return () => {
-      if (pio) pio.disconnect();
       document.title = prevTitle;
       if (metaDesc && prevDesc !== null) metaDesc.setAttribute("content", prevDesc);
       link.remove();
       ld.remove();
       window.removeEventListener("scroll", onScroll);
-      root.removeEventListener("mousemove", onMove);
-      root.removeEventListener("mouseout", onLeave);
-      if (io) io.disconnect();
-      if (rv) rv.disconnect();
     };
   }, []);
 
-  return (
-    <div className="ow" ref={rootRef}>
-      <a className="ow-skip" href="#plans">Skip to the plans</a>
-      <div className="ow-progress" aria-hidden="true"><i /></div>
+  const walkthrough = waHref(SALES_WA, "Hi, I'd like a 15-minute walkthrough of Opsra.");
+  const demo = waHref(DEMO_WA, "Hi");
 
-      <header className={`ow-nav${solid ? " ow-solid" : ""}`}>
-        <div className="ow-wrap ow-nav-row">
-          <a className="ow-mark" href="/business" aria-label="Opsra home"><i />opsra</a>
-          <nav aria-label="Main">
-            <ul>
-              <li><a href="#how">How it works</a></li>
-              <li><a href="#plans">Plans</a></li>
-              <li><a href="#questions">Questions</a></li>
-            </ul>
-          </nav>
-          <Wa className="ow-sm ow-nav-cta" text="Hi, I'd like to know more about your plans.">Message us</Wa>
+  return (
+    <div className="ow">
+      <a className="ow-skip" href="#plans">Skip to the plans</a>
+
+      {/* ---------------- HERO ---------------- */}
+      <div className="ow-hero">
+        <header className={`ow-nav${solid ? " ow-solid" : ""}`}>
+          <div className="ow-wrap ow-nav-row">
+            <Logo />
+            <nav aria-label="Main" className="ow-nav-links">
+              <a href="#product">Product</a>
+              <a href="#use-cases">Use cases</a>
+              <a href="#plans">Pricing</a>
+              <a href="#questions">Questions</a>
+              <a className="ow-btn ow-btn-white ow-sm" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a demo</a>
+            </nav>
+          </div>
+        </header>
+
+        <div className="ow-wrap ow-hero-grid">
+          <div className="ow-hero-copy">
+            <h1>Every enquiry answered. Every lead qualified.</h1>
+            <p className="ow-lede">
+              Opsra replies on WhatsApp the moment someone reaches out, asks the right questions, and hands
+              you warm leads with a booking in the diary.
+            </p>
+            <div className="ow-cta-row">
+              <a className="ow-btn ow-btn-white" href={demo} target="_blank" rel="noopener noreferrer">See it on WhatsApp</a>
+              <a className="ow-btn ow-btn-ghost" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a 15-minute walkthrough</a>
+            </div>
+          </div>
+          <div className="ow-hero-phone" role="img" aria-label="Example WhatsApp conversation on a phone">
+            <div className="ow-orb" aria-hidden="true" />
+            <div className="ow-phone" aria-hidden="true">
+              <div className="ow-screen">
+                <div className="ow-ph-head">
+                  <span className="ow-ph-av">YB</span>
+                  <span><b>Your Business</b><small>Replies instantly</small></span>
+                </div>
+                <div className="ow-ph-body">
+                  <p className="ow-b ow-b-out">Hello</p>
+                  <p className="ow-b ow-b-in">Hi Ada! Welcome to Your Business. How can we help you today?</p>
+                  <div className="ow-ph-opts">
+                    <span>Book a free consultation</span>
+                    <span>Our services</span>
+                    <span>Something else</span>
+                  </div>
+                  <p className="ow-b ow-b-out">Book a free consultation</p>
+                  <p className="ow-b ow-b-in">Great. First, which best describes you?</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </header>
+        <svg className="ow-curve" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 80V40C240 0 480 0 720 24s480 32 720 6V80z" fill="#fff" />
+        </svg>
+      </div>
 
       <main>
-        <section className="ow-hero">
-          <div className="ow-glow" aria-hidden="true" />
-          <div className="ow-wrap ow-hero-grid">
-            <div className="ow-hero-copy">
-              <p className="ow-label ow-fade" style={{ "--d": "0ms" }}>For shops, salons, schools and more</p>
-              <h1><Words text="Never lose a customer message again." /></h1>
-              <p className="ow-lede ow-fade" style={{ "--d": "700ms" }}>
-                We set up your website and your WhatsApp so every enquiry is answered, followed up and
-                counted. You keep running the business.
-              </p>
-              <div className="ow-cta-row ow-fade" style={{ "--d": "850ms" }}>
-                <Wa>Message us on WhatsApp</Wa>
-                <a className="ow-link" href="#plans">See the plans &rarr;</a>
-              </div>
-            </div>
-
-            <div className="ow-stage ow-fade" style={{ "--d": "300ms" }}>
-              <div className="ow-photo">
-                {imgOk && (
-                  <div className="ow-pan">
-                    <img src={HERO_IMG} alt="A shop owner checking her phone at the counter of her boutique (AI-generated illustration)" width="1536" height="1024" fetchpriority="high" onError={() => setImgOk(false)} />
-                    <PhoneScreen />
-                  </div>
-                )}
-                {!imgOk && <div className="ow-photo-fallback" aria-hidden="true"><i /><i /><i /></div>}
-              </div>
-              <div className="ow-float ow-f1"><b>New lead saved</b><span>Amaka · Dresses page</span></div>
-              <div className="ow-float ow-f2"><b>Replied straight away</b><span>“The red dress is ₦25,000…”</span></div>
-              <div className="ow-float ow-f3"><b>Hot lead</b><span>Tunde · ready to pay</span></div>
-              <p className="ow-credit">Illustration, not a real customer. Example messages.</p>
-            </div>
-          </div>
-        </section>
-
-        <div className="ow-ticker" aria-label="Kinds of business this suits">
-          <div className="ow-track">
-            {[...TICKER, ...TICKER].map((t, i) => (<span key={i} aria-hidden={i >= TICKER.length}>{t}</span>))}
-          </div>
-        </div>
-
-        <section className="ow-problem" aria-labelledby="problem-h">
-          <div className="ow-wrap">
-            <p className="ow-label" data-rv>Sound familiar?</p>
-            <h2 id="problem-h" className="ow-h2" data-rv>Four things owners say every week.</h2>
-            <ul className="ow-rows">
-              {PROBLEMS.map(([q, a], i) => (
-                <li key={q} data-rv style={{ "--d": `${i * 90}ms` }}><strong>{q}</strong><span>{a}</span></li>
-              ))}
+        {/* ---------------- AUDIENCE STRIP ---------------- */}
+        <section className="ow-wrap ow-strip" aria-label="Who Opsra is for">
+          <div>
+            <p className="ow-eyebrow ow-eyebrow-mute">Built for service businesses</p>
+            <ul className="ow-aud">
+              {AUDIENCE.map((a) => <li key={a}>{a}</li>)}
             </ul>
           </div>
-        </section>
-
-        <section id="how" className="ow-how" aria-labelledby="how-h">
-          <div className="ow-wrap">
-            <div className="ow-head" data-rv>
-              <p className="ow-label">How it works</p>
-              <h2 id="how-h" className="ow-h2">From first message to a weekly summary.</h2>
-            </div>
-            <div className="ow-how-grid">
-              <ol className="ow-steps">
-                {STEPS.map(([t, d], i) => (
-                  <li
-                    key={t}
-                    data-i={i}
-                    ref={(el) => (stepRefs.current[i] = el)}
-                    className={step === i ? "ow-on" : ""}
-                  >
-                    <button type="button" onClick={() => setStep(i)} aria-pressed={step === i}>
-                      <span className="ow-num">{i + 1}</span>
-                      <span><b>{t}</b><small>{d}</small></span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-              <div className="ow-how-phone" ref={phoneBox}><Phone key={tick} step={step} /><p className="ow-ph-cap">Example chat</p></div>
-            </div>
+          <div className="ow-badge">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+              <circle cx="20" cy="20" r="18" stroke="#2467E3" strokeWidth="2.5" />
+              <path d="M12 20.5l5.5 5.5L28 15" stroke="#2467E3" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <div><b>Official WhatsApp Business API</b><span>Your number, your brand, your data</span></div>
           </div>
         </section>
 
-        <section className="ow-board" aria-labelledby="board-h">
-          <div className="ow-wrap">
-            <div className="ow-head" data-rv>
-              <p className="ow-label">What you see</p>
-              <h2 id="board-h" className="ow-h2">Every lead in one place, sorted for you.</h2>
-              <p className="ow-sub">Example week for a small fashion shop. Your own numbers will differ.</p>
-            </div>
-            <ul className="ow-stats" data-rv>
-              {EXAMPLE_WEEK.map(([n, l]) => (
-                <li key={l}><b><Count to={n} /></b><span>{l}</span></li>
-              ))}
-            </ul>
-            <div className="ow-board-grid">
-              <div className="ow-cols" data-rv>
-                {BOARD.map(([name, cls, cards]) => (
-                  <div key={name} className={`ow-col ${cls}`}>
-                    <h3>{name}</h3>
-                    {cards.map(([who, what], i) => (
-                      <p key={who} className="ow-lead-card" style={{ "--d": `${300 + i * 160}ms` }}><b>{who}</b><small>{what}</small></p>
-                    ))}
-                  </div>
-                ))}
-              </div>
-              <div className="ow-chartbox" data-rv>
-                <p className="ow-label">Leads this week · example</p>
-                <Chart />
-              </div>
-            </div>
+        {/* ---------------- INSTANT CARDS ---------------- */}
+        <section className="ow-wrap ow-sec" id="product" aria-labelledby="instant-h">
+          <div className="ow-center">
+            <h2 id="instant-h" className="ow-xl">No missed leads,<br /><span className="ow-purple">Go instant <i className="ow-toggle" aria-hidden="true"><b><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M13 2L4 14h6l-1 8 9-12h-6z" /></svg></b></i></span></h2>
+            <p className="ow-sub">One WhatsApp number that greets, qualifies, books and follows up, day and night, while you get on with the work.</p>
+          </div>
+          <div className="ow-cards">
+            {CARDS.map(([k, tone, t, d]) => (
+              <article key={k} className={`ow-card ${tone}`}>
+                <p className="ow-eyebrow">{k}</p>
+                <h3>{t}</h3>
+                <p>{d}</p>
+              </article>
+            ))}
           </div>
         </section>
 
-        <section id="plans" className="ow-plans" aria-labelledby="plans-h">
-          <div className="ow-wrap">
-            <div className="ow-head" data-rv>
-              <p className="ow-label">Plans and prices</p>
-              <h2 id="plans-h" className="ow-h2">Start with a website. Add the rest when you are ready.</h2>
-              <p className="ow-sub">Prices are in naira and may change before you start.</p>
-            </div>
-
-            <div className="ow-sites">
-              {WEBSITES.map((w, i) => (
-                <article key={w.name} className="ow-site" data-rv style={{ "--d": `${i * 100}ms` }}>
-                  <h3>{w.name}</h3>
-                  <p className="ow-price"><b>{naira(w.price)}</b> <span>one time</span></p>
-                  <p className="ow-note">{w.note}</p>
-                  <p>{w.body}</p>
-                  <Wa className="ow-sm ow-outline" text={`Hi, I'm interested in the ${w.name}.`}>Ask about this</Wa>
-                </article>
-              ))}
-              <p className="ow-renew">{naira(RENEWAL.price)} &middot; {RENEWAL.label}</p>
-            </div>
-
-            <div className="ow-cards">
-              {PLANS.map((p, i) => (
-                <article key={p.key} className={`ow-card${p.suggested ? " ow-suggested" : ""}`} data-rv style={{ "--d": `${i * 130}ms` }}>
-                  {p.suggested && <span className="ow-flag">Suggested starting point</span>}
-                  <h3>{p.name}</h3>
-                  <p className="ow-line">{p.line}</p>
-                  <p className="ow-price"><b>{naira(p.monthly)}</b> <span>a month</span></p>
-                  <p className="ow-setup">{p.setup === 0 ? "No set-up fee" : `${naira(p.setup)} set-up, one time`}</p>
-                  <Wa className={`ow-sm ${p.suggested ? "" : "ow-outline"}`} text={p.msg}>Choose {p.name}</Wa>
-                  <p className="ow-lead">{p.lead}</p>
-                  <ul>
-                    {p.items.map((it) => (<li key={it}>{it}</li>))}
-                  </ul>
-                </article>
-              ))}
-            </div>
-
-            <div className="ow-addons" data-rv>
-              <h3>Add what you need</h3>
-              <ul>
-                {ADDONS.map(([n, d, p]) => (
-                  <li key={n}>
-                    <span><b>{n}</b><small>{d}</small></span>
-                    <em>{p}</em>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        {(SHOW_SAMPLE_QUOTE || REAL_QUOTE) && (
-          <section className="ow-quote">
-            <div className="ow-wrap">
-              {!REAL_QUOTE && <p className="ow-sample">SAMPLE LAYOUT ONLY. Replace with a real customer quote before publishing.</p>}
-              <blockquote>
-                <p>“{QUOTE.text}”</p>
-                <footer>{QUOTE.who}, {QUOTE.role}</footer>
-              </blockquote>
-            </div>
-          </section>
-        )}
-
-        <section id="questions" className="ow-faq" aria-labelledby="faq-h">
-          <div className="ow-wrap ow-faq-grid">
-            <div data-rv>
-              <p className="ow-label">Questions</p>
-              <h2 id="faq-h" className="ow-h2">Before you message us.</h2>
-            </div>
-            <div className="ow-acc" data-rv>
-              {FAQ.map(([q, a], i) => (
-                <div key={q} className={`ow-qa${open === i ? " ow-open" : ""}`}>
-                  <h3>
-                    <button
-                      type="button"
-                      aria-expanded={open === i}
-                      aria-controls={`qa-${i}`}
-                      onClick={() => setOpen(open === i ? -1 : i)}
-                    >
-                      {q}<i aria-hidden="true" />
-                    </button>
-                  </h3>
-                  <div id={`qa-${i}`} role="region" hidden={open !== i}><p>{a}</p></div>
+        {/* ---------------- USE CASES ---------------- */}
+        <section className="ow-wrap ow-sec ow-sec-tight" id="use-cases" aria-labelledby="uc-h">
+          <h2 id="uc-h" className="ow-h2">Made for people who sell time and trust.</h2>
+          <div className="ow-uc">
+            {USECASES.map(([label, tone, title, text, img, alt, w, h]) => (
+              <article key={label} className="ow-uc-card">
+                <img src={img} alt={alt} width={w} height={h} loading="lazy" />
+                <div>
+                  <p className={`ow-eyebrow ${tone}`}>{label}</p>
+                  <h3>{title}</h3>
+                  <p>{text}</p>
                 </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* ---------------- PIPELINE ---------------- */}
+        <section className="ow-wrap ow-sec" aria-labelledby="pipe-h">
+          <div className="ow-split">
+            <div className="ow-split-l">
+              <h2 id="pipe-h" className="ow-h2">A pipeline that runs itself.</h2>
+              <p className="ow-sub ow-left">Every lead lands in one board with its score, its answers and its next step, so you always know who to talk to first.</p>
+            </div>
+            <ol className="ow-feat">
+              {FEATURES.map(([n, t, d]) => (
+                <li key={n}><span>{n}</span><div><b>{t}</b><p>{d}</p></div></li>
+              ))}
+            </ol>
+          </div>
+          <figure className="ow-shot">
+            <div className="ow-shot-frame">
+              <img src="/images/lead-center.jpg" alt="The Opsra Lead Center board showing leads by pipeline stage" width="1916" height="914" loading="lazy" />
+            </div>
+            <figcaption>The Lead Center: every enquiry, scored and staged.</figcaption>
+          </figure>
+        </section>
+
+        {/* ---------------- DARK GRID ---------------- */}
+        <section className="ow-dark" aria-labelledby="dark-h">
+          <div className="ow-wrap ow-sec">
+            <h2 id="dark-h" className="ow-h2 ow-light">More than a chatbot. A front desk that never closes.</h2>
+            <div className="ow-caps">
+              {CAPS.map(([t, d, path]) => (
+                <article key={t}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8FB0FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path} /></svg>
+                  <h3>{t}</h3>
+                  <p>{d}</p>
+                </article>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="ow-close" aria-labelledby="close-h">
-          <div className="ow-glow ow-glow2" aria-hidden="true" />
-          <div className="ow-wrap" data-rv>
-            <h2 id="close-h">Tell us what you sell. We will show you how it would work.</h2>
-            <Wa className="ow-big">Message us on WhatsApp</Wa>
+        {/* ---------------- PRICING ---------------- */}
+        <section className="ow-wrap ow-sec" id="plans" aria-labelledby="plans-h">
+          <div className="ow-center">
+            <p className="ow-eyebrow ow-t-blue">Plans and prices</p>
+            <h2 id="plans-h" className="ow-h2">Start small. Grow when you are ready.</h2>
+            <p className="ow-sub">Monthly plans in naira. Setup fees are agreed with you separately, based on what you need.</p>
+          </div>
+          <div className="ow-plans">
+            {PLANS.map((p) => (
+              <article key={p.key} className={`ow-plan${p.suggested ? " ow-plan-hi" : ""}`}>
+                {p.suggested ? <span className="ow-pill">Suggested starting point</span> : <span className="ow-pill-gap" />}
+                <h3>{p.name}</h3>
+                <p className="ow-plan-line">{p.line}</p>
+                <p className="ow-from">From</p>
+                <p className="ow-price">{naira(p.monthly)}<small> / month</small></p>
+                <p className="ow-setup">Setup fee negotiated separately</p>
+                <a
+                  className={`ow-btn ${p.suggested ? "ow-btn-blue" : "ow-btn-ink"}`}
+                  href={waHref(SALES_WA, `Hi, I'm interested in the ${p.name} plan.`)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Choose {p.name}
+                </a>
+                <p className="ow-incl">{p.lead}</p>
+                <ul>
+                  {p.items.map((it) => (
+                    <li key={it}>
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke="#2467E3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      <span>{it}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+          <div className="ow-addons">
+            <h3>Add what you need</h3>
+            <ul>
+              {ADDONS.map(([n, price]) => (
+                <li key={n}><b>{n}</b> &middot; {price}</li>
+              ))}
+            </ul>
+          </div>
+          <p className="ow-fine">
+            Prices are in naira and may change before you start. WhatsApp charges per conversation for messages you start.
+            Each plan includes a starting allowance, and anything above it is billed at WhatsApp&rsquo;s own price with no mark-up.
+          </p>
+        </section>
+
+        {/* ---------------- FOUNDING CLIENTS ---------------- */}
+        <section className="ow-wrap ow-sec ow-sec-tight" aria-labelledby="found-h">
+          <h2 id="found-h" className="ow-h2 ow-center">Be one of our first clients.</h2>
+          <p className="ow-sub ow-center-block">We are onboarding a small group of founding clients and setting Opsra up for each of them personally.</p>
+          <div className="ow-found">
+            <article className="ow-found-card ow-found-blue">
+              <p className="ow-eyebrow ow-t-blue">Founding client</p>
+              <h3>We set it up with you.</h3>
+              <ul>
+                <li>A WhatsApp menu written in your voice</li>
+                <li>Qualification questions and lead scoring built for your work</li>
+                <li>Booking confirmations and reminders switched on</li>
+                <li>Direct support from the team that built it</li>
+              </ul>
+              <a className="ow-btn ow-btn-blue" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a walkthrough</a>
+            </article>
+            <article className="ow-found-card ow-found-purple">
+              <p className="ow-eyebrow ow-t-purple">Live demo</p>
+              <h3>Try it before you decide.</h3>
+              <p>Send a message to our demo number and go through the same menu and questions your clients would.</p>
+              <p className="ow-demo-num">{DEMO_DISPLAY}</p>
+              <a className="ow-btn ow-btn-ink" href={demo} target="_blank" rel="noopener noreferrer">Open WhatsApp</a>
+            </article>
+          </div>
+        </section>
+
+        {/* ---------------- FAQ ---------------- */}
+        <section className="ow-wrap ow-sec ow-sec-tight" id="questions" aria-labelledby="faq-h">
+          <h2 id="faq-h" className="ow-h2 ow-center">Before you message us.</h2>
+          <div className="ow-faq">
+            {FAQ.map(([q, a]) => (
+              <details key={q}>
+                <summary>{q}</summary>
+                <p>{a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        {/* ---------------- CTA BAND ---------------- */}
+        <section className="ow-wrap ow-cta-sec" aria-labelledby="cta-h">
+          <div className="ow-cta-band">
+            <h2 id="cta-h">Message our demo. See your own front desk in 30 seconds.</h2>
+            <div className="ow-cta-row ow-cta-center">
+              <a className="ow-btn ow-btn-white" href={demo} target="_blank" rel="noopener noreferrer"><WaIcon />Open WhatsApp demo</a>
+              <a className="ow-btn ow-btn-ghost" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a walkthrough</a>
+            </div>
           </div>
         </section>
       </main>
 
+      {/* ---------------- FOOTER ---------------- */}
       <footer className="ow-foot">
-        <div className="ow-wrap ow-foot-row">
-          <span className="ow-foot-mark">opsra</span>
-          <span>
-            <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a>
-          </span>
+        <div className="ow-wrap">
+          <div className="ow-foot-row">
+            <div>
+              <Logo light />
+              <p>WhatsApp-first enquiries, leads and bookings for service businesses.</p>
+            </div>
+            <div>
+              <b>Product</b>
+              <a href="#product">How it works</a>
+              <a href="#plans">Pricing</a>
+              <a href="#questions">Questions</a>
+            </div>
+            <div>
+              <b>Company</b>
+              <a href={walkthrough} target="_blank" rel="noopener noreferrer">Book a walkthrough</a>
+              <a href={demo} target="_blank" rel="noopener noreferrer">Try the demo</a>
+            </div>
+            <div>
+              <b>Legal</b>
+              <a href="/privacy">Privacy</a>
+              <a href="/terms">Terms</a>
+            </div>
+          </div>
+          <p className="ow-legal">
+            Opsra is a product of Ovaloop Technologies. WhatsApp is a trademark of Meta Platforms, Inc. Opsra is not affiliated with or endorsed by Meta.
+          </p>
         </div>
       </footer>
     </div>
