@@ -94,7 +94,16 @@ export function BookingActions({ leadId, meetingLabel = 'Meeting', onChanged }) 
     setBusy(true); setMsg(null)
     try {
       const r = await makeBookingLink(leadId, { service: serviceId || undefined, send_whatsapp: true })
-      setMsg({ ok: true, text: 'Booking link sent on WhatsApp.', url: r.data.url })
+      const d = r.data
+      const why = {
+        window_closed: "Not sent: this person hasn't messaged in 24 hours. Copy the link and send it yourself.",
+        template_failed: "Not sent: the WhatsApp message template isn't approved yet. Copy the link and send it yourself.",
+        no_whatsapp: 'Not sent: WhatsApp is not connected for this business.',
+        no_number: 'Not sent: this lead has no phone number.',
+      }
+      setMsg(d.sent_whatsapp
+        ? { ok: true, text: 'Booking link sent on WhatsApp.', url: d.url }
+        : { ok: false, text: why[d.whatsapp_reason] || 'The message could not be sent. Copy the link and send it yourself.', url: d.url })
     } catch (e) { setMsg({ ok: false, text: apiError(e) }) }
     finally { setBusy(false) }
   }

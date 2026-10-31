@@ -264,42 +264,21 @@ def _insert_notification(db, org_id: str, user_id: str, notif_type: str,
         logger.warning("demo_service: notification insert failed — %s", exc)
 
 
-def _auto_send_wa(db, org_id: str, lead: dict, content: str) -> None:
+def _auto_send_wa(db, org_id: str, lead: dict, content: str,
+                  template_name: str | None = None, template_vars: list | None = None) -> dict:
     """
-    Auto-send WA directly via Meta API (NOT queued).
-    S14: swallows all errors.
+    Send a WhatsApp message to a lead with the org's own credentials.
+    BOOKING-2A: the old version sent without the org's access token, so Meta calls
+    were refused and the error was swallowed - nothing was ever delivered.
+    Text inside the 24h window, the named template outside it.
+    Returns {"sent", "via", "reason"}. S14: never raises.
     """
     try:
-        from app.services.whatsapp_service import _call_meta_send
-        org_cfg_res = (
-            db.table("organisations")
-            .select("whatsapp_phone_id")
-            .eq("id", org_id).maybe_single().execute()
-        )
-        org_cfg = org_cfg_res.data
-        if isinstance(org_cfg, list):
-            org_cfg = org_cfg[0] if org_cfg else None
-        phone_id = ((org_cfg or {}).get("whatsapp_phone_id") or "").strip()
-        to_number = (lead.get("whatsapp") or lead.get("phone") or "").strip()
-        if not phone_id or not to_number:
-            logger.warning("demo_service: cannot auto-send WA — phone_id=%s to=%s", phone_id, to_number)
-            return
-        _call_meta_send(phone_id, {
-            "messaging_product": "whatsapp",
-            "to": to_number, "type": "text",
-            "text": {"body": content},
-        })
-        # Log the sent message
-        db.table("whatsapp_messages").insert({
-            "org_id": org_id, "lead_id": lead["id"],
-            "direction": "outbound", "message_type": "text",
-            "content": content, "status": "sent",
-            "window_open": True,
-            "window_expires_at": (_now() + timedelta(hours=24)).isoformat(),
-            "sent_by": None, "created_at": _now_iso(),
-        }).execute()
+        from app.services.whatsapp_service import send_booking_message
+        return send_booking_message(db, org_id, lead, content, template_name, template_vars)
     except Exception as exc:
-        logger.warning("demo_service: auto-send WA failed — %s", exc)
+        logger.warning("demo_service: auto-send WA failed - %s", exc)
+        return {"sent": False, "via": None, "reason": "send_failed"}
 
 
 # ── M01-9: AI Prompt Security ─────────────────────────────────────────────────

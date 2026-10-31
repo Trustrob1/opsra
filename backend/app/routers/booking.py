@@ -398,13 +398,17 @@ def make_link(lead_id: str, body: LinkBody, org: dict = Depends(get_current_org)
     service_id = bk.get_service(db, org["org_id"], body.service)["id"] if body.service else None
     token = bk.create_link(db, org["org_id"], lead_id, service_id, org["id"])
     url = f"{_public_base()}/b/{token}"
-    sent = False
+    result = {"sent": False, "via": None, "reason": None}
     if body.send_whatsapp:
         from app.services import demo_service as ds
         lead = ds._confirm_lead_in_org(db, org["org_id"], lead_id)
-        ds._auto_send_wa(db, org["org_id"], lead, f"Hi {(lead.get('full_name') or '').split(' ')[0] or 'there'}, you can pick a time for your {cfg['label']} here: {url}")
-        sent = True
-    return ok({"url": url, "sent_whatsapp": sent})
+        first = (lead.get("full_name") or "").split(" ")[0] or "there"
+        result = ds._auto_send_wa(
+            db, org["org_id"], lead,
+            f"Hi {first}, you can pick a time for your {cfg['label']} here: {url}",
+            template_name=bk.BOOKING_LINK_TEMPLATE, template_vars=[first, cfg["label"], url],
+        )
+    return ok({"url": url, "sent_whatsapp": bool(result.get("sent")), "whatsapp_via": result.get("via"), "whatsapp_reason": result.get("reason")})
 
 
 class StaffCancelBody(BaseModel):

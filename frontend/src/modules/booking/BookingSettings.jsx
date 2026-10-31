@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { ds } from '../../utils/ds'
+import * as adminSvc from '../../services/admin.service'
 import { BookingRowActions } from './BookingTools'
 import {
   getBookingSettings, saveBookingSettings, listBookingServices, createBookingService, updateBookingService,
@@ -105,7 +106,14 @@ function SettingsView({ cfg, onCfg }) {
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(cfg)
+  const [reps, setReps] = useState([])
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  // BOOKING-2A: people who can own a booking (active, sales / success / manager roles)
+  useEffect(() => {
+    adminSvc.listUsers().then((res) => setReps((res || []).filter((u) => u.is_active &&
+      ['sales_agent', 'customer_success', 'owner', 'ops_manager', 'admin'].includes(u.roles?.template)))).catch(() => {})
+  }, [])
 
   const save = async () => {
     setSaving(true); setMsg(null)
@@ -113,6 +121,7 @@ function SettingsView({ cfg, onCfg }) {
       const r = await saveBookingSettings({
         native_enabled: !!form.native_enabled, label: form.label,
         cancel_cutoff_hours: Number(form.cancel_cutoff_hours) || 0,
+        auto_send_link: !!form.auto_send_link, default_rep_id: form.default_rep_id || null,
       })
       onCfg(r.data); setForm(r.data); setMsg({ ok: true, t: 'Saved.' })
     } catch (e) { setMsg({ ok: false, t: apiError(e) }) } finally { setSaving(false) }
@@ -133,7 +142,17 @@ function SettingsView({ cfg, onCfg }) {
           <div><label style={lab} htmlFor="bk-cut">Cancel / change up to (hours before)</label>
             <input id="bk-cut" type="number" min={0} max={720} style={inp} value={form.cancel_cutoff_hours ?? 24} onChange={(e) => set('cancel_cutoff_hours', e.target.value)} />
             <p style={{ fontSize: 11.5, color: ds.gray, margin: '5px 0 0' }}>0 means customers can change it any time.</p></div>
+          <div><label style={lab} htmlFor="bk-rep">Who takes new bookings?</label>
+            <select id="bk-rep" style={inp} value={form.default_rep_id || ''} onChange={(e) => set('default_rep_id', e.target.value)}>
+              <option value="">Share between the team</option>
+              {reps.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
+            </select>
+            <p style={{ fontSize: 11.5, color: ds.gray, margin: '5px 0 0' }}>Pick one person to get every booking, or share them round the team.</p></div>
         </div>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14, marginTop: 16, cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!form.auto_send_link} onChange={(e) => set('auto_send_link', e.target.checked)} />
+          <span><b>Send the booking link automatically</b><br /><span style={{ fontSize: 12, color: ds.gray }}>Once, on WhatsApp, when a customer finishes the questions. Never sent twice to the same person.</span></span>
+        </label>
         <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <button style={btnP} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
           {msg && <span role="status" style={{ fontSize: 13, color: msg.ok ? '#276749' : ds.red }}>{msg.t}</span>}

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 import secrets
 from datetime import date, datetime, time, timedelta, timezone
@@ -36,6 +37,11 @@ _LIVE_STATUSES = ("pending_assignment", "confirmed")
 _LINK_DAYS = 14
 _MAX_RANGE_DAYS = 62
 _WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+# BOOKING-2A: WhatsApp utility templates (positional variables). Submit these to Meta; until approved,
+# messages outside the 24h window are not sent and the staff screen says so.
+BOOKING_CANCELLED_TEMPLATE = "booking_cancelled"      # {{1}} first name, {{2}} label, {{3}} date and time
+BOOKING_LINK_TEMPLATE = "booking_link_invite"         # {{1}} first name, {{2}} label, {{3}} booking link
 
 DEFAULT_SETTINGS = {
     "native_enabled": False,
@@ -508,7 +514,9 @@ def cancel_booking(db, org_id: str, demo_id: str, by: str, reason: Optional[str]
     if demo.get("assigned_to"):
         ds._insert_notification(db, org_id, demo["assigned_to"], "demo_cancelled", f"Booking cancelled: {lead.get('full_name') or 'Lead'}",
                                 f"The {label} on {when} was cancelled by {by}.", demo_id)
-    ds._auto_send_wa(db, org_id, lead, (f"Your {label} on {when} has been cancelled." if when else f"Your {label} request has been cancelled.") + " Reply here any time to book a new time.")
+    first = (lead.get("full_name") or "").split(" ")[0] or "there"
+    ds._auto_send_wa(db, org_id, lead, (f"Your {label} on {when} has been cancelled." if when else f"Your {label} request has been cancelled.") + " Reply here any time to book a new time.",
+                     template_name=BOOKING_CANCELLED_TEMPLATE, template_vars=[first, label, when or "the requested time"])
     return ds._fetch_demo_by_id(db, org_id, demo_id)
 
 
@@ -581,3 +589,43 @@ def resolve_link(db, token: str) -> dict:
 
 def link_attach_booking(db, link_id: str, demo_id: str) -> None:
     db.table("booking_links").update({"demo_id": demo_id, "used_at": _now_iso()}).eq("id", link_id).execute()
+
+def public_base() -> str:
+    return (os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL") or "https://opsra-frontend.onrender.com").rstrip("/")
+
+
+def auto_send_link_for_lead(db, org_id: str, lead_id: str) -> dict:
+    """
+    BOOKING-2A: send the booking link once, after qualification, when the org switched
+    'auto_send_link' on. Skipped if the lead already has a live booking or any earlier
+    link (manual or automatic), so it can never fire twice. S14: never raises.
+    """
+    try:
+        cfg = get_settings(db, org_id)
+        if not (cfg.get("native_enabled") and cfg.get("auto_send_link")):
+            return {"sent": False, "reason": "off"}
+        live = (db.table("lead_demos").select("id").eq("org_id", org_id).eq("lead_id", lead_id)
+                .in_("status", list(_LIVE_STATUSES)).limit(1).execute().data or [])
+        if live:
+            return {"sent": False, "reason": "has_booking"}
+        prior = (db.table("booking_links").select("id").eq("org_id", org_id).eq("lead_id", lead_id)
+                 .limit(1).execute().data or [])
+        if prior:
+            return {"sent": False, "reason": "already_sent"}
+        from app.services import demo_service as ds
+        lead = ds._confirm_lead_in_org(db, org_id, lead_id)
+        token = create_link(db, org_id, lead_id, None, None)   # marker row is written before sending
+        url = f"{public_base()}/b/{token}"
+        first = (lead.get("full_name") or "").split(" ")[0] or "there"
+        res = ds._auto_send_wa(db, org_id, lead,
+                               f"Hi {first}, you can pick a time for your {cfg['label']} here: {url}",
+                               template_name=BOOKING_LINK_TEMPLATE, template_vars=[first, cfg["label"], url])
+        ds._log_timeline(db, org_id, lead_id, None, "booking_link_auto",
+                         "Booking link sent automatically after qualification." if res.get("sent")
+                         else f"Booking link created after qualification but not delivered ({res.get('reason')}).",
+                         {"reason": res.get("reason")})
+        return {"sent": bool(res.get("sent")), "reason": res.get("reason")}
+    except Exception as exc:
+        logger.warning("auto_send_link_for_lead failed org=%s lead=%s: %s", org_id, lead_id, exc)
+        return {"sent": False, "reason": "error"}
+

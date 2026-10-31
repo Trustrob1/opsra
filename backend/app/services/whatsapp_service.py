@@ -4562,3 +4562,83 @@ def get_contact_status(
             contact_type, contact_id, exc,
         )
         return {"window_open": False, "ai_paused": False}
+
+
+# ── BOOKING-2A: send a booking message correctly (text inside the 24h window, template outside) ──
+
+def _last_inbound_window(db, org_id: str, lead_id: str):
+    """Expiry (aware datetime) of the 24h window opened by the lead's latest inbound message, or None. S14."""
+    try:
+        rows = (
+            db.table("whatsapp_messages").select("created_at")
+            .eq("org_id", org_id).eq("lead_id", lead_id).eq("direction", "inbound")
+            .order("created_at", desc=True).limit(1).execute().data or []
+        )
+        if not rows:
+            return None
+        raw = rows[0].get("created_at")
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00")) if isinstance(raw, str) else raw
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        exp = dt + timedelta(hours=24)
+        return exp if exp > datetime.now(timezone.utc) else None
+    except Exception:
+        return None
+
+
+def send_booking_message(db, org_id: str, lead: dict, text: str,
+                         template_name: Optional[str] = None,
+                         template_vars: Optional[list] = None) -> dict:
+    """
+    Send a booking message to a lead using the org's own WhatsApp credentials.
+    Inside the 24h window: plain text. Outside it: the named template (positional
+    {{1}}, {{2}}... variables) when given, otherwise nothing is sent.
+    Returns {"sent": bool, "via": "text"|"template"|None, "reason": str|None}. S14: never raises.
+    reason: no_number | no_whatsapp | window_closed | template_failed | send_failed
+    """
+    try:
+        lead_id = lead.get("id")
+        to_number = (lead.get("whatsapp") or lead.get("phone") or "").strip()
+        if not to_number:
+            return {"sent": False, "via": None, "reason": "no_number"}
+        phone_id, token, _ = _get_lead_wa_credentials(db, org_id, lead_id)
+        if not phone_id or not token:
+            return {"sent": False, "via": None, "reason": "no_whatsapp"}
+        now = datetime.now(timezone.utc)
+        expiry = _last_inbound_window(db, org_id, lead_id)
+        if expiry:
+            via, payload, row_expiry = "text", {
+                "messaging_product": "whatsapp", "to": to_number, "type": "text",
+                "text": {"body": text},
+            }, expiry
+        elif template_name:
+            via, payload, row_expiry = "template", {
+                "messaging_product": "whatsapp", "to": to_number, "type": "template",
+                "template": {
+                    "name": template_name, "language": {"code": "en"},
+                    "components": [{"type": "body", "parameters": [
+                        {"type": "text", "text": str(v)} for v in (template_vars or [])
+                    ]}],
+                },
+            }, now
+        else:
+            logger.warning("send_booking_message: window closed and no template for lead=%s org=%s", lead_id, org_id)
+            return {"sent": False, "via": None, "reason": "window_closed"}
+        try:
+            _call_meta_send(phone_id, payload, token=token)
+        except Exception as exc:
+            logger.warning("send_booking_message: %s send failed lead=%s org=%s: %s", via, lead_id, org_id, exc)
+            return {"sent": False, "via": None, "reason": "template_failed" if via == "template" else "send_failed"}
+        try:
+            db.table("whatsapp_messages").insert({
+                "org_id": org_id, "lead_id": lead_id, "direction": "outbound",
+                "message_type": "text", "content": text, "status": "sent",
+                "window_open": via == "text", "window_expires_at": row_expiry.isoformat(),
+                "sent_by": None, "created_at": now.isoformat(),
+            }).execute()
+        except Exception as exc:
+            logger.warning("send_booking_message: log insert failed lead=%s: %s", lead_id, exc)
+        return {"sent": True, "via": via, "reason": None}
+    except Exception as exc:
+        logger.warning("send_booking_message failed org=%s: %s", org_id, exc)
+        return {"sent": False, "via": None, "reason": "send_failed"}
