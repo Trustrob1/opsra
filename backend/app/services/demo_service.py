@@ -89,7 +89,8 @@ _DEMO_SELECT = (
     "confirmation_sent, reminder_24h_sent, reminder_1h_sent, "
     "noshow_task_created, parent_demo_id, created_by, created_at, updated_at, "
     "recap, rep_nudge_sent_at, manager_nudge_sent_at, "
-    "service_id, source, slot_end, cancelled_at, cancel_reason, cancelled_by, reschedule_count, lead_timezone"
+    "service_id, source, slot_end, cancelled_at, cancel_reason, cancelled_by, reschedule_count, lead_timezone, "
+    "external_id, external_meta"
 )
 
 

@@ -221,6 +221,16 @@ def public_verify_payment(token: str, request: Request, response: Response, db=D
     return ok({"booking": _public_booking(current), "payment": dep.public_payment(p)})
 
 
+@router.post("/webhooks/calendly/{webhook_token}")
+async def calendly_webhook(webhook_token: str, request: Request, db=Depends(get_supabase)):
+    """BOOKING-3C. Authenticated by the secret in the URL plus Calendly's HMAC signature; the org comes from the secret only."""
+    from app.services import calendly_service as cal
+    raw = await request.body()
+    if len(raw) > 200_000:
+        raise HTTPException(status_code=413, detail={"code": "TOO_LARGE", "message": "Too large"})
+    return cal.handle_webhook(db, webhook_token, raw, request.headers.get("Calendly-Webhook-Signature"))
+
+
 class RescheduleBody(BaseModel):
     start: str = Field(..., max_length=40)
 
@@ -585,6 +595,37 @@ def mark_deposit_refunded(demo_id: str, org: dict = Depends(get_current_org), db
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only a manager or admin can mark a deposit as refunded."})
     from app.services import booking_deposit_service as dep
     return ok(dep.public_payment(dep.mark_refunded(db, org["org_id"], demo_id, org["id"])))
+
+
+# ───────────────────────────── BOOKING-3C: Calendly ─────────────────────────────
+
+class CalendlyBody(BaseModel):
+    access_token: str = Field(..., min_length=20, max_length=2000)
+
+
+@staff.get("/booking/calendly")
+def calendly_status(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    from app.services import calendly_service as cal
+    return ok(cal.status(db, org["org_id"]))
+
+
+@staff.post("/booking/calendly")
+def calendly_connect(body: CalendlyBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    if not _is_manager(org):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only a manager or admin can connect Calendly."})
+    from app.services import calendly_service as cal
+    return ok(cal.connect(db, org["org_id"], body.access_token), message="Calendly connected")
+
+
+@staff.delete("/booking/calendly")
+def calendly_disconnect(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    if not _is_manager(org):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only a manager or admin can disconnect Calendly."})
+    from app.services import calendly_service as cal
+    return ok(cal.disconnect(db, org["org_id"]))
 
 
 @staff.post("/booking/bookings/{demo_id}/assign")

@@ -821,11 +821,19 @@ def _check_cutoff(db, org_id: str, demo: dict, enforce: bool) -> None:
         raise _err(403, "TOO_LATE", f"Changes are only allowed up to {hours} hours before. Please contact us directly.")
 
 
-def cancel_booking(db, org_id: str, demo_id: str, by: str, reason: Optional[str] = None, user_id: Optional[str] = None) -> dict:
-    """by = 'lead' (cutoff enforced) or 'staff'."""
+def cancel_booking(db, org_id: str, demo_id: str, by: str, reason: Optional[str] = None, user_id: Optional[str] = None,
+                   from_calendly: bool = False, notify_lead: bool = True) -> dict:
+    """by = 'lead' (cutoff enforced) or 'staff'. from_calendly: Calendly already cancelled it (no cutoff, no call back to Calendly).
+    notify_lead=False: skip the WhatsApp cancellation (a Calendly reschedule is followed by a new confirmation)."""
     from app.services import demo_service as ds
     demo = _get_live_booking(db, org_id, demo_id)
-    _check_cutoff(db, org_id, demo, enforce=(by == "lead"))
+    _check_cutoff(db, org_id, demo, enforce=(by == "lead" and not from_calendly))
+    if demo.get("source") == "calendly" and not from_calendly:   # BOOKING-3C: keep Calendly in step (best effort)
+        try:
+            from app.services import calendly_service
+            calendly_service.cancel_remote(db, org_id, demo, reason)
+        except Exception as exc:
+            logger.warning("cancel_booking: calendly cancel failed demo=%s: %s", demo_id, exc)
     now = _now_iso()
     db.table("lead_demos").update({
         "status": "cancelled", "cancelled_at": now, "cancelled_by": by,
@@ -846,14 +854,17 @@ def cancel_booking(db, org_id: str, demo_id: str, by: str, reason: Optional[str]
         ds._insert_notification(db, org_id, demo["assigned_to"], "demo_cancelled", f"Booking cancelled: {lead.get('full_name') or 'Lead'}",
                                 f"The {label} on {when} was cancelled by {by}.", demo_id)
     first = (lead.get("full_name") or "").split(" ")[0] or "there"
-    ds._auto_send_wa(db, org_id, lead, (f"Your {label} on {when} has been cancelled." if when else f"Your {label} request has been cancelled.") + " Reply here any time to book a new time.",
-                     template_name=BOOKING_CANCELLED_TEMPLATE, template_vars=[first, label, when or "the requested time"])
+    if notify_lead:
+        ds._auto_send_wa(db, org_id, lead, (f"Your {label} on {when} has been cancelled." if when else f"Your {label} request has been cancelled.") + " Reply here any time to book a new time.",
+                         template_name=BOOKING_CANCELLED_TEMPLATE, template_vars=[first, label, when or "the requested time"])
     return ds._fetch_demo_by_id(db, org_id, demo_id)
 
 
 def reschedule_booking(db, org_id: str, demo_id: str, new_start_utc: datetime, by: str, user_id: Optional[str] = None) -> dict:
     from app.services import demo_service as ds
     demo = _get_live_booking(db, org_id, demo_id)
+    if demo.get("source") == "calendly":   # BOOKING-3C: Calendly owns the time
+        raise _err(409, "CALENDLY_BOOKING", "This booking was made in Calendly. Use the reschedule link in the Calendly confirmation.")
     _check_cutoff(db, org_id, demo, enforce=(by == "lead"))
     org = get_org(db, org_id)
     service = get_service(db, org_id, demo["service_id"]) if demo.get("service_id") else {

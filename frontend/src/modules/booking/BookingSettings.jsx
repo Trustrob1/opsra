@@ -10,7 +10,7 @@ import TeamView, { ReassignButton } from './BookingTeam'
 import {
   getBookingSettings, saveBookingSettings, listBookingServices, createBookingService, updateBookingService,
   deleteBookingService, getBookingHours, saveBookingHours, listBookingBlocks, addBookingBlock, deleteBookingBlock,
-  getBookingsFeed, listBookingStaff, apiError,
+  getBookingsFeed, listBookingStaff, getCalendly, connectCalendly, disconnectCalendly, apiError,
 } from '../../services/booking.service'
 import './booking.css'
 
@@ -101,7 +101,7 @@ function CalendarView({ label, perStaff }) {
               return (
                 <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: `1px solid ${ds.border}`, flexWrap: 'wrap' }}>
                   <b style={{ minWidth: 74, fontSize: 14 }}>{new Date(r.scheduled_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()}</b>
-                  <span style={{ flex: 1, fontSize: 14, color: ds.dark }}>{r.leads?.full_name || 'Lead'} <span style={{ color: ds.gray, fontSize: 12 }}>· {label}{perStaff && nameOf(r.assigned_to) ? ` · ${nameOf(r.assigned_to)}` : ''}</span></span>
+                  <span style={{ flex: 1, fontSize: 14, color: ds.dark }}>{r.leads?.full_name || 'Lead'} <span style={{ color: ds.gray, fontSize: 12 }}>· {label}{r.source === 'calendly' ? ' · Calendly' : ''}{perStaff && nameOf(r.assigned_to) ? ` · ${nameOf(r.assigned_to)}` : ''}</span></span>
                   <span style={{ background: s[1], color: s[2], borderRadius: 20, padding: '3px 10px', fontSize: 11.5, fontWeight: 600 }}>{s[0]}</span>
                   {perStaff && <ReassignButton booking={r} staff={staff} onChanged={load} />}
                   <BookingRowActions booking={r} onChanged={load} />
@@ -220,7 +220,7 @@ function SettingsView({ cfg, onCfg }) {
           {msg && <span role="status" style={{ fontSize: 13, color: msg.ok ? '#276749' : ds.red }}>{msg.t}</span>}
         </div>
       </div>
-      {cfg.native_enabled && (<><Services /><Hours /><TimeOff /></>)}
+      {cfg.native_enabled && (<><Services /><Hours /><TimeOff /><CalendlyCard /></>)}
     </div>
   )
 }
@@ -371,6 +371,46 @@ function TimeOff() {
       </div>
       {err && <p className="bk-err">{err}</p>}
       <button style={{ ...btnG, marginTop: 10 }} onClick={add}>+ Add time off</button>
+    </div>
+  )
+}
+
+// BOOKING-3C: bookings made in Calendly appear here with the same WhatsApp confirmation and reminders
+function CalendlyCard() {
+  const [st, setSt] = useState(null)
+  const [token, setToken] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  useEffect(() => { getCalendly().then((r) => setSt(r.data)).catch(() => setSt({ connected: false })) }, [])
+  const connect = async () => {
+    setBusy(true); setMsg(null)
+    try { const r = await connectCalendly(token.trim()); setSt(r.data); setToken(''); setMsg({ ok: true, t: 'Calendly connected.' }) }
+    catch (e) { setMsg({ ok: false, t: apiError(e) }) } finally { setBusy(false) }
+  }
+  const disconnect = async () => {
+    setBusy(true); setMsg(null)
+    try { await disconnectCalendly(); setSt({ connected: false }); setMsg({ ok: true, t: 'Calendly disconnected.' }) }
+    catch (e) { setMsg({ ok: false, t: apiError(e) }) } finally { setBusy(false) }
+  }
+  return (
+    <div style={card}>
+      <p style={title}>Calendly</p>
+      <p style={{ fontSize: 13, color: ds.gray, marginTop: 0 }}>Already use Calendly? Connect it and every Calendly booking shows up here, gets a WhatsApp confirmation and reminders, and blocks the same time on your Opsra calendar. Needs a paid Calendly plan.</p>
+      {st === null ? <p style={{ fontSize: 13, color: ds.gray }}>Loading…</p> : st.connected ? (
+        <div>
+          <p style={{ fontSize: 13.5, margin: '0 0 10px' }}><b>Connected</b>{st.calendly_user ? ` as ${st.calendly_user}` : ''}.{st.scope === 'user' ? ' Only this person’s Calendly events are included. Use an admin’s token to include the whole team.' : ''}</p>
+          <p style={{ fontSize: 12, color: ds.gray, margin: '0 0 10px' }}>Cancelling a Calendly booking here also cancels it in Calendly. To move one, the customer uses the reschedule link in their Calendly email.</p>
+          <button style={btnG} disabled={busy} onClick={disconnect}>{busy ? 'Working…' : 'Disconnect Calendly'}</button>
+        </div>
+      ) : (
+        <div style={{ maxWidth: 460 }}>
+          <label style={lab} htmlFor="cal-token">Calendly personal access token</label>
+          <input id="cal-token" type="password" autoComplete="off" style={inp} value={token} onChange={(e) => setToken(e.target.value)} />
+          <p style={{ fontSize: 11.5, color: ds.gray, margin: '5px 0 10px' }}>In Calendly: Integrations &gt; API and webhooks &gt; Personal access tokens &gt; Generate new token. Paste it here. Opsra stores it privately and sets up the connection for you.</p>
+          <button style={btnP} disabled={busy || token.trim().length < 20} onClick={connect}>{busy ? 'Connecting…' : 'Connect Calendly'}</button>
+        </div>
+      )}
+      {msg && <p role="status" style={{ fontSize: 13, color: msg.ok ? '#276749' : ds.red, marginBottom: 0 }}>{msg.t}</p>}
     </div>
   )
 }

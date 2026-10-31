@@ -446,6 +446,10 @@ def _handle_change(db, org_id, lead, org, cfg, kind: str, demo_id: str) -> bool:
     if not demo or demo.get("status") not in bk._LIVE_STATUSES:
         _send_text(db, org_id, lead, "I can't find an upcoming booking to change. Reply here and a member of our team will help.")
         return True
+    if kind == "rs" and demo.get("source") == "calendly":   # BOOKING-3C: the time lives in Calendly
+        url = (demo.get("external_meta") or {}).get("reschedule_url")
+        _send_text(db, org_id, lead, f"You can pick a new time here: {url}" if url else "Please use the reschedule link in your Calendly confirmation email, or reply here and we'll help.")
+        return True
     try:
         bk._check_cutoff(db, org_id, demo, enforce=True)
     except HTTPException as exc:

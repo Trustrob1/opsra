@@ -55,3 +55,6 @@ export const apiError = (e, fallback = 'Something went wrong. Please try again.'
   e?.response?.data?.detail?.message ?? e?.response?.data?.error?.message ?? fallback
 export const markDepositPaid     = (demoId) => api.post(`/api/v1/booking/bookings/${demoId}/payment/mark-paid`, {}).then(unwrap)
 export const markDepositRefunded = (demoId) => api.post(`/api/v1/booking/bookings/${demoId}/payment/mark-refunded`, {}).then(unwrap)
+export const getCalendly        = () => api.get('/api/v1/booking/calendly').then(unwrap)
+export const connectCalendly    = (access_token) => api.post('/api/v1/booking/calendly', { access_token }).then(unwrap)
+export const disconnectCalendly = () => api.delete('/api/v1/booking/calendly').then(unwrap)
