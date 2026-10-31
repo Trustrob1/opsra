@@ -10,7 +10,7 @@ import { ds } from '../../utils/ds'
 import SlotPicker, { fmtFull } from './SlotPicker'
 import {
   getBookingSettings, listBookingServices, getStaffSlots, staffBookLead, makeBookingLink,
-  staffCancelBooking, staffRescheduleBooking, apiError,
+  staffCancelBooking, staffRescheduleBooking, startWaPicker, apiError,
 } from '../../services/booking.service'
 import './booking.css'
 
@@ -107,6 +107,19 @@ export function BookingActions({ leadId, meetingLabel = 'Meeting', onChanged }) 
     } catch (e) { setMsg({ ok: false, text: apiError(e) }) }
     finally { setBusy(false) }
   }
+  const sendTimes = async () => {
+    setBusy(true); setMsg(null)
+    try {
+      const d = (await startWaPicker(leadId, { service: serviceId || undefined })).data
+      if (d.started) setMsg({ ok: true, text: 'Times sent on WhatsApp. The customer picks a day, then a time.' })
+      else if (d.fallback === 'link') setMsg({ ok: !!d.sent, text: d.sent ? "This customer hasn't messaged in 24 hours, so the booking link was sent instead." : "Not sent: this customer hasn't messaged in 24 hours and the message template isn't approved yet. Copy the link and send it yourself.", url: d.url })
+      else {
+        const why = { too_many: 'Already offered times to this customer 5 times today.', no_slots: 'No open times right now, so nothing was sent.', no_service: 'Add a service first.', not_enabled: 'Turn on online booking first.', send_failed: 'WhatsApp could not send the message.' }
+        setMsg({ ok: false, text: why[d.reason] || 'Could not send the times.' })
+      }
+    } catch (e) { setMsg({ ok: false, text: apiError(e) }) }
+    finally { setBusy(false) }
+  }
   const copyLink = async () => {
     setBusy(true); setMsg(null)
     try {
@@ -127,6 +140,7 @@ export function BookingActions({ leadId, meetingLabel = 'Meeting', onChanged }) 
           </select>
         )}
         <button style={{ ...btn, background: ds.teal, color: '#fff' }} onClick={() => setOpen(true)}>Book a {label}</button>
+        <button style={btn} disabled={busy} onClick={sendTimes}>Send times on WhatsApp</button>
         <button style={btn} disabled={busy} onClick={sendLink}>Send booking link</button>
         <button style={btn} disabled={busy} onClick={copyLink}>Copy link</button>
       </div>

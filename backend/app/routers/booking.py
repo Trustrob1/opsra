@@ -232,6 +232,7 @@ class SettingsBody(BaseModel):
     auto_send_link: Optional[bool] = None
     default_rep_id: Optional[str] = None
     calendar_mode: Optional[Literal["single", "per_staff"]] = None
+    auto_send_mode: Optional[Literal["link", "picker"]] = None
 
 
 @staff.get("/booking/settings")
@@ -534,4 +535,19 @@ def assign_booking(demo_id: str, body: AssignBody, org: dict = Depends(get_curre
     if not _is_manager(org):
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only a manager or admin can reassign a booking."})
     return ok(bk.reassign_booking(db, org["org_id"], demo_id, body.user_id, org["id"]))
+
+
+# ───────────────────────────── BOOKING-2C: WhatsApp slot picker ─────────────────────────────
+
+class PickerBody(BaseModel):
+    service: Optional[str] = Field(default=None, max_length=64)
+
+
+@staff.post("/booking/leads/{lead_id}/wa-picker")
+def start_wa_picker(lead_id: str, body: PickerBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    """Send the lead a day list on WhatsApp. If the 24h window is closed, the booking-link template is sent instead."""
+    _gate(db, org["org_id"])
+    from app.services import booking_wa_service as bwa
+    service_id = bk.get_service(db, org["org_id"], body.service)["id"] if body.service else None
+    return ok(bwa.start_picker(db, org["org_id"], lead_id, service_id=service_id, user_id=org["id"]))
 

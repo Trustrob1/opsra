@@ -1291,6 +1291,32 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     )
     logger.info("[WH] lookup result: org_id=%s customer_id=%s lead_id=%s", org_id, customer_id, lead_id)
 
+    # ── BOOKING-2C: WhatsApp slot picker ────────────────────────────────
+    # A tap on a picker list/button (reply id "bk:...") is handled here, before every number mode, and the
+    # message is stored first so the 24h window and duplicate-delivery check keep working. Any other message
+    # from a lead in the middle of a picker conversation simply ends that conversation (it never traps a chat).
+    if org_id and lead_id:
+        try:
+            from app.services import booking_wa_service as _bkwa
+            _bk_rid, _bk_title = _bkwa.reply_id_from_message(message)
+            if _bkwa.is_picker_reply(_bk_rid):
+                try:
+                    db.table("whatsapp_messages").insert({
+                        "org_id": org_id, "lead_id": lead_id, "direction": "inbound", "message_type": msg_type,
+                        "channel": "whatsapp", "content": _bk_title or _bk_rid, "status": "delivered",
+                        "meta_message_id": msg_id or None, "window_open": True,
+                        "window_expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+                        "sent_by": None, "created_at": datetime.now(timezone.utc).isoformat(),
+                    }).execute()
+                except Exception as _bk_save_exc:
+                    logger.warning("[BOOKING-2C] inbound save failed lead=%s: %s", lead_id, _bk_save_exc)
+                if _bkwa.handle_reply(db, org_id, lead_id, _bk_rid, _bk_title):
+                    return
+            else:
+                _bkwa.abandon_if_active(db, org_id, lead_id)
+        except Exception as _bk_exc:
+            logger.warning("[BOOKING-2C] picker hook failed lead=%s: %s", lead_id, _bk_exc)
+
     # ── AI-AGENT-1B: per-number mode check ──────────────────────────────
     # wa_sales_mode lives on whatsapp_numbers (per-number), NOT organisations
     # (per-org) — this is the source of truth per the AI-AGENT-1 design.

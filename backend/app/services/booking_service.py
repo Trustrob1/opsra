@@ -50,6 +50,7 @@ DEFAULT_SETTINGS = {
     "auto_send_link": False,
     "default_rep_id": None,
     "calendar_mode": "single",     # BOOKING-2B: single | per_staff
+    "auto_send_mode": "link",      # BOOKING-2C: link | picker
 }
 
 
@@ -200,6 +201,8 @@ def save_settings(db, org_id: str, patch: dict) -> dict:
     allowed = {k: v for k, v in patch.items() if k in DEFAULT_SETTINGS}
     if "label" in allowed:
         allowed["label"] = (allowed["label"] or "consultation").strip()[:40] or "consultation"
+    if "auto_send_mode" in allowed and allowed["auto_send_mode"] not in ("link", "picker"):
+        raise _err(422, "VALIDATION_ERROR", "Auto-send mode must be link or picker")
     if "calendar_mode" in allowed and allowed["calendar_mode"] not in ("single", "per_staff"):
         raise _err(422, "VALIDATION_ERROR", "Calendar mode must be single or per_staff")
     if "cancel_cutoff_hours" in allowed:
@@ -875,6 +878,15 @@ def auto_send_link_for_lead(db, org_id: str, lead_id: str) -> dict:
             return {"sent": False, "reason": "already_sent"}
         from app.services import demo_service as ds
         lead = ds._confirm_lead_in_org(db, org_id, lead_id)
+        if cfg.get("auto_send_mode") == "picker":
+            # BOOKING-2C: offer the times inside WhatsApp (falls back to the link by itself when the window is closed)
+            from app.services import booking_wa_service as bwa
+            token = create_link(db, org_id, lead_id, None, None)   # marker row first, so this can never fire twice
+            res = bwa.start_picker(db, org_id, lead_id)
+            ds._log_timeline(db, org_id, lead_id, None, "booking_picker_auto",
+                             "Booking times offered on WhatsApp after qualification." if res.get("started") else f"Booking picker did not start ({res.get('reason')}).",
+                             {"reason": res.get("reason")})
+            return {"sent": bool(res.get("started")), "reason": res.get("reason")}
         token = create_link(db, org_id, lead_id, None, None)   # marker row is written before sending
         url = f"{public_base()}/b/{token}"
         first = (lead.get("full_name") or "").split(" ")[0] or "there"

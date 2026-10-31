@@ -137,7 +137,7 @@ function SettingsView({ cfg, onCfg }) {
         native_enabled: !!form.native_enabled, label: form.label,
         cancel_cutoff_hours: Number(form.cancel_cutoff_hours) || 0,
         auto_send_link: !!form.auto_send_link, default_rep_id: form.default_rep_id || null,
-        calendar_mode: form.calendar_mode || 'single',
+        calendar_mode: form.calendar_mode || 'single', auto_send_mode: form.auto_send_mode || 'link',
       })
       onCfg(r.data); setForm(r.data); setMsg({ ok: true, t: 'Saved.' })
     } catch (e) { setMsg({ ok: false, t: apiError(e) }) } finally { setSaving(false) }
@@ -181,6 +181,15 @@ function SettingsView({ cfg, onCfg }) {
           <input type="checkbox" checked={!!form.auto_send_link} onChange={(e) => set('auto_send_link', e.target.checked)} />
           <span><b>Send the booking link automatically</b><br /><span style={{ fontSize: 12, color: ds.gray }}>Once, on WhatsApp, when a customer finishes the questions. Never sent twice to the same person.</span></span>
         </label>
+        {form.auto_send_link && (
+          <div style={{ marginTop: 10, maxWidth: 360 }}>
+            <label style={lab} htmlFor="bk-asm">What to send</label>
+            <select id="bk-asm" style={inp} value={form.auto_send_mode || 'link'} onChange={(e) => set('auto_send_mode', e.target.value)}>
+              <option value="link">A link to the booking page</option>
+              <option value="picker">Times they can tap, right inside WhatsApp</option>
+            </select>
+          </div>
+        )}
         <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <button style={btnP} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
           {msg && <span role="status" style={{ fontSize: 13, color: msg.ok ? '#276749' : ds.red }}>{msg.t}</span>}
