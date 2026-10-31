@@ -26,6 +26,7 @@ const ACTION_OPTIONS = [
 ]
 
 const BOOK_OPTION = { value: 'book', label: '📅 Book a time (needs Online booking)' }
+const INFO_OPTION = { value: 'info', label: '💬 Send a fixed reply (text / links)' }
 
 const ROLE_OPTIONS = [
   { value: 'owner',         label: 'Owner' },
@@ -176,6 +177,24 @@ function ItemEditor({ items, setItems, sectionKey, actionOptions = ACTION_OPTION
                 </div>
               )}
             </div>
+            {item.action === 'info' && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={S.label}>
+                  Reply to send <span style={{ color: '#9CA3AF' }}>{(item.reply_text || '').length}/1500</span>
+                </label>
+                <textarea
+                  style={{ ...S.input, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }}
+                  value={item.reply_text || ''}
+                  maxLength={1500}
+                  onChange={e => updateItem(idx, 'reply_text', e.target.value)}
+                  placeholder="The message sent when this option is tapped. Links are fine."
+                />
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, fontSize: 12.5, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!item.notify_team} onChange={e => updateItem(idx, 'notify_team', e.target.checked)} />
+                  Also alert the team so someone follows up
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Remove */}
@@ -400,7 +419,7 @@ export default function ContactMenuConfig() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 20, alignItems: 'start' }}>
           <div style={S.card}>
-            <ItemEditor items={rcItems} setItems={setRcItems} sectionKey="rc" actionOptions={(bookingOn || rcItems.some(i => i.action === 'book')) ? [...ACTION_OPTIONS, BOOK_OPTION] : ACTION_OPTIONS} />
+            <ItemEditor items={rcItems} setItems={setRcItems} sectionKey="rc" actionOptions={(bookingOn || rcItems.some(i => i.action === 'book')) ? [...ACTION_OPTIONS, INFO_OPTION, BOOK_OPTION] : [...ACTION_OPTIONS, INFO_OPTION]} />
           </div>
           <WhatsAppPreview greeting={rcGreeting} sectionTitle={rcSectionTitle} items={rcItems} />
         </div>
@@ -443,7 +462,7 @@ export default function ContactMenuConfig() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 20, alignItems: 'start' }}>
           <div style={S.card}>
-            <ItemEditor items={kcItems} setItems={setKcItems} sectionKey="kc" actionOptions={(bookingOn || kcItems.some(i => i.action === 'book')) ? [...ACTION_OPTIONS, BOOK_OPTION] : ACTION_OPTIONS} />
+            <ItemEditor items={kcItems} setItems={setKcItems} sectionKey="kc" actionOptions={(bookingOn || kcItems.some(i => i.action === 'book')) ? [...ACTION_OPTIONS, INFO_OPTION, BOOK_OPTION] : [...ACTION_OPTIONS, INFO_OPTION]} />
           </div>
           <WhatsAppPreview greeting={kcGreeting} sectionTitle={kcSectionTitle} items={kcItems} />
         </div>

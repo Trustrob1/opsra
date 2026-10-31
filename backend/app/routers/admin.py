@@ -2628,6 +2628,7 @@ class TriageConfigUpdate(BaseModel):
         "commerce_entry",  # COMM-1
         "browse_catalog",  # CATALOG-5
         "book",            # RETURN-MENU-1
+        "info",            # RETURN-MENU-3: fixed reply text
         # Customer section actions
         "create_ticket",
         "kb_enquiry",
@@ -3060,6 +3061,7 @@ _CONTACT_MENU_ACTION_TYPES = {
     "route_to_role",
     "free_form",
     "book",            # RETURN-MENU-1
+    "info",            # RETURN-MENU-3
 }
 
 _CONTACT_MENU_ROLE_OPTIONS = {"owner", "ops_manager", "sales_agent", "support_agent", "finance"}
@@ -3075,7 +3077,8 @@ class ContactMenuItem(BaseModel):
     description: Optional[str] = Field(default=None, max_length=72)
     action: str
     role: Optional[str] = None  # only required when action == "route_to_role"
-
+    reply_text: Optional[str] = Field(default=None, max_length=1500)   # RETURN-MENU-3: used by action "info"
+    notify_team: Optional[bool] = None
     @field_validator("label")
     @classmethod
     def _validate_label(cls, v: str) -> str:

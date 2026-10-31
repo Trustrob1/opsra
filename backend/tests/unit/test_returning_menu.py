@@ -169,3 +169,34 @@ def test_lead_thanks_is_answered_and_not_forwarded():
     with patch.object(ci, "reply_to_acknowledgement", return_value=True) as r, patch.object(ci, "_insert_notification") as n:
         out = ci.handle_lead_post_handoff_inbound(db, "o", "l1", "Ai", "Thanks", "text", None, "2026-10-31T00:00:00Z", phone_number="234")
     assert out is True and r.called and not n.called
+
+
+def test_run_info_action_sends_reply_and_closes_session():
+    sent, notify = MagicMock(), MagicMock()
+    db = MagicMock()
+    db.table.return_value.insert.return_value.execute.return_value = MagicMock()
+    item = {"id": "i", "label": "Join a community", "action": "info", "reply_text": "Join here: https://example.com/x", "notify_team": True}
+    with patch.object(rm, "_lead_for_phone", return_value="l1"), patch("app.services.triage_service.update_session") as up, \
+         patch("app.services.triage_service._notify_managers", notify), \
+         patch("app.services.whatsapp_service._get_org_wa_credentials", return_value=("pid", "tok", None)), \
+         patch("app.services.whatsapp_service._call_meta_send", sent):
+        rm.run_info_action(db, "o", "234", "s1", item, "Ai")
+    assert sent.call_args.args[1]["text"]["body"].startswith("Join here")
+    assert up.call_args.args[2] == "expired"
+    assert notify.called
+
+
+def test_run_info_action_no_notify_by_default():
+    notify = MagicMock()
+    with patch.object(rm, "_lead_for_phone", return_value="l1"), patch("app.services.triage_service.update_session"), \
+         patch("app.services.triage_service._notify_managers", notify), \
+         patch("app.services.whatsapp_service._get_org_wa_credentials", return_value=("pid", "tok", None)), \
+         patch("app.services.whatsapp_service._call_meta_send"):
+        rm.run_info_action(MagicMock(), "o", "234", "s1", {"label": "x", "reply_text": "hi"}, None)
+    assert not notify.called
+
+
+def test_contact_menu_item_accepts_info_fields():
+    from app.routers.admin import ContactMenuItem
+    it = ContactMenuItem(id="a", label="Books", action="info", reply_text="links", notify_team=True)
+    assert it.reply_text == "links" and it.notify_team is True

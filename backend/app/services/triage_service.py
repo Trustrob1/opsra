@@ -459,6 +459,10 @@ def dispatch_contact_menu_selection(
                 matched_item or {}, customer_id, contact_name, now_ts,
             )
 
+        elif action == "info":
+            from app.services.returning_menu_service import run_info_action   # RETURN-MENU-3
+            run_info_action(db, org_id, phone_number, session_id, matched_item or {}, contact_name)
+
         elif action == "book":
             from app.services.returning_menu_service import run_book_action   # RETURN-MENU-1
             run_book_action(db, org_id, phone_number, session_id)
@@ -610,6 +614,10 @@ def dispatch_triage_selection(
         elif action == "browse_catalog":
             # CATALOG-5: Contact selected the catalog browse option.
             _action_browse_catalog(db, org_id, phone_number, session_id)
+
+        elif action == "info":
+            from app.services.returning_menu_service import run_info_action   # RETURN-MENU-3
+            run_info_action(db, org_id, phone_number, session_id, matched_item or {}, contact_name)
 
         elif action == "book":
             # RETURN-MENU-1: open the WhatsApp booking picker
@@ -1164,6 +1172,10 @@ def dispatch_customer_triage_selection(
                 db, org_id, phone_number, session_id,
                 matched_item or {}, customer_id, contact_name, now_ts,
             )
+
+        elif action == "info":
+            from app.services.returning_menu_service import run_info_action   # RETURN-MENU-3
+            run_info_action(db, org_id, phone_number, session_id, matched_item or {}, contact_name)
 
         elif action == "book":
             from app.services.returning_menu_service import run_book_action   # RETURN-MENU-1

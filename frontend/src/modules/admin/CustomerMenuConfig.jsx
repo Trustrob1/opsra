@@ -29,6 +29,7 @@ const UNKNOWN_ACTION_OPTIONS = [
 ]
 
 const BOOK_OPTION = { value: 'book', label: '📅 Book a time (needs Online booking)' }
+const INFO_OPTION = { value: 'info', label: '💬 Send a fixed reply (text / links)' }
 
 const CUSTOMER_ACTION_OPTIONS = [
   { value: 'create_ticket', label: 'Create support ticket' },
@@ -47,6 +48,7 @@ const UNKNOWN_CONTACT_TYPE_MAP = {
   commerce_entry:    'sales_lead',
   browse_catalog:    'sales_lead',
   book:              'sales_lead',
+  info:              'other',
   identify_customer: 'support_contact',
   route_to_role:     'business_inquiry',
   free_form:         'other',
@@ -226,6 +228,24 @@ function ItemEditor({ items, setItems, actionOptions, contactTypeMap, sectionKey
                 </>
               )}
             </div>
+            {item.action === 'info' && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={S.label}>
+                  Reply to send <span style={{ color: '#9CA3AF' }}>{(item.reply_text || '').length}/1500</span>
+                </label>
+                <textarea
+                  style={{ ...S.input, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }}
+                  value={item.reply_text || ''}
+                  maxLength={1500}
+                  onChange={e => updateItem(idx, 'reply_text', e.target.value)}
+                  placeholder="The message sent when this option is tapped. Links are fine."
+                />
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, fontSize: 12.5, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!item.notify_team} onChange={e => updateItem(idx, 'notify_team', e.target.checked)} />
+                  Also alert the team so someone follows up
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Remove */}
@@ -535,7 +555,7 @@ export default function CustomerMenuConfig() {
                 <ItemEditor
                   items={unknownItems}
                   setItems={setUnknownItems}
-                  actionOptions={(bookingOn || unknownItems.some((i) => i.action === 'book')) ? [...UNKNOWN_ACTION_OPTIONS, BOOK_OPTION] : UNKNOWN_ACTION_OPTIONS}
+                  actionOptions={(bookingOn || unknownItems.some((i) => i.action === 'book')) ? [...UNKNOWN_ACTION_OPTIONS, INFO_OPTION, BOOK_OPTION] : [...UNKNOWN_ACTION_OPTIONS, INFO_OPTION]}
                   contactTypeMap={UNKNOWN_CONTACT_TYPE_MAP}
                   sectionKey="unknown"
                 />

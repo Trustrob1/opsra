@@ -177,6 +177,39 @@ def run_book_action(db, org_id: str, phone: str, session_id: str) -> None:
         logger.warning("returning menu book action failed org=%s: %s", org_id, exc)
 
 
+def run_info_action(db, org_id: str, phone: str, session_id: str, item: dict, contact_name=None) -> None:
+    """RETURN-MENU-3: an 'info' menu item was tapped - send its fixed reply text, optionally tell the team, then close the menu session."""
+    try:
+        from app.services import triage_service
+        from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
+        triage_service.update_session(db, session_id, "expired", selected_action="info", expected_state="triage_sent")
+        text = (item.get("reply_text") or "").strip() or "Thanks for your interest! A member of our team will share the details with you shortly."
+        phone_id, token, _ = _get_org_wa_credentials(db, org_id)
+        if (phone_id or "").strip() and token:
+            _call_meta_send(phone_id.strip(), {"messaging_product": "whatsapp", "to": phone, "type": "text",
+                                               "text": {"body": text[:4000], "preview_url": True}}, token=token)
+        lead_id = _lead_for_phone(db, org_id, phone)
+        cust = None
+        if not lead_id:
+            rows = (db.table("customers").select("id").eq("org_id", org_id).eq("phone", phone).limit(1).execute().data or [])
+            cust = rows[0]["id"] if rows else None
+        try:
+            now = datetime.now(timezone.utc)
+            row = {"org_id": org_id, "direction": "outbound", "message_type": "text", "content": text[:1000], "status": "sent", "window_open": True,
+                   "window_expires_at": (now + timedelta(hours=24)).isoformat(), "sent_by": None, "created_at": now.isoformat()}
+            if lead_id or cust:
+                row["lead_id" if lead_id else "customer_id"] = lead_id or cust
+                db.table("whatsapp_messages").insert(row).execute()
+        except Exception as exc:
+            logger.warning("info action: message save failed: %s", exc)
+        if item.get("notify_team"):
+            triage_service._notify_managers(db, org_id, title=f"{contact_name or phone} asked about: {item.get('label', 'a menu item')}",
+                                            body=f"They tapped '{item.get('label', '')}' on the WhatsApp menu. Please follow up from Conversations.",
+                                            resource_type="lead" if lead_id else "customer", resource_id=lead_id or cust or "")
+    except Exception as exc:
+        logger.warning("returning menu info action failed org=%s: %s", org_id, exc)
+
+
 def _lead_for_phone(db, org_id: str, phone: str) -> Optional[str]:
     for col in ("whatsapp", "phone"):
         rows = (db.table("leads").select("id").eq("org_id", org_id).eq(col, phone).is_("deleted_at", "null").order("created_at", desc=True).limit(1).execute().data or [])
