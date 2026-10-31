@@ -45,6 +45,7 @@ def _require_manager(org: dict) -> None:
 class PlanBody(BaseModel):
     key: str = Field(max_length=40)
     code: Optional[str] = Field(default=None, max_length=60)
+    interval: str = Field(default="month", pattern="^(month|year)$")
 
 
 class VerifyBody(BaseModel):
@@ -70,7 +71,7 @@ def get_orders(db=Depends(get_supabase), org=Depends(get_current_org)):
 def preview(body: PlanBody, db=Depends(get_supabase), org=Depends(get_current_org)):
     _require_manager(org)
     try:
-        return ok(svc.preview(db, org["org_id"], body.key, body.code))
+        return ok(svc.preview(db, org["org_id"], body.key, body.code, interval=body.interval))
     except svc.PlanBillingError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
@@ -80,7 +81,7 @@ def checkout(body: PlanBody, db=Depends(get_supabase), org=Depends(get_current_o
     _require_manager(org)
     try:
         res = svc.checkout(db, org["org_id"], key=body.key, email=org.get("email") or "", user_id=org.get("id"),
-                           code=body.code, callback_url=settings.FRONTEND_URL.rstrip("/") + "/?plan=1")
+                           code=body.code, callback_url=settings.FRONTEND_URL.rstrip("/") + "/?plan=1", interval=body.interval)
     except svc.PlanBillingError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return ok(res)

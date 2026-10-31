@@ -141,6 +141,10 @@ const CARDS = [
 
 const FAQ = [
   [
+    "Is there a yearly plan?",
+    "Yes. Pay for a year at once and you get 2 months free: Starter is \u20a6500,000, Growth \u20a61,000,000 and Established \u20a61,500,000 for the year. Extra users, add-ons and credit are billed separately.",
+  ],
+  [
     "Does it cost extra when WhatsApp sends messages?",
     "Yes. WhatsApp message fees are set by Meta, not by Opsra, and they are not part of the plan price. You pay them from a prepaid credit balance that you top up (from ₦5,000), and AI replies use that credit too. Booking messages are passed on at Meta’s price; marketing messages carry a small Opsra fee.",
   ],
@@ -211,6 +215,7 @@ function OneIcon({ k, col, size }) {
 export default function OwnerLandingPage() {
   const [solid, setSolid] = useState(false);
   const [plan, setPlan] = useState("growth");
+  const [yearly, setYearly] = useState(false);
   const [menu, setMenu] = useState(false);
   const cardsRef = useRef(null);
   const pinRef = useRef(null);
@@ -557,7 +562,11 @@ export default function OwnerLandingPage() {
           <div className="ow-center">
             <p className="ow-eyebrow ow-t-blue">Plans and prices</p>
             <h2 id="plans-h" className="ow-h2">Start small. Grow when you are ready.</h2>
-            <p className="ow-sub">Monthly plans in naira. Setup fees are agreed with you separately, based on what you need.</p>
+            <p className="ow-sub">Plans in naira, paid monthly or yearly. Setup fees are agreed with you separately, based on what you need.</p>
+          </div>
+          <div className="ow-per" role="group" aria-label="Billing period">
+            <button type="button" aria-pressed={!yearly} className={!yearly ? "ow-per-on" : ""} onClick={() => setYearly(false)}>Monthly</button>
+            <button type="button" aria-pressed={yearly} className={yearly ? "ow-per-on" : ""} onClick={() => setYearly(true)}>Yearly <em>2 months free</em></button>
           </div>
           <div className="ow-tabs" role="tablist" aria-label="Plans">
             {PLANS.map((p) => (
@@ -571,7 +580,8 @@ export default function OwnerLandingPage() {
                 <h3>{p.name}</h3>
                 <p className="ow-plan-line">{p.line}</p>
                 <p className="ow-from">From</p>
-                <p className="ow-price">{naira(p.monthly)}<small> / month</small></p>
+                <p className="ow-price">{naira(yearly ? p.monthly * 10 : p.monthly)}<small>{yearly ? " / year" : " / month"}</small></p>
+                {yearly ? <p className="ow-yr-note">{naira(Math.round((p.monthly * 10) / 12))} a month, paid once a year</p> : null}
                 <p className="ow-setup">Setup fee negotiated separately</p>
                 <a
                   className={`ow-btn ${p.suggested ? "ow-btn-blue" : "ow-btn-ink"}`}

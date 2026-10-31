@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 LAGOS = timezone(timedelta(hours=1))
 LIVE_STATES = ("active", "grace")
-BILLING_DEFAULTS = {"period_days": 30, "grace_days": 7, "reminder_days": [5, 1]}
+BILLING_DEFAULTS = {"period_days": 30, "grace_days": 7, "reminder_days": [5, 1], "annual_months": 10, "annual_days": 365}
 
 
 class EntitlementError(Exception):
@@ -184,6 +184,9 @@ def get_config(settings: Optional[dict]) -> dict:
     billing = {
         "period_days": _int(bill_raw.get("period_days"), BILLING_DEFAULTS["period_days"], 1, 366),
         "grace_days": _int(bill_raw.get("grace_days"), BILLING_DEFAULTS["grace_days"], 0, 60),
+        # YEARLY-1: a yearly plan pays this many months and lasts annual_days (10 = "2 months free"; 0 turns yearly off)
+        "annual_months": _int(bill_raw.get("annual_months"), BILLING_DEFAULTS["annual_months"], 0, 12),
+        "annual_days": BILLING_DEFAULTS["annual_days"],
         "reminder_days": reminder_days if reminder_days else list(BILLING_DEFAULTS["reminder_days"]),
     }
     return {"tiers": tiers, "addons": addons, "billing": billing}
@@ -247,6 +250,8 @@ def validate_pricing(pricing) -> None:
             b["period_days"] = whole(b["period_days"], 1, 366, "Billing period (days)")
         if "grace_days" in b:
             b["grace_days"] = whole(b["grace_days"], 0, 60, "Grace period (days)")
+        if "annual_months" in b:
+            b["annual_months"] = whole(b["annual_months"], 0, 12, "Months paid for a yearly plan")
         if "reminder_days" in b:
             rd = b["reminder_days"]
             if not isinstance(rd, list) or len(rd) > 5:

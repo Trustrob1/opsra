@@ -124,7 +124,7 @@ def _credit_for_unused(row: dict, cfg: dict, now: datetime) -> int:
         return 0
     if ent.effective_status(row, cfg, now) != "active":
         return 0
-    period = cfg["billing"]["period_days"]
+    period = int((row.get("config") or {}).get("period_days") or cfg["billing"]["period_days"])   # YEARLY-1: a yearly plan row carries 365
     price = float(row.get("price_ngn") or 0)
     if price <= 0:
         d = _defs(cfg, row["kind"]).get(row.get("key")) or {}

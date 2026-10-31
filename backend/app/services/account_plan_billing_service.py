@@ -100,6 +100,16 @@ def _includes(d: dict, picks: Optional[list] = None) -> list:
 # quote
 # ---------------------------------------------------------------------------
 
+def interval_of(cfg: dict, interval: Optional[str]) -> tuple:
+    """YEARLY-1: ('month'|'year', days, months_billed). 'year' needs annual_months > 0, else it is refused."""
+    if str(interval or "month").lower() not in ("year", "yearly", "annual"):
+        return "month", int(cfg["billing"]["period_days"]), 1
+    months = int(cfg["billing"].get("annual_months") or 0)
+    if months <= 0:
+        raise PlanBillingError("Yearly plans aren't available right now.")
+    return "year", int(cfg["billing"].get("annual_days") or 365), months
+
+
 def _paid_before(db: Any, org_id: str) -> bool:
     try:
         return bool(_rows(db.table("org_plan_orders").select("id").eq("org_id", org_id).eq("status", "paid").limit(1).execute()))
@@ -115,7 +125,7 @@ def _tier_fits_org(db: Any, org_id: str, d: dict) -> bool:
     return bool(d.get("wa_only")) == pmode.is_wa_automation(db, org_id)
 
 
-def quote_for(db: Any, org_id: str, cfg: dict, key: str, now: datetime, row: Optional[dict] = None) -> dict:
+def quote_for(db: Any, org_id: str, cfg: dict, key: str, now: datetime, row: Optional[dict] = None, interval: str = "month") -> dict:
     """What choosing `key` costs right now. kind: new | renewal | upgrade | switch | downgrade_renewal | downgrade (scheduled, no order).
     Everything comes from Settings and the plan row, never from the caller."""
     d = cfg["tiers"].get(key)
@@ -124,7 +134,9 @@ def quote_for(db: Any, org_id: str, cfg: dict, key: str, now: datetime, row: Opt
     price = int(d["monthly_ngn"])
     if price <= 0:
         raise PlanBillingError("This plan isn't for sale yet.")
-    days = cfg["billing"]["period_days"]
+    interval, days, months = interval_of(cfg, interval)
+    monthly = price
+    price = monthly * months                      # a yearly plan pays `months` months for `days` days
     credit = 0
     pending = (row.get("config") or {}).get("pending_key") if row else None
     until = ent._parse(row.get("paid_until")) if row else None
@@ -138,8 +150,8 @@ def quote_for(db: Any, org_id: str, cfg: dict, key: str, now: datetime, row: Opt
         kind = "downgrade_renewal"
     elif paid_live:
         old = cfg["tiers"].get(row["key"]) or {}
-        old_price = int(old.get("monthly_ngn") or row.get("price_ngn") or 0)
-        if price <= old_price:
+        old_price = int(old.get("monthly_ngn") or 0) or int(row.get("price_ngn") or 0)
+        if monthly <= old_price:
             kind = "downgrade"
         else:
             kind = "upgrade"
@@ -153,12 +165,13 @@ def quote_for(db: Any, org_id: str, cfg: dict, key: str, now: datetime, row: Opt
             from app.services import account_seat_service as seatsvc
             seats, seat_price, seat_credit = seatsvc.renewal_seats(db, org_id, cfg, row, now, kind)
             credit += seat_credit
-            seats_total = seats * seat_price
+            seats_total = seats * seat_price * months
         except Exception as exc:
             logger.warning("account_plan: seats not added to the quote org=%s: %s", org_id, exc)
             seats, seat_price, seats_total = 0, 0, 0
     return {"key": key, "label": d["label"], "price": price, "credit": credit, "total": max(price + seats_total - credit, 0),
-            "days": days, "kind": kind, "first": first, "seats": seats, "seat_price": seat_price, "seats_total": seats_total}
+            "days": days, "kind": kind, "first": first, "seats": seats, "seat_price": seat_price, "seats_total": seats_total,
+            "interval": interval, "months": months, "seat_price_period": seat_price * months}
 
 
 def _discount(db: Any, qt: dict, code: Optional[str], now: datetime) -> Optional[dict]:
@@ -178,13 +191,13 @@ def _discount(db: Any, qt: dict, code: Optional[str], now: datetime) -> Optional
         raise PlanBillingError(str(exc))
 
 
-def preview(db: Any, org_id: str, key: str, code: Optional[str] = None, now: Optional[datetime] = None) -> dict:
+def preview(db: Any, org_id: str, key: str, code: Optional[str] = None, now: Optional[datetime] = None, interval: str = "month") -> dict:
     """What the Billing screen shows before the owner presses pay. A bad code is reported, not raised."""
     now = now or _now()
     _org(db, org_id)
     cfg = acc.plan_config(db)
     row = _tier_row(db, org_id)
-    qt = quote_for(db, org_id, cfg, key, now, row)
+    qt = quote_for(db, org_id, cfg, key, now, row, interval)
     disc, disc_err = None, None
     if qt["kind"] != "downgrade" and code and str(code).strip():
         try:
@@ -218,6 +231,7 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
             "paid_until": row.get("paid_until"),
             "days_left": max(int((until - now).total_seconds() // 86400), 0) if until and until > now else 0,
             "monthly_ngn": int(d.get("monthly_ngn") or 0), "includes": _includes(d, (row.get("config") or {}).get("picks")),
+            "interval": "year" if (row.get("config") or {}).get("interval") == "year" else "month",
             "pending_change": ({"key": pending_key, "label": (cfg["tiers"].get(pending_key) or {}).get("label", pending_key)}
                                if pending_key else None),
         }
@@ -233,6 +247,12 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
             qt = quote_for(db, org_id, cfg, key, now, row)
             item.update({"for_sale": True, "action": qt["kind"], "amount_due": qt["total"],
                          "seats": qt.get("seats", 0), "seats_total": qt.get("seats_total", 0)})
+        except PlanBillingError:
+            pass
+        try:        # YEARLY-1: what the same plan costs paid for a year
+            qy = quote_for(db, org_id, cfg, key, now, row, "year")
+            item.update({"yearly_ngn": qy["price"], "yearly_action": qy["kind"], "yearly_amount_due": qy["total"],
+                         "yearly_seats_total": qy.get("seats_total", 0)})
         except PlanBillingError:
             pass
         plans.append(item)
@@ -273,7 +293,9 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
     except Exception as exc:
         logger.warning("account_plan.summary addons failed org=%s: %s", org_id, exc)
     return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans, "addons": addons_list, "allowances": allowances, "team": team_info,
-            "billing": {"period_days": cfg["billing"]["period_days"], "grace_days": cfg["billing"]["grace_days"]},
+            "billing": {"period_days": cfg["billing"]["period_days"], "grace_days": cfg["billing"]["grace_days"],
+                        "annual_months": cfg["billing"].get("annual_months", 0),
+                        "annual_free_months": max(12 - int(cfg["billing"].get("annual_months") or 12), 0)},
             "orders": orders(db, org_id)}
 
 
@@ -292,14 +314,14 @@ def orders(db: Any, org_id: str, limit: int = 10) -> list:
 # ---------------------------------------------------------------------------
 
 def checkout(db: Any, org_id: str, *, key: str, email: str = "", user_id: Optional[str] = None, code: Optional[str] = None,
-             callback_url: Optional[str] = None, now: Optional[datetime] = None) -> dict:
-    """Start (or reuse) the payment for choosing `key`. A downgrade only schedules the change and returns {scheduled: True}.
+             callback_url: Optional[str] = None, now: Optional[datetime] = None, interval: str = "month") -> dict:
+    """Start (or reuse) the payment for choosing `key` (monthly, or yearly with interval="year"). A downgrade only schedules the change and returns {scheduled: True}.
     Otherwise returns {order_id, reference, checkout_url, amount_kobo, reused}."""
     now = now or _now()
     _org(db, org_id)
     cfg = acc.plan_config(db)
     row = _tier_row(db, org_id)
-    qt = quote_for(db, org_id, cfg, key, now, row)
+    qt = quote_for(db, org_id, cfg, key, now, row, interval)
 
     if qt["kind"] == "downgrade":
         config = dict(row.get("config") or {})
@@ -323,6 +345,7 @@ def checkout(db: Any, org_id: str, *, key: str, email: str = "", user_id: Option
     for o in open_orders:
         oq = o.get("quote") or {}
         if (o.get("plan_key") == key and int(o.get("amount_kobo") or 0) == amount_kobo and o.get("change_kind") == qt["kind"]
+                and (oq.get("interval") or "month") == qt["interval"]
                 and (oq.get("discount") or {}).get("code_id") == code_id and o.get("checkout_url")):
             return {"order_id": o["id"], "reference": o["reference"], "checkout_url": o["checkout_url"],
                     "amount_kobo": amount_kobo, "reused": True}
@@ -334,6 +357,7 @@ def checkout(db: Any, org_id: str, *, key: str, email: str = "", user_id: Option
     quote = {"key": key, "label": qt["label"], "price": qt["price"], "credit": qt["credit"], "total": qt["total"],
              "days": qt["days"], "kind": qt["kind"], "plan_id": (row or {}).get("id"),
              "seats": qt.get("seats", 0), "seat_price": qt.get("seat_price", 0), "seats_total": qt.get("seats_total", 0),
+             "interval": qt["interval"], "months": qt["months"], "seat_price_period": qt.get("seat_price_period", 0),
              **({"discount": {k: disc[k] for k in ("code_id", "code", "kind", "value", "discount")},
                  "total_before_discount": qt["total"]} if disc else {})}
     email = (email or "").strip()
@@ -443,6 +467,11 @@ def _apply_paid(db: Any, order: dict, previous_status: str, now: datetime) -> No
     config = dict((row or {}).get("config") or {})
     for k in ("change", "pending_key", "pending_picks", "reminded", "discount_code"):
         config.pop(k, None)
+    if q.get("interval") == "year":                      # YEARLY-1: monthly plan rows keep their old shape
+        config["interval"], config["period_days"], config["months"] = "year", days, int(q.get("months") or 1)
+    else:
+        for k in ("interval", "period_days", "months"):
+            config.pop(k, None)
     if order.get("payer_email"):
         config["payer_email"] = order["payer_email"]
     fields = {"key": key, "status": "active", "source": "paid", "price_ngn": q.get("price") or 0, "paid_until": _iso(end),

@@ -72,7 +72,7 @@ function Ring({ days, total, label }) {
   )
 }
 
-function PlanCard({ plan, index, plans, busy, onPay }) {
+function PlanCard({ plan, index, plans, busy, onPay, interval = 'month' }) {
   const [code, setCode] = useState('')
   const [pv, setPv] = useState(null)
   const [err, setErr] = useState('')
@@ -88,13 +88,16 @@ function PlanCard({ plan, index, plans, busy, onPay }) {
       k === 'reps' ? `Up to ${v} team members` : CAP_LABEL[k] ? `${CAP_LABEL[k].replace(' this month', '')}: ${v.toLocaleString()} a month` : `${k}: ${v}`)),
   ]
   const shown = all ? items : items.slice(0, FEATURES_SHOWN)
-  const canCode = plan.action === 'new'
-  const due = pv && !pv.discount_error ? pv.amount_due : plan.amount_due
+  const yearly = interval === 'year' && plan.yearly_ngn > 0
+  const action = yearly ? (plan.yearly_action || plan.action) : plan.action
+  const canCode = action === 'new'
+  const baseDue = yearly ? plan.yearly_amount_due : plan.amount_due
+  const due = pv && !pv.discount_error ? pv.amount_due : baseDue
   const apply = async () => {
     setErr('')
-    try { setPv(await previewPlan(plan.key, code)) } catch (e) { setErr(planError(e)) }
+    try { setPv(await previewPlan(plan.key, code, yearly ? 'year' : 'month')) } catch (e) { setErr(planError(e)) }
   }
-  const cta = plan.is_current && plan.action === 'renewal' ? 'Renew plan' : (ACTION[plan.action] || 'Choose')
+  const cta = plan.is_current && action === 'renewal' ? 'Renew plan' : (ACTION[action] || 'Choose')
   return (
     <section className="bp-card" aria-label={`${plan.label} plan`} style={{
       background: look.bg, color: look.fg, border: `${plan.key === 'convert' ? 2 : 1}px solid ${look.edge}`, borderRadius: ds.radius.xl,
@@ -107,8 +110,9 @@ function PlanCard({ plan, index, plans, busy, onPay }) {
       <div style={{ margin: '10px 0 16px', minHeight: 50 }}>
         {plan.monthly_ngn > 0 ? (
           <>
-            <span style={{ fontFamily: FONT, fontSize: 32, fontWeight: 700, letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums' }}>{ngn(plan.monthly_ngn)}</span>
-            <span style={{ fontSize: 13, color: look.sub }}> a month</span>
+            <span style={{ fontFamily: FONT, fontSize: 32, fontWeight: 700, letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums' }}>{ngn(yearly ? plan.yearly_ngn : plan.monthly_ngn)}</span>
+            <span style={{ fontSize: 13, color: look.sub }}> {yearly ? 'a year' : 'a month'}</span>
+            {yearly && <div style={{ fontSize: 12.5, color: look.sub, marginTop: 2 }}>{ngn(Math.round(plan.yearly_ngn / 12))} a month, billed once a year</div>}
           </>
         ) : <span style={{ fontSize: 15, color: look.sub }}>Price coming soon</span>}
       </div>
@@ -145,11 +149,11 @@ function PlanCard({ plan, index, plans, busy, onPay }) {
         ) : (
           <>
             <p style={{ fontSize: 12.5, color: look.sub, margin: '0 0 8px' }}>
-              {plan.action === 'downgrade' ? 'Nothing to pay now. This starts when your current plan ends.'
-                : plan.action === 'upgrade' ? `Pay ${ngn(due)} today. Your unused days are taken off, and it starts at once.`
-                  : `Pay ${ngn(due)} for 30 days.`}
+              {action === 'downgrade' ? 'Nothing to pay now. This starts when your current plan ends.'
+                : action === 'upgrade' ? `Pay ${ngn(due)} today. Your unused days are taken off, and it starts at once.`
+                  : `Pay ${ngn(due)} for ${yearly ? '365' : '30'} days.`}
             </p>
-            <button type="button" className="bp-cta" disabled={busy} onClick={() => onPay(plan, canCode ? code : '')}
+            <button type="button" className="bp-cta" disabled={busy} onClick={() => onPay(plan, canCode ? code : '', yearly ? 'year' : 'month')}
               style={{ width: '100%', minHeight: 46, borderRadius: ds.radius.md, border: 0, cursor: busy ? 'default' : 'pointer', fontWeight: 600, fontSize: 14.5, fontFamily: ds.fontDm,
                 background: dark ? '#fff' : ds.teal, color: dark ? ds.dark : '#fff', opacity: busy ? 0.7 : 1 }}>
               {busy ? 'Please wait…' : cta}
@@ -218,10 +222,13 @@ function PlanHero({ cur, enforced, periodDays, onCancelChange }) {
 
 function PlanTab({ data, reload, setMsg }) {
   const [busy, setBusy] = useState(false)
-  const pay = async (plan, code) => {
+  const annual = (data.billing?.annual_months || 0) > 0
+  const freeMonths = data.billing?.annual_free_months || 0
+  const [interval, setInterval_] = useState(annual && data.current?.interval === 'year' ? 'year' : 'month')
+  const pay = async (plan, code, iv = 'month') => {
     setBusy(true); setMsg('')
     try {
-      const r = await startPlanCheckout(plan.key, code)
+      const r = await startPlanCheckout(plan.key, code, iv)
       if (r.scheduled) { setMsg(`Done. You will move to ${r.label} when your current plan ends on ${day(r.applies_at)}.`); setBusy(false); reload(); return }
       lsSet(r.reference)
       window.location.assign(r.checkout_url)
@@ -234,11 +241,22 @@ function PlanTab({ data, reload, setMsg }) {
     <>
       <style>{STYLES}</style>
       <PlanHero cur={data.current} enforced={data.enforced} periodDays={data.billing?.period_days || 30} onCancelChange={cancelChange} />
-      <h3 style={{ ...h3, fontFamily: FONT, fontSize: 17, margin: '0 0 12px' }}>Compare plans</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '0 0 12px' }}>
+        <h3 style={{ ...h3, fontFamily: FONT, fontSize: 17, margin: 0 }}>Compare plans</h3>
+        {annual && (
+          <div role="group" aria-label="Billing period" style={{ display: 'inline-flex', padding: 4, borderRadius: 999, background: '#fff', border: `1px solid ${ds.border}` }}>
+            {[['month', 'Monthly'], ['year', freeMonths > 0 ? `Yearly · ${freeMonths} months free` : 'Yearly']].map(([k, label]) => (
+              <button key={k} type="button" aria-pressed={interval === k} onClick={() => setInterval_(k)}
+                style={{ minHeight: 40, padding: '0 16px', borderRadius: 999, border: 0, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600,
+                  background: interval === k ? ds.teal : 'transparent', color: interval === k ? '#fff' : ds.dark }}>{label}</button>
+            ))}
+          </div>
+        )}
+      </div>
       {data.plans.length === 0
         ? <div style={card}><p style={{ margin: 0, fontSize: 13, color: ds.gray }}>No plans have been set up yet. Please check back soon.</p></div>
         : <div className="bp-grid" style={{ marginBottom: 16 }}>
-            {data.plans.map((p, i) => <PlanCard key={p.key} plan={p} index={i} plans={data.plans} busy={busy} onPay={pay} />)}
+            {data.plans.map((p, i) => <PlanCard key={`${p.key}-${interval}`} plan={p} index={i} plans={data.plans} busy={busy} onPay={pay} interval={interval} />)}
           </div>}
       {(data.addons || []).length > 0 && (
         <>
@@ -263,7 +281,7 @@ function PlanTab({ data, reload, setMsg }) {
           </div>
         </>
       )}
-      <p style={{ fontSize: 12.5, color: ds.gray, maxWidth: 640 }}>Plans are paid monthly with Paystack and are not refundable. Credits are separate. Buy them in the Credits tab.</p>
+      <p style={{ fontSize: 12.5, color: ds.gray, maxWidth: 640 }}>Plans are paid monthly or yearly with Paystack and are not refundable. Credits are separate. Buy them in the Credits tab.</p>
     </>
   )
 }

@@ -122,6 +122,11 @@
 .ow .ow-plans{display:flex;flex-wrap:wrap;gap:24px;margin-top:56px;align-items:stretch}
 .ow .ow-plan{flex:1 1 340px;border:1px solid var(--line);border-radius:32px;padding:36px;display:flex;flex-direction:column;background:#fff}
 .ow .ow-plan-hi{border:2px solid var(--blue)}
+.ow .ow-per{display:flex;width:max-content;max-width:100%;gap:4px;padding:4px;margin:28px auto 0;background:#F1F3F7;border-radius:999px}
+.ow .ow-per button{border:0;border-radius:999px;padding:11px 20px;background:transparent;color:var(--mute);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer}
+.ow .ow-per button em{font-style:normal;font-size:12px;font-weight:700;color:var(--blue-deep);margin-left:6px}
+.ow .ow-per button.ow-per-on{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(20,24,31,.15)}
+.ow .ow-yr-note{margin-top:4px;font-size:14px;color:var(--mute)}
 .ow .ow-pill{align-self:flex-start;background:var(--blue);color:#fff;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:6px 12px;border-radius:20px;margin-bottom:14px}
 .ow .ow-pill-gap{height:34px}
 .ow .ow-plan h3{font-size:30px;font-weight:700;letter-spacing:-.8px}

@@ -56,7 +56,7 @@ def test_defaults_are_the_approved_contents_with_every_price_at_zero():
     assert "selling_catalog" not in con and "selling_booking" not in con      # Convert picks ONE
     assert cfg["tiers"]["convert"]["pick_one"] == [["selling_catalog", "selling_booking"]]
     assert {"selling_catalog", "selling_booking", "bulk_messaging", "weekly_report", "multi_rep_inbox"} <= gro
-    assert cfg["billing"] == {"period_days": 30, "grace_days": 7, "reminder_days": [5, 1]}
+    assert cfg["billing"] == {"period_days": 30, "grace_days": 7, "reminder_days": [5, 1], "annual_months": 10, "annual_days": 365}
     assert cfg["addons"]["extra_rep"]["caps"] == {"reps": 1}
 
 

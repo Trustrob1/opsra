@@ -146,10 +146,15 @@ def quote_seats(db: Any, org_id: str, add: int, now: Optional[datetime] = None) 
         raise bill.PlanBillingError("Extra users run on an active plan with an end date. Choose or renew a plan first.")
     until = ent._parse(tier["paid_until"])
     period = cfg["billing"]["period_days"]
+    tcfg = tier.get("config") or {}
+    interval = "year" if tcfg.get("interval") == "year" else "month"
+    if interval == "year":                  # YEARLY-1: on a yearly plan a seat costs `months` months for the whole year
+        period = int(tcfg.get("period_days") or cfg["billing"].get("annual_days") or 365)
+        price = price * int(tcfg.get("months") or cfg["billing"].get("annual_months") or 1)
     remaining = min((until - now).total_seconds() / 86400.0, float(period))
     days = min(max(int(math.ceil(remaining)), 1), period)          # whole days, rounded up: the price matches the days shown
     total = max(int(math.ceil(price * add * days / period)), bill.MIN_AMOUNT_NGN)
-    return {"add": add, "price": price, "days": days, "total": total, "paid_until": tier["paid_until"],
+    return {"add": add, "price": price, "days": days, "total": total, "paid_until": tier["paid_until"], "interval": interval, "period_days": period,
             "tier_key": tier["key"], "plan_id": tier["id"], "seats_after": live_seats(db, org_id, cfg, now) + add}
 
 
@@ -234,6 +239,12 @@ def apply_paid_seats(db: Any, order: dict, previous_status: str, now: datetime) 
         qty = (_qty(row) if was_live else 0) + add
         config = dict(row.get("config") or {})
         config["quantity"] = qty
+        if q.get("interval") == "year":                      # YEARLY-1: monthly rows keep their old shape
+            config["period_days"] = int(q.get("period_days") or 365)
+            config["interval"] = "year"
+        else:
+            config.pop("period_days", None)
+            config.pop("interval", None)
         config.pop("next_quantity", None)
         db.table("org_plans").update({"status": "active", "source": "paid", "paid_until": until, "grace_until": None,
                                       "price_ngn": q.get("price") or 0, "config": config, "updated_at": bill._iso(now)}) \
@@ -241,7 +252,9 @@ def apply_paid_seats(db: Any, order: dict, previous_status: str, now: datetime) 
     else:
         qty = add
         db.table("org_plans").insert({"org_id": org_id, "kind": "addon", "key": SEAT_KEY, "status": "active", "source": "paid",
-                                      "price_ngn": q.get("price") or 0, "paid_until": until, "config": {"quantity": qty},
+                                      "price_ngn": q.get("price") or 0, "paid_until": until,
+                                      "config": ({"quantity": qty, "period_days": int(q.get("period_days") or 365), "interval": "year"}
+                                                 if q.get("interval") == "year" else {"quantity": qty}),
                                       "created_by": order.get("created_by"), "created_at": bill._iso(now),
                                       "updated_at": bill._iso(now)}).execute()
     acc._log_event(db, org_id, "system", "seats_paid", {"add": add, "seats": qty, "until": until, "amount_kobo": order.get("amount_kobo"),
@@ -269,9 +282,10 @@ def renewal_seats(db: Any, org_id: str, cfg: dict, tier_row: Optional[dict], now
         until = ent._parse(row.get("paid_until"))
         credit = 0
         if until and until > now and ent.effective_status(row, cfg, now) == "active":
-            period = cfg["billing"]["period_days"]
+            period = int((row.get("config") or {}).get("period_days") or cfg["billing"]["period_days"])
+            row_price = float(row.get("price_ngn") or price)          # what one seat cost for that whole period
             remaining = min((until - now).total_seconds() / 86400.0, float(period))
-            credit = max(int(price * qty * remaining / period), 0)
+            credit = max(int(row_price * qty * remaining / period), 0)
         return qty, price, credit
     return _qty(row, "next_quantity", _qty(row)), price, 0
 
@@ -290,9 +304,15 @@ def apply_renewal(db: Any, org_id: str, kind: str, quote: dict, end_iso: str, no
         return
     config = dict(row.get("config") or {})
     config["quantity"] = seats
+    if quote.get("interval") == "year":                      # YEARLY-1: monthly rows keep their old shape
+        config["period_days"] = int(quote.get("days") or 365)
+        config["interval"] = "year"
+    else:
+        config.pop("period_days", None)
+        config.pop("interval", None)
     config.pop("next_quantity", None)
     db.table("org_plans").update({"status": "active", "paid_until": end_iso, "grace_until": None,
-                                  "price_ngn": quote.get("seat_price") or row.get("price_ngn") or 0,
+                                  "price_ngn": quote.get("seat_price_period") or quote.get("seat_price") or row.get("price_ngn") or 0,
                                   "config": config, "updated_at": bill._iso(now)}).eq("id", row["id"]).eq("org_id", org_id).execute()
 
 

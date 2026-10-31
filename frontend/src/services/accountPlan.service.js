@@ -6,8 +6,8 @@ import api from './api'
 
 export const getPlan = () => api.get('/api/v1/billing/plan').then((r) => r.data.data)
 export const getPlanOrders = () => api.get('/api/v1/billing/plan/orders').then((r) => r.data.data)
-export const previewPlan = (key, code) => api.post('/api/v1/billing/plan/preview', { key, code: code || null }).then((r) => r.data.data)
-export const startPlanCheckout = (key, code) => api.post('/api/v1/billing/plan/checkout', { key, code: code || null }).then((r) => r.data.data)
+export const previewPlan = (key, code, interval = 'month') => api.post('/api/v1/billing/plan/preview', { key, code: code || null, interval }).then((r) => r.data.data)
+export const startPlanCheckout = (key, code, interval = 'month') => api.post('/api/v1/billing/plan/checkout', { key, code: code || null, interval }).then((r) => r.data.data)
 export const verifyPlanPayment = (reference) => api.post('/api/v1/billing/plan/verify', { reference }).then((r) => r.data.data)
 export const clearPendingPlanChange = () => api.delete('/api/v1/billing/plan/pending-change').then((r) => r.data.data)
 
