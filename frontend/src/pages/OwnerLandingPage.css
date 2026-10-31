@@ -193,7 +193,6 @@
 @keyframes own3{0%,58%{opacity:0;transform:translateX(60px) scale(.96)}63%,90%{opacity:1;transform:none}96%,100%{opacity:0;transform:translateX(-20px)}}
 @keyframes owfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes owring{0%{transform:scale(.6);opacity:.7}100%{transform:scale(2.2);opacity:0}}
-@keyframes owmarq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @keyframes owtravel{0%,10%{left:0}22%,35%{left:25%}47%,60%{left:50%}72%,90%{left:75%}100%{left:75%}}
 @keyframes owst1{0%,16%{background:#2467E3;color:#fff}22%,100%{background:#fff;color:#3C4352}}
 @keyframes owst2{0%,18%{background:#fff;color:#3C4352}22%,40%{background:#2467E3;color:#fff}46%,100%{background:#fff;color:#3C4352}}
@@ -248,9 +247,11 @@
 
   /* audience: marquee band */
   .ow .ow-strip{display:none}
-  .ow .ow-marq{display:block;background:var(--dark);color:#fff;overflow:hidden;padding:22px 0}
-  .ow .ow-marq-track{display:flex;gap:36px;width:max-content;font-size:22px;font-weight:600;letter-spacing:-.4px;white-space:nowrap}
-  .ow .ow-marq-track i{font-style:normal;color:#8FB0FF;margin-left:36px}
+  .ow .ow-marq{display:block;background:#fff;color:var(--ink);padding:28px var(--pad) 8px}
+  .ow .ow-marq-eye{margin:0 0 14px;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--mute)}
+  .ow .ow-marq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}
+  .ow .ow-marq-grid li{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #E1E5EC;border-radius:16px;padding:14px;font-size:16px;font-weight:600;line-height:1.2}
+  .ow .ow-marq-ic{flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:#E4EDFD;color:var(--blue-deep);display:flex;align-items:center;justify-content:center}
 
   /* "No missed leads": swipe cards */
   .ow #product .ow-center{text-align:left}
@@ -341,7 +342,6 @@
   .ow .ow-hero-bg{animation:owkb 18s ease-in-out infinite alternate}
   .ow .ow-nt1{animation:own1 12s infinite}.ow .ow-nt2{animation:own2 12s infinite}.ow .ow-nt3{animation:own3 12s infinite}
   .ow .ow-ring{animation:owring 2.4s ease-out infinite}
-  .ow .ow-marq-track{animation:owmarq 22s linear infinite}
   .ow .ow-j-card{animation:owtravel 9s ease-in-out infinite}
   .ow .ow-j-card em{animation:owhot 9s infinite}
   .ow .ow-j-stages .ow-j1{animation:owst1 9s infinite}.ow .ow-j-stages .ow-j2{animation:owst2 9s infinite}.ow .ow-j-stages .ow-j3{animation:owst3 9s infinite}.ow .ow-j-stages .ow-j4{animation:owst4 9s infinite}

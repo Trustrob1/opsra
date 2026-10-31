@@ -98,6 +98,14 @@ const CREDIT_USES = [
 const CREDIT_PACKS = [[5000, 0, "\u20a65k"], [10000, 0, "\u20a610k"], [25000, 2, "\u20a625k"], [50000, 5, "\u20a650k"]];
 
 const AUDIENCE = ["Coaches", "Counsellors", "Clinics", "Consultants", "Schools", "Agencies"];
+const AUDIENCE_ICONS = {
+  Coaches: (<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1" fill="currentColor" /></>),
+  Counsellors: <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2h-7l-4 4v-4H6a2 2 0 01-2-2z" />,
+  Clinics: <path d="M12 5v14M5 12h14" />,
+  Consultants: (<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M3 13h18" /></>),
+  Schools: (<><path d="M2 9l10-5 10 5-10 5z" /><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5" /></>),
+  Agencies: (<><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></>),
+};
 
 const FEATURES = [
   ["01", "Greets every new contact", "A branded menu opens the conversation, even at 2am."],
@@ -337,11 +345,19 @@ export default function OwnerLandingPage() {
 
       <main>
         {/* ---------------- AUDIENCE MARQUEE (phones) ---------------- */}
-        <div className="ow-marq" aria-hidden="true">
-          <div className="ow-marq-track">
-            {[0, 1].map((k) => AUDIENCE.map((a) => <span key={`${k}${a}`}>{a}<i>/</i></span>))}
-          </div>
-        </div>
+        <section className="ow-marq" aria-label="Who Opsra is for">
+          <p className="ow-marq-eye">Built for service businesses</p>
+          <ul className="ow-marq-grid">
+            {AUDIENCE.map((a) => (
+              <li key={a}>
+                <span className="ow-marq-ic">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{AUDIENCE_ICONS[a]}</svg>
+                </span>
+                {a}
+              </li>
+            ))}
+          </ul>
+        </section>
 
         {/* ---------------- AUDIENCE STRIP ---------------- */}
         <section className="ow-wrap ow-strip" aria-label="Who Opsra is for">
