@@ -3,9 +3,10 @@
  *
  * SECURITY (Technical Spec §11.1 + 9E-H):
  *   - All API calls must go through this instance.
- *   - On 401: silently refresh the Supabase session, update Zustand, retry once.
+ *   - On 401: silently renew via POST /api/v1/auth/refresh (stored refresh
+ *     token, AUTH-SESSION-1), update Zustand, retry once.
  *   - If refresh fails: clear Zustand auth state → LoginScreen renders.
- *   - Token read from Zustand at call time — never from browser storage.
+ *   - Token read from Zustand at call time (Zustand mirrors it to storage).
  *
  * Usage:
  *   import api from './api'
@@ -79,19 +80,31 @@ api.interceptors.response.use(
     _refreshing = true
 
     try {
-      const { data, error: refreshError } = await _supabase.auth.refreshSession()
-
-      if (refreshError || !data?.session?.access_token) {
-        throw refreshError ?? new Error('Refresh returned no token')
-      }
-
-      const newToken = data.session.access_token
-
-      // Update Zustand store with the new token
       // Lazy import to avoid circular dependency
       const { default: useAuthStore } = await import('../store/authStore')
-      const currentUser = useAuthStore.getState().user
-      useAuthStore.getState().setAuth(newToken, currentUser)
+      const st = useAuthStore.getState()
+
+      // Another tab may already have renewed the session — use its token.
+      const before = st.token
+      const synced = st.syncFromStorage()
+      let newToken = synced
+      if (!synced) throw new Error('Signed out in another tab')
+
+      if (synced === before) {
+        // AUTH-SESSION-1: renew through the backend with the stored refresh
+        // token. Refresh tokens rotate, so save the new one.
+        const refresh = st.getRefreshToken()
+        if (!refresh) throw new Error('No refresh token')
+        const res = await axios.post(`${BASE}/api/v1/auth/refresh`, { refresh_token: refresh })
+        const d = res?.data?.data
+        if (!res?.data?.success || !d?.access_token) {
+          throw new Error('Refresh returned no token')
+        }
+        newToken = d.access_token
+        useAuthStore.getState().setAuth(
+          newToken, useAuthStore.getState().user, d.refresh_token ?? refresh,
+        )
+      }
 
       _processQueue(null, newToken)
       original.headers['Authorization'] = `Bearer ${newToken}`

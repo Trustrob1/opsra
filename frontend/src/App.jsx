@@ -25,8 +25,8 @@
  * Routing: Zustand view-state (no react-router — not in package.json).
  *
  * SECURITY (Technical Spec §11.1):
- *   - JWT stored in Zustand memory only.  Never localStorage / sessionStorage.
- *   - Auth state is lost on page refresh (by design — token in memory).
+ *   - JWT held in Zustand and mirrored to local/sessionStorage (AUTH-SESSION-1).
+ *   - Auth state survives refresh and restart while the session is valid (AUTH-SESSION-1).
  *   - 401 responses trigger silent JWT refresh via the global interceptor in
  *     frontend/src/services/api.js (9E-H).  If refresh fails, clearAuth() is
  *     called and this component re-renders to LoginScreen.
@@ -93,7 +93,7 @@ const _authPatch = (path, body, token) => axios.patch(`${BASE}${path}`, body, { 
 
 // ─── Session timeout (Phase 9D) ───────────────────────────────────────────────
 let _idleLogout = false
-const IDLE_MS = 12 * 60 * 60 * 1000  // 12 hours
+// Idle limits now live in store/authStore.js (30 days when 'Keep me signed in', 12h otherwise)
 
 // ─── Main sidebar collapse widths (desktop only — mobile drawer is unaffected) ─
 const SIDEBAR_W_OPEN   = 248
@@ -409,6 +409,7 @@ function LoginScreen({ onAuth }) {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
 
+  const [keepSignedIn, setKeepSignedIn] = useState(true)   // AUTH-SESSION-1
   const [idleMsg] = useState(() => {
     if (_idleLogout) { _idleLogout = false; return true }
     return false
@@ -447,13 +448,13 @@ function LoginScreen({ onAuth }) {
     try {
       const res = await axios.post(`${BASE}/api/v1/auth/login`, { email, password })
       if (res.data.success) {
-        const { access_token, user, mfa_required, factor_id } = res.data.data
+        const { access_token, refresh_token, user, mfa_required, factor_id } = res.data.data
         if (mfa_required && factor_id) {
           setPendingAuth({ access_token, factor_id, user })
           setMfaStep(true)
           return
         }
-        await _finishLogin(access_token, user)
+        await _finishLogin(access_token, user, refresh_token)
       } else {
         setError(res.data.error?.message ?? res.data.error ?? 'Login failed')
       }
@@ -483,7 +484,7 @@ function LoginScreen({ onAuth }) {
         { factor_id, challenge_id, code: mfaCode },
         { headers: { Authorization: `Bearer ${access_token}` } },
       )
-      await _finishLogin(verifyRes.data.data.access_token, user)
+      await _finishLogin(verifyRes.data.data.access_token, user, verifyRes.data.data.refresh_token)
     } catch (err) {
       const status = err?.response?.status
       if (status === 422) setError('Invalid code. Please try again.')
@@ -493,14 +494,16 @@ function LoginScreen({ onAuth }) {
     }
   }
 
-  const _finishLogin = async (access_token, user) => {
+  const _finishLogin = async (access_token, user, refresh_token) => {
+    // refresh_token may be missing (older API); store null so keep/expiry still apply
+    const refresh = refresh_token ?? null
     try {
       const meRes = await axios.get(`${BASE}/api/v1/auth/me`, {
         headers: { Authorization: `Bearer ${access_token}` },
       })
-      onAuth(access_token, meRes.data?.data ?? user)
+      onAuth(access_token, meRes.data?.data ?? user, refresh, keepSignedIn)
     } catch {
-      onAuth(access_token, user)
+      onAuth(access_token, user, refresh, keepSignedIn)
     }
     // PWA-1: subscribe to push notifications after login (non-blocking)
     if (typeof window.opsraSubscribeToPush === 'function') {
@@ -613,6 +616,15 @@ function LoginScreen({ onAuth }) {
                 title={showLoginPwd ? 'Hide password' : 'Show password'}
               >{showLoginPwd ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 13, color: '#7A9BAD', cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={keepSignedIn}
+                onChange={(e) => setKeepSignedIn(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: '#2467E3', cursor: 'pointer' }}
+              />
+              Keep me signed in
+            </label>
             {idleMsg && (
               <div style={{ background: '#0e2a38', border: '1px solid #1e4a60', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#7ecfea', lineHeight: 1.5 }}>
                 <span style={{display:'inline-flex',alignItems:'center',gap:6}}><Lock size={14} />You have been logged out due to inactivity.</span>
@@ -673,19 +685,25 @@ function AppShell() {
   // Close drawer on nav click on mobile
   const closeSidebarOnMobile = () => { if (isMobile) setSidebarOpen(false) }
 
-  // ── Session idle timeout (Phase 9D) ─────────────────────────────────────
+  // ── Session idle timeout (Phase 9D → AUTH-SESSION-1) ────────────────────
+  // Timestamp based: record activity (throttled in the store) and check on a
+  // timer and whenever the tab becomes visible again.
   useEffect(() => {
-    let timer = null
-    const resetTimer = () => {
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => { _idleLogout = true; clearAuth() }, IDLE_MS)
+    const store = useAuthStore.getState
+    const check = () => {
+      if (store().isSessionExpired()) { _idleLogout = true; clearAuth() }
     }
+    const touch = () => store().touchActivity()
     const EVENTS = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll']
-    EVENTS.forEach(ev => window.addEventListener(ev, resetTimer, { passive: true }))
-    resetTimer()
+    EVENTS.forEach(ev => window.addEventListener(ev, touch, { passive: true }))
+    const onVisible = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVisible)
+    const iv = setInterval(check, 60 * 1000)
+    check()
     return () => {
-      if (timer) clearTimeout(timer)
-      EVENTS.forEach(ev => window.removeEventListener(ev, resetTimer))
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', onVisible)
+      EVENTS.forEach(ev => window.removeEventListener(ev, touch))
     }
   }, [clearAuth])
 
