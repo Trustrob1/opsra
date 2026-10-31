@@ -128,6 +128,7 @@ def show(db, org_id: str, phone: str, contact_name: Optional[str], kind: str, le
             db.table("whatsapp_messages").insert(row).execute()
         except Exception as exc:
             logger.warning("returning menu: message save failed: %s", exc)
+        _expire_stale_sessions(db, org_id, phone)
         sess = triage_service.get_or_create_session(db, org_id, phone, customer_id=customer_id)
         if sess:
             data = dict(sess.get("session_data") or {})
@@ -139,6 +140,16 @@ def show(db, org_id: str, phone: str, contact_name: Optional[str], kind: str, le
     except Exception as exc:
         logger.warning("returning menu show failed org=%s: %s", org_id, exc)
         return False
+
+
+def _expire_stale_sessions(db, org_id: str, phone: str) -> None:
+    """A session row whose 30 minutes are up but is not marked 'expired' still blocks a new one (unique index), so a returning
+    contact's old row must be closed first. Without this the menu was sent but its taps were never recognised."""
+    try:
+        db.table("whatsapp_sessions").update({"session_state": "expired"}).eq("org_id", org_id).eq("phone_number", phone) \
+            .neq("session_state", "expired").lte("expires_at", datetime.now(timezone.utc).isoformat()).execute()
+    except Exception as exc:
+        logger.warning("returning menu: stale session cleanup failed: %s", exc)
 
 
 def section_for(session: Optional[dict], default: str) -> str:

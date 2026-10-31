@@ -103,6 +103,20 @@ def test_show_skips_without_credentials():
     assert not ok and not sent.called
 
 
+def test_show_closes_stale_session_before_creating():
+    with patch.object(rm, "_expire_stale_sessions") as ex:
+        ok, sent, ts = _show()
+    assert ok and ex.called
+
+
+def test_expire_stale_sessions_targets_old_open_rows():
+    db = MagicMock()
+    rm._expire_stale_sessions(db, "o", "234")
+    q = db.table.return_value.update.return_value
+    assert db.table.return_value.update.call_args.args[0] == {"session_state": "expired"}
+    assert q.eq.return_value.eq.return_value.neq.return_value.lte.called
+
+
 def test_show_never_raises():
     with patch.object(rm, "_org", side_effect=RuntimeError("boom")):
         assert rm.show(MagicMock(), "o", "234", None, "lead") is False
