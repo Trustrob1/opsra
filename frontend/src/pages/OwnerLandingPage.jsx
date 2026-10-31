@@ -82,21 +82,19 @@ const PLANS = [
 ];
 
 const ADDONS = [
-  ["Support tickets", "₦15,000/month"],
-  ["Renewals and win-back", "₦15,000/month"],
-  ["Dashboard and ask-your-data", "₦10,000/month"],
-  ["Extra user (2 users included in every plan)", "₦5,000/month each"],
-  ["Extra WhatsApp number", "₦10,000/month"],
-  ["Paid event or class funnel", "₦50,000 per event"],
+  ["Support tickets", "\u20a615,000", "per month", ""],
+  ["Extra user", "\u20a65,000", "per month, each", "2 users are included in every plan"],
+  ["Extra WhatsApp number", "\u20a610,000", "per month", ""],
+  ["Paid event or class funnel", "\u20a650,000", "per event", ""],
 ];
 
 // Costs billed on top of the plan. They come out of a prepaid credit balance the business tops up.
 const CREDIT_USES = [
-  ["Confirmations and reminders", "Booking messages to your clients", "At Meta\u2019s price", "blue"],
-  ["Broadcasts and follow-ups", "Marketing messages cost more with Meta", "Meta\u2019s price + small fee", "purple"],
-  ["AI replies", "Each reply the AI writes for you", "Small amount per reply", "grey"],
+  ["Confirmations and reminders", "Booking messages to your clients", "At Meta\u2019s price", "blue", "Meta\u2019s price"],
+  ["Broadcasts and follow-ups", "Marketing messages cost more with Meta", "Meta\u2019s price + small fee", "purple", "Meta\u2019s price + fee"],
+  ["AI replies", "Each reply the AI writes for you", "Small amount per reply", "grey", "Small credit each"],
 ];
-const CREDIT_PACKS = [[5000, 0], [10000, 0], [25000, 2], [50000, 5]];
+const CREDIT_PACKS = [[5000, 0, "\u20a65k"], [10000, 0, "\u20a610k"], [25000, 2, "\u20a625k"], [50000, 5, "\u20a650k"]];
 
 const AUDIENCE = ["Coaches", "Counsellors", "Clinics", "Consultants", "Schools", "Agencies"];
 
@@ -528,9 +526,14 @@ export default function OwnerLandingPage() {
           </div>
           <div className="ow-addons">
             <h3>Add what you need</h3>
-            <ul>
-              {ADDONS.map(([n, price]) => (
-                <li key={n}><b>{n}</b> &middot; {price}</li>
+            <ul className="ow-addon-grid">
+              {ADDONS.map(([n, price, unit, note]) => (
+                <li key={n}>
+                  <span className="ow-addon-n">{n}</span>
+                  <b className="ow-addon-p">{price}</b>
+                  <span className="ow-addon-u">{unit}</span>
+                  {note ? <span className="ow-addon-note">{note}</span> : null}
+                </li>
               ))}
             </ul>
           </div>
@@ -538,7 +541,8 @@ export default function OwnerLandingPage() {
             <div className="ow-credit-l">
               <p className="ow-credit-eye">Billed separately</p>
               <h3>The plan is a fixed fee. Messages and AI run on credit.</h3>
-              <p className="ow-credit-sub">WhatsApp messaging and AI replies are usage costs, so they are not part of the plan price. You top up a prepaid balance and they come out of it.</p>
+              <p className="ow-credit-sub ow-d">WhatsApp messaging and AI replies are usage costs, so they are not part of the plan price. You top up a prepaid balance and they come out of it.</p>
+              <p className="ow-credit-sub ow-m">These usage costs are not in the plan price. You top up a prepaid balance and they come out of it.</p>
               <ol className="ow-credit-steps">
                 <li><span>1</span>Top up credit, from {naira(5000)}</li>
                 <li><span>2</span>Messages and AI replies draw from it</li>
@@ -548,22 +552,24 @@ export default function OwnerLandingPage() {
             <div className="ow-credit-r">
               <div className="ow-credit-card">
                 <p className="ow-credit-cap">What uses credit</p>
-                {CREDIT_USES.map(([n, d, tag, tone]) => (
+                {CREDIT_USES.map(([n, d, tag, tone, short]) => (
                   <div className="ow-credit-row" key={n}>
-                    <div><b>{n}</b><span>{d}</span></div>
-                    <em className={`ow-tag ow-tag-${tone}`}>{tag}</em>
+                    <div><b>{n}</b><span className="ow-d">{d}</span></div>
+                    <em className={`ow-tag ow-tag-${tone}`}><span className="ow-d">{tag}</span><span className="ow-m">{short}</span></em>
                   </div>
                 ))}
               </div>
+              <p className="ow-credit-cap ow-m ow-credit-cap2">Top up credit</p>
               <ul className="ow-packs" aria-label="Credit top-ups">
-                {CREDIT_PACKS.map(([amt, bonus]) => (
+                {CREDIT_PACKS.map(([amt, bonus, short]) => (
                   <li key={amt} className={bonus ? "ow-pack-bonus" : ""}>
-                    <b>{naira(amt)}</b>
-                    <span>{bonus ? `+${bonus}% bonus` : "Top-up"}</span>
+                    <b><span className="ow-d">{naira(amt)}</span><span className="ow-m">{short}</span></b>
+                    <span><span className="ow-d">{bonus ? `+${bonus}% bonus` : "Top-up"}</span><span className="ow-m">{bonus ? `+${bonus}%` : "\u00a0"}</span></span>
                   </li>
                 ))}
               </ul>
-              <p className="ow-credit-note">A business with many bookings and conversations will use more credit than a small one, because it sends more messages.</p>
+              <p className="ow-credit-note ow-d">A business with many bookings and conversations will use more credit than a small one, because it sends more messages.</p>
+              <p className="ow-credit-note ow-m">Busy businesses send more messages, so they use more credit. Set a monthly limit any time.</p>
             </div>
           </div>
           <p className="ow-fine">
