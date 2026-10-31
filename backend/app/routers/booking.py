@@ -42,7 +42,8 @@ from app.services import webchat_service as wc
 from app.services.site_capture_service import ip_hash
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter()          # public (no login)
+staff = APIRouter()           # staff (login); registered with the crm_only guard
 
 
 # ───────────────────────────── helpers ─────────────────────────────
@@ -131,10 +132,6 @@ def _link_service(db, link: dict) -> dict:
 
 
 # ───────────────────────────── public ─────────────────────────────
-
-class LinkSlotsQuery(BaseModel):
-    pass
-
 
 @router.get("/public/booking/link/{token}")
 def public_link(token: str, request: Request, response: Response, db=Depends(get_supabase)):
@@ -233,13 +230,13 @@ class SettingsBody(BaseModel):
     default_rep_id: Optional[str] = None
 
 
-@router.get("/booking/settings")
+@staff.get("/booking/settings")
 def get_settings(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.get_settings(db, org["org_id"]))
 
 
-@router.patch("/booking/settings")
+@staff.patch("/booking/settings")
 def patch_settings(body: SettingsBody, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     patch = body.model_dump(exclude_unset=True) if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
@@ -271,25 +268,25 @@ def _dump(body) -> dict:
     return body.model_dump(exclude_unset=True) if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
 
 
-@router.get("/booking/services")
+@staff.get("/booking/services")
 def list_services(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.list_services(db, org["org_id"]))
 
 
-@router.post("/booking/services", status_code=201)
+@staff.post("/booking/services", status_code=201)
 def create_service(body: ServiceBody, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.create_service(db, org["org_id"], _dump(body)))
 
 
-@router.patch("/booking/services/{service_id}")
+@staff.patch("/booking/services/{service_id}")
 def update_service(service_id: str, body: ServiceBody, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.update_service(db, org["org_id"], service_id, _dump(body)))
 
 
-@router.delete("/booking/services/{service_id}")
+@staff.delete("/booking/services/{service_id}")
 def delete_service(service_id: str, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     bk.delete_service(db, org["org_id"], service_id)
@@ -306,13 +303,13 @@ class HoursBody(BaseModel):
     rows: list[HoursRow] = Field(default_factory=list, max_length=70)
 
 
-@router.get("/booking/availability")
+@staff.get("/booking/availability")
 def get_availability(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.ensure_default_availability(db, org["org_id"]))
 
 
-@router.put("/booking/availability")
+@staff.put("/booking/availability")
 def put_availability(body: HoursBody, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     rows = [r.model_dump() if hasattr(r, "model_dump") else r.dict() for r in body.rows]
@@ -325,19 +322,19 @@ class BlockBody(BaseModel):
     reason: Optional[str] = Field(default=None, max_length=200)
 
 
-@router.get("/booking/blocks")
+@staff.get("/booking/blocks")
 def list_blocks(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.list_blocks(db, org["org_id"]))
 
 
-@router.post("/booking/blocks", status_code=201)
+@staff.post("/booking/blocks", status_code=201)
 def add_block(body: BlockBody, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.add_block(db, org["org_id"], body.starts_at, body.ends_at, body.reason))
 
 
-@router.delete("/booking/blocks/{block_id}")
+@staff.delete("/booking/blocks/{block_id}")
 def delete_block(block_id: str, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     bk.delete_block(db, org["org_id"], block_id)
@@ -346,7 +343,7 @@ def delete_block(block_id: str, org: dict = Depends(require_admin), db=Depends(g
 
 # ───────────────────────────── staff: slots, calendar, booking ─────────────────────────────
 
-@router.get("/booking/slots")
+@staff.get("/booking/slots")
 def staff_slots(service: str, org: dict = Depends(get_current_org), db=Depends(get_supabase),
                 from_: Optional[str] = Query(None, alias="from"), to: Optional[str] = None):
     _gate(db, org["org_id"])
@@ -357,7 +354,7 @@ def staff_slots(service: str, org: dict = Depends(get_current_org), db=Depends(g
     return ok(_slots_payload(o, svc, bk.get_open_slots(db, o, svc, start, end)))
 
 
-@router.get("/booking/bookings")
+@staff.get("/booking/bookings")
 def calendar_feed(org: dict = Depends(get_current_org), db=Depends(get_supabase),
                   from_: Optional[str] = Query(None, alias="from"), to: Optional[str] = None):
     _gate(db, org["org_id"])
@@ -374,7 +371,7 @@ class StaffBookBody(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=2000)
 
 
-@router.post("/booking/leads/{lead_id}/book", status_code=201)
+@staff.post("/booking/leads/{lead_id}/book", status_code=201)
 def staff_book(lead_id: str, body: StaffBookBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     svc = bk.get_service(db, org["org_id"], body.service)
@@ -392,7 +389,7 @@ def _public_base() -> str:
     return (os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL") or "https://opsra-frontend.onrender.com").rstrip("/")
 
 
-@router.post("/booking/leads/{lead_id}/link", status_code=201)
+@staff.post("/booking/leads/{lead_id}/link", status_code=201)
 def make_link(lead_id: str, body: LinkBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     cfg = bk.get_settings(db, org["org_id"])
@@ -414,13 +411,13 @@ class StaffCancelBody(BaseModel):
     reason: Optional[str] = Field(default=None, max_length=300)
 
 
-@router.post("/booking/bookings/{demo_id}/cancel")
+@staff.post("/booking/bookings/{demo_id}/cancel")
 def staff_cancel(demo_id: str, body: StaffCancelBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.cancel_booking(db, org["org_id"], demo_id, by="staff", reason=body.reason, user_id=org["id"]))
 
 
-@router.post("/booking/bookings/{demo_id}/reschedule")
+@staff.post("/booking/bookings/{demo_id}/reschedule")
 def staff_reschedule(demo_id: str, body: RescheduleBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.reschedule_booking(db, org["org_id"], demo_id, _parse_start(body.start), by="staff", user_id=org["id"]))
