@@ -168,7 +168,7 @@ def _parse_dt(v) -> datetime:
 
 
 def get_org(db, org_id: str) -> dict:
-    res = db.table("organisations").select("id, name, slug, timezone, business_hours").eq("id", org_id).maybe_single().execute()
+    res = db.table("organisations").select("id, name, slug, timezone, business_hours").eq("id", org_id).limit(1).execute()
     org = _first(res)
     if not org:
         raise _err(404, "NOT_FOUND", "Organisation not found")
@@ -184,7 +184,7 @@ def get_org_by_slug(db, slug: str) -> dict:
 
 
 def get_settings(db, org_id: str) -> dict:
-    res = db.table("booking_settings").select("*").eq("org_id", org_id).maybe_single().execute()
+    res = db.table("booking_settings").select("*").eq("org_id", org_id).limit(1).execute()
     row = _first(res) or {}
     return {**DEFAULT_SETTINGS, **{k: row[k] for k in DEFAULT_SETTINGS if k in row}}
 
@@ -350,7 +350,7 @@ def get_open_slots(db, org: dict, service: dict, from_date: date, to_date: date,
     hi = datetime.combine(to_date + timedelta(days=1), time(0, 0), tzinfo=tz).astimezone(timezone.utc)
     busy = _busy_ranges(db, org_id, lo, hi)
     if exclude_demo_id:
-        ex = (db.table("lead_demos").select("scheduled_at, slot_end, duration_minutes").eq("id", exclude_demo_id).maybe_single().execute())
+        ex = (db.table("lead_demos").select("scheduled_at, slot_end, duration_minutes").eq("id", exclude_demo_id).limit(1).execute())
         row = _first(ex)
         if row and row.get("scheduled_at"):
             s = _parse_dt(row["scheduled_at"])
@@ -376,7 +376,7 @@ def _is_overlap_error(exc: Exception) -> bool:
 
 def pick_rep(db, org_id: str) -> Optional[str]:
     """Default rep from settings, else rotate through active owner/admin/ops_manager users."""
-    cfg = db.table("booking_settings").select("default_rep_id, rr_cursor").eq("org_id", org_id).maybe_single().execute()
+    cfg = db.table("booking_settings").select("default_rep_id, rr_cursor").eq("org_id", org_id).limit(1).execute()
     row = _first(cfg) or {}
     if row.get("default_rep_id"):
         return row["default_rep_id"]

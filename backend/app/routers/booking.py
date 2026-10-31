@@ -138,7 +138,7 @@ def public_link(token: str, request: Request, response: Response, db=Depends(get
     _nostore(response)
     _limit(request, "link", 120, 60)
     link, org, cfg = _link_context(db, token)
-    lead = db.table("leads").select("full_name").eq("id", link["lead_id"]).eq("org_id", org["id"]).maybe_single().execute().data
+    lead = db.table("leads").select("full_name").eq("id", link["lead_id"]).eq("org_id", org["id"]).limit(1).execute().data
     if isinstance(lead, list):
         lead = lead[0] if lead else None
     first = ((lead or {}).get("full_name") or "").split(" ")[0]

@@ -25,7 +25,7 @@ export default function BookingSettings() {
   const [cfg, setCfg] = useState(null)
   const [err, setErr] = useState(null)
 
-  useEffect(() => { getBookingSettings().then((r) => setCfg(r.data)).catch((e) => setErr(apiError(e, 'Booking is not included in this plan.'))) }, [])
+  useEffect(() => { getBookingSettings().then((r) => setCfg(r.data)).catch((e) => setErr(e?.response?.data?.detail?.code === 'PLAN_REQUIRED' ? 'Booking is not included in this plan.' : apiError(e, 'Could not load booking settings. Please refresh and try again.'))) }, [])
   if (err) return <p style={{ color: ds.red, padding: 24 }}>⚠ {err}</p>
   if (!cfg) return <p style={{ color: ds.gray, padding: 24 }}>Loading booking…</p>
 
