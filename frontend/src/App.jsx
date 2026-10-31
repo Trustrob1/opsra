@@ -206,6 +206,12 @@ export default function App() {
     const WebChatPage = require('./pages/WebChatPage').default
     return <WebChatPage chatKey={_chatMatch[1]} />
   }
+  // BOOKING-1 — a lead's private booking page (the token names the lead and the business; no login).
+  const _bookMatch = window.location.pathname.match(/^\/b\/([A-Za-z0-9_-]{20,64})$/)
+  if (_bookMatch) {
+    const BookingPage = require('./pages/BookingPage').default
+    return <BookingPage token={_bookMatch[1]} />
+  }
   // GIVEAWAY-1 — a winner's private page: preview, terms and payment.
   const _winnerMatch = window.location.pathname.match(/^\/w\/([A-Za-z0-9_-]{20,128})$/)
   if (_winnerMatch) {

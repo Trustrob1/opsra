@@ -88,7 +88,8 @@ _DEMO_SELECT = (
     "confirmed_by, confirmed_at, outcome, outcome_notes, outcome_logged_at, "
     "confirmation_sent, reminder_24h_sent, reminder_1h_sent, "
     "noshow_task_created, parent_demo_id, created_by, created_at, updated_at, "
-    "recap, rep_nudge_sent_at, manager_nudge_sent_at"
+    "recap, rep_nudge_sent_at, manager_nudge_sent_at, "
+    "service_id, source, slot_end, cancelled_at, cancel_reason, cancelled_by, reschedule_count, lead_timezone"
 )
 
 
@@ -602,8 +603,16 @@ def confirm_demo(
     lead = _confirm_lead_in_org(db, org_id, lead_id)
     lead_name = lead.get("full_name") or "Lead"
     rep_name = _get_user_name(db, assigned_to)
-    formatted_dt = scheduled_dt.strftime("%A, %d %b %Y at %I:%M %p")
-    medium_label = "Virtual (Online)" if medium == "virtual" else "In Person"
+    try:   # BOOKING-1: local time of the business, not UTC
+        from zoneinfo import ZoneInfo
+        _org_tz = (db.table("organisations").select("timezone").eq("id", org_id).maybe_single().execute().data or {})
+        if isinstance(_org_tz, list):
+            _org_tz = _org_tz[0] if _org_tz else {}
+        _local_dt = scheduled_dt.astimezone(ZoneInfo(_org_tz.get("timezone") or "Africa/Lagos"))
+    except Exception:
+        _local_dt = scheduled_dt
+    formatted_dt = _local_dt.strftime("%A, %d %b %Y at %I:%M %p")
+    medium_label = {"virtual": "Virtual (Online)", "phone": "Phone call"}.get(medium, "In Person")
 
     # Auto-send WA confirmation to lead via template (falls back to plain text)
     to_number = (lead.get("whatsapp") or lead.get("phone") or "").strip()

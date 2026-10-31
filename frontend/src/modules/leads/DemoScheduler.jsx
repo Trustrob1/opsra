@@ -36,6 +36,7 @@ import { createDemoRequest, listDemos, confirmDemo, logDemoOutcome } from '../..
 import { ds } from '../../utils/ds'
 import UserSelect from '../../shared/UserSelect'
 import useAuthStore from '../../store/authStore'
+import { BookingActions, BookingRowActions } from '../booking/BookingTools'   // BOOKING-1
 
 // ── Status display config ─────────────────────────────────────────────────────
 
@@ -45,9 +46,10 @@ const STATUS_STYLE = {
   attended:           { label: '🎉 Attended',             bg: '#EBF8FF', color: '#2B6CB0' },
   no_show:            { label: '❌ No-show',              bg: '#FFF5F5', color: '#C53030' },
   rescheduled:        { label: '🔄 Rescheduled',          bg: '#FAF5FF', color: '#6B46C1' },
+  cancelled:          { label: '🚫 Cancelled',            bg: '#F3F4F6', color: '#6B7280' },   // BOOKING-1
 }
 
-const MEDIUM_LABELS = { virtual: '💻 Virtual (Online)', in_person: '🤝 In Person' }
+const MEDIUM_LABELS = { virtual: '💻 Virtual (Online)', in_person: '🤝 In Person', phone: '📞 Phone call' }
 
 const fmtDateTime = (iso) => {
   if (!iso) return '—'
@@ -112,6 +114,9 @@ export default function DemoScheduler({ leadId, leadName, meetingLabel = 'Demo' 
 
       {error && <p style={{ color: ds.red, fontSize: 13, marginBottom: 12 }}>⚠ {error}</p>}
 
+      {/* BOOKING-1: book from real open slots / send the booking link (shown only when online booking is on) */}
+      <BookingActions leadId={leadId} meetingLabel={meetingLabel} onChanged={loadDemos} />
+
       {/* Request form */}
       {showRequestForm && (
         <RequestDemoForm
@@ -137,6 +142,7 @@ export default function DemoScheduler({ leadId, leadName, meetingLabel = 'Demo' 
               demo={demo}
               meetingLabel={meetingLabel}
               onConfirm={isManager ? () => setConfirmModal(demo) : null}
+              onChanged={loadDemos}
             />
           ))}
         </section>
@@ -152,6 +158,7 @@ export default function DemoScheduler({ leadId, leadName, meetingLabel = 'Demo' 
               demo={demo}
               meetingLabel={meetingLabel}
               onLogOutcome={() => setOutcomeModal(demo)}
+              onChanged={loadDemos}
             />
           ))}
         </section>
@@ -317,7 +324,7 @@ function RequestDemoForm({ leadId, leadName, onCreated, onCancel, meetingLabel =
 
 // ── Demo Card ─────────────────────────────────────────────────────────────────
 
-function DemoCard({ demo, onConfirm, onLogOutcome, meetingLabel = 'Demo' }) {
+function DemoCard({ demo, onConfirm, onLogOutcome, onChanged, meetingLabel = 'Demo' }) {
   const s = STATUS_STYLE[demo.status] ?? STATUS_STYLE.pending_assignment
 
   return (
@@ -421,6 +428,8 @@ function DemoCard({ demo, onConfirm, onLogOutcome, meetingLabel = 'Demo' }) {
               Log Outcome
             </button>
           )}
+          {/* BOOKING-1 */}
+          {onChanged && <BookingRowActions booking={demo} onChanged={onChanged} />}
         </div>
       </div>
 

@@ -183,6 +183,15 @@ def _build_template_components(variables, recipient_name=None):
 
 # ── DEMO-TMPL: Template sends for demo confirmation + reminders ───────────────
 
+
+def _to_org_tz(dt, tz_name):
+    """BOOKING-1: convert an aware datetime to the organisation's timezone (falls back to UTC)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return dt.astimezone(ZoneInfo(tz_name or "Africa/Lagos"))
+    except Exception:
+        return dt
+
 def send_demo_confirmation_template(
     db,
     org_id: str,
@@ -218,7 +227,7 @@ def send_demo_confirmation_template(
         # Fetch org settings
         org_res = (
             db.table("organisations")
-            .select("name, showroom_address, demo_confirmation_template")
+            .select("name, showroom_address, demo_confirmation_template, timezone")
             .eq("id", org_id)
             .maybe_single()
             .execute()
@@ -237,6 +246,7 @@ def send_demo_confirmation_template(
         # Format date and time from ISO string
         try:
             dt = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+            dt = _to_org_tz(dt, org_data.get("timezone"))   # BOOKING-1: show the business's local time, not UTC
             date_str = dt.strftime("%A, %d %b %Y")
             time_str = dt.strftime("%I:%M %p")
         except Exception:
@@ -333,7 +343,7 @@ def send_demo_reminder_template(
         # Fetch org settings
         org_res = (
             db.table("organisations")
-            .select("name, showroom_address, demo_reminder_template")
+            .select("name, showroom_address, demo_reminder_template, timezone")
             .eq("id", org_id)
             .maybe_single()
             .execute()
@@ -351,6 +361,7 @@ def send_demo_reminder_template(
 
         try:
             dt = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+            dt = _to_org_tz(dt, org_data.get("timezone"))   # BOOKING-1: show the business's local time, not UTC
             date_str = dt.strftime("%A, %d %b %Y")
             time_str = dt.strftime("%I:%M %p")
         except Exception:

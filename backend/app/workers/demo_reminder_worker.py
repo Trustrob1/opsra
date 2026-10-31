@@ -195,6 +195,27 @@ def _get_user_name(db, user_id: str) -> str:
 
 # ── Demo processor ────────────────────────────────────────────────────────────
 
+
+_TZ_CACHE: dict = {}
+
+
+def _fmt_local(db, org_id: str, dt) -> str:
+    """BOOKING-1: 'Friday, 07 Nov 2026 at 03:00 PM' in the organisation's timezone (UTC if unknown)."""
+    try:
+        from zoneinfo import ZoneInfo
+        tz = _TZ_CACHE.get(org_id)
+        if tz is None:
+            row = db.table("organisations").select("timezone").eq("id", org_id).maybe_single().execute().data or {}
+            if isinstance(row, list):
+                row = row[0] if row else {}
+            tz = row.get("timezone") or "Africa/Lagos"
+            _TZ_CACHE[org_id] = tz
+        dt = dt.astimezone(ZoneInfo(tz))
+    except Exception:
+        pass
+    return dt.strftime("%A, %d %b %Y at %I:%M %p")
+
+
 def _process_demo(db, demo: dict, phone_id: str) -> dict:
     """
     Process one confirmed demo. Returns summary of actions taken.
@@ -248,7 +269,7 @@ def _process_demo(db, demo: dict, phone_id: str) -> dict:
 
         lead_name = lead_data.get("full_name") or "Lead"
         wa_number = lead_data.get("whatsapp") or lead_data.get("phone") or ""
-        formatted = scheduled_at.strftime("%A, %d %b %Y at %I:%M %p")
+        formatted = _fmt_local(db, org_id, scheduled_at)   # BOOKING-1: business local time
         rep_name  = _get_user_name(db, assigned_to) if assigned_to else ""
 
         # ── 1. Auto no-show ────────────────────────────────────────────────

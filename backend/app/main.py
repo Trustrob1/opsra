@@ -193,6 +193,7 @@ from app.routers import superadmin_credits as superadmin_credits_router  # CREDI
 from app.routers import superadmin_pricing as superadmin_pricing_router  # ACCOUNT-PLANS AP-8
 from app.routers import superadmin_plans as superadmin_plans_router  # ACCOUNT-PLANS AP-1
 from app.routers import public_webchat as public_webchat_router  # WEBCHAT-1
+from app.routers import booking as booking_router  # BOOKING-1
 from app.routers import webchat as webchat_router  # WEBCHAT-1
 from app.routers import credits as credits_router  # CREDITS-2
 from app.routers import account_plan as account_plan_router  # ACCOUNT-PLANS AP-2
@@ -294,6 +295,8 @@ app.include_router(superadmin_credits_router.router,          prefix="/api/v1", 
 app.include_router(superadmin_pricing_router.router,          prefix="/api/v1",    tags=["superadmin_pricing"])  # ACCOUNT-PLANS AP-8 — /api/v1/superadmin/pricing/*
 app.include_router(superadmin_plans_router.router,            prefix="/api/v1",    tags=["superadmin_plans"])  # ACCOUNT-PLANS AP-1 — /api/v1/superadmin/plans/*
 app.include_router(public_webchat_router.router,              prefix="/api/v1",    tags=["public_webchat"])  # WEBCHAT-1 — /api/v1/public/webchat/{key}/*
+app.include_router(booking_router.router,              prefix="/api/v1",    tags=["booking_public"])  # BOOKING-1 — public /public/booking/link/*
+app.include_router(booking_router.staff, dependencies=[Depends(crm_only)], prefix="/api/v1", tags=["booking"])  # BOOKING-1 — staff /booking/*
 app.include_router(webchat_router.router,                     prefix="/api/v1",    tags=["webchat"])  # WEBCHAT-1 — settings + rep reply
 app.include_router(credits_router.router,                     prefix="/api/v1",    tags=["credits"])  # CREDITS-2 — /api/v1/credits/*
 app.include_router(account_plan_router.router,                prefix="/api/v1",    tags=["account_plan"])  # ACCOUNT-PLANS AP-2 — /api/v1/billing/plan/*

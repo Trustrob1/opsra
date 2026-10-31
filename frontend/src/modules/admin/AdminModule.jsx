@@ -74,6 +74,7 @@ import WebChatSettings         from './WebChatSettings'   // WEBCHAT-1
 import CreditsPanel            from './CreditsPanel'      // CREDITS-2
 import AutomationConfig        from './AutomationConfig'
 import DemoSettings            from './DemoSettings'
+import BookingSettings         from '../booking/BookingSettings'   // BOOKING-1
 import CatalogConfig           from './CatalogConfig'
 import CatalogItems            from './CatalogItems'
 import CatalogLook             from './CatalogLook'
@@ -150,6 +151,7 @@ const TAB_GROUPS = [
       { id: 'growth-config',    label: 'Growth Config',    Icon: TrendingUp },
       { id: 'biz-types',        label: 'Business Types',   Icon: Building2 },
       { id: 'automation',       label: 'Automation',       Icon: Zap },
+      { id: 'booking',          label: 'Booking',          Icon: CalendarDays },   // BOOKING-1
       { id: 'demo-settings',    label: 'Demo Settings',    Icon: CalendarDays },
     ],
   },
@@ -511,6 +513,7 @@ export default function AdminModule({ user, waOnly = false }) {
           <LazyTab active={tab === 'biz-types'}        visited={visited['biz-types']}>        <DripBusinessTypesConfig /></LazyTab>
           <LazyTab active={tab === 'messaging-limits'} visited={visited['messaging-limits']}> <MessagingLimitsConfig /></LazyTab>
           <LazyTab active={tab === 'demo-settings'}    visited={visited['demo-settings']}>    <DemoSettings /></LazyTab>
+          <LazyTab active={tab === 'booking'}          visited={visited['booking']}>          <BookingSettings /></LazyTab>
           <LazyTab active={tab === 'automation'}       visited={visited['automation']}>       <AutomationConfig /></LazyTab>
 
           <LazyTab active={tab === 'catalog'} visited={visited['catalog']}>

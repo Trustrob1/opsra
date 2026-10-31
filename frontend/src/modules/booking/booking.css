@@ -1,0 +1,30 @@
+/* BOOKING-1 — shared by the public booking page and the staff slot picker. All classes start with bk-. */
+.bk-days{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.bk-day{flex:0 0 auto;scroll-snap-align:start;min-width:66px;border:1.5px solid #D6E8EC;background:#fff;border-radius:12px;padding:8px 10px;text-align:center;cursor:pointer;font:inherit;color:inherit}
+.bk-day b{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#6B7C8E}
+.bk-day span{display:block;font-size:20px;font-weight:700;line-height:1.2}
+.bk-day small{display:block;font-size:11px;color:#6B7C8E}
+.bk-day[aria-pressed="true"]{border-color:#028090;background:#E0F4F6}
+.bk-times{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-top:6px}
+.bk-time{border:1.5px solid #D6E8EC;background:#fff;border-radius:10px;padding:10px 6px;font:inherit;font-weight:600;cursor:pointer;color:#0D1B2A}
+.bk-time[aria-pressed="true"]{background:#028090;border-color:#028090;color:#fff}
+.bk-empty{color:#6B7C8E;font-size:14px;padding:14px 0}
+.bk-btn{border:none;border-radius:12px;padding:13px 20px;font:inherit;font-weight:700;font-size:15px;cursor:pointer;background:#028090;color:#fff}
+.bk-btn:disabled{opacity:.5;cursor:not-allowed}
+.bk-btn-ghost{background:#fff;color:#028090;border:1.5px solid #028090}
+.bk-btn-danger{background:#fff;color:#C53030;border:1.5px solid #E05252}
+.bk-err{color:#C53030;font-size:14px;margin:10px 0}
+/* public page */
+.bk-page{min-height:100vh;background:#F5FAFB;font-family:'Poppins',system-ui,sans-serif;color:#0D1B2A;display:flex;justify-content:center;padding:20px 16px 48px}
+.bk-card{width:100%;max-width:560px;background:#fff;border-radius:20px;padding:24px 20px;box-shadow:0 8px 30px rgba(2,128,144,.1);align-self:flex-start}
+.bk-card h1{font-size:22px;line-height:1.25;margin:0 0 4px}
+.bk-sub{color:#6B7C8E;font-size:14px;margin:0 0 18px}
+.bk-meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.bk-chip{background:#E0F4F6;color:#015F6B;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600}
+.bk-sec{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#6B7C8E;margin:16px 0 8px}
+.bk-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+.bk-actions .bk-btn{flex:1 1 150px}
+.bk-tz{font-size:12px;color:#6B7C8E;margin-top:10px}
+.bk-done{text-align:center;padding:12px 0}
+.bk-done .bk-tick{width:56px;height:56px;border-radius:50%;background:#E0F4F6;color:#028090;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:28px}
+@media (prefers-reduced-motion:no-preference){.bk-time,.bk-day{transition:background .15s,border-color .15s}}
