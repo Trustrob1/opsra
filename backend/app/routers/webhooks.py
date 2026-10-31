@@ -56,6 +56,9 @@ from app.services.ai_service import (
     generate_pillow_recommendation,
 )
 from app.services import shopify_service
+from app.services.returning_menu_service import (   # RETURN-MENU-1
+    is_menu_request as _rm_is_menu_request, section_for as _rm_section_for, show as _rm_show,
+)
 from app.utils.opt_out import handle_opt_keywords
 from app.services.monitoring_service import log_system_error
 
@@ -2252,7 +2255,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     db=db, org_id=org_id, phone_number=sender_phone,
                     session=_lead_triage_session, msg_type=msg_type, content=content,
                     interactive_payload=interactive_payload, contact_name=contact_name,
-                    now_ts=now_ts, section="unknown",
+                    now_ts=now_ts, section=_rm_section_for(_lead_triage_session, "unknown"),
                 )
                 return
             # Session exists but state is "active" or beyond — fall through to qualification handler
@@ -2586,6 +2589,10 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     _lead_name = (_ld or {}).get("full_name") or "Lead"
                 except Exception:
                     pass
+                # RETURN-MENU-1: a greeting / "menu" from an existing lead gets the menu again
+                if msg_type == "text" and _rm_is_menu_request(content) and not ai_is_paused and _rm_show(
+                        db, org_id, sender_phone, _lead_name, "lead", lead_id=lead_id):
+                    return
                 handled = handle_lead_post_handoff_inbound(
                     db=db, org_id=org_id, lead_id=lead_id, lead_name=_lead_name,
                     content=content, msg_type=msg_type, assigned_to=assigned_to,
@@ -2617,7 +2624,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 db=db, org_id=org_id, phone_number=sender_phone,
                 session=active_customer_session, msg_type=msg_type, content=content,
                 interactive_payload=interactive_payload, contact_name=contact_name,
-                now_ts=now_ts, section="customer",
+                now_ts=now_ts, section=_rm_section_for(active_customer_session, "customer"),
             )
             return
         try:
@@ -2646,6 +2653,9 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                 "Customer triage menu check failed for %s — falling through to intent classifier: %s",
                 sender_phone, exc,
             )
+        if not ai_is_paused and msg_type == "text" and _rm_is_menu_request(content) and _rm_show(
+                db, org_id, sender_phone, contact_name, "customer", customer_id=customer_id):
+            return   # RETURN-MENU-1: greeting / "menu" -> their menu
         if not ai_is_paused:
             handled = customer_inbound_service.handle_customer_inbound(
                 db=db, org_id=org_id, customer_id=customer_id,

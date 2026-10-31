@@ -15,6 +15,7 @@
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import { getTriageConfig, updateTriageConfig } from '../../services/admin.service'
+import { getBookingSettings } from '../../services/booking.service'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,8 @@ const UNKNOWN_ACTION_OPTIONS = [
   { value: 'route_to_role',      label: 'Route to a team role' },
   { value: 'free_form',          label: 'General enquiry (free form)' },
 ]
+
+const BOOK_OPTION = { value: 'book', label: '📅 Book a time (needs Online booking)' }
 
 const CUSTOMER_ACTION_OPTIONS = [
   { value: 'create_ticket', label: 'Create support ticket' },
@@ -43,6 +46,7 @@ const UNKNOWN_CONTACT_TYPE_MAP = {
   qualify:           'sales_lead',
   commerce_entry:    'sales_lead',
   browse_catalog:    'sales_lead',
+  book:              'sales_lead',
   identify_customer: 'support_contact',
   route_to_role:     'business_inquiry',
   free_form:         'other',
@@ -307,6 +311,8 @@ export default function CustomerMenuConfig() {
   const [saveMsg, setSaveMsg]   = useState(null)
   const [saveErr, setSaveErr]   = useState(null)
   const [activeTab, setActiveTab] = useState('unknown')
+  const [bookingOn, setBookingOn] = useState(false)   // RETURN-MENU-1: the Book a time action only appears when booking is set up
+  useEffect(() => { getBookingSettings().then((r) => setBookingOn(!!r?.data?.native_enabled)).catch(() => setBookingOn(false)) }, [])
 
   useEffect(() => {
     getTriageConfig()
@@ -529,7 +535,7 @@ export default function CustomerMenuConfig() {
                 <ItemEditor
                   items={unknownItems}
                   setItems={setUnknownItems}
-                  actionOptions={UNKNOWN_ACTION_OPTIONS}
+                  actionOptions={(bookingOn || unknownItems.some((i) => i.action === 'book')) ? [...UNKNOWN_ACTION_OPTIONS, BOOK_OPTION] : UNKNOWN_ACTION_OPTIONS}
                   contactTypeMap={UNKNOWN_CONTACT_TYPE_MAP}
                   sectionKey="unknown"
                 />

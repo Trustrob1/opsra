@@ -13,6 +13,7 @@
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import { getContactMenus, updateContactMenus } from '../../services/admin.service'
+import { getBookingSettings } from '../../services/booking.service'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,8 @@ const ACTION_OPTIONS = [
   { value: 'route_to_role',  label: 'Route to a team role' },
   { value: 'free_form',      label: 'General enquiry (free form)' },
 ]
+
+const BOOK_OPTION = { value: 'book', label: '📅 Book a time (needs Online booking)' }
 
 const ROLE_OPTIONS = [
   { value: 'owner',         label: 'Owner' },
@@ -46,7 +49,7 @@ const DEFAULT_KNOWN_ITEMS = [
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-function ItemEditor({ items, setItems, sectionKey }) {
+function ItemEditor({ items, setItems, sectionKey, actionOptions = ACTION_OPTIONS }) {
   function addItem() {
     if (items.length >= 10) return
     setItems([...items, {
@@ -145,7 +148,7 @@ function ItemEditor({ items, setItems, sectionKey }) {
                 value={item.action || 'free_form'}
                 onChange={e => updateItem(idx, 'action', e.target.value)}
               >
-                {ACTION_OPTIONS.map(a => (
+                {actionOptions.map(a => (
                   <option key={a.value} value={a.value}>{a.label}</option>
                 ))}
               </select>
@@ -168,7 +171,7 @@ function ItemEditor({ items, setItems, sectionKey }) {
                 <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
                   <label style={S.label}>What happens</label>
                   <div style={{ ...S.input, background: '#F5FAFB', color: '#7A9BAD', cursor: 'default', fontSize: 12 }}>
-                    {ACTION_OPTIONS.find(a => a.value === item.action)?.label || '—'}
+                    {actionOptions.find(a => a.value === item.action)?.label || '—'}
                   </div>
                 </div>
               )}
@@ -256,15 +259,20 @@ export default function ContactMenuConfig() {
   const [kcSectionTitle,  setKcSectionTitle]  = useState('Choose an option')
   const [kcItems,         setKcItems]         = useState(DEFAULT_KNOWN_ITEMS)
 
+  const [enabled, setEnabled] = useState(true)          // RETURN-MENU-1
+  const [bookingOn, setBookingOn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [saveErr, setSaveErr] = useState('')
 
+  useEffect(() => { getBookingSettings().then((r) => setBookingOn(!!r?.data?.native_enabled)).catch(() => setBookingOn(false)) }, [])
+
   useEffect(() => {
     getContactMenus()
       .then(res => {
         const d = res?.data || {}
+        setEnabled(d.returning_menu_enabled !== false)
 
         const rc = d.returning_contact_menu || {}
         if (rc.greeting)      setRcGreeting(rc.greeting)
@@ -286,6 +294,7 @@ export default function ContactMenuConfig() {
     setSaveErr('')
     try {
       await updateContactMenus({
+        returning_menu_enabled: enabled,
         returning_contact_menu: {
           greeting:      rcGreeting,
           section_title: rcSectionTitle,
@@ -322,9 +331,14 @@ export default function ContactMenuConfig() {
           Contact Menus
         </h2>
         <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0, lineHeight: 1.6 }}>
-          Configure the menus shown to returning leads and known customers in Hybrid mode.
-          These menus are also used in Transactional mode for known customers.
+          The menus shown to people who already messaged you (leads and customers) when they say hello, ask for the menu,
+          or send a question we can't answer straight away. If a menu here has no items, they see your main WhatsApp menu instead.
         </p>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, fontSize: 13.5, cursor: 'pointer' }}>
+          <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+          <span><b>Show the menu again to people who already messaged us</b><br />
+            <span style={{ fontSize: 12, color: '#7A9BAD' }}>Never shown while a team member is chatting with them (replied in the last 24 hours).</span></span>
+        </label>
       </div>
 
       {/* Section tabs */}
@@ -386,7 +400,7 @@ export default function ContactMenuConfig() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 20, alignItems: 'start' }}>
           <div style={S.card}>
-            <ItemEditor items={rcItems} setItems={setRcItems} sectionKey="rc" />
+            <ItemEditor items={rcItems} setItems={setRcItems} sectionKey="rc" actionOptions={(bookingOn || rcItems.some(i => i.action === 'book')) ? [...ACTION_OPTIONS, BOOK_OPTION] : ACTION_OPTIONS} />
           </div>
           <WhatsAppPreview greeting={rcGreeting} sectionTitle={rcSectionTitle} items={rcItems} />
         </div>
@@ -429,7 +443,7 @@ export default function ContactMenuConfig() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 20, alignItems: 'start' }}>
           <div style={S.card}>
-            <ItemEditor items={kcItems} setItems={setKcItems} sectionKey="kc" />
+            <ItemEditor items={kcItems} setItems={setKcItems} sectionKey="kc" actionOptions={(bookingOn || kcItems.some(i => i.action === 'book')) ? [...ACTION_OPTIONS, BOOK_OPTION] : ACTION_OPTIONS} />
           </div>
           <WhatsAppPreview greeting={kcGreeting} sectionTitle={kcSectionTitle} items={kcItems} />
         </div>

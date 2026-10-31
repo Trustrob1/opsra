@@ -2627,6 +2627,7 @@ class TriageConfigUpdate(BaseModel):
         "free_form",
         "commerce_entry",  # COMM-1
         "browse_catalog",  # CATALOG-5
+        "book",            # RETURN-MENU-1
         # Customer section actions
         "create_ticket",
         "kb_enquiry",
@@ -2767,6 +2768,13 @@ def update_triage_config(
     }
     if not updates:
         return ok(data={}, message="No changes to save")
+
+    if isinstance(updates.get("whatsapp_triage_config"), dict):
+        # RETURN-MENU-1: merge, so saving the main menu never wipes returning_contact_menu / known_customer_menu
+        cur = (db.table("organisations").select("whatsapp_triage_config").eq("id", org["org_id"]).limit(1).execute().data or [])
+        base = dict((cur[0].get("whatsapp_triage_config") if cur else None) or {})
+        base.update(updates["whatsapp_triage_config"])
+        updates["whatsapp_triage_config"] = base
 
     updates["updated_at"] = datetime.utcnow().isoformat()
     result = (
@@ -3051,6 +3059,7 @@ _CONTACT_MENU_ACTION_TYPES = {
     "support_ticket",
     "route_to_role",
     "free_form",
+    "book",            # RETURN-MENU-1
 }
 
 _CONTACT_MENU_ROLE_OPTIONS = {"owner", "ops_manager", "sales_agent", "support_agent", "finance"}
@@ -3113,6 +3122,7 @@ class ContactMenuSection(BaseModel):
 class ContactMenusUpdate(BaseModel):
     returning_contact_menu: Optional[ContactMenuSection] = None
     known_customer_menu: Optional[ContactMenuSection] = None
+    returning_menu_enabled: Optional[bool] = None     # RETURN-MENU-1
 
 
 # ── Sales mode routes ─────────────────────────────────────────────────────────
@@ -3175,7 +3185,7 @@ def get_contact_menus(
     """SM-1: Return returning_contact_menu + known_customer_menu from triage config."""
     result = (
         db.table("organisations")
-        .select("whatsapp_triage_config")
+        .select("whatsapp_triage_config, returning_menu_enabled")
         .eq("id", org["org_id"])
         .maybe_single()
         .execute()
@@ -3187,6 +3197,7 @@ def get_contact_menus(
     return ok(data={
         "returning_contact_menu": triage_config.get("returning_contact_menu") or {"items": []},
         "known_customer_menu":    triage_config.get("known_customer_menu")    or {"items": []},
+        "returning_menu_enabled": (data or {}).get("returning_menu_enabled", True) is not False,
     })
 
 
@@ -3223,10 +3234,10 @@ def update_contact_menus(
     if payload.known_customer_menu is not None:
         current_triage["known_customer_menu"] = payload.known_customer_menu.model_dump()
 
-    db.table("organisations").update({
-        "whatsapp_triage_config": current_triage,
-        "updated_at": datetime.utcnow().isoformat(),
-    }).eq("id", org["org_id"]).execute()
+    _upd = {"whatsapp_triage_config": current_triage, "updated_at": datetime.utcnow().isoformat()}
+    if payload.returning_menu_enabled is not None:
+        _upd["returning_menu_enabled"] = bool(payload.returning_menu_enabled)
+    db.table("organisations").update(_upd).eq("id", org["org_id"]).execute()
 
     write_audit_log(
         db=db, org_id=org["org_id"], user_id=org["id"],

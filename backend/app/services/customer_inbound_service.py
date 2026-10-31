@@ -1083,6 +1083,7 @@ def handle_customer_inbound(
     msg_type: str,
     assigned_to: Optional[str],
     now_ts: str,
+    phone_number: str = "",
 ) -> None:
     """
     WH-1 master dispatcher for all inbound messages from known customers.
@@ -1457,7 +1458,12 @@ def handle_customer_inbound(
             # Fall through to general rep notification if commerce not available
             return False
 
-        # 'general' — return False so caller sends standard rep notification
+        # 'general' — RETURN-MENU-1: give the customer their menu; the caller still notifies the rep
+        if phone_number and msg_type == "text":
+            from app.services import returning_menu_service
+            returning_menu_service.show(
+                db, org_id, phone_number, customer_name, "customer", customer_id=customer_id,
+                prefix="Thanks for your message! A member of our team has been notified. In the meantime, here's what I can help with:")
         return False
 
     except Exception as exc:
@@ -2317,7 +2323,14 @@ def handle_lead_post_handoff_inbound(
                 "lead=%s — defaulting to send: %s", lead_id, _af_exc,
             )
 
-        if not _already_forwarded:
+        _menu_sent = False
+        if not _already_forwarded and phone_number:
+            # RETURN-MENU-1: offer the menu instead of only "a team member will contact you" (the team is still told below)
+            from app.services import returning_menu_service
+            _menu_sent = returning_menu_service.show(
+                db, org_id, phone_number, lead_name, "lead", lead_id=lead_id,
+                prefix="I can't answer that right away, so I've let our team know. In the meantime, here's what I can help with:")
+        if not _already_forwarded and not _menu_sent:
             forwarding_msg = (
                 _post_handoff.get("forwarding_message")
                 or (
