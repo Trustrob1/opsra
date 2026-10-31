@@ -16,6 +16,7 @@ export default function BookingPage({ token }) {
   const [info, setInfo] = useState(null)
   const [slots, setSlots] = useState([])
   const [picked, setPicked] = useState(null)
+  const [staffId, setStaffId] = useState('')      // BOOKING-2D: person chosen by the visitor ('' = anyone)
   const [mode, setMode] = useState('pick')       // pick | reschedule | done | cancelled
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
@@ -24,14 +25,14 @@ export default function BookingPage({ token }) {
 
   useEffect(() => { document.title = 'Book a time'; }, [])
 
-  const loadSlots = useCallback(async () => {
+  const loadSlots = useCallback(async (who = staffId) => {
     const from = new Date()
     const to = new Date(Date.now() + 29 * 86400000)
     try {
-      const r = await getLinkSlots(token, ymd(from), ymd(to))
+      const r = await getLinkSlots(token, ymd(from), ymd(to), who)
       setSlots(r.data?.slots || [])
     } catch (e) { setErr(apiError(e, 'Could not load times.')) }
-  }, [token])
+  }, [token, staffId])
 
   useEffect(() => {
     getLink(token)
@@ -50,7 +51,7 @@ export default function BookingPage({ token }) {
   const doBook = async () => {
     setBusy(true); setErr(null)
     try {
-      const r = await (mode === 'reschedule' ? linkReschedule(token, { start: picked }) : linkBook(token, { start: picked, timezone: tz }))
+      const r = await (mode === 'reschedule' ? linkReschedule(token, { start: picked }) : linkBook(token, { start: picked, timezone: tz, ...(staffId ? { staff_id: staffId } : {}) }))
       setInfo({ ...info, booking: r.data.booking })
       setMode('done'); setPicked(null)
     } catch (e) {
@@ -130,6 +131,16 @@ export default function BookingPage({ token }) {
     <Shell>
       {head}
       <p className="bk-sec">{mode === 'reschedule' ? 'Pick a new time' : 'Pick a time'}</p>
+      {mode !== 'reschedule' && (info.staff || []).length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <label className="bk-tz" htmlFor="bk-who" style={{ display: 'block', marginBottom: 4 }}>Who would you like to see?</label>
+          <select id="bk-who" value={staffId} style={{ padding: '9px 12px', fontSize: 14, borderRadius: 8, border: '1.5px solid #cbd5e0', maxWidth: '100%' }}
+            onChange={(e) => { setStaffId(e.target.value); setPicked(null); loadSlots(e.target.value) }}>
+            <option value="">Anyone available</option>
+            {info.staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </div>
+      )}
       <SlotPicker slots={slots} tz={tz} value={picked} onChange={setPicked} />
       <p className="bk-tz">Times shown in your timezone ({tz})</p>
       {err && <p className="bk-err" role="alert">{err}</p>}

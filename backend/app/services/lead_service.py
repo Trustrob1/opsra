@@ -1064,6 +1064,13 @@ def move_stage(
     except Exception as exc:
         logger.warning("move_stage: payment-link trigger hook failed lead=%s: %s", lead_id, exc)
 
+    # BOOKING-2D: optionally send the booking link when a lead reaches the stage chosen in Booking > Settings
+    try:
+        from app.services import booking_service as _bk
+        _bk.auto_send_link_for_lead(db, org_id, lead_id, trigger="stage", stage=new_stage)
+    except Exception as exc:
+        logger.warning("move_stage: booking auto-send hook failed lead=%s: %s", lead_id, exc)
+
     return updated
 
 

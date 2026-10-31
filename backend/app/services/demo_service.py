@@ -605,6 +605,7 @@ def confirm_demo(
                 lead_name=lead_name,
                 scheduled_at=scheduled_at,
                 rep_name=rep_name,
+                demo_id=demo_id,
             )
         except Exception as _exc:
             logger.warning("demo_service: confirmation template send failed — %s", _exc)

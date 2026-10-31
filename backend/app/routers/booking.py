@@ -146,7 +146,12 @@ def public_link(token: str, request: Request, response: Response, db=Depends(get
         lead = lead[0] if lead else None
     first = ((lead or {}).get("full_name") or "").split(" ")[0]
     service = _link_service(db, link)
+    people = []
+    if cfg.get("calendar_mode") == "per_staff" and cfg.get("let_leads_choose_person"):
+        ids = set(bk.eligible_staff_ids(db, org["id"], service))
+        people = [{"id": u["id"], "name": u.get("full_name") or "Team member"} for u in bk._org_users(db, org["id"]) if u["id"] in ids]
     return ok({
+        "staff": people,
         "business": org.get("name"), "first_name": first, "label": cfg["label"],
         "cancel_cutoff_hours": cfg["cancel_cutoff_hours"], "timezone": org.get("timezone") or "Africa/Lagos",
         "service": {k: service.get(k) for k in ("id", "name", "description", "duration_minutes", "medium", "location_text", "requires_approval")},
@@ -156,15 +161,17 @@ def public_link(token: str, request: Request, response: Response, db=Depends(get
 
 @router.get("/public/booking/link/{token}/slots")
 def public_slots(token: str, request: Request, response: Response, db=Depends(get_supabase),
-                 from_: Optional[str] = Query(None, alias="from"), to: Optional[str] = None):
+                 from_: Optional[str] = Query(None, alias="from"), to: Optional[str] = None,
+                 staff_id: Optional[str] = Query(None, alias="staff", max_length=64)):
     _nostore(response)
     _limit(request, "slots", 120, 60)
-    link, org, _ = _link_context(db, token)
+    link, org, cfg = _link_context(db, token)
     service = _link_service(db, link)
     start = _parse_day(from_, datetime.now(timezone.utc).date())
     end = _parse_day(to, start + timedelta(days=13))
     current = _current_booking(db, link)
-    slots = bk.get_open_slots(db, org, service, start, end, exclude_demo_id=current["id"] if current else None)
+    pick = staff_id if (staff_id and cfg.get("let_leads_choose_person")) else None
+    slots = bk.get_open_slots(db, org, service, start, end, exclude_demo_id=current["id"] if current else None, rep_id=pick)
     return ok(_slots_payload(org, service, slots))
 
 
@@ -173,6 +180,7 @@ class BookBody(BaseModel):
     timezone: Optional[str] = Field(default=None, max_length=60)
     note: Optional[str] = Field(default=None, max_length=1000)
     website: Optional[str] = Field(default=None, max_length=200)   # honeypot
+    staff_id: Optional[str] = Field(default=None, max_length=64)   # BOOKING-2D: only used when the business lets leads choose
 
 
 @router.post("/public/booking/link/{token}/book")
@@ -181,12 +189,13 @@ def public_book(token: str, body: BookBody, request: Request, response: Response
     _limit(request, "book", 10, 3600)
     if body.website:
         return ok({"booked": True})   # honeypot: pretend success
-    link, org, _ = _link_context(db, token)
+    link, org, cfg = _link_context(db, token)
     if _current_booking(db, link):
         raise HTTPException(status_code=409, detail={"code": "ALREADY_BOOKED", "message": "You already have a booking. Use reschedule or cancel."})
     service = _link_service(db, link)
     demo = bk.book_slot(db, org["id"], link["lead_id"], service, _parse_start(body.start), source="native",
-                        lead_timezone=body.timezone, notes=body.note)
+                        lead_timezone=body.timezone, notes=body.note,
+                        rep_id=body.staff_id if (body.staff_id and cfg.get("let_leads_choose_person")) else None)
     bk.link_attach_booking(db, link["id"], demo["id"])
     return ok({"booking": _public_booking(demo)}, message="Booked")
 
@@ -233,6 +242,10 @@ class SettingsBody(BaseModel):
     default_rep_id: Optional[str] = None
     calendar_mode: Optional[Literal["single", "per_staff"]] = None
     auto_send_mode: Optional[Literal["link", "picker"]] = None
+    template_buttons: Optional[bool] = None
+    let_leads_choose_person: Optional[bool] = None
+    auto_send_trigger: Optional[Literal["qualified", "stage"]] = None
+    auto_send_stage: Optional[str] = Field(default=None, max_length=60)
 
 
 @staff.get("/booking/settings")

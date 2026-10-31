@@ -368,6 +368,7 @@ def _process_demo(db, demo: dict, phone_id: str) -> dict:
                         scheduled_at=scheduled_str,
                         rep_name=rep_name,
                         time_context="tomorrow",
+                        demo_id=demo_id,
                     )
                 except Exception as _exc:
                     logger.warning(
@@ -402,6 +403,7 @@ def _process_demo(db, demo: dict, phone_id: str) -> dict:
                         scheduled_at=scheduled_str,
                         rep_name=rep_name,
                         time_context="in about an hour",
+                        demo_id=demo_id,
                     )
                 except Exception as _exc:
                     logger.warning(

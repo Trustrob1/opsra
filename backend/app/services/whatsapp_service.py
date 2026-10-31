@@ -192,6 +192,39 @@ def _to_org_tz(dt, tz_name):
     except Exception:
         return dt
 
+# ── BOOKING-2D: Reschedule / Cancel quick-reply buttons on the confirmation + reminder templates ──
+
+def _booking_button_components(db, org_id: str, demo_id: Optional[str]) -> list:
+    """
+    Two quick-reply button components (button 1 = Reschedule, button 2 = Cancel) carrying "bk:rs:<demo>" / "bk:cx:<demo>".
+    Only when the org says its templates were created WITH those two buttons (booking_settings.template_buttons).
+    A tap arrives as a 'button' message and is handled by booking_wa_service. S14: [] on any problem.
+    """
+    if not demo_id:
+        return []
+    try:
+        rows = (db.table("booking_settings").select("native_enabled, template_buttons").eq("org_id", org_id).limit(1).execute().data or [])
+        if not rows or not (rows[0].get("native_enabled") and rows[0].get("template_buttons")):
+            return []
+        return [{"type": "button", "sub_type": "quick_reply", "index": str(i),
+                 "parameters": [{"type": "payload", "payload": f"bk:{k}:{demo_id}"}]} for i, k in enumerate(("rs", "cx"))]
+    except Exception:
+        return []
+
+
+def _send_with_buttons(phone_id: str, token: str, payload: dict, buttons: list):
+    """Send the template with the buttons; if Meta refuses (template has no buttons yet), send it without them."""
+    if buttons:
+        import copy
+        p2 = copy.deepcopy(payload)
+        p2["template"].setdefault("components", []).extend(buttons)
+        try:
+            return _call_meta_send(phone_id, p2, token=token)
+        except Exception as exc:
+            logger.warning("template send with buttons refused (%s) - sending without buttons", exc)
+    return _call_meta_send(phone_id, payload, token=token)
+
+
 def send_demo_confirmation_template(
     db,
     org_id: str,
@@ -199,6 +232,7 @@ def send_demo_confirmation_template(
     lead_name: str,
     scheduled_at: str,
     rep_name: str,
+    demo_id: Optional[str] = None,
 ) -> None:
     """
     Send the showroom_visit_confirmation WhatsApp template to a lead
@@ -270,7 +304,7 @@ def send_demo_confirmation_template(
             payload["template"]["components"] = components
 
         try:
-            _call_meta_send(phone_id, payload, token=token)
+            _send_with_buttons(phone_id, token, payload, _booking_button_components(db, org_id, demo_id))
             logger.info(
                 "send_demo_confirmation_template: sent template '%s' to %s (org %s)",
                 template_name, phone_number, org_id,
@@ -312,6 +346,7 @@ def send_demo_reminder_template(
     scheduled_at: str,
     rep_name: str,
     time_context: str,
+    demo_id: Optional[str] = None,
 ) -> None:
     """
     Send the showroom_visit_reminder WhatsApp template.
@@ -385,7 +420,7 @@ def send_demo_reminder_template(
             payload["template"]["components"] = components
 
         try:
-            _call_meta_send(phone_id, payload, token=token)
+            _send_with_buttons(phone_id, token, payload, _booking_button_components(db, org_id, demo_id))
             logger.info(
                 "send_demo_reminder_template: sent '%s' (context=%s) to %s (org %s)",
                 template_name, time_context, phone_number, org_id,

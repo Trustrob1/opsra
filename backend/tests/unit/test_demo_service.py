@@ -299,7 +299,8 @@ class TestConfirmDemo:
     def test_confirm_demo_auto_sends_wa(self):
         from app.services.demo_service import confirm_demo
         with patch("app.services.demo_service._get_user_name", return_value="Ada"), \
-             patch("app.services.demo_service._auto_send_wa") as mock_wa, \
+             patch("app.services.demo_service._confirm_lead_in_org", return_value=SAMPLE_LEAD), \
+             patch("app.services.whatsapp_service.send_demo_confirmation_template") as mock_wa, \
              patch("app.services.demo_service._create_task", return_value="t1"), \
              patch("app.services.demo_service._insert_notification"), \
              patch("app.services.demo_service._log_timeline"), \
@@ -311,9 +312,9 @@ class TestConfirmDemo:
                 medium="virtual", assigned_to=REP_ID,
             )
         mock_wa.assert_called_once()
-        # Message should contain rep name
-        msg = mock_wa.call_args[0][3]  # positional: db, org_id, lead, content
-        assert "Ada" in msg
+        # confirm_demo sends the confirmation template (BOOKING-2D: with the demo id so buttons can carry it)
+        assert mock_wa.call_args.kwargs["rep_name"] == "Ada"
+        assert mock_wa.call_args.kwargs["demo_id"] == DEMO_ID
 
     def test_confirm_demo_creates_rep_task(self):
         from app.services.demo_service import confirm_demo

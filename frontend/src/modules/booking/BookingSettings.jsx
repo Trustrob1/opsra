@@ -122,12 +122,14 @@ function SettingsView({ cfg, onCfg }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(cfg)
   const [reps, setReps] = useState([])
+  const [stages, setStages] = useState([])
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   // BOOKING-2A: people who can own a booking (active, sales / success / manager roles)
   useEffect(() => {
     adminSvc.listUsers().then((res) => setReps((res || []).filter((u) => u.is_active &&
       ['sales_agent', 'customer_success', 'owner', 'ops_manager', 'admin'].includes(u.roles?.template)))).catch(() => {})
+    adminSvc.getPipelineStages().then((r) => setStages(Array.isArray(r) ? r : (r?.stages || r?.data || []))).catch(() => {})
   }, [])
 
   const save = async () => {
@@ -138,6 +140,8 @@ function SettingsView({ cfg, onCfg }) {
         cancel_cutoff_hours: Number(form.cancel_cutoff_hours) || 0,
         auto_send_link: !!form.auto_send_link, default_rep_id: form.default_rep_id || null,
         calendar_mode: form.calendar_mode || 'single', auto_send_mode: form.auto_send_mode || 'link',
+        template_buttons: !!form.template_buttons, let_leads_choose_person: !!form.let_leads_choose_person,
+        auto_send_trigger: form.auto_send_trigger || 'qualified', auto_send_stage: form.auto_send_trigger === 'stage' ? (form.auto_send_stage || null) : null,
       })
       onCfg(r.data); setForm(r.data); setMsg({ ok: true, t: 'Saved.' })
     } catch (e) { setMsg({ ok: false, t: apiError(e) }) } finally { setSaving(false) }
@@ -183,12 +187,33 @@ function SettingsView({ cfg, onCfg }) {
         </label>
         {form.auto_send_link && (
           <div style={{ marginTop: 10, maxWidth: 360 }}>
+            <label style={lab} htmlFor="bk-trg">When to send it</label>
+            <select id="bk-trg" style={{ ...inp, marginBottom: 10 }} value={form.auto_send_trigger || 'qualified'} onChange={(e) => set('auto_send_trigger', e.target.value)}>
+              <option value="qualified">When they finish the questions</option>
+              <option value="stage">When they reach a pipeline stage</option>
+            </select>
+            {form.auto_send_trigger === 'stage' && (
+              <select aria-label="Pipeline stage" style={{ ...inp, marginBottom: 10 }} value={form.auto_send_stage || ''} onChange={(e) => set('auto_send_stage', e.target.value)}>
+                <option value="">Choose a stage…</option>
+                {stages.map((st) => { const k = st.key || st.stage || st.name || st; return <option key={k} value={k}>{st.label || st.name || k}</option> })}
+              </select>
+            )}
             <label style={lab} htmlFor="bk-asm">What to send</label>
             <select id="bk-asm" style={inp} value={form.auto_send_mode || 'link'} onChange={(e) => set('auto_send_mode', e.target.value)}>
               <option value="link">A link to the booking page</option>
               <option value="picker">Times they can tap, right inside WhatsApp</option>
             </select>
           </div>
+        )}
+        <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14, marginTop: 16, cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!form.template_buttons} onChange={(e) => set('template_buttons', e.target.checked)} />
+          <span><b>Confirmation messages have Reschedule and Cancel buttons</b><br /><span style={{ fontSize: 12, color: ds.gray }}>Switch on only after your WhatsApp confirmation and reminder templates are approved with two quick-reply buttons (Reschedule, then Cancel).</span></span>
+        </label>
+        {form.calendar_mode === 'per_staff' && (
+          <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14, marginTop: 14, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!form.let_leads_choose_person} onChange={(e) => set('let_leads_choose_person', e.target.checked)} />
+            <span><b>Let customers choose who they see</b><br /><span style={{ fontSize: 12, color: ds.gray }}>Adds a "Who would you like to see?" choice on the booking page. Otherwise the best-fit person is picked for them.</span></span>
+          </label>
         )}
         <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <button style={btnP} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>

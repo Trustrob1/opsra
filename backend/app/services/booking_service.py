@@ -51,6 +51,10 @@ DEFAULT_SETTINGS = {
     "default_rep_id": None,
     "calendar_mode": "single",     # BOOKING-2B: single | per_staff
     "auto_send_mode": "link",      # BOOKING-2C: link | picker
+    "template_buttons": False,     # BOOKING-2D: confirmation/reminder templates have Reschedule + Cancel quick-reply buttons
+    "let_leads_choose_person": False,   # BOOKING-2D: per_staff only - the booking page lets the lead pick a person
+    "auto_send_trigger": "qualified",   # BOOKING-2D: qualified | stage
+    "auto_send_stage": None,            # BOOKING-2D: pipeline stage key when the trigger is 'stage'
 }
 
 
@@ -201,6 +205,12 @@ def save_settings(db, org_id: str, patch: dict) -> dict:
     allowed = {k: v for k, v in patch.items() if k in DEFAULT_SETTINGS}
     if "label" in allowed:
         allowed["label"] = (allowed["label"] or "consultation").strip()[:40] or "consultation"
+    if "auto_send_trigger" in allowed and allowed["auto_send_trigger"] not in ("qualified", "stage"):
+        raise _err(422, "VALIDATION_ERROR", "Auto-send trigger must be qualified or stage")
+    if "auto_send_stage" in allowed:
+        allowed["auto_send_stage"] = (allowed["auto_send_stage"] or "").strip()[:60] or None
+    if allowed.get("auto_send_trigger") == "stage" and not (allowed.get("auto_send_stage") or get_settings(db, org_id).get("auto_send_stage")):
+        raise _err(422, "VALIDATION_ERROR", "Pick the pipeline stage that should send the booking link")
     if "auto_send_mode" in allowed and allowed["auto_send_mode"] not in ("link", "picker"):
         raise _err(422, "VALIDATION_ERROR", "Auto-send mode must be link or picker")
     if "calendar_mode" in allowed and allowed["calendar_mode"] not in ("single", "per_staff"):
@@ -491,9 +501,13 @@ def _is_slot_taken(exc: Exception) -> bool:
     return isinstance(d, dict) and d.get("code") == "SLOT_TAKEN"
 
 
-def _insert_for_best_rep(db, org: dict, service: dict, lead_id, start_utc, slot_end, source, lead_tz, user_id, notes):
-    """Try each free person in preference order; the database guard decides if two bookings race for one person."""
+def _insert_for_best_rep(db, org: dict, service: dict, lead_id, start_utc, slot_end, source, lead_tz, user_id, notes,
+                         only_rep: Optional[str] = None):
+    """Try each free person in preference order; the database guard decides if two bookings race for one person.
+    only_rep: the lead chose this person on the booking page - nobody else is tried."""
     for rep in rank_reps(db, org, service, lead_id, start_utc):
+        if only_rep and rep != only_rep:
+            continue
         try:
             demo_id = _insert_booking_row(db, org["id"], lead_id, service, start_utc, slot_end, source, lead_tz, user_id, notes,
                                           assigned_to=rep, guard_scope="rep")
@@ -595,12 +609,18 @@ def _slots_for(db, org: dict, service: dict, from_date: date, to_date: date, now
 
 
 def get_open_slots(db, org: dict, service: dict, from_date: date, to_date: date, now: Optional[datetime] = None,
-                   exclude_demo_id: Optional[str] = None) -> list[datetime]:
-    """Single calendar: the business's open slots. Per-staff: a time is open when at least one eligible person is free."""
+                   exclude_demo_id: Optional[str] = None, rep_id: Optional[str] = None) -> list[datetime]:
+    """Single calendar: the business's open slots. Per-staff: a time is open when at least one eligible person is free
+    (or, with rep_id, when that one person is free)."""
     if get_settings(db, org["id"]).get("calendar_mode") != "per_staff":
         return _slots_for(db, org, service, from_date, to_date, now, exclude_demo_id)
+    people = eligible_staff_ids(db, org["id"], service)
+    if rep_id:
+        if rep_id not in people:
+            raise _err(422, "VALIDATION_ERROR", "That person is not available for this service.")
+        people = [rep_id]
     found: set[datetime] = set()
-    for rep in eligible_staff_ids(db, org["id"], service):
+    for rep in people:
         found.update(_slots_for(db, org, service, from_date, to_date, now, exclude_demo_id, rep_id=rep))
     return sorted(found)
 
@@ -630,22 +650,24 @@ def pick_rep(db, org_id: str) -> Optional[str]:
     return ids[cur % len(ids)]
 
 
-def _assert_slot_open(db, org: dict, service: dict, start_utc: datetime, exclude_demo_id: Optional[str] = None) -> None:
+def _assert_slot_open(db, org: dict, service: dict, start_utc: datetime, exclude_demo_id: Optional[str] = None,
+                      rep_id: Optional[str] = None) -> None:
     tz = ZoneInfo(org.get("timezone") or "Africa/Lagos")
     d = start_utc.astimezone(tz).date()
-    open_slots = get_open_slots(db, org, service, d, d, exclude_demo_id=exclude_demo_id)
+    open_slots = get_open_slots(db, org, service, d, d, exclude_demo_id=exclude_demo_id, rep_id=rep_id)
     if start_utc not in open_slots:
         raise _err(409, "SLOT_TAKEN", "That time is no longer available. Please pick another.")
 
 
 def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime, source: str = "native",
-              lead_timezone: Optional[str] = None, user_id: Optional[str] = None, notes: Optional[str] = None) -> dict:
+              lead_timezone: Optional[str] = None, user_id: Optional[str] = None, notes: Optional[str] = None,
+              rep_id: Optional[str] = None) -> dict:
     """Create a booking in a verified open slot. Instant confirm unless the service needs approval."""
     from app.services import demo_service as ds
     org = get_org(db, org_id)
     lead = ds._confirm_lead_in_org(db, org_id, lead_id)
     start_utc = start_utc.astimezone(timezone.utc).replace(second=0, microsecond=0)
-    _assert_slot_open(db, org, service, start_utc)
+    _assert_slot_open(db, org, service, start_utc, rep_id=rep_id)
 
     live = (db.table("lead_demos").select("id").eq("org_id", org_id).eq("lead_id", lead_id)
             .in_("status", list(_LIVE_STATUSES)).is_("deleted_at", "null").gte("scheduled_at", _now_iso()).limit(1).execute().data or [])
@@ -656,7 +678,7 @@ def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime,
     slot_end = start_utc + timedelta(minutes=dur + int(service.get("buffer_after_minutes") or 0))
     chosen_rep = None
     if get_settings(db, org_id).get("calendar_mode") == "per_staff":
-        demo_id, chosen_rep = _insert_for_best_rep(db, org, service, lead_id, start_utc, slot_end, source, lead_timezone, user_id, notes)
+        demo_id, chosen_rep = _insert_for_best_rep(db, org, service, lead_id, start_utc, slot_end, source, lead_timezone, user_id, notes, only_rep=rep_id)
     else:
         demo_id = _insert_booking_row(db, org_id, lead_id, service, start_utc, slot_end, source, lead_timezone, user_id, notes)
 
@@ -813,7 +835,19 @@ def reschedule_booking(db, org_id: str, demo_id: str, new_start_utc: datetime, b
     if demo.get("assigned_to"):
         ds._insert_notification(db, org_id, demo["assigned_to"], "demo_confirmed", f"Booking moved: {lead.get('full_name') or 'Lead'}",
                                 f"Now {when}.", demo_id)
-    ds._auto_send_wa(db, org_id, lead, f"Your {get_settings(db, org_id)['label']} has been moved to {when}. See you then.")
+    res = ds._auto_send_wa(db, org_id, lead, f"Your {get_settings(db, org_id)['label']} has been moved to {when}. See you then.")
+    if not res.get("sent") and res.get("reason") == "window_closed":
+        # BOOKING-2D: outside the 24h window a plain message cannot be sent, so re-send the confirmation template with the new time
+        to_number = (lead.get("whatsapp") or lead.get("phone") or "").strip()
+        if to_number:
+            try:
+                from app.services.whatsapp_service import send_demo_confirmation_template
+                rep = demo.get("assigned_to")
+                send_demo_confirmation_template(db=db, org_id=org_id, phone_number=to_number, lead_name=lead.get("full_name") or "there",
+                                                scheduled_at=new_start.isoformat(), rep_name=ds._get_user_name(db, rep) if rep else "",
+                                                demo_id=demo_id)
+            except Exception as exc:
+                logger.warning("reschedule: confirmation template failed demo=%s: %s", demo_id, exc)
     return ds._fetch_demo_by_id(db, org_id, demo_id)
 
 
@@ -858,7 +892,7 @@ def public_base() -> str:
     return (os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL") or "https://opsra-frontend.onrender.com").rstrip("/")
 
 
-def auto_send_link_for_lead(db, org_id: str, lead_id: str) -> dict:
+def auto_send_link_for_lead(db, org_id: str, lead_id: str, trigger: str = "qualified", stage: Optional[str] = None) -> dict:
     """
     BOOKING-2A: send the booking link once, after qualification, when the org switched
     'auto_send_link' on. Skipped if the lead already has a live booking or any earlier
@@ -868,6 +902,10 @@ def auto_send_link_for_lead(db, org_id: str, lead_id: str) -> dict:
         cfg = get_settings(db, org_id)
         if not (cfg.get("native_enabled") and cfg.get("auto_send_link")):
             return {"sent": False, "reason": "off"}
+        if (cfg.get("auto_send_trigger") or "qualified") != trigger:
+            return {"sent": False, "reason": "other_trigger"}
+        if trigger == "stage" and stage != cfg.get("auto_send_stage"):
+            return {"sent": False, "reason": "other_stage"}
         live = (db.table("lead_demos").select("id").eq("org_id", org_id).eq("lead_id", lead_id)
                 .in_("status", list(_LIVE_STATUSES)).limit(1).execute().data or [])
         if live:

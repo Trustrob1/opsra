@@ -12,8 +12,8 @@ const unwrap = (res) => res.data
 
 // ── Public (booking link) ────────────────────────────────────────────────────
 export const getLink        = (token) => pub.get(`/api/v1/public/booking/link/${token}`).then(unwrap)
-export const getLinkSlots   = (token, from, to) =>
-  pub.get(`/api/v1/public/booking/link/${token}/slots`, { params: { from, to } }).then(unwrap)
+export const getLinkSlots   = (token, from, to, staff) =>
+  pub.get(`/api/v1/public/booking/link/${token}/slots`, { params: { from, to, ...(staff ? { staff } : {}) } }).then(unwrap)
 export const linkBook       = (token, body) => pub.post(`/api/v1/public/booking/link/${token}/book`, body).then(unwrap)
 export const linkReschedule = (token, body) => pub.post(`/api/v1/public/booking/link/${token}/reschedule`, body).then(unwrap)
 export const linkCancel     = (token, body) => pub.post(`/api/v1/public/booking/link/${token}/cancel`, body).then(unwrap)
