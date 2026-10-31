@@ -1075,6 +1075,49 @@ _STOPWORDS = frozenset({
 })
 
 
+_ACK_WORDS = {
+    "thanks", "thank you", "thank u", "thankyou", "thanks a lot", "thanks so much", "thank you so much", "thanks again", "many thanks",
+    "ok", "okay", "ok thanks", "okay thanks", "ok thank you", "okay thank you", "alright", "noted", "got it", "great", "cool", "perfect",
+    "nice", "sure", "sounds good", "good", "fine", "thx", "tnx", "tks", "ty", "cheers", "much appreciated", "appreciated", "wonderful",
+    "awesome", "will do", "great thanks", "perfect thanks", "ok great", "okay great",
+}
+
+
+def is_acknowledgement(content) -> bool:
+    """A short thank-you / OK that needs no answer and no human follow-up (also thumbs-up / emoji-only replies)."""
+    import re as _re
+    text = (content or "").strip().lower()
+    if not text or len(text) > 40 or "?" in text:
+        return False
+    words = _re.sub(r"[^a-z0-9' ]", " ", text).split()
+    if not words:
+        return not _re.search(r"[a-z0-9]", text)       # emoji / punctuation only, e.g. a thumbs-up
+    return " ".join(words) in _ACK_WORDS
+
+
+def reply_to_acknowledgement(db, org_id: str, phone_number: str, lead_id=None, customer_id=None, custom_text=None) -> bool:
+    """Say a short 'you're welcome'. No rep task, no notification. True if it was sent. S14."""
+    try:
+        from app.services.whatsapp_service import _get_org_wa_credentials, _call_meta_send
+        phone_id, token, _ = _get_org_wa_credentials(db, org_id)
+        if not (phone_id or "").strip() or not token or not phone_number:
+            return False
+        body = custom_text or "You're welcome! 🤍 If you need anything else, just reply here, or send \"menu\" to see your options."
+        _call_meta_send(phone_id.strip(), {"messaging_product": "whatsapp", "to": phone_number, "type": "text", "text": {"body": body}}, token=token)
+        now = datetime.now(timezone.utc)
+        row = {"org_id": org_id, "direction": "outbound", "message_type": "text", "content": body, "status": "sent", "window_open": True,
+               "window_expires_at": (now + timedelta(hours=24)).isoformat(), "sent_by": None, "created_at": now.isoformat()}
+        row["lead_id" if lead_id else "customer_id"] = lead_id or customer_id
+        try:
+            db.table("whatsapp_messages").insert(row).execute()
+        except Exception as exc:
+            logger.warning("acknowledgement: message save failed: %s", exc)
+        return True
+    except Exception as exc:
+        logger.warning("acknowledgement reply failed org=%s: %s", org_id, exc)
+        return False
+
+
 def handle_customer_inbound(
     db,
     org_id: str,
@@ -1156,6 +1199,10 @@ def handle_customer_inbound(
             return True
 
         # Non-text messages skip KB lookup — rep notification handled by caller
+        if msg_type == "text" and is_acknowledgement(content) and phone_number:
+            if reply_to_acknowledgement(db, org_id, phone_number, customer_id=customer_id):
+                return True
+
         if msg_type != "text" or not content:
             return False
 
@@ -1793,6 +1840,17 @@ def handle_lead_post_handoff_inbound(
                     "failed for lead=%s: %s", lead_id, _ts_exc,
                 )
             return True
+
+        # ── Thank-you / OK intercept (RETURN-MENU-1) — answer kindly, do not forward to the team ──
+        if msg_type == "text" and is_acknowledgement(content):
+            _cfg_text = None
+            try:
+                _o = (db.table("organisations").select("whatsapp_triage_config").eq("id", org_id).limit(1).execute().data or [])
+                _cfg_text = (((_o[0].get("whatsapp_triage_config") if _o else None) or {}).get("lead", {}).get("post_handoff", {}) or {}).get("ack_reply")
+            except Exception:
+                _cfg_text = None
+            if reply_to_acknowledgement(db, org_id, phone_number, lead_id=lead_id, custom_text=_cfg_text):
+                return True
 
         # ── Product list selection intercept ──────────────────────────────────
         # When the user selects a product from the interactive list, msg_type is

@@ -144,3 +144,28 @@ def test_run_book_action_falls_back_to_text():
 def test_handle_customer_inbound_accepts_phone_number():
     from app.services.customer_inbound_service import handle_customer_inbound
     assert "phone_number" in inspect.signature(handle_customer_inbound).parameters
+
+
+def test_is_acknowledgement():
+    from app.services.customer_inbound_service import is_acknowledgement as ack
+    for t in ("Thanks", "thank you!", "Ok", "okay thanks", "Noted.", "👍", "Thanks so much!", "great"):
+        assert ack(t), t
+    for t in ("", None, "thanks, but what is the price?", "ok when do you open", "How much is it?", "I want to cancel", "Thanks for the info, I have another question"):
+        assert not ack(t), t
+
+
+def test_reply_to_acknowledgement_sends_text_without_notifying():
+    from app.services import customer_inbound_service as ci
+    sent = MagicMock()
+    with patch("app.services.whatsapp_service._get_org_wa_credentials", return_value=("pid", "tok", None)), \
+         patch("app.services.whatsapp_service._call_meta_send", sent):
+        assert ci.reply_to_acknowledgement(MagicMock(), "o", "234", lead_id="l1") is True
+    assert sent.call_args.args[1]["type"] == "text" and sent.call_args.kwargs["token"] == "tok"
+
+
+def test_lead_thanks_is_answered_and_not_forwarded():
+    from app.services import customer_inbound_service as ci
+    db = MagicMock()
+    with patch.object(ci, "reply_to_acknowledgement", return_value=True) as r, patch.object(ci, "_insert_notification") as n:
+        out = ci.handle_lead_post_handoff_inbound(db, "o", "l1", "Ai", "Thanks", "text", None, "2026-10-31T00:00:00Z", phone_number="234")
+    assert out is True and r.called and not n.called
