@@ -49,6 +49,7 @@ DEFAULT_SETTINGS = {
     "cancel_cutoff_hours": 24,
     "auto_send_link": False,
     "default_rep_id": None,
+    "calendar_mode": "single",     # BOOKING-2B: single | per_staff
 }
 
 
@@ -199,6 +200,8 @@ def save_settings(db, org_id: str, patch: dict) -> dict:
     allowed = {k: v for k, v in patch.items() if k in DEFAULT_SETTINGS}
     if "label" in allowed:
         allowed["label"] = (allowed["label"] or "consultation").strip()[:40] or "consultation"
+    if "calendar_mode" in allowed and allowed["calendar_mode"] not in ("single", "per_staff"):
+        raise _err(422, "VALIDATION_ERROR", "Calendar mode must be single or per_staff")
     if "cancel_cutoff_hours" in allowed:
         allowed["cancel_cutoff_hours"] = max(0, min(int(allowed["cancel_cutoff_hours"]), 720))
     allowed["org_id"] = org_id
@@ -240,6 +243,8 @@ def _service_fields(payload: dict) -> dict:
     for k in ("requires_approval", "active"):
         if k in payload and payload[k] is not None:
             f[k] = bool(payload[k])
+    if payload.get("assignment_mode") in ("anyone", "specific", "lead_owner_first"):
+        f["assignment_mode"] = payload["assignment_mode"]
     return f
 
 
@@ -319,6 +324,209 @@ def delete_block(db, org_id: str, block_id: str) -> None:
     db.table("booking_blocks").delete().eq("id", block_id).eq("org_id", org_id).execute()
 
 
+# ───────────────────────────── BOOKING-2B: people (per-staff calendars) ─────────────────────────────
+
+_STAFF_TEMPLATES = ("sales_agent", "customer_success", "owner", "ops_manager", "admin")
+
+
+def _org_users(db, org_id: str) -> list[dict]:
+    """Active users who can take bookings (role template filtered in Python - Pattern 37)."""
+    rows = (db.table("users").select("id, full_name, email, is_active, roles(template)")
+            .eq("org_id", org_id).eq("is_active", True).execute().data or [])
+    out = []
+    for r in rows:
+        roles = r.get("roles") or {}
+        tpl = (roles.get("template") or "").lower() if isinstance(roles, dict) else ""
+        if tpl in _STAFF_TEMPLATES:
+            out.append(r)
+    return out
+
+
+def _staff_rows(db, org_id: str) -> list[dict]:
+    return db.table("booking_staff").select("*").eq("org_id", org_id).execute().data or []
+
+
+def eligible_staff_ids(db, org_id: str, service: Optional[dict]) -> list[str]:
+    """People who accept bookings and (when the service names specific people) serve this service."""
+    accepting = {r["user_id"] for r in _staff_rows(db, org_id) if r.get("accepts_bookings")}
+    ids = accepting & {u["id"] for u in _org_users(db, org_id)}
+    if service and service.get("assignment_mode") == "specific":
+        mapped = {r["user_id"] for r in (db.table("booking_service_staff").select("user_id")
+                  .eq("org_id", org_id).eq("service_id", service["id"]).execute().data or [])}
+        ids &= mapped
+    return sorted(ids)
+
+
+def _staff_rules(db, org_id: str, user_id: str, org_rules: list[dict]) -> list[dict]:
+    rows = db.table("booking_staff").select("uses_org_hours").eq("org_id", org_id).eq("user_id", user_id).limit(1).execute().data or []
+    if not rows or rows[0].get("uses_org_hours", True):
+        return org_rules
+    return (db.table("booking_staff_availability").select("weekday, start_time, end_time")
+            .eq("org_id", org_id).eq("user_id", user_id).execute().data or [])
+
+
+def _require_staff_user(db, org_id: str, user_id: str) -> dict:
+    for u in _org_users(db, org_id):
+        if u["id"] == user_id:
+            return u
+    raise _err(404, "NOT_FOUND", "That person cannot take bookings (not found, inactive, or role not allowed).")
+
+
+def list_staff(db, org_id: str) -> list[dict]:
+    rows = {r["user_id"]: r for r in _staff_rows(db, org_id)}
+    hours: dict[str, list] = {}
+    for h in (db.table("booking_staff_availability").select("user_id, weekday, start_time, end_time")
+              .eq("org_id", org_id).order("weekday").order("start_time").execute().data or []):
+        hours.setdefault(h["user_id"], []).append({k: h[k] for k in ("weekday", "start_time", "end_time")})
+    svc: dict[str, list] = {}
+    for m in db.table("booking_service_staff").select("user_id, service_id").eq("org_id", org_id).execute().data or []:
+        svc.setdefault(m["user_id"], []).append(m["service_id"])
+    out = []
+    for u in _org_users(db, org_id):
+        r = rows.get(u["id"])
+        out.append({"user_id": u["id"], "full_name": u.get("full_name") or u.get("email"), "email": u.get("email"),
+                    "accepts_bookings": bool(r and r.get("accepts_bookings")),
+                    "uses_org_hours": True if not r else bool(r.get("uses_org_hours", True)),
+                    "hours": hours.get(u["id"], []), "service_ids": svc.get(u["id"], [])})
+    return out
+
+
+def set_staff(db, org_id: str, user_id: str, accepts_bookings: Optional[bool] = None, uses_org_hours: Optional[bool] = None) -> dict:
+    _require_staff_user(db, org_id, user_id)
+    row = {"org_id": org_id, "user_id": user_id, "updated_at": _now_iso()}
+    if accepts_bookings is not None:
+        row["accepts_bookings"] = bool(accepts_bookings)
+    if uses_org_hours is not None:
+        row["uses_org_hours"] = bool(uses_org_hours)
+    db.table("booking_staff").upsert(row, on_conflict="org_id,user_id").execute()
+    if uses_org_hours:
+        db.table("booking_staff_availability").delete().eq("org_id", org_id).eq("user_id", user_id).execute()
+    return next(x for x in list_staff(db, org_id) if x["user_id"] == user_id)
+
+
+def set_staff_hours(db, org_id: str, user_id: str, rows: list[dict]) -> dict:
+    """Replace one person's own weekly hours (org timezone). They stop following the business hours."""
+    _require_staff_user(db, org_id, user_id)
+    clean = []
+    for r in rows:
+        w = int(r["weekday"])
+        a, b = _parse_hhmm(r["start_time"]), _parse_hhmm(r["end_time"])
+        if not (0 <= w <= 6) or b <= a:
+            raise _err(422, "VALIDATION_ERROR", "Each row needs a weekday (0-6) and an end time after the start time")
+        clean.append({"org_id": org_id, "user_id": user_id, "weekday": w,
+                      "start_time": a.strftime("%H:%M"), "end_time": b.strftime("%H:%M")})
+    db.table("booking_staff_availability").delete().eq("org_id", org_id).eq("user_id", user_id).execute()
+    if clean:
+        db.table("booking_staff_availability").insert(clean).execute()
+    db.table("booking_staff").upsert({"org_id": org_id, "user_id": user_id, "uses_org_hours": False, "updated_at": _now_iso()},
+                                     on_conflict="org_id,user_id").execute()
+    return next(x for x in list_staff(db, org_id) if x["user_id"] == user_id)
+
+
+def list_staff_blocks(db, org_id: str, user_id: Optional[str] = None) -> list[dict]:
+    q = db.table("booking_staff_blocks").select("*").eq("org_id", org_id).gte("ends_at", _now_iso())
+    if user_id:
+        q = q.eq("user_id", user_id)
+    return q.order("starts_at").execute().data or []
+
+
+def add_staff_block(db, org_id: str, user_id: str, starts_at: str, ends_at: str, reason: Optional[str]) -> dict:
+    _require_staff_user(db, org_id, user_id)
+    a, b = _parse_dt(starts_at), _parse_dt(ends_at)
+    if b <= a:
+        raise _err(422, "VALIDATION_ERROR", "Time off must end after it starts")
+    row = {"org_id": org_id, "user_id": user_id, "starts_at": a.isoformat(), "ends_at": b.isoformat(), "reason": (reason or "")[:200] or None}
+    res = db.table("booking_staff_blocks").insert(row).execute()
+    return (res.data or [row])[0]
+
+
+def delete_staff_block(db, org_id: str, block_id: str) -> None:
+    db.table("booking_staff_blocks").delete().eq("id", block_id).eq("org_id", org_id).execute()
+
+
+def set_service_staff(db, org_id: str, service_id: str, user_ids: list[str]) -> list[str]:
+    get_service(db, org_id, service_id)
+    valid = {u["id"] for u in _org_users(db, org_id)}
+    ids = sorted({u for u in user_ids if u in valid})
+    db.table("booking_service_staff").delete().eq("org_id", org_id).eq("service_id", service_id).execute()
+    if ids:
+        db.table("booking_service_staff").insert([{"org_id": org_id, "service_id": service_id, "user_id": u} for u in ids]).execute()
+    return ids
+
+
+def rank_reps(db, org: dict, service: dict, lead_id: str, start_utc: datetime, exclude_demo_id: Optional[str] = None) -> list[str]:
+    """Free people for this start time, best first: lead's owner (if the service says so), then fewest bookings
+    made in the last 30 days, then the one booked least recently."""
+    tz = ZoneInfo(org.get("timezone") or "Africa/Lagos")
+    d = start_utc.astimezone(tz).date()
+    free = [r for r in eligible_staff_ids(db, org["id"], service)
+            if start_utc in _slots_for(db, org, service, d, d, exclude_demo_id=exclude_demo_id, rep_id=r)]
+    if not free:
+        return []
+    since = (_now() - timedelta(days=30)).isoformat()
+    rows = (db.table("lead_demos").select("assigned_to, created_at, status").eq("org_id", org["id"])
+            .in_("assigned_to", free).gte("created_at", since).is_("deleted_at", "null").execute().data or [])
+    stats = {r: [0, ""] for r in free}
+    for row in rows:
+        if row.get("status") == "cancelled" or row.get("assigned_to") not in stats:
+            continue
+        st = stats[row["assigned_to"]]
+        st[0] += 1
+        st[1] = max(st[1], str(row.get("created_at") or ""))
+    order = sorted(free, key=lambda r: (stats[r][0], stats[r][1], r))
+    if service.get("assignment_mode") == "lead_owner_first":
+        lead = db.table("leads").select("assigned_to").eq("id", lead_id).eq("org_id", org["id"]).limit(1).execute().data or []
+        owner = lead[0].get("assigned_to") if lead else None
+        if owner in free:
+            order.remove(owner)
+            order.insert(0, owner)
+    return order
+
+
+def _is_slot_taken(exc: Exception) -> bool:
+    d = getattr(exc, "detail", None)
+    return isinstance(d, dict) and d.get("code") == "SLOT_TAKEN"
+
+
+def _insert_for_best_rep(db, org: dict, service: dict, lead_id, start_utc, slot_end, source, lead_tz, user_id, notes):
+    """Try each free person in preference order; the database guard decides if two bookings race for one person."""
+    for rep in rank_reps(db, org, service, lead_id, start_utc):
+        try:
+            demo_id = _insert_booking_row(db, org["id"], lead_id, service, start_utc, slot_end, source, lead_tz, user_id, notes,
+                                          assigned_to=rep, guard_scope="rep")
+            return demo_id, rep
+        except HTTPException as exc:
+            if _is_slot_taken(exc):
+                continue
+            raise
+    raise _err(409, "SLOT_TAKEN", "That time was just taken. Please pick another.")
+
+
+def reassign_booking(db, org_id: str, demo_id: str, new_user_id: str, by_user_id: Optional[str] = None) -> dict:
+    """Staff action: hand a booking to another person. The database guard refuses a clash with their own bookings."""
+    from app.services import demo_service as ds
+    demo = _get_live_booking(db, org_id, demo_id)
+    _require_staff_user(db, org_id, new_user_id)
+    if demo.get("assigned_to") == new_user_id:
+        return demo
+    try:
+        db.table("lead_demos").update({"assigned_to": new_user_id, "guard_scope": "rep", "updated_at": _now_iso()}) \
+            .eq("id", demo_id).eq("org_id", org_id).execute()
+    except Exception as exc:
+        if _is_overlap_error(exc):
+            raise _err(409, "SLOT_TAKEN", "That person already has a booking at that time.") from exc
+        raise
+    org = get_org(db, org_id)
+    lead = ds._confirm_lead_in_org(db, org_id, demo["lead_id"])
+    when = _fmt_local(_parse_dt(demo["scheduled_at"]), org, demo.get("lead_timezone")) if demo.get("scheduled_at") else ""
+    name = lead.get("full_name") or "Lead"
+    ds._log_timeline(db, org_id, demo["lead_id"], by_user_id, "booking_reassigned", f"Booking reassigned ({when}).", {"demo_id": demo_id, "to": new_user_id})
+    ds._insert_notification(db, org_id, new_user_id, "demo_confirmed", f"Booking assigned to you: {name}", f"{when}.", demo_id)
+    if demo.get("assigned_to"):
+        ds._insert_notification(db, org_id, demo["assigned_to"], "demo_cancelled", f"Booking moved to someone else: {name}", f"{when}.", demo_id)
+    return ds._fetch_demo_by_id(db, org_id, demo_id)
+
+
 # ───────────────────────────── slots ─────────────────────────────
 
 def _rules_for(db, org_id: str, service: dict) -> list[dict]:
@@ -327,8 +535,9 @@ def _rules_for(db, org_id: str, service: dict) -> list[dict]:
     return own or [r for r in rows if not r.get("service_id")]
 
 
-def _busy_ranges(db, org_id: str, lo: datetime, hi: datetime) -> list[tuple[datetime, datetime]]:
-    rows = (db.table("lead_demos").select("scheduled_at, slot_end, duration_minutes, status")
+def _busy_ranges(db, org_id: str, lo: datetime, hi: datetime, rep_id: Optional[str] = None) -> list[tuple[datetime, datetime]]:
+    """rep_id given (per-staff calendars): only that person's bookings, plus any with no person yet."""
+    rows = (db.table("lead_demos").select("scheduled_at, slot_end, duration_minutes, status, assigned_to")
             .eq("org_id", org_id).in_("status", list(_LIVE_STATUSES)).is_("deleted_at", "null")
             .gte("scheduled_at", (lo - timedelta(days=1)).isoformat()).lte("scheduled_at", hi.isoformat())
             .execute().data or [])
@@ -336,14 +545,17 @@ def _busy_ranges(db, org_id: str, lo: datetime, hi: datetime) -> list[tuple[date
     for r in rows:
         if not r.get("scheduled_at"):
             continue
+        if rep_id and r.get("assigned_to") and r["assigned_to"] != rep_id:
+            continue
         s = _parse_dt(r["scheduled_at"])
         e = _parse_dt(r["slot_end"]) if r.get("slot_end") else s + timedelta(minutes=int(r.get("duration_minutes") or 30))
         out.append((s, e))
     return out
 
 
-def get_open_slots(db, org: dict, service: dict, from_date: date, to_date: date, now: Optional[datetime] = None,
-                   exclude_demo_id: Optional[str] = None) -> list[datetime]:
+def _slots_for(db, org: dict, service: dict, from_date: date, to_date: date, now: Optional[datetime] = None,
+               exclude_demo_id: Optional[str] = None, rep_id: Optional[str] = None) -> list[datetime]:
+    """Open slots for the whole business (rep_id None) or for one person's own calendar."""
     if to_date < from_date:
         raise _err(422, "VALIDATION_ERROR", "to must not be before from")
     if (to_date - from_date).days > _MAX_RANGE_DAYS:
@@ -354,7 +566,7 @@ def get_open_slots(db, org: dict, service: dict, from_date: date, to_date: date,
     tz = ZoneInfo(org.get("timezone") or "Africa/Lagos")
     lo = datetime.combine(from_date, time(0, 0), tzinfo=tz).astimezone(timezone.utc)
     hi = datetime.combine(to_date + timedelta(days=1), time(0, 0), tzinfo=tz).astimezone(timezone.utc)
-    busy = _busy_ranges(db, org_id, lo, hi)
+    busy = _busy_ranges(db, org_id, lo, hi, rep_id)
     if exclude_demo_id:
         ex = (db.table("lead_demos").select("scheduled_at, slot_end, duration_minutes").eq("id", exclude_demo_id).limit(1).execute())
         row = _first(ex)
@@ -365,12 +577,29 @@ def get_open_slots(db, org: dict, service: dict, from_date: date, to_date: date,
     blocks = [(_parse_dt(b["starts_at"]), _parse_dt(b["ends_at"])) for b in (
         db.table("booking_blocks").select("starts_at, ends_at").eq("org_id", org_id)
         .lte("starts_at", hi.isoformat()).gte("ends_at", lo.isoformat()).execute().data or [])]
+    rules = _rules_for(db, org_id, service)
+    if rep_id:
+        blocks += [(_parse_dt(b["starts_at"]), _parse_dt(b["ends_at"])) for b in (
+            db.table("booking_staff_blocks").select("starts_at, ends_at").eq("org_id", org_id).eq("user_id", rep_id)
+            .lte("starts_at", hi.isoformat()).gte("ends_at", lo.isoformat()).execute().data or [])]
+        rules = _staff_rules(db, org_id, rep_id, rules)
     return generate_slots(
-        tz_name=org.get("timezone") or "Africa/Lagos", rules=_rules_for(db, org_id, service),
+        tz_name=org.get("timezone") or "Africa/Lagos", rules=rules,
         duration_minutes=service["duration_minutes"], buffer_minutes=service.get("buffer_after_minutes") or 0,
         busy=busy, blocks=blocks, now=now, min_notice_hours=service.get("min_notice_hours") or 0,
         window_days=service.get("window_days") or 30, from_date=from_date, to_date=to_date,
     )
+
+
+def get_open_slots(db, org: dict, service: dict, from_date: date, to_date: date, now: Optional[datetime] = None,
+                   exclude_demo_id: Optional[str] = None) -> list[datetime]:
+    """Single calendar: the business's open slots. Per-staff: a time is open when at least one eligible person is free."""
+    if get_settings(db, org["id"]).get("calendar_mode") != "per_staff":
+        return _slots_for(db, org, service, from_date, to_date, now, exclude_demo_id)
+    found: set[datetime] = set()
+    for rep in eligible_staff_ids(db, org["id"], service):
+        found.update(_slots_for(db, org, service, from_date, to_date, now, exclude_demo_id, rep_id=rep))
+    return sorted(found)
 
 
 # ───────────────────────────── booking ─────────────────────────────
@@ -422,7 +651,11 @@ def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime,
 
     dur = int(service["duration_minutes"])
     slot_end = start_utc + timedelta(minutes=dur + int(service.get("buffer_after_minutes") or 0))
-    demo_id = _insert_booking_row(db, org_id, lead_id, service, start_utc, slot_end, source, lead_timezone, user_id, notes)
+    chosen_rep = None
+    if get_settings(db, org_id).get("calendar_mode") == "per_staff":
+        demo_id, chosen_rep = _insert_for_best_rep(db, org, service, lead_id, start_utc, slot_end, source, lead_timezone, user_id, notes)
+    else:
+        demo_id = _insert_booking_row(db, org_id, lead_id, service, start_utc, slot_end, source, lead_timezone, user_id, notes)
 
     if service.get("requires_approval"):
         _notify_approval_needed(db, org_id, lead, demo_id, start_utc, org)
@@ -430,7 +663,7 @@ def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime,
                          f"Booking requested for {_fmt_local(start_utc, org)} ({service['name']}). Waiting for approval.",
                          {"demo_id": demo_id, "service_id": service["id"], "source": source})
     else:
-        rep = pick_rep(db, org_id)
+        rep = chosen_rep or pick_rep(db, org_id)
         if not rep:
             # No one to assign: leave it pending so a manager can confirm, never lose the booking.
             _notify_approval_needed(db, org_id, lead, demo_id, start_utc, org)
@@ -443,12 +676,15 @@ def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime,
     return ds._fetch_demo_by_id(db, org_id, demo_id)
 
 
-def _insert_booking_row(db, org_id, lead_id, service, start_utc, slot_end, source, lead_tz, user_id, notes) -> str:
+def _insert_booking_row(db, org_id, lead_id, service, start_utc, slot_end, source, lead_tz, user_id, notes,
+                        assigned_to: Optional[str] = None, guard_scope: str = "org") -> str:
     import uuid
     demo_id = str(uuid.uuid4())
     now = _now_iso()
+    extra = {"assigned_to": assigned_to, "guard_scope": guard_scope} if assigned_to else {}
     try:
         db.table("lead_demos").insert({
+            **extra,
             "id": demo_id, "org_id": org_id, "lead_id": lead_id, "status": "pending_assignment",
             "service_id": service["id"], "source": source, "medium": service.get("medium") or "virtual",
             "scheduled_at": start_utc.isoformat(), "slot_end": slot_end.isoformat(),
@@ -531,17 +767,42 @@ def reschedule_booking(db, org_id: str, demo_id: str, new_start_utc: datetime, b
     new_start = new_start_utc.astimezone(timezone.utc).replace(second=0, microsecond=0)
     _assert_slot_open(db, org, service, new_start, exclude_demo_id=demo_id)
     slot_end = new_start + timedelta(minutes=int(service["duration_minutes"]) + int(service.get("buffer_after_minutes") or 0))
-    try:
-        db.table("lead_demos").update({
-            "scheduled_at": new_start.isoformat(), "slot_end": slot_end.isoformat(),
-            "reminder_24h_sent": False, "reminder_1h_sent": False, "noshow_task_created": False,
-            "rep_nudge_sent_at": None, "manager_nudge_sent_at": None,
-            "reschedule_count": int(demo.get("reschedule_count") or 0) + 1, "updated_at": _now_iso(),
-        }).eq("id", demo_id).eq("org_id", org_id).execute()
-    except Exception as exc:
-        if _is_overlap_error(exc):
-            raise _err(409, "SLOT_TAKEN", "That time was just taken. Please pick another.") from exc
-        raise
+    fields = {
+        "scheduled_at": new_start.isoformat(), "slot_end": slot_end.isoformat(),
+        "reminder_24h_sent": False, "reminder_1h_sent": False, "noshow_task_created": False,
+        "rep_nudge_sent_at": None, "manager_nudge_sent_at": None,
+        "reschedule_count": int(demo.get("reschedule_count") or 0) + 1, "updated_at": _now_iso(),
+    }
+    old_rep = demo.get("assigned_to")
+    if get_settings(db, org_id).get("calendar_mode") == "per_staff":
+        # keep the same person when they are free at the new time, otherwise the next best free person
+        order = rank_reps(db, org, service, demo["lead_id"], new_start, exclude_demo_id=demo_id)
+        if old_rep in order:
+            order.remove(old_rep)
+            order.insert(0, old_rep)
+        done = False
+        for rep in order:
+            try:
+                db.table("lead_demos").update({**fields, "assigned_to": rep, "guard_scope": "rep"}).eq("id", demo_id).eq("org_id", org_id).execute()
+                done = True
+                break
+            except Exception as exc:
+                if _is_overlap_error(exc):
+                    continue
+                raise
+        if not done:
+            raise _err(409, "SLOT_TAKEN", "That time was just taken. Please pick another.")
+        if rep != old_rep:
+            if old_rep:
+                ds._insert_notification(db, org_id, old_rep, "demo_cancelled", "A booking was moved to someone else", "The customer picked a time you are not free.", demo_id)
+            demo["assigned_to"] = rep
+    else:
+        try:
+            db.table("lead_demos").update(fields).eq("id", demo_id).eq("org_id", org_id).execute()
+        except Exception as exc:
+            if _is_overlap_error(exc):
+                raise _err(409, "SLOT_TAKEN", "That time was just taken. Please pick another.") from exc
+            raise
     lead = ds._confirm_lead_in_org(db, org_id, demo["lead_id"])
     when = _fmt_local(new_start, org, demo.get("lead_timezone"))
     ds._log_timeline(db, org_id, demo["lead_id"], user_id, "booking_rescheduled",

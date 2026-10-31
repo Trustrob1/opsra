@@ -11,6 +11,9 @@ Public (no login), prefix /api/v1 :
   POST /public/booking/link/{token}/cancel               cancel (cut-off enforced)
 
 Staff (login), prefix /api/v1 :
+  BOOKING-2B people: GET /booking/staff, PUT /booking/staff/{user_id}, GET/PUT /booking/staff/{user_id}/hours,
+                     GET/POST /booking/staff/{user_id}/blocks, DELETE /booking/staff/blocks/{id},
+                     PUT /booking/services/{id}/staff, POST /booking/bookings/{demo_id}/assign
   GET/PATCH /booking/settings
   GET/POST /booking/services, PATCH/DELETE /booking/services/{id}
   GET/PUT  /booking/availability
@@ -228,6 +231,7 @@ class SettingsBody(BaseModel):
     cancel_cutoff_hours: Optional[int] = Field(default=None, ge=0, le=720)
     auto_send_link: Optional[bool] = None
     default_rep_id: Optional[str] = None
+    calendar_mode: Optional[Literal["single", "per_staff"]] = None
 
 
 @staff.get("/booking/settings")
@@ -262,6 +266,7 @@ class ServiceBody(BaseModel):
     window_days: Optional[int] = Field(default=None, ge=1, le=365)
     active: Optional[bool] = None
     sort_order: Optional[int] = Field(default=None, ge=0, le=9999)
+    assignment_mode: Optional[Literal["anyone", "specific", "lead_owner_first"]] = None
 
 
 def _dump(body) -> dict:
@@ -425,3 +430,108 @@ def staff_cancel(demo_id: str, body: StaffCancelBody, org: dict = Depends(get_cu
 def staff_reschedule(demo_id: str, body: RescheduleBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok(bk.reschedule_booking(db, org["org_id"], demo_id, _parse_start(body.start), by="staff", user_id=org["id"]))
+
+
+# ───────────────────────────── BOOKING-2B: people (per-staff calendars) ─────────────────────────────
+
+def _role(org: dict) -> tuple[str, dict]:
+    role = org.get("roles") or {}
+    return role.get("template", ""), (role.get("permissions") or {})
+
+
+def _is_admin(org: dict) -> bool:
+    tpl, perms = _role(org)
+    return tpl == "owner" or perms.get("is_admin") is True
+
+
+def _is_manager(org: dict) -> bool:
+    tpl, _ = _role(org)
+    return _is_admin(org) or tpl in ("ops_manager", "admin")
+
+
+def _admin_or_self(org: dict, user_id: str) -> None:
+    if not (_is_admin(org) or org["id"] == user_id):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "You can only change your own hours and time off."})
+
+
+class StaffBody(BaseModel):
+    accepts_bookings: Optional[bool] = None
+    uses_org_hours: Optional[bool] = None
+
+
+class StaffHoursBody(BaseModel):
+    rows: list[HoursRow] = Field(default_factory=list, max_length=70)
+
+
+class ServiceStaffBody(BaseModel):
+    user_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class AssignBody(BaseModel):
+    user_id: str = Field(..., max_length=64)
+
+
+@staff.get("/booking/staff")
+def list_staff(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    return ok(bk.list_staff(db, org["org_id"]))
+
+
+@staff.put("/booking/staff/{user_id}")
+def put_staff(user_id: str, body: StaffBody, org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    return ok(bk.set_staff(db, org["org_id"], user_id, body.accepts_bookings, body.uses_org_hours))
+
+
+@staff.put("/booking/staff/{user_id}/hours")
+def put_staff_hours(user_id: str, body: StaffHoursBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    _admin_or_self(org, user_id)
+    rows = [r.model_dump() if hasattr(r, "model_dump") else r.dict() for r in body.rows]
+    return ok(bk.set_staff_hours(db, org["org_id"], user_id, rows))
+
+
+@staff.put("/booking/staff/{user_id}/use-business-hours")
+def put_staff_use_org_hours(user_id: str, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    _admin_or_self(org, user_id)
+    return ok(bk.set_staff(db, org["org_id"], user_id, uses_org_hours=True))
+
+
+@staff.get("/booking/staff/{user_id}/blocks")
+def list_staff_blocks(user_id: str, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    return ok(bk.list_staff_blocks(db, org["org_id"], user_id))
+
+
+@staff.post("/booking/staff/{user_id}/blocks", status_code=201)
+def post_staff_block(user_id: str, body: BlockBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    _admin_or_self(org, user_id)
+    return ok(bk.add_staff_block(db, org["org_id"], user_id, body.starts_at, body.ends_at, body.reason))
+
+
+@staff.delete("/booking/staff/blocks/{block_id}")
+def delete_staff_block(block_id: str, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    rows = db.table("booking_staff_blocks").select("user_id").eq("id", block_id).eq("org_id", org["org_id"]).limit(1).execute().data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Not found"})
+    _admin_or_self(org, rows[0]["user_id"])
+    bk.delete_staff_block(db, org["org_id"], block_id)
+    return ok({"deleted": True})
+
+
+@staff.put("/booking/services/{service_id}/staff")
+def put_service_staff(service_id: str, body: ServiceStaffBody, org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    return ok({"user_ids": bk.set_service_staff(db, org["org_id"], service_id, body.user_ids)})
+
+
+@staff.post("/booking/bookings/{demo_id}/assign")
+def assign_booking(demo_id: str, body: AssignBody, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    if not _is_manager(org):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only a manager or admin can reassign a booking."})
+    return ok(bk.reassign_booking(db, org["org_id"], demo_id, body.user_id, org["id"]))
+

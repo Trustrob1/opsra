@@ -6,10 +6,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
 import { BookingRowActions } from './BookingTools'
+import TeamView, { ReassignButton } from './BookingTeam'
 import {
   getBookingSettings, saveBookingSettings, listBookingServices, createBookingService, updateBookingService,
   deleteBookingService, getBookingHours, saveBookingHours, listBookingBlocks, addBookingBlock, deleteBookingBlock,
-  getBookingsFeed, apiError,
+  getBookingsFeed, listBookingStaff, apiError,
 } from '../../services/booking.service'
 import './booking.css'
 
@@ -36,11 +37,13 @@ export default function BookingSettings() {
   )
   return (
     <div style={{ maxWidth: 860 }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>{tabBtn('calendar', 'Calendar')}{tabBtn('settings', 'Settings')}</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>{tabBtn('calendar', 'Calendar')}{cfg.native_enabled && cfg.calendar_mode === 'per_staff' && tabBtn('team', 'Team')}{tabBtn('settings', 'Settings')}</div>
       {!cfg.native_enabled && tab === 'calendar' && (
         <p style={{ ...card, color: ds.gray, fontSize: 13.5 }}>Online booking is switched off. Open <b>Settings</b> to turn it on and set your hours.</p>
       )}
-      {tab === 'calendar' ? <CalendarView label={cfg.label} /> : <SettingsView cfg={cfg} onCfg={setCfg} />}
+      {tab === 'calendar' && <CalendarView label={cfg.label} perStaff={cfg.calendar_mode === 'per_staff'} />}
+      {tab === 'team' && <TeamView />}
+      {tab === 'settings' && <SettingsView cfg={cfg} onCfg={setCfg} />}
     </div>
   )
 }
@@ -51,9 +54,13 @@ const startOfWeek = (d) => { const x = new Date(d); const k = (x.getDay() + 6) %
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const STATUS = { pending_assignment: ['Needs approval', '#FFFBEB', '#92400E'], confirmed: ['Confirmed', '#F0FFF4', '#276749'], attended: ['Attended', '#EBF8FF', '#2B6CB0'], no_show: ['No-show', '#FFF5F5', '#C53030'], rescheduled: ['Moved', '#FAF5FF', '#6B46C1'], cancelled: ['Cancelled', '#F3F4F6', '#6B7280'] }
 
-function CalendarView({ label }) {
+function CalendarView({ label, perStaff }) {
   const [week, setWeek] = useState(startOfWeek(new Date()))
   const [rows, setRows] = useState(null)
+  const [staff, setStaff] = useState([])
+  const [who, setWho] = useState('')     // '' = everyone
+  useEffect(() => { if (perStaff) listBookingStaff().then((r) => setStaff(r.data || [])).catch(() => {}) }, [perStaff])
+  const nameOf = (id) => staff.find((p) => p.user_id === id)?.full_name
   const [err, setErr] = useState(null)
   const load = useCallback(() => {
     setRows(null)
@@ -71,12 +78,19 @@ function CalendarView({ label }) {
         <b style={{ fontFamily: ds.fontSyne, color: ds.dark }}>{days[0].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – {days[6].toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</b>
         <button style={btnG} onClick={() => shift(7)} aria-label="Next week">›</button>
         <button style={btnG} onClick={() => setWeek(startOfWeek(new Date()))}>This week</button>
+        {perStaff && (
+          <select aria-label="Show bookings for" value={who} onChange={(e) => setWho(e.target.value)}
+            style={{ padding: '8px 12px', border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, fontSize: 13, background: '#fff' }}>
+            <option value="">Everyone</option>
+            {staff.filter((p) => p.accepts_bookings).map((p) => <option key={p.user_id} value={p.user_id}>{p.full_name}</option>)}
+          </select>
+        )}
       </div>
       {err && <p style={{ color: ds.red }}>⚠ {err}</p>}
       {rows === null && <p style={{ color: ds.gray }}>Loading…</p>}
       {rows && days.map((d) => {
         const key = ymd(d)
-        const todays = rows.filter((r) => r.scheduled_at && ymd(new Date(r.scheduled_at)) === key && r.status !== 'rescheduled')
+        const todays = rows.filter((r) => r.scheduled_at && ymd(new Date(r.scheduled_at)) === key && r.status !== 'rescheduled' && (!who || r.assigned_to === who))
         return (
           <div key={key} style={{ ...card, padding: '12px 18px', marginBottom: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: ds.gray, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: todays.length ? 8 : 0 }}>
@@ -87,8 +101,9 @@ function CalendarView({ label }) {
               return (
                 <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: `1px solid ${ds.border}`, flexWrap: 'wrap' }}>
                   <b style={{ minWidth: 74, fontSize: 14 }}>{new Date(r.scheduled_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()}</b>
-                  <span style={{ flex: 1, fontSize: 14, color: ds.dark }}>{r.leads?.full_name || 'Lead'} <span style={{ color: ds.gray, fontSize: 12 }}>· {label}</span></span>
+                  <span style={{ flex: 1, fontSize: 14, color: ds.dark }}>{r.leads?.full_name || 'Lead'} <span style={{ color: ds.gray, fontSize: 12 }}>· {label}{perStaff && nameOf(r.assigned_to) ? ` · ${nameOf(r.assigned_to)}` : ''}</span></span>
                   <span style={{ background: s[1], color: s[2], borderRadius: 20, padding: '3px 10px', fontSize: 11.5, fontWeight: 600 }}>{s[0]}</span>
+                  {perStaff && <ReassignButton booking={r} staff={staff} onChanged={load} />}
                   <BookingRowActions booking={r} onChanged={load} />
                 </div>
               )
@@ -122,6 +137,7 @@ function SettingsView({ cfg, onCfg }) {
         native_enabled: !!form.native_enabled, label: form.label,
         cancel_cutoff_hours: Number(form.cancel_cutoff_hours) || 0,
         auto_send_link: !!form.auto_send_link, default_rep_id: form.default_rep_id || null,
+        calendar_mode: form.calendar_mode || 'single',
       })
       onCfg(r.data); setForm(r.data); setMsg({ ok: true, t: 'Saved.' })
     } catch (e) { setMsg({ ok: false, t: apiError(e) }) } finally { setSaving(false) }
@@ -148,6 +164,18 @@ function SettingsView({ cfg, onCfg }) {
               {reps.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
             </select>
             <p style={{ fontSize: 11.5, color: ds.gray, margin: '5px 0 0' }}>Pick one person to get every booking, or share them round the team.</p></div>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <label style={lab} htmlFor="bk-mode">Calendars</label>
+          <select id="bk-mode" style={inp} value={form.calendar_mode || 'single'} onChange={(e) => set('calendar_mode', e.target.value)}>
+            <option value="single">One calendar for the whole business</option>
+            <option value="per_staff">Each person has their own calendar</option>
+          </select>
+          <p style={{ fontSize: 11.5, color: ds.gray, margin: '5px 0 0' }}>
+            {form.calendar_mode === 'per_staff'
+              ? 'Two people can be booked at the same time. After saving, open the Team tab and switch on the people who take bookings, or no times will be offered.'
+              : 'One booking at a time for the whole business.'}
+          </p>
         </div>
         <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14, marginTop: 16, cursor: 'pointer' }}>
           <input type="checkbox" checked={!!form.auto_send_link} onChange={(e) => set('auto_send_link', e.target.checked)} />

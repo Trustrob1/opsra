@@ -38,5 +38,16 @@ export const makeBookingLink       = (leadId, body) => api.post(`/api/v1/booking
 export const staffCancelBooking    = (demoId, body) => api.post(`/api/v1/booking/bookings/${demoId}/cancel`, body).then(unwrap)
 export const staffRescheduleBooking = (demoId, body) => api.post(`/api/v1/booking/bookings/${demoId}/reschedule`, body).then(unwrap)
 
+// ── BOOKING-2B: people (per-staff calendars) ──
+export const listBookingStaff      = () => api.get('/api/v1/booking/staff').then(unwrap)
+export const saveBookingStaff      = (userId, b) => api.put(`/api/v1/booking/staff/${userId}`, b).then(unwrap)
+export const saveStaffHours        = (userId, rows) => api.put(`/api/v1/booking/staff/${userId}/hours`, { rows }).then(unwrap)
+export const switchToBusinessHours      = (userId) => api.put(`/api/v1/booking/staff/${userId}/use-business-hours`).then(unwrap)
+export const listStaffBlocks       = (userId) => api.get(`/api/v1/booking/staff/${userId}/blocks`).then(unwrap)
+export const addStaffBlock         = (userId, b) => api.post(`/api/v1/booking/staff/${userId}/blocks`, b).then(unwrap)
+export const deleteStaffBlock      = (blockId) => api.delete(`/api/v1/booking/staff/blocks/${blockId}`).then(unwrap)
+export const saveServiceStaff      = (serviceId, userIds) => api.put(`/api/v1/booking/services/${serviceId}/staff`, { user_ids: userIds }).then(unwrap)
+export const assignBooking         = (demoId, userId) => api.post(`/api/v1/booking/bookings/${demoId}/assign`, { user_id: userId }).then(unwrap)
+
 export const apiError = (e, fallback = 'Something went wrong. Please try again.') =>
   e?.response?.data?.detail?.message ?? e?.response?.data?.error?.message ?? fallback
