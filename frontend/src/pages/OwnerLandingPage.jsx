@@ -171,6 +171,28 @@ function Logo({ light }) {
   );
 }
 
+const ONE_ICONS = {
+  chat: <path d="M5 5h14v10H10l-5 4z" />,
+  sheet: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 10h16M4 15h16M10 4v16" /></>,
+  cal: <><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M8 3v4M16 3v4M3 10h18" /></>,
+  note: <><path d="M6 4h12v12l-4 4H6z" /><path d="M14 20v-4h4" /></>,
+  card: <><rect x="3" y="6" width="18" height="13" rx="3" /><path d="M3 11h18" /></>,
+}
+// [icon, tint, ink, title, before-caption, after-caption]
+const ONE = [
+  ['chat', '#E4EDFD', '#2467E3', 'Messages', 'in a chat app', ['Chat', 'Welcome menu answered']],
+  ['sheet', '#DDF3E6', '#176A3C', 'Leads', 'in a spreadsheet', ['Lead', 'Scored Hot, with their answers']],
+  ['cal', '#FDE9DD', '#A4430F', 'Bookings', 'in a calendar', ['Booking', 'Consultation, Fri 3:00pm']],
+  ['note', '#EFE6FB', '#5E1BB8', 'Follow-ups', 'in your head', ['Follow-up', 'Reminder sent automatically']],
+  ['card', '#FDE3E3', '#A32020', 'Payments', 'somewhere else', ['Payment', 'Link sent in the chat']],
+]
+const ONE_OFF = [0, 70, 20, 90, 40]
+function OneIcon({ k, col, size }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ONE_ICONS[k]}</svg>
+  )
+}
+
 export default function OwnerLandingPage() {
   const [solid, setSolid] = useState(false);
   const [plan, setPlan] = useState("growth");
@@ -328,6 +350,53 @@ export default function OwnerLandingPage() {
               <path d="M12 20.5l5.5 5.5L28 15" stroke="#2467E3" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <div><b>Official WhatsApp Business API</b><span>Your number, your brand, your data</span></div>
+          </div>
+        </section>
+
+        {/* ---------------- ONE PLACE ---------------- */}
+        <section className="ow-wrap ow-sec ow-one-sec" aria-labelledby="one-h">
+          <div className="ow-one">
+            <div className="ow-one-head">
+              <p className="ow-eyebrow ow-c-blue">One place</p>
+              <h2 id="one-h">Your business shouldn&apos;t live in <s>five apps</s>.</h2>
+              <p>Messages in a chat app. Leads in a spreadsheet. Bookings in a calendar. Follow-ups in your head. Payments somewhere else. Opsra puts it all in one place.</p>
+            </div>
+            <div className="ow-one-stage">
+              <p className="ow-eyebrow ow-one-lbl ow-one-lbl-l">Before</p>
+              <p className="ow-eyebrow ow-one-lbl ow-one-lbl-r ow-c-blue">With Opsra</p>
+              <div className="ow-one-tiles">
+                {ONE.map(([k, bg, col, t, sub], n) => (
+                  <div key={k} className="ow-one-tilewrap" style={{ '--off': ONE_OFF[n] + 'px', '--rot': [-2, 1.5, -1.5, 2, -1][n] + 'deg' }}>
+                    <div className="ow-one-tile" style={{ '--d': n * 0.12 + 's', '--dot': col }}>
+                      <span className="ow-one-ic" style={{ background: bg }}><OneIcon k={k} col={col} size={20} /></span>
+                      <span><b>{t}</b><span>{sub}</span></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <svg className="ow-one-lines" viewBox="0 0 100 438" preserveAspectRatio="none" aria-hidden="true">
+                {ONE.map(([k, , col], n) => {
+                  const y1 = 33 + 92 * n
+                  const y2 = 105 + 58 * n
+                  return <path key={k} d={`M0 ${y1} C55 ${y1} 45 ${y2} 100 ${y2}`} stroke={col} strokeWidth="2.2" strokeDasharray="6 9" strokeLinecap="round" fill="none" opacity=".75" vectorEffect="non-scaling-stroke" />
+                })}
+              </svg>
+              <div className="ow-one-arrow" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+              </div>
+              <div className="ow-one-card">
+                <div className="ow-one-who"><b>Ada O.</b><span>Hot</span></div>
+                {ONE.map(([k, bg, col, , , [t, sub]], n) => (
+                  <div key={k} className="ow-one-row" style={{ '--d': n * 0.12 + 's' }}>
+                    <span className="ow-one-ic ow-one-ic-s" style={{ background: bg }}><OneIcon k={k} col={col} size={18} /></span>
+                    <span><b>{t}</b><span>{sub}</span></span>
+                    <svg width="19" height="19" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke="#2467E3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </div>
+                ))}
+                <p className="ow-one-foot">One record. Everything in it.</p>
+              </div>
+            </div>
+            <p className="ow-one-note">You still decide who gets a call.</p>
           </div>
         </section>
 
@@ -540,7 +609,7 @@ export default function OwnerLandingPage() {
             </div>
           </div>
           <p className="ow-legal">
-            Opsra is a product of Ovaloop Technologies. WhatsApp is a trademark of Meta Platforms, Inc. Opsra is not affiliated with or endorsed by Meta.
+            WhatsApp is a trademark of Meta Platforms, Inc. Opsra is not affiliated with or endorsed by Meta.
           </p>
         </div>
       </footer>
