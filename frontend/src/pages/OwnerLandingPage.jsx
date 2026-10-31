@@ -213,42 +213,50 @@ export default function OwnerLandingPage() {
   const [plan, setPlan] = useState("growth");
   const [menu, setMenu] = useState(false);
   const cardsRef = useRef(null);
+  const pinRef = useRef(null);
+  const [cardIdx, setCardIdx] = useState(0);
 
-  // Phone: the four "No missed leads" cards slide sideways as the page scrolls down (scroll progress -> scrollLeft).
-  // Swiping them by hand still works: the slide pauses while a finger is on them and for a moment after.
+  // Phone: "No missed leads" is pinned to the screen while the visitor keeps swiping up. Each swipe moves the
+  // cards one place sideways (the page itself holds still); after the last card the page scrolls on as normal.
+  // The tall .ow-pin wrapper supplies the scroll distance, the sticky .ow-pin-in holds the content on screen.
   useEffect(() => {
-    const el = cardsRef.current;
-    if (!el || typeof window.matchMedia !== "function") return undefined;
+    const pin = pinRef.current;
+    if (!pin || typeof window.matchMedia !== "function") return undefined;
     const mq = window.matchMedia("(max-width: 900px)");
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let pausedUntil = 0;
     let raf = 0;
-    const pause = (ms) => { pausedUntil = Date.now() + ms; };
-    const drive = () => {
+    const read = () => {
       raf = 0;
-      if (!mq.matches || still.matches || Date.now() < pausedUntil) return;
-      const r = el.getBoundingClientRect();
-      const vh = window.innerHeight || 800;
-      const start = vh * 0.9;                    // cards just entering at the bottom
-      const end = vh * 0.15 - r.height * 0.2;    // cards near the top
-      const p = Math.min(1, Math.max(0, (start - r.top) / (start - end)));
-      el.scrollLeft = p * (el.scrollWidth - el.clientWidth);
+      if (!mq.matches) { setCardIdx(0); return; }
+      const range = pin.offsetHeight - (window.innerHeight || 800);
+      if (range <= 0) return;
+      const p = Math.min(1, Math.max(0, -pin.getBoundingClientRect().top / range));
+      setCardIdx(Math.round(p * (CARDS.length - 1)));
     };
-    const onScroll = () => { if (!raf) raf = requestAnimationFrame(drive); };
-    const onTouch = () => pause(2500);
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(read); };
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
-    el.addEventListener("touchstart", onTouch, { passive: true });
-    el.addEventListener("touchmove", onTouch, { passive: true });
     onScroll();
     return () => {
       if (raf) cancelAnimationFrame(raf);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
-      el.removeEventListener("touchstart", onTouch);
-      el.removeEventListener("touchmove", onTouch);
     };
   }, []);
+
+  useEffect(() => {
+    const el = cardsRef.current;
+    if (!el) return;
+    const place = () => {
+      if (!window.matchMedia("(max-width: 900px)").matches) { el.style.transform = ""; return; }
+      const first = el.firstElementChild;
+      const step = first ? first.getBoundingClientRect().width + 12 : 0;
+      const max = Math.max(0, el.scrollWidth - el.parentElement.clientWidth + 2 * 16);
+      el.style.transform = `translateX(${-Math.min(cardIdx * step, max)}px)`;
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [cardIdx]);
 
   useEffect(() => {
     const prevTitle = document.title;
@@ -462,6 +470,8 @@ export default function OwnerLandingPage() {
 
         {/* ---------------- INSTANT CARDS ---------------- */}
         <section className="ow-wrap ow-sec" id="product" aria-labelledby="instant-h">
+          <div className="ow-pin" ref={pinRef} style={{ "--n": CARDS.length }}>
+          <div className="ow-pin-in">
           <div className="ow-center">
             <h2 id="instant-h" className="ow-xl">No missed leads,<br /><span className="ow-purple">Go instant <i className="ow-toggle" aria-hidden="true"><b><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M13 2L4 14h6l-1 8 9-12h-6z" /></svg></b></i></span></h2>
             <p className="ow-sub">One WhatsApp number that greets, qualifies, books and follows up, day and night, while you get on with the work.</p>
@@ -474,6 +484,11 @@ export default function OwnerLandingPage() {
                 <p>{d}</p>
               </article>
             ))}
+          </div>
+          <div className="ow-pin-dots" aria-hidden="true">
+            {CARDS.map(([k], i) => <span key={k} className={i === cardIdx ? "on" : ""} />)}
+          </div>
+          </div>
           </div>
         </section>
 

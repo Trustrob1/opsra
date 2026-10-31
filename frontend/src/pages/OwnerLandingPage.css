@@ -76,6 +76,7 @@
 
 /* tone cards */
 .ow .ow-cards{display:flex;flex-wrap:wrap;gap:24px;margin-top:64px}
+.ow .ow-pin-dots{display:none}
 .ow .ow-card{flex:1 1 260px;border-radius:28px;padding:32px;min-height:300px}
 .ow .ow-card h3{margin-top:14px;font-size:34px;line-height:1.1;letter-spacing:-.8px;font-weight:700}
 .ow .ow-card p:last-child{margin-top:14px;font-size:16px;line-height:24px;color:var(--ink2)}
@@ -259,8 +260,13 @@
   .ow .ow-purple{justify-content:flex-start}
   .ow .ow-toggle{display:none}
   .ow #product .ow-sub{margin-left:0}
-  .ow .ow-cards{flex-wrap:nowrap;overflow-x:auto;scroll-padding-inline:var(--pad);gap:12px;margin:24px calc(var(--pad)*-1) 0;padding-inline:var(--pad);scrollbar-width:none}
-  .ow .ow-cards::-webkit-scrollbar{display:none}
+  .ow .ow-pin{height:calc(100svh + (var(--n) - 1) * 55svh);margin-inline:calc(var(--pad)*-1)}
+  .ow .ow-pin-in{position:sticky;top:0;min-height:100svh;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;overflow:hidden;padding-inline:var(--pad)}
+  .ow .ow-cards{flex-wrap:nowrap;gap:12px;margin:24px 0 0;transition:transform .5s cubic-bezier(.2,.7,.2,1);will-change:transform}
+  .ow .ow-pin-dots{display:flex;justify-content:center;gap:8px;margin-top:22px}
+  .ow .ow-pin-dots span{width:8px;height:8px;border-radius:50%;background:#CFD5E0;transition:background .3s,width .3s}
+  .ow .ow-pin-dots span.on{background:var(--blue);width:22px;border-radius:99px}
+  @media (prefers-reduced-motion:reduce){.ow .ow-cards{transition:none}}
   .ow .ow-card{flex:0 0 268px;min-height:250px;padding:24px;border-radius:26px}
   .ow .ow-card h3{font-size:28px;line-height:1.08;letter-spacing:-.7px}
 
