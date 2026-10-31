@@ -14,7 +14,7 @@ import { T, INPUT, dateOnly } from './sitesKit'
 import { PurchaseForm, PayLinkResult, StatusBadge } from './SiteAddonsParts'
 import { money } from './siteAddonsKit'
 
-const CAP_LABELS = { ai_messages: 'AI replies this month', bulk_recipients: 'Bulk message recipients this month' }
+const CAP_LABELS = { ai_messages: 'AI replies this month', bulk_recipients: 'Bulk message recipients this month', bookings: 'Bookings this month' }
 
 function Meter({ label, used, cap }) {
   const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0

@@ -262,7 +262,14 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
                 continue
             feats = set(d.get("features") or [])
             addons_list.append({"key": key, "label": d["label"], "monthly_ngn": int(d["monthly_ngn"]),
-                                "active": key in have, "included": bool(feats and feats <= tier_feats)})
+                                "active": key in have, "included": bool(feats and feats <= tier_feats),
+                                "caps": d.get("caps") or {}})
+        if any(x["key"] == "booking" for x in addons_list):
+            from app.services import booking_allowance_service as _ba
+            fee = _ba.overage_fee_kobo(db, org_id)
+            for x in addons_list:
+                if x["key"] == "booking":
+                    x["overage_ngn"] = int(fee // 100)
     except Exception as exc:
         logger.warning("account_plan.summary addons failed org=%s: %s", org_id, exc)
     return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans, "addons": addons_list, "allowances": allowances, "team": team_info,

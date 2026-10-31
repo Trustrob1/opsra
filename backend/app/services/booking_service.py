@@ -746,6 +746,8 @@ def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime,
 def _finish_booking(db, org_id, lead, demo_id, service, start_utc, source, user_id, notes, org, rep=None) -> None:
     """The step after a slot is secured (and, with a deposit, paid): approval request or instant confirmation."""
     from app.services import demo_service as ds
+    from app.services import booking_allowance_service as _allow
+    _allow.record_booking(db, org_id, demo_id)     # BOOKING-ALLOWANCE-1: counts it, charges the fee when over (never raises)
     lead_id = lead["id"]
     dur = int(service["duration_minutes"])
     if service.get("requires_approval"):

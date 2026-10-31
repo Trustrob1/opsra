@@ -22,7 +22,7 @@ const day = (v) => (v ? String(v).slice(0, 10) : '—')
 const STATUS = { active: ['Active', '#00A896'], grace: ['Ended, still on for a few days', '#F4A261'], paused: ['Paused', '#FFB4B4'], pending: ['Not paid yet', '#9FB6C4'] }
 const ACTION = { new: 'Choose', renewal: 'Renew', upgrade: 'Upgrade', switch: 'Switch to this', downgrade_renewal: 'Renew at this price', downgrade: 'Switch at next renewal' }
 const ORDER_KIND = { seats: 'Extra users', new: 'New plan', renewal: 'Renewal', upgrade: 'Upgrade', switch: 'Switch', downgrade_renewal: 'Renewal (lower plan)' }
-const CAP_LABEL = { ai_messages: 'AI replies this month', bulk_recipients: 'Bulk message recipients this month' }
+const CAP_LABEL = { ai_messages: 'AI replies this month', bulk_recipients: 'Bulk message recipients this month', bookings: 'Bookings this month' }
 
 const FONT = ds.fontSyne
 const TIER_LOOK = {
@@ -249,6 +249,11 @@ function PlanTab({ data, reload, setMsg }) {
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: ds.dark }}>{a.label}</div>
                   <div style={{ fontSize: 13, color: ds.gray }}>{ngn(a.monthly_ngn)} a month</div>
+                  {a.caps?.bookings > 0 && (
+                    <div style={{ fontSize: 12.5, color: ds.gray, marginTop: 2 }}>
+                      Includes {a.caps.bookings} bookings a month{a.overage_ngn > 0 ? `, then ${ngn(a.overage_ngn)} from your credit for each extra` : ''}.
+                    </div>
+                  )}
                 </div>
                 <span style={{ fontSize: 13, fontWeight: 600, color: a.active || a.included ? ds.teal : ds.gray, textAlign: 'right' }}>
                   {a.included ? 'Included in your plan' : a.active ? 'On' : 'Ask us to switch it on'}

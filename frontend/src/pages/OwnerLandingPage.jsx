@@ -72,7 +72,7 @@ const PLANS = [
     monthly: 150000,
     lead: "Everything in Growth, plus",
     items: [
-      "Both the product catalog and booking with reminders",
+      "Both the product catalog and booking with reminders (500 bookings a month included)",
       "Bulk WhatsApp messaging to many customers at once, with opt-outs handled",
       "Review and repeat-purchase reminders",
       "A weekly summary of leads and sales sent to your WhatsApp",
@@ -82,7 +82,7 @@ const PLANS = [
 ];
 
 const ADDONS = [
-  ["Booking with reminders", "\u20a625,000", "per month", "Included in Established"],
+  ["Booking with reminders", "\u20a625,000", "per month", "Includes 100 bookings a month, then \u20a6100 for each extra. Included in Established (500 a month)."],
   ["Support tickets", "\u20a615,000", "per month", ""],
   ["Extra user", "\u20a65,000", "per month, each", "2 users are included in every plan"],
   ["Extra WhatsApp number", "\u20a610,000", "per month", ""],

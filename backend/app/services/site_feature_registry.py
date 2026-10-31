@@ -24,6 +24,7 @@ CAPS = {
     "ai_messages": "monthly",
     "bulk_recipients": "monthly",
     "reps": "static",
+    "bookings": "monthly",         # BOOKING-ALLOWANCE-1: counted per booking, over-allowance bookings cost credit (never blocked)
     "users_included": "static",   # WA-AUTO-1: users a plan includes (default 2, 1 for the WhatsApp automation plan)
 }
 

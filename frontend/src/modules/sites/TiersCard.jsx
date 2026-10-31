@@ -14,6 +14,7 @@ import { T, INPUT } from './sitesKit'
 const CAP_LABELS = {
   ai_messages: 'AI replies per month',
   bulk_recipients: 'Bulk message recipients per month',
+  bookings: 'Bookings per month (extra ones cost credit)',
   reps: 'Team members (reps)',
   users_included: 'Users included (blank = 2)',
 }
@@ -162,7 +163,7 @@ export default function TiersCard({ pricing, canEdit, onSaved, showToast, api = 
                   onChange={(v) => setTier(t.key, { monthly_ngn: v })} /></Field>
                 <Field label="One-time set-up fee (₦)" hint="Charged once, with the first payment."><NumInput prefix="₦" ariaLabel={`${f.label} set-up fee`} value={f.setup_fee_ngn} disabled={disabled}
                   onChange={(v) => setTier(t.key, { setup_fee_ngn: v })} /></Field>
-                {['ai_messages', 'bulk_recipients', 'reps', 'users_included'].map((c) => (
+                {['ai_messages', 'bulk_recipients', 'bookings', 'reps', 'users_included'].map((c) => (
                   <Field key={c} label={CAP_LABELS[c]} hint={c === 'reps' ? undefined : 'Blank or 0 means none included.'}>
                     <NumInput ariaLabel={`${f.label} ${CAP_LABELS[c]}`} value={f.caps[c] || 0} disabled={disabled}
                       onChange={(v) => setCap(setTier, t.key, c, v)} />
