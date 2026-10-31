@@ -258,7 +258,41 @@ def _service_fields(payload: dict) -> dict:
             f[k] = bool(payload[k])
     if payload.get("assignment_mode") in ("anyone", "specific", "lead_owner_first"):
         f["assignment_mode"] = payload["assignment_mode"]
+    # BOOKING-3A: optional deposit (0 = none)
+    if payload.get("deposit_amount") is not None:
+        try:
+            amt = round(float(payload["deposit_amount"]), 2)
+        except (TypeError, ValueError):
+            raise _err(422, "VALIDATION_ERROR", "Deposit must be a number")
+        if amt < 0 or amt > 100_000_000:
+            raise _err(422, "VALIDATION_ERROR", "Deposit must be 0 or more")
+        f["deposit_amount"] = amt
+    if payload.get("deposit_currency"):
+        cur = str(payload["deposit_currency"]).strip().upper()
+        if not re.fullmatch(r"[A-Z]{3}", cur):
+            raise _err(422, "VALIDATION_ERROR", "Currency must be a 3-letter code such as NGN")
+        f["deposit_currency"] = cur
+    if payload.get("deposit_method") in ("paystack", "external"):
+        f["deposit_method"] = payload["deposit_method"]
+    if "deposit_external_url" in payload:
+        url = (payload.get("deposit_external_url") or "").strip()
+        if url and not url.startswith("https://"):
+            raise _err(422, "VALIDATION_ERROR", "The payment link must start with https://")
+        f["deposit_external_url"] = url[:500] or None
+    if payload.get("deposit_hold_minutes") is not None:
+        f["deposit_hold_minutes"] = max(5, min(int(payload["deposit_hold_minutes"]), 1440))
+    if payload.get("deposit_refund_rule") in ("before_cutoff", "always", "never"):
+        f["deposit_refund_rule"] = payload["deposit_refund_rule"]
     return f
+
+
+def _check_deposit(f: dict, existing: dict) -> None:
+    """A deposit through an external link needs that link."""
+    amt = f.get("deposit_amount", existing.get("deposit_amount") or 0)
+    method = f.get("deposit_method", existing.get("deposit_method") or "paystack")
+    url = f.get("deposit_external_url", existing.get("deposit_external_url"))
+    if float(amt or 0) > 0 and method == "external" and not url:
+        raise _err(422, "VALIDATION_ERROR", "Add the payment link customers should use for the deposit")
 
 
 def create_service(db, org_id: str, payload: dict) -> dict:
@@ -270,14 +304,16 @@ def create_service(db, org_id: str, payload: dict) -> dict:
     slug, n = base, 2
     while slug in existing:
         slug, n = f"{base}-{n}", n + 1
+    _check_deposit(f, {})
     f.update({"org_id": org_id, "slug": slug})
     db.table("booking_services").insert(f).execute()
     return get_service(db, org_id, slug)
 
 
 def update_service(db, org_id: str, service_id: str, payload: dict) -> dict:
-    get_service(db, org_id, service_id)
+    existing = get_service(db, org_id, service_id)
     f = _service_fields(payload)
+    _check_deposit(f, existing)
     f["updated_at"] = _now_iso()
     db.table("booking_services").update(f).eq("id", service_id).eq("org_id", org_id).execute()
     return get_service(db, org_id, service_id)
@@ -661,11 +697,16 @@ def _assert_slot_open(db, org: dict, service: dict, start_utc: datetime, exclude
 
 def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime, source: str = "native",
               lead_timezone: Optional[str] = None, user_id: Optional[str] = None, notes: Optional[str] = None,
-              rep_id: Optional[str] = None) -> dict:
-    """Create a booking in a verified open slot. Instant confirm unless the service needs approval."""
+              rep_id: Optional[str] = None, return_url: Optional[str] = None) -> dict:
+    """Create a booking in a verified open slot. Instant confirm unless the service needs approval.
+    BOOKING-3A: a service with a deposit holds the slot until the deposit is paid (customer-made bookings only)."""
     from app.services import demo_service as ds
+    from app.services import booking_deposit_service as dep
     org = get_org(db, org_id)
     lead = ds._confirm_lead_in_org(db, org_id, lead_id)
+    use_deposit = dep.has_deposit(service) and not user_id
+    if use_deposit:
+        dep.precheck(db, org_id, service)
     start_utc = start_utc.astimezone(timezone.utc).replace(second=0, microsecond=0)
     _assert_slot_open(db, org, service, start_utc, rep_id=rep_id)
 
@@ -682,13 +723,38 @@ def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime,
     else:
         demo_id = _insert_booking_row(db, org_id, lead_id, service, start_utc, slot_end, source, lead_timezone, user_id, notes)
 
+    payment = None
+    if use_deposit:
+        try:
+            payment = dep.create_hold(db, org_id, lead, demo_id, service, return_url)
+        except Exception:
+            stamp = _now_iso()
+            db.table("lead_demos").update({"status": "cancelled", "cancelled_at": stamp, "cancelled_by": "system",
+                                           "cancel_reason": "Payment could not be started", "updated_at": stamp}).eq("id", demo_id).execute()
+            raise
+        ds._log_timeline(db, org_id, lead_id, user_id, "booking_held",
+                         f"{service['name']} held for {_fmt_local(start_utc, org)} until the deposit is paid.",
+                         {"demo_id": demo_id, "service_id": service["id"], "source": source})
+    else:
+        _finish_booking(db, org_id, lead, demo_id, service, start_utc, source, user_id, notes, org, rep=chosen_rep)
+    out = ds._fetch_demo_by_id(db, org_id, demo_id)
+    if payment and isinstance(out, dict):
+        out["payment"] = dep.public_payment(payment)
+    return out
+
+
+def _finish_booking(db, org_id, lead, demo_id, service, start_utc, source, user_id, notes, org, rep=None) -> None:
+    """The step after a slot is secured (and, with a deposit, paid): approval request or instant confirmation."""
+    from app.services import demo_service as ds
+    lead_id = lead["id"]
+    dur = int(service["duration_minutes"])
     if service.get("requires_approval"):
         _notify_approval_needed(db, org_id, lead, demo_id, start_utc, org)
         ds._log_timeline(db, org_id, lead_id, user_id, "booking_requested",
                          f"Booking requested for {_fmt_local(start_utc, org)} ({service['name']}). Waiting for approval.",
                          {"demo_id": demo_id, "service_id": service["id"], "source": source})
     else:
-        rep = chosen_rep or pick_rep(db, org_id)
+        rep = rep or pick_rep(db, org_id)
         if not rep:
             # No one to assign: leave it pending so a manager can confirm, never lose the booking.
             _notify_approval_needed(db, org_id, lead, demo_id, start_utc, org)
@@ -698,7 +764,6 @@ def book_slot(db, org_id: str, lead_id: str, service: dict, start_utc: datetime,
             ds._log_timeline(db, org_id, lead_id, user_id, "booking_made",
                              f"{service['name']} booked for {_fmt_local(start_utc, org)} ({source}).",
                              {"demo_id": demo_id, "service_id": service["id"], "source": source})
-    return ds._fetch_demo_by_id(db, org_id, demo_id)
 
 
 def _insert_booking_row(db, org_id, lead_id, service, start_utc, slot_end, source, lead_tz, user_id, notes,
@@ -767,6 +832,11 @@ def cancel_booking(db, org_id: str, demo_id: str, by: str, reason: Optional[str]
         "cancel_reason": (reason or "")[:500] or None, "updated_at": now,
     }).eq("id", demo_id).eq("org_id", org_id).execute()
     org = get_org(db, org_id)
+    try:   # BOOKING-3A: deposit refund rule (no-op when the booking had no deposit)
+        from app.services import booking_deposit_service as dep
+        dep.on_cancel(db, org_id, demo, by, int(get_settings(db, org_id).get("cancel_cutoff_hours") or 0))
+    except Exception as exc:
+        logger.warning("cancel_booking: deposit handling failed demo=%s: %s", demo_id, exc)
     lead = ds._confirm_lead_in_org(db, org_id, demo["lead_id"])
     when = _fmt_local(_parse_dt(demo["scheduled_at"]), org, demo.get("lead_timezone")) if demo.get("scheduled_at") else ""
     label = get_settings(db, org_id)["label"]
@@ -857,6 +927,11 @@ def list_bookings(db, org_id: str, from_dt: datetime, to_dt: datetime) -> list[d
             .eq("org_id", org_id).is_("deleted_at", "null").not_.is_("scheduled_at", "null")
             .gte("scheduled_at", from_dt.isoformat()).lte("scheduled_at", to_dt.isoformat())
             .order("scheduled_at").execute().data or [])
+    try:
+        from app.services import booking_deposit_service as dep
+        dep.attach_status(db, org_id, rows)
+    except Exception:
+        pass
     return rows
 
 

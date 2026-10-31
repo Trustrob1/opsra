@@ -16,6 +16,7 @@ export const getLinkSlots   = (token, from, to, staff) =>
   pub.get(`/api/v1/public/booking/link/${token}/slots`, { params: { from, to, ...(staff ? { staff } : {}) } }).then(unwrap)
 export const linkBook       = (token, body) => pub.post(`/api/v1/public/booking/link/${token}/book`, body).then(unwrap)
 export const linkReschedule = (token, body) => pub.post(`/api/v1/public/booking/link/${token}/reschedule`, body).then(unwrap)
+export const linkVerifyPayment = (token) => pub.post(`/api/v1/public/booking/link/${token}/payment/verify`, {}).then(unwrap)
 export const linkCancel     = (token, body) => pub.post(`/api/v1/public/booking/link/${token}/cancel`, body).then(unwrap)
 
 // ── Staff ────────────────────────────────────────────────────────────────────
@@ -52,3 +53,5 @@ export const assignBooking         = (demoId, userId) => api.post(`/api/v1/booki
 
 export const apiError = (e, fallback = 'Something went wrong. Please try again.') =>
   e?.response?.data?.detail?.message ?? e?.response?.data?.error?.message ?? fallback
+export const markDepositPaid     = (demoId) => api.post(`/api/v1/booking/bookings/${demoId}/payment/mark-paid`, {}).then(unwrap)
+export const markDepositRefunded = (demoId) => api.post(`/api/v1/booking/bookings/${demoId}/payment/mark-refunded`, {}).then(unwrap)

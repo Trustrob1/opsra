@@ -418,6 +418,12 @@ def _book(db, org_id, lead, org, cfg, sess, service, start) -> bool:
     _close_sessions(db, lead["id"], "done")
     status = (demo or {}).get("status")
     demo_id = (demo or {}).get("id") or demo_id
+    pay = (demo or {}).get("payment")
+    if pay and pay.get("status") == "pending":   # BOOKING-3A: held until the deposit is paid
+        mins = int(service.get("deposit_hold_minutes") or 30)
+        _send_text(db, org_id, lead, (f"Almost done! To secure {_local(start, org).strftime('%A %d %B at %I:%M %p').replace(' 0', ' ')}, "
+                                      f"please pay the {pay.get('currency')} {float(pay.get('amount') or 0):,.2f} deposit within {mins} minutes: {pay.get('pay_url')}"))
+        return True
     if status == "pending_assignment":
         _send_text(db, org_id, lead, f"Thanks! We've got your request for {_local(start, org).strftime('%A %d %B at %I:%M %p').replace(' 0', ' ')}. We'll confirm it shortly.")
     elif demo_id and sess.get("demo_id"):

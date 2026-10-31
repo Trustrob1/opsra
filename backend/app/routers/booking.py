@@ -146,6 +146,8 @@ def public_link(token: str, request: Request, response: Response, db=Depends(get
         lead = lead[0] if lead else None
     first = ((lead or {}).get("full_name") or "").split(" ")[0]
     service = _link_service(db, link)
+    from app.services import booking_deposit_service as dep
+    cur = _current_booking(db, link)
     people = []
     if cfg.get("calendar_mode") == "per_staff" and cfg.get("let_leads_choose_person"):
         ids = set(bk.eligible_staff_ids(db, org["id"], service))
@@ -155,7 +157,10 @@ def public_link(token: str, request: Request, response: Response, db=Depends(get
         "business": org.get("name"), "first_name": first, "label": cfg["label"],
         "cancel_cutoff_hours": cfg["cancel_cutoff_hours"], "timezone": org.get("timezone") or "Africa/Lagos",
         "service": {k: service.get(k) for k in ("id", "name", "description", "duration_minutes", "medium", "location_text", "requires_approval")},
-        "booking": _public_booking(_current_booking(db, link)),
+        "booking": _public_booking(cur),
+        "deposit": ({"amount": service.get("deposit_amount"), "currency": service.get("deposit_currency") or "NGN"}
+                    if dep.has_deposit(service) else None),
+        "payment": dep.public_payment(dep.payment_for_demo(db, org["id"], cur["id"])) if cur else None,
     })
 
 
@@ -195,9 +200,25 @@ def public_book(token: str, body: BookBody, request: Request, response: Response
     service = _link_service(db, link)
     demo = bk.book_slot(db, org["id"], link["lead_id"], service, _parse_start(body.start), source="native",
                         lead_timezone=body.timezone, notes=body.note,
-                        rep_id=body.staff_id if (body.staff_id and cfg.get("let_leads_choose_person")) else None)
+                        rep_id=body.staff_id if (body.staff_id and cfg.get("let_leads_choose_person")) else None,
+                        return_url=f"{bk.public_base()}/b/{token}?paid=1")
     bk.link_attach_booking(db, link["id"], demo["id"])
-    return ok({"booking": _public_booking(demo)}, message="Booked")
+    return ok({"booking": _public_booking(demo), "payment": demo.get("payment")}, message="Booked")
+
+
+@router.post("/public/booking/link/{token}/payment/verify")
+def public_verify_payment(token: str, request: Request, response: Response, db=Depends(get_supabase)):
+    """BOOKING-3A: the customer came back from the payment page. Ask Paystack, confirm the booking if it was paid."""
+    _nostore(response)
+    _limit(request, "payverify", 30, 600)
+    from app.services import booking_deposit_service as dep
+    link, org, _ = _link_context(db, token)
+    current = _current_booking(db, link)
+    if not current:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "No active booking on this link."})
+    p = dep.verify(db, org["id"], dep.payment_for_demo(db, org["id"], current["id"]))
+    current = _current_booking(db, link) or current
+    return ok({"booking": _public_booking(current), "payment": dep.public_payment(p)})
 
 
 class RescheduleBody(BaseModel):
@@ -281,6 +302,12 @@ class ServiceBody(BaseModel):
     active: Optional[bool] = None
     sort_order: Optional[int] = Field(default=None, ge=0, le=9999)
     assignment_mode: Optional[Literal["anyone", "specific", "lead_owner_first"]] = None
+    deposit_amount: Optional[float] = Field(default=None, ge=0, le=100000000)
+    deposit_currency: Optional[str] = Field(default=None, max_length=3)
+    deposit_method: Optional[Literal["paystack", "external"]] = None
+    deposit_external_url: Optional[str] = Field(default=None, max_length=500)
+    deposit_hold_minutes: Optional[int] = Field(default=None, ge=5, le=1440)
+    deposit_refund_rule: Optional[Literal["before_cutoff", "always", "never"]] = None
 
 
 def _dump(body) -> dict:
@@ -540,6 +567,24 @@ def delete_staff_block(block_id: str, org: dict = Depends(get_current_org), db=D
 def put_service_staff(service_id: str, body: ServiceStaffBody, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     _gate(db, org["org_id"])
     return ok({"user_ids": bk.set_service_staff(db, org["org_id"], service_id, body.user_ids)})
+
+
+@staff.post("/booking/bookings/{demo_id}/payment/mark-paid")
+def mark_deposit_paid(demo_id: str, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    if not _is_manager(org):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only a manager or admin can mark a deposit as paid."})
+    from app.services import booking_deposit_service as dep
+    return ok(dep.public_payment(dep.mark_paid(db, org["org_id"], demo_id, org["id"])))
+
+
+@staff.post("/booking/bookings/{demo_id}/payment/mark-refunded")
+def mark_deposit_refunded(demo_id: str, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    if not _is_manager(org):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only a manager or admin can mark a deposit as refunded."})
+    from app.services import booking_deposit_service as dep
+    return ok(dep.public_payment(dep.mark_refunded(db, org["org_id"], demo_id, org["id"])))
 
 
 @staff.post("/booking/bookings/{demo_id}/assign")

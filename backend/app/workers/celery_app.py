@@ -168,6 +168,7 @@ celery_app = Celery(
         "app.workers.qualification_worker",   # ← M01-4 + M01-5
         "app.workers.lead_sla_worker",        # ← M01-6
         "app.workers.demo_reminder_worker",   # ← M01-7
+        "app.workers.booking_payment_worker", # ← BOOKING-3A
         "app.workers.lead_graduation_worker", # ← M01-10a
         "app.workers.lead_nurture_worker",    # ← M01-10a
         "app.workers.daily_briefing_worker",  # ← M01-10b
@@ -399,6 +400,12 @@ celery_app.conf.beat_schedule = {
     "demo_reminder_check": {
         "task": "app.workers.demo_reminder_worker.run_demo_reminder_check",
         "schedule": crontab(minute="*/15"),
+    },
+
+    # BOOKING-3A: deposit sweep - every 2 minutes
+    "booking_payment_sweep": {
+        "task": "app.workers.booking_payment_worker.run_booking_payment_sweep",
+        "schedule": crontab(minute="*/2"),
     },
 
     # ------------------------------------------------------------------ #

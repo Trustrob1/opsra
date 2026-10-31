@@ -5,11 +5,12 @@
  */
 import { useEffect, useState, useCallback } from 'react'
 import SlotPicker, { fmtFull } from '../modules/booking/SlotPicker'
-import { getLink, getLinkSlots, linkBook, linkReschedule, linkCancel, apiError } from '../services/booking.service'
+import { getLink, getLinkSlots, linkBook, linkReschedule, linkCancel, linkVerifyPayment, apiError } from '../services/booking.service'
 import '../modules/booking/booking.css'
 
 const MEDIUM = { virtual: 'Online', in_person: 'In person', phone: 'Phone call' }
 const ymd = (d) => d.toISOString().slice(0, 10)
+const money = (amt, cur) => { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur || 'NGN' }).format(Number(amt) || 0) } catch { return `${cur || ''} ${amt}` } }
 
 export default function BookingPage({ token }) {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
@@ -22,6 +23,8 @@ export default function BookingPage({ token }) {
   const [err, setErr] = useState(null)
   const [fatal, setFatal] = useState(null)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [payment, setPayment] = useState(null)    // BOOKING-3A: deposit hold, if the service asks for one
+  const [payMsg, setPayMsg] = useState(null)
 
   useEffect(() => { document.title = 'Book a time'; }, [])
 
@@ -36,7 +39,12 @@ export default function BookingPage({ token }) {
 
   useEffect(() => {
     getLink(token)
-      .then((r) => { setInfo(r.data); loadSlots() })
+      .then(async (r) => {
+        setInfo(r.data); setPayment(r.data.payment || null); loadSlots()
+        if (r.data.booking && r.data.payment?.status === 'pending' && new URLSearchParams(window.location.search).get('paid')) {
+          try { const v = await linkVerifyPayment(token); setInfo((i) => ({ ...i, booking: v.data.booking })); setPayment(v.data.payment || null) } catch { /* the page still shows the pay button */ }
+        }
+      })
       .catch((e) => setFatal(apiError(e, 'This link is not available.')))
   }, [token, loadSlots])
 
@@ -52,13 +60,35 @@ export default function BookingPage({ token }) {
     setBusy(true); setErr(null)
     try {
       const r = await (mode === 'reschedule' ? linkReschedule(token, { start: picked }) : linkBook(token, { start: picked, timezone: tz, ...(staffId ? { staff_id: staffId } : {}) }))
-      setInfo({ ...info, booking: r.data.booking })
+      setInfo({ ...info, booking: r.data.booking }); setPayment(r.data.payment || null)
       setMode('done'); setPicked(null)
     } catch (e) {
       setErr(apiError(e))
       if (e?.response?.status === 409) { setPicked(null); loadSlots() }
     } finally { setBusy(false) }
   }
+
+  const checkPayment = async () => {
+    setBusy(true); setPayMsg(null)
+    try {
+      const v = await linkVerifyPayment(token)
+      setInfo((i) => ({ ...i, booking: v.data.booking })); setPayment(v.data.payment || null)
+      if (v.data.payment?.status === 'pending') setPayMsg('We have not seen your payment yet. If you just paid, give it a minute and check again.')
+    } catch (e) { setPayMsg(apiError(e)) } finally { setBusy(false) }
+  }
+
+  const payPending = !!payment && payment.status === 'pending' && booking?.status === 'pending_assignment'
+  const payBox = payPending && (
+    <div role="status" style={{ background: '#FFF8E6', border: '1px solid #F6D58A', borderRadius: 10, padding: 14, margin: '0 0 16px' }}>
+      <p style={{ margin: '0 0 6px', fontWeight: 700 }}>Pay the {money(payment.amount, payment.currency)} deposit to secure this time</p>
+      <p className="bk-tz" style={{ margin: '0 0 10px' }}>We are holding it until {fmtFull(payment.hold_expires_at, tz)}.</p>
+      <div className="bk-actions">
+        <a className="bk-btn" href={payment.pay_url} target={payment.method === 'external' ? '_blank' : '_self'} rel="noopener noreferrer">Pay now</a>
+        <button className="bk-btn bk-btn-ghost" disabled={busy} onClick={checkPayment}>{busy ? 'Checking…' : "I've paid"}</button>
+      </div>
+      {payMsg && <p className="bk-tz" style={{ marginTop: 8 }}>{payMsg}</p>}
+    </div>
+  )
 
   const doCancel = async () => {
     setBusy(true); setErr(null)
@@ -84,10 +114,11 @@ export default function BookingPage({ token }) {
     return (
       <Shell>
         <div className="bk-done">
-          <div className="bk-tick" aria-hidden="true">✓</div>
-          <h1>{booking.status === 'confirmed' ? "You're booked" : 'Request received'}</h1>
+          <div className="bk-tick" aria-hidden="true">{payPending ? '…' : '✓'}</div>
+          <h1>{booking.status === 'confirmed' ? "You're booked" : payPending ? 'Almost there' : 'Request received'}</h1>
           <p className="bk-sub">{fmtFull(booking.scheduled_at, tz)}</p>
-          <p className="bk-sub">{booking.status === 'confirmed' ? 'We have sent a confirmation to your WhatsApp.' : "We'll confirm on WhatsApp shortly."}</p>
+          {payBox}
+          {!payPending && <p className="bk-sub">{booking.status === 'confirmed' ? 'We have sent a confirmation to your WhatsApp.' : "We'll confirm on WhatsApp shortly."}</p>}
           <div className="bk-actions"><button className="bk-btn bk-btn-ghost" onClick={() => setMode('pick')}>Change or cancel</button></div>
         </div>
       </Shell>
@@ -107,6 +138,7 @@ export default function BookingPage({ token }) {
     return (
       <Shell>
         {head}
+        {payBox}
         <p className="bk-sec">Your time</p>
         <p style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>{fmtFull(booking.scheduled_at, tz)}</p>
         <p className="bk-tz">Shown in your timezone ({tz})</p>
@@ -143,10 +175,11 @@ export default function BookingPage({ token }) {
       )}
       <SlotPicker slots={slots} tz={tz} value={picked} onChange={setPicked} />
       <p className="bk-tz">Times shown in your timezone ({tz})</p>
+      {info.deposit && mode !== 'reschedule' && <p className="bk-tz" style={{ fontWeight: 600 }}>A {money(info.deposit.amount, info.deposit.currency)} deposit secures your time. You will pay on the next step.</p>}
       {err && <p className="bk-err" role="alert">{err}</p>}
       <div className="bk-actions">
         <button className="bk-btn" disabled={!picked || busy} onClick={doBook}>
-          {busy ? 'Saving…' : picked ? `Confirm ${fmtFull(picked, tz)}` : 'Choose a time'}
+          {busy ? 'Saving…' : picked ? `${info.deposit && mode !== 'reschedule' ? 'Continue with' : 'Confirm'} ${fmtFull(picked, tz)}` : 'Choose a time'}
         </button>
         {mode === 'reschedule' && <button className="bk-btn bk-btn-ghost" onClick={() => { setMode('pick'); setPicked(null) }}>Back</button>}
       </div>

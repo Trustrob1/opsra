@@ -261,11 +261,40 @@ function ServiceRow({ s, onSave, onDelete }) {
         <div><label style={lab}>Book up to (days ahead)</label><input type="number" style={inp} value={f.window_days} min={1} max={365} onChange={(e) => set('window_days', Number(e.target.value))} /></div>
         <div style={{ gridColumn: '1 / -1' }}><label style={lab}>Address or details shown to the customer</label><input style={inp} value={f.location_text || ''} onChange={(e) => set('location_text', e.target.value)} /></div>
       </div>
+      <div style={{ marginTop: 12, fontSize: 13 }}>
+        <label style={{ cursor: 'pointer' }}>
+          <input type="checkbox" checked={Number(f.deposit_amount) > 0}
+            onChange={(e) => set('deposit_amount', e.target.checked ? (Number(s.deposit_amount) > 0 ? s.deposit_amount : 5000) : 0)} /> Ask for a deposit when booking <span style={{ color: ds.gray }}>(leave off for free sessions)</span>
+        </label>
+        {Number(f.deposit_amount) > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginTop: 10, padding: 12, background: '#F7FAFC', borderRadius: ds.radius.md }}>
+            <div><label style={lab}>Deposit amount</label><input type="number" min={1} style={inp} value={f.deposit_amount} onChange={(e) => set('deposit_amount', Number(e.target.value))} /></div>
+            <div><label style={lab}>Currency</label><input maxLength={3} style={inp} value={f.deposit_currency || 'NGN'} onChange={(e) => set('deposit_currency', e.target.value.toUpperCase())} /></div>
+            <div><label style={lab}>How they pay</label>
+              <select style={inp} value={f.deposit_method || 'paystack'} onChange={(e) => set('deposit_method', e.target.value)}>
+                <option value="paystack">Paystack (automatic)</option><option value="external">My own payment link</option>
+              </select></div>
+            {f.deposit_method === 'external' && (
+              <div style={{ gridColumn: '1 / -1' }}><label style={lab}>Your payment link</label>
+                <input style={inp} placeholder="https://…" value={f.deposit_external_url || ''} onChange={(e) => set('deposit_external_url', e.target.value)} />
+                <p style={{ fontSize: 11.5, color: ds.gray, margin: '5px 0 0' }}>Opsra can't see payments made on your own link. Open the booking and tap "Mark as paid" once you receive the money; refunds are done by you.</p></div>
+            )}
+            {f.deposit_method !== 'external' && <p style={{ gridColumn: '1 / -1', fontSize: 11.5, color: ds.gray, margin: 0 }}>Uses your Paystack storefront keys (Integrations). Payments are confirmed automatically and refunds go back through Paystack.</p>}
+            <div><label style={lab}>Hold the time for (minutes)</label><input type="number" min={5} max={1440} style={inp} value={f.deposit_hold_minutes || 30} onChange={(e) => set('deposit_hold_minutes', Number(e.target.value))} /></div>
+            <div><label style={lab}>If they cancel</label>
+              <select style={inp} value={f.deposit_refund_rule || 'before_cutoff'} onChange={(e) => set('deposit_refund_rule', e.target.value)}>
+                <option value="before_cutoff">Refund before the cancel cut-off</option><option value="always">Always refund</option><option value="never">Never refund</option>
+              </select></div>
+          </div>
+        )}
+      </div>
       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, fontSize: 13 }}>
         <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!f.requires_approval} onChange={(e) => set('requires_approval', e.target.checked)} /> A person must approve each booking</label>
         <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!f.active} onChange={(e) => set('active', e.target.checked)} /> Open for booking</label>
         <span style={{ flex: 1 }} />
-        {dirty && <button style={btnP} onClick={() => onSave({ name: f.name, duration_minutes: f.duration_minutes, buffer_after_minutes: f.buffer_after_minutes, medium: f.medium, min_notice_hours: f.min_notice_hours, window_days: f.window_days, location_text: f.location_text, requires_approval: f.requires_approval, active: f.active })}>Save service</button>}
+        {dirty && <button style={btnP} onClick={() => onSave({ name: f.name, duration_minutes: f.duration_minutes, buffer_after_minutes: f.buffer_after_minutes, medium: f.medium, min_notice_hours: f.min_notice_hours, window_days: f.window_days, location_text: f.location_text, requires_approval: f.requires_approval, active: f.active,
+          deposit_amount: Number(f.deposit_amount) || 0, deposit_currency: f.deposit_currency || 'NGN', deposit_method: f.deposit_method || 'paystack',
+          deposit_external_url: f.deposit_external_url || '', deposit_hold_minutes: f.deposit_hold_minutes || 30, deposit_refund_rule: f.deposit_refund_rule || 'before_cutoff' })}>Save service</button>}
         <button style={{ ...btnG, color: '#C53030', borderColor: '#F3B5B5' }} onClick={onDelete}>Remove</button>
       </div>
     </div>

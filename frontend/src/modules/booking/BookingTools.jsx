@@ -10,7 +10,7 @@ import { ds } from '../../utils/ds'
 import SlotPicker, { fmtFull } from './SlotPicker'
 import {
   getBookingSettings, listBookingServices, getStaffSlots, staffBookLead, makeBookingLink,
-  staffCancelBooking, staffRescheduleBooking, startWaPicker, apiError,
+  staffCancelBooking, staffRescheduleBooking, startWaPicker, markDepositPaid, markDepositRefunded, apiError,
 } from '../../services/booking.service'
 import './booking.css'
 
@@ -160,7 +160,22 @@ export function BookingRowActions({ booking, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const live = ['pending_assignment', 'confirmed'].includes(booking.status)
-  if (!live) return null
+  const ps = booking.payment_status          // BOOKING-3A: pending | paid | refund_due | refunded | expired | ...
+  const PAY_LABEL = { pending: 'Deposit unpaid', paid: 'Deposit paid', refund_due: 'Refund due', refunded: 'Deposit refunded', waived: 'Deposit waived' }
+  const payAct = async (fn) => {
+    setBusy(true); setErr(null)
+    try { await fn(booking.id); onChanged && onChanged() } catch (e) { setErr(apiError(e)) } finally { setBusy(false) }
+  }
+  const btnS = { border: `1.5px solid ${ds.border}`, background: '#fff', borderRadius: ds.radius.md, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: ds.dark }
+  const payBits = ps && PAY_LABEL[ps] && (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginRight: 6 }}>
+      <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 99, background: ps === 'paid' || ps === 'refunded' ? '#E6F4EA' : '#FFF4D6', color: ps === 'paid' || ps === 'refunded' ? '#276749' : '#8A5A00' }}>{PAY_LABEL[ps]}</span>
+      {ps === 'pending' && <button style={btnS} disabled={busy} onClick={() => payAct(markDepositPaid)}>Mark as paid</button>}
+      {ps === 'refund_due' && <button style={btnS} disabled={busy} onClick={() => payAct(markDepositRefunded)}>Mark refunded</button>}
+      {err && <span role="alert" style={{ fontSize: 11.5, color: '#C53030' }}>{err}</span>}
+    </span>
+  )
+  if (!live) return payBits || null
   const btn = { border: `1.5px solid ${ds.border}`, background: '#fff', borderRadius: ds.radius.md, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', color: ds.dark }
   const doCancel = async () => {
     setBusy(true); setErr(null)
@@ -169,7 +184,8 @@ export function BookingRowActions({ booking, onChanged }) {
   }
   return (
     <>
-      <span style={{ display: 'inline-flex', gap: 6 }}>
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        {payBits}
         {booking.service_id && <button style={btn} onClick={() => setModal('resched')}>Reschedule</button>}
         <button style={{ ...btn, color: '#C53030', borderColor: '#F3B5B5' }} onClick={() => setModal('cancel')}>Cancel</button>
       </span>
