@@ -90,12 +90,13 @@ const ADDONS = [
   ["Paid event or class funnel", "₦50,000 per event"],
 ];
 
-// Costs that are billed on top of the plan. Meta and AI usage come out of a prepaid credit balance the business tops up.
-const USAGE = [
-  ["WhatsApp messages", "Meta charges for the messages your business sends. Booking confirmations and reminders are passed on at Meta\u2019s price. Marketing messages, such as broadcasts and follow-ups, cost more with Meta and carry a small Opsra fee on top. All of it comes out of your credit balance."],
-  ["AI replies", "Each reply the AI writes for you uses a small amount of credit."],
-  ["Credit top-ups", "Add credit whenever you need it: \u20a65,000, \u20a610,000, \u20a625,000 or \u20a650,000. Larger top-ups come with bonus credit: 2% extra on \u20a625,000 and 5% extra on \u20a650,000. Credit is prepaid, so you only ever spend what you have added."],
+// Costs billed on top of the plan. They come out of a prepaid credit balance the business tops up.
+const CREDIT_USES = [
+  ["Confirmations and reminders", "Booking messages to your clients", "At Meta\u2019s price", "blue"],
+  ["Broadcasts and follow-ups", "Marketing messages cost more with Meta", "Meta\u2019s price + small fee", "purple"],
+  ["AI replies", "Each reply the AI writes for you", "Small amount per reply", "grey"],
 ];
+const CREDIT_PACKS = [[5000, 0], [10000, 0], [25000, 2], [50000, 5]];
 
 const AUDIENCE = ["Coaches", "Counsellors", "Clinics", "Consultants", "Schools", "Agencies"];
 
@@ -533,20 +534,37 @@ export default function OwnerLandingPage() {
               ))}
             </ul>
           </div>
-          <div className="ow-addons" id="usage-costs">
-            <h3>Billed separately, as you use it</h3>
-            <p className="ow-sub" style={{ margin: "0 0 12px" }}>
-              Your plan is a fixed monthly fee. WhatsApp messaging and AI replies are usage costs, so they are not part of the plan price.
-              They come out of a prepaid credit balance that you top up.
-            </p>
-            <ul style={{ flexDirection: "column", gap: 12 }}>
-              {USAGE.map(([n, d]) => (
-                <li key={n}><b>{n}</b> &middot; {d}</li>
-              ))}
-            </ul>
-            <p className="ow-sub" style={{ margin: "12px 0 0" }}>
-              A business that handles many bookings and conversations will spend more credit than a small one, because it sends more messages. You can see your balance and spend at any time and set a monthly limit.
-            </p>
+          <div className="ow-credit" id="usage-costs">
+            <div className="ow-credit-l">
+              <p className="ow-credit-eye">Billed separately</p>
+              <h3>The plan is a fixed fee. Messages and AI run on credit.</h3>
+              <p className="ow-credit-sub">WhatsApp messaging and AI replies are usage costs, so they are not part of the plan price. You top up a prepaid balance and they come out of it.</p>
+              <ol className="ow-credit-steps">
+                <li><span>1</span>Top up credit, from {naira(5000)}</li>
+                <li><span>2</span>Messages and AI replies draw from it</li>
+                <li><span>3</span>Watch your balance, set a monthly limit, top up when you need to</li>
+              </ol>
+            </div>
+            <div className="ow-credit-r">
+              <div className="ow-credit-card">
+                <p className="ow-credit-cap">What uses credit</p>
+                {CREDIT_USES.map(([n, d, tag, tone]) => (
+                  <div className="ow-credit-row" key={n}>
+                    <div><b>{n}</b><span>{d}</span></div>
+                    <em className={`ow-tag ow-tag-${tone}`}>{tag}</em>
+                  </div>
+                ))}
+              </div>
+              <ul className="ow-packs" aria-label="Credit top-ups">
+                {CREDIT_PACKS.map(([amt, bonus]) => (
+                  <li key={amt} className={bonus ? "ow-pack-bonus" : ""}>
+                    <b>{naira(amt)}</b>
+                    <span>{bonus ? `+${bonus}% bonus` : "Top-up"}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="ow-credit-note">A business with many bookings and conversations will use more credit than a small one, because it sends more messages.</p>
+            </div>
           </div>
           <p className="ow-fine">
             Prices are in naira and may change before you start. Every plan includes 2 users (one admin and one staff member); extra users are &#8358;5,000 per month each.

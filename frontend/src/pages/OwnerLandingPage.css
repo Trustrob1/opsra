@@ -418,3 +418,35 @@
   .ow .ow-one-row{animation:owrw 9s ease-in-out infinite;animation-delay:var(--d)}
   .ow .ow-one-arrow{animation:owpulse 2s ease-in-out infinite}
 }
+
+/* usage costs / credit panel (OWNER-LANDING-7, option B) */
+.ow .ow-credit{margin-top:32px;background:var(--dark);color:#fff;border-radius:40px;padding:clamp(28px,5vw,64px);display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(28px,4.5vw,56px);align-items:center}
+.ow .ow-credit-eye{font-size:13px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8FB2F5}
+.ow .ow-credit-l h3{font-size:clamp(28px,3.2vw,40px);line-height:1.12;letter-spacing:-1.1px;margin:14px 0 20px}
+.ow .ow-credit-sub{font-size:17px;line-height:1.55;color:#B8C0CF}
+.ow .ow-credit-steps{display:flex;flex-direction:column;gap:18px;margin-top:28px}
+.ow .ow-credit-steps li{display:flex;gap:16px;align-items:flex-start;font-size:17px;line-height:1.45}
+.ow .ow-credit-steps span{flex-shrink:0;width:34px;height:34px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700}
+.ow .ow-credit-steps li{padding-top:0}
+.ow .ow-credit-card{border:1px solid var(--dark-line);border-radius:28px;background:var(--dark2);padding:8px clamp(18px,3vw,32px)}
+.ow .ow-credit-cap{padding:22px 0 8px;font-size:13px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#B8C0CF}
+.ow .ow-credit-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 0;border-top:1px solid var(--dark-line)}
+.ow .ow-credit-row div{display:flex;flex-direction:column;gap:3px}
+.ow .ow-credit-row b{font-size:18px;font-weight:600}
+.ow .ow-credit-row span{font-size:15px;color:#B8C0CF}
+.ow .ow-tag{flex-shrink:0;font-style:normal;padding:8px 14px;border-radius:999px;font-size:14px;font-weight:600;text-align:center}
+.ow .ow-tag-blue{background:#16305F;color:#CFE0FF}
+.ow .ow-tag-purple{background:#34205C;color:#E3D3FF}
+.ow .ow-tag-grey{background:var(--dark-line);color:#fff}
+.ow .ow-packs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:20px}
+.ow .ow-packs li{border:1px solid var(--dark-line);border-radius:20px;background:var(--dark2);padding:18px 16px;display:flex;flex-direction:column;gap:4px}
+.ow .ow-packs b{font-size:20px;font-weight:600}
+.ow .ow-packs span{font-size:13px;color:#B8C0CF}
+.ow .ow-packs .ow-pack-bonus{border-color:var(--blue)}
+.ow .ow-packs .ow-pack-bonus span{font-weight:700;color:#8FB2F5}
+.ow .ow-credit-note{margin-top:20px;font-size:15px;line-height:1.55;color:#B8C0CF}
+@media (max-width:900px){
+  .ow .ow-credit{grid-template-columns:minmax(0,1fr);border-radius:28px}
+  .ow .ow-credit-row{flex-direction:column;align-items:flex-start;gap:10px}
+  .ow .ow-packs{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
