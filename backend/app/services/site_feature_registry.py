@@ -17,7 +17,7 @@ TIER_KEYS = ("capture", "convert", "grow", "automate")
 # WA-AUTO-1b: "automate" is the WhatsApp-automation-only plan. Only businesses whose product_mode is wa_automation can buy it, and
 # they can buy nothing else. Websites never offer it. Its price is set in Superadmin pricing settings (not for sale until then).
 WA_ONLY_TIERS = ("automate",)
-ADDON_KEYS = ("support_tickets", "renewals_winback", "dashboard_ask_data", "event_funnel", "extra_rep", "extra_wa_number")
+ADDON_KEYS = ("support_tickets", "renewals_winback", "dashboard_ask_data", "event_funnel", "extra_rep", "extra_wa_number", "booking")
 
 # Caps. "monthly" caps are consumed (site_usage_counters); "static" caps are a limit the feature reads (e.g. reps).
 CAPS = {
@@ -70,6 +70,7 @@ _F = {
     "event_funnel": ("Paid event or class funnel", "addon", None, True),
     "extra_rep": ("Extra rep", "addon", None, True),
     "extra_wa_number": ("Extra WhatsApp number", "addon", None, True),
+    "booking": ("Booking with reminders", "addon", None, True),   # BOOKING-ADDON-1: switches on selling_booking
 }
 
 # ACCOUNT-PLANS: where a feature is checked. "site" needs a website (form, tracked links, per-site leads page);
@@ -110,6 +111,8 @@ RECOMMENDED_START = {"automate": {"monthly_ngn": 20000, "ai_messages": 300, "use
 DEFAULT_ADDON_LABELS = {k: FEATURES[k]["label"] for k in ADDON_KEYS}
 # An add-on adds its own key, plus a cap for the ones that raise a limit.
 DEFAULT_ADDON_CAPS = {"extra_rep": {"reps": 1}}
+# What an add-on switches on when Settings has not saved its own list (default is the add-on key itself).
+DEFAULT_ADDON_FEATURES = {"booking": ["selling_booking"]}
 
 
 def is_feature(key) -> bool:

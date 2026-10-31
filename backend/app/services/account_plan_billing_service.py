@@ -248,7 +248,24 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
         team_info = seatsvc.team(db, org_id, now)
     except Exception as exc:
         logger.warning("account_plan.summary team failed org=%s: %s", org_id, exc)
-    return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans, "allowances": allowances, "team": team_info,
+    addons_list: list = []
+    try:        # BOOKING-ADDON-1: optional extras shown under the plans; never fails the page
+        have = {r.get("key") for r in _rows(db.table("org_plans").select("key, status, paid_until, source").eq("org_id", org_id)
+                                            .eq("kind", "addon").neq("status", "cancelled").execute())
+                if ent.effective_status(r, cfg, now) in acc.LIVE_STATES}
+        tier_feats = set((cfg["tiers"].get(row["key"]) or {}).get("features") or []) if row else set()
+        if row:
+            tier_feats |= set((row.get("config") or {}).get("picks") or [])
+        for key in ("booking", "support_tickets", "extra_wa_number"):
+            d = cfg["addons"].get(key)
+            if not d or int(d.get("monthly_ngn") or 0) <= 0:
+                continue
+            feats = set(d.get("features") or [])
+            addons_list.append({"key": key, "label": d["label"], "monthly_ngn": int(d["monthly_ngn"]),
+                                "active": key in have, "included": bool(feats and feats <= tier_feats)})
+    except Exception as exc:
+        logger.warning("account_plan.summary addons failed org=%s: %s", org_id, exc)
+    return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans, "addons": addons_list, "allowances": allowances, "team": team_info,
             "billing": {"period_days": cfg["billing"]["period_days"], "grace_days": cfg["billing"]["grace_days"]},
             "orders": orders(db, org_id)}
 

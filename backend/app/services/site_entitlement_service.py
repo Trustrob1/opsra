@@ -175,7 +175,7 @@ def get_config(settings: Optional[dict]) -> dict:
             "label": (str(raw.get("label")).strip() if isinstance(raw.get("label"), str) and raw.get("label").strip()
                       else reg.DEFAULT_ADDON_LABELS[key]),
             "monthly_ngn": monthly,
-            "features": _features(raw.get("features"), [key]),
+            "features": _features(raw.get("features"), reg.DEFAULT_ADDON_FEATURES.get(key, [key])),
             "caps": caps,
             "sellable": monthly > 0,
         }

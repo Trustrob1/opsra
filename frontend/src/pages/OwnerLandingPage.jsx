@@ -82,6 +82,7 @@ const PLANS = [
 ];
 
 const ADDONS = [
+  ["Booking with reminders", "\u20a625,000", "per month", "Included in Established"],
   ["Support tickets", "\u20a615,000", "per month", ""],
   ["Extra user", "\u20a65,000", "per month, each", "2 users are included in every plan"],
   ["Extra WhatsApp number", "\u20a610,000", "per month", ""],

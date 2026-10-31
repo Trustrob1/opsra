@@ -240,6 +240,24 @@ function PlanTab({ data, reload, setMsg }) {
         : <div className="bp-grid" style={{ marginBottom: 16 }}>
             {data.plans.map((p, i) => <PlanCard key={p.key} plan={p} index={i} plans={data.plans} busy={busy} onPay={pay} />)}
           </div>}
+      {(data.addons || []).length > 0 && (
+        <>
+          <h3 style={{ ...h3, fontFamily: FONT, fontSize: 17, margin: '8px 0 12px' }}>Add what you need</h3>
+          <div style={{ ...card, padding: '4px 16px' }}>
+            {data.addons.map((a, i) => (
+              <div key={a.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 0', borderTop: i ? `1px solid ${ds.border}` : 0 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: ds.dark }}>{a.label}</div>
+                  <div style={{ fontSize: 13, color: ds.gray }}>{ngn(a.monthly_ngn)} a month</div>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: a.active || a.included ? ds.teal : ds.gray, textAlign: 'right' }}>
+                  {a.included ? 'Included in your plan' : a.active ? 'On' : 'Ask us to switch it on'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <p style={{ fontSize: 12.5, color: ds.gray, maxWidth: 640 }}>Plans are paid monthly with Paystack and are not refundable. Credits are separate. Buy them in the Credits tab.</p>
     </>
   )

@@ -452,13 +452,13 @@
 }
 
 /* add-ons grid (OWNER-LANDING-8) */
-.ow .ow-addons .ow-addon-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:20px}
+.ow .ow-addons .ow-addon-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:20px}
 .ow .ow-addon-grid li{background:#fff;border-radius:22px;padding:22px 22px 20px;display:flex;flex-direction:column;gap:6px;border:1px solid #CFDDF7}
 .ow .ow-addon-n{font-size:16px;font-weight:600;line-height:1.3;color:var(--ink);min-height:42px}
 .ow .ow-addon-p{font-size:30px;font-weight:700;letter-spacing:-.8px;color:var(--blue-deep);line-height:1.1;margin-top:6px}
 .ow .ow-addon-u{font-size:14px;color:var(--mute)}
 .ow .ow-addon-note{margin-top:8px;padding-top:10px;border-top:1px solid #E1E5EC;font-size:13px;line-height:1.4;color:var(--ink2)}
-@media (max-width:1000px){.ow .ow-addons .ow-addon-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1000px){.ow .ow-addons .ow-addon-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 /* mobile: compact credit panel + add-ons price list (OWNER-LANDING-9) */
 .ow .ow-m{display:none}
