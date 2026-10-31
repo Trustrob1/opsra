@@ -14,7 +14,9 @@
  *   usecase-agencies.jpg, lead-center.jpg. The Lead Center screenshot shows real first names and amounts
  *   from a client org (used with that client's permission). Blur or replace it if that permission changes.
  *
- * No testimonials yet: the "founding clients" block replaces them. Add real quotes only when you have them.
+ * No testimonials yet: the "Set up with you" + live demo block stands in. Add real quotes only when you have them.
+ * MOBILE (max-width 820px): full-screen photo hero with animated notifications, marquee strip, swipe cards,
+ *   2x2 photo tiles, lead-journey animation, plan tabs. All CSS-driven from the same markup.
  */
 import { useEffect, useState } from "react";
 import "./OwnerLandingPage.css";
@@ -171,6 +173,8 @@ function Logo({ light }) {
 
 export default function OwnerLandingPage() {
   const [solid, setSolid] = useState(false);
+  const [plan, setPlan] = useState("growth");
+  const [menu, setMenu] = useState(false);
 
   useEffect(() => {
     const prevTitle = document.title;
@@ -224,10 +228,17 @@ export default function OwnerLandingPage() {
 
       {/* ---------------- HERO ---------------- */}
       <div className="ow-hero">
+        <img className="ow-hero-bg" src="/images/usecase-coaches.jpg" alt="" aria-hidden="true" width="547" height="365" />
+        <div className="ow-hero-tint" aria-hidden="true" />
         <header className={`ow-nav${solid ? " ow-solid" : ""}`}>
           <div className="ow-wrap ow-nav-row">
             <Logo />
-            <nav aria-label="Main" className="ow-nav-links">
+            <button type="button" className="ow-burger" aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                {menu ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+              </svg>
+            </button>
+            <nav aria-label="Main" className={`ow-nav-links${menu ? " ow-open" : ""}`} onClick={() => setMenu(false)}>
               <a href="#product">Product</a>
               <a href="#use-cases">Use cases</a>
               <a href="#plans">Pricing</a>
@@ -241,12 +252,30 @@ export default function OwnerLandingPage() {
           <div className="ow-hero-copy">
             <h1>Every enquiry answered. Every lead qualified.</h1>
             <p className="ow-lede">
-              Opsra replies on WhatsApp the moment someone reaches out, asks the right questions, and hands
-              you warm leads with a booking in the diary.
+              <span className="ow-lede-long">
+                Opsra replies on WhatsApp the moment someone reaches out, asks the right questions, and hands
+                you warm leads with a booking in the diary.
+              </span>
+              <span className="ow-lede-short">Instant WhatsApp replies that turn messages into booked consultations.</span>
             </p>
             <div className="ow-cta-row">
               <a className="ow-btn ow-btn-white" href={demo} target="_blank" rel="noopener noreferrer">See it on WhatsApp</a>
-              <a className="ow-btn ow-btn-ghost" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a 15-minute walkthrough</a>
+              <a className="ow-btn ow-btn-ghost ow-hide-m" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a 15-minute walkthrough</a>
+            </div>
+          </div>
+          <div className="ow-notifs" aria-hidden="true">
+            <div className="ow-nt ow-nt1">
+              <span className="ow-nt-ic ow-ic-blue"><i className="ow-ring" /><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M13 2L4 14h6l-1 8 9-12h-6z" /></svg></span>
+              <div><small>New enquiry</small><b>Ada O. messaged you</b></div>
+              <em>Hot</em>
+            </div>
+            <div className="ow-nt ow-nt2">
+              <span className="ow-nt-ic ow-ic-purple"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M8 3v4M16 3v4M3 10h18" /></svg></span>
+              <div><small>Booked</small><b>Consultation, Fri 3:00pm</b></div>
+            </div>
+            <div className="ow-nt ow-nt3">
+              <span className="ow-nt-ic ow-ic-green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7" /></svg></span>
+              <div><small>Reminder sent</small><b>Ada confirmed for Friday</b></div>
             </div>
           </div>
           <div className="ow-hero-phone" role="img" aria-label="Example WhatsApp conversation on a phone">
@@ -278,6 +307,13 @@ export default function OwnerLandingPage() {
       </div>
 
       <main>
+        {/* ---------------- AUDIENCE MARQUEE (phones) ---------------- */}
+        <div className="ow-marq" aria-hidden="true">
+          <div className="ow-marq-track">
+            {[0, 1].map((k) => AUDIENCE.map((a) => <span key={`${k}${a}`}>{a}<i>/</i></span>))}
+          </div>
+        </div>
+
         {/* ---------------- AUDIENCE STRIP ---------------- */}
         <section className="ow-wrap ow-strip" aria-label="Who Opsra is for">
           <div>
@@ -335,6 +371,12 @@ export default function OwnerLandingPage() {
             <div className="ow-split-l">
               <h2 id="pipe-h" className="ow-h2">A pipeline that runs itself.</h2>
               <p className="ow-sub ow-left">Every lead lands in one board with its score, its answers and its next step, so you always know who to talk to first.</p>
+              <div className="ow-journey" aria-hidden="true">
+                <div className="ow-j-stages"><span className="ow-j1">New</span><span className="ow-j2">Qualified</span><span className="ow-j3">Booked</span><span className="ow-j4">Enrolled</span></div>
+                <div className="ow-j-track">
+                  <div className="ow-j-card"><b>Ada O.</b><small>Wants coaching</small><em>Hot</em></div>
+                </div>
+              </div>
             </div>
             <ol className="ow-feat">
               {FEATURES.map(([n, t, d]) => (
@@ -373,9 +415,14 @@ export default function OwnerLandingPage() {
             <h2 id="plans-h" className="ow-h2">Start small. Grow when you are ready.</h2>
             <p className="ow-sub">Monthly plans in naira. Setup fees are agreed with you separately, based on what you need.</p>
           </div>
+          <div className="ow-tabs" role="tablist" aria-label="Plans">
+            {PLANS.map((p) => (
+              <button key={p.key} type="button" role="tab" aria-selected={plan === p.key} className={plan === p.key ? "ow-tab-on" : ""} onClick={() => setPlan(p.key)}>{p.name}</button>
+            ))}
+          </div>
           <div className="ow-plans">
             {PLANS.map((p) => (
-              <article key={p.key} className={`ow-plan${p.suggested ? " ow-plan-hi" : ""}`}>
+              <article key={p.key} className={`ow-plan${p.suggested ? " ow-plan-hi" : ""}${plan === p.key ? " ow-plan-on" : ""}`}>
                 {p.suggested ? <span className="ow-pill">Suggested starting point</span> : <span className="ow-pill-gap" />}
                 <h3>{p.name}</h3>
                 <p className="ow-plan-line">{p.line}</p>
@@ -416,13 +463,13 @@ export default function OwnerLandingPage() {
           </p>
         </section>
 
-        {/* ---------------- FOUNDING CLIENTS ---------------- */}
+        {/* ---------------- SETUP + DEMO ---------------- */}
         <section className="ow-wrap ow-sec ow-sec-tight" aria-labelledby="found-h">
-          <h2 id="found-h" className="ow-h2 ow-center">Be one of our first clients.</h2>
-          <p className="ow-sub ow-center-block">We are onboarding a small group of founding clients and setting Opsra up for each of them personally.</p>
+          <h2 id="found-h" className="ow-h2 ow-center">Set up with you, not left to you.</h2>
+          <p className="ow-sub ow-center-block">Every business gets a setup built around how it actually works, and a team to call when something needs changing.</p>
           <div className="ow-found">
             <article className="ow-found-card ow-found-blue">
-              <p className="ow-eyebrow ow-t-blue">Founding client</p>
+              <p className="ow-eyebrow ow-t-blue">Done with you</p>
               <h3>We set it up with you.</h3>
               <ul>
                 <li>A WhatsApp menu written in your voice</li>
@@ -461,7 +508,7 @@ export default function OwnerLandingPage() {
             <h2 id="cta-h">Message our demo. See your own front desk in 30 seconds.</h2>
             <div className="ow-cta-row ow-cta-center">
               <a className="ow-btn ow-btn-white" href={demo} target="_blank" rel="noopener noreferrer"><WaIcon />Open WhatsApp demo</a>
-              <a className="ow-btn ow-btn-ghost" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a walkthrough</a>
+              <a className="ow-btn ow-btn-ghost ow-hide-m" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a walkthrough</a>
             </div>
           </div>
         </section>
