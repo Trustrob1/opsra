@@ -259,9 +259,9 @@
   .ow .ow-purple{justify-content:flex-start}
   .ow .ow-toggle{display:none}
   .ow #product .ow-sub{margin-left:0}
-  .ow .ow-cards{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:var(--pad);gap:12px;margin:24px calc(var(--pad)*-1) 0;padding-inline:var(--pad);scrollbar-width:none}
+  .ow .ow-cards{flex-wrap:nowrap;overflow-x:auto;scroll-padding-inline:var(--pad);gap:12px;margin:24px calc(var(--pad)*-1) 0;padding-inline:var(--pad);scrollbar-width:none}
   .ow .ow-cards::-webkit-scrollbar{display:none}
-  .ow .ow-card{flex:0 0 268px;scroll-snap-align:start;min-height:250px;padding:24px;border-radius:26px}
+  .ow .ow-card{flex:0 0 268px;min-height:250px;padding:24px;border-radius:26px}
   .ow .ow-card h3{font-size:28px;line-height:1.08;letter-spacing:-.7px}
 
   /* use cases: 2x2 photo tiles */
