@@ -85,9 +85,16 @@ const ADDONS = [
   ["Support tickets", "₦15,000/month"],
   ["Renewals and win-back", "₦15,000/month"],
   ["Dashboard and ask-your-data", "₦10,000/month"],
-  ["Extra staff member", "₦5,000/month each"],
+  ["Extra user (2 users included in every plan)", "₦5,000/month each"],
   ["Extra WhatsApp number", "₦10,000/month"],
   ["Paid event or class funnel", "₦50,000 per event"],
+];
+
+// Costs that are billed on top of the plan. Meta and AI usage come out of a prepaid credit balance the business tops up.
+const USAGE = [
+  ["WhatsApp messages", "Meta charges for the messages your business sends. Booking confirmations and reminders are passed on at Meta\u2019s price. Marketing messages, such as broadcasts and follow-ups, cost more with Meta and carry a small Opsra fee on top. All of it comes out of your credit balance."],
+  ["AI replies", "Each reply the AI writes for you uses a small amount of credit."],
+  ["Credit top-ups", "Add credit whenever you need it: \u20a65,000, \u20a610,000, \u20a625,000 or \u20a650,000. Larger top-ups come with bonus credit: 2% extra on \u20a625,000 and 5% extra on \u20a650,000. Credit is prepaid, so you only ever spend what you have added."],
 ];
 
 const AUDIENCE = ["Coaches", "Counsellors", "Clinics", "Consultants", "Schools", "Agencies"];
@@ -127,7 +134,7 @@ const CARDS = [
 const FAQ = [
   [
     "Does it cost extra when WhatsApp sends messages?",
-    "WhatsApp charges per conversation for messages that you start. Each plan includes a starting allowance of these messages, and anything above it is billed at WhatsApp’s own price with no mark-up.",
+    "Yes. WhatsApp message fees are set by Meta, not by Opsra, and they are not part of the plan price. You pay them from a prepaid credit balance that you top up (from ₦5,000), and AI replies use that credit too. Booking messages are passed on at Meta’s price; marketing messages carry a small Opsra fee.",
   ],
   [
     "How long does set-up take?",
@@ -526,9 +533,24 @@ export default function OwnerLandingPage() {
               ))}
             </ul>
           </div>
+          <div className="ow-addons" id="usage-costs">
+            <h3>Billed separately, as you use it</h3>
+            <p className="ow-sub" style={{ margin: "0 0 12px" }}>
+              Your plan is a fixed monthly fee. WhatsApp messaging and AI replies are usage costs, so they are not part of the plan price.
+              They come out of a prepaid credit balance that you top up.
+            </p>
+            <ul style={{ flexDirection: "column", gap: 12 }}>
+              {USAGE.map(([n, d]) => (
+                <li key={n}><b>{n}</b> &middot; {d}</li>
+              ))}
+            </ul>
+            <p className="ow-sub" style={{ margin: "12px 0 0" }}>
+              A business that handles many bookings and conversations will spend more credit than a small one, because it sends more messages. You can see your balance and spend at any time and set a monthly limit.
+            </p>
+          </div>
           <p className="ow-fine">
-            Prices are in naira and may change before you start. WhatsApp charges per conversation for messages you start.
-            Each plan includes a starting allowance, and anything above it is billed at WhatsApp&rsquo;s own price with no mark-up.
+            Prices are in naira and may change before you start. Every plan includes 2 users (one admin and one staff member); extra users are &#8358;5,000 per month each.
+            WhatsApp message fees are set by Meta and paid from your credit balance, and AI replies also use credit. Domain and hosting fees, if you order a website, are billed separately.
           </p>
         </section>
 
