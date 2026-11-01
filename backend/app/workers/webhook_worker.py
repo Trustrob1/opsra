@@ -129,8 +129,16 @@ def process_inbound_webhook(payload: dict) -> None:
                     )
                 continue
 
-            # ── COEXIST-1: messages sent from the WhatsApp Business phone app ──
-            if field == "smb_message_echoes":
+            # ── COEXIST-1/2: coexistence webhooks (phone-app echoes, history, contacts) ──
+            if field == "account_update":
+                try:
+                    from app.services import phone_app_echo_service
+                    phone_app_echo_service.handle_account_update(value)
+                except Exception as exc:
+                    logger.warning("process_inbound_webhook: account_update error: %s", exc)
+                continue
+
+            if field in ("smb_message_echoes", "history", "smb_app_state_sync"):
                 try:
                     _pid = (value.get("metadata") or {}).get("phone_number_id") or ""
                     _oid = _lookup_org_by_phone_number_id(db, _pid) if _pid else None
@@ -141,10 +149,15 @@ def process_inbound_webhook(payload: dict) -> None:
                         if _row and not is_org_active(_row):
                             _write_dead_letter(db, _pid, "org_suspended", payload, org_id=_oid)
                         else:
-                            from app.services import phone_app_echo_service
-                            phone_app_echo_service.handle_echoes(db, _oid, value)
+                            from app.services import phone_app_echo_service as _pae
+                            if field == "smb_message_echoes":
+                                _pae.handle_echoes(db, _oid, value)
+                            elif field == "history":
+                                _pae.handle_history(db, _oid, value)
+                            else:
+                                _pae.handle_state_sync(db, _oid, value)
                 except Exception as exc:
-                    logger.warning("process_inbound_webhook: echo error: %s", exc)
+                    logger.warning("process_inbound_webhook: %s error: %s", field, exc)
                     sentry_sdk.capture_exception(exc)
                 continue
 
