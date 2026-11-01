@@ -12,7 +12,7 @@
  */
 import React from "react";
 
-const PRIVACY_EMAIL = "info@opsra.com"; // Replace per org in production
+const PRIVACY_EMAIL = "trustrobert34@gmail.com";
 
 export default function PrivacyPolicy() {
   return (
@@ -145,6 +145,10 @@ export default function PrivacyPolicy() {
         <p>
           We will respond to all verified requests within <strong>30 days</strong> in
           accordance with NDPR requirements.
+        </p>
+        <p>
+          To ask for your data to be deleted, see{" "}
+          <a href="/data-deletion" style={{ color: "#4f46e5" }}>how to request deletion</a>.
         </p>
       </Section>
 

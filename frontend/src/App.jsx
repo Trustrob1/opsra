@@ -56,6 +56,7 @@ import OnboardingChecklist from './modules/onboarding/OnboardingChecklist'
 import IOSInstallBanner from './components/IOSInstallBanner'
 import { getBriefing } from './services/assistant.service'
 import PrivacyPolicy from './pages/PrivacyPolicy'
+import DataDeletion from './pages/DataDeletion'
 import CreateOrg from "./modules/superadmin/CreateOrg.jsx"
 import SuperadminShell from "./modules/superadmin/SuperadminShell.jsx"   // ACCOUNT-PLANS AP-8
 import { getPlatformStatus } from "./services/accountPlan.service"      // ACCOUNT-PLANS AP-8
@@ -180,6 +181,7 @@ export default function App() {
 
   if (window.location.pathname.startsWith('/catalog/') || window.location.pathname.startsWith('/shop/')) return <PublicCatalogShell />   // STORE-5: /shop/ is the short link
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />
+  if (window.location.pathname === '/data-deletion') return <DataDeletion />
   if (window.location.pathname.startsWith('/owner-dashboard/')) return <OwnerDashboardPage />
   if (window.location.pathname === '/terms') return <TermsOfService />
   if (window.location.pathname === '/auth/update-password') return <UpdatePasswordScreen />
