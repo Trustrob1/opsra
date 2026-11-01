@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react'
 import { verifyOwnerDashboardPin } from '../services/performance.service'
 import OwnerDashboardContent from './OwnerDashboardContent'
+import OpsraMark from '../components/OpsraMark'
 
 const SESSION_KEY = 'owner_dash_session'
 
@@ -94,7 +95,7 @@ export default function OwnerDashboardPage() {
     <div style={SHELL}>
       <div style={CARD}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
-          <div style={{ width: 40, height: 40, background: '#01919E', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: 'white' }}>O</div>
+          <OpsraMark size={40} />
           <div>
             <div style={{ fontWeight: 700, fontSize: 18, color: '#0f2535' }}>Opsra</div>
             <div style={{ fontSize: 11, color: '#6b7280', letterSpacing: '0.8px', textTransform: 'uppercase' }}>Owner Dashboard</div>

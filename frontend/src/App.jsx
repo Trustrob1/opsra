@@ -75,6 +75,7 @@ import SitesModule from './modules/sites/SitesModule'                   // SITE-
 import BillingModule from './modules/billing/BillingModule'             // ACCOUNT-PLANS AP-3
 import BillingBanner from './modules/billing/BillingBanner'             // ACCOUNT-PLANS AP-3
 import PlanNotice from './modules/billing/PlanNotice'                   // ACCOUNT-PLANS AP-6
+import OpsraMark from './components/OpsraMark'
 import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
@@ -328,7 +329,7 @@ function UpdatePasswordScreen() {
       <div style={{ background: ds.dark2, border: '1px solid #1e3a4f', borderRadius: 16, padding: '48px 44px', width: '100%', maxWidth: 420, boxShadow: '0 32px 80px rgba(0,0,0,0.5)' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
-          <div style={{ width: 44, height: 44, background: ds.teal, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 20, color: 'white' }}>O</div>
+          <OpsraMark size={44} />
           <div>
             <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: 0 }}>Opsra</p>
             <p style={{ fontSize: 11, color: '#6B8FA0', letterSpacing: '1px', textTransform: 'uppercase', margin: 0 }}>AI Growth System</p>
@@ -529,7 +530,7 @@ function LoginScreen({ onAuth }) {
         boxShadow:    '0 32px 80px rgba(0,0,0,0.5)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
-          <div style={{ width: 44, height: 44, background: ds.teal, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 20, color: 'white' }}>O</div>
+          <OpsraMark size={44} />
           <div>
             <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: 0 }}>Opsra</p>
             <p style={{ fontSize: 11, color: '#6B8FA0', letterSpacing: '1px', textTransform: 'uppercase', margin: 0 }}>AI Growth System</p>
@@ -865,7 +866,7 @@ function AppShell() {
       {isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, background: ds.teal, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: 'white' }}>O</div>
+            <OpsraMark size={32} />
             <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>Opsra</span>
           </div>
           <button
@@ -1052,14 +1053,14 @@ function AppShell() {
               aria-label="Open menu"
             ><Menu size={20} /></button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white', flex: 1 }}>
-              <div style={{ width: 28, height: 28, background: ds.teal, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'white' }}>O</div>
+              <OpsraMark size={28} />
               Opsra
             </div>
           </>
         ) : (
           /* Desktop: logo */
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>
-            <div style={{ width: 32, height: 32, background: ds.teal, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: 'white' }}>O</div>
+            <OpsraMark size={32} />
             Opsra
             <span style={{ background: ds.teal, color: 'white', fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.8px', marginLeft: 4 }}>Leads</span>
           </div>

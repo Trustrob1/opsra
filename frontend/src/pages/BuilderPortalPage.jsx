@@ -59,6 +59,7 @@ import HostSitesView from '../modules/sites/HostSitesView'             // HOST-1
 import PricingView from '../modules/sites/PricingView'                 // UI-2
 import { useIsMobile } from '../hooks/useIsMobile'
 import { ds } from '../utils/ds'               // the same colours and logo block as the main Opsra top bar
+import OpsraMark from '../components/OpsraMark'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -218,7 +219,7 @@ function Shell({ builder, view, setView, onBack, onLogOut, showNav, isMobile, ch
   const go = (v) => { if (v !== 'account') onBack(); setView(v) }
   const logo = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>
-      <div aria-hidden="true" style={{ width: isMobile ? 28 : 32, height: isMobile ? 28 : 32, background: ds.teal, borderRadius: isMobile ? 6 : 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 12 : 14, fontWeight: 800, color: 'white' }}>O</div>
+      <OpsraMark size={isMobile ? 28 : 32} />
       Opsra
     </div>
   )
