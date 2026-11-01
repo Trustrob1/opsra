@@ -85,6 +85,11 @@ def _rep_replied_recently(db, org_id: str, lead_id: Optional[str], customer_id: 
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         rows = (db.table("whatsapp_messages").select("id").eq("org_id", org_id).eq(col, val).eq("direction", "outbound")
                 .not_.is_("sent_by", "null").gte("created_at", cutoff).limit(1).execute().data or [])
+        if rows:
+            return True
+        # COEXIST-1: a reply typed in the WhatsApp Business phone app also counts as a rep reply
+        rows = (db.table("whatsapp_messages").select("id").eq("org_id", org_id).eq(col, val).eq("direction", "outbound")
+                .eq("meta_category", "phone_app").gte("created_at", cutoff).limit(1).execute().data or [])
         return bool(rows)
     except Exception:
         return False

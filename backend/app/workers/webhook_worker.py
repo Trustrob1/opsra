@@ -129,6 +129,25 @@ def process_inbound_webhook(payload: dict) -> None:
                     )
                 continue
 
+            # ── COEXIST-1: messages sent from the WhatsApp Business phone app ──
+            if field == "smb_message_echoes":
+                try:
+                    _pid = (value.get("metadata") or {}).get("phone_number_id") or ""
+                    _oid = _lookup_org_by_phone_number_id(db, _pid) if _pid else None
+                    if not _oid:
+                        _write_dead_letter(db, _pid, "org_not_found", payload)
+                    else:
+                        _row = _fetch_org_row(db, _oid)
+                        if _row and not is_org_active(_row):
+                            _write_dead_letter(db, _pid, "org_suspended", payload, org_id=_oid)
+                        else:
+                            from app.services import phone_app_echo_service
+                            phone_app_echo_service.handle_echoes(db, _oid, value)
+                except Exception as exc:
+                    logger.warning("process_inbound_webhook: echo error: %s", exc)
+                    sentry_sdk.capture_exception(exc)
+                continue
+
             if field != "messages":
                 continue
 
