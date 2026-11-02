@@ -34,18 +34,19 @@ const DESC =
 
 const PLANS = [
   {
-    key: "starter",
-    name: "Starter",
+    key: "chatbasic",
+    name: "Chat Basic",
     line: "Never miss an enquiry",
-    monthly: 50000,
+    monthly: 40000,
     lead: "Included",
     items: [
-      "Contact form on your website with an instant reply",
-      "New WhatsApp messages saved as leads, with name and number",
-      "See which page, product or button each lead came from",
-      "An alert when a lead has waited too long for a reply",
       "A WhatsApp menu with set answers to common questions",
-      "A simple page where you see all your leads",
+      "New WhatsApp messages saved as leads, with name, number and source",
+      "A simple page to view and download your leads",
+      "A shared inbox, so 2 people can reply together",
+      "An alert when a lead has waited too long for a reply",
+      "AI answers from your own information (100 a month)",
+      "Your own WhatsApp number",
     ],
   },
   {
@@ -54,46 +55,68 @@ const PLANS = [
     line: "Turn more enquiries into sales",
     monthly: 100000,
     suggested: true,
-    lead: "Everything in Starter, plus",
+    lead: "Everything in Chat Basic, plus",
     items: [
-      "Answers to common questions, written from your own information (monthly message limit applies)",
+      "CRM to manage every lead and customer in one place",
       "A few questions asked to each new lead, then scored hot, warm or cold",
+      "AI answers from your own information (1,000 a month)",
       "Follow-up messages to people who go quiet",
       "Payment links sent inside the chat",
-      "Your own WhatsApp number",
-      "CRM to manage every lead and customer in one place",
       "A product catalog for your products and prices",
+      "Performance Hub and Reports",
+      "3 users included",
+      "\u20a62,000 of credit included every month",
     ],
   },
   {
-    key: "established",
-    name: "Established",
+    key: "essential",
+    name: "Essential",
     line: "Keep customers and run a team",
     monthly: 150000,
     lead: "Everything in Growth, plus",
     items: [
-      "Both the product catalog and booking with reminders (500 bookings a month included)",
+      "AI lead management, to keep every lead moving",
+      "Business Activities and task management for your team",
       "Bulk WhatsApp messaging to many customers at once, with opt-outs handled",
+      "Booking management with reminders (500 bookings a month included)",
       "Review and repeat-purchase reminders",
       "A weekly summary of leads and sales sent to your WhatsApp",
-      "Several staff replying from one shared inbox, with tasks and call logs",
+      "5 users included",
+      "\u20a67,500 of credit included every month",
+    ],
+  },
+  {
+    key: "scale",
+    name: "Scale",
+    line: "Many people, one system",
+    monthly: 300000,
+    lead: "Everything in Essential, plus",
+    items: [
+      "Up to 3 WhatsApp numbers on one account",
+      "10 users included, with a role for each person",
+      "Support tickets included",
+      "Higher monthly limits for AI replies, bulk messages and bookings",
+      "Shopify, Google Calendar and Calendly connections",
+      "Priority support and a named person for your set-up",
+      "\u20a615,000 of credit included every month",
     ],
   },
 ];
 
 const ADDONS = [
-  ["Booking with reminders", "\u20a625,000", "per month", "Includes 100 bookings a month, then \u20a6100 for each extra. Included in Established (500 a month)."],
-  ["Support tickets", "\u20a615,000", "per month", ""],
-  ["Extra user", "\u20a65,000", "per month, each", "2 users are included in every plan"],
-  ["Extra WhatsApp number", "\u20a610,000", "per month", ""],
+  ["Booking with reminders", "\u20a625,000", "per month", "Includes 100 bookings a month, then \u20a6100 for each extra. Included in Essential (500 a month) and Scale."],
+  ["Support tickets", "\u20a615,000", "per month", "Included in Scale"],
+  ["Extra user", "\u20a65,000", "per month, each", "Chat Basic includes 2 users, Growth 3, Essential 5 and Scale 10"],
+  ["Extra WhatsApp number", "\u20a610,000", "per month", "Up to 3 numbers are included in Scale"],
   ["Paid event or class funnel", "\u20a650,000", "per event", ""],
 ];
 
 // Costs billed on top of the plan. They come out of a prepaid credit balance the business tops up.
 const CREDIT_USES = [
-  ["Confirmations and reminders", "Booking messages to your clients", "At Meta\u2019s price", "blue", "Meta\u2019s price"],
-  ["Broadcasts and follow-ups", "Marketing messages cost more with Meta", "Meta\u2019s price + small fee", "purple", "Meta\u2019s price + fee"],
-  ["AI replies", "Each reply the AI writes for you", "Small amount per reply", "grey", "Small credit each"],
+  ["AI replies", "Each reply the AI writes for you", "About \u20a611 each", "grey", "\u20a611"],
+  ["Booking confirmations and reminders", "Includes the WhatsApp fee", "\u20a617 each", "blue", "\u20a617"],
+  ["Follow-ups and broadcasts", "Marketing messages, WhatsApp fee included", "\u20a6100 each", "purple", "\u20a6100"],
+  ["Replies to customers who message you", "Inside the 24 hours after they write", "Free", "green", "Free"],
 ];
 const CREDIT_PACKS = [[5000, 0, "\u20a65k"], [10000, 0, "\u20a610k"], [25000, 2, "\u20a625k"], [50000, 5, "\u20a650k"]];
 
@@ -142,15 +165,15 @@ const CARDS = [
 const FAQ = [
   [
     "Is there a yearly plan?",
-    "Yes. Pay for a year at once and you get 2 months free: Starter is \u20a6500,000, Growth \u20a61,000,000 and Established \u20a61,500,000 for the year. Extra users, add-ons and credit are billed separately.",
+    "Yes. Pay for a year at once and you get 2 months free: Chat Basic is \u20a6400,000, Growth \u20a61,000,000, Essential \u20a61,500,000 and Scale \u20a63,000,000 for the year. Extra users, add-ons and top-up credit are billed separately.",
   ],
   [
     "Does it cost extra when WhatsApp sends messages?",
-    "Yes. WhatsApp message fees are set by Meta, not by Opsra, and they are not part of the plan price. You pay them from a prepaid credit balance that you top up (from ₦5,000), and AI replies use that credit too. Booking messages are passed on at Meta’s price; marketing messages carry a small Opsra fee.",
+    "Yes, messages and AI replies run on a prepaid credit balance, with one price for each action (see the list above) and WhatsApp\u2019s fee already inside it. Growth, Essential and Scale include credit every month, used first, and it expires at the end of the month. You can top up any time, from ₦5,000.",
   ],
   [
     "How long does set-up take?",
-    "A full set-up takes about a week. Growth and Established also need Meta to approve your own WhatsApp number, and that can take longer.",
+    "A full set-up takes about a week. Every plan uses your own WhatsApp number, and Meta has to approve it first, which can take longer.",
   ],
   [
     "What do I need to start?",
@@ -621,11 +644,11 @@ export default function OwnerLandingPage() {
             <div className="ow-credit-l">
               <p className="ow-credit-eye">Billed separately</p>
               <h3>The plan is a fixed fee. Messages and AI run on credit.</h3>
-              <p className="ow-credit-sub ow-d">WhatsApp messaging and AI replies are usage costs, so they are not part of the plan price. You top up a prepaid balance and they come out of it.</p>
+              <p className="ow-credit-sub ow-d">One balance pays for AI replies and WhatsApp messages, at one price for each. Growth, Essential and Scale include credit every month, and you top up when you need more.</p>
               <p className="ow-credit-sub ow-m">These usage costs are not in the plan price. You top up a prepaid balance and they come out of it.</p>
               <ol className="ow-credit-steps">
                 <li><span>1</span>Top up credit, from {naira(5000)}</li>
-                <li><span>2</span>Messages and AI replies draw from it</li>
+                <li><span>2</span>Messages and AI replies draw from it, using your plan&rsquo;s monthly credit first</li>
                 <li><span>3</span>Watch your balance, set a monthly limit, top up when you need to</li>
               </ol>
             </div>
@@ -653,8 +676,8 @@ export default function OwnerLandingPage() {
             </div>
           </div>
           <p className="ow-fine">
-            Prices are in naira and may change before you start. Every plan includes 2 users (one admin and one staff member); extra users are &#8358;5,000 per month each.
-            WhatsApp message fees are set by Meta and paid from your credit balance, and AI replies also use credit. Domain and hosting fees, if you order a website, are billed separately.
+            Prices are in naira and may change before you start. Users included: Chat Basic 2, Growth 3, Essential 5 and Scale 10; extra users are &#8358;5,000 per month each.
+            Messages and AI replies are paid from your credit balance at the prices above, which include WhatsApp&rsquo;s fees. Monthly plan credit expires at the end of the month. Domain and hosting fees, if you order a website, are billed separately.
           </p>
         </section>
 

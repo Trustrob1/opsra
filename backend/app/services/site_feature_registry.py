@@ -105,8 +105,8 @@ DEFAULT_TIER_FEATURES = {
     "capture": list(_CAPTURE),
     "convert": _CAPTURE + _CONVERT,
     "grow": _CAPTURE + _CONVERT + ["selling_catalog", "selling_booking"] + _GROW,
-    # Scale = everything in Grow plus support tickets (included instead of the add-on).
-    "scale": _CAPTURE + _CONVERT + ["selling_catalog", "selling_booking"] + _GROW + ["support_tickets"],
+    # Scale = everything in Grow plus support tickets and extra WhatsApp numbers (included instead of the add-ons).
+    "scale": _CAPTURE + _CONVERT + ["selling_catalog", "selling_booking"] + _GROW + ["support_tickets", "extra_wa_number"],
     "automate": ["wa_leads", "wa_menu", "speed_alerts", "ai_assistant", "own_wa_number", "webchat_basic", "knowledge_base",
                  "leads_download", "multi_rep_inbox"],
 }

@@ -411,7 +411,7 @@ def test_overview_with_nothing_is_all_zero_and_ignores_deleted_sites():
 def test_plans_1_scale_tier_contains_everything_in_grow_plus_tickets():
     cfg = ent.get_config({})
     gro, sca = (set(cfg["tiers"][k]["features"]) for k in ("grow", "scale"))
-    assert gro < sca and sca - gro == {"support_tickets"}
+    assert gro < sca and sca - gro == {"support_tickets", "extra_wa_number"}
     assert cfg["tiers"]["scale"]["wa_only"] is False and cfg["tiers"]["scale"]["sellable"] is False
 
 
