@@ -5,7 +5,7 @@
  */
 import React from "react";
 
-const PRIVACY_EMAIL = "trustrobert34@gmail.com";
+const PRIVACY_EMAIL = "info@opsra.com.ng";
 
 export default function DataDeletion() {
   return (

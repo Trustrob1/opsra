@@ -330,6 +330,7 @@ export default function OwnerLandingPage() {
               <a href="#use-cases">Use cases</a>
               <a href="#plans">Pricing</a>
               <a href="#questions">Questions</a>
+              <a href="/">Log in</a>
               <a className="ow-btn ow-btn-white ow-sm" href={walkthrough} target="_blank" rel="noopener noreferrer">Book a demo</a>
             </nav>
           </div>
@@ -724,6 +725,7 @@ export default function OwnerLandingPage() {
             </div>
             <div>
               <b>Company</b>
+              <a href="/">Log in to Opsra</a>
               <a href={walkthrough} target="_blank" rel="noopener noreferrer">Book a walkthrough</a>
               <a href={demo} target="_blank" rel="noopener noreferrer">Try the demo</a>
             </div>
