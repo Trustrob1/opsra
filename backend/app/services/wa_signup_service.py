@@ -36,7 +36,7 @@ PER_IP_HOUR = 5
 PER_EMAIL_HOUR = 3
 PER_PHONE_HOUR = 3
 TIER_KEY = "automate"
-DEFAULTS = {"is_open": False, "trial_days": 7, "starter_credit_ngn": 0, "daily_cap": 50}
+DEFAULTS = {"is_open": False, "trial_days": 7, "starter_credit_ngn": 0, "daily_cap": 50, "alert_email": "trustrobert34@gmail.com"}
 _EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s.]{2,}$")
 
 
@@ -90,6 +90,11 @@ def save_settings(db: Any, data: dict) -> dict:
             clean[key] = v
     if data.get("is_open") is not None:
         clean["is_open"] = bool(data["is_open"])
+    if data.get("alert_email") is not None:
+        mail = str(data["alert_email"]).strip().lower()
+        if mail and (not _EMAIL_RE.match(mail) or len(mail) > 255):
+            raise SignupError("Enter a valid email address for alerts, or leave it empty to turn the email off.")
+        clean["alert_email"] = mail
     if not clean:
         return get_settings(db)
     clean["updated_at"] = _iso()
@@ -255,9 +260,10 @@ def _start_trial(db: Any, org_id: str, days: int, now: datetime) -> None:
 
 
 def _open_wallet(db: Any, org_id: str, starter_ngn: int) -> None:
-    """Metering ON from day one. The optional starter credit is idempotent (reference wa_signup_<org>)."""
+    """Metering ON from day one. The optional starter credit is idempotent (reference wa_signup_<org>).
+    PLANS-3b: Opsra pays Meta and the business pays Opsra from its one credit balance (Trust, 2 Nov 2026)."""
     try:
-        db.table("credit_wallets").upsert({"org_id": org_id, "metering_enabled": True, "meta_billing": "client_direct"}, on_conflict="org_id").execute()
+        db.table("credit_wallets").upsert({"org_id": org_id, "metering_enabled": True, "meta_billing": "opsra_credit_line"}, on_conflict="org_id").execute()
     except Exception as exc:
         logger.error("wa_signup: wallet not opened org=%s: %s", org_id, exc)
     if starter_ngn and starter_ngn > 0:

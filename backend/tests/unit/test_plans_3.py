@@ -112,3 +112,17 @@ def test_month_end_wraps_the_year():
 def test_grant_for_org_itself_never_raises(monkeypatch):
     monkeypatch.setattr(w.acc, "_compute", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     assert w.grant_for_org(object(), BIZ, NOW) is None
+
+
+def test_new_signup_wallets_let_opsra_pay_meta():
+    from app.services import wa_signup_service as su
+    seen = []
+
+    class _T:
+        def upsert(self, row, **k): seen.append(row); return self
+        def execute(self): return self
+
+    class _D:
+        def table(self, name): return _T()
+    su._open_wallet(_D(), BIZ, 0)
+    assert seen == [{"org_id": BIZ, "metering_enabled": True, "meta_billing": "opsra_credit_line"}]
