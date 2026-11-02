@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 # Set to True to turn them back on. Notifications are unaffected.
 SYSTEM_TASKS_ENABLED = False
 
+# NOTIF-OFF-1: the weekly "Lead needs attention" notification was ~74% of all notifications and
+# was never read. While it and the task above are both off, the nightly lead-aging check does no work at all.
+LEAD_AGING_NOTIFICATIONS_ENABLED = False
+
 
 def _insert_task(db, row: dict) -> None:
     if SYSTEM_TASKS_ENABLED:
@@ -435,6 +439,9 @@ def run_lead_aging_checker(self):
     Daily 08:00 WAT — Flag leads with no activity for 3+ days.
     Creates an in-app notification for the assigned rep.
     """
+    if not LEAD_AGING_NOTIFICATIONS_ENABLED and not SYSTEM_TASKS_ENABLED:
+        logger.info("churn_worker: run_lead_aging_checker skipped (notifications and tasks are switched off).")
+        return
     logger.info("churn_worker: run_lead_aging_checker starting.")
     db = get_supabase()
     flagged = 0
@@ -470,29 +477,30 @@ def run_lead_aging_checker(self):
                         continue
                     try:
                         # Notification
-                        db.table("notifications").insert(
-                            {
-                                "org_id": org_id,
-                                "user_id": assigned_to,
-                                "title": f"Lead needs attention: {lead.get('full_name', 'Unknown')}",
-                                "body": "No activity recorded for 3+ days. Please follow up.",
-                                "type": "lead_aging",
-                                "resource_type": "lead",
-                                "resource_id": lead["id"],
-                                "is_read": False,
-                                "created_at": _now_iso(),
-                            }
-                        ).execute()
-                        # PWA-1: push (S14)
-                        try:
-                            from app.routers.push_notifications import send_push_notification
-                            send_push_notification(
-                                db=db, user_id=assigned_to,
-                                title=f"Lead needs attention: {lead.get('full_name', 'Unknown')}",
-                                body="No activity recorded for 3+ days. Please follow up.",
-                            )
-                        except Exception:
-                            pass
+                        if LEAD_AGING_NOTIFICATIONS_ENABLED:
+                            db.table("notifications").insert(
+                                {
+                                    "org_id": org_id,
+                                    "user_id": assigned_to,
+                                    "title": f"Lead needs attention: {lead.get('full_name', 'Unknown')}",
+                                    "body": "No activity recorded for 3+ days. Please follow up.",
+                                    "type": "lead_aging",
+                                    "resource_type": "lead",
+                                    "resource_id": lead["id"],
+                                    "is_read": False,
+                                    "created_at": _now_iso(),
+                                }
+                            ).execute()
+                            # PWA-1: push (S14)
+                            try:
+                                from app.routers.push_notifications import send_push_notification
+                                send_push_notification(
+                                    db=db, user_id=assigned_to,
+                                    title=f"Lead needs attention: {lead.get('full_name', 'Unknown')}",
+                                    body="No activity recorded for 3+ days. Please follow up.",
+                                )
+                            except Exception:
+                                pass
                         # Task — system_event so it appears on the Task Board
                         _insert_task(db, {
                             "org_id":           org_id,

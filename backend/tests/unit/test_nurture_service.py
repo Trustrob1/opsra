@@ -160,8 +160,10 @@ def test_graduate_stale_lead_timeline_contains_reason():
     assert "rep never contacted" in timeline_inserts[0]["description"]
 
 
-def test_graduate_stale_lead_notifies_rep_when_assigned():
+def test_graduate_stale_lead_notifies_rep_when_assigned(monkeypatch):
+    from app.services import nurture_service
     from app.services.nurture_service import graduate_stale_lead
+    monkeypatch.setattr(nurture_service, "NURTURE_NOTIFICATIONS_ENABLED", True)
     db, chain = _make_db()
     lead_data = {"stage": "new", "assigned_to": USER_ID}
 
@@ -177,9 +179,22 @@ def test_graduate_stale_lead_notifies_rep_when_assigned():
     assert any(n["user_id"] == USER_ID for n in notif_inserts)
 
 
-def test_graduate_stale_lead_always_notifies_managers():
-    """Managers always notified regardless of reason."""
+def test_graduate_stale_lead_sends_no_notifications_while_switched_off():
+    """NOTIF-OFF-1: the lead still graduates, but nobody is notified."""
     from app.services.nurture_service import graduate_stale_lead
+    db, chain = _make_db()
+    res = graduate_stale_lead(db, ORG_ID, LEAD_ID, {"stage": "new", "assigned_to": USER_ID}, 14,
+                              graduation_reason="lead_unresponsive", now_ts=NOW_TS)
+    notif_inserts = [c[0][0] for c in db.table.return_value.insert.call_args_list
+                     if c[0][0].get("type") == "nurture_graduated"]
+    assert res["graduated"] is True and notif_inserts == []
+
+
+def test_graduate_stale_lead_always_notifies_managers(monkeypatch):
+    """Managers always notified regardless of reason."""
+    from app.services import nurture_service
+    from app.services.nurture_service import graduate_stale_lead
+    monkeypatch.setattr(nurture_service, "NURTURE_NOTIFICATIONS_ENABLED", True)
     db, chain = _make_db()
     lead_data = {"stage": "new", "assigned_to": None}
 

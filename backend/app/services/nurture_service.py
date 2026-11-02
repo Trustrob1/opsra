@@ -29,6 +29,10 @@ load_dotenv()  # Pattern 29
 
 logger = logging.getLogger(__name__)
 
+# NOTIF-OFF-1: "Lead moved to nurture" notifications were ~12% of all notifications and almost never read.
+# The lead still moves to nurture and the timeline still records it; only the notification is off.
+NURTURE_NOTIFICATIONS_ENABLED = False
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -407,7 +411,7 @@ def graduate_stale_lead(
     notified: set[str] = set()
 
     # Notify assigned rep
-    if assigned_to:
+    if NURTURE_NOTIFICATIONS_ENABLED and assigned_to:
         _notify_user(
             db=db, org_id=org_id, user_id=assigned_to,
             title=notif_title,
@@ -419,7 +423,7 @@ def graduate_stale_lead(
         notified.add(assigned_to)
 
     # Always notify managers — they need visibility regardless of reason
-    for mgr_id in _get_manager_ids(db, org_id):
+    for mgr_id in (_get_manager_ids(db, org_id) if NURTURE_NOTIFICATIONS_ENABLED else []):
         if mgr_id not in notified:
             _notify_user(
                 db=db, org_id=org_id, user_id=mgr_id,

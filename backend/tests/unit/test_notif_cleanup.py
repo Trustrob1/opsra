@@ -115,8 +115,9 @@ class _Self:
         raise RuntimeError("retry")
 
 
-def _aging(db, monkeypatch):
+def _aging(db, monkeypatch, notify=True):
     monkeypatch.setattr(churn, "get_supabase", lambda: db)
+    monkeypatch.setattr(churn, "LEAD_AGING_NOTIFICATIONS_ENABLED", notify)  # NOTIF-OFF-1: off in production
     churn.run_lead_aging_checker.run.__wrapped__(_Self()) if hasattr(churn.run_lead_aging_checker.run, "__wrapped__") else churn.run_lead_aging_checker.run.__func__(_Self())
 
 
@@ -133,6 +134,13 @@ def test_a_stale_lead_is_flagged_once_not_every_day(monkeypatch):
     # TASKS-OFF-1: the nightly check still notifies once, but no longer writes a task
     assert len(db.tables["notifications"]) == 1 and len(db.tables["tasks"]) == 0
     assert db.tables["leads"][0]["aging_notified_at"]
+
+
+def test_aging_check_does_nothing_while_switched_off(monkeypatch):
+    db = _aging_db()
+    _aging(db, monkeypatch, notify=False)
+    assert db.tables["notifications"] == [] and db.tables["tasks"] == []
+    assert not db.tables["leads"][0].get("aging_notified_at")
 
 
 def test_system_tasks_can_be_switched_back_on(monkeypatch):
