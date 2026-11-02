@@ -12,10 +12,11 @@ import {
 import { naira } from '../../services/credits.service'
 import CreditsPanel from '../admin/CreditsPanel'
 import { ds } from '../../utils/ds'
+import { B, panel, panelTitle, panelSub, button, tile, tileDark, tileLabel, tileValue, emptyBox, BILLING_CSS } from './billingUi'
 
-const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
-const h3 = { fontSize: 15, fontWeight: 600, color: ds.dark, margin: '0 0 10px', fontFamily: ds.fontDm }
-const btn = (primary) => ({ minHeight: 44, padding: '8px 16px', borderRadius: ds.radius.sm, border: primary ? 0 : `1px solid ${ds.teal}`, background: primary ? ds.teal : '#fff', color: primary ? '#fff' : ds.teal, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: ds.fontDm })
+const card = panel
+const h3 = { ...panelTitle, margin: '0 0 12px' }
+const btn = button
 const lsGet = () => { try { return localStorage.getItem(PENDING_PLAN_KEY) } catch { return null } }
 const lsSet = (v) => { try { v ? localStorage.setItem(PENDING_PLAN_KEY, v) : localStorage.removeItem(PENDING_PLAN_KEY) } catch { /* private mode */ } }
 const day = (v) => (v ? String(v).slice(0, 10) : '—')
@@ -25,13 +26,10 @@ const ORDER_KIND = { seats: 'Extra users', new: 'New plan', renewal: 'Renewal', 
 const CAP_LABEL = { ai_messages: 'AI replies this month', bulk_recipients: 'Bulk message recipients this month', bookings: 'Bookings this month' }
 
 const FONT = ds.fontSyne
-const TIER_LOOK = {
-  // Capture sits quiet on white, Convert gets a teal edge, Grow is the dark card: the ladder reads at a glance.
-  capture: { bg: '#fff', fg: ds.dark, sub: ds.gray, edge: ds.border, tick: ds.teal, tickBg: ds.mint },
-  convert: { bg: '#fff', fg: ds.dark, sub: ds.gray, edge: ds.teal, tick: ds.teal, tickBg: ds.mint },
-  grow: { bg: ds.dark, fg: '#fff', sub: '#9FB6C4', edge: ds.dark, tick: '#fff', tickBg: 'rgba(255,255,255,0.14)' },
-}
-const lookOf = (key) => TIER_LOOK[key] || TIER_LOOK.capture
+const LIGHT_LOOK = { bg: '#fff', fg: ds.dark, sub: B.muted, edge: B.line, tick: ds.teal, tickBg: B.mint }
+const DARK_LOOK = { bg: B.deep, fg: '#fff', sub: '#B8D6D4', edge: B.deep, tick: B.tick, tickBg: 'rgba(255,255,255,0.14)' }
+// The business's own plan is the dark card, whichever tier it is.
+const lookOf = (plan) => (plan && plan.is_current ? DARK_LOOK : LIGHT_LOOK)
 const FEATURES_SHOWN = 6
 
 const STYLES = `
@@ -77,8 +75,8 @@ function PlanCard({ plan, index, plans, busy, onPay, interval = 'month' }) {
   const [pv, setPv] = useState(null)
   const [err, setErr] = useState('')
   const [all, setAll] = useState(false)
-  const look = lookOf(plan.key)
-  const dark = plan.key === 'grow'
+  const look = lookOf(plan)
+  const dark = !!plan.is_current
   const prev = index > 0 ? plans[index - 1] : null
   // Show only what this plan ADDS to the one below it, so the three cards compare at a glance.
   const prevSet = new Set(prev ? prev.includes : [])
@@ -100,11 +98,11 @@ function PlanCard({ plan, index, plans, busy, onPay, interval = 'month' }) {
   const cta = plan.is_current && action === 'renewal' ? 'Renew plan' : (ACTION[action] || 'Choose')
   return (
     <section className="bp-card" aria-label={`${plan.label} plan`} style={{
-      background: look.bg, color: look.fg, border: `${plan.key === 'convert' ? 2 : 1}px solid ${look.edge}`, borderRadius: ds.radius.xl,
-      padding: 22, display: 'flex', flexDirection: 'column', boxShadow: dark ? '0 10px 30px rgba(13,27,42,0.25)' : ds.cardShadow, position: 'relative',
+      background: look.bg, color: look.fg, border: `1px solid ${look.edge}`, borderRadius: 20,
+      padding: 26, display: 'flex', flexDirection: 'column', position: 'relative',
     }}>
       {plan.is_current && (
-        <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 999, background: dark ? 'rgba(255,255,255,0.16)' : ds.mint, color: dark ? '#fff' : ds.tealDark }}>Your plan</span>
+        <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 999, background: dark ? B.tick : B.mint, color: dark ? '#06302F' : ds.tealDark }}>Your plan</span>
       )}
       <h4 style={{ margin: 0, fontFamily: FONT, fontSize: 19, fontWeight: 600 }}>{plan.label}</h4>
       <div style={{ margin: '10px 0 16px', minHeight: 50 }}>
@@ -124,7 +122,7 @@ function PlanCard({ plan, index, plans, busy, onPay, interval = 'month' }) {
       </ul>
       {items.length > FEATURES_SHOWN && (
         <button type="button" className="bp-link" aria-expanded={all} onClick={() => setAll(!all)}
-          style={{ color: dark ? '#fff' : ds.teal, textAlign: 'left', marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          style={{ color: dark ? '#9FE3C8' : ds.teal, textAlign: 'left', marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           {all ? 'Show fewer' : `Show ${items.length - FEATURES_SHOWN} more`}
           <ChevronDown size={14} style={{ transform: all ? 'rotate(180deg)' : 'none' }} />
         </button>
@@ -154,7 +152,7 @@ function PlanCard({ plan, index, plans, busy, onPay, interval = 'month' }) {
                   : `Pay ${ngn(due)} for ${yearly ? '365' : '30'} days.`}
             </p>
             <button type="button" className="bp-cta" disabled={busy} onClick={() => onPay(plan, canCode ? code : '', yearly ? 'year' : 'month')}
-              style={{ width: '100%', minHeight: 46, borderRadius: ds.radius.md, border: 0, cursor: busy ? 'default' : 'pointer', fontWeight: 600, fontSize: 14.5, fontFamily: ds.fontDm,
+              style={{ width: '100%', minHeight: 44, borderRadius: 12, border: 0, cursor: busy ? 'default' : 'pointer', fontWeight: 600, fontSize: 14, fontFamily: ds.fontDm,
                 background: dark ? '#fff' : ds.teal, color: dark ? ds.dark : '#fff', opacity: busy ? 0.7 : 1 }}>
               {busy ? 'Please wait…' : cta}
             </button>
@@ -169,7 +167,7 @@ function PlanHero({ cur, enforced, periodDays, onCancelChange }) {
   const [open, setOpen] = useState(false)
   if (!cur) {
     return (
-      <div style={{ background: ds.mint, border: `1px solid ${ds.border}`, borderRadius: ds.radius.xl, padding: 22, marginBottom: 20 }}>
+      <div style={{ background: B.mint, border: `1px solid ${B.line}`, borderRadius: 20, padding: 26, marginBottom: 24 }}>
         <div style={{ fontFamily: FONT, fontSize: 18, fontWeight: 600, color: ds.dark }}>You are not on a paid plan</div>
         <p style={{ fontSize: 13.5, color: ds.gray, margin: '6px 0 0', maxWidth: 560 }}>
           {enforced ? 'Choose a plan below to switch your tools on.' : 'Everything in your account is on for now. Choose a plan below whenever you are ready.'}
@@ -180,13 +178,13 @@ function PlanHero({ cur, enforced, periodDays, onCancelChange }) {
   const [label, tone] = STATUS[cur.status] || [cur.status, '#9FB6C4']
   const paid = cur.source === 'paid'
   return (
-    <div style={{ background: ds.dark, color: '#fff', borderRadius: ds.radius.xl, padding: 24, marginBottom: 20, boxShadow: '0 10px 30px rgba(13,27,42,0.22)' }}>
+    <div style={{ background: B.deep, color: '#fff', borderRadius: 20, padding: 28, marginBottom: 24 }}>
       <div className="bp-hero">
         <div style={{ minWidth: 0 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 600, padding: '4px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.1)' }}>
             <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: cur.status === 'active' ? ds.tealLight : tone }} />{label}
           </span>
-          <div style={{ fontFamily: FONT, fontSize: 30, fontWeight: 700, margin: '12px 0 4px', letterSpacing: '-0.3px' }}>{cur.label}</div>
+          <div style={{ fontFamily: FONT, fontSize: 34, fontWeight: 700, margin: '14px 0 6px', letterSpacing: '-0.02em' }}>{cur.label}</div>
           <div style={{ fontSize: 14, color: '#9FB6C4' }}>
             {paid
               ? `${ngn(cur.monthly_ngn)} a month. ${cur.status === 'active' ? `Renews by ${day(cur.paid_until)}.` : `Ended on ${day(cur.paid_until)}.`}`
@@ -208,7 +206,7 @@ function PlanHero({ cur, enforced, periodDays, onCancelChange }) {
               </button>
               {open && (
                 <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '8px 18px', fontSize: 13.5 }}>
-                  {cur.includes.map((f) => <li key={f} style={{ display: 'flex', gap: 10 }}><Tick look={lookOf('grow')} /><span>{f}</span></li>)}
+                  {cur.includes.map((f) => <li key={f} style={{ display: 'flex', gap: 10 }}><Tick look={DARK_LOOK} /><span>{f}</span></li>)}
                 </ul>
               )}
             </div>
@@ -247,7 +245,7 @@ function PlanTab({ data, reload, setMsg }) {
           <div role="group" aria-label="Billing period" style={{ display: 'inline-flex', padding: 4, borderRadius: 999, background: '#fff', border: `1px solid ${ds.border}` }}>
             {[['month', 'Monthly'], ['year', freeMonths > 0 ? `Yearly · ${freeMonths} months free` : 'Yearly']].map(([k, label]) => (
               <button key={k} type="button" aria-pressed={interval === k} onClick={() => setInterval_(k)}
-                style={{ minHeight: 40, padding: '0 16px', borderRadius: 999, border: 0, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600,
+                style={{ minHeight: 32, padding: '0 16px', borderRadius: 999, border: 0, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, fontWeight: 600,
                   background: interval === k ? ds.teal : 'transparent', color: interval === k ? '#fff' : ds.dark }}>{label}</button>
             ))}
           </div>
@@ -261,9 +259,9 @@ function PlanTab({ data, reload, setMsg }) {
       {(data.addons || []).length > 0 && (
         <>
           <h3 style={{ ...h3, fontFamily: FONT, fontSize: 17, margin: '8px 0 12px' }}>Add what you need</h3>
-          <div style={{ ...card, padding: '4px 16px' }}>
+          <div style={{ ...card, padding: '8px 28px' }}>
             {data.addons.map((a, i) => (
-              <div key={a.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 0', borderTop: i ? `1px solid ${ds.border}` : 0 }}>
+              <div key={a.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '16px 0', borderTop: i ? `1px solid ${B.soft}` : 0 }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: ds.dark }}>{a.label}</div>
                   <div style={{ fontSize: 13, color: ds.gray }}>{ngn(a.monthly_ngn)} a month</div>
@@ -273,7 +271,7 @@ function PlanTab({ data, reload, setMsg }) {
                     </div>
                   )}
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: a.active || a.included ? ds.teal : ds.gray, textAlign: 'right' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, padding: '5px 12px', borderRadius: 999, background: a.active || a.included ? B.mint : B.soft, color: a.active || a.included ? ds.tealDark : B.muted, textAlign: 'right' }}>
                   {a.included ? 'Included in your plan' : a.active ? 'On' : 'Ask us to switch it on'}
                 </span>
               </div>
@@ -293,9 +291,9 @@ function UsageTab({ data }) {
       <div style={card}>
         <h3 style={h3}>Plan allowances this month</h3>
         {!data.enforced
-          ? <p style={{ fontSize: 13, color: ds.gray, margin: 0 }}>Allowances are not being counted for your account yet.</p>
+          ? <div style={emptyBox}><strong style={{ fontSize: 15, color: ds.dark }}>Allowances aren't being counted yet</strong><span>Once counting starts, your AI replies, bulk recipients and bookings show here against what your plan includes.</span></div>
           : rows.length === 0
-            ? <p style={{ fontSize: 13, color: ds.gray, margin: 0 }}>Your plan has no monthly allowances to track.</p>
+            ? <div style={emptyBox}><span>Your plan has no monthly allowances to track.</span></div>
             : rows.map(([k, v]) => {
                 const pct = Math.min(100, Math.round(((v.used || 0) / Math.max(v.cap, 1)) * 100))
                 return (
@@ -303,7 +301,7 @@ function UsageTab({ data }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: ds.dark }}>
                       <span>{CAP_LABEL[k] || k}</span><span>{(v.used || 0).toLocaleString()} of {v.cap.toLocaleString()}</span>
                     </div>
-                    <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} style={{ height: 8, background: '#EEF2F5', borderRadius: 4, marginTop: 4 }}>
+                    <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} style={{ height: 8, background: '#E3EEEC', borderRadius: 4, marginTop: 6 }}>
                       <div style={{ width: `${pct}%`, height: '100%', background: pct >= 90 ? ds.red : ds.teal, borderRadius: 4 }} />
                     </div>
                   </div>
@@ -319,14 +317,14 @@ function PaymentsTab({ data }) {
   return (
     <div style={card}>
       <h3 style={h3}>Plan payments</h3>
-      {data.orders.length === 0 ? <p style={{ fontSize: 13, color: ds.gray, margin: 0 }}>No plan payments yet.</p> : (
+      {data.orders.length === 0 ? <div style={emptyBox}><strong style={{ fontSize: 15, color: ds.dark }}>No plan payments yet</strong><span>When you pay for a plan or add users, the receipt shows up here.</span></div> : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ textAlign: 'left', color: ds.gray }}><th scope="col">Date</th><th scope="col">What</th><th scope="col" style={{ textAlign: 'right' }}>Amount</th><th scope="col" style={{ textAlign: 'right' }}>Status</th></tr></thead>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead><tr style={{ textAlign: 'left', color: B.muted, fontSize: 12.5 }}><th scope="col">Date</th><th scope="col">What</th><th scope="col" style={{ textAlign: 'right' }}>Amount</th><th scope="col" style={{ textAlign: 'right' }}>Status</th></tr></thead>
             <tbody>
               {data.orders.map((o) => (
-                <tr key={o.id} style={{ borderTop: `1px solid ${ds.border}` }}>
-                  <td style={{ padding: '6px 0' }}>{day(o.paid_at || o.created_at)}</td>
+                <tr key={o.id} style={{ borderTop: `1px solid ${B.soft}` }}>
+                  <td style={{ padding: '12px 0' }}>{day(o.paid_at || o.created_at)}</td>
                   <td>{ORDER_KIND[o.change_kind] || o.change_kind} · {o.plan_key}</td>
                   <td style={{ textAlign: 'right' }}>{naira(o.amount_kobo)}</td>
                   <td style={{ textAlign: 'right', color: o.status === 'paid' ? ds.teal : ds.gray }}>{o.status === 'paid' ? 'Paid' : o.status === 'pending' ? 'Not completed' : o.status === 'expired' ? 'Replaced' : 'Failed'}</td>
@@ -369,23 +367,23 @@ function TeamTab({ data, reload, setMsg, onOpenAdmin }) {
     try { await setNextSeats(next); setMsg('Saved. Your next renewal will use this number of extra users.'); reload() } catch (e) { setMsg(planError(e)) }
     setBusy(false)
   }
-  const stat = (label, value) => (
-    <div style={{ flex: '1 1 140px' }}>
-      <div style={{ fontSize: 12, color: ds.gray }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: ds.dark, fontFamily: ds.fontSyne }}>{value}</div>
+  const stat = (label, value, dark) => (
+    <div style={dark ? tileDark : tile}>
+      <div style={{ ...tileLabel, color: dark ? '#B8D6D4' : B.muted }}>{label}</div>
+      <div style={{ ...tileValue, color: dark ? '#fff' : ds.dark, fontSize: dark ? 44 : 28, lineHeight: 1 }}>{value}</div>
     </div>
   )
   return (
     <>
+      <div className="bl-bento">
+        {stat('Users now', t.used, true)}
+        {stat('Users your plan allows', t.enforced ? t.allowed : 'No limit')}
+        {stat('Included with every plan', t.included)}
+        {stat('Extra users bought', t.seats)}
+      </div>
       <div style={card}>
-        <h3 style={h3}>Users</h3>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          {stat('Users now', t.used)}
-          {stat('Users your plan allows', t.enforced ? t.allowed : 'No limit')}
-          {stat('Included with every plan', t.included)}
-          {stat('Extra users bought', t.seats)}
-        </div>
-        <p style={{ fontSize: 13, color: ds.gray, margin: '12px 0 0' }}>
+        <h3 style={{ ...panelTitle, marginBottom: 4 }}>Your team</h3>
+        <p style={{ ...panelSub, maxWidth: 640 }}>
           Every plan includes {t.included} users (an admin and one staff member). Each extra user is {ngn(t.price_ngn)} a month.
           {t.paid_until && t.seats > 0 ? ` Your extra users run until ${day(t.paid_until)} and renew with your plan.` : ''}
         </p>
@@ -397,7 +395,7 @@ function TeamTab({ data, reload, setMsg, onOpenAdmin }) {
           </div>
         )}
         {t.over_by > 0 && (
-          <div role="alert" style={{ marginTop: 12, padding: 12, borderRadius: ds.radius.sm, background: '#FFF4E5', color: ds.dark, fontSize: 13 }}>
+          <div role="alert" style={{ marginTop: 12, padding: '14px 16px', borderRadius: 14, background: '#FFF4E8', border: '1px solid #F2D3AE', color: '#5C3303', fontSize: 13.5, lineHeight: 1.5 }}>
             {t.seats_lapsed ? 'Your extra users have ended. ' : ''}You have {t.over_by} more user{t.over_by === 1 ? '' : 's'} than your plan allows. Nobody has been removed,
             but you cannot add new users until you buy extra users or renew.
           </div>
@@ -478,16 +476,21 @@ export default function BillingModule({ onOpenAdmin }) {
 
   if (denied) return <div style={{ padding: 20, color: ds.gray, fontFamily: ds.fontDm }}>Only the owner, an admin or an operations manager can see Billing.</div>
   return (
-    <div style={{ maxWidth: 1600, fontFamily: ds.fontDm }}>
-      <h2 style={{ fontSize: 22, color: ds.dark, margin: '0 0 4px' }}>Billing</h2>
-      <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 14px' }}>Your Opsra plan, what you have used, your credits and your payments.</p>
-      <div role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-        {TABS.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} style={btn(tab === id)} onClick={() => setTab(id)}>{label}</button>
-        ))}
+    <div style={{ maxWidth: 1100, margin: '0 auto', fontFamily: ds.fontDm }}>
+      <style>{BILLING_CSS}</style>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24 }}>
+        <div>
+          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: ds.dark, margin: 0 }}>Billing</h2>
+          <p style={{ fontSize: 13.5, color: B.muted, margin: '4px 0 0' }}>Your Opsra plan, what you have used, your credits and your payments.</p>
+        </div>
+        <div role="tablist" aria-label="Billing sections" className="bl-tabs">
+          {TABS.map(([id, label]) => (
+            <button key={id} type="button" role="tab" className="bl-tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>
+          ))}
+        </div>
       </div>
       {msg && tab !== 'credits' && <div role="status" style={{ ...card, padding: 12, color: ds.dark }}>{msg}</div>}
-      {tab === 'credits' && <CreditsPanel />}
+      {tab === 'credits' && <CreditsPanel embedded />}
       {tab !== 'credits' && !data && <div style={{ color: ds.gray, fontSize: 13 }}>{msg ? '' : 'Loading…'}</div>}
       {data && tab === 'plan' && <PlanTab data={data} reload={load} setMsg={setMsg} />}
       {data && tab === 'team' && <TeamTab data={data} reload={load} setMsg={setMsg} onOpenAdmin={onOpenAdmin} />}
