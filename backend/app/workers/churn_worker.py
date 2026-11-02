@@ -41,6 +41,15 @@ from app.routers.push_notifications import send_push_notification
 
 logger = logging.getLogger(__name__)
 
+# TASKS-OFF-1: the Task Board is not used, so workers no longer write automatic tasks.
+# Set to True to turn them back on. Notifications are unaffected.
+SYSTEM_TASKS_ENABLED = False
+
+
+def _insert_task(db, row: dict) -> None:
+    if SYSTEM_TASKS_ENABLED:
+        db.table("tasks").insert(row).execute()
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -246,7 +255,7 @@ def _create_churn_notification(
 
         # Task — one per escalation event, assigned to the rep
         try:
-            db.table("tasks").insert({
+            _insert_task(db, {
                 "org_id":           org_id,
                 "assigned_to":      assigned_to,
                 "title":            f"Churn intervention — {customer_name} ({new_risk} risk)",
@@ -258,7 +267,7 @@ def _create_churn_notification(
                 "status":           "open",
                 "created_at":       _now_iso(),
                 "updated_at":       _now_iso(),
-            }).execute()
+            })
         except Exception as exc:
             logger.warning("churn_worker: task creation failed for rep %s — %s", assigned_to, exc)
 
@@ -485,7 +494,7 @@ def run_lead_aging_checker(self):
                         except Exception:
                             pass
                         # Task — system_event so it appears on the Task Board
-                        db.table("tasks").insert({
+                        _insert_task(db, {
                             "org_id":           org_id,
                             "assigned_to":      assigned_to,
                             "title":            f"Follow up: {lead.get('full_name', 'Lead')} — no activity for 3+ days",
@@ -496,7 +505,7 @@ def run_lead_aging_checker(self):
                             "status":           "open",
                             "created_at":       _now_iso(),
                             "updated_at":       _now_iso(),
-                        }).execute()
+                        })
                         db.table("leads").update({"aging_notified_at": _now_iso()}).eq("id", lead["id"]).eq("org_id", org_id).execute()
                         flagged += 1
                     except Exception as exc:

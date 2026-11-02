@@ -32,6 +32,15 @@ from app.database import get_supabase  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+# TASKS-OFF-1: the Task Board is not used, so workers no longer write automatic tasks.
+# Set to True to turn them back on. Notifications are unaffected.
+SYSTEM_TASKS_ENABLED = False
+
+
+def _insert_task(db, row: dict) -> None:
+    if SYSTEM_TASKS_ENABLED:
+        db.table("tasks").insert(row).execute()
+
 _PRE_BREACH_WARN_MINUTES = 30
 _OPEN_STATUSES = ("open", "in_progress", "awaiting_customer")
 
@@ -118,7 +127,7 @@ def run_sla_monitor(self):
                             )
                             # Task — rep must action the breached ticket
                             try:
-                                db.table("tasks").insert({
+                                _insert_task(db, {
                                     "org_id":           org_id,
                                     "assigned_to":      assigned_to,
                                     "title":            f"SLA breached — resolve ticket: {ticket.get('title', ticket_id)}",
@@ -129,7 +138,7 @@ def run_sla_monitor(self):
                                     "status":           "open",
                                     "created_at":       _now_iso(),
                                     "updated_at":       _now_iso(),
-                                }).execute()
+                                })
                             except Exception as exc:
                                 logger.warning(
                                     "sla_worker: task creation failed for ticket %s — %s",

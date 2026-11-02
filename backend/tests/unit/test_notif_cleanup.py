@@ -130,8 +130,17 @@ def test_a_stale_lead_is_flagged_once_not_every_day(monkeypatch):
     db = _aging_db()
     for _ in range(5):
         _aging(db, monkeypatch)
-    assert len(db.tables["notifications"]) == 1 and len(db.tables["tasks"]) == 1
+    # TASKS-OFF-1: the nightly check still notifies once, but no longer writes a task
+    assert len(db.tables["notifications"]) == 1 and len(db.tables["tasks"]) == 0
     assert db.tables["leads"][0]["aging_notified_at"]
+
+
+def test_system_tasks_can_be_switched_back_on(monkeypatch):
+    from app.workers import churn_worker
+    monkeypatch.setattr(churn_worker, "SYSTEM_TASKS_ENABLED", True)
+    db = _aging_db()
+    _aging(db, monkeypatch)
+    assert len(db.tables["tasks"]) == 1
 
 
 def test_a_stale_lead_is_flagged_again_after_a_week(monkeypatch):
