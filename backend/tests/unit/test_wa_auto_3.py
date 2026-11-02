@@ -75,7 +75,7 @@ def test_a_knowledge_problem_does_not_lose_the_basics():
 def test_setup_request_is_recorded_and_only_platform_owners_are_told():
     db = _db()
     out = svc.request_setup(db, ORG, "u1", "2348012345678", "evening please")
-    assert out == {"requested": True, "notified": 1}
+    assert out["requested"] is True and out["notified"] == 1
     n = db.tables["notifications"]
     assert len(n) == 1 and n[0]["user_id"] == "p1" and n[0]["org_id"] == PLAT and "Glow Salon" in n[0]["title"]
     assert db.tables["wa_onboarding"][0]["setup_phone"] == "2348012345678"

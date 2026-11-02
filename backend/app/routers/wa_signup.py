@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.database import get_supabase
 from app.models.common import ok
 from app.routers.superadmin_health import require_superadmin
+from app.services import wa_setup_queue_service as queue
 from app.services import wa_signup_service as svc
 
 router = APIRouter()
@@ -77,3 +78,16 @@ def put_signup_settings(payload: dict, _: None = Depends(require_superadmin), db
         return ok(data=svc.save_settings(db, payload or {}))
     except svc.SignupError as exc:
         raise _http(exc)
+
+
+@router.get("/superadmin/wa-signup/setup-requests")
+def list_setup_requests(_: None = Depends(require_superadmin), db=Depends(get_supabase)):
+    return ok(data=queue.list_requests(db))
+
+
+@router.post("/superadmin/wa-signup/setup-requests/{org_id}/done")
+def mark_setup_done(org_id: str, _: None = Depends(require_superadmin), db=Depends(get_supabase)):
+    out = queue.mark_done(db, org_id)
+    if not out["found"]:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "That request was not found."})
+    return ok(data={"done": True})

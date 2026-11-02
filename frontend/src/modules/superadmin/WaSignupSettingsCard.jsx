@@ -37,6 +37,10 @@ export default function WaSignupSettingsCard() {
         <div><label style={lab} htmlFor="wa-credit">Starter credit ₦ (0–5,000)</label><input id="wa-credit" type="number" min="0" max="5000" style={field} value={s.starter_credit_ngn} onChange={num("starter_credit_ngn")} /></div>
         <div><label style={lab} htmlFor="wa-cap">Most sign-ups a day</label><input id="wa-cap" type="number" min="0" max="1000" style={field} value={s.daily_cap} onChange={num("daily_cap")} /></div>
       </div>
+      <div style={{ marginTop: 14 }}>
+        <label style={lab} htmlFor="wa-alert">Email me when a business asks us to connect their WhatsApp (empty = no email)</label>
+        <input id="wa-alert" type="email" style={{ ...field, width: "100%", maxWidth: 360 }} value={s.alert_email ?? ""} onChange={(e) => setS({ ...s, alert_email: e.target.value })} />
+      </div>
       <div style={{ marginTop: 14, display: "flex", gap: 12, alignItems: "center" }}>
         <button type="button" disabled={busy} onClick={save} style={{ background: ds.teal, color: "white", border: "none", borderRadius: 7, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", minHeight: 36 }}>{busy ? "Saving…" : "Save"}</button>
         {msg && <span role="status" style={{ color: msg === "Saved." ? "#4ade80" : "#f87171", fontSize: 13 }}>{msg}</span>}

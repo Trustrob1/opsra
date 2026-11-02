@@ -195,3 +195,13 @@ export async function saveWaSignupSettings(payload) {
   const res = await axios.put(`${BASE}/api/v1/superadmin/wa-signup/settings`, payload, { headers: _h() });
   return res.data.data;
 }
+
+export async function getWaSetupRequests() {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/wa-signup/setup-requests`, { headers: _h() });
+  return res.data.data;
+}
+
+export async function markWaSetupDone(orgId) {
+  const res = await axios.post(`${BASE}/api/v1/superadmin/wa-signup/setup-requests/${orgId}/done`, {}, { headers: _h() });
+  return res.data.data;
+}

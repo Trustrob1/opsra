@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getPlanOrgs, grantOrgPlan, setOrgPlanStatus, setOrgEnforced } from "../../services/superadmin.service";
 import { ds } from "../../utils/ds";
 import WaSignupSettingsCard from "./WaSignupSettingsCard.jsx";
+import WaSetupRequestsCard from "./WaSetupRequestsCard.jsx";
 
 const card = { background: ds.dark2, border: "1px solid #1e3a4f", borderRadius: 12, padding: "18px 20px", marginBottom: 16 };
 const th = { textAlign: "left", fontSize: 11, fontWeight: 600, color: "#3a5a6a", textTransform: "uppercase", letterSpacing: "1px", padding: "6px 8px" };
@@ -17,7 +18,8 @@ const field = {
   minHeight: 36, padding: "6px 10px", background: "#0b1a24", color: "white", border: "1px solid #1e3a4f",
   borderRadius: 7, fontSize: 13, fontFamily: ds.fontDm, boxSizing: "border-box",
 };
-const TIERS = [["capture", "Capture"], ["convert", "Convert"], ["grow", "Grow"], ["automate", "Automate (WhatsApp only)"]];
+const TIERS = [["automate", "Chat Basic (WhatsApp only)"], ["convert", "Growth"], ["grow", "Essential"], ["scale", "Scale"], ["capture", "Capture (website entry plan)"]];
+const TIER_NAME = Object.fromEntries(TIERS.map(([k, l]) => [k, l.replace(/ \(.*\)$/, "")]));
 const errText = (e) => {
   const d = e?.response?.data?.detail;
   if (typeof d === "string") return d;
@@ -28,7 +30,7 @@ const day = (v) => (v ? String(v).slice(0, 10) : "—");
 
 function Row({ o, onChanged, onError }) {
   const [open, setOpen] = useState(false);
-  const [tier, setTier] = useState(o.tier || "capture");
+  const [tier, setTier] = useState(o.tier || "automate");
   const [until, setUntil] = useState("");
   const [source, setSource] = useState("staff");
   const [busy, setBusy] = useState(false);
@@ -47,7 +49,7 @@ function Row({ o, onChanged, onError }) {
     <>
       <tr>
         <td style={td}>{o.name || o.slug}</td>
-        <td style={td}>{o.tier || "—"}</td>
+        <td style={td}>{o.tier ? (TIER_NAME[o.tier] || o.tier) : "—"}</td>
         <td style={td}>{o.status || "—"}{o.source ? ` (${o.source})` : ""}</td>
         <td style={td}>{day(o.paid_until)}</td>
         <td style={td}>
@@ -100,6 +102,7 @@ export default function PlansAdminPanel() {
   return (
     <div>
       {error && <div role="alert" style={{ ...card, color: "#f87171", padding: 12 }}>{error}</div>}
+      <WaSetupRequestsCard />
       <WaSignupSettingsCard />
       <div style={{ ...card, display: "flex", gap: 24, flexWrap: "wrap" }}>
         <div><div style={{ fontSize: 11, color: "#3a5a6a" }}>BUSINESSES</div><div style={{ fontSize: 20, color: "white", fontWeight: 700 }}>{data.totals.businesses}</div></div>

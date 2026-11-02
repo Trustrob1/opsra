@@ -94,13 +94,13 @@ def test_signup_is_closed_until_opened():
     assert svc.get_settings(SDB())["is_open"] is False
     db = SDB()
     _open(db)
-    assert svc.get_settings(db) == {"is_open": True, "trial_days": 7, "starter_credit_ngn": 0, "daily_cap": 50}
+    assert {k: v for k, v in svc.get_settings(db).items() if k != "alert_email"} == {"is_open": True, "trial_days": 7, "starter_credit_ngn": 0, "daily_cap": 50}
 
 
 def test_settings_are_saved_and_checked():
     db = SDB()
     out = svc.save_settings(db, {"is_open": True, "trial_days": 14, "starter_credit_ngn": 500, "daily_cap": 20})
-    assert out == {"is_open": True, "trial_days": 14, "starter_credit_ngn": 500, "daily_cap": 20}
+    assert {k: v for k, v in out.items() if k != "alert_email"} == {"is_open": True, "trial_days": 14, "starter_credit_ngn": 500, "daily_cap": 20}
     for bad in ({"trial_days": 0}, {"trial_days": 31}, {"starter_credit_ngn": 5001}, {"starter_credit_ngn": -1}, {"daily_cap": "x"}):
         with pytest.raises(svc.SignupError):
             svc.save_settings(db, bad)

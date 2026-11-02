@@ -113,9 +113,15 @@ def request_setup(db: Any, org_id: str, user_id: str, phone: str, note: str) -> 
     if not any(ch.isdigit() for ch in phone) or sum(ch.isdigit() for ch in phone) < 7:
         _fail(422, "VALIDATION_ERROR", "Enter the WhatsApp number with its country code, for example 2348012345678.")
     note = _clean(note, _MAX_NOTE, "Note")
-    _save(db, org_id, {"setup_requested_at": _iso(_now()), "setup_phone": phone, "setup_note": note or None})
+    _save(db, org_id, {"setup_requested_at": _iso(_now()), "setup_phone": phone, "setup_note": note or None, "setup_done_at": None})
     notified = _notify_platform(db, org_id, phone, note)
-    return {"requested": True, "notified": notified}
+    try:     # WA-AUTO-6: also email the alert address (never fails the request)
+        from app.services import wa_setup_queue_service as queue
+        emailed = queue.send_alert(db, org_id, phone, note)
+    except Exception as exc:
+        logger.warning("wa_onboarding: alert email failed org=%s: %s", org_id, exc)
+        emailed = False
+    return {"requested": True, "notified": notified, "emailed": emailed}
 
 
 def _notify_platform(db: Any, org_id: str, phone: str, note: str) -> int:
