@@ -135,7 +135,7 @@ def test_pay_view_shows_the_plan_the_price_and_nothing_else(env):
     db = _db()
     _buy(db, key="convert", picks=["selling_booking"])
     v = billing.pay_view(db, _token(db), NOW)
-    assert v["state"] == "pay" and v["label"] == "Convert" and v["amount_due"] == 50000 and v["setup_fee"] == 10000
+    assert v["state"] == "pay" and v["label"] == "Growth" and v["amount_due"] == 50000 and v["setup_fee"] == 10000
     assert "Booking with reminders" in v["includes"] and "Catalog with recommendations" not in v["includes"]
     assert "org_id" not in v and "id" not in v
     assert billing.pay_view(db, "wrong-token", NOW) is None

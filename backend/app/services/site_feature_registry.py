@@ -117,7 +117,7 @@ DEFAULT_PICK_ONE = {
     "scale": [],
     "automate": [],
 }
-DEFAULT_LABELS = {"capture": "Capture", "convert": "Convert", "grow": "Grow", "scale": "Scale", "automate": "Chat Basic"}
+DEFAULT_LABELS = {"capture": "Capture", "convert": "Growth", "grow": "Essential", "scale": "Scale", "automate": "Chat Basic"}   # PLANS-5: customer-facing names (keys unchanged)
 # Starting allowances, used until Superadmin saves its own. Prices are never defaulted.
 DEFAULT_TIER_CAPS = {
     "automate": {"ai_messages": 100, "users_included": 2, "reps": 2},
