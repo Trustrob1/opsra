@@ -239,6 +239,8 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
     for key, d in cfg["tiers"].items():
         if not _tier_fits_org(db, org_id, d) and not (row and row["key"] == key):
             continue
+        if d.get("hidden") and not (row and row["key"] == key):
+            continue          # PLANS-7: a retired/entry plan (website Capture) is kept for existing holders but not offered
         # Every tier is listed so the owner can compare what each includes; a tier with no price yet is shown as "not on sale".
         item = {"key": key, "label": d["label"], "monthly_ngn": int(d.get("monthly_ngn") or 0), "includes": _includes(d),
                 "caps": d.get("caps") or {}, "is_current": bool(row and row["key"] == key and eff in acc.LIVE_STATES),

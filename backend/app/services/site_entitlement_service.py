@@ -163,6 +163,7 @@ def get_config(settings: Optional[dict]) -> dict:
             "caps": _caps(raw.get("caps")) if "caps" in raw else dict(reg.DEFAULT_TIER_CAPS.get(key, {})),
             "included_credit_ngn": _int(raw.get("included_credit_ngn"), reg.DEFAULT_INCLUDED_CREDIT_NGN.get(key, 0), 0),
             "sellable": monthly > 0,
+            "hidden": bool(raw.get("hidden")),
             "wa_only": key in reg.WA_ONLY_TIERS,
             "recommended": reg.RECOMMENDED_START.get(key),
         }
