@@ -54,7 +54,6 @@ const PLANS = [
     name: "Growth",
     line: "Turn more enquiries into sales",
     monthly: 100000,
-    suggested: true,
     lead: "Everything in Chat Basic, plus",
     items: [
       "CRM to manage every lead and customer in one place",
@@ -600,7 +599,6 @@ export default function OwnerLandingPage() {
           <div className="ow-plans">
             {PLANS.map((p) => (
               <article key={p.key} className={`ow-plan${p.suggested ? " ow-plan-hi" : ""}${plan === p.key ? " ow-plan-on" : ""}`}>
-                {p.suggested ? <span className="ow-pill">Suggested starting point</span> : <span className="ow-pill-gap" />}
                 <h3>{p.name}</h3>
                 <p className="ow-plan-line">{p.line}</p>
                 <p className="ow-from">From</p>
