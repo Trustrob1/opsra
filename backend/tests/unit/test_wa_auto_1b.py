@@ -35,11 +35,12 @@ def _cfg(automate_price=0, **extra):
 
 def test_automate_tier_exists_with_no_hardcoded_price():
     t = _cfg()["tiers"]["automate"]
-    assert t["label"] == "Automate" and t["monthly_ngn"] == 0 and t["sellable"] is False
+    assert t["label"] == "Chat Basic" and t["monthly_ngn"] == 0 and t["sellable"] is False
     assert t["wa_only"] is True
-    assert t["caps"] == {"ai_messages": 300, "users_included": 1}
-    assert t["recommended"] == {"monthly_ngn": 20000, "ai_messages": 300, "users_included": 1}
-    assert set(t["features"]) == {"wa_leads", "wa_menu", "ai_assistant", "own_wa_number", "webchat_basic", "knowledge_base"}
+    assert t["caps"] == {"ai_messages": 100, "users_included": 2, "reps": 2}      # PLANS-1
+    assert t["recommended"] == {"monthly_ngn": 40000, "ai_messages": 100, "users_included": 2}
+    assert set(t["features"]) == {"wa_leads", "wa_menu", "speed_alerts", "ai_assistant", "own_wa_number", "webchat_basic",
+                                  "knowledge_base", "leads_download", "multi_rep_inbox"}
 
 
 def test_price_and_caps_come_from_settings():

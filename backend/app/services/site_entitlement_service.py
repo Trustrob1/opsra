@@ -233,7 +233,7 @@ def validate_pricing(pricing) -> None:
     if "tiers" in pricing:
         t = pricing["tiers"]
         if not isinstance(t, dict) or any(k not in reg.TIER_KEYS for k in t):
-            raise EntitlementError("Tier settings must use the tiers Capture, Convert, Grow and Automate.")
+            raise EntitlementError("Tier settings must use the tiers Capture, Convert, Grow, Scale and Chat Basic.")
         for k, v in t.items():
             check_item(v, reg.DEFAULT_LABELS[k], True)
     if "addons" in pricing:

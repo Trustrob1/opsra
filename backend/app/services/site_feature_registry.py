@@ -13,7 +13,9 @@ tier and granted; nothing calls has_feature() for it yet, so it does nothing. It
 """
 from __future__ import annotations
 
-TIER_KEYS = ("capture", "convert", "grow", "automate")
+TIER_KEYS = ("capture", "convert", "grow", "scale", "automate")
+# PLANS-1 (Nov 2026): the account plans are Chat Basic = automate, Growth = convert, Essential = grow, Scale = scale.
+# Capture stays the website entry plan. Labels for convert/grow are renamed in Settings > Pricing at go-live.
 # WA-AUTO-1b: "automate" is the WhatsApp-automation-only plan. Only businesses whose product_mode is wa_automation can buy it, and
 # they can buy nothing else. Websites never offer it. Its price is set in Superadmin pricing settings (not for sale until then).
 WA_ONLY_TIERS = ("automate",)
@@ -25,7 +27,7 @@ CAPS = {
     "bulk_recipients": "monthly",
     "reps": "static",
     "bookings": "monthly",         # BOOKING-ALLOWANCE-1: counted per booking, over-allowance bookings cost credit (never blocked)
-    "users_included": "static",   # WA-AUTO-1: users a plan includes (default 2, 1 for the WhatsApp automation plan)
+    "users_included": "static",   # users a plan includes (default 2; PLANS-1: 2 Chat Basic, 3 Growth, 5 Essential, 10 Scale)
 }
 
 # key -> (label, group, cap_key or None, built)
@@ -37,6 +39,7 @@ _F = {
     "speed_alerts": ("Speed-to-lead alerts", "capture", None, True),
     "wa_menu": ("WhatsApp menu with set answers", "capture", None, True),
     "my_leads_page": ("My leads page", "capture", None, True),
+    "leads_download": ("View and download leads", "capture", None, False),
     # Web chat (ACCOUNT-PLANS: an account feature, no site needed)
     "webchat_basic": ("Web chat page, menu answers and booking", "capture", None, True),
     "webchat_insights": ("Web chat insights, tagged links and QR codes", "capture", None, True),
@@ -47,6 +50,10 @@ _F = {
     "payment_links": ("Paystack payment links in chat", "convert", None, True),
     "fb_ig_leads": ("Facebook and Instagram lead ads tagged by ad", "convert", None, True),
     "own_wa_number": ("Own WhatsApp number", "convert", None, True),
+    # PLANS-1: plan-page features. built=False until the phase that gates them flips it (listing a key does nothing yet).
+    "crm": ("CRM for every lead and customer", "convert", None, False),
+    "performance_hub": ("Performance Hub", "convert", None, False),
+    "reports": ("Reports", "convert", None, False),
     "knowledge_base": ("Bot knowledge: uploaded files and typed answers", "convert", None, True),   # WA-AUTO-4a
     "webchat_followups": ("Web chat email and WhatsApp follow-ups", "convert", None, True),
     "selling_catalog": ("Catalog with recommendations", "convert", None, True),
@@ -64,6 +71,8 @@ _F = {
     "multi_rep_inbox": ("Several reps on one shared inbox", "grow", "reps", True),
     "team_tasks": ("Team tasks", "grow", None, True),
     "call_logging": ("Call logging", "grow", None, False),
+    "ai_lead_management": ("AI lead management", "grow", None, False),
+    "business_activities": ("Business Activities", "grow", None, False),
     # Optional add-ons (each add-on is itself a feature key)
     "support_tickets": ("Support tickets", "addon", None, True),
     "renewals_winback": ("Renewals and win-back", "addon", None, True),
@@ -96,19 +105,31 @@ DEFAULT_TIER_FEATURES = {
     "capture": list(_CAPTURE),
     "convert": _CAPTURE + _CONVERT,
     "grow": _CAPTURE + _CONVERT + ["selling_catalog", "selling_booking"] + _GROW,
-    "automate": ["wa_leads", "wa_menu", "ai_assistant", "own_wa_number", "webchat_basic", "knowledge_base"],
+    # Scale = everything in Grow plus support tickets (included instead of the add-on).
+    "scale": _CAPTURE + _CONVERT + ["selling_catalog", "selling_booking"] + _GROW + ["support_tickets"],
+    "automate": ["wa_leads", "wa_menu", "speed_alerts", "ai_assistant", "own_wa_number", "webchat_basic", "knowledge_base",
+                 "leads_download", "multi_rep_inbox"],
 }
 DEFAULT_PICK_ONE = {
     "capture": [],
     "convert": [["selling_catalog", "selling_booking"]],
     "grow": [],
+    "scale": [],
     "automate": [],
 }
-DEFAULT_LABELS = {"capture": "Capture", "convert": "Convert", "grow": "Grow", "automate": "Automate"}
+DEFAULT_LABELS = {"capture": "Capture", "convert": "Convert", "grow": "Grow", "scale": "Scale", "automate": "Chat Basic"}
 # Starting allowances, used until Superadmin saves its own. Prices are never defaulted.
-DEFAULT_TIER_CAPS = {"automate": {"ai_messages": 300, "users_included": 1}}
+DEFAULT_TIER_CAPS = {
+    "automate": {"ai_messages": 100, "users_included": 2, "reps": 2},
+    "convert": {"ai_messages": 1000, "users_included": 3},
+    "grow": {"ai_messages": 3000, "bulk_recipients": 500, "bookings": 500, "users_included": 5, "reps": 5},
+    "scale": {"ai_messages": 8000, "bulk_recipients": 2000, "bookings": 2000, "users_included": 10, "reps": 10},
+}
 # Shown in Superadmin pricing settings as a hint only (Trust, 24 Oct 2026: recommended start, price is fixed by Trust).
-RECOMMENDED_START = {"automate": {"monthly_ngn": 20000, "ai_messages": 300, "users_included": 1}}
+RECOMMENDED_START = {
+    "automate": {"monthly_ngn": 40000, "ai_messages": 100, "users_included": 2},
+    "scale": {"monthly_ngn": 300000, "ai_messages": 8000, "users_included": 10},
+}
 DEFAULT_ADDON_LABELS = {k: FEATURES[k]["label"] for k in ADDON_KEYS}
 # An add-on adds its own key, plus a cap for the ones that raise a limit.
 DEFAULT_ADDON_CAPS = {"extra_rep": {"reps": 1}}

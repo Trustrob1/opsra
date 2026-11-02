@@ -47,7 +47,7 @@ def _row(kind="tier", key="capture", status="active", source="paid", paid_until=
 
 def test_defaults_are_the_approved_contents_with_every_price_at_zero():
     cfg = ent.get_config({})
-    assert list(cfg["tiers"]) == ["capture", "convert", "grow", "automate"]   # WA-AUTO-1b added automate
+    assert list(cfg["tiers"]) == ["capture", "convert", "grow", "scale", "automate"]   # WA-AUTO-1b added automate, PLANS-1 added scale
     assert all(t["monthly_ngn"] == 0 and t["setup_fee_ngn"] == 0 and not t["sellable"] for t in cfg["tiers"].values())
     cap, con, gro = (set(cfg["tiers"][k]["features"]) for k in ("capture", "convert", "grow"))
     assert cap < con < gro                                              # each tier includes the one below it
@@ -370,7 +370,7 @@ def test_a_cancelled_tier_can_be_replaced_by_a_new_one():
 
 
 def test_registry_is_consistent():
-    assert set(reg.TIER_KEYS) == {"capture", "convert", "grow", "automate"}
+    assert set(reg.TIER_KEYS) == {"capture", "convert", "grow", "scale", "automate"}
     for tier, feats in reg.DEFAULT_TIER_FEATURES.items():
         assert all(f in reg.FEATURES for f in feats), tier
     for k in reg.ADDON_KEYS:
@@ -404,3 +404,29 @@ def test_overview_with_nothing_is_all_zero_and_ignores_deleted_sites():
              sites=[{"id": SITE, "org_id": ORG, "deleted_at": "2026-10-01T00:00:00Z"}])
     o = ent.overview(db, ORG, NOW)
     assert o["sites_on_plan"] == 0 and o["monthly_value"] == 0 and all(t["active"] == 0 for t in o["tiers"].values())
+
+
+# -- PLANS-1: Chat Basic / Growth / Essential / Scale ------------------------------
+
+def test_plans_1_scale_tier_contains_everything_in_grow_plus_tickets():
+    cfg = ent.get_config({})
+    gro, sca = (set(cfg["tiers"][k]["features"]) for k in ("grow", "scale"))
+    assert gro < sca and sca - gro == {"support_tickets"}
+    assert cfg["tiers"]["scale"]["wa_only"] is False and cfg["tiers"]["scale"]["sellable"] is False
+
+
+def test_plans_1_users_included_per_plan():
+    t = ent.get_config({})["tiers"]
+    assert [t[k]["caps"]["users_included"] for k in ("automate", "convert", "grow", "scale")] == [2, 3, 5, 10]
+    assert "users_included" not in t["capture"]["caps"]       # the website entry plan keeps the platform default
+
+
+def test_plans_1_new_plan_features_climb_the_ladder_and_are_not_enforced_yet():
+    t = ent.get_config({})["tiers"]
+    assert {"crm", "performance_hub", "reports"} <= set(t["convert"]["features"])
+    assert not {"crm", "performance_hub", "reports"} & set(t["automate"]["features"])
+    assert {"ai_lead_management", "business_activities", "team_tasks", "bulk_messaging", "selling_booking"} <= set(t["grow"]["features"])
+    assert not {"ai_lead_management", "business_activities"} & set(t["convert"]["features"])
+    assert {"leads_download", "multi_rep_inbox"} <= set(t["automate"]["features"])
+    for k in ("crm", "performance_hub", "reports", "ai_lead_management", "business_activities", "leads_download"):
+        assert reg.FEATURES[k]["built"] is False             # listing a key does nothing until a later phase gates it
