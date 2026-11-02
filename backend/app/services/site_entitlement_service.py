@@ -161,6 +161,7 @@ def get_config(settings: Optional[dict]) -> dict:
             "features": _features(raw.get("features"), reg.DEFAULT_TIER_FEATURES[key]),
             "pick_one": _pick_one(raw.get("pick_one"), reg.DEFAULT_PICK_ONE[key]),
             "caps": _caps(raw.get("caps")) if "caps" in raw else dict(reg.DEFAULT_TIER_CAPS.get(key, {})),
+            "included_credit_ngn": _int(raw.get("included_credit_ngn"), reg.DEFAULT_INCLUDED_CREDIT_NGN.get(key, 0), 0),
             "sellable": monthly > 0,
             "wa_only": key in reg.WA_ONLY_TIERS,
             "recommended": reg.RECOMMENDED_START.get(key),
@@ -210,7 +211,7 @@ def validate_pricing(pricing) -> None:
     def check_item(item, label, tier: bool):
         if not isinstance(item, dict):
             raise EntitlementError(f"{label} settings must be a set of values.")
-        for f, lab in (("monthly_ngn", "monthly price"), ("setup_fee_ngn", "set-up fee")):
+        for f, lab in (("monthly_ngn", "monthly price"), ("setup_fee_ngn", "set-up fee"), ("included_credit_ngn", "included credit")):
             if f in item:
                 item[f] = whole(item[f], 0, _PRICE_MAX, f"{label} {lab}")
         if "label" in item and not (isinstance(item["label"], str) and 0 < len(item["label"].strip()) <= 40):

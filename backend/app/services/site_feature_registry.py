@@ -126,6 +126,9 @@ DEFAULT_TIER_CAPS = {
     "scale": {"ai_messages": 8000, "bulk_recipients": 2000, "bookings": 2000, "users_included": 10, "reps": 10},
 }
 # Shown in Superadmin pricing settings as a hint only (Trust, 24 Oct 2026: recommended start, price is fixed by Trust).
+# PLANS-3: naira of credit a plan includes every month (expires at month end, no rollover). Settings can override per tier
+# with included_credit_ngn. Chat Basic and Capture include none.
+DEFAULT_INCLUDED_CREDIT_NGN = {"convert": 2000, "grow": 7500, "scale": 15000}
 RECOMMENDED_START = {
     "automate": {"monthly_ngn": 40000, "ai_messages": 100, "users_included": 2},
     "scale": {"monthly_ngn": 300000, "ai_messages": 8000, "users_included": 10},

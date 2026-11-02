@@ -192,6 +192,7 @@ celery_app = Celery(
         "app.workers.site_premium_worker",               # ← SITE-PREMIUM P2
         "app.workers.site_import_worker",                # ← SITE-IMPORT 2 (make an uploaded site editable)
         "app.workers.credit_worker",                     # ← CREDITS-1 (expire lots + reconcile)
+        "app.workers.plan_credit_worker",                # ← PLANS-3 (monthly credit a plan includes)
         "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
         "app.workers.account_plan_worker",               # ← ACCOUNT-PLANS AP-2 (plan lapse + reminders)
         "app.workers.knowledge_refresh_worker",          # ← WA-AUTO-4c (re-read website / Google Doc sources)
@@ -755,6 +756,15 @@ celery_app.conf.beat_schedule = {
     "credit-housekeeping": {
         "task": "app.workers.credit_worker.run_credit_housekeeping_task",
         "schedule": crontab(minute=0, hour=2),
+    },
+
+    # ------------------------------------------------------------------ #
+    # plan-credit-grants — Daily 02:30 UTC = 03:30 WAT  (PLANS-3)         #
+    # Adds the credit a plan includes, once per business per month.       #
+    # ------------------------------------------------------------------ #
+    "plan-credit-grants": {
+        "task": "app.workers.plan_credit_worker.run_plan_credit_grants_task",
+        "schedule": crontab(minute=30, hour=2),
     },
 
     # ------------------------------------------------------------------ #
