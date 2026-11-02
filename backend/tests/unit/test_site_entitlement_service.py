@@ -428,5 +428,5 @@ def test_plans_1_new_plan_features_climb_the_ladder_and_are_not_enforced_yet():
     assert {"ai_lead_management", "business_activities", "team_tasks", "bulk_messaging", "selling_booking"} <= set(t["grow"]["features"])
     assert not {"ai_lead_management", "business_activities"} & set(t["convert"]["features"])
     assert {"leads_download", "multi_rep_inbox"} <= set(t["automate"]["features"])
-    for k in ("crm", "performance_hub", "reports", "ai_lead_management", "business_activities", "leads_download"):
-        assert reg.FEATURES[k]["built"] is False             # listing a key does nothing until a later phase gates it
+    for k in ("crm", "ai_lead_management"):
+        assert reg.FEATURES[k]["built"] is False             # nothing gates these yet (PLANS-2 gated the other four)

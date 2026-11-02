@@ -218,6 +218,9 @@ def export_contacts(
     template = ((org.get("roles") or {}).get("template") or "").lower() if isinstance(org.get("roles"), dict) else ""
     if template != "owner":
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only the owner can export contacts."})
+    from app.services import plan_gate_service as _plan_gate   # PLANS-2: downloading leads is a plan feature
+    if not _plan_gate.allowed(db, org["org_id"], "leads_download"):
+        raise _plan_gate.http_error()
     text, count = cx.build_csv(db, org["org_id"])
     try:
         cx.write_audit(db, org["org_id"], org["id"], count)

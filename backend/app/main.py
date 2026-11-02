@@ -25,6 +25,7 @@ import sentry_sdk
 from fastapi import Depends, FastAPI
 from app.services.platform_guard import platform_only  # ACCOUNT-PLANS AP-8
 from app.services.product_mode import crm_only  # WA-AUTO-1: CRM routers are closed to WhatsApp-only businesses
+from app.services import plan_gate_service as _plan_gate  # PLANS-2: the plan decides Reports, Performance Hub, Business Activities
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -257,15 +258,15 @@ app.include_router(public_catalog_router.router, prefix="",                     
 app.include_router(catalog_router.router,        prefix="/api/v1/catalog",      tags=["catalog"])
 app.include_router(superadmin_health_router.router, prefix="/api/v1",           tags=["superadmin_health"])
 app.include_router(push_notifications_router)
-app.include_router(report_analytics_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1", tags=["reports"])
+app.include_router(report_analytics_router.router, dependencies=[Depends(crm_only), Depends(_plan_gate.require("reports"))], prefix="/api/v1", tags=["reports"])
 app.include_router(internal_issues_router.router, dependencies=[Depends(crm_only)],  prefix="/api/v1", tags=["internal-issues"])
 app.include_router(activity_logs_router.router, dependencies=[Depends(crm_only)],    prefix="/api/v1", tags=["activity-logs"])
 app.include_router(contractors_router.router, dependencies=[Depends(crm_only)],          prefix="/api/v1", tags=["contractors"])
 app.include_router(performance_logs_router.router, dependencies=[Depends(crm_only)],     prefix="/api/v1", tags=["performance-logs"])
-app.include_router(performance_hub_router.router, dependencies=[Depends(crm_only)],      prefix="/api/v1", tags=["performance-hub"])
+app.include_router(performance_hub_router.router, dependencies=[Depends(crm_only), Depends(_plan_gate.require("performance_hub"))], prefix="/api/v1", tags=["performance-hub"])
 app.include_router(public_performance_router.router,   prefix="/api/v1", tags=["public-performance"])
 app.include_router(project_planner_router.router, dependencies=[Depends(crm_only)],      prefix="/api/v1/project-planner", tags=["project-planner"])
-app.include_router(business_activities_report_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1", tags=["business-activities-report"])
+app.include_router(business_activities_report_router.router, dependencies=[Depends(crm_only), Depends(_plan_gate.require("business_activities"))], prefix="/api/v1", tags=["business-activities-report"])
 app.include_router(digital_campaigns_router.router, dependencies=[Depends(crm_only)], prefix="/api/v1", tags=["digital-campaigns"])
 app.include_router(funnels_router.router, dependencies=[Depends(crm_only)],        prefix="/api/v1", tags=["funnels"])          # FUNNEL-1
 app.include_router(public_funnels_router.router, prefix="",        tags=["public_funnels"])   # FUNNEL-1A — GET /f/{token}

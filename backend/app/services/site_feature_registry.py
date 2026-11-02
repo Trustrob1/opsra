@@ -39,7 +39,7 @@ _F = {
     "speed_alerts": ("Speed-to-lead alerts", "capture", None, True),
     "wa_menu": ("WhatsApp menu with set answers", "capture", None, True),
     "my_leads_page": ("My leads page", "capture", None, True),
-    "leads_download": ("View and download leads", "capture", None, False),
+    "leads_download": ("View and download leads", "capture", None, True),
     # Web chat (ACCOUNT-PLANS: an account feature, no site needed)
     "webchat_basic": ("Web chat page, menu answers and booking", "capture", None, True),
     "webchat_insights": ("Web chat insights, tagged links and QR codes", "capture", None, True),
@@ -51,9 +51,9 @@ _F = {
     "fb_ig_leads": ("Facebook and Instagram lead ads tagged by ad", "convert", None, True),
     "own_wa_number": ("Own WhatsApp number", "convert", None, True),
     # PLANS-1: plan-page features. built=False until the phase that gates them flips it (listing a key does nothing yet).
-    "crm": ("CRM for every lead and customer", "convert", None, False),
-    "performance_hub": ("Performance Hub", "convert", None, False),
-    "reports": ("Reports", "convert", None, False),
+    "crm": ("CRM for every lead and customer", "convert", None, False),   # no route is gated by it yet (CRM routers use product_mode)
+    "performance_hub": ("Performance Hub", "convert", None, True),
+    "reports": ("Reports", "convert", None, True),
     "knowledge_base": ("Bot knowledge: uploaded files and typed answers", "convert", None, True),   # WA-AUTO-4a
     "webchat_followups": ("Web chat email and WhatsApp follow-ups", "convert", None, True),
     "selling_catalog": ("Catalog with recommendations", "convert", None, True),
@@ -72,7 +72,7 @@ _F = {
     "team_tasks": ("Team tasks", "grow", None, True),
     "call_logging": ("Call logging", "grow", None, False),
     "ai_lead_management": ("AI lead management", "grow", None, False),
-    "business_activities": ("Business Activities", "grow", None, False),
+    "business_activities": ("Business Activities", "grow", None, True),
     # Optional add-ons (each add-on is itself a feature key)
     "support_tickets": ("Support tickets", "addon", None, True),
     "renewals_winback": ("Renewals and win-back", "addon", None, True),
