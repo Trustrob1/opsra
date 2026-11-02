@@ -68,6 +68,10 @@ load_dotenv()  # Pattern 29 — required for os.getenv() in service files
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# SOCIAL-OFF-1: Opsra is WhatsApp-only for now. Instagram and Messenger DMs are acknowledged to
+# Meta (so it stops retrying) but are not turned into leads or messages. Set True to restore.
+SOCIAL_DM_INTAKE_ENABLED = False
+
 GRAPH_API_BASE = "https://graph.facebook.com/v18.0"
 
 
@@ -3945,6 +3949,10 @@ async def receive_instagram_message(request: Request, db=Depends(get_supabase)):
             detail="Invalid webhook signature",
         )
 
+    if not SOCIAL_DM_INTAKE_ENABLED:
+        _log_webhook(db, route="/webhooks/instagram", response_status=200, topic="instagram_ignored")
+        return Response(status_code=200)
+
     payload: dict = json.loads(raw_body)
 
     from app.workers.instagram_worker import process_instagram_webhook
@@ -4225,6 +4233,10 @@ async def receive_messenger_message(request: Request, db=Depends(get_supabase)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid webhook signature",
         )
+
+    if not SOCIAL_DM_INTAKE_ENABLED:
+        _log_webhook(db, route="/webhooks/messenger", response_status=200, topic="messenger_ignored")
+        return Response(status_code=200)
 
     payload: dict = json.loads(raw_body)
 
