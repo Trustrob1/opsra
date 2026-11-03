@@ -143,6 +143,15 @@ class TestPreviewLinks:
         assert "https://api.example/s/my-site/p/contact.html#f" in out
         assert "https://wa.me/1" in out and "#x" in out
 
+    def test_dashboard_window_links_open_in_a_new_tab_only_when_asked(self):
+        pages = ["index.html", "contact/index.html"]
+        html = "<a class='b' href='/contact/'>c</a><a href='https://wa.me/1'>w</a>"
+        plain = rnd.rewrite_page_links(html, "index.html", pages, "my-site", "https://api.example")
+        assert "target=" not in plain
+        tab = rnd.rewrite_page_links(html, "index.html", pages, "my-site", "https://api.example", new_tab=True)
+        assert 'href="https://api.example/s/my-site/p/contact/index.html" target="_blank" rel="noopener"' in tab.replace("'", '"')
+        assert tab.count("target=") == 1                      # the WhatsApp link is left alone
+
     def test_file_addresses_resolve_from_the_pages_folder(self):
         out = rnd.rewrite_for_preview("<img src='../images/a.jpg'><img src='/images/a.jpg'><img src='images/a.jpg'>",
                                       ["images/a.jpg"], "https://st.example/b", "about")

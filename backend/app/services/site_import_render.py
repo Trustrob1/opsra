@@ -270,8 +270,9 @@ def seo_head(html: str, canonical_url: Optional[str]) -> str:
     return out
 
 
-def rewrite_page_links(html: str, from_path: str, pages, slug: str, api_base: str) -> str:
-    """Preview only: links to other pages of the site point at /s/{slug}/p/{page} (the home page at /s/{slug})."""
+def rewrite_page_links(html: str, from_path: str, pages, slug: str, api_base: str, new_tab: bool = False) -> str:
+    """Preview only: links to other pages of the site point at /s/{slug}/p/{page} (the home page at /s/{slug}).
+    new_tab: the dashboard's preview window cannot hold the public preview page (it refuses to be framed), so those links open in a new tab."""
     pages = list(pages)
     home = pages[0] if pages else "index.html"
 
@@ -284,7 +285,8 @@ def rewrite_page_links(html: str, from_path: str, pages, slug: str, api_base: st
             return m.group(0)
         frag = "#" + urlsplit(val.strip()).fragment if urlsplit(val.strip()).fragment else ""
         target = f"{api_base}/s/{slug}" if page == home else f"{api_base}/s/{slug}/p/{quote(page, safe='/')}"
-        return f"{m.group(1)}{m.group(2)}{target}{frag}{m.group(2)}"
+        tab = ' target="_blank" rel="noopener"' if new_tab else ""
+        return f"{m.group(1)}{m.group(2)}{target}{frag}{m.group(2)}{tab}"
 
     return _A_HREF_RX.sub(one, html)
 
@@ -366,7 +368,7 @@ def render_imported_page(db: Any, design: dict, allowed_hosts, export: bool = Fa
                          content: Optional[dict] = None, assets_by_id: Optional[dict] = None,
                          capture: Optional[dict] = None, identity: Optional[dict] = None,
                          page_path: Optional[str] = None, domain: Optional[str] = None,
-                         slug: Optional[str] = None) -> str:
+                         slug: Optional[str] = None, links_new_tab: bool = False) -> str:
     """One page of an imported site. page_path None = the home page. domain (export) gives the canonical address and
     makes relative share-image addresses absolute; slug (preview) points links between pages at /s/{slug}/p/..."""
     pages = page_paths(design)
@@ -396,7 +398,7 @@ def render_imported_page(db: Any, design: dict, allowed_hosts, export: bool = Fa
     folder = posixpath.dirname(path)
     lookup = {p.lower(): p for p in _stored_paths(design)}
     if slug and len(pages) > 1:
-        html = rewrite_page_links(html, path, pages, slug, public_api_base())
+        html = rewrite_page_links(html, path, pages, slug, public_api_base(), new_tab=links_new_tab)
     html = absolutise_meta(html, lambda u: _map_one(u, lookup, base, folder))
     return _with_meta(rewrite_for_preview(html, _stored_paths(design), base, folder),
                       build_csp(allowed_hosts, accepted, origin, extra_form_targets=form_targets))
@@ -438,7 +440,7 @@ def preview_design(db: Any, org_id: str, site: dict, design_id: str, assets_by_i
     is_current = site.get("current_design_id") == design_id and (site.get("tier") or "") == "imported"
     return render_imported_page(db, design, _allowed_hosts(db, org_id), export=False,
                                 content=extracted, assets_by_id=assets_by_id,
-                                slug=site.get("slug") if is_current else None)
+                                slug=site.get("slug") if is_current else None, links_new_tab=True)
 
 
 def preview_page(db: Any, site: dict, page_path: str) -> str:
