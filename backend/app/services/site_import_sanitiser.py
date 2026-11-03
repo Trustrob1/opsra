@@ -33,8 +33,8 @@ VOID = frozenset("area base br col embed hr img input link meta param source tra
 DROP_WITH_CONTENT = frozenset({"object", "embed", "applet", "frame", "frameset", "noembed", "portal", "foreignobject"})
 DROP_VOID = frozenset({"base", "param"})
 # iframes are kept only for these embeds (spec section 4 / DI-3).
-EMBED_HOSTS = ("www.google.com", "maps.google.com", "www.youtube-nocookie.com")
-EMBED_PATH_PREFIX = {"www.google.com": "/maps/embed"}
+EMBED_HOSTS = ("www.google.com", "maps.google.com", "www.youtube-nocookie.com", "docs.google.com")
+EMBED_PATH_PREFIX = {"www.google.com": "/maps/embed", "docs.google.com": "/forms/"}
 
 LINK_RELS_KEPT = {"stylesheet", "icon", "shortcut", "apple-touch-icon", "apple-touch-icon-precomposed", "mask-icon",
                   "preload", "prefetch", "preconnect", "dns-prefetch", "modulepreload"}
@@ -405,7 +405,7 @@ class _Sanitiser(HTMLParser):
         if not ok:
             self.stats["iframes_removed"] += 1
             self._removed("<iframe>")
-            self._note("warning", "iframe_removed", "An iframe was removed (only Google Maps and YouTube embeds are kept).", src)
+            self._note("warning", "iframe_removed", "An iframe was removed (only Google Maps, YouTube and Google Forms embeds are kept).", src)
             if not selfclose:
                 self.skip_tag, self.skip_depth = "iframe", 1
             return

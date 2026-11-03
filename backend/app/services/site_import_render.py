@@ -34,7 +34,7 @@ from app.services.site_import_service import page_url_path
 logger = logging.getLogger(__name__)
 
 BUCKET_FILES = "site-import-files"
-EMBED_FRAMES = ("https://www.google.com", "https://maps.google.com", "https://www.youtube-nocookie.com")
+EMBED_FRAMES = ("https://www.google.com", "https://maps.google.com", "https://www.youtube-nocookie.com", "https://docs.google.com")
 FORM_TARGETS = ("https://wa.me", "https://api.whatsapp.com")
 _EVAL_RULES = {"eval", "new_function", "string_timer"}
 

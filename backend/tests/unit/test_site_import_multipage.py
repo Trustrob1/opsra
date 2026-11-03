@@ -304,3 +304,10 @@ class TestPageRoute:
 
     def test_cancelled_site_is_gone(self, monkeypatch):
         assert _client({**SITE_ROW, "status": "cancelled"}, monkeypatch).get("/s/my-site/p/about/index.html").status_code == 410
+
+
+def test_csp_frame_src_allows_google_forms_but_not_other_hosts():
+    csp = rnd.build_csp(HOSTS)
+    frame = [d for d in csp.split(";") if d.strip().startswith("frame-src")][0]
+    assert "https://docs.google.com" in frame and "https://www.youtube-nocookie.com" in frame
+    assert "evil" not in frame and "'self'" not in frame

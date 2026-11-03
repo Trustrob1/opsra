@@ -64,6 +64,19 @@ class TestRemovals:
         gone = run("<iframe src='https://www.google.com/search?q=x'></iframe>").html
         assert "<iframe" in keep and "<iframe" not in gone
 
+    def test_google_forms_embed_kept_other_docs_paths_not(self):
+        form = "https://docs.google.com/forms/d/e/1FAIpQLSdAbC/viewform?embedded=true"
+        keep = run(f"<iframe src='{form}' title='Enquiry'></iframe>")
+        assert "<iframe" in keep.html and "docs.google.com/forms/" in keep.html and keep.stats["iframes_kept"] == 1
+        for bad in ("https://docs.google.com/document/d/abc/edit", "https://docs.google.com.evil.example/forms/x",
+                    "http://docs.google.com/forms/d/e/x/viewform", "https://drive.google.com/forms/x"):
+            gone = run(f"<iframe src='{bad}'></iframe>")
+            assert "<iframe" not in gone.html, bad
+            assert "iframe_removed" in rules(gone, "warning")
+
+    def test_iframe_without_src_is_still_removed(self):
+        assert "<iframe" not in run("<iframe id='f'></iframe>").html
+
     def test_form_action_removed_form_kept_and_counted(self):
         r = run("<form action='https://evil.example/p' method=post><input name=a formaction='//evil.example'></form>")
         assert "action" not in r.html and "formaction" not in r.html and "<form" in r.html
