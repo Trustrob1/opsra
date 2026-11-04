@@ -314,6 +314,14 @@ select{padding-right:44px;appearance:none;-webkit-appearance:none;background:var
 @media (max-width:1080px){.prods{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:600px){.prods{grid-template-columns:minmax(0,1fr)}.prod{min-height:0}}
 
+/* mobile: About text leads, the portrait follows it, so two photos never sit back to back */
+@media (max-width:900px){
+  .about:not(.noimg) .in{display:flex;flex-direction:column;gap:var(--s6)}
+  .about:not(.noimg) .in>div{order:1}
+  .about:not(.noimg) figure{order:2}
+  .about:not(.noimg) .pic{aspect-ratio:1/1;max-width:none}
+}
+
 /* HERO: cover. Dark stage, name split either side of a transparent-background portrait.
    Needs images.hero_cutout (PNG/WebP with transparent background). Name parts must be <= 9 characters each. */
 .hero{position:relative;overflow:clip;height:clamp(620px,calc(100svh - 76px),880px);background:var(--dark);color:var(--dark-ink)}
@@ -376,9 +384,7 @@ select{padding-right:44px;appearance:none;-webkit-appearance:none;background:var
   .hero.mf .ctag{max-width:none;text-align:center;font-size:14px;color:var(--dark-ink);opacity:.9;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.22)}
 }
 @media (max-width:900px) and (max-height:700px){.hero.mf .ctag{display:none}}
-
-.top{top:env(safe-area-inset-top,0px)}
-</style>
+.top{top:env(safe-area-inset-top,0px)}</style>
 
 <a class="skip" href="#main">Skip to content</a>
 <header class="top pad" id="topbar"><div class="in nav"><a class="brand" href="#hero" aria-label="Obianuju Abba, top of page">Oby Abba</a><nav class="nl" aria-label="Main"><a href="#about">About</a><a href="#services">Programmes</a><a href="#process">Method</a><a href="#products">Shop</a><a href="#contact">Contact</a><a class="btn sm" href="https://selfany.com/s/oby_abba" target="_blank" rel="noopener">Book a session</a></nav><button class="burger" id="burger" aria-expanded="false" aria-controls="menu">Menu</button></div></header>
