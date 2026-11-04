@@ -142,6 +142,8 @@ export const previewImportDesign = (siteId, designId) => unwrap(api.get(`/api/v1
 /** { resolved, failed, remaining } - copies files the page loads from unlisted websites. */
 export const resolveImportDesign = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/import/resolve`, { design_id: designId }))
 export const activateImportDesign = (siteId, designId, adoptContent = false) => unwrap(api.post(`/api/v1/sites/${siteId}/import/activate`, { design_id: designId, adopt_content: !!adoptContent }))
+/** { deleted, design_id, version, files } - deletes one saved import that the site is not using. */
+export const deleteImportDesign = (siteId, designId) => unwrap(api.delete(`/api/v1/sites/${siteId}/import/designs/${designId}`))
 export const makeImportEditable = (siteId, designId) => unwrap(api.post(`/api/v1/sites/${siteId}/import/make-editable`, { design_id: designId }))
 
 // ── SITE-IMPORT 3: design library (staff) ──

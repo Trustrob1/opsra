@@ -1002,6 +1002,21 @@ def import_design_preview(site_id: str, design_id: str, org=Depends(get_current_
     return ok(data={"html": html})
 
 
+@router.delete("/sites/{site_id}/import/designs/{design_id}")
+def import_design_delete(site_id: str, design_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """DELETE-IMPORT-1: delete one saved import (not the one the site is using). The published site is not changed."""
+    org_id, _settings = _import_org(org, db, _WRITE_ROLES)
+    site = _get_site(db, org_id, site_id)
+    actor = f"user:{org.get('id')}"
+    try:
+        result = site_import_service.delete_import(db, org_id, site, design_id)
+    except (site_import_service.ImportNotFound, site_import_service.ImportBlocked, site_import_service.ImportFailed) as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)})
+    _log_event(db, org_id, site_id, actor, "site_import_deleted",
+               {"design_id": design_id, "version": result["version"], "files": result["files"]})
+    return ok(data=result, message=f"Import {result['version']} deleted")
+
+
 @router.post("/sites/{site_id}/import/resolve")
 def import_resolve(payload: ImportDesignRef, site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
     """Copy the pictures / stylesheets / fonts the page loads from unlisted websites into the site's own files."""

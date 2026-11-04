@@ -13,9 +13,9 @@
  * site's content when it is used; on failure the design simply stays a plain import.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { UploadCloud, Eye, Copy, CheckCircle2, Undo2, ShieldCheck, Wand2 } from 'lucide-react'
+import { UploadCloud, Eye, Copy, CheckCircle2, Undo2, ShieldCheck, Wand2, Trash2 } from 'lucide-react'
 import {
-  getImportDesigns, importSiteFile, previewImportDesign, resolveImportDesign, activateImportDesign, makeImportEditable, premiumBackToStandard, errorMessage,
+  getImportDesigns, importSiteFile, previewImportDesign, resolveImportDesign, activateImportDesign, deleteImportDesign, makeImportEditable, premiumBackToStandard, errorMessage,
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, SectionTitle, Modal, Segmented } from './sitesUi'
 import { T, dateTime } from './sitesKit'
@@ -140,6 +140,21 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
     }
   }
 
+  const removeImport = async (d) => {
+    const name = `Import ${d.version}${d.filename ? ` (${d.filename})` : ''}`
+    if (!window.confirm(`Delete ${name}? Its files are removed for good. The live website is not changed.`)) return
+    setBusy(d.id)
+    try {
+      await deleteImportDesign(siteId, d.id)
+      showToast(`${name} deleted`)
+      await load()
+    } catch (e) {
+      showToast(errorMessage(e, 'Could not delete this import.'), 'bad')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const backToStandard = async () => {
     setBusy('standard')
     try {
@@ -249,6 +264,10 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
               )}
               {canEdit && !d.active && (
                 <Button size="sm" variant="primary" icon={CheckCircle2} loading={busy === d.id} disabled={!!busy && busy !== d.id} onClick={() => use(d)}>Use this design</Button>
+              )}
+              {canEdit && !d.active && (
+                <Button size="sm" variant="danger" icon={Trash2} loading={busy === d.id} disabled={!!busy && busy !== d.id} onClick={() => removeImport(d)}
+                  title="Delete this saved import and its files. The live website is not changed.">Delete</Button>
               )}
               {d.level2?.status === 'failed' && !d.editable && (d.level2.errors || []).length > 0 && (
                 <div style={{ flexBasis: '100%', fontSize: 12, color: T.muted }}>

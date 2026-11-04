@@ -92,6 +92,18 @@ class ImportFailed(Exception):
     code = "IMPORT_FAILED"
 
 
+class ImportNotFound(Exception):
+    """No such saved import on this site."""
+    status_code = 404
+    code = "NOT_FOUND"
+
+
+class ImportBlocked(Exception):
+    """The import cannot be deleted right now (the site is using it)."""
+    status_code = 409
+    code = "CONFLICT"
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -629,6 +641,28 @@ def _prune(db: Any, org_id: str, site: dict, keep_id: str) -> None:
             db.table("site_designs").delete().eq("id", old["id"]).eq("org_id", org_id).execute()
     except Exception as exc:  # S14
         logger.warning("site_import: prune failed site=%s: %s", site.get("id"), exc)
+
+
+def delete_import(db: Any, org_id: str, site: dict, design_id: str) -> dict:
+    """DELETE-IMPORT-1: removes one saved import (its row, stored files and raw upload). Never the design the site uses,
+    and never a Premium pasted skeleton (it has no uploaded files). The live site is not touched: it was published from
+    its own copy."""
+    rows = (db.table("site_designs").select("id, version, kind, import_meta, source_path, files_prefix")
+            .eq("id", design_id).eq("site_id", site["id"]).eq("org_id", org_id).eq("kind", "import")
+            .limit(1).execute()).data or []
+    row = rows[0] if rows and rows[0].get("files_prefix") else None
+    if not row:
+        raise ImportNotFound("That import was not found on this site.")
+    if design_id == site.get("current_design_id"):
+        raise ImportBlocked("This is the import the site is using. Use another version first, then delete this one.")
+    keys = [f.get("storage_path") for f in (row.get("import_meta") or {}).get("files", []) if f.get("storage_path")]
+    try:
+        db.table("site_designs").delete().eq("id", design_id).eq("site_id", site["id"]).eq("org_id", org_id).execute()
+    except Exception as exc:  # S14: something else still points at it - keep its files
+        logger.warning("site_import: delete failed site=%s design=%s: %s", site.get("id"), design_id, exc)
+        raise ImportFailed("This import is still used by something else, so it was not deleted.")
+    _cleanup(db, keys, row.get("source_path"))
+    return {"deleted": True, "design_id": design_id, "version": row.get("version"), "files": len(keys)}
 
 
 def latest_report(db: Any, org_id: str, site_id: str) -> Optional[dict]:
