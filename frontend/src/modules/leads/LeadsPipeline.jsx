@@ -69,6 +69,7 @@ import LeadImportModal    from './LeadImportModal'
 import MarkLostModal      from './MarkLostModal'
 import NurtureQueue       from './NurtureQueue'
 import UpcomingBookings   from './UpcomingBookings'   // BOOKINGS-VIEW-1
+import { getNewBookingsCount, markBookingsSeen } from '../../services/booking.service'   // BOOKINGS-BADGE-1
 import Pagination         from '../../shared/Pagination'
 
 const LIST_PAGE_SIZE   = 20
@@ -382,6 +383,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   const [listMounted,    setListMounted]    = useState(isMobile)
   const [nurtureMounted, setNurtureMounted] = useState(false)
   const [bookingsMounted, setBookingsMounted] = useState(false)   // BOOKINGS-VIEW-1
+  const [newBookings, setNewBookings] = useState(0)               // BOOKINGS-BADGE-1
 
   // Keep viewMode in sync when screen rotates between mobile/desktop
   useEffect(() => {
@@ -391,11 +393,24 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
     }
   }, [isMobile])
 
+  // BOOKINGS-BADGE-1: count of bookings made since this user last opened Upcoming Bookings
+  useEffect(() => {
+    if (viewMode === 'bookings') { setNewBookings(0); return undefined }
+    let alive = true
+    const poll = () => getNewBookingsCount().then((r) => { if (alive) setNewBookings(r?.count || 0) }).catch(() => {})
+    poll()
+    const t = setInterval(poll, 60000)
+    return () => { alive = false; clearInterval(t) }
+  }, [viewMode])
+
   const handleViewToggle = useCallback((mode) => {
     setViewMode(mode)
     if (mode === 'list')    setListMounted(true)
     if (mode === 'nurture') setNurtureMounted(true)
-    if (mode === 'bookings') setBookingsMounted(true)
+    if (mode === 'bookings') {
+      setBookingsMounted(true); setNewBookings(0)
+      markBookingsSeen().catch(() => {})
+    }
   }, [])
 
   // ── KANBAN-SCALE-1: per-stage column state ───────────────────────────────
@@ -625,7 +640,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             {isManager && (
               <button onClick={() => handleViewToggle(viewMode === 'nurture' ? 'kanban' : 'nurture')} style={{ ...secondaryBtn, background: viewMode === 'nurture' ? ds.teal : 'white', color: viewMode === 'nurture' ? 'white' : ds.teal }}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><Leaf size={14} />Nurture Queue</span></button>
             )}
-            <button onClick={() => handleViewToggle(viewMode === 'bookings' ? 'kanban' : 'bookings')} style={{ ...secondaryBtn, background: viewMode === 'bookings' ? ds.teal : 'white', color: viewMode === 'bookings' ? 'white' : ds.teal }}><span style={{display:'inline-flex',alignItems:'center',gap:6}}>📅 Upcoming Bookings</span></button>
+            <button onClick={() => handleViewToggle(viewMode === 'bookings' ? 'kanban' : 'bookings')} style={{ ...secondaryBtn, position: 'relative', background: viewMode === 'bookings' ? ds.teal : 'white', color: viewMode === 'bookings' ? 'white' : ds.teal }}><span style={{display:'inline-flex',alignItems:'center',gap:6}}>📅 Upcoming Bookings</span>{newBookings > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', minWidth: 18, height: 18, padding: '0 3px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{newBookings > 9 ? '9+' : newBookings}</span>}</button>
             {!isAffiliate && (
               <>
                 <button onClick={() => setShowImport(true)} style={secondaryBtn}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><Upload size={14} />Import CSV</span></button>
@@ -645,7 +660,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
                 {pendingDemosTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{pendingDemosTotal > 9 ? '9+' : pendingDemosTotal}</span>}
               </button>
             )}
-            <button onClick={() => handleViewToggle(viewMode === 'bookings' ? 'list' : 'bookings')} style={{ ...secondaryBtn, minHeight: 44, padding: '10px 12px', fontSize: 12, background: viewMode === 'bookings' ? ds.teal : 'white', color: viewMode === 'bookings' ? 'white' : ds.teal }}>📅 Bookings</button>
+            <button onClick={() => handleViewToggle(viewMode === 'bookings' ? 'list' : 'bookings')} style={{ ...secondaryBtn, position: 'relative', minHeight: 44, padding: '10px 12px', fontSize: 12, background: viewMode === 'bookings' ? ds.teal : 'white', color: viewMode === 'bookings' ? 'white' : ds.teal }}>📅 Bookings{newBookings > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', minWidth: 18, height: 18, padding: '0 3px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{newBookings > 9 ? '9+' : newBookings}</span>}</button>
           </div>
         )}
       </div>

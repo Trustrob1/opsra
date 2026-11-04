@@ -948,6 +948,27 @@ def list_bookings(db, org_id: str, from_dt: datetime, to_dt: datetime) -> list[d
     return rows
 
 
+# ───────────────────── new-bookings badge (BOOKINGS-BADGE-1) ─────────────────────
+
+def new_bookings_count(db, org_id: str, user_id: str) -> int:
+    """Upcoming bookings created since this user last opened Upcoming Bookings (their own manual bookings excluded).
+    First time (no marker yet): bookings created in the last 7 days."""
+    rows = db.table("user_booking_seen").select("last_seen_at").eq("user_id", user_id).limit(1).execute().data or []
+    since = rows[0]["last_seen_at"] if rows else (_now() - timedelta(days=7)).isoformat()
+    res = (db.table("lead_demos").select("id", count="exact")
+           .eq("org_id", org_id).is_("deleted_at", "null")
+           .in_("status", ["pending_assignment", "confirmed"])
+           .gte("scheduled_at", _now_iso()).gt("created_at", since)
+           .or_(f"created_by.is.null,created_by.neq.{user_id}")
+           .limit(1).execute())
+    return int(res.count or 0)
+
+
+def mark_bookings_seen(db, org_id: str, user_id: str) -> None:
+    db.table("user_booking_seen").upsert(
+        {"user_id": user_id, "org_id": org_id, "last_seen_at": _now_iso()}, on_conflict="user_id").execute()
+
+
 # ───────────────────────────── links ─────────────────────────────
 
 def _hash(token: str) -> str:

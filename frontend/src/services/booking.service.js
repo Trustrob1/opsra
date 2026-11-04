@@ -34,6 +34,8 @@ export const deleteBookingBlock    = (id) => api.delete(`/api/v1/booking/blocks/
 export const getStaffSlots         = (service, from, to) =>
   api.get('/api/v1/booking/slots', { params: { service, from, to } }).then(unwrap)
 export const getBookingsFeed       = (from, to) => api.get('/api/v1/booking/bookings', { params: { from, to } }).then(unwrap)
+export const getNewBookingsCount   = () => api.get('/api/v1/booking/new-bookings').then(unwrap)
+export const markBookingsSeen      = () => api.post('/api/v1/booking/new-bookings/seen').then(unwrap)
 export const staffBookLead         = (leadId, body) => api.post(`/api/v1/booking/leads/${leadId}/book`, body).then(unwrap)
 export const makeBookingLink       = (leadId, body) => api.post(`/api/v1/booking/leads/${leadId}/link`, body).then(unwrap)
 export const staffCancelBooking    = (demoId, body) => api.post(`/api/v1/booking/bookings/${demoId}/cancel`, body).then(unwrap)

@@ -421,6 +421,19 @@ def calendar_feed(org: dict = Depends(get_current_org), db=Depends(get_supabase)
     return ok(bk.list_bookings(db, org["org_id"], lo, hi))
 
 
+@staff.get("/booking/new-bookings")
+def new_bookings(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    return ok({"count": bk.new_bookings_count(db, org["org_id"], org["id"])})
+
+
+@staff.post("/booking/new-bookings/seen")
+def new_bookings_seen(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    _gate(db, org["org_id"])
+    bk.mark_bookings_seen(db, org["org_id"], org["id"])
+    return ok({"count": 0})
+
+
 class StaffBookBody(BaseModel):
     service: str = Field(..., max_length=60)
     start: str = Field(..., max_length=40)
