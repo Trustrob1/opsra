@@ -68,6 +68,7 @@ import LeadCreateModal    from './LeadCreateModal'
 import LeadImportModal    from './LeadImportModal'
 import MarkLostModal      from './MarkLostModal'
 import NurtureQueue       from './NurtureQueue'
+import UpcomingBookings   from './UpcomingBookings'   // BOOKINGS-VIEW-1
 import Pagination         from '../../shared/Pagination'
 
 const LIST_PAGE_SIZE   = 20
@@ -380,6 +381,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
   const [viewMode,       setViewMode]       = useState(isMobile ? 'list' : 'kanban')
   const [listMounted,    setListMounted]    = useState(isMobile)
   const [nurtureMounted, setNurtureMounted] = useState(false)
+  const [bookingsMounted, setBookingsMounted] = useState(false)   // BOOKINGS-VIEW-1
 
   // Keep viewMode in sync when screen rotates between mobile/desktop
   useEffect(() => {
@@ -393,6 +395,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
     setViewMode(mode)
     if (mode === 'list')    setListMounted(true)
     if (mode === 'nurture') setNurtureMounted(true)
+    if (mode === 'bookings') setBookingsMounted(true)
   }, [])
 
   // ── KANBAN-SCALE-1: per-stage column state ───────────────────────────────
@@ -622,6 +625,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
             {isManager && (
               <button onClick={() => handleViewToggle(viewMode === 'nurture' ? 'kanban' : 'nurture')} style={{ ...secondaryBtn, background: viewMode === 'nurture' ? ds.teal : 'white', color: viewMode === 'nurture' ? 'white' : ds.teal }}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><Leaf size={14} />Nurture Queue</span></button>
             )}
+            <button onClick={() => handleViewToggle(viewMode === 'bookings' ? 'kanban' : 'bookings')} style={{ ...secondaryBtn, background: viewMode === 'bookings' ? ds.teal : 'white', color: viewMode === 'bookings' ? 'white' : ds.teal }}><span style={{display:'inline-flex',alignItems:'center',gap:6}}>📅 Upcoming Bookings</span></button>
             {!isAffiliate && (
               <>
                 <button onClick={() => setShowImport(true)} style={secondaryBtn}><span style={{display:'inline-flex',alignItems:'center',gap:6}}><Upload size={14} />Import CSV</span></button>
@@ -641,12 +645,13 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
                 {pendingDemosTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{pendingDemosTotal > 9 ? '9+' : pendingDemosTotal}</span>}
               </button>
             )}
+            <button onClick={() => handleViewToggle(viewMode === 'bookings' ? 'list' : 'bookings')} style={{ ...secondaryBtn, minHeight: 44, padding: '10px 12px', fontSize: 12, background: viewMode === 'bookings' ? ds.teal : 'white', color: viewMode === 'bookings' ? 'white' : ds.teal }}>📅 Bookings</button>
           </div>
         )}
       </div>
 
       {/* ── Shared filter bar ────────────────────────────────────── */}
-      {viewMode !== 'nurture' && (
+      {viewMode !== 'nurture' && viewMode !== 'bookings' && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             type="text" placeholder="Search name, business, email…"
@@ -739,7 +744,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
 
       {/* ── List view ─────────────────────────────────────────────── */}
       {(listMounted || isMobile) && (
-        <div style={{ display: viewMode === 'list' ? 'block' : (isMobile ? 'block' : 'none') }}>
+        <div style={{ display: viewMode === 'list' ? 'block' : ((isMobile && viewMode !== 'bookings' && viewMode !== 'nurture') ? 'block' : 'none') }}>
           <LeadListView filterScore={filterScore} filterSource={filterSource} filterSearch={filterSearch} onOpenLead={onOpenLead} pipelineStages={pipelineStages} isMobile={isMobile} attentionMap={attentionMap} demoEnabled={demoEnabled} />
         </div>
       )}
@@ -748,6 +753,13 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
       {nurtureMounted && (
         <div style={{ display: viewMode === 'nurture' ? 'block' : 'none' }}>
           <NurtureQueue onOpenLead={onOpenLead} />
+        </div>
+      )}
+
+      {/* ── Upcoming bookings (BOOKINGS-VIEW-1) ─────────────────── */}
+      {bookingsMounted && (
+        <div style={{ display: viewMode === 'bookings' ? 'block' : 'none' }}>
+          <UpcomingBookings onOpenLead={onOpenLead} />
         </div>
       )}
 
