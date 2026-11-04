@@ -112,10 +112,10 @@ const ADDONS = [
 
 // Costs billed on top of the plan. They come out of a prepaid credit balance the business tops up.
 const CREDIT_USES = [
-  ["AI replies", "Each reply the AI writes for you", "About \u20a611 each", "grey", "\u20a611"],
+  ["AI replies", "Each reply the AI writes for you", "About \u20a612 each", "grey", "\u20a612"],
   ["Booking confirmations and reminders", "Includes the WhatsApp fee", "\u20a617 each", "blue", "\u20a617"],
   ["Follow-ups and broadcasts", "Marketing messages, WhatsApp fee included", "\u20a6100 each", "purple", "\u20a6100"],
-  ["Replies to customers who message you", "Inside the 24 hours after they write", "Free", "green", "Free"],
+  ["Replies to customers who message you", "Inside the 24 hours after they write. The first 1,000 each month are free, then", "\u20a617 each", "green", "1,000 free"],
 ];
 const CREDIT_PACKS = [[5000, 0, "\u20a65k"], [10000, 0, "\u20a610k"], [25000, 2, "\u20a625k"], [50000, 5, "\u20a650k"]];
 
@@ -675,7 +675,7 @@ export default function OwnerLandingPage() {
           </div>
           <p className="ow-fine">
             Prices are in naira and may change before you start. Users included: Chat Basic 2, Growth 3, Essential 5 and Scale 10; extra users are &#8358;5,000 per month each.
-            Messages and AI replies are paid from your credit balance at the prices above, which include WhatsApp&rsquo;s fees. Monthly plan credit expires at the end of the month. Domain and hosting fees, if you order a website, are billed separately.
+            Messages and AI replies are paid from your credit balance at the prices above, which include WhatsApp&rsquo;s fees. The first 1,000 replies each month to customers who message you are free for each WhatsApp number; after that each reply is &#8358;17. Monthly plan credit expires at the end of the month. Domain and hosting fees, if you order a website, are billed separately.
           </p>
         </section>
 

@@ -295,6 +295,12 @@ class TestMeterMeta:
         assert meter_meta_message(db, ORG, category="service", billable=False, meta_message_id="w4") == 0
         assert db.rpcs == []
 
+    def test_non_billable_message_gets_no_flat_fee(self):
+        from app.services.credit_service import meter_meta_message
+        db = _metered_db(automation_fee_rules=[_rule(mode="flat_kobo", value=700)])
+        assert meter_meta_message(db, ORG, category="service", billable=False, meta_message_id="w5") == 0
+        assert db.rpcs == []
+
     def test_unknown_category_ignored(self):
         from app.services.credit_service import meter_meta_message
         db = _metered_db(automation_fee_rules=[])

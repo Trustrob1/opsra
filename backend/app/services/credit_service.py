@@ -284,6 +284,8 @@ def meter_meta_message(db, org_id: Optional[str], *, category: str, billable: bo
             out = _debit(db, org_id, amt, "meta", f"meta:{meta_message_id}", event,
                          {"category": category, "usd": usd})
             charged += int(out["charged_kobo"]) if out else 0
+        if not billable:
+            return charged  # Meta is not charging for this message, so Opsra adds no fee either
         fee, rule_id = compute_fee_kobo(db, org_id, event, meta_kobo, 0)
         if fee > 0:
             out = _debit(db, org_id, fee, "fee", f"fee:{meta_message_id}", f"fee:{event}", {"rule_id": rule_id})
