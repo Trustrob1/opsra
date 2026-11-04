@@ -296,6 +296,57 @@ def meter_meta_message(db, org_id: Optional[str], *, category: str, billable: bo
         return None
 
 
+# ── WhatsApp budget (WA-BUDGET-1) ───────────────────────────────────────────
+
+def month_wa_spend_kobo(db, org_id: str) -> int:
+    """This month's WhatsApp cost to the org: Meta charges plus Opsra's WhatsApp fees (not AI, not bookings)."""
+    try:
+        rows = _rows(
+            db.table("credit_ledger").select("kind, unit, amount_kobo")
+            .eq("org_id", org_id).in_("kind", ["meta", "fee"]).gte("created_at", _month_start()).execute()
+        )
+        total = 0
+        for r in rows:
+            if r.get("kind") == "meta" or str(r.get("unit") or "").startswith("fee:wa_"):
+                total += int(r.get("amount_kobo") or 0)
+        return -total
+    except Exception:
+        return 0
+
+
+def wa_over_budget(db, org_id: Optional[str]) -> bool:
+    """True when the org set a monthly WhatsApp budget, chose 'chat' for when it runs out, and has spent it."""
+    try:
+        if not org_id:
+            return False
+        wallet = get_wallet(db, org_id)
+        if not metering_on(wallet):
+            return False
+        budget = int(wallet.get("wa_monthly_budget_kobo") or 0)
+        if budget <= 0 or (wallet.get("wa_over_budget_action") or "chat") != "chat":
+            return False
+        return month_wa_spend_kobo(db, org_id) >= budget
+    except Exception:
+        return False
+
+
+def meter_webchat_conversation(db, org_id: Optional[str], session_id: str) -> int:
+    """Opsra's per-conversation web chat fee (rule event 'webchat_conversation'). Idempotent per session. Never raises."""
+    try:
+        if not org_id or not session_id:
+            return 0
+        if not metering_on(get_wallet(db, org_id)):
+            return 0
+        fee, rule_id = compute_fee_kobo(db, org_id, "webchat_conversation", 0, 0)
+        if fee <= 0:
+            return 0
+        out = _debit(db, org_id, fee, "fee", f"fee:wc:{session_id}", "fee:webchat_conversation", {"rule_id": rule_id})
+        return int(out["charged_kobo"]) if out else 0
+    except Exception as exc:
+        logger.warning("credit_service.meter_webchat_conversation failed: %s", exc)
+        return 0
+
+
 # ── Budget level / gate ─────────────────────────────────────────────────────
 
 def month_ai_spend_kobo(db, org_id: str) -> int:

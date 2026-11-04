@@ -1324,6 +1324,26 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         except Exception as _bk_exc:
             logger.warning("[BOOKING-2C] picker hook failed lead=%s: %s", lead_id, _bk_exc)
 
+    # ── WA-BUDGET-1: WhatsApp budget used up ─────────────────────────────
+    # When the owner's monthly WhatsApp budget is spent (and they chose "switch to chat"), every
+    # customer message gets the one-time web chat link and nothing else. The org is ALWAYS the
+    # number's own org (XORG-safe). Never raises: any failure falls through to the normal flow.
+    if number_row and number_row.get("org_id") and number_row.get("wa_sales_mode") != "webchat_redirect":
+        try:
+            from app.services import credit_service as _cs
+            _wb_org_id = number_row.get("org_id")
+            if _cs.wa_over_budget(db, _wb_org_id) and not _is_org_owner(db, _wb_org_id, sender_phone):
+                if msg_type == "text" and content and _handle_opt_keywords(db, content, sender_phone, _wb_org_id, customer_id, lead_id):
+                    return
+                from app.services import webchat_redirect_service
+                webchat_redirect_service.handle_inbound(
+                    db=db, number_row=number_row, sender_phone=sender_phone,
+                    contact_name=contact_name, msg_type=msg_type, content=content, msg_id=msg_id,
+                )
+                return
+        except Exception:
+            logger.exception("[WA-BUDGET-1] budget redirect failed org=%s", number_row.get("org_id"))
+
     # ── AI-AGENT-1B: per-number mode check ──────────────────────────────
     # wa_sales_mode lives on whatsapp_numbers (per-number), NOT organisations
     # (per-org) — this is the source of truth per the AI-AGENT-1 design.

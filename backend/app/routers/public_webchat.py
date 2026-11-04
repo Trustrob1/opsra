@@ -135,6 +135,11 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
     msgs = wc.list_messages(db, s)
     if not msgs:
         msgs = [wc.append_message(db, s, "bot", cfg["greeting"])]
+        try:  # WA-BUDGET-1: Opsra's per-conversation fee, once per new conversation (idempotent per session)
+            from app.services import credit_service
+            credit_service.meter_webchat_conversation(db, org_id, s.get("id"))
+        except Exception:
+            logger.warning("webchat conversation fee failed org=%s", org_id)
     snap = _snapshot(s, cfg, msgs)
     snap["token"] = token
     return ok(snap)
