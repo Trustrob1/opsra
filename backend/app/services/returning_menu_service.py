@@ -196,19 +196,15 @@ def run_info_action(db, org_id: str, phone: str, session_id: str, item: dict, co
         if not image_url.lower().startswith(("https://", "http://")):
             image_url = ""
         if (phone_id or "").strip() and token:
-            sent_with_image = False
             if image_url:
-                # MENU-IMAGE-1: photo first; the reply text rides as its caption when it fits (WhatsApp captions stop at 1024)
+                # MENU-IMAGE-1: photo goes as its own message so a photo WhatsApp cannot fetch never swallows the reply text
                 try:
-                    cap = text if len(text) <= 1024 else ""
                     _call_meta_send(phone_id.strip(), {"messaging_product": "whatsapp", "to": phone, "type": "image",
-                                                       "image": {"link": image_url, **({"caption": cap} if cap else {})}}, token=token)
-                    sent_with_image = bool(cap)
+                                                       "image": {"link": image_url}}, token=token)
                 except Exception as exc:
-                    logger.warning("info action: image send failed, falling back to text: %s", exc)
-            if not sent_with_image:
-                _call_meta_send(phone_id.strip(), {"messaging_product": "whatsapp", "to": phone, "type": "text",
-                                                   "text": {"body": text[:4000], "preview_url": True}}, token=token)
+                    logger.warning("info action: image send failed: %s", exc)
+            _call_meta_send(phone_id.strip(), {"messaging_product": "whatsapp", "to": phone, "type": "text",
+                                               "text": {"body": text[:4000], "preview_url": True}}, token=token)
         lead_id = _lead_for_phone(db, org_id, phone)
         cust = None
         if not lead_id:
