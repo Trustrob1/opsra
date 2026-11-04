@@ -192,9 +192,23 @@ def run_info_action(db, org_id: str, phone: str, session_id: str, item: dict, co
             triage_service.update_session(db, session_id, "expired", selected_action="info", expected_state="triage_sent")
         text = (item.get("reply_text") or "").strip() or "Thanks for your interest! A member of our team will share the details with you shortly."
         phone_id, token, _ = _get_org_wa_credentials(db, org_id)
+        image_url = (item.get("image_url") or "").strip()
+        if not image_url.lower().startswith(("https://", "http://")):
+            image_url = ""
         if (phone_id or "").strip() and token:
-            _call_meta_send(phone_id.strip(), {"messaging_product": "whatsapp", "to": phone, "type": "text",
-                                               "text": {"body": text[:4000], "preview_url": True}}, token=token)
+            sent_with_image = False
+            if image_url:
+                # MENU-IMAGE-1: photo first; the reply text rides as its caption when it fits (WhatsApp captions stop at 1024)
+                try:
+                    cap = text if len(text) <= 1024 else ""
+                    _call_meta_send(phone_id.strip(), {"messaging_product": "whatsapp", "to": phone, "type": "image",
+                                                       "image": {"link": image_url, **({"caption": cap} if cap else {})}}, token=token)
+                    sent_with_image = bool(cap)
+                except Exception as exc:
+                    logger.warning("info action: image send failed, falling back to text: %s", exc)
+            if not sent_with_image:
+                _call_meta_send(phone_id.strip(), {"messaging_product": "whatsapp", "to": phone, "type": "text",
+                                                   "text": {"body": text[:4000], "preview_url": True}}, token=token)
         lead_id = _lead_for_phone(db, org_id, phone)
         cust = None
         if not lead_id:

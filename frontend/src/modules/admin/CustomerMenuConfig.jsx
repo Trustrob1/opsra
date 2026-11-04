@@ -240,6 +240,14 @@ function ItemEditor({ items, setItems, actionOptions, contactTypeMap, sectionKey
                   onChange={e => updateItem(idx, 'reply_text', e.target.value)}
                   placeholder="The message sent when this option is tapped. Links are fine."
                 />
+                <label style={S.label}>Photo link (optional)</label>
+                <input
+                  style={S.input}
+                  value={item.image_url || ''}
+                  maxLength={500}
+                  onChange={e => updateItem(idx, 'image_url', e.target.value)}
+                  placeholder="https://... public image link, sent with the reply"
+                />
                 <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, fontSize: 12.5, cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!item.notify_team} onChange={e => updateItem(idx, 'notify_team', e.target.checked)} />
                   Also alert the team so someone follows up

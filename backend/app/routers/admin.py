@@ -3078,6 +3078,7 @@ class ContactMenuItem(BaseModel):
     action: str
     role: Optional[str] = None  # only required when action == "route_to_role"
     reply_text: Optional[str] = Field(default=None, max_length=1500)   # RETURN-MENU-3: used by action "info"
+    image_url: Optional[str] = Field(default=None, max_length=500)   # MENU-IMAGE-1: optional public image sent with an "info" reply
     notify_team: Optional[bool] = None
     @field_validator("label")
     @classmethod
