@@ -11,6 +11,7 @@ import {
 } from '../../services/accountPlan.service'
 import { naira } from '../../services/credits.service'
 import CreditsPanel from '../admin/CreditsPanel'
+import SharePanel from './SharePanel'
 import { ds } from '../../utils/ds'
 import { B, panel, panelTitle, panelSub, button, tile, tileDark, tileLabel, tileValue, emptyBox, BILLING_CSS } from './billingUi'
 
@@ -163,7 +164,53 @@ function PlanCard({ plan, index, plans, busy, onPay, interval = 'month' }) {
   )
 }
 
-function PlanHero({ cur, enforced, periodDays, onCancelChange }) {
+const dayMonth = (iso) => { try { return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', timeZone: 'Africa/Lagos' }) } catch { return '' } }
+
+/** BILL-3: this month's included credit, inside the dark plan card. */
+function IncludedCredit({ inc }) {
+  const left = inc.remaining_kobo
+  const pct = inc.granted_kobo > 0 ? Math.max(0, Math.min(100, Math.round((left / inc.granted_kobo) * 100))) : 0
+  return (
+    <div style={{ minWidth: 220, maxWidth: 280, background: 'rgba(255,255,255,0.08)', borderRadius: 16, padding: 16 }}>
+      <div style={{ fontSize: 12.5, color: '#B8D6D4' }}>Included credit this month</div>
+      {inc.granted ? (
+        <>
+          <div style={{ margin: '6px 0 10px', fontFamily: FONT, fontWeight: 700, lineHeight: 1.1 }}>
+            <span style={{ fontSize: 26 }}>{naira(left)}</span><span style={{ fontSize: 13, fontWeight: 400, color: '#B8D6D4' }}> left of {naira(inc.granted_kobo)}</span>
+          </div>
+          <div role="progressbar" aria-label="Included credit left" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.16)', overflow: 'hidden' }}>
+            <div style={{ width: `${pct}%`, height: '100%', background: pct <= 15 ? ds.accent : B.tick }} />
+          </div>
+          <div style={{ fontSize: 12, color: '#B8D6D4', marginTop: 8 }}>Resets {dayMonth(inc.resets_at)}. It does not roll over.</div>
+        </>
+      ) : (
+        <>
+          <div style={{ margin: '6px 0 8px', fontFamily: FONT, fontSize: 26, fontWeight: 700 }}>{naira(inc.monthly_kobo)}</div>
+          <div style={{ fontSize: 12, color: '#B8D6D4' }}>included every month. It is added at the start of the month.</div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** BILL-3: one line, on every tab, so the owner sees what is left before opening Credits. */
+function CreditStrip({ credit, onTopUp }) {
+  if (!credit) return null
+  const empty = credit.metering_enabled && credit.balance_kobo <= 0
+  const tone = empty ? { bg: '#FDECEC', bd: '#F3C2C2', fg: '#7A1F1F' } : credit.low ? { bg: '#FFF4E8', bd: '#F2D3AE', fg: '#5C3303' } : { bg: '#fff', bd: B.line, fg: ds.dark }
+  return (
+    <div role="status" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 28px', background: tone.bg, border: `1px solid ${tone.bd}`, color: tone.fg, borderRadius: 16, padding: '12px 20px', marginBottom: 20 }}>
+      <div><span style={{ fontSize: 12.5, opacity: 0.75 }}>Credit left</span><div style={{ fontSize: 18, fontWeight: 700, fontFamily: FONT }}>{naira(credit.balance_kobo)}</div></div>
+      <div><span style={{ fontSize: 12.5, opacity: 0.75 }}>Used this month</span><div style={{ fontSize: 18, fontWeight: 700, fontFamily: FONT }}>{naira(credit.month_spend_kobo)}</div></div>
+      {!credit.metering_enabled && <span style={{ fontSize: 12.5, opacity: 0.75 }}>Usage is not being charged to your balance yet.</span>}
+      {empty && <span style={{ fontSize: 13.5, fontWeight: 600 }}>You are out of credit. AI replies and message fees will stop.</span>}
+      {!empty && credit.low && <span style={{ fontSize: 13.5, fontWeight: 600 }}>Running low.</span>}
+      <button type="button" className="bl-btn" style={{ ...button(true), marginLeft: 'auto' }} onClick={onTopUp}>Top up</button>
+    </div>
+  )
+}
+
+function PlanHero({ cur, enforced, periodDays, onCancelChange, credit }) {
   const [open, setOpen] = useState(false)
   if (!cur) {
     return (
@@ -212,7 +259,12 @@ function PlanHero({ cur, enforced, periodDays, onCancelChange }) {
             </div>
           )}
         </div>
-        {paid && cur.status === 'active' && <Ring days={cur.days_left} total={periodDays} label="days left" />}
+        {((paid && cur.status === 'active') || credit?.included) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center' }}>
+            {credit?.included && cur.status === 'active' && <IncludedCredit inc={credit.included} />}
+            {paid && cur.status === 'active' && <Ring days={cur.days_left} total={periodDays} label="days left" />}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -238,7 +290,7 @@ function PlanTab({ data, reload, setMsg }) {
   return (
     <>
       <style>{STYLES}</style>
-      <PlanHero cur={data.current} enforced={data.enforced} periodDays={data.billing?.period_days || 30} onCancelChange={cancelChange} />
+      <PlanHero cur={data.current} enforced={data.enforced} periodDays={data.billing?.period_days || 30} onCancelChange={cancelChange} credit={data.credit} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '0 0 12px' }}>
         <h3 style={{ ...h3, fontFamily: FONT, fontSize: 17, margin: 0 }}>Compare plans</h3>
         {annual && (
@@ -445,6 +497,7 @@ export default function BillingModule({ onOpenAdmin }) {
   const [data, setData] = useState(null)
   const [msg, setMsg] = useState('')
   const [denied, setDenied] = useState(false)
+  const [share, setShare] = useState(false)
 
   const load = useCallback(async () => {
     try { setData(await getPlan()) } catch (e) {
@@ -483,12 +536,17 @@ export default function BillingModule({ onOpenAdmin }) {
           <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: ds.dark, margin: 0 }}>Billing</h2>
           <p style={{ fontSize: 13.5, color: B.muted, margin: '4px 0 0' }}>Your Opsra plan, what you have used, your credits and your payments.</p>
         </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+        <button type="button" className="bl-btn" aria-expanded={share} style={button(false)} onClick={() => setShare(!share)}>Share link</button>
         <div role="tablist" aria-label="Billing sections" className="bl-tabs">
           {TABS.map(([id, label]) => (
             <button key={id} type="button" role="tab" className="bl-tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>
           ))}
         </div>
+        </div>
       </div>
+      {share && <SharePanel />}
+      {data && tab !== 'credits' && <CreditStrip credit={data.credit} onTopUp={() => setTab('credits')} />}
       {msg && tab !== 'credits' && <div role="status" style={{ ...card, padding: 12, color: ds.dark }}>{msg}</div>}
       {tab === 'credits' && <CreditsPanel embedded />}
       {tab !== 'credits' && !data && <div style={{ color: ds.gray, fontSize: 13 }}>{msg ? '' : 'Loading…'}</div>}
