@@ -209,6 +209,12 @@ export default function App() {
     const WebChatPage = require('./pages/WebChatPage').default
     return <WebChatPage chatKey={_chatMatch[1]} />
   }
+  // BILL-4 — a business's invoice-style billing page (the token names the business; no login).
+  const _payMatch = window.location.pathname.match(/^\/pay\/([A-Za-z0-9_-]{20,80})$/)
+  if (_payMatch) {
+    const PayLinkPage = require('./pages/PayLinkPage').default
+    return <PayLinkPage token={_payMatch[1]} />
+  }
   // BOOKING-1 — a lead's private booking page (the token names the lead and the business; no login).
   const _bookMatch = window.location.pathname.match(/^\/b\/([A-Za-z0-9_-]{20,64})$/)
   if (_bookMatch) {

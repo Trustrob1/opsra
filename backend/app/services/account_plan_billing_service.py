@@ -10,7 +10,7 @@ existing Paystack webhook can tell it apart from a credit top-up ("cr_") and fro
 
 Money rules (decisions of 19 Oct 2026)
   * Prices come from Settings > Pricing tiers on every call (one price per tier for sites and accounts). Nothing the
-    browser sends can change an amount. No set-up fee. No credits are included in a plan. No VAT line. No refunds.
+    browser sends can change an amount. No set-up fee. A plan may include monthly credit (see credit_block). No VAT line. No refunds.
   * A period is billing.period_days (30). Renewal paid early keeps the unused days (the new period starts when the old one ends).
   * UPGRADE (running paid tier -> a dearer tier): pay the new price minus a credit for the unused days; starts at once.
   * DOWNGRADE (running paid tier -> a cheaper or equal tier): nothing to pay now; scheduled in config.pending_key and applied
@@ -214,6 +214,37 @@ def preview(db: Any, org_id: str, key: str, code: Optional[str] = None, now: Opt
 # what the Billing screen shows
 # ---------------------------------------------------------------------------
 
+def credit_block(db: Any, org_id: str, cfg: dict, tier_key: Optional[str], now: datetime) -> Optional[dict]:
+    """BILL-2: what the Billing header shows about credit: balance, this month's spend and, for a plan that includes credit,
+    how much of this month's included credit is left. Never raises; None when the wallet cannot be read."""
+    try:
+        from app.services import credit_order_service as cos
+        s = cos.summary(db, org_id)
+        balance = int(s.get("balance_kobo") or 0)
+        low_at = int(s.get("low_balance_kobo") or 0)
+        block = {
+            "balance_kobo": balance, "month_spend_kobo": int(s.get("month_spend_total_kobo") or 0),
+            "metering_enabled": bool(s.get("metering_enabled")),
+            "low": bool(s.get("metering_enabled") and (balance <= 0 or (low_at > 0 and balance <= low_at))),
+            "included": None,
+        }
+        monthly = int(((cfg["tiers"].get(tier_key) or {}).get("included_credit_ngn")) or 0) * 100 if tier_key else 0
+        if monthly > 0:
+            start = ent.period_start(now)
+            y, m = (start.year + 1, 1) if start.month == 12 else (start.year, start.month + 1)
+            resets = datetime(y, m, 1, tzinfo=ent.LAGOS)
+            ref = f"plangrant:{org_id}:{start.year:04d}-{start.month:02d}"
+            lot = _rows(db.table("credit_lots").select("original_kobo, remaining_kobo").eq("org_id", org_id).eq("ref", ref).limit(1).execute())
+            granted = int(lot[0]["original_kobo"]) if lot else 0
+            remaining = int(lot[0]["remaining_kobo"]) if lot else 0
+            block["included"] = {"monthly_kobo": monthly, "granted_kobo": granted, "remaining_kobo": remaining,
+                                 "used_kobo": max(granted - remaining, 0), "resets_at": resets.isoformat(), "granted": bool(lot)}
+        return block
+    except Exception as exc:
+        logger.warning("account_plan.credit_block failed org=%s: %s", org_id, exc)
+        return None
+
+
 def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
     """Current plan, the plans for sale (with what choosing each would do) and the latest orders. Raises on a database error."""
     now = now or _now()
@@ -294,7 +325,8 @@ def summary(db: Any, org_id: str, now: Optional[datetime] = None) -> dict:
                     x["overage_ngn"] = int(fee // 100)
     except Exception as exc:
         logger.warning("account_plan.summary addons failed org=%s: %s", org_id, exc)
-    return {"enforced": bool(org.get("plans_enforced")), "current": current, "plans": plans, "addons": addons_list, "allowances": allowances, "team": team_info,
+    credit = credit_block(db, org_id, cfg, row["key"] if row and eff in acc.LIVE_STATES else None, now)
+    return {"enforced": bool(org.get("plans_enforced")), "credit": credit, "current": current, "plans": plans, "addons": addons_list, "allowances": allowances, "team": team_info,
             "billing": {"period_days": cfg["billing"]["period_days"], "grace_days": cfg["billing"]["grace_days"],
                         "annual_months": cfg["billing"].get("annual_months", 0),
                         "annual_free_months": max(12 - int(cfg["billing"].get("annual_months") or 12), 0)},

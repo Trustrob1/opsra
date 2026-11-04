@@ -195,6 +195,7 @@ from app.routers import superadmin_pricing as superadmin_pricing_router  # ACCOU
 from app.routers import superadmin_plans as superadmin_plans_router  # ACCOUNT-PLANS AP-1
 from app.routers import public_webchat as public_webchat_router  # WEBCHAT-1
 from app.routers import booking as booking_router  # BOOKING-1
+from app.routers import billing_pay_link as billing_pay_link_router  # BILL-4
 from app.routers import webchat as webchat_router  # WEBCHAT-1
 from app.routers import credits as credits_router  # CREDITS-2
 from app.routers import account_plan as account_plan_router  # ACCOUNT-PLANS AP-2
@@ -301,6 +302,7 @@ app.include_router(booking_router.staff, dependencies=[Depends(crm_only)], prefi
 app.include_router(webchat_router.router,                     prefix="/api/v1",    tags=["webchat"])  # WEBCHAT-1 — settings + rep reply
 app.include_router(credits_router.router,                     prefix="/api/v1",    tags=["credits"])  # CREDITS-2 — /api/v1/credits/*
 app.include_router(account_plan_router.router,                prefix="/api/v1",    tags=["account_plan"])  # ACCOUNT-PLANS AP-2 — /api/v1/billing/plan/*
+app.include_router(billing_pay_link_router.router,           prefix="/api/v1",    tags=["billing_pay_link"])  # BILL-4 — public /public/billing/pay/* + staff /billing/pay-link
 
 
 # ---------------------------------------------------------------------------

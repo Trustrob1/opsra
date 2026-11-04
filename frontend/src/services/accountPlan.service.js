@@ -11,6 +11,10 @@ export const startPlanCheckout = (key, code, interval = 'month') => api.post('/a
 export const verifyPlanPayment = (reference) => api.post('/api/v1/billing/plan/verify', { reference }).then((r) => r.data.data)
 export const clearPendingPlanChange = () => api.delete('/api/v1/billing/plan/pending-change').then((r) => r.data.data)
 
+export const createPayLink = () => api.post('/api/v1/billing/pay-link').then((r) => r.data.data)      // BILL-4
+export const getPayLinkStatus = () => api.get('/api/v1/billing/pay-link').then((r) => r.data.data)
+export const endPayLink = () => api.delete('/api/v1/billing/pay-link').then((r) => r.data.data)
+
 export const getTeam = () => api.get('/api/v1/billing/team').then((r) => r.data.data)
 export const previewSeats = (add) => api.post('/api/v1/billing/team/seats/preview', { add }).then((r) => r.data.data)
 export const startSeatsCheckout = (add) => api.post('/api/v1/billing/team/seats/checkout', { add }).then((r) => r.data.data)
