@@ -1974,6 +1974,14 @@ def handle_lead_post_handoff_inbound(
                     "handle_lead_post_handoff_inbound: list_reply intercept "
                     "failed for lead=%s: %s", lead_id, _lr_exc,
                 )
+            # MENU-TAP-1: a tap on an older menu whose session is over - answer info / book items directly
+            try:
+                from app.services import returning_menu_service as _rms
+                if msg_type == "interactive" and phone_number and _rms.answer_stale_tap(
+                        db, org_id, phone_number, content, lead_name, lead_id=lead_id):
+                    return True
+            except Exception as _st_exc:
+                logger.warning("handle_lead_post_handoff_inbound: stale tap check failed lead=%s: %s", lead_id, _st_exc)
             # Non-product interactive (e.g. triage menu tap on consultative org) —
             # send forwarding message so lead is never left in silence
             try:

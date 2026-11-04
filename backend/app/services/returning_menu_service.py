@@ -168,7 +168,8 @@ def run_book_action(db, org_id: str, phone: str, session_id: str) -> None:
     try:
         from app.services import triage_service, booking_wa_service
         from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
-        triage_service.update_session(db, session_id, "active", selected_action="book", expected_state="triage_sent")
+        if session_id:
+            triage_service.update_session(db, session_id, "active", selected_action="book", expected_state="triage_sent")
         lead_id = _lead_for_phone(db, org_id, phone)
         started = {}
         if lead_id and booking_available(db, org_id):
@@ -187,7 +188,8 @@ def run_info_action(db, org_id: str, phone: str, session_id: str, item: dict, co
     try:
         from app.services import triage_service
         from app.services.whatsapp_service import _call_meta_send, _get_org_wa_credentials
-        triage_service.update_session(db, session_id, "expired", selected_action="info", expected_state="triage_sent")
+        if session_id:
+            triage_service.update_session(db, session_id, "expired", selected_action="info", expected_state="triage_sent")
         text = (item.get("reply_text") or "").strip() or "Thanks for your interest! A member of our team will share the details with you shortly."
         phone_id, token, _ = _get_org_wa_credentials(db, org_id)
         if (phone_id or "").strip() and token:
@@ -221,3 +223,40 @@ def _lead_for_phone(db, org_id: str, phone: str) -> Optional[str]:
         if rows:
             return rows[0]["id"]
     return None
+
+
+def answer_stale_tap(db, org_id: str, phone: str, label: Optional[str], contact_name: Optional[str] = None,
+                     lead_id: Optional[str] = None) -> bool:
+    """MENU-TAP-1: a known lead tapped an option on a menu whose session is over (menus live 30 minutes, and a lead can scroll back up and
+    tap an older one). Before this, such a tap only got 'a team member will reply'. Now an 'info' or 'book' item is answered exactly as if
+    the session were still open, and the menu is sent again so the lead is never stuck. Anything else (qualify, route, free form) returns
+    False and the caller forwards to the team as before. S14: never raises."""
+    try:
+        want = re.sub(r"\s+", " ", (label or "").strip().lower())
+        if not want:
+            return False
+        org = _org(db, org_id)
+        if not org.get("returning_menu_enabled", True):
+            return False
+        cfg = org.get("whatsapp_triage_config") or {}
+        item = None
+        for key in ("returning_contact_menu", "unknown"):
+            for i in ((cfg.get(key) or {}).get("items") or []):
+                if re.sub(r"\s+", " ", (i.get("label") or "").strip().lower()) == want:
+                    item = i
+                    break
+            if item:
+                break
+        if not item or item.get("action") not in ("info", "book"):
+            return False
+        if item["action"] == "book":
+            if not booking_available(db, org_id):
+                return False
+            run_book_action(db, org_id, phone, None)
+            return True
+        run_info_action(db, org_id, phone, None, item, contact_name=contact_name)
+        show(db, org_id, phone, contact_name, "lead", lead_id=lead_id, prefix="Anything else I can help you with?")
+        return True
+    except Exception as exc:
+        logger.warning("answer_stale_tap failed org=%s: %s", org_id, exc)
+        return False
