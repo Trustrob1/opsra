@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   getCreditSummary, getCreditUsage, getCreditLedger, getCreditPacks, getCreditOrders,
-  startCreditCheckout, verifyCreditPayment, naira, creditError,
+  startCreditCheckout, verifyCreditPayment, setWhatsappBudget, naira, creditError,
 } from '../../services/credits.service'
 import { ds } from '../../utils/ds'
 import { B, panel, panelTitle, panelSub, button, tile, tileDark, tileLabel, tileValue, emptyBox, BILLING_CSS } from '../billing/billingUi'
@@ -48,11 +48,16 @@ export default function CreditsPanel({ embedded = false }) {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [denied, setDenied] = useState(false)
+  const [waBudget, setWaBudget] = useState('')
+  const [waAction, setWaAction] = useState('chat')
+  const [waSaved, setWaSaved] = useState(false)
 
   const load = useCallback(async () => {
     try {
       const [s, p, o, l] = await Promise.all([getCreditSummary(), getCreditPacks(), getCreditOrders(), getCreditLedger()])
       setSum(s); setPacks(p.packs); setOrders(o.orders); setLedger(l)
+      setWaBudget(s.wa_monthly_budget_kobo ? String(s.wa_monthly_budget_kobo / 100) : '')
+      setWaAction(s.wa_over_budget_action === 'continue' ? 'continue' : 'chat')
     } catch (e) {
       if (e?.response?.status === 403) setDenied(true)
       else setMsg(creditError(e, 'Could not load your credits.'))
@@ -98,6 +103,14 @@ export default function CreditsPanel({ embedded = false }) {
     if (!Number.isInteger(n) || n <= 0) { setMsg('Enter a whole number of naira.'); return }
     buy({ amount_naira: n })
   }
+  const saveWaBudget = async () => {
+    const raw = String(waBudget).replace(/[, ]/g, '')
+    const n = raw === '' ? 0 : Number(raw)
+    if (!Number.isInteger(n) || n < 0) { setMsg('Enter a whole number of naira, or leave it empty for no limit.'); return }
+    setBusy(true); setMsg(''); setWaSaved(false)
+    try { setSum(await setWhatsappBudget(n, waAction)); setWaSaved(true) } catch (e) { setMsg(creditError(e)) }
+    setBusy(false)
+  }
   const more = async () => {
     try { const l = await getCreditLedger(ledger.next); setLedger({ entries: [...ledger.entries, ...l.entries], next: l.next }) } catch { /* ignore */ }
   }
@@ -106,6 +119,10 @@ export default function CreditsPanel({ embedded = false }) {
   if (!sum) return <div style={{ padding: 20, color: ds.gray, fontFamily: ds.fontDm }}>{msg || 'Loading…'}</div>
 
   const low = sum.low_balance_kobo > 0 && sum.balance_kobo <= sum.low_balance_kobo
+  const waBudgetKobo = Number(sum.wa_monthly_budget_kobo || 0)
+  const waSpent = Number(sum.month_wa_spend_kobo || 0)
+  const waPct = waBudgetKobo ? Math.min(100, Math.round((waSpent / waBudgetKobo) * 100)) : 0
+  const waOver = waBudgetKobo > 0 && waSpent >= waBudgetKobo
   const bonus = (p) => (p.credit_kobo > p.price_kobo ? `Get ${naira(p.credit_kobo)}` : 'No bonus')
   return (
     <div style={{ maxWidth: embedded ? undefined : 1100, fontFamily: ds.fontDm }}>
@@ -163,6 +180,41 @@ export default function CreditsPanel({ embedded = false }) {
               <button type="button" className="bl-btn" style={btn(true)} disabled={busy} onClick={buyCustom}>{busy ? 'Opening…' : 'Pay with Paystack'}</button>
             </div>
             <p style={{ fontSize: 12.5, color: B.muted, margin: '14px 0 0', lineHeight: 1.5 }}>You get exactly what you pay. Credit is not refundable and expires 12 months after purchase.</p>
+          </section>
+
+          <section style={card} aria-label="WhatsApp budget">
+            <h3 style={h3}>WhatsApp budget</h3>
+            <p style={{ ...panelSub, marginBottom: 16 }}>Set how much you are happy to spend on WhatsApp messages each month. When it is used up, Opsra can send customers to your web chat instead.</p>
+            {waBudgetKobo > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, color: ds.dark, marginBottom: 6 }}>
+                  <span>{naira(waSpent)} used</span><span style={{ color: B.muted }}>of {naira(waBudgetKobo)}</span>
+                </div>
+                <div role="progressbar" aria-valuenow={waPct} aria-valuemin={0} aria-valuemax={100} aria-label="WhatsApp budget used"
+                  style={{ height: 8, borderRadius: 99, background: B.soft, overflow: 'hidden' }}>
+                  <div style={{ width: `${waPct}%`, height: '100%', background: waOver ? '#C0392B' : waPct >= 80 ? '#D98A1F' : ds.teal }} />
+                </div>
+                {waOver && waAction === 'chat' && <p style={{ fontSize: 13.5, color: '#8A2A1F', margin: '10px 0 0' }}>Budget used up. Customers who message you on WhatsApp now get a link to your web chat, and marketing messages are paused. Raise the budget to switch back.</p>}
+                {!waOver && waPct >= 80 && <p style={{ fontSize: 13.5, color: '#8A4A05', margin: '10px 0 0' }}>You have used {waPct}% of your WhatsApp budget. {waAction === 'chat' ? 'Customers will be sent to web chat when it runs out.' : 'Messages will keep going and use your credit.'}</p>}
+              </div>
+            )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+              <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label htmlFor="wa-budget" style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>Monthly WhatsApp budget (₦) <span style={{ fontWeight: 400, color: B.muted }}>empty = no limit</span></label>
+                <input id="wa-budget" inputMode="numeric" value={waBudget} onChange={(e) => { setWaBudget(e.target.value); setWaSaved(false) }} placeholder="e.g. 20000"
+                  style={{ minHeight: 40, boxSizing: 'border-box', padding: '0 14px', border: '1px solid #CFDCDA', borderRadius: 12, fontSize: 14, fontFamily: ds.fontDm, color: ds.dark }} />
+              </div>
+              <div style={{ flex: '1 1 240px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label htmlFor="wa-action" style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>When it is used up</label>
+                <select id="wa-action" value={waAction} onChange={(e) => { setWaAction(e.target.value); setWaSaved(false) }}
+                  style={{ minHeight: 40, border: '1px solid #CFDCDA', borderRadius: 12, padding: '0 12px', fontFamily: ds.fontDm, fontSize: 14, background: '#fff', color: ds.dark }}>
+                  <option value="chat">Switch customers to web chat</option>
+                  <option value="continue">Keep sending and use my credit</option>
+                </select>
+              </div>
+              <button type="button" className="bl-btn" style={btn(true)} disabled={busy} onClick={saveWaBudget}>{waSaved ? 'Saved' : 'Save budget'}</button>
+            </div>
+            <p style={{ fontSize: 12.5, color: B.muted, margin: '14px 0 0', lineHeight: 1.5 }}>Replies to customers who message you stay free for the first 1,000 a month. Each web chat conversation costs ₦20.</p>
           </section>
 
           <section style={card} aria-label="Usage">

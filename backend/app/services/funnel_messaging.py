@@ -144,6 +144,12 @@ def send_reply_buttons(db, org_id: str, number_row: dict, to: str, body: str,
 def send_template(db, org_id: str, number_row: dict, to: str, template_name: str,
                   body_params: Optional[list[str]] = None, language: str = "en",
                   lead_id: Optional[str] = None) -> bool:
+    try:  # WA-BUDGET-1: no paid marketing templates once the owner's WhatsApp budget is spent
+        from app.services import credit_service
+        if credit_service.marketing_paused(db, org_id, template_name):
+            return False
+    except Exception:
+        pass
     tpl: dict = {"name": template_name, "language": {"code": language}}
     params = [str(p)[:1000] for p in (body_params or [])]
     if params:

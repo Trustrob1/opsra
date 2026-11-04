@@ -330,6 +330,31 @@ def wa_over_budget(db, org_id: Optional[str]) -> bool:
         return False
 
 
+def marketing_paused(db, org_id: Optional[str], template_name: Optional[str]) -> bool:
+    """True when the WhatsApp budget is spent and this template is a marketing one (follow-ups, broadcasts)."""
+    try:
+        if not org_id or not template_name or not wa_over_budget(db, org_id):
+            return False
+        rows = _rows(db.table("whatsapp_templates").select("category").eq("org_id", org_id)
+                     .eq("name", template_name).limit(1).execute())
+        return bool(rows) and str(rows[0].get("category") or "").lower() == "marketing"
+    except Exception:
+        return False
+
+
+def set_wa_budget(db, org_id: str, budget_kobo: Optional[int], action: str) -> dict:
+    """Owner's WhatsApp budget (None/0 = no limit) and what happens when it is spent: 'chat' or 'continue'."""
+    if action not in ("chat", "continue"):
+        raise ValueError("Choose what should happen when the budget is spent.")
+    if budget_kobo is not None and (int(budget_kobo) < 0 or int(budget_kobo) > 10_000_000_00):
+        raise ValueError("That budget is not valid.")
+    row = {"wa_monthly_budget_kobo": int(budget_kobo) if budget_kobo else None, "wa_over_budget_action": action}
+    res = db.table("credit_wallets").update(row).eq("org_id", org_id).execute()
+    if not _rows(res):
+        raise ValueError("Your credit wallet is not set up yet.")
+    return row
+
+
 def meter_webchat_conversation(db, org_id: Optional[str], session_id: str) -> int:
     """Opsra's per-conversation web chat fee (rule event 'webchat_conversation'). Idempotent per session. Never raises."""
     try:

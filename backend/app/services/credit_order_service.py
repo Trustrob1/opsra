@@ -82,6 +82,9 @@ def summary(db, org_id: str) -> dict:
         "metering_enabled": bool(wallet.get("metering_enabled")),
         "ai_monthly_budget_kobo": wallet.get("ai_monthly_budget_kobo"),
         "low_balance_kobo": int(wallet.get("low_balance_kobo") or 0),
+        "wa_monthly_budget_kobo": wallet.get("wa_monthly_budget_kobo"),
+        "wa_over_budget_action": wallet.get("wa_over_budget_action") or "chat",
+        "month_wa_spend_kobo": credit_service.month_wa_spend_kobo(db, org_id),
         "expiring": None, "month_spend_kobo": {"ai": 0, "meta": 0, "fee": 0}, "month_spend_total_kobo": 0,
         "min_custom_kobo": MIN_CUSTOM_KOBO, "max_order_kobo": MAX_ORDER_KOBO,
     }

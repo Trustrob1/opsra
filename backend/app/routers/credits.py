@@ -6,6 +6,7 @@ S1: the org always comes from the login, never from the request.
 
   GET  /credits/summary          balance, expiry, this month's spend
   GET  /credits/usage?days=30    spend per day and kind
+  PUT  /credits/whatsapp-budget  {budget_naira, action: chat|continue}
   GET  /credits/ledger?before=   transaction list (newest first)
   GET  /credits/packs            packs + limits for a custom amount
   GET  /credits/orders           recent top-ups
@@ -48,6 +49,22 @@ class VerifyBody(BaseModel):
 @router.get("/credits/summary")
 def get_summary(db=Depends(get_supabase), org=Depends(get_current_org)):
     _require_manager(org)
+    return ok(svc.summary(db, org["org_id"]))
+
+
+class WaBudgetBody(BaseModel):
+    budget_naira: Optional[int] = Field(default=None, ge=0, le=10_000_000)
+    action: str = Field(default="chat", max_length=12)
+
+
+@router.put("/credits/whatsapp-budget")
+def set_wa_budget(body: WaBudgetBody, db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    from app.services import credit_service
+    try:
+        credit_service.set_wa_budget(db, org["org_id"], (body.budget_naira or 0) * 100 or None, body.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     return ok(svc.summary(db, org["org_id"]))
 
 

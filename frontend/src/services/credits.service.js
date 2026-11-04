@@ -12,6 +12,8 @@ export const getCreditOrders = () => api.get('/api/v1/credits/orders').then((r) 
 export const startCreditCheckout = (body) => api.post('/api/v1/credits/checkout', body).then((r) => r.data.data)
 export const verifyCreditPayment = (reference) => api.post('/api/v1/credits/verify', { reference }).then((r) => r.data.data)
 
+export const setWhatsappBudget = (budget_naira, action) => api.put('/api/v1/credits/whatsapp-budget', { budget_naira, action }).then((r) => r.data.data)
+
 export const naira = (kobo) => `₦${(Number(kobo || 0) / 100).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`
 export const creditError = (e, fallback = 'Something went wrong. Please try again.') => {
   const d = e?.response?.data?.detail

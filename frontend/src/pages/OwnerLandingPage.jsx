@@ -115,6 +115,7 @@ const CREDIT_USES = [
   ["AI replies", "Each reply the AI writes for you", "About \u20a612 each", "grey", "\u20a612"],
   ["Booking confirmations and reminders", "Includes the WhatsApp fee", "\u20a617 each", "blue", "\u20a617"],
   ["Follow-ups and broadcasts", "Marketing messages, WhatsApp fee included", "\u20a6100 each", "purple", "\u20a6100"],
+  ["Web chat conversations", "Your own chat on your site, a cheaper alternative to WhatsApp", "\u20a620 each", "green", "\u20a620"],
   ["Replies to customers who message you", "Inside the 24 hours after they write. The first 1,000 each month are free, then", "\u20a617 each", "green", "1,000 free"],
 ];
 const CREDIT_PACKS = [[5000, 0, "\u20a65k"], [10000, 0, "\u20a610k"], [25000, 2, "\u20a625k"], [50000, 5, "\u20a650k"]];

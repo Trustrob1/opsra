@@ -1039,6 +1039,16 @@ def send_whatsapp_message(
             ),
         )
 
+    # ── WA-BUDGET-1: marketing templates stop when the WhatsApp budget is spent ─
+    if payload.template_name:
+        from app.services import credit_service as _cs_budget
+        if _cs_budget.marketing_paused(db, org_id, payload.template_name):
+            raise HTTPException(
+                status_code=409,
+                detail="Your WhatsApp budget for this month is used up, so marketing messages are paused. "
+                       "Raise the budget in Billing > Credits, or reach this customer through web chat.",
+            )
+
     # ── Build Meta API payload ─────────────────────────────────────────────
     if payload.template_name:
         template_dict: dict = {
