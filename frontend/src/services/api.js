@@ -66,6 +66,19 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    // This request went out with a token that has since been renewed (a refresh finished while it was in
+    // flight). Just resend it with the current token: a second refresh here is what signed people out.
+    if (!original._staleRetried) {
+      const { default: useAuthStore } = await import('../store/authStore')
+      const current = useAuthStore.getState().getToken()
+      const sent = String(original.headers?.Authorization ?? original.headers?.get?.('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+      if (current && sent && current !== sent) {
+        original._staleRetried = true
+        original.headers['Authorization'] = `Bearer ${current}`
+        return api(original)
+      }
+    }
+
     if (_refreshing) {
       // Another refresh is already in progress — queue this request
       return new Promise((resolve, reject) => {

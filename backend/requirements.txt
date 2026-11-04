@@ -29,6 +29,7 @@ anthropic==0.26.1              # Sonnet + Haiku — Spec Section 1 & Section 8/1
 
 # ── Background Jobs — Celery + Redis ────────────────────────
 celery[redis]==5.3.6           # Task queue — Spec Section 1 (12 scheduled jobs)
+kombu==5.3.7                   # pinned: kombu 5.7 needs redis-py 6.1+, which broke webhook queueing (503) on 3 Nov 2026
 redis==5.0.4                   # Redis client — Upstash Redis via rediss:// TLS
 
 # ── HTTP Client ──────────────────────────────────────────────
