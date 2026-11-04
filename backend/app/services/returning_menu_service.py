@@ -116,7 +116,8 @@ def show(db, org_id: str, phone: str, contact_name: Optional[str], kind: str, le
         if not (phone_id or "").strip() or not token:
             return False
         greeting = _personalise_greeting(section.get("greeting") or "How can we help you today?", contact_name)
-        body = f"{prefix.strip()}\n\n{greeting}" if prefix else greeting
+        # MENU-FOLLOWUP-1: a follow-up menu is just a short prompt, not the welcome again; an org can word it (section.followup_prompt)
+        body = ((section.get("followup_prompt") or prefix).strip()) if prefix else greeting
         payload = {
             "messaging_product": "whatsapp", "to": phone, "type": "interactive",
             "interactive": {"type": "list", "body": {"text": body[:1024]},
@@ -223,6 +224,13 @@ def run_info_action(db, org_id: str, phone: str, session_id: str, item: dict, co
             triage_service._notify_managers(db, org_id, title=f"{contact_name or phone} asked about: {item.get('label', 'a menu item')}",
                                             body=f"They tapped '{item.get('label', '')}' on the WhatsApp menu. Please follow up from Conversations.",
                                             resource_type="lead" if lead_id else "customer", resource_id=lead_id or cust or "")
+        # MENU-BOOK-1 (opt-in: whatsapp_triage_config.followup_after_info): after an info reply, bring the menu straight back so the next tap
+        # (ideally "book a call") is one step away. Only on a live menu tap; the stale-tap path sends its own follow-up.
+        if session_id and (lead_id or cust):
+            org = _org(db, org_id)
+            if (org.get("whatsapp_triage_config") or {}).get("followup_after_info"):
+                show(db, org_id, phone, contact_name, "lead" if lead_id else "customer", lead_id=lead_id, customer_id=cust,
+                     prefix="Anything else you'd like to know? Tap See options below to pick another topic.")
     except Exception as exc:
         logger.warning("returning menu info action failed org=%s: %s", org_id, exc)
 
@@ -265,7 +273,7 @@ def answer_stale_tap(db, org_id: str, phone: str, label: Optional[str], contact_
             run_book_action(db, org_id, phone, None)
             return True
         run_info_action(db, org_id, phone, None, item, contact_name=contact_name)
-        show(db, org_id, phone, contact_name, "lead", lead_id=lead_id, prefix="Anything else I can help you with?")
+        show(db, org_id, phone, contact_name, "lead", lead_id=lead_id, prefix="Anything else you'd like to know? Tap See options below to pick another topic.")
         return True
     except Exception as exc:
         logger.warning("answer_stale_tap failed org=%s: %s", org_id, exc)
