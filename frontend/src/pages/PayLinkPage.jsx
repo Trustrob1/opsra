@@ -10,7 +10,8 @@ import { ngn } from '../services/accountPlan.service'
 import { getPayView, payRenew, payTopup, payVerify, payError } from '../services/billingPublic.service'
 import { B, button, tile, tileDark, tileLabel, tileValue, panel, panelTitle, panelSub, BILLING_CSS } from '../modules/billing/billingUi'
 
-const day = (v) => (v ? new Date(v).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' }) : '')
+// End dates are stored as 23:59:59 UTC on the last day, so show the UTC date (same as Billing and the staff screen).
+const day = (v) => (v ? new Date(v).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '')
 const STATUS = { active: 'Active', grace: 'Ended, still on for a few days', paused: 'Paused', pending: 'Not paid yet' }
 
 export default function PayLinkPage({ token }) {

@@ -164,7 +164,7 @@ function PlanCard({ plan, index, plans, busy, onPay, interval = 'month' }) {
   )
 }
 
-const dayMonth = (iso) => { try { return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', timeZone: 'Africa/Lagos' }) } catch { return '' } }
+const dayMonth = (iso) => { try { return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', timeZone: 'UTC' }) } catch { return '' } }
 
 /** BILL-3: this month's included credit, inside the dark plan card. */
 function IncludedCredit({ inc }) {
