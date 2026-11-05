@@ -6,10 +6,11 @@ A WhatsApp line for realtors (internal and external) on the developer's official
 A registered staff member (a user whose profile has a WhatsApp number and whose role is sales_agent or affiliate_partner) who
 messages the business number gets a realtor menu instead of the buyer menu:
 
-  Register a client   name, WhatsApp number, plot interest. Locks the client to that realtor for `lock_days`; a second realtor
-                      (or Ollic's own records) cannot register the same number inside the lock.
+  Request a site visit  asks whether the visit is for an existing registered client or a new one. A new client is registered at the
+                      end of the request (name, number, interest), which locks the client to that realtor for `lock_days`; a second
+                      realtor (or Ollic's own records) cannot register the same number inside the lock. The request lands as a
+                      pending booking ("Needs approval") for the admin and the lead moves to the visit-requested stage.
   My clients          stage, site visit and payments per client, for that realtor's clients only.
-  Request a site visit  pick a client, a day, a time and a group size. Lands as a pending booking ("Needs approval") for the admin.
   Marketing kit       flyer image and text set by the admin.
   My commission       totals by status and the latest entries.
 
@@ -32,13 +33,13 @@ logger = logging.getLogger(__name__)
 SESSION_MINUTES = 30
 REALTOR_TEMPLATES = ("sales_agent", "affiliate_partner")
 DEFAULT_LOCK_DAYS = 60
+VISIT_STAGE = "contacted"      # platform stage key; Ollic labels it "Qualified / Visit Requested"
 DEFAULT_INTERESTS = ["Residential plot", "Commercial plot", "Not sure yet"]
 _CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 MENU_ROWS = [
-    ("rl:register", "Register a client", "Lock a new client to you"),
+    ("rl:visit", "Request a site visit", "New or existing client"),
     ("rl:clients", "My clients", "Stage, visit and payments"),
-    ("rl:visit", "Request a site visit", "For one of your clients"),
     ("rl:kit", "Marketing kit", "Flyers and price list"),
     ("rl:money", "My commission", "What you have earned"),
 ]
@@ -189,8 +190,11 @@ def _first(name: str) -> str:
     return (name or "there").split()[0]
 
 
-def _show_menu(db, org_id, phone, realtor, cfg, lead_in: str = "") -> None:
-    body = (lead_in + "\n\n" if lead_in else "") + f"Hi {_first(realtor['name'])}, this is the realtor line. What would you like to do?"
+def _show_menu(db, org_id, phone, realtor, cfg, lead_in: str = "", greeting: bool = False) -> None:
+    """The intro is only for the first message of a conversation; after an action we just ask what else they need."""
+    ask = (f"Hi {_first(realtor['name'])}, this is the realtor line. What would you like to do?" if greeting
+           else "What else can I help you with?")
+    body = (lead_in + "\n\n" if lead_in else "") + ask
     _list(db, org_id, phone, body, "See options", MENU_ROWS, "Realtor line")
 
 
@@ -228,33 +232,28 @@ def _dispatch(db, org_id, phone, realtor, cfg, org, text, rid) -> None:
         return _menu_action(db, org_id, phone, realtor, cfg, org, rid)
     if low in ("menu", "hi", "hello", "hey", "start", "cancel", "help", "stop"):
         _clear_session(db, org_id, phone)
-        return _show_menu(db, org_id, phone, realtor, cfg)
+        return _show_menu(db, org_id, phone, realtor, cfg, greeting=True)
     sess = _get_session(db, org_id, phone)
     if not sess:
-        return _show_menu(db, org_id, phone, realtor, cfg)
+        return _show_menu(db, org_id, phone, realtor, cfg, greeting=True)
     step, data = sess["step"], sess.get("data") or {}
     handler = _STEPS.get(step)
     if not handler:
         _clear_session(db, org_id, phone)
-        return _show_menu(db, org_id, phone, realtor, cfg)
+        return _show_menu(db, org_id, phone, realtor, cfg, greeting=True)
     handler(db, org_id, phone, realtor, cfg, org, text, rid, data)
 
 
 def _menu_action(db, org_id, phone, realtor, cfg, org, rid) -> None:
-    if rid == "rl:register":
-        _set_session(db, org_id, phone, "reg_name", {})
-        _text(db, org_id, phone, "Let's register a client. What is the client's full name?\n\n(Type menu any time to stop.)")
+    if rid in ("rl:visit", "rl:register"):             # rl:register: old menus still on a realtor's phone
+        if not _active_clients(db, org_id, realtor["id"], 1):
+            return _start_new_client(db, org_id, phone)
+        _set_session(db, org_id, phone, "visit_kind", {})
+        _buttons(db, org_id, phone, "Is the site visit for a client you already registered, or a new client?",
+                 [("vk:exist", "Existing client"), ("vk:new", "New client")])
     elif rid == "rl:clients":
         _text(db, org_id, phone, _clients_text(db, org_id, realtor, org))
         _show_menu(db, org_id, phone, realtor, cfg)
-    elif rid == "rl:visit":
-        clients = _active_clients(db, org_id, realtor["id"], 10)
-        if not clients:
-            _text(db, org_id, phone, "You have no registered clients yet. Choose Register a client first, then request the visit.")
-            return _show_menu(db, org_id, phone, realtor, cfg)
-        _set_session(db, org_id, phone, "visit_client", {})
-        _list(db, org_id, phone, "Which client is the site visit for?", "Pick a client",
-              [(f"rv:{c['id']}", c["client_name"], f"Code {c['ref_code']}") for c in clients], "Your clients")
     elif rid == "rl:kit":
         kit = cfg.get("kit") or {}
         if kit.get("image_url"):
@@ -268,7 +267,25 @@ def _menu_action(db, org_id, phone, realtor, cfg, org, rid) -> None:
         _show_menu(db, org_id, phone, realtor, cfg)
 
 
-# ───────────────────────────── register a client ─────────────────────────────
+# ───────────────────────────── new client (registered as part of a visit request) ─────────────────────────────
+
+def _start_new_client(db, org_id, phone) -> None:
+    _set_session(db, org_id, phone, "reg_name", {})
+    _text(db, org_id, phone, "Let's set up the visit. What is the client's full name?\n\n(Type menu any time to stop.)")
+
+
+def _step_visit_kind(db, org_id, phone, realtor, cfg, org, text, rid, data):
+    if rid == "vk:new":
+        return _start_new_client(db, org_id, phone)
+    if rid == "vk:exist":
+        clients = _active_clients(db, org_id, realtor["id"], 10)
+        if not clients:
+            return _start_new_client(db, org_id, phone)
+        _set_session(db, org_id, phone, "visit_client", {})
+        return _list(db, org_id, phone, "Which client is the site visit for?", "Pick a client",
+                     [(f"rv:{c['id']}", c["client_name"], f"Code {c['ref_code']}") for c in clients], "Your clients")
+    _buttons(db, org_id, phone, "Is the site visit for a client you already registered, or a new client?",
+             [("vk:exist", "Existing client"), ("vk:new", "New client")])
 
 def _step_reg_name(db, org_id, phone, realtor, cfg, org, text, rid, data):
     name = " ".join(text.split())[:100]
@@ -286,11 +303,10 @@ def _step_reg_phone(db, org_id, phone, realtor, cfg, org, text, rid, data):
     name = data.get("name") or "the client"
     tz = _tz(org)
     if state == "mine":
-        until = _parse_dt(info.get("locked_until"))
-        _clear_session(db, org_id, phone)
-        _text(db, org_id, phone, f"{name} is already registered to you (code {info['ref_code']})"
-              + (f", locked until {until.astimezone(tz).strftime('%d %b %Y')}." if until else "."))
-        return _show_menu(db, org_id, phone, realtor, cfg)
+        _text(db, org_id, phone, f"{info['client_name']} is already registered to you (code {info['ref_code']}). "
+              "I'll book the visit for them.")
+        _set_session(db, org_id, phone, "visit_day", {"rc_id": info["id"], "lead_id": info["lead_id"], "name": info["client_name"]})
+        return _prompt_day(db, org_id, phone, org, info["client_name"])
     if state == "taken":
         until = _parse_dt(info.get("locked_until"))
         _clear_session(db, org_id, phone)
@@ -327,14 +343,9 @@ def _step_reg_interest(db, org_id, phone, realtor, cfg, org, text, rid, data):
     if not interest:
         return _list(db, org_id, phone, "Please pick what the client is interested in.", "Pick one",
                      [(f"ri:{i}", label) for i, label in enumerate(interests[:10])], "Interest")
-    rc = register_client(db, org_id, realtor, data["name"], data["client_phone"], interest,
-                         int(cfg.get("lock_days") or DEFAULT_LOCK_DAYS), lead_id=data.get("lead_id"))
-    _clear_session(db, org_id, phone)
-    until = _parse_dt(rc["locked_until"])
-    _text(db, org_id, phone, f"Done. {rc['client_name']} is registered to you.\n\nReference code: {rc['ref_code']}\n"
-          f"Protected until {until.astimezone(_tz(org)).strftime('%d %b %Y')}.\n\n"
-          "Ask the client to quote this code when paying, and choose Request a site visit when they are ready to see the estate.")
-    _show_menu(db, org_id, phone, realtor, cfg)
+    new = {"name": data["name"], "client_phone": data["client_phone"], "interest": interest, "lead_id": data.get("lead_id")}
+    _set_session(db, org_id, phone, "visit_day", {"new": new, "name": data["name"]})
+    _prompt_day(db, org_id, phone, org, data["name"])
 
 
 def check_client_phone(db, org_id: str, digits: str, realtor_id: str) -> tuple[str, dict]:
@@ -439,13 +450,40 @@ def _step_visit_group(db, org_id, phone, realtor, cfg, org, text, rid, data):
         return _prompt_group(db, org_id, phone)
     group = {"1": "1 person", "3": "2 to 3 people", "5": "4 or more people"}.get(rid[3:], "not stated")
     _clear_session(db, org_id, phone)
-    when = create_visit_request(db, org_id, realtor, data["lead_id"], data["name"], data["day"], data["hour"], group, org)
+    name, lead_id, rc = data["name"], data.get("lead_id"), None
+    new = data.get("new")
+    if new:                                    # a new client is registered only now, so an abandoned request leaves nothing behind
+        try:
+            rc = register_client(db, org_id, realtor, new["name"], new["client_phone"], new["interest"],
+                                 int(cfg.get("lock_days") or DEFAULT_LOCK_DAYS), lead_id=new.get("lead_id"))
+            lead_id = rc["lead_id"]
+        except Exception as exc:
+            logger.exception("register_client failed org=%s: %s", org_id, exc)
+            _text(db, org_id, phone, "Sorry, I couldn't register this client. Please contact the Ollic team.")
+            return _show_menu(db, org_id, phone, realtor, cfg)
+    when = create_visit_request(db, org_id, realtor, lead_id, name, data["day"], data["hour"], group, org)
     if not when:
-        _text(db, org_id, phone, "Sorry, I couldn't send that request. Please contact the Ollic team to arrange the visit.")
+        _text(db, org_id, phone, "Sorry, I couldn't send that request. Please contact the Ollic team to arrange the visit."
+              + (f"\n\n{name} is registered to you (code {rc['ref_code']})." if rc else ""))
     else:
-        _text(db, org_id, phone, f"Site visit requested for {data['name']} on {when} ({group}).\n\n"
-              "The Ollic team will confirm it and you will get a message here.")
+        _move_to_visit_stage(db, org_id, lead_id)
+        msg = f"Site visit requested for {name} on {when} ({group})."
+        if rc:
+            until = _parse_dt(rc["locked_until"])
+            msg += (f"\n\n{name} is now registered to you.\nReference code: {rc['ref_code']}"
+                    f"\nProtected until {until.astimezone(_tz(org)).strftime('%d %b %Y')}."
+                    "\nAsk the client to quote this code when paying.")
+        _text(db, org_id, phone, msg + "\n\nThe Ollic team will confirm the visit and you will get a message here.")
     _show_menu(db, org_id, phone, realtor, cfg)
+
+
+def _move_to_visit_stage(db, org_id: str, lead_id: str) -> None:
+    """A fresh lead whose visit is requested moves to the visit-requested stage. Leads further along never move backwards."""
+    try:
+        db.table("leads").update({"stage": VISIT_STAGE, "updated_at": _iso()}).eq("id", lead_id).eq("org_id", org_id) \
+            .eq("stage", "new").execute()
+    except Exception as exc:
+        logger.warning("move_to_visit_stage failed lead=%s: %s", lead_id, exc)
 
 
 def create_visit_request(db, org_id: str, realtor: dict, lead_id: str, client_name: str, day: str, hour: int, group: str,
@@ -543,7 +581,7 @@ def _commission_text(db, org_id: str, realtor_id: str) -> str:
 
 
 _STEPS = {
-    "reg_name": _step_reg_name, "reg_phone": _step_reg_phone, "reg_interest": _step_reg_interest,
+    "visit_kind": _step_visit_kind, "reg_name": _step_reg_name, "reg_phone": _step_reg_phone, "reg_interest": _step_reg_interest,
     "visit_client": _step_visit_client, "visit_day": _step_visit_day, "visit_time": _step_visit_time,
     "visit_group": _step_visit_group,
 }
