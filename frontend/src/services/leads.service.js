@@ -377,3 +377,6 @@ export async function confirmAttribution(leadId, payload) {
     return { success: false, error: err?.response?.data?.error ?? 'Failed to confirm attribution' }
   }
 }
+// REALTOR-LINE-1 — money received in the company account for a lead (managers only)
+export const getLeadPayments   = (leadId) => api.get(`/api/v1/leads/${leadId}/payments`).then((r) => r.data?.data ?? r.data)
+export const recordLeadPayment = (leadId, body) => api.post(`/api/v1/leads/${leadId}/payments`, body).then((r) => r.data?.data ?? r.data)

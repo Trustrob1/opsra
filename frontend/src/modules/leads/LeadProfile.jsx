@@ -38,6 +38,7 @@ import { ds, SCORE_STYLE, STAGE_STYLE, STAGES, SOURCE_LABELS, LOST_REASON_LABELS
 import { getPipelineStages } from '../../services/admin.service'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import LeadScoreButton from './LeadScoreButton'
+import ClientPayments from './ClientPayments'   // REALTOR-LINE-1
 import LeadTimeline    from './LeadTimeline'
 import LeadTasks       from './LeadTasks'
 import LeadMessages    from './LeadMessages'
@@ -505,6 +506,7 @@ export default function LeadProfile({ leadId, onBack }) {
     { key: 'timeline',        label: '📋', fullLabel: 'Timeline'         },
     { key: 'tasks',           label: '✅', fullLabel: 'Tasks',     badge: attention.pending_tasks,   badgeColor: '#D97706' },
     ...(demoEnabled ? [{ key: 'demos', label: '📅', fullLabel: meetingLabel, badge: attention.pending_demos, badgeColor: '#D97706' }] : []),
+    ...(isManager ? [{ key: 'client-payments', label: '💰', fullLabel: 'Payments' }] : []),
     { key: 'log-interaction', label: '📞', fullLabel: 'Log'              },
     { key: 'create-ticket',   label: '🎫', fullLabel: 'Tickets',   badge: attention.open_tickets,    badgeColor: '#E53E3E' },
   ]
@@ -730,6 +732,7 @@ function TabContent({ tab, lead, leadId, pipelineStages, meetingLabel = 'Demo' }
       {tab === 'timeline'        && <LeadTimeline leadId={leadId} />}
       {tab === 'tasks'           && <LeadTasks    leadId={leadId} />}
       {tab === 'demos'           && <DemoScheduler leadId={leadId} leadName={lead.full_name} meetingLabel={meetingLabel} />}
+      {tab === 'client-payments' && <ClientPayments leadId={leadId} />}
       {tab === 'log-interaction' && <LogInteractionPanel linkedTo={{ type: 'lead', id: leadId }} contextName={lead.full_name} />}
       {tab === 'create-ticket'   && <LinkedTicketsPanel  linkedTo={{ type: 'lead', id: leadId }} contextName={lead.full_name} />}
     </>

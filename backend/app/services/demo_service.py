@@ -639,6 +639,12 @@ def confirm_demo(
                   "medium": medium, "assigned_to": assigned_to},
     )
     _touch_lead(db, org_id, lead_id)
+    if medium == "in_person":      # REALTOR-LINE-1: tell the realtor who registered this client that the site visit is set
+        try:
+            from app.services import realtor_service
+            realtor_service.on_visit_confirmed(db, org_id, lead_id, formatted_dt)
+        except Exception as _rl_exc:
+            logger.warning("demo_service: realtor visit notice failed — %s", _rl_exc)
     return _fetch_demo_by_id(db, org_id, demo_id)
 
 

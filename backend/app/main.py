@@ -176,6 +176,7 @@ from app.routers import ops as ops_router
 from app.routers import tasks as tasks_router
 from app.routers import notifications as notifications_router
 from app.routers import commissions as commissions_router
+from app.routers import realtor as realtor_router   # REALTOR-LINE-1
 from app.routers import assistant as assistant_router
 from app.routers import superadmin as superadmin_router
 from app.routers import onboarding as onboarding_router
@@ -243,6 +244,7 @@ app.include_router(ops_router.router, dependencies=[Depends(crm_only)],         
 app.include_router(tasks_router.router, dependencies=[Depends(crm_only)],         prefix="/api/v1",               tags=["tasks"])
 app.include_router(notifications_router.router, prefix="/api/v1",               tags=["notifications"])
 app.include_router(commissions_router.router, dependencies=[Depends(crm_only)],   prefix="/api/v1",               tags=["commissions"])
+app.include_router(realtor_router.router,      dependencies=[Depends(crm_only)],   prefix="/api/v1",               tags=["realtor"])
 app.include_router(assistant_router.router, dependencies=[Depends(crm_only)],     prefix="/api/v1",               tags=["assistant"])
 app.include_router(superadmin_router.router,    prefix="/api/v1",               tags=["superadmin"])
 app.include_router(onboarding_router.router,    prefix="/api/v1",               tags=["onboarding"])

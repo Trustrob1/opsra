@@ -1499,7 +1499,14 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             sender_number=sender_phone,
         )
         return
- 
+
+    # REALTOR-LINE-1: a registered realtor (profile WhatsApp number, role sales_agent / affiliate_partner) gets the realtor menu
+    # instead of the buyer flow. Only on organisations with whatsapp_triage_config.realtor_line.enabled; never raises.
+    if org_id:
+        from app.services import realtor_service
+        if realtor_service.handle_inbound(db, org_id, sender_phone, contact_name, msg_type, content, interactive_payload):
+            return
+
     if org_id and msg_type == "text" and content:
         if _handle_opt_keywords(db, content, sender_phone, org_id, customer_id, lead_id):
             return
@@ -1525,6 +1532,11 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             )
             return
  
+        # REALTOR-LINE-1 (path B): the realtor's own number is not a lead, so the org came from the receiving number
+        from app.services import realtor_service as _realtor_service
+        if _realtor_service.handle_inbound(db, org_id, sender_phone, contact_name, msg_type, content, interactive_payload):
+            return
+
         # ── OWNER NUMBER GUARD ────────────────────────────────────────────
         # Belt-and-suspenders: if _is_org_owner returns True here it means
         # the owner's number was not caught at path B above (e.g. number
