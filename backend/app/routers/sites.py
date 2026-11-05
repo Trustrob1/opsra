@@ -26,6 +26,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 
 from app.database import get_supabase
 from app.dependencies import get_current_org
@@ -942,8 +943,10 @@ async def import_site_upload(
     data = await _read_capped(file, cfg["max_mb"] * 1024 * 1024)
     actor = f"user:{org.get('id')}"
     try:
-        result = site_import_service.import_site(db, org_id, site, actor, data, file.filename or "", settings,
-                                                 accepted=accepted_map, dry_run=dry_run)
+        # IMPORT-TIMEOUT-1: saving a big site uploads dozens of files (about a minute). Run it in a worker thread so the
+        # server keeps answering its health check; blocking the event loop here made gunicorn kill the worker at 60 s (502).
+        result = await run_in_threadpool(site_import_service.import_site, db, org_id, site, actor, data, file.filename or "",
+                                         settings, accepted=accepted_map, dry_run=dry_run)
     except site_import_service.ImportRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc),
                             "errors": exc.errors, "report": exc.report})
