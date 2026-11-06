@@ -603,6 +603,11 @@ def dispatch_triage_selection(
         elif action == "identify_customer":
             _action_identify_customer(db, org_id, phone_number, session_id)
 
+        elif action == "route_to_role" and (matched_item or {}).get("contact_type", "sales_lead") == "sales_lead" \
+                and _order_gate_on(db, org_id):
+            # ORDER-GATE-1: no instant rep. The customer picks a product and taps Order; that is what reaches a rep.
+            _action_browse_catalog(db, org_id, phone_number, session_id, body=_ORDER_GATE_BODY)
+
         elif action == "route_to_role":
             _action_route_to_role(db, org_id, phone_number, session_id,
                                   matched_item or {}, contact_name, now_ts)
@@ -2026,11 +2031,26 @@ def _is_help_me_choose(content: str) -> bool:
         return False
 
 
+_ORDER_GATE_BODY = (
+    "Great! 🛏 Here's our catalog. Pick the one you want and tap *Order via WhatsApp* - "
+    "a consultant will confirm it's available and send you the payment details."
+)
+
+
+def _order_gate_on(db, org_id: str) -> bool:
+    try:
+        from app.services import order_request_service
+        return order_request_service.gate_on(db, org_id)
+    except Exception:
+        return False
+
+
 def _action_browse_catalog(
     db,
     org_id: str,
     phone_number: str,
     session_id: str,
+    body: Optional[str] = None,
 ) -> None:
     """
     CATALOG-5: Called from dispatch_triage_selection when action == 'browse_catalog'.
@@ -2088,7 +2108,7 @@ def _action_browse_catalog(
             return
 
         # 4 — Build message body
-        body = (
+        body = body or (
             "Here's our full catalog 📖\n"
             "Browse at your own pace. "
             "If you'd like a personal recommendation, just reply *Help me choose*."

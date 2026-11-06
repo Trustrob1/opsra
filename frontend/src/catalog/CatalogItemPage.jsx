@@ -183,9 +183,10 @@ export default function CatalogItemPage({ orgName, waNumber, catalogConfig, item
       : null
 
   // ── WhatsApp CTA links ────────────────────────────────────────────────────
-  const waMessage = selectedVariant
+  // ORDER-GATE-1: the [ord:...] tag is removed by the server; it marks this as a ready-to-buy order request.
+  const waMessage = (selectedVariant
     ? `Hi, I'm interested in the ${selectedVariant.title} size ${item.title}`
-    : `Hi, I'm interested in the ${item.title}`
+    : `Hi, I'm interested in the ${item.title}`) + ` [ord:${item.slug || item.id || 'item'}]`
 
   const orderLink = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(waMessage)}`

@@ -462,7 +462,7 @@ def auto_assign_lead(
         try:
             org_result = (
                 db.table("organisations")
-                .select("lead_assignment_mode, timezone")
+                .select("lead_assignment_mode, timezone, assign_on_order")
                 .eq("id", org_id)
                 .maybe_single()
                 .execute()
@@ -476,6 +476,11 @@ def auto_assign_lead(
             return None
 
         if org_data.get("lead_assignment_mode", "manual") != "auto":
+            return None
+
+        # ORDER-GATE-1: this business only gives a rep the leads that are ready to buy. A plain WhatsApp enquiry stays
+        # unassigned until the customer asks to order (that call uses lead_source 'ready_to_buy').
+        if org_data.get("assign_on_order") and lead_source == "whatsapp_inbound":
             return None
 
         # ── Gate 2: contact_type ──────────────────────────────────────────

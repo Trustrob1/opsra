@@ -193,6 +193,7 @@ celery_app = Celery(
         "app.workers.site_import_worker",                # ← SITE-IMPORT 2 (make an uploaded site editable)
         "app.workers.credit_worker",                     # ← CREDITS-1 (expire lots + reconcile)
         "app.workers.plan_credit_worker",                # ← PLANS-3 (monthly credit a plan includes)
+        "app.workers.order_confirm_worker",               # ← ORDER-GATE-1 (10 minute order confirmation check)
         "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
         "app.workers.account_plan_worker",               # ← ACCOUNT-PLANS AP-2 (plan lapse + reminders)
         "app.workers.knowledge_refresh_worker",          # ← WA-AUTO-4c (re-read website / Google Doc sources)
