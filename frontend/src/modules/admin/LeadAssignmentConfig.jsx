@@ -33,6 +33,7 @@ const EMPTY_FORM = {
 
 export default function LeadAssignmentConfig() {
   const [mode,       setMode]       = useState('manual')
+  const [orderGate,  setOrderGate]  = useState(false)   // ORDER-GATE-1
   const [shifts,     setShifts]     = useState([])
   const [users,      setUsers]      = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -48,7 +49,23 @@ export default function LeadAssignmentConfig() {
   useEffect(() => {
     load()
     loadUsers()
+    adminSvc.getOrderGate().then(r => setOrderGate(!!r?.enabled)).catch(() => {})
   }, [])
+
+  // ORDER-GATE-1: switch "only assign leads that are ready to buy" on or off
+  const handleOrderGate = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await adminSvc.setOrderGate(!orderGate)
+      setOrderGate(!!res?.enabled)
+    } catch (err) {
+      setError(err?.response?.status === 403
+        ? 'Only owners and ops managers can change this.'
+        : 'Could not save this setting. Try again.')
+    }
+    setSaving(false)
+  }
 
   const load = async () => {
     setLoading(true)
@@ -284,6 +301,44 @@ export default function LeadAssignmentConfig() {
           </p>
         )}
       </div>
+
+      {/* ── ORDER-GATE-1: only assign leads that are ready to buy ───────── */}
+      {mode === 'auto' && (
+        <div style={{
+          background: '#0a1a24', border: '1px solid #1e3a4f',
+          borderRadius: 12, padding: '20px 22px', marginBottom: 20,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div>
+              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: 'white', margin: '0 0 6px' }}>
+                Only assign leads that are ready to buy
+              </h3>
+              <p style={{ fontSize: 12, color: '#7A9BAD', margin: 0, lineHeight: 1.5 }}>
+                {orderGate
+                  ? 'New WhatsApp enquiries stay unassigned. A rep gets the lead when the customer picks a product in your catalog and taps Order via WhatsApp, and is asked to confirm it is available within 10 minutes. "I know what I want" now sends the catalog instead of connecting the customer to a rep.'
+                  : 'Every new WhatsApp enquiry is assigned to the rep on shift straight away. Turn this on to assign only customers who pick a product and tap Order via WhatsApp.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={orderGate}
+              aria-label="Only assign leads that are ready to buy"
+              onClick={handleOrderGate}
+              disabled={saving}
+              style={{
+                flexShrink: 0, width: 46, height: 26, borderRadius: 13, padding: 2,
+                background: orderGate ? ds.teal : '#1e3a4f', border: 'none',
+                cursor: saving ? 'not-allowed' : 'pointer', transition: 'background 0.18s',
+                display: 'flex', alignItems: 'center',
+                justifyContent: orderGate ? 'flex-end' : 'flex-start',
+              }}
+            >
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'white', display: 'block' }} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Section 2–4: Shifts (auto mode only) ────────────────────────── */}
       {mode === 'auto' && (

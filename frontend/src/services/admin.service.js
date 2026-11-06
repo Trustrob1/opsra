@@ -378,6 +378,16 @@ export const getLeadAssignment = () =>
   api.get('/api/v1/admin/lead-assignment')
     .then(r => r.data.data)
 
+// ── ORDER-GATE-1: only give a rep the leads that are ready to buy ───────────
+
+export const getOrderGate = () =>
+  api.get('/api/v1/admin/order-gate')
+    .then(r => r.data.data)
+
+export const setOrderGate = (enabled) =>
+  api.put('/api/v1/admin/order-gate', { enabled })
+    .then(r => r.data.data)
+
 export const updateAssignmentMode = (mode) =>
   api.put('/api/v1/admin/lead-assignment/mode', { mode })
     .then(r => r.data.data)
