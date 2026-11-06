@@ -148,6 +148,8 @@ def send_template(db, org_id: str, number_row: dict, to: str, template_name: str
         from app.services import credit_service
         if credit_service.marketing_paused(db, org_id, template_name):
             return False
+        if credit_service.template_block_reason(db, org_id, template_name, lead_id=lead_id):
+            return False
     except Exception:
         pass
     tpl: dict = {"name": template_name, "language": {"code": language}}

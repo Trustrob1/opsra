@@ -1030,6 +1030,14 @@ def send_whatsapp_message(
     elif lead_id_str:
         window_open = _is_lead_window_open(db, org_id, lead_id_str)
 
+    # ── TEMPLATE-BLOCK-1: blocked templates / paid marketing templates inside a free window ──
+    if payload.template_name:
+        from app.services import credit_service as _cs_block
+        _why = _cs_block.template_block_reason(db, org_id, payload.template_name, window_open,
+                                               lead_id=lead_id_str, customer_id=customer_id_str)
+        if _why:
+            raise HTTPException(status_code=409, detail=_why)
+
     if not window_open and not payload.template_name:
         raise HTTPException(
             status_code=400,

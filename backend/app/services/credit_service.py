@@ -348,6 +348,41 @@ def marketing_paused(db, org_id: Optional[str], template_name: Optional[str]) ->
         return False
 
 
+def template_block_reason(db, org_id: Optional[str], template_name: Optional[str], window_open: bool = False,
+                          lead_id: Optional[str] = None, customer_id: Optional[str] = None) -> Optional[str]:
+    """TEMPLATE-BLOCK-1: a reason (shown to staff) when a template must not be sent for this business, else None.
+    1) the template is on the business's blocked list (wallet.wa_blocked_templates);
+    2) wallet.wa_block_free_window_marketing is on, the template is marketing, and the contact is inside a free window
+       (24h service window, or 72h after an ad click) - staff can simply reply, so paying for a marketing template is waste.
+    Never raises."""
+    try:
+        if not org_id or not template_name:
+            return None
+        w = get_wallet(db, org_id) or {}
+        if template_name in (w.get("wa_blocked_templates") or []):
+            return "This message is switched off for your business for now."
+        if not w.get("wa_block_free_window_marketing"):
+            return None
+        rows = _rows(db.table("whatsapp_templates").select("category").eq("org_id", org_id)
+                     .eq("name", template_name).limit(1).execute())
+        if not rows or str(rows[0].get("category") or "").lower() != "marketing":
+            return None
+        in_window = bool(window_open)
+        if not in_window and (lead_id or customer_id):
+            from datetime import timedelta
+            since = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+            q = (db.table("whatsapp_messages").select("id").eq("org_id", org_id).eq("direction", "outbound")
+                 .eq("meta_category", "referral_conversion").gte("created_at", since))
+            q = q.eq("lead_id", lead_id) if lead_id else q.eq("customer_id", customer_id)
+            in_window = bool(_rows(q.limit(1).execute()))
+        if in_window:
+            return ("This contact is still inside the free reply window, so a paid marketing template is not needed. "
+                    "Reply to them normally instead.")
+        return None
+    except Exception:
+        return None
+
+
 def set_wa_budget(db, org_id: str, budget_kobo: Optional[int], action: str) -> dict:
     """Owner's WhatsApp budget (None/0 = no limit) and what happens when it is spent: 'chat' or 'continue'."""
     if action not in ("chat", "continue"):

@@ -258,6 +258,14 @@ def run_owner_daily_report(self):
             )
             continue
 
+        try:  # TEMPLATE-BLOCK-1: staff can switch the daily brief off for a business
+            from app.services import credit_service as _cs_block
+            if _cs_block.template_block_reason(db, org_id, _TEMPLATE_NAME):
+                logger.info("owner_report_worker: org %s skipped - daily brief switched off", org_id)
+                continue
+        except Exception:
+            pass
+
         try:
             # Owner's personal contact number lives on the org row itself,
             # not on a user record. org_whatsapp_number is a different
