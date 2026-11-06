@@ -1049,6 +1049,7 @@ def _route_to_ai_agent(
     interactive_payload: Optional[dict],
     customer_id: Optional[str],
     lead_id: Optional[str],
+    pilot: bool = False,
 ) -> None:
     """
     AI-AGENT-1B: entry point for any number running wa_sales_mode='ai_agent'.
@@ -1104,6 +1105,8 @@ def _route_to_ai_agent(
             agent_user_id = _get_or_create_ai_agent_user(db, org_id)
             try:
                 updates = {"ai_owned": True}
+                if pilot:        # AI-PILOT-1: tag for good, so the comparison still counts it after a handover
+                    updates["ai_pilot"] = True
                 if agent_user_id:
                     updates["assigned_to"] = agent_user_id
                 db.table("leads").update(updates).eq("id", lead_id).eq("org_id", org_id).execute()
@@ -1245,12 +1248,15 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     msg_type     = message.get("type", "text")
     content: Optional[str] = None
     _ref_attribution: dict = {}
+    _order_tag: Optional[str] = None
 
     if msg_type == "text":
         content = (message.get("text") or {}).get("body")
         _ref_attribution: dict = {}
         if msg_type == "text" and content:
             content, _ref_attribution = _parse_and_strip_ref_tag(content)
+            from app.services.order_request_service import parse_order_tag as _parse_order_tag   # ORDER-GATE-1
+            content, _order_tag = _parse_order_tag(content)
     elif msg_type == "image":
         content = "[Image]"
         _image_media_id = (message.get("image") or {}).get("id")
@@ -1324,6 +1330,16 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         except Exception as _bk_exc:
             logger.warning("[BOOKING-2C] picker hook failed lead=%s: %s", lead_id, _bk_exc)
 
+    # ── ORDER-GATE-1: "Order via WhatsApp" from the catalogue = ready to buy ──────────────
+    if _order_tag and number_row and number_row.get("org_id") and not customer_id:
+        try:
+            from app.services import order_request_service as _ors
+            if _ors.gate_on(db, number_row.get("org_id")) and not _is_org_owner(db, number_row.get("org_id"), sender_phone):
+                if _ors.handle(db, number_row, sender_phone, contact_name, content or "", lead_id, msg_id):
+                    return
+        except Exception:
+            logger.exception("[ORDER-GATE-1] order request failed org=%s", number_row.get("org_id"))
+
     # ── WA-BUDGET-1: WhatsApp budget used up ─────────────────────────────
     # When the owner's monthly WhatsApp budget is spent (and they chose "switch to chat"), every
     # customer message gets the one-time web chat link and nothing else. The org is ALWAYS the
@@ -1351,7 +1367,13 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     # unchanged below — this block only intercepts numbers explicitly set
     # to 'ai_agent', and returns early so none of the existing triage/
     # qualification/bot/pre-qualified-lead code paths run for them.
-    if number_row and number_row.get("wa_sales_mode") == "ai_agent" and _plan_gate.allowed(db, number_row.get("org_id"), "ai_assistant"):
+    # ── AI-PILOT-1: a share of brand-new enquiries goes to the AI rep while the number stays on human mode ──
+    _ai_pilot = False
+    if number_row and number_row.get("wa_sales_mode") != "ai_agent" and int(number_row.get("ai_pilot_pct") or 0) > 0:
+        from app.services import ai_pilot_service as _pilot
+        _ai_pilot = _pilot.takes(db, number_row, sender_phone, customer_id, lead_id)
+
+    if number_row and (number_row.get("wa_sales_mode") == "ai_agent" or _ai_pilot) and _plan_gate.allowed(db, number_row.get("org_id"), "ai_assistant"):
         # AP-5b: without ai_assistant in the plan the number falls through to the normal flow below
         # XORG-1: always the RECEIVING number's org — never the sender's org
         # from the phone lookup (matches the Event Funnel block below, which
@@ -1381,7 +1403,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
                     sender_phone=sender_phone, contact_name=contact_name,
                     msg_type=msg_type, content=content, msg_id=msg_id,
                     interactive_payload=interactive_payload,
-                    customer_id=customer_id, lead_id=lead_id,
+                    customer_id=customer_id, lead_id=lead_id, pilot=_ai_pilot,
                 )
                 return
             # AP-5b: this month's AI allowance is used up - the team replies as on a normal number (fall through)

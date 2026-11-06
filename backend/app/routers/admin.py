@@ -3179,6 +3179,63 @@ def update_sales_mode(
     return ok(data={"mode": payload.mode}, message="Sales mode saved")
 
 
+# ── ORDER-GATE-1: only leads that are ready to buy are given to a rep ─────────
+
+class OrderGateBody(BaseModel):
+    enabled: bool
+
+
+@router.get("/order-gate")
+def get_order_gate(org=Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import order_request_service
+    return ok(data={"enabled": order_request_service.gate_on(db, org["org_id"])})
+
+
+@router.put("/order-gate")
+def set_order_gate(payload: OrderGateBody, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """ORDER-GATE-1: when on, WhatsApp enquiries are not auto-assigned; a rep gets the lead when the customer taps Order
+    on a catalogue product. Owner + ops_manager only."""
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners and ops managers can change this.")
+    db.table("organisations").update({"assign_on_order": bool(payload.enabled)}).eq("id", org["org_id"]).execute()
+    write_audit_log(db=db, org_id=org["org_id"], user_id=org["id"], action="order_gate.updated",
+                    resource_type="organisation", resource_id=org["org_id"], new_value={"enabled": payload.enabled})
+    return ok(data={"enabled": bool(payload.enabled)}, message="Saved")
+
+
+# ── AI-PILOT-1: AI rep side by side with the human reps ──────────────────────
+
+class AiPilotBody(BaseModel):
+    pct: int
+
+
+@router.get("/ai-pilot")
+def get_ai_pilot(org=Depends(get_current_org), db=Depends(get_supabase)):
+    """AI-PILOT-1: share of new WhatsApp leads given to the AI rep, with AI vs human results. Owner + ops_manager."""
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners and ops managers can see this.")
+    from app.services import ai_pilot_service
+    return ok(data=ai_pilot_service.report(db, org["org_id"]))
+
+
+@router.put("/ai-pilot")
+def set_ai_pilot(payload: AiPilotBody, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """AI-PILOT-1: set the share (0 turns it off). Owner + ops_manager only."""
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners and ops managers can change this.")
+    from app.services import ai_pilot_service
+    try:
+        out = ai_pilot_service.set_pilot(db, org["org_id"], payload.pct)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    write_audit_log(db=db, org_id=org["org_id"], user_id=org["id"], action="ai_pilot.updated",
+                    resource_type="organisation", resource_id=org["org_id"], new_value={"pct": payload.pct})
+    return ok(data=out, message="AI pilot saved")
+
+
 # ── Contact menus routes ──────────────────────────────────────────────────────
 
 @router.get("/contact-menus")
