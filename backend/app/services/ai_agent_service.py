@@ -806,6 +806,16 @@ def parse_agent_action(raw_response: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # run_agent_turn — main turn orchestrator
 # ---------------------------------------------------------------------------
+def _credit_model(db, org_id: str, lead: Optional[dict], session: dict) -> str:
+    """MODEL-TEST-1: SONNET unless this business has a cheaper test model switched on for this conversation."""
+    try:
+        from app.services import credit_service
+        key = (lead or {}).get("id") or (session or {}).get("phone_number")
+        return credit_service.ai_agent_model(db, org_id, key, SONNET)
+    except Exception:
+        return SONNET
+
+
 def run_agent_turn(
     db,
     org_id: str,
@@ -890,7 +900,7 @@ def run_agent_turn(
 
         raw_response = call_claude(
             prompt=customer_message_block,
-            model=SONNET,
+            model=_credit_model(db, org_id, lead, session),
             max_tokens=1000,
             system=system_prompt,
             system_cache=True,

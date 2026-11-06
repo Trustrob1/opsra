@@ -249,7 +249,7 @@ def call_claude(
         if _level == _credits.LEVEL_MENU:
             logger.info("call_claude: AI budget exhausted for org %s — returning fallback", org_id)
             return ""
-        if _level == _credits.LEVEL_CHEAPER:
+        if _level == _credits.LEVEL_CHEAPER and "haiku" not in (model or ""):
             model = HAIKU
 
     client = _get_client()

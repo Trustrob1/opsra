@@ -348,6 +348,32 @@ def marketing_paused(db, org_id: Optional[str], template_name: Optional[str]) ->
         return False
 
 
+AGENT_MODELS = ("claude-haiku-5-5", "claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-sonnet-5-5")
+
+
+def ai_agent_model(db, org_id: Optional[str], key: Optional[str], default: str) -> str:
+    """MODEL-TEST-1: the model for the sales agent's reply. A business can have wallet.ai_agent_model set for
+    wallet.ai_agent_model_pct percent of conversations (chosen by a stable hash of `key`, e.g. the lead or phone, so one
+    customer keeps the same model all through). Unknown models are ignored. Never raises."""
+    try:
+        if not org_id:
+            return default
+        w = get_wallet(db, org_id) or {}
+        model = w.get("ai_agent_model")
+        if model not in AGENT_MODELS:
+            return default
+        pct = w.get("ai_agent_model_pct")
+        pct = 100 if pct is None else int(pct)
+        if pct >= 100:
+            return model
+        if pct <= 0 or not key:
+            return default
+        import zlib
+        return model if zlib.crc32(str(key).encode()) % 100 < pct else default
+    except Exception:
+        return default
+
+
 def template_block_reason(db, org_id: Optional[str], template_name: Optional[str], window_open: bool = False,
                           lead_id: Optional[str] = None, customer_id: Optional[str] = None) -> Optional[str]:
     """TEMPLATE-BLOCK-1: a reason (shown to staff) when a template must not be sent for this business, else None.
