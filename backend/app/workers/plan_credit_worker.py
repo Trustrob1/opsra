@@ -76,6 +76,34 @@ def grant_for_org(db, org_id: str, now: datetime, dry_run: bool = False) -> Opti
         return None
 
 
+def ensure_wallet_and_grant(db, org_id: str, now: Optional[datetime] = None, require_enforced: bool = False) -> Optional[dict]:
+    """Called the moment a plan starts (paid, or switched on by staff): if the plan includes monthly credit, make sure the
+    business has a wallet (created with metering ON only when it did not exist; an existing wallet's setting is respected,
+    so staff can still switch metering off) and add this month's credit now instead of waiting for the nightly run.
+    Same ledger ref as the nightly run, so nothing is ever granted twice in a month. Never raises."""
+    try:
+        now = now or datetime.now(timezone.utc)
+        if require_enforced:
+            org = (db.table("organisations").select("plans_enforced").eq("id", org_id).limit(1).execute().data) or []
+            if not (org and org[0].get("plans_enforced")):
+                return None
+        res = grant_for_org(db, org_id, now, dry_run=True)
+        if res is None and cs.get_wallet(db, org_id) is None:
+            c = acc._compute(db, org_id, now)
+            tier_row = next((r for r in c["rows"] if r.get("kind") == "tier" and r.get("effective_status") == "active"), None)
+            amount = int(((c["cfg"]["tiers"].get(tier_row["key"]) or {}).get("included_credit_ngn")) or 0) if tier_row else 0
+            if amount <= 0:
+                return None
+            db.table("credit_wallets").upsert({"org_id": org_id, "metering_enabled": True}, on_conflict="org_id", ignore_duplicates=True).execute()
+            return grant_for_org(db, org_id, now)
+        if res is None:
+            return None
+        return grant_for_org(db, org_id, now)
+    except Exception as exc:
+        logger.warning("plan_credit: ensure org=%s failed: %s", org_id, exc)
+        return None
+
+
 def run_plan_credit_grants(db, now: Optional[datetime] = None, dry_run: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     orgs = (db.table("organisations").select("id").eq("plans_enforced", True).execute().data) or []

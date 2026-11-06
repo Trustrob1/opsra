@@ -538,6 +538,11 @@ def _apply_paid(db: Any, order: dict, previous_status: str, now: datetime) -> No
     except Exception as exc:
         logger.warning("account_plan: redemption not recorded order=%s: %s", order.get("id"), exc)
     _sync_org_status(db, org_id, "active")
+    try:
+        from app.workers import plan_credit_worker as pcw
+        pcw.ensure_wallet_and_grant(db, org_id, now)
+    except Exception as exc:
+        logger.warning("account_plan: included credit not added order=%s: %s", order.get("id"), exc)
     label = q.get("label") or key
     text = f"Payment received. Your {label} plan is active until {sab._pretty(end)}. Thank you."
     _notify(db, org_id, "Plan payment received", text, "plan_paid", order.get("payer_email"), "Your Opsra plan")

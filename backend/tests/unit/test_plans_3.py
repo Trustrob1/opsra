@@ -126,3 +126,46 @@ def test_new_signup_wallets_let_opsra_pay_meta():
         def table(self, name): return _T()
     su._open_wallet(_D(), BIZ, 0)
     assert seen == [{"org_id": BIZ, "metering_enabled": True, "meta_billing": "opsra_credit_line"}]
+
+
+# ---- credit added the moment a plan starts ----------------------------------------------------------------------------
+
+def test_ensure_creates_missing_wallet_and_grants(monkeypatch):
+    calls, state = [], {"w": None}
+    monkeypatch.setattr(cs, "get_wallet", lambda db, org: state["w"])
+    monkeypatch.setattr(cs, "add_credit", lambda db, org, kobo, kind, ref, meta=None, expires_at=None:
+                        calls.append((kobo, ref)) or {"applied": True})
+    db = _db([_plan_at("grow")])
+    orig = db.table
+
+    class _Up:
+        def __init__(self, row): self.row = row
+        def execute(self):
+            state["w"] = {"org_id": self.row["org_id"], "metering_enabled": self.row["metering_enabled"]}
+            return self
+
+    class _T:
+        def __init__(self, t): self.t = t
+        def upsert(self, row, **kw): return _Up(row)
+        def __getattr__(self, n): return getattr(self.t, n)
+
+    db.table = lambda name: _T(orig(name)) if name == "credit_wallets" else orig(name)
+    out = w.ensure_wallet_and_grant(db, BIZ, NOW)
+    assert out and out["applied"] and state["w"]["metering_enabled"] is True
+    assert calls == [(750000, f"plangrant:{BIZ}:2026-11")]
+
+
+def test_ensure_respects_existing_metering_off(monkeypatch, wallet):
+    monkeypatch.setattr(cs, "get_wallet", lambda db, org: {"org_id": org, "metering_enabled": False})
+    assert w.ensure_wallet_and_grant(_db([_plan_at("grow")]), BIZ, NOW) is None and wallet == []
+
+
+def test_ensure_skips_plans_without_credit_and_unenforced(wallet):
+    assert w.ensure_wallet_and_grant(_db([_plan_at("automate")]), BIZ, NOW) is None
+    assert w.ensure_wallet_and_grant(_db([_plan_at("grow")], enforced=False), BIZ, NOW, require_enforced=True) is None
+    assert wallet == []
+
+
+def test_ensure_with_existing_wallet_grants_once(wallet):
+    out = w.ensure_wallet_and_grant(_db([_plan_at("scale")]), BIZ, NOW)
+    assert out["kobo"] == 1500000 and wallet[0]["ref"] == f"plangrant:{BIZ}:2026-11"

@@ -49,6 +49,15 @@ def _actor(sa) -> str:
     return str((sa or {}).get("email") or (sa or {}).get("sub") or "superadmin")[:120] if isinstance(sa, dict) else "superadmin"
 
 
+def _credit_now(db, org_id: str) -> None:
+    """Add the plan's included monthly credit right away (best-effort; never fails the plan change)."""
+    try:
+        from app.workers import plan_credit_worker as pcw
+        pcw.ensure_wallet_and_grant(db, org_id, require_enforced=True)
+    except Exception as exc:
+        logger.warning("plan credit not added org=%s: %s", org_id, exc)
+
+
 def _fail(exc: Exception):
     if isinstance(exc, acc.EntitlementError):
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
@@ -75,8 +84,10 @@ def one_org(org_id: str, db=Depends(get_supabase), sa=Depends(require_superadmin
 @router.post("/superadmin/plans/orgs/{org_id}/grant")
 def grant(org_id: str, body: GrantBody, db=Depends(get_supabase), sa=Depends(require_superadmin)):
     try:
-        return ok(acc.grant(db, org_id, _actor(sa), body.kind, body.key, until=body.until, source=body.source,
-                            picks=body.picks), message="Plan updated")
+        out = acc.grant(db, org_id, _actor(sa), body.kind, body.key, until=body.until, source=body.source, picks=body.picks)
+        if body.kind == "tier":
+            _credit_now(db, org_id)
+        return ok(out, message="Plan updated")
     except Exception as exc:
         _fail(exc)
 
@@ -84,7 +95,9 @@ def grant(org_id: str, body: GrantBody, db=Depends(get_supabase), sa=Depends(req
 @router.post("/superadmin/plans/orgs/{org_id}/status")
 def status(org_id: str, body: StatusBody, db=Depends(get_supabase), sa=Depends(require_superadmin)):
     try:
-        return ok(acc.set_status(db, org_id, body.plan_id, body.action, _actor(sa), until=body.until), message="Plan updated")
+        out = acc.set_status(db, org_id, body.plan_id, body.action, _actor(sa), until=body.until)
+        _credit_now(db, org_id)
+        return ok(out, message="Plan updated")
     except Exception as exc:
         _fail(exc)
 
@@ -92,7 +105,10 @@ def status(org_id: str, body: StatusBody, db=Depends(get_supabase), sa=Depends(r
 @router.patch("/superadmin/plans/orgs/{org_id}/enforce")
 def enforce(org_id: str, body: EnforceBody, db=Depends(get_supabase), sa=Depends(require_superadmin)):
     try:
-        return ok(acc.set_enforced(db, org_id, body.enforced, _actor(sa)),
+        out = acc.set_enforced(db, org_id, body.enforced, _actor(sa))
+        if body.enforced:
+            _credit_now(db, org_id)
+        return ok(out,
                   message="Plans are now enforced for this business" if body.enforced else "Plans are no longer enforced for this business")
     except Exception as exc:
         _fail(exc)
