@@ -3179,6 +3179,35 @@ def update_sales_mode(
     return ok(data={"mode": payload.mode}, message="Sales mode saved")
 
 
+# ── AD-Q-1: route the preset questions on a click-to-WhatsApp ad ───────────────
+
+class AdQuestionsBody(BaseModel):
+    rules: list
+
+
+@router.get("/ad-questions")
+def get_ad_questions(org=Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import ad_question_service
+    return ok(data={"rules": ad_question_service.load_rules(db, org["org_id"])})
+
+
+@router.put("/ad-questions")
+def set_ad_questions(payload: AdQuestionsBody, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """AD-Q-1: owner + ops_manager only."""
+    role = (org.get("roles") or {}).get("template", "").lower()
+    if role not in ("owner", "ops_manager"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners and ops managers can change this.")
+    from app.services import ad_question_service
+    try:
+        rules = ad_question_service.clean_rules(payload.rules)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    db.table("organisations").update({"ad_questions": rules}).eq("id", org["org_id"]).execute()
+    write_audit_log(db=db, org_id=org["org_id"], user_id=org["id"], action="ad_questions.updated",
+                    resource_type="organisation", resource_id=org["org_id"], new_value={"count": len(rules)})
+    return ok(data={"rules": rules}, message="Saved")
+
+
 # ── ORDER-GATE-1: only leads that are ready to buy are given to a rep ─────────
 
 class OrderGateBody(BaseModel):

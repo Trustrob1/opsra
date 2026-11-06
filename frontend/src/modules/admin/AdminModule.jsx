@@ -69,6 +69,7 @@ import LeadAssignmentConfig    from './LeadAssignmentConfig'
 import LeadFormConfig          from './LeadFormConfig'
 import GrowthDashboardConfig   from './GrowthDashboardConfig'
 import WASalesModeConfig       from './WASalesModeConfig'
+import AdQuestionsConfig       from './AdQuestionsConfig'
 import WhatsAppNumbers         from './WhatsAppNumbers'
 import WebChatSettings         from './WebChatSettings'   // WEBCHAT-1
 import CreditsPanel            from './CreditsPanel'      // CREDITS-2
@@ -118,6 +119,7 @@ const TAB_GROUPS = [
       { id: 'webchat',          label: 'Web Chat',      Icon: MessageSquare },   // WEBCHAT-1
       { id: 'credits',          label: 'Credits',       Icon: DollarSign },      // CREDITS-2
       { id: 'wa-sales-mode',    label: 'WA Sales Mode', Icon: Bot },
+      { id: 'ad-questions',     label: 'Ad Questions',  Icon: MessageSquare },   // AD-Q-1
       { id: 'messaging-limits', label: 'Msg Limits',    Icon: MessageSquare },
     ],
   },
@@ -158,7 +160,7 @@ const TAB_GROUPS = [
 ]
 
 // WA-AUTO: a WhatsApp-automation-only business sees only the settings its product uses.
-const WA_ONLY_TABS = ['users', 'whatsapp', 'whatsapp-menu', 'whatsapp-numbers', 'webchat', 'credits', 'wa-sales-mode', 'sla-hours']
+const WA_ONLY_TABS = ['users', 'whatsapp', 'whatsapp-menu', 'whatsapp-numbers', 'webchat', 'credits', 'wa-sales-mode', 'ad-questions', 'sla-hours']
 
 // Flat list for lookup
 const ALL_TABS = TAB_GROUPS.flatMap(g => g.tabs)
@@ -548,6 +550,7 @@ export default function AdminModule({ user, waOnly = false }) {
           <LazyTab active={tab === 'webchat'} visited={visited['webchat']}> <WebChatSettings /></LazyTab>
           <LazyTab active={tab === 'credits'} visited={visited['credits']}> <CreditsPanel /></LazyTab>
           <LazyTab active={tab === 'wa-sales-mode'} visited={visited['wa-sales-mode']}> <WASalesModeConfig /></LazyTab>
+          <LazyTab active={tab === 'ad-questions'} visited={visited['ad-questions']}> <AdQuestionsConfig /></LazyTab>
           <LazyTab active={tab === 'growth-config'} visited={visited['growth-config']}> <GrowthConfig /></LazyTab>
           <LazyTab active={tab === 'sales-log'}     visited={visited['sales-log']}>     <SalesLog /></LazyTab>
 

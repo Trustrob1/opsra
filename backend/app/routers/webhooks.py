@@ -1330,6 +1330,17 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         except Exception as _bk_exc:
             logger.warning("[BOOKING-2C] picker hook failed lead=%s: %s", lead_id, _bk_exc)
 
+    # ── AD-Q-1: the preset questions on a click-to-WhatsApp ad ───────────────────────────
+    if msg_type == "text" and content and number_row and number_row.get("org_id") and not customer_id:
+        try:
+            from app.services import ad_question_service as _adq
+            _adq_rule = _adq.match(_adq.load_rules(db, number_row.get("org_id")), content)
+            if _adq_rule and not _is_org_owner(db, number_row.get("org_id"), sender_phone):
+                if _adq.handle(db, number_row, sender_phone, contact_name, content, lead_id, msg_id, _adq_rule):
+                    return
+        except Exception:
+            logger.exception("[AD-Q-1] ad question failed org=%s", number_row.get("org_id"))
+
     # ── ORDER-GATE-1: "Order via WhatsApp" from the catalogue = ready to buy ──────────────
     if _order_tag and number_row and number_row.get("org_id") and not customer_id:
         try:

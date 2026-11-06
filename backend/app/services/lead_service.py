@@ -648,6 +648,7 @@ def create_lead(
     source_team: Optional[str] = None,
     entry_path: Optional[str] = None,
     utm_ad: Optional[str] = None,
+    auto_assign: bool = True,
 ) -> dict:
     """
     Create a lead.
@@ -791,7 +792,7 @@ def create_lead(
             daemon=True,
         ).start()
 
-    if not _wa_only:
+    if not _wa_only and auto_assign:    # AD-Q-1: auto_assign=False leaves the lead for the bot
         # ASSIGN-1: auto-assign lead to rep if org is in auto mode (S14 — never blocks)
         try:
             from app.services.lead_assignment_service import auto_assign_lead

@@ -378,6 +378,16 @@ export const getLeadAssignment = () =>
   api.get('/api/v1/admin/lead-assignment')
     .then(r => r.data.data)
 
+// ── AD-Q-1: route the preset questions on a click-to-WhatsApp ad ─────────────
+
+export const getAdQuestions = () =>
+  api.get('/api/v1/admin/ad-questions')
+    .then(r => r.data.data)
+
+export const setAdQuestions = (rules) =>
+  api.put('/api/v1/admin/ad-questions', { rules })
+    .then(r => r.data.data)
+
 // ── ORDER-GATE-1: only give a rep the leads that are ready to buy ───────────
 
 export const getOrderGate = () =>
