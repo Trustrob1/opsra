@@ -51,6 +51,18 @@ def gate_on(db, org_id: Optional[str]) -> bool:
         return False
 
 
+def enabled_for(db, org_id: Optional[str]) -> bool:
+    """An order tapped on the catalogue is a ready-to-buy signal when the order gate is on OR the business routes
+    its ad questions (AD-Q-1): the catalogue is where the bot's answer to the sizes-and-prices question sends people."""
+    try:
+        if gate_on(db, org_id):
+            return True
+        from app.services import ad_question_service
+        return bool(ad_question_service.load_rules(db, org_id))
+    except Exception:
+        return False
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

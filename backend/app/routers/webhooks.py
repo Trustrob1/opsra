@@ -1345,7 +1345,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
     if _order_tag and number_row and number_row.get("org_id") and not customer_id:
         try:
             from app.services import order_request_service as _ors
-            if _ors.gate_on(db, number_row.get("org_id")) and not _is_org_owner(db, number_row.get("org_id"), sender_phone):
+            if _ors.enabled_for(db, number_row.get("org_id")) and not _is_org_owner(db, number_row.get("org_id"), sender_phone):
                 if _ors.handle(db, number_row, sender_phone, contact_name, content or "", lead_id, msg_id):
                     return
         except Exception:

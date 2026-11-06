@@ -53,3 +53,17 @@ def test_late_notice_goes_to_managers_only():
                        {"id": "u3", "roles": {"template": "ops_manager"}}])
     assert ors.notify_managers(DB([]), "o", "l", "X") == 2
     assert {r["user_id"] for r in sent} == {"u1", "u3"}
+
+
+def test_enabled_for_gate_or_ad_questions():
+    class DB:
+        def __init__(self, gate, rules): self.gate, self.rules = gate, rules
+        def table(self, n): return self
+        def select(self, cols, *a, **k): self.cols = cols; return self
+        def __getattr__(self, n): return lambda *a, **k: self
+        def execute(self):
+            return type("R", (), {"data": [{"assign_on_order": self.gate, "ad_questions": self.rules}]})()
+    assert ors.enabled_for(DB(True, None), "o") is True
+    assert ors.enabled_for(DB(False, [{"question": "q", "action": "rep"}]), "o") is True
+    assert ors.enabled_for(DB(False, None), "o") is False
+    assert ors.enabled_for(DB(False, []), "o") is False
