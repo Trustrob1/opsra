@@ -129,3 +129,16 @@ test('showcase: bare link redirects, wrong or short token is 404', async () => {
   assert.equal((await get('https://velorastudio.com.ng/ref/halcyon-AAAAAAAAAAAA/')).status, 404);
   assert.equal((await get('https://velorastudio.com.ng/ref/')).status, 404);
 });
+
+test('showcase: a Range request gets 206 with Content-Range (video playback)', async () => {
+  const rangeEnv = { SITES: { async get(key, opts = {}) {
+    if (key !== '_showcase/vid-AAAAAAAAAAAAAAAA/media/a.mp4') return null;
+    const ranged = opts.range && opts.range.get && opts.range.get('Range');
+    return { httpEtag: '"v"', size: 1000, body: 'x', range: ranged ? { offset: 100, length: 200 } : undefined,
+      writeHttpMetadata(h) { h.set('Content-Type', 'video/mp4'); } };
+  } } };
+  const r = await worker.fetch(new Request('https://velorastudio.com.ng/ref/vid-AAAAAAAAAAAAAAAA/media/a.mp4', { headers: { Range: 'bytes=100-299' } }), rangeEnv);
+  assert.equal(r.status, 206);
+  assert.equal(r.headers.get('Content-Range'), 'bytes 100-299/1000');
+  assert.equal(r.headers.get('Accept-Ranges'), 'bytes');
+});

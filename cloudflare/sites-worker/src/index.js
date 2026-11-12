@@ -67,7 +67,14 @@ export default {
       h.set('Referrer-Policy', 'no-referrer');
       h.set('Cache-Control', 'private, max-age=300');
       if (!obj.body) return new Response(null, { status: 304, headers: h });
+      h.set('Accept-Ranges', 'bytes');
       const part = obj.range && request.headers.has('Range');
+      if (part) {                      // video players (Safari, iOS) need a real Content-Range on a 206
+        const off = obj.range.offset || 0;
+        const len = obj.range.length != null ? obj.range.length : (obj.size || 0) - off;
+        if (obj.size != null) h.set('Content-Range', `bytes ${off}-${off + len - 1}/${obj.size}`);
+        h.set('Content-Length', String(len));
+      }
       return new Response(request.method === 'HEAD' ? null : obj.body, { status: part ? 206 : 200, headers: h });
     }
 

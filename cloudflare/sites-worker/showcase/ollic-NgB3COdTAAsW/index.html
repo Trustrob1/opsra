@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0A141B">
+<title>Ollic Residences</title>
+<meta name="description" content="A gated lake estate in Uyo, Akwa Ibom. Watch it built, choose a plot on the plan, pay a deposit and instalments, or speak to an advisor on WhatsApp.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script>document.documentElement.classList.add('js')</script>
+<style>
+/* Layout: one fixed film stage (hero film, scrubbed zoom, aerial). Every section is a transparent layer on top of it. */
+:root{
+  --ink:#0A141B; --ink2:#10202B; --fg:#F2F7FA; --muted:#B4C6D1; --line:rgba(242,247,250,.32);
+  --accent:#8CCBF0; --accent-fg:#06202F; --taken:rgba(242,247,250,.22);
+  --font:'Montserrat',system-ui,sans-serif;
+  --gut:clamp(16px,5vw,72px);
+  --ease:cubic-bezier(.22,1,.36,1);
+  --ar:1.7778;
+  color-scheme:dark;
+}
+/* Phones held upright use the true 9:16 film, so the stage frame is portrait */
+@media (max-width:800px) and (orientation:portrait){:root{--ar:.5625}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth}
+body{background:var(--ink);color:var(--fg);font-family:var(--font);font-weight:400;font-size:16px;line-height:1.55;overflow-x:clip}
+a{color:inherit;text-decoration:none}
+button,input{font-family:inherit;font-size:inherit;color:inherit}
+h1,h2,h3{margin:0;font-weight:300;text-wrap:balance;line-height:1.05;letter-spacing:-.02em}
+p{margin:0;text-wrap:pretty}
+::selection{background:var(--accent);color:var(--accent-fg)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.wrap{padding-left:max(var(--gut),env(safe-area-inset-left,0px));padding-right:max(var(--gut),env(safe-area-inset-right,0px))}
+.eyebrow{font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase}
+.num{font-variant-numeric:tabular-nums}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:52px;padding:0 30px;border:0;cursor:pointer;font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;transition:background .3s var(--ease),transform .3s var(--ease),border-color .3s}
+.btn-solid{background:var(--accent);color:var(--accent-fg)}
+.btn-solid:hover{transform:translateY(-2px)}
+.btn-glass{background:rgba(48,60,70,.74);color:#fff}
+.btn-glass:hover{background:rgba(48,60,70,.92)}
+.btn-line{background:transparent;border:1px solid var(--line)}
+.btn-line:hover{border-color:#fff}
+
+/* STAGE */
+.stage{position:fixed;inset:0;z-index:0;overflow:hidden;background:#0b1620}
+.cb{position:absolute;left:50%;top:50%;width:max(100vw,calc(100svh*var(--ar)));height:max(100svh,calc(100vw/var(--ar)));
+  transform:translate(-50%,-50%) translate(var(--tx,0px),var(--ty,0px)) scale(var(--s,1));will-change:transform}
+.cb img,.cb video{position:absolute;inset:0;width:100%;height:100%;display:block}
+#sZoom,#sVilla{opacity:0}
+.scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,22,16,.5) 0%,rgba(10,22,16,0) 22%,rgba(10,22,16,0) 50%,rgba(8,16,12,.7) 100%);pointer-events:none}
+
+/* FIXED CHROME */
+.nav{position:fixed;z-index:20;left:0;right:0;top:0;padding-top:max(clamp(16px,3.6vh,36px),env(safe-area-inset-top,0px));display:flex;align-items:center;justify-content:space-between;gap:24px;color:#fff}
+.logo{font-size:30px;font-weight:400;letter-spacing:1px;line-height:1}
+.nav ul{display:flex;gap:clamp(24px,4vw,56px);list-style:none;margin:0;padding:0;font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase}
+.nav ul a{padding:14px 0;display:block}
+.nav ul a:hover{text-decoration:underline;text-underline-offset:6px}
+.prog{position:fixed;z-index:20;left:0;right:0;bottom:0;height:1px;background:rgba(255,255,255,.38);padding-bottom:env(safe-area-inset-bottom,0px);pointer-events:none}
+.prog i{position:absolute;left:0;top:-1px;height:3px;width:34px;background:#fff}
+.imp{position:fixed;z-index:20;left:max(var(--gut),env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.85);pointer-events:none}
+.skip{position:fixed;z-index:20;right:max(var(--gut),env(safe-area-inset-right,0px));bottom:calc(8px + env(safe-area-inset-bottom,0px));min-height:44px;background:none;border:0;cursor:pointer;color:#fff;font-size:11px;letter-spacing:.14em;text-transform:uppercase;display:none}
+.js .skip.on{display:block}
+
+main{position:relative;z-index:1}
+
+/* HERO */
+.hero{height:100svh;min-height:600px;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:clamp(40px,7vh,72px);color:#fff}
+.hero-row{display:flex;align-items:flex-end;justify-content:space-between;gap:32px 48px;flex-wrap:wrap}
+.hero h1{font-size:clamp(88px,14.2vw,214px);line-height:.82;letter-spacing:-.016em;font-weight:300}
+.tag{margin-top:18px;font-size:clamp(16px,1.6vw,22px)}
+.stats{display:flex;gap:clamp(20px,3vw,40px);flex-wrap:wrap}
+.stat{display:flex;flex-direction:column;gap:8px;white-space:nowrap}
+.stat b{font-size:clamp(28px,2.8vw,40px);font-weight:300;line-height:1}
+.stat sup{font-size:.35em;font-weight:400;margin-left:3px;vertical-align:super;line-height:0}
+.stat span{font-size:12px;color:rgba(255,255,255,.9)}
+.cue{margin-top:34px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;display:flex;flex-wrap:wrap;gap:6px 28px;align-items:center}
+.cue-btn{min-height:44px;padding:0;background:none;border:0;border-bottom:1px solid rgba(255,255,255,.6);cursor:pointer;color:#fff;font-size:11px;letter-spacing:.16em;text-transform:uppercase}
+.js .hb{opacity:0;transform:translateY(18px);transition:opacity 1.3s var(--ease),transform 1.3s var(--ease)}
+.hero.t1 .hb1,.hero.t2 .hb2,.hero.t3 .hb3,.hero.t4 .hb4{opacity:1;transform:none}
+
+/* ZOOM captions */
+.zoom{height:360svh;position:relative}
+.stick{position:sticky;top:0;height:100svh;display:flex;align-items:flex-end;color:#fff}
+.cap{position:absolute;left:0;right:0;bottom:0;padding-bottom:clamp(40px,9vh,84px);display:flex;flex-direction:column;gap:18px;max-width:calc(760px + var(--gut)*2)}
+.cap h2{font-size:clamp(38px,6vw,84px)}
+.cap p{max-width:44ch;font-size:clamp(15px,1.4vw,18px);color:rgba(255,255,255,.92)}
+.cap .btn{align-self:flex-start;margin-top:6px}
+#cap2{opacity:0}
+
+/* PLAN */
+.plan{position:relative;min-height:100svh}
+.plan::before,.speak::before{content:"";position:absolute;inset:0;pointer-events:none}
+.plan::before{background:linear-gradient(90deg,rgba(6,14,20,0) 34%,rgba(6,14,20,.84) 62%);-webkit-mask-image:linear-gradient(180deg,transparent,#000 24vh,#000 calc(100% - 24vh),transparent);mask-image:linear-gradient(180deg,transparent,#000 24vh,#000 calc(100% - 24vh),transparent)}
+.speak::before{background:linear-gradient(90deg,rgba(6,14,20,.84) 0%,rgba(6,14,20,.55) 38%,rgba(6,14,20,0) 70%);-webkit-mask-image:linear-gradient(180deg,transparent,#000 24vh);mask-image:linear-gradient(180deg,transparent,#000 24vh)}
+.hot{position:sticky;top:0;height:100svh;margin-bottom:-100svh;overflow:hidden;pointer-events:none;opacity:0}
+.zone{position:absolute;border:2px solid transparent;border-radius:10px;pointer-events:none;transition:border-color .3s,background .3s}
+.pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(calc(1 / var(--s,1)));pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px;background:none;border:0;cursor:pointer;color:#fff;padding:8px}
+.hot.on .pin{pointer-events:auto}
+.pin i{width:14px;height:14px;border-radius:50%;border:2px solid #fff;background:rgba(255,255,255,.25);box-shadow:0 0 0 6px rgba(255,255,255,.18);transition:transform .3s var(--ease)}
+.pin:hover i{transform:scale(1.3)}
+.pin span{padding:6px 10px;background:rgba(8,16,22,.8);font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;line-height:1.3;text-align:center;white-space:nowrap}
+.pin small{display:block;font-size:10px;letter-spacing:.06em;text-transform:none;color:var(--muted);font-weight:400}
+.hot{clip-path:inset(0 calc(var(--gut) + min(480px,40vw) + 16px) 0 0)}
+.plan-in{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,min(480px,40vw));gap:32px;padding-block:clamp(88px,14vh,140px) clamp(64px,10vw,120px);pointer-events:none}
+.panel{grid-column:2;display:flex;flex-direction:column;gap:26px;min-width:0;pointer-events:auto}
+.panel h2{font-size:clamp(34px,4.2vw,56px)}
+.lead{color:var(--muted);max-width:42ch;font-size:15px}
+.tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--line)}
+.tab{min-height:48px;background:transparent;border:0;cursor:pointer;font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase}
+.tab[aria-selected="true"]{background:#fff;color:var(--ink)}
+.field{display:flex;flex-direction:column;gap:10px;min-width:0}
+.lbl,.field label{font-size:12px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.seg{display:flex;flex-wrap:wrap;gap:8px}
+.seg button{min-height:44px;padding:0 16px;background:transparent;border:1px solid var(--line);cursor:pointer;font-size:13px;transition:background .2s}
+.seg button:hover{border-color:#fff}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);border-color:#fff}
+.seg button[disabled]{opacity:.38;text-decoration:line-through;cursor:not-allowed}
+.plotgrid{max-height:148px;overflow-y:auto;padding-right:4px}
+.sel-h h3{font-size:clamp(28px,3vw,38px)}
+.sel-h p{font-size:14px;color:var(--muted);margin-top:6px}
+.stepper{display:flex;align-items:center;border:1px solid var(--line)}
+.stepper button{width:52px;height:52px;background:transparent;border:0;cursor:pointer;font-size:22px;font-weight:300}
+.stepper output{flex:1;text-align:center;font-size:22px;font-weight:300}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 24px;padding-block:22px;border-block:1px solid var(--line)}
+.kpis div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.kpis span{font-size:12px;color:var(--muted)}
+.kpis b{font-size:clamp(26px,3vw,36px);font-weight:300;line-height:1.1;overflow-wrap:anywhere}
+.kpis .wide{grid-column:1/-1}
+.rows{margin:0;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 22px}
+.field input[type=text],.field input[type=tel]{min-height:52px;padding:0 16px;background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:0}
+.field input:focus-visible{outline-offset:0;border-color:#fff}
+.note{font-size:12px;color:var(--muted)}
+.err{color:#FFB3A8}
+.done-box{border:1px solid #fff;padding:22px;display:flex;flex-direction:column;gap:14px}
+.done-box h3{font-size:24px;letter-spacing:.12em;font-weight:500}
+
+/* SPEAK */
+.speak{position:relative;min-height:100svh;display:flex;align-items:center;padding-block:clamp(96px,14vh,140px)}
+.speak-in{position:relative;max-width:560px;display:flex;flex-direction:column;gap:26px}
+.speak h2{font-size:clamp(38px,5.4vw,76px)}
+.days{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.days button,.times button{min-height:56px;background:transparent;border:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:13px}
+.days button small{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.times{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.days button[aria-pressed="true"],.times button[aria-pressed="true"]{background:#fff;color:var(--ink);border-color:#fff}
+.days button[aria-pressed="true"] small{color:inherit}
+
+/* DOCUMENTS + FOOTER (solid ground ends the film) */
+.ground{background:var(--ink);position:relative}
+.docs{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);gap:clamp(24px,5vw,72px);padding-block:clamp(72px,12vw,150px)}
+.docs h2{font-size:clamp(36px,5vw,68px)}
+.docs dl{margin:0;border-top:1px solid var(--line)}
+.docs dl div{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.docs dt{font-weight:500}.docs dd{margin:0;color:var(--muted)}
+footer{padding-block:0 32px;overflow:hidden}
+.foot-top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:24px;align-items:flex-end}
+.foot-top p{max-width:42ch;color:var(--muted)}
+.big-word{font-size:clamp(90px,24vw,360px);font-weight:300;line-height:.8;letter-spacing:-.02em;margin-top:48px;white-space:nowrap;user-select:none}
+.legal{margin-top:36px;padding-bottom:20px;font-size:12px;color:var(--muted);display:flex;gap:16px 32px;flex-wrap:wrap;justify-content:space-between}
+
+@media (max-width:900px){
+  .nav ul{display:none}
+  .imp{bottom:auto;top:calc(max(clamp(16px,3.6vh,36px),env(safe-area-inset-top,0px)) + 62px)}
+  .skip{right:auto;left:max(var(--gut),env(safe-area-inset-left,0px))}
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 28px}
+  .hero-row{align-items:flex-start}
+  .plan::before{background:linear-gradient(180deg,rgba(6,14,20,0) 0,rgba(6,14,20,0) 40svh,rgba(6,14,20,.9) 62svh)}
+  .hot{clip-path:inset(0 0 44svh 0)}
+  .plan-in{grid-template-columns:minmax(0,1fr);padding-top:54svh}
+  .panel{grid-column:1}
+  .speak{align-items:flex-end}
+  .speak::before{background:linear-gradient(180deg,rgba(6,14,20,.62) 0,rgba(6,14,20,.92) 40%);-webkit-mask-image:linear-gradient(180deg,transparent,#000 14vh);mask-image:linear-gradient(180deg,transparent,#000 14vh)}
+  .docs{grid-template-columns:minmax(0,1fr)}
+  .pin small{display:none}
+  .scrim{background:linear-gradient(180deg,rgba(6,14,20,.55) 0%,rgba(6,14,20,0) 18%,rgba(6,14,20,0) 38%,rgba(6,14,20,.82) 100%)}
+  .nav .btn{min-height:44px;padding:0 16px;font-size:11px;gap:8px}
+  .logo{font-size:26px}
+  .skip{left:auto;right:max(var(--gut),env(safe-area-inset-right,0px));bottom:auto;top:calc(max(clamp(16px,3.6vh,36px),env(safe-area-inset-top,0px)) + 54px)}
+  .hero{padding-bottom:max(28px,calc(env(safe-area-inset-bottom,0px) + 24px))}
+  .hero-row{flex-direction:column;align-items:flex-start;gap:18px}
+  .hero h1{font-size:clamp(64px,22vw,96px);font-weight:400;text-shadow:0 2px 24px rgba(0,0,0,.45)}
+  .tag{margin-top:12px;font-size:17px;font-weight:500;max-width:20ch;line-height:1.35;text-shadow:0 1px 14px rgba(0,0,0,.6)}
+  .stats{grid-template-columns:repeat(2,auto);gap:12px 36px}
+  .stat:nth-child(2),.stat:nth-child(3){display:none}
+  .stat b{font-size:26px;font-weight:400}
+  .stat span{font-size:12px}
+  .cue{margin-top:20px;flex-direction:column;align-items:flex-start;gap:0}
+  .cue-btn{border:0;opacity:.8}
+  .cue>span{font-weight:500}
+  .cap h2{text-shadow:0 2px 20px rgba(0,0,0,.5)}
+}
+@media (max-width:480px){.docs dl div{grid-template-columns:minmax(0,1fr)}.btn{padding:0 22px}.kpis b{font-size:24px}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.js .hb{transition:none}}
+</style>
+</head>
+<body>
+
+
+<!-- Owner settings: change these to go live -->
+<script>window.OLLIC={whatsapp:'2340000000000',ratePerSqm:20000,depositPct:0.30};</script>
+
+<!-- FIXED FILM STAGE -->
+<div class="stage" aria-hidden="true">
+  <div class="cb" id="stageCb">
+    <picture><source srcset="media/poster-aerial-p.jpg" media="(max-width: 800px) and (orientation: portrait)"><img id="sAerial" src="media/poster-aerial.jpg" alt="" width="1920" height="1080"></picture>
+    <video id="heroVid" muted playsinline preload="auto" poster="media/poster-start.jpg">
+      <source src="media/build-p720.mp4" type="video/mp4" media="(max-width: 800px) and (orientation: portrait)">
+      <source src="media/build-720.mp4" type="video/mp4" media="(max-width: 800px)">
+      <source src="media/build-1080.mp4" type="video/mp4">
+    </video>
+    <video id="sZoom" muted playsinline preload="none">
+      <source src="media/zoom-p720.mp4" type="video/mp4" media="(max-width: 800px) and (orientation: portrait)">
+      <source src="media/zoom-720.mp4" type="video/mp4" media="(max-width: 800px)">
+      <source src="media/zoom-1080.mp4" type="video/mp4">
+    </video>
+    <picture><source srcset="media/poster-villa-p.jpg" media="(max-width: 800px) and (orientation: portrait)"><img id="sVilla" src="media/poster-villa.jpg" alt="" width="1920" height="1080"></picture>
+  </div>
+  <div class="scrim"></div>
+</div>
+
+<!-- FIXED CHROME -->
+<nav class="nav wrap" aria-label="Main">
+  <a class="logo" href="#top" aria-label="Ollic, back to top">OLLIC</a>
+  <ul>
+    <li><a href="#estate">The estate</a></li>
+    <li><a href="#plots">Choose land</a></li>
+    <li><a href="#advisor">Speak to us</a></li>
+    <li><a href="#documents">Documents</a></li>
+  </ul>
+  <a class="btn btn-glass" href="#plots">Reserve land <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M7 1v11M2.5 8 7 12.5 11.5 8"/></svg></a>
+</nav>
+<div class="prog" aria-hidden="true"><i id="progBar"></i></div>
+<span class="imp">Artist’s impression</span>
+<button class="skip" id="skipBtn" type="button">Skip intro</button>
+
+<main id="top">
+<!-- HERO: film autoplays, text arrives in beats -->
+<header class="hero wrap" id="hero">
+  <div class="hero-row">
+    <div>
+      <h1 class="hb hb1">OLLIC</h1>
+      <p class="tag hb hb2">Documented land ownership in Uyo,&nbsp;Nigeria</p>
+    </div>
+    <div class="stats hb hb3">
+      <div class="stat"><b class="num">5<sup>sqm</sup></b><span>minimum entry</span></div>
+      <div class="stat"><b class="num">50,000<sup>sqm</sup></b><span>Uyo district</span></div>
+      <div class="stat"><b class="num">20.1<sup>%</sup></b><span>already owned</span></div>
+      <div class="stat"><b class="num">₦20,000</b><span>per sqm</span></div>
+    </div>
+  </div>
+  <div class="cue hb hb4"><span>Scroll to enter the estate</span><button class="cue-btn" id="replayBtn" type="button">Replay the build</button></div>
+</header>
+
+<!-- SCRUBBED ZOOM -->
+<section class="zoom" id="estate" aria-label="Fly-in to a lakeside villa">
+  <div class="stick">
+    <div class="cap wrap" id="cap1">
+      <span class="eyebrow">Ollic Residences, Uyo</span>
+      <h2>50,000&nbsp;sqm around a private lake.</h2>
+      <p>Roads, drainage and power go in before handover. Every plot is surveyed and documented.</p>
+    </div>
+    <div class="cap wrap" id="cap2">
+      <span class="eyebrow">Lakeside villa plots</span>
+      <h2>Your plot, on the water.</h2>
+      <p>Lakeside plots start at 450&nbsp;sqm. Pull back to the plan and pick yours.</p>
+      <a class="btn btn-solid" href="#plots">Choose your plot</a>
+    </div>
+  </div>
+</section>
+
+<!-- PLAN over the finished aerial -->
+<section class="plan" id="plots" aria-label="Choose your land">
+  <div class="hot" id="hot"><div class="cb" id="hotCb" role="group" aria-label="Estate zones"></div></div>
+  <div class="plan-in wrap">
+    <div class="panel">
+      <div class="field" style="gap:16px"><span class="eyebrow">The plan</span><h2>Pick land on the plan.</h2>
+        <p class="lead">Buy a whole plot from 150&nbsp;sqm, or hold a share from 5&nbsp;sqm. Pay 30% to reserve, then spread the rest over up to 24&nbsp;months.</p></div>
+      <div class="tabs" role="tablist" aria-label="Purchase type">
+        <button class="tab" role="tab" id="tabPlot" aria-selected="true">Whole plot</button>
+        <button class="tab" role="tab" id="tabShare" aria-selected="false">5&nbsp;sqm share</button>
+      </div>
+      <div class="field" id="zoneField"><span class="lbl" id="zLbl">Zone</span><div class="seg" id="zoneSeg" role="group" aria-labelledby="zLbl"></div>
+        <button class="btn btn-line" type="button" id="zoomOut" hidden style="align-self:flex-start;min-height:44px">Show whole estate</button></div>
+      <div class="field" id="plotField"><span class="lbl" id="pLbl">Plot</span><div class="seg plotgrid num" id="plotSeg" role="group" aria-labelledby="pLbl"></div></div>
+      <div class="field" id="shareField" hidden><span class="lbl" id="shareLbl">Area</span>
+        <div class="stepper" role="group" aria-labelledby="shareLbl">
+          <button type="button" id="shMinus" aria-label="Remove 5 square metres">−</button>
+          <output id="shVal" class="num" aria-live="polite"></output>
+          <button type="button" id="shPlus" aria-label="Add 5 square metres">+</button></div></div>
+      <div class="sel-h"><h3 id="selTitle" class="num"></h3><p id="selSub"></p></div>
+      <div class="field"><span class="lbl" id="monLbl">Pay the balance over</span><div class="seg" id="months" role="group" aria-labelledby="monLbl"></div></div>
+      <div class="field"><span class="lbl" id="payLbl">Pay by</span>
+        <div class="seg" id="method" role="group" aria-labelledby="payLbl">
+          <button type="button" data-m="Card" aria-pressed="true">Card</button>
+          <button type="button" data-m="Bank transfer" aria-pressed="false">Bank transfer</button></div></div>
+      <div class="kpis num" id="kpis"></div>
+      <p class="rows num" id="rows"></p>
+      <form id="resForm" class="field" style="gap:16px" novalidate>
+        <div class="field"><label for="fName">Full name</label><input id="fName" type="text" autocomplete="name"></div>
+        <div class="field"><label for="fPhone">WhatsApp number</label><input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+234 …"></div>
+        <p class="note err" id="formErr" role="alert" hidden></p>
+        <button class="btn btn-solid" type="submit">Hold this plot</button>
+        <p class="note">Holding takes a ₦50,000 fee, kept for 48&nbsp;hours and counted toward your deposit.</p>
+      </form>
+      <div class="done-box" id="doneBox" hidden>
+        <span class="eyebrow">Hold request ready</span>
+        <h3 id="refCode"></h3>
+        <p id="doneTxt"></p>
+        <a class="btn btn-solid" id="waLink" href="#" target="_blank" rel="noopener">Send on WhatsApp</a>
+        <button class="btn btn-line" type="button" id="againBtn">Change selection</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SPEAK over the villa -->
+<section class="speak wrap" id="advisor" aria-label="Speak to an advisor">
+  <div class="speak-in">
+    <span class="eyebrow">Speak to someone</span>
+    <h2>Reserve a call with an advisor.</h2>
+    <p class="lead">Ask about plots, documents or payment plans. Choose a time and we continue on WhatsApp.</p>
+    <div class="field"><span class="lbl" id="dayLbl">Day</span><div class="days" id="days" role="group" aria-labelledby="dayLbl"></div></div>
+    <div class="field"><span class="lbl" id="timeLbl">Time (Lagos)</span><div class="times num" id="times" role="group" aria-labelledby="timeLbl"></div></div>
+    <a class="btn btn-solid" id="bookLink" href="#" target="_blank" rel="noopener" style="align-self:flex-start">Book on WhatsApp</a>
+    <p class="note" id="bookNote"></p>
+  </div>
+</section>
+
+<div class="ground">
+  <section class="docs wrap" id="documents">
+    <div><span class="eyebrow" style="color:var(--accent);display:block;margin-bottom:18px">On paper</span><h2>What you receive.</h2></div>
+    <dl>
+      <div><dt>Survey plan</dt><dd>A surveyed plan of your exact plot, with beacon coordinates. [Surveyor and registration no.]</dd></div>
+      <div><dt>Deed of assignment</dt><dd>Signed and stamped transfer from Ollic to you. [Registry reference]</dd></div>
+      <div><dt>Land title</dt><dd>Certificate of Occupancy status for the estate. [Confirm with legal team before launch]</dd></div>
+      <div><dt>Payment record</dt><dd>A receipt for the hold fee, deposit and each instalment, sent to your WhatsApp and email.</dd></div>
+    </dl>
+  </section>
+  <footer class="wrap">
+    <div class="foot-top">
+      <p>Ollic Residences, Uyo, Akwa Ibom State, Nigeria. Sales office: [Address]. WhatsApp: <span class="num">[+234 number]</span>.</p>
+      <a class="btn btn-line" href="#top">Back to the film</a>
+    </div>
+    <div class="big-word" aria-hidden="true">OLLIC</div>
+    <div class="legal"><span>Demo site. Prices, availability and contact details are illustrative.</span><span>All images are artist’s impressions.</span></div>
+  </footer>
+</div>
+</main>
+
+<script>
+(function(){
+var O=window.OLLIC, rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+var $=function(s){return document.querySelector(s)};
+var clamp=function(v,a,b){return Math.min(b,Math.max(a,v))};
+var naira=function(n){return '₦'+Math.round(n).toLocaleString('en-NG')};
+var hero=$('#hero'),hv=$('#heroVid'),zv=$('#sZoom'),sa=$('#sAerial'),sv=$('#sVilla'),skip=$('#skipBtn');
+
+/* ---------- HERO FILM: autoplay, text in beats, skip on first scroll ---------- */
+var PM=matchMedia('(max-width: 800px) and (orientation: portrait)');   // phones upright: 9:16 film
+var done=false,beats=PM.matches?[[5.0,'t1'],[5.7,'t2'],[6.4,'t3'],[7.2,'t4']]:[[4.8,'t1'],[5.5,'t2'],[6.3,'t3'],[7.2,'t4']];
+if(PM.matches) hv.poster='media/poster-start-p.jpg';
+function seen(){try{return sessionStorage.getItem('ollicSeen')==='1'}catch(e){return false}}
+function mark(){try{sessionStorage.setItem('ollicSeen','1')}catch(e){}}
+function loadZoom(){ if(zv.dataset.l)return; zv.dataset.l=1; zv.preload='auto'; try{zv.load()}catch(e){} }
+function finish(){ loadZoom(); if(done)return; done=true; beats.forEach(function(b){hero.classList.add(b[1])}); skip.classList.remove('on'); mark(); }
+function jumpToEnd(){ finish(); try{ if(hv.duration) hv.currentTime=hv.duration-.02; hv.pause(); }catch(e){} }
+function giveUp(){ finish(); hv.style.opacity=0; }   // film cannot play: show the finished aerial with all text
+function replay(){
+  if(rm)return; done=false; beats.forEach(function(b){hero.classList.remove(b[1])});
+  hv.style.opacity=''; hv.style.visibility='visible'; skip.classList.add('on');
+  scrollTo({top:0,behavior:'instant'});
+  try{hv.currentTime=0}catch(e){}
+  var q=hv.play(); if(q&&q.catch) q.catch(giveUp);
+}
+$('#replayBtn').addEventListener('click',replay);
+if(rm){ giveUp(); }
+else if(scrollY>innerHeight*.5){ giveUp(); }
+else if(seen()){ finish(); hv.addEventListener('loadedmetadata',jumpToEnd); setTimeout(function(){if(!hv.duration)hv.style.opacity=0},2500); }
+else{
+  skip.classList.add('on');
+  var pp=hv.play(); if(pp&&pp.catch) pp.catch(function(){setTimeout(function(){ if(hv.paused) giveUp() },300)});
+  hv.addEventListener('ended',finish);
+  hv.addEventListener('error',giveUp);
+  setTimeout(function(){ if(!done&&hv.currentTime<.1) giveUp() },12000);
+  addEventListener('touchstart',function(){ if(!done&&hv.paused){var q=hv.play(); if(q&&q.catch)q.catch(function(){})} },{passive:true,once:true});
+  setTimeout(finish,16000);
+  ['wheel','keydown'].forEach(function(ev){addEventListener(ev,function(){ if(!done) jumpToEnd() },{passive:true,once:true})});
+  addEventListener('scroll',function(){ if(!done&&scrollY>20) jumpToEnd() },{passive:true});
+  skip.addEventListener('click',jumpToEnd);
+}
+
+/* ---------- ONE TIMELINE: scroll position -> camera ---------- */
+var K=[],zoomEl=$('#estate'),planEl=$('#plots'),speakEl=$('#advisor');
+function top(e){return e.getBoundingClientRect().top+scrollY}
+function build(){
+  var vh=innerHeight,y0=top(zoomEl),pT=top(planEl),sT=top(speakEl);
+  var a=y0, b=y0+2*vh, c=Math.max(b+1,pT-vh), d=Math.max(c+1,pT), e=Math.max(d+1,sT-vh), f=Math.max(e+1,sT);
+  K=[[a,0],[b,1],[c,1],[d,0],[e,0],[f,1]];
+}
+function pAt(y){
+  if(y<=K[0][0])return 0;
+  for(var i=1;i<K.length;i++){ if(y<=K[i][0]){var a=K[i-1],b=K[i];return a[1]+(b[1]-a[1])*(y-a[0])/(b[0]-a[0])} }
+  return K[K.length-1][1];
+}
+var cur=0,last=-1,zs=1,ztx=0,zty=0;
+var stageCb=$('#stageCb'),hotCb=$('#hotCb'),hot=$('#hot'),c1=$('#cap1'),c2=$('#cap2'),bar=$('#progBar');
+var zoomed=false,zoomPt=null;
+function zoomTarget(){
+  var vw=innerHeight>0?document.documentElement.clientWidth:0,vh=innerHeight;
+  var AR=PM.matches?9/16:16/9,W=Math.max(vw,vh*AR),H=Math.max(vh,vw/AR);
+  if(!zoomed||!zoomPt) return {s:1,x:0,y:0};
+  var wide=vw>900,s=wide?zoomPt.s:Math.min(zoomPt.s,1.4),tx=wide?vw*.34:vw*.5,ty=wide?vh*.46:vh*.26;
+  var dx=(zoomPt.x/100-.5)*W,dy=(zoomPt.y/100-.5)*H;
+  var X=(tx-vw/2)-s*dx,Y=(ty-vh/2)-s*dy;
+  var mx=Math.max(0,s*W/2-vw/2),my=Math.max(0,s*H/2-vh/2)+(wide?0:vh*.44);   // phones: the panel covers the lower 44%, so the map may slide up behind it to reach the entrance zones
+  return {s:s,x:clamp(X,-mx,mx),y:clamp(Y,-my,my)};
+}
+function frame(){
+  var y=scrollY,vh=innerHeight,target=pAt(y);
+  cur+=(target-cur)*.16; if(Math.abs(target-cur)<.0006)cur=target;
+  var p=cur;
+  if(!rm){
+    if(zv.duration&&Math.abs(p-last)>.0004){zv.currentTime=p*(zv.duration-.04);last=p}
+    zv.style.opacity=clamp((p-.04)/.1,0,1);
+    sv.style.opacity=0;
+  }else{ sv.style.opacity=clamp((p-.2)/.6,0,1); zv.style.opacity=0; }
+  hv.style.visibility=(y<vh*1.05&&hv.style.opacity!=='0')?'visible':'hidden';
+  var yEnd=K[1]?K[1][0]+.6*vh:0;
+  c1.style.opacity=1-clamp((p-.1)/.16,0,1);
+  c2.style.opacity=clamp((p-.72)/.18,0,1)*(1-clamp((y-yEnd)/(.35*vh),0,1));
+  c2.style.pointerEvents=c2.style.opacity>.6?'auto':'none';
+  var h=1-clamp(p/.04,0,1); hot.style.opacity=h; hot.classList.toggle('on',h>.6);
+  var t=zoomTarget(); zs+=(t.s-zs)*.12; ztx+=(t.x-ztx)*.12; zty+=(t.y-zty)*.12;
+  var st='--s:'+zs.toFixed(4)+';--tx:'+ztx.toFixed(1)+'px;--ty:'+zty.toFixed(1)+'px';
+  var sc=p<.04?st:'--s:1;--tx:0px;--ty:0px';
+  stageCb.style.cssText=sc; hotCb.style.cssText=st;
+  var dh=document.documentElement.scrollHeight-vh; bar.style.width=Math.max(34,dh>0?y/dh*document.documentElement.clientWidth:34)+'px';
+  if(!done&&hv.currentTime){ for(var i=0;i<beats.length;i++) if(hv.currentTime>=beats[i][0]) hero.classList.add(beats[i][1]); }
+  requestAnimationFrame(frame);
+}
+addEventListener('resize',build);
+var pmWas=PM.matches;
+function onOrient(){ if(PM.matches===pmWas)return; pmWas=PM.matches; ORDER.forEach(function(k){placeBox(zoneBtns[k],k)}); if(zoomed)zoomPt=geo(S.zone).pt;
+  hv.poster=PM.matches?'media/poster-start-p.jpg':'media/poster-start.jpg'; last=-1;
+  var was=done; try{hv.load();zv.load()}catch(e){} if(was) hv.addEventListener('loadedmetadata',jumpToEnd,{once:true}); }
+if(PM.addEventListener)PM.addEventListener('change',onOrient);else if(PM.addListener)PM.addListener(onOrient);
+if(window.ResizeObserver) new ResizeObserver(build).observe(document.body);
+addEventListener('load',build);
+build(); requestAnimationFrame(frame);
+
+/* ---------- PLAN DATA ---------- */
+var ZONES={
+  garden:{name:'Garden terraces',tag:'G',rate:20000,sizes:[150,200,250,300,450],n:12,box:[13,10,75,29],pt:{x:50,y:24.5,s:1.7},
+    p:{box:[16,9,68,21],pt:{x:50,y:19,s:1.6}},blurb:'Quiet inner rows, 150–450 sqm.'},
+  lake:{name:'Lakeside',tag:'L',rate:32000,sizes:[450,500,600,750,1000],n:12,box:[9,40,83,28],pt:{x:50,y:54,s:1.7},
+    p:{box:[12,32,76,36],pt:{x:50,y:49,s:1.5}},blurb:'Water frontage, 450–1,000 sqm.'},
+  gate:{name:'Gate court',tag:'C',rate:26000,sizes:[300,350,450,600],n:10,box:[1,69,38,25],pt:{x:20,y:81.5,s:2.1},
+    p:{box:[8,70,40,16],pt:{x:28,y:78,s:1.8}},blurb:'By the entrance, 300–600 sqm.'},
+  blockF:{name:'Block F estates',tag:'F',rate:22000,sizes:[600,750,900,1000],n:8,box:[60,69,39,25],pt:{x:79.5,y:81.5,s:2.1},
+    p:{box:[52,70,40,16],pt:{x:72,y:78,s:1.8}},blurb:'Large plots, 600–1,000 sqm.'}
+};
+function geo(k){var z=ZONES[k];return PM.matches?z.p:z}
+var ORDER=['garden','lake','gate','blockF'],plots=[];
+function hash(s){var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h)}
+ORDER.forEach(function(k){var z=ZONES[k];for(var i=1;i<=z.n;i++){var id=z.tag+'-'+(i<10?'0':'')+i;plots.push({id:id,zone:k,size:z.sizes[(i+hash(k))%z.sizes.length],taken:hash(id)%4===0})}});
+var S={mode:'plot',zone:'lake',plot:null,share:20,months:12,method:'Card',day:null,time:null};
+S.plot=plots.filter(function(p){return p.zone==='lake'&&!p.taken})[2];
+
+var zoneBtns={};
+function placeBox(box,k){var b=geo(k).box;box.style.cssText='left:'+b[0]+'%;top:'+b[1]+'%;width:'+b[2]+'%;height:'+b[3]+'%'}
+ORDER.forEach(function(k){
+  var z=ZONES[k],box=document.createElement('div');box.className='zone';
+  box.dataset.k=k;placeBox(box,k);
+  var pin=document.createElement('button');pin.type='button';pin.className='pin';pin.setAttribute('aria-label',z.name+', '+naira(z.rate)+' per square metre');
+  pin.innerHTML='<i></i><span>'+z.name+'<small class="num">'+naira(z.rate)+' per sqm</small></span>';
+  pin.addEventListener('click',function(){chooseZone(k,true)});
+  box.appendChild(pin);hotCb.appendChild(box);zoneBtns[k]=box;
+});
+var zs_=$('#zoneSeg');
+ORDER.forEach(function(k){var b=document.createElement('button');b.type='button';b.dataset.z=k;b.textContent=ZONES[k].name;b.addEventListener('click',function(){chooseZone(k,true)});zs_.appendChild(b)});
+var mo=$('#months');[6,12,18,24].forEach(function(m){var b=document.createElement('button');b.type='button';b.dataset.m=m;b.textContent=m+' months';b.addEventListener('click',function(){S.months=m;render()});mo.appendChild(b)});
+document.querySelectorAll('#method button').forEach(function(b){b.addEventListener('click',function(){S.method=b.dataset.m;render()})});
+function chooseZone(k,zoom){S.mode='plot';S.zone=k;var f=plots.filter(function(p){return p.zone===k&&!p.taken})[0];S.plot=f;zoomed=!!zoom;zoomPt=geo(k).pt;hideDone();render()}
+$('#zoomOut').addEventListener('click',function(){zoomed=false;render()});
+$('#tabPlot').addEventListener('click',function(){S.mode='plot';hideDone();render()});
+$('#tabShare').addEventListener('click',function(){S.mode='share';zoomed=false;hideDone();render()});
+$('#shMinus').addEventListener('click',function(){S.share=Math.max(5,S.share-5);render()});
+$('#shPlus').addEventListener('click',function(){S.share=Math.min(100,S.share+5);render()});
+
+function quote(){
+  var sqm,rate,label,sub;
+  if(S.mode==='share'){sqm=S.share;rate=O.ratePerSqm;label=sqm+' sqm share';sub='Co-owned holding in the Garden Commons, documented per share.'}
+  else{var p=S.plot,z=ZONES[p.zone];sqm=p.size;rate=z.rate;label='Plot '+p.id;sub=z.name+', '+sqm.toLocaleString('en-NG')+' sqm.'}
+  var total=sqm*rate,dep=total*O.depositPct,bal=total-dep;
+  return {sqm:sqm,rate:rate,label:label,sub:sub,total:total,dep:dep,mon:bal/S.months};
+}
+function render(){
+  var share=S.mode==='share',q=quote();
+  $('#tabPlot').setAttribute('aria-selected',!share);$('#tabShare').setAttribute('aria-selected',share);
+  $('#shareField').hidden=!share;$('#zoneField').hidden=share;$('#plotField').hidden=share;$('#shVal').textContent=S.share+' sqm';
+  $('#zoomOut').hidden=!(zoomed&&!share);
+  zs_.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.z===S.zone)});
+  ORDER.forEach(function(k){zoneBtns[k].classList.toggle('sel',!share&&k===S.zone&&zoomed)});
+  var pg=$('#plotSeg');pg.innerHTML='';
+  plots.filter(function(p){return p.zone===S.zone}).forEach(function(p){
+    var b=document.createElement('button');b.type='button';b.textContent=p.id+' · '+p.size.toLocaleString('en-NG');
+    if(p.taken){b.disabled=true;b.setAttribute('aria-label','Plot '+p.id+' reserved')}
+    else{b.setAttribute('aria-pressed',S.plot===p);b.addEventListener('click',function(){S.plot=p;hideDone();render()})}
+    pg.appendChild(b)});
+  document.querySelectorAll('#months button').forEach(function(b){b.setAttribute('aria-pressed',+b.dataset.m===S.months)});
+  document.querySelectorAll('#method button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.m===S.method)});
+  $('#selTitle').textContent=q.label;$('#selSub').textContent=q.sub;
+  $('#kpis').innerHTML='<div class="wide"><span>Total</span><b>'+naira(q.total)+'</b></div><div><span>Deposit today (30%)</span><b>'+naira(q.dep)+'</b></div><div><span>Then monthly</span><b>'+naira(q.mon)+'</b></div>';
+  $('#rows').textContent=q.sqm.toLocaleString('en-NG')+' sqm at '+naira(q.rate)+' per sqm, over '+S.months+' months';
+}
+function summaryText(){var q=quote();return q.label+' ('+q.sub.replace(/ /g,' ')+') total '+naira(q.total)+', deposit '+naira(q.dep)+', then '+naira(q.mon)+' a month for '+S.months+' months, paying by '+S.method.toLowerCase()+'.'}
+function wa(t){return 'https://wa.me/'+O.whatsapp+'?text='+encodeURIComponent(t)}
+function hideDone(){$('#doneBox').hidden=true;$('#resForm').hidden=false}
+$('#resForm').addEventListener('submit',function(e){
+  e.preventDefault();var n=$('#fName').value.trim(),ph=$('#fPhone').value.trim(),err=$('#formErr');
+  if(n.length<2){err.textContent='Enter your full name so we can address the hold.';err.hidden=false;$('#fName').focus();return}
+  if(ph.replace(/\D/g,'').length<10){err.textContent='Enter a WhatsApp number with at least 10 digits.';err.hidden=false;$('#fPhone').focus();return}
+  err.hidden=true;var ref='OGD-'+(1000+Math.floor(Math.random()*9000));
+  $('#refCode').textContent=ref;$('#doneTxt').textContent=summaryText();
+  $('#waLink').href=wa('Hello Ollic, I am '+n+' ('+ph+'). I would like to hold: '+summaryText()+' Reference '+ref+'.');
+  $('#resForm').hidden=true;$('#doneBox').hidden=false;
+});
+$('#againBtn').addEventListener('click',hideDone);
+render();
+
+/* ---------- ADVISOR BOOKING ---------- */
+var days=$('#days'),times=$('#times'),dn=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var d=new Date(),opts=[];while(opts.length<6){d=new Date(d.getTime()+864e5);if(d.getDay()!==0)opts.push(new Date(d))}
+opts.forEach(function(o){var v=dn[o.getDay()]+' '+o.getDate()+' '+mn[o.getMonth()],b=document.createElement('button');b.type='button';b.dataset.v=v;
+  b.innerHTML='<small>'+dn[o.getDay()]+'</small><span class="num">'+o.getDate()+' '+mn[o.getMonth()]+'</span>';b.setAttribute('aria-pressed','false');
+  b.addEventListener('click',function(){S.day=v;sync()});days.appendChild(b)});
+['10:00','12:00','15:00','17:00'].forEach(function(t){var b=document.createElement('button');b.type='button';b.textContent=t;b.setAttribute('aria-pressed','false');b.addEventListener('click',function(){S.time=t;sync()});times.appendChild(b)});
+function sync(){
+  days.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.v===S.day)});
+  times.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',b.textContent===S.time)});
+  var ok=S.day&&S.time,a=$('#bookLink');
+  a.href=ok?wa('Hello Ollic, I would like to book a call with an advisor on '+S.day+' at '+S.time+' (Lagos time).'):'#';
+  a.setAttribute('aria-disabled',!ok);a.style.opacity=ok?1:.5;
+  $('#bookNote').textContent=ok?'Opens WhatsApp with your '+S.day+', '+S.time+' request. An advisor confirms there.':'Choose a day and a time to continue.';
+}
+$('#bookLink').addEventListener('click',function(e){if(!(S.day&&S.time))e.preventDefault()});
+sync();
+})();
+</script>
+
+</body>
+</html>
