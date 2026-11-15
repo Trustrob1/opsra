@@ -1295,9 +1295,9 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted }) {
             highlights the original, like native WhatsApp. Falls back to a generic
             label if the original couldn't be resolved (e.g. predates this feature
             or isn't currently loaded in this page of the thread). */}
-        {msg.reply_to_message_id && (
+        {(msg.reply_to_message_id || msg.reply_to_id) && (
           <div
-            onClick={() => onJumpToMessage?.(msg.reply_to_message_id)}
+            onClick={() => onJumpToMessage?.(msg.reply_to_message_id || msg.reply_to_id)}
             style={{ background: 'rgba(0,0,0,0.045)', borderLeft: `3px solid ${ds.teal}`, borderRadius: 6, padding: '5px 8px', marginBottom: 6, fontSize: 11.5, color: ds.gray, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', cursor: onJumpToMessage ? 'pointer' : 'default' }}
             onMouseEnter={e => { if (onJumpToMessage) e.currentTarget.style.background = 'rgba(0,0,0,0.08)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.045)' }}
@@ -1374,7 +1374,7 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted }) {
             )}
           </div>
         ) : (
-          <p style={{ fontSize: 13, color: ds.dark, margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+          <p style={{ fontSize: 13, color: msg.deleted_at ? ds.gray : ds.dark, fontStyle: msg.deleted_at ? 'italic' : 'normal', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
             {msg.content || (isMedia ? '(Media)' : '(Empty)')}
           </p>
         )}
@@ -1403,7 +1403,7 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted }) {
             </span>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontSize: 10, color: ds.gray }}>{date} {time}</span>
+            <span style={{ fontSize: 10, color: ds.gray }}>{msg.edited_at && !msg.deleted_at ? 'Edited · ' : ''}{date} {time}</span>
             {isOut && <StatusTick status={msg.status} />}
           </div>
         </div>

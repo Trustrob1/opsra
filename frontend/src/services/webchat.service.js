@@ -57,6 +57,16 @@ export async function sendBooking(key, token, fields) {
   return res.data.data
 }
 
+export async function editChatMessage(key, token, id, text) {
+  const res = await axios.patch(`${BASE}/public/webchat/${key}/message/${id}`, { text }, auth(token))
+  return res.data.data.message
+}
+
+export async function deleteChatMessage(key, token, id) {
+  const res = await axios.delete(`${BASE}/public/webchat/${key}/message/${id}`, auth(token))
+  return res.data.data.message
+}
+
 export async function getChatConfig(key) {
   const res = await axios.get(`${BASE}/public/webchat/${key}/config`)
   return res.data.data

@@ -493,16 +493,65 @@ def set_state(db, session: dict, **kv) -> dict:
 def _out(role: str, row: dict) -> dict:
     out = {"id": row["id"], "role": role, "text": row.get("content") or row.get("text") or "",
            "at": row.get("created_at") or row.get("at")}
-    if row.get("message_type") in ("image", "audio", "document") and row.get("media_url"):   # WEBCHAT-ATTACH-1
-        out["attachment"] = {"kind": row["message_type"], "name": out["text"], "url": row["media_url"]}
+    if row.get("deleted_at"):                                                          # WEBCHAT-MSG-1
+        out["deleted"] = True
+        out["text"] = ""
+    else:
+        if row.get("message_type") in ("image", "audio", "document") and row.get("media_url"):   # WEBCHAT-ATTACH-1
+            out["attachment"] = {"kind": row["message_type"], "name": out["text"], "url": row["media_url"]}
+        if row.get("edited_at"):
+            out["edited"] = True
+    rid = row.get("reply_to_id") or row.get("reply_to")
+    if rid:
+        out["reply_to"] = str(rid)
     return out
 
 
-def append_message(db, session: dict, role: str, text: str, sent_by: Optional[str] = None) -> dict:
-    """role: visitor | bot | rep. Stored in whatsapp_messages once a lead exists, else inside the session."""
+QUOTE_LEN = 140
+_ATT_WORD = {"image": "Photo", "audio": "Voice note", "document": "Document"}
+
+
+def _quote_of(role: str, row: dict) -> dict:
+    """The little quoted snippet shown inside a reply."""
+    if row.get("deleted_at"):
+        text = "This message was deleted"
+    elif row.get("message_type") in ("image", "audio", "document"):
+        text = _ATT_WORD.get(row["message_type"], "File") if row["message_type"] != "document" else (row.get("content") or "Document")
+    else:
+        text = row.get("content") or row.get("text") or ""
+    return {"id": str(row["id"]), "role": role, "text": str(text)[:QUOTE_LEN]}
+
+
+def find_message(db, session: dict, mid: str) -> Optional[tuple]:
+    """('db', row, role) or ('hist', item, role) for a message of THIS session, else None."""
+    if not isinstance(mid, str) or not re.match(r"^[0-9a-fA-F-]{36}$", mid):
+        return None
+    if not session.get("lead_id"):
+        for m in session.get("history") or []:
+            if m.get("id") == mid:
+                return ("hist", m, m.get("role") or "bot")
+        return None
+    row = _one((db.table("whatsapp_messages").select("*").eq("id", mid).eq("org_id", session["org_id"])
+                .eq("webchat_session_id", session["id"]).limit(1).execute()).data)
+    if not row:
+        return None
+    return ("db", row, "visitor" if row.get("direction") == "inbound" else ("rep" if row.get("sent_by") else "bot"))
+
+
+def quote_for(db, session: dict, mid: Optional[str]) -> Optional[dict]:
+    found = find_message(db, session, mid) if mid else None
+    return _quote_of(found[2], found[1]) if found else None
+
+
+def append_message(db, session: dict, role: str, text: str, sent_by: Optional[str] = None,
+                   reply_to: Optional[str] = None) -> dict:
+    """role: visitor | bot | rep. Stored in whatsapp_messages once a lead exists, else inside the session.
+    reply_to: id of an earlier message of this chat (checked here; anything else is dropped)."""
     text = _clean_text(text, MAX_TEXT)
     now = _iso(_now())
     mid = str(uuid.uuid4())
+    quote = quote_for(db, session, reply_to) if reply_to else None
+    rid = quote["id"] if quote else None
     if session.get("lead_id"):
         row = {
             "id": mid, "org_id": session["org_id"], "lead_id": session["lead_id"], "channel": "webchat",
@@ -511,37 +560,85 @@ def append_message(db, session: dict, role: str, text: str, sent_by: Optional[st
             "status": "delivered" if role == "visitor" else "sent",
             "sent_by": sent_by if role == "rep" else None, "created_at": now,
         }
+        if rid:
+            row["reply_to_id"] = rid
         db.table("whatsapp_messages").insert(row).execute()
     else:
         hist = list(session.get("history") or [])
-        hist.append({"id": mid, "role": role, "text": text, "at": now})
+        item = {"id": mid, "role": role, "text": text, "at": now}
+        if rid:
+            item["reply_to"] = rid
+        hist.append(item)
         session = update_session(db, session, {"history": hist[-HISTORY_CAP:]})
-    return {"id": mid, "role": role, "text": text, "at": now}
+    out = {"id": mid, "role": role, "text": text, "at": now}
+    if rid:
+        out["reply_to"], out["reply"] = rid, quote
+    return out
+
+
+def _attach_quotes(db, session: dict, outs: list, source_rows: list) -> list:
+    """Fill in out['reply'] for messages that quote another message (one extra query at most)."""
+    need = {o["reply_to"] for o in outs if o.get("reply_to")}
+    if not need:
+        return outs
+    known: dict = {}
+    for o, r in zip(outs, source_rows):
+        known[str(o["id"])] = _quote_of(o["role"], r)
+    missing = [i for i in need if i not in known]
+    if missing and session.get("lead_id"):
+        try:
+            rows = (db.table("whatsapp_messages").select("id, content, message_type, direction, sent_by, deleted_at")
+                    .eq("org_id", session["org_id"]).eq("webchat_session_id", session["id"]).in_("id", missing).execute().data) or []
+            for r in rows:
+                known[str(r["id"])] = _quote_of("visitor" if r["direction"] == "inbound" else ("rep" if r.get("sent_by") else "bot"), r)
+        except Exception as exc:
+            logger.warning("webchat quote lookup failed: %s", exc)
+    elif missing:
+        for m in session.get("history") or []:
+            known.setdefault(str(m["id"]), _quote_of(m.get("role") or "bot", m))
+    for o in outs:
+        if o.get("reply_to"):
+            q = known.get(o["reply_to"])
+            if q:
+                o["reply"] = q
+            else:
+                o.pop("reply_to", None)
+    return outs
 
 
 def list_messages(db, session: dict, after: Optional[str] = None, limit: int = 100) -> list[dict]:
+    """Messages after a time. A message edited or deleted after that time is sent again so the page can update it."""
     if not session.get("lead_id"):
         msgs = list(session.get("history") or [])
-        return [m for m in msgs if not after or m["at"] > after][-limit:]
-    q = (db.table("whatsapp_messages").select("id, content, created_at, direction, sent_by, message_type, media_url")
+        pick = [m for m in msgs if not after or m["at"] > after or (m.get("edited_at") or "") > after or (m.get("deleted_at") or "") > after][-limit:]
+        return _attach_quotes(db, session, [_out(m.get("role") or "bot", m) for m in pick], pick)
+    q = (db.table("whatsapp_messages")
+         .select("id, content, created_at, direction, sent_by, message_type, media_url, reply_to_id, edited_at, deleted_at")
          .eq("org_id", session["org_id"]).eq("webchat_session_id", session["id"])
          .order("created_at", desc=False).limit(limit))
     if after:
-        q = q.gt("created_at", after)
+        q = q.or_(f"created_at.gt.{after},edited_at.gt.{after},deleted_at.gt.{after}")
     rows = q.execute().data or []
-    return [_out("visitor" if r["direction"] == "inbound" else ("rep" if r.get("sent_by") else "bot"), r) for r in rows]
+    outs = [_out("visitor" if r["direction"] == "inbound" else ("rep" if r.get("sent_by") else "bot"), r) for r in rows]
+    return _attach_quotes(db, session, outs, rows)
 
 
 def _flush_history(db, session: dict) -> None:
     hist = session.get("history") or []
     if not hist or not session.get("lead_id"):
         return
-    rows = [{
-        "id": m["id"], "org_id": session["org_id"], "lead_id": session["lead_id"], "channel": "webchat",
-        "webchat_session_id": session["id"], "message_type": "text", "content": m["text"],
-        "direction": "inbound" if m["role"] == "visitor" else "outbound",
-        "status": "delivered" if m["role"] == "visitor" else "sent", "sent_by": None, "created_at": m["at"],
-    } for m in hist]
+    rows = []
+    for m in hist:
+        r = {
+            "id": m["id"], "org_id": session["org_id"], "lead_id": session["lead_id"], "channel": "webchat",
+            "webchat_session_id": session["id"], "message_type": "text", "content": m["text"],
+            "direction": "inbound" if m["role"] == "visitor" else "outbound",
+            "status": "delivered" if m["role"] == "visitor" else "sent", "sent_by": None, "created_at": m["at"],
+        }
+        for k_src, k_dst in (("reply_to", "reply_to_id"), ("edited_at", "edited_at"), ("deleted_at", "deleted_at"), ("original", "original_content")):
+            if m.get(k_src):
+                r[k_dst] = m[k_src]
+        rows.append(r)
     db.table("whatsapp_messages").insert(rows).execute()
     update_session(db, session, {"history": []})
 

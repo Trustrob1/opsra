@@ -77,7 +77,7 @@ def _notify_human(db, s: dict, cfg: dict, why: str) -> None:
 
 
 def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] = None,
-                   text: Optional[str] = None) -> dict:
+                   text: Optional[str] = None, reply_to: Optional[str] = None) -> dict:
     """
     One visitor action. kind = 'menu' (tapped an option) or 'text'.
     Returns {messages, ask_contact, ask_email, form, human}; `messages` are the new messages in order
@@ -98,7 +98,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         if not visitor_text:
             return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": wc.is_human(s, cfg)}
 
-    out = [wc.append_message(db, s, "visitor", visitor_text)]
+    out = [wc.append_message(db, s, "visitor", visitor_text, reply_to=reply_to)]
     wc.update_session(db, s, {"turn_count": int(s.get("turn_count") or 0) + 1})
     if int(s.get("turn_count") or 0) == 1:
         wc.log_event(db, s["org_id"], s["id"], "started", s.get("source"))

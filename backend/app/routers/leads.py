@@ -1237,6 +1237,16 @@ async def get_lead_messages(
         for m in messages:
             rid = m.get("reply_to_message_id")
             m["reply_preview"] = previews_map.get(rid) if rid else None
+        # WEBCHAT-MSG-1: a web chat visitor's reply points at the original by its own id
+        wc_ids = list({m["reply_to_id"] for m in messages if m.get("reply_to_id")})
+        if wc_ids:
+            wc_r = (db.table("whatsapp_messages").select("id, content, message_type, media_url, deleted_at")
+                    .eq("org_id", _org_id(org)).in_("id", wc_ids).execute())
+            wc_map = {o["id"]: {"content": "This message was deleted" if o.get("deleted_at") else o.get("content"),
+                                "message_type": o.get("message_type"), "media_url": o.get("media_url")} for o in (wc_r.data or [])}
+            for m in messages:
+                if m.get("reply_to_id") and not m.get("reply_preview"):
+                    m["reply_preview"] = wc_map.get(m["reply_to_id"])
     except Exception as _exc:
         logger.warning("reply_preview enrichment failed for lead %s: %s", lead_id, _exc)
 

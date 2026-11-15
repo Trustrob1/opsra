@@ -15,7 +15,7 @@
  * page also works as a plain chat for a business that uses nothing else from Opsra.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, chatErrorMessage } from '../services/webchat.service'
+import { startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -31,6 +31,7 @@ function writeStore(key, v) { try { v ? window.localStorage.setItem(key, v) : wi
 
 const naira = (n) => `₦${Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
 
+const EDIT_WINDOW_MS = 15 * 60 * 1000       // the server enforces this too
 const MAX_MB = { image: 10, document: 15, audio: 5 }
 const DOC_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.txt'
 const IMG_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp'
@@ -57,6 +58,10 @@ function Icon({ name, size = 20 }) {
   if (name === 'mail') return <svg {...common}><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="M4 7.5l8 6 8-6" /></svg>
   if (name === 'phone') return <svg {...common}><path d="M6.6 3.5h2.8l1.4 4-1.8 1.3a11 11 0 005.2 5.2l1.3-1.8 4 1.4v2.8a2 2 0 01-2.2 2A15.5 15.5 0 014.6 5.7a2 2 0 012-2.2z" /></svg>
   if (name === 'chat') return <svg {...common}><path d="M4 5.5h16v11H9.5L5 20v-3.5H4z" /></svg>
+  if (name === 'reply') return <svg {...common}><path d="M10 6L4 12l6 6M4 12h10a6 6 0 016 6" /></svg>
+  if (name === 'edit') return <svg {...common}><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" /></svg>
+  if (name === 'copy') return <svg {...common}><rect x="8" y="8" width="12" height="12" rx="2.5" /><path d="M16 8V6.5A2.5 2.5 0 0013.5 4h-7A2.5 2.5 0 004 6.5v7A2.5 2.5 0 006.5 16H8" /></svg>
+  if (name === 'check') return <svg {...common} strokeWidth="2.4"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
   if (name === 'menu') return <svg {...common}><path d="M4 7h16M4 12h16M4 17h10" /></svg>
   if (name === 'chev') return <svg {...common}><path d="M9 5l7 7-7 7" /></svg>
   if (name === 'clip') return <svg {...common}><path d="M20 11.5l-7.8 7.8a5 5 0 01-7-7l8-8a3.3 3.3 0 014.7 4.7l-8 8a1.7 1.7 0 01-2.4-2.4l7.4-7.4" /></svg>
@@ -185,6 +190,12 @@ export default function WebChatPage({ chatKey }) {
   const [hasContact, setHasContact] = useState(false)
   const [verified, setVerified] = useState(false)
   const [human, setHuman] = useState(false)
+  const [msgMenu, setMsgMenu] = useState(null)         // { id, top, mine } while the message menu is open
+  const [replyTo, setReplyTo] = useState(null)         // { id, role, text } the visitor is replying to
+  const [editing, setEditing] = useState(null)         // { id } while a sent message is being edited
+  const [confirmDel, setConfirmDel] = useState(null)   // message id awaiting 'Delete for everyone'
+  const inputRef = useRef(null)
+  const shellRef = useRef(null)
   const [callPhone, setCallPhone] = useState(null)         // null = not asked yet, string = the phone field is showing
   const [panel, setPanel] = useState(null)                // null | 'contact' | 'email' | 'booking' | 'shop' | 'cart' | 'save' | 'menu' | 'attach' | 'call'
   const [text, setText] = useState('')
@@ -214,11 +225,18 @@ export default function WebChatPage({ chatKey }) {
   const merge = useCallback((incoming) => {
     if (!incoming?.length) return
     setMessages((cur) => {
-      const seen = new Set(cur.map((m) => m.id))
-      const add = incoming.filter((m) => !seen.has(m.id))
-      if (!add.length) return cur
+      const byId = new Map(cur.map((m) => [m.id, m]))
+      // a message the visitor or the server changed (edited, deleted): update it in place, only when something differs
+      let touched = false
+      const updated = cur.map((m) => {
+        const n = incoming.find((x) => x.id === m.id)
+        if (n && (n.deleted ? !m.deleted : (n.edited && (n.text !== m.text || !m.edited)))) { touched = true; return { ...m, ...n } }
+        return m
+      })
+      const add = incoming.filter((m) => !byId.has(m.id))
+      if (!add.length) return touched ? updated : cur
       const said = add.filter((m) => m.role === 'visitor').map((m) => m.text)
-      const kept = said.length ? cur.filter((m) => !(m.tmp && said.includes(m.text))) : cur
+      const kept = said.length ? updated.filter((m) => !(m.tmp && said.includes(m.text))) : updated
       return [...kept, ...add].sort((a, b) => String(a.at).localeCompare(String(b.at)))
     })
   }, [])
@@ -316,8 +334,8 @@ export default function WebChatPage({ chatKey }) {
 
   const closePanel = () => { setPanel(null); setError('') }
   // Show the visitor's message at once, with typing dots until the reply arrives (the server can take a second or two).
-  const sendOptimistic = async (label, payload) => {
-    const tmp = { id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: 'visitor', text: label, at: new Date().toISOString(), tmp: true }
+  const sendOptimistic = async (label, payload, reply) => {
+    const tmp = { id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: 'visitor', text: label, at: new Date().toISOString(), tmp: true, ...(reply ? { reply_to: reply.id, reply: { role: reply.role, text: reply.text } } : {}) }
     setMessages((cur) => [...cur, tmp])
     setPending((n) => n + 1)
     setError('')
@@ -361,9 +379,65 @@ export default function WebChatPage({ chatKey }) {
     e.preventDefault()
     const t = text.trim()
     if (!t) return
-    setText('')
-    sendOptimistic(t, { kind: 'text', text: t }).then((ok) => { if (!ok) setText(t) })
+    if (editing) {
+      const id = editing.id
+      act(async () => {
+        const m = await editChatMessage(chatKey, token.current, id, t)
+        merge([m]); setEditing(null); setText('')
+      })
+      return
+    }
+    const rq = replyTo
+    setText(''); setReplyTo(null)
+    sendOptimistic(t, { kind: 'text', text: t, ...(rq ? { reply_to: rq.id } : {}) }, rq).then((ok) => { if (!ok) { setText(t); if (rq) setReplyTo(rq) } })
   }
+
+  // WEBCHAT-MSG-1: tap a message for Reply / Copy / Edit / Delete (like WhatsApp)
+  const whoLabel = (role) => (role === 'visitor' ? 'You' : role === 'rep' ? `${cfg.business_name} team` : cfg.business_name)
+  const msgActions = (m) => {
+    const mine = m.role === 'visitor'
+    const acts = [['reply', 'Reply']]
+    if (!m.attachment) acts.push(['copy', 'Copy'])
+    if (mine && !m.attachment && Date.now() - Date.parse(m.at) < EDIT_WINDOW_MS) acts.push(['edit', 'Edit'])
+    if (mine) acts.push(['delete', 'Delete'])
+    return acts
+  }
+  const openMsgMenu = (e, m) => {
+    if (m.tmp || m.deleted || m.attachment?.uploading || rec) return
+    if (e.target.closest && e.target.closest('a,audio,button')) return
+    const shell = shellRef.current?.getBoundingClientRect()
+    const box = e.currentTarget.getBoundingClientRect()
+    if (!shell) return
+    const h = msgActions(m).length * 48 + 8
+    let top = box.bottom - shell.top + 8
+    if (top + h > shell.height - 130) top = Math.max(64, box.top - shell.top - h - 8)
+    setMsgMenu({ id: m.id, top, mine: m.role === 'visitor' })
+  }
+  const closeMsgMenu = () => setMsgMenu(null)
+  const runMsgAction = (kind) => {
+    const m = messages.find((x) => x.id === msgMenu?.id)
+    setMsgMenu(null)
+    if (!m) return
+    if (kind === 'reply') {
+      setEditing(null)
+      setReplyTo({ id: m.id, role: m.role, text: m.attachment ? ({ image: 'Photo', audio: 'Voice note' }[m.attachment.kind] || m.attachment.name || 'Document') : m.text })
+      setTimeout(() => inputRef.current?.focus(), 0)
+    } else if (kind === 'copy') {
+      try { navigator.clipboard?.writeText(m.text) } catch { /* clipboard not allowed */ }
+    } else if (kind === 'edit') {
+      setReplyTo(null); setEditing({ id: m.id }); setText(m.text)
+      setTimeout(() => inputRef.current?.focus(), 0)
+    } else if (kind === 'delete') {
+      setConfirmDel(m.id); setError(''); setPanel('delete')
+    }
+  }
+  const confirmDelete = () => act(async () => {
+    const id = confirmDel
+    const m = await deleteChatMessage(chatKey, token.current, id)
+    merge([m]); setPanel(null); setConfirmDel(null)
+    setReplyTo((r) => (r && r.id === id ? null : r)); setEditing((x) => (x && x.id === id ? null : x))
+  })
+  const cancelCompose = () => { if (editing) setText(''); setEditing(null); setReplyTo(null) }
   // WEBCHAT-ATTACH-1: photos, voice notes and documents. Shown at once with progress; the server checks the real file type.
   const uploadFile = async (file, kind) => {
     if (!file) return
@@ -556,16 +630,16 @@ export default function WebChatPage({ chatKey }) {
     </div></div></div>
   )
 
-  const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu', 'attach', 'call'].includes(panel)
+  const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu', 'attach', 'call', 'delete'].includes(panel)
   const call = cfg.call || null
   const visitorSpoke = messages.some((m) => m.role === 'visitor')
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
-  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?', attach: 'Send a file', call: call?.open ? 'Call us' : 'Phone calls are closed right now' }[panel]
+  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?', attach: 'Send a file', call: call?.open ? 'Call us' : 'Phone calls are closed right now', delete: 'Delete this message?' }[panel]
 
   return (
     <div style={S.page} className="wc-root">
       {css}
-      <div style={S.shell}>
+      <div style={S.shell} ref={shellRef}>
         <header style={S.head}>
           <div style={S.avatar} aria-hidden="true">{(cfg.business_name || '?').trim().charAt(0).toUpperCase()}</div>
           <h1 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.2px', lineHeight: 1.2 }}>{cfg.business_name}</h1>
@@ -584,20 +658,39 @@ export default function WebChatPage({ chatKey }) {
         </header>
 
         <main style={S.list} ref={listRef} role="log" aria-live="polite" aria-label="Chat messages">
-          {messages.map((m, i) => (
-            <div key={m.id} className={i >= initialCount.current ? 'wc-anim' : undefined} style={{ ...S.row(m.role), ...(i >= initialCount.current ? { animation: 'wc-pop 0.18s ease-out' } : {}), ...(m.tmp ? { opacity: 0.85 } : {}) }}>
+          {messages.map((m, i) => {
+            const lifted = msgMenu?.id === m.id
+            const tappable = !m.tmp && !m.deleted
+            return (
+            <div key={m.id} className={i >= initialCount.current ? 'wc-anim' : undefined} style={{ ...S.row(m.role), ...(i >= initialCount.current ? { animation: 'wc-pop 0.18s ease-out' } : {}), ...(m.tmp ? { opacity: 0.85 } : {}), ...(lifted ? { position: 'relative', zIndex: 5 } : {}) }}>
               {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <span style={S.who}>{cfg.business_name} team</span>}
-              <div style={m.attachment ? { ...S.bubble(m.role), padding: m.attachment.kind === 'image' ? 4 : '10px 12px' } : S.bubble(m.role)}>
+              {m.deleted ? (
+                <div style={{ border: `1px dashed ${LINE}`, background: '#fff', color: MUTED, padding: '10px 14px', borderRadius: 18, fontSize: 14, fontStyle: 'italic' }}>
+                  {m.role === 'visitor' ? 'You deleted this message' : 'This message was deleted'}
+                </div>
+              ) : (
+              <div role={tappable ? 'button' : undefined} tabIndex={tappable ? 0 : undefined} aria-label={tappable ? 'Message options' : undefined}
+                onClick={tappable ? (e) => openMsgMenu(e, m) : undefined}
+                onKeyDown={tappable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMsgMenu(e, m) } } : undefined}
+                style={{ ...(m.attachment ? { ...S.bubble(m.role), padding: m.attachment.kind === 'image' ? 4 : '10px 12px' } : S.bubble(m.role)), cursor: tappable ? 'pointer' : 'default', ...(lifted ? { outline: `3px solid ${brand}55` } : {}) }}>
+                {m.reply && (
+                  <div style={{ background: m.role === 'visitor' ? 'rgba(255,255,255,0.18)' : '#F0F4F5', borderLeft: `4px solid ${m.role === 'visitor' ? '#fff' : brand}`, borderRadius: 8, padding: '6px 10px', margin: m.attachment?.kind === 'image' ? '6px 6px 6px' : '0 0 6px', textAlign: 'left' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: m.role === 'visitor' ? '#fff' : brandDark }}>{whoLabel(m.reply.role)}</div>
+                    <div style={{ fontSize: 13, opacity: 0.9, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 220 }}>{m.reply.text}</div>
+                  </div>
+                )}
                 {m.attachment
                   ? <AttachmentBubble a={m.attachment} mine={m.role === 'visitor'} brand={brand} />
                   : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
               </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: MUTED, margin: '0 4px' }}>
-                <span>{fmtClock(m.at)}</span>
-                {m.role === 'visitor' && <Ticks state={m.tmp ? 'sent' : (i < lastRepIdx ? 'read' : 'delivered')} color={brandDark} />}
+                <span>{m.edited && !m.deleted ? 'Edited · ' : ''}{fmtClock(m.at)}</span>
+                {m.role === 'visitor' && !m.deleted && <Ticks state={m.tmp ? 'sent' : (i < lastRepIdx ? 'read' : 'delivered')} color={brandDark} />}
               </div>
             </div>
-          ))}
+            )
+          })}
 
           {pending > 0 && (
             <div role="status" aria-label="The team is typing" className="wc-anim" style={{ ...S.row('bot'), animation: 'wc-pop 0.18s ease-out' }}>
@@ -619,6 +712,24 @@ export default function WebChatPage({ chatKey }) {
             <p style={{ margin: '4px 0', textAlign: 'center', fontSize: 13, color: MUTED }}>A team member will reply here.</p>
           )}
         </main>
+
+        {msgMenu && (() => {
+          const m = messages.find((x) => x.id === msgMenu.id)
+          if (!m) return null
+          return (
+            <>
+              <div style={{ ...S.scrim, background: 'rgba(20,34,43,0.35)' }} onClick={closeMsgMenu} aria-hidden="true" />
+              <div role="menu" aria-label="Message options" style={{ position: 'absolute', zIndex: 6, top: msgMenu.top, ...(msgMenu.mine ? { right: 16 } : { left: 16 }), width: 220, background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 28px rgba(20,34,43,0.22)' }}>
+                {msgActions(m).map(([k, label], n) => (
+                  <button key={k} type="button" role="menuitem" onClick={() => runMsgAction(k)}
+                    style={{ minHeight: 48, width: '100%', padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: '#fff', color: k === 'delete' ? '#B3261E' : INK, fontSize: 16, fontWeight: 500, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <Icon name={k === 'delete' ? 'trash' : k} size={20} />{label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )
+        })()}
 
         {error && !sheetOpen && !panel && <div style={S.err} role="alert">{error}</div>}
 
@@ -642,15 +753,26 @@ export default function WebChatPage({ chatKey }) {
               <button type="button" aria-label="Send voice note" style={S.send} onClick={stopRec}><Icon name="send" size={22} /></button>
             </div>
           ) : (
+            <>
+            {(replyTo || editing) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F0F4F5', borderLeft: `4px solid ${brand}`, borderRadius: 10, padding: '8px 8px 8px 12px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: brandDark }}>{editing ? 'Edit message' : `Replying to ${whoLabel(replyTo.role)}`}</div>
+                  <div style={{ fontSize: 14, color: MUTED, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{editing ? (messages.find((x) => x.id === editing.id)?.text || '') : replyTo.text}</div>
+                </div>
+                <button type="button" aria-label={editing ? 'Cancel editing' : 'Cancel reply'} onClick={cancelCompose} style={{ ...S.iconBtn, width: 40, height: 40 }}><Icon name="close" size={20} /></button>
+              </div>
+            )}
             <form onSubmit={sendText} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <button type="button" aria-label="Attach a file" onClick={onAttach} style={{ ...S.iconBtn, color: MUTED }}><Icon name="clip" size={22} /></button>
+              <button type="button" aria-label="Attach a file" onClick={onAttach} disabled={!!editing} style={{ ...S.iconBtn, color: MUTED, opacity: editing ? 0.4 : 1 }}><Icon name="clip" size={22} /></button>
               <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
-              <input id="wc-text" style={S.input} value={text} maxLength={1000} placeholder="Type your message" autoComplete="off"
+              <input id="wc-text" ref={inputRef} style={S.input} value={text} maxLength={1000} placeholder="Type your message" autoComplete="off"
                 onChange={(e) => setText(e.target.value)} />
-              {!text.trim() && recorderSupported()
+              {!text.trim() && !editing && recorderSupported()
                 ? <button type="button" aria-label="Record a voice note" style={{ ...S.send, marginLeft: 4 }} onClick={startRec}><Icon name="mic" size={22} /></button>
-                : <button type="submit" aria-label="Send" style={{ ...S.send, marginLeft: 4 }} disabled={busy || !text.trim()}><Icon name="send" size={22} /></button>}
+                : <button type="submit" aria-label={editing ? 'Save the change' : 'Send'} style={{ ...S.send, marginLeft: 4 }} disabled={busy || !text.trim()}><Icon name={editing ? 'check' : 'send'} size={22} /></button>}
             </form>
+            </>
           )}
           <input ref={photoRef} type="file" accept={IMG_ACCEPT} hidden onChange={pickFile('image')} />
           <input ref={cameraRef} type="file" accept={IMG_ACCEPT} capture="environment" hidden onChange={pickFile('image')} />
@@ -737,6 +859,7 @@ export default function WebChatPage({ chatKey }) {
                     {panel === 'booking' && 'Fill in the details and the team will confirm.'}
                     {panel === 'save' && 'We will email you this chat, and tell you if the team replies after you have left.'}
                     {panel === 'menu' && 'Pick one and we will answer here.'}
+                    {panel === 'delete' && 'It is removed for everyone, including our team. They will see "This message was deleted".'}
                     {panel === 'attach' && 'Photos up to 10 MB. Documents up to 15 MB. Voice notes up to 2 minutes.'}
                     {panel === 'call' && call && (call.open
                       ? `Open now${call.closes ? `, until ${call.closes}` : ''}`
@@ -747,6 +870,13 @@ export default function WebChatPage({ chatKey }) {
               </div>
 
               {error && <div style={{ ...S.err, borderRadius: 8 }} role="alert">{error}</div>}
+
+              {panel === 'delete' && (
+                <>
+                  <button type="button" disabled={busy} onClick={confirmDelete} style={{ ...S.primary, background: '#B3261E', borderColor: '#B3261E', minHeight: 52 }}>Delete for everyone</button>
+                  <button type="button" style={S.ghost} onClick={closePanel}>Cancel</button>
+                </>
+              )}
 
               {panel === 'call' && call && (call.open ? (
                 <>

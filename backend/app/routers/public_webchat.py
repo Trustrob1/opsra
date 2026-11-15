@@ -29,6 +29,7 @@ from app.services import webchat_attachment_service as att
 from app.services import webchat_call_service as call
 from app.services import webchat_email_service as email_svc
 from app.services import webchat_flow_service as flow
+from app.services import webchat_msg_service as msgsvc
 from app.services import webchat_shop_service as shop
 from app.services import webchat_service as wc
 from app.services.site_capture_service import ip_hash
@@ -48,6 +49,11 @@ class MessageBody(BaseModel):
     kind: Literal["menu", "text"]
     menu_id: Optional[str] = Field(default=None, max_length=30)
     text: Optional[str] = Field(default=None, max_length=1000)
+    reply_to: Optional[str] = Field(default=None, max_length=40)       # WEBCHAT-MSG-1: id of the message being replied to
+
+
+class EditBody(BaseModel):
+    text: str = Field(max_length=1000)
 
 
 class ContactBody(BaseModel):
@@ -178,7 +184,7 @@ def post_message(key: str, body: MessageBody, response: Response, authorization:
     s = _session(db, found, authorization)
     if wc.rate_limited(f"msg:{s['id']}", 30, 60):
         raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
-    return ok(flow.handle_message(db, s, found["config"], kind=body.kind, menu_id=body.menu_id, text=body.text))
+    return ok(flow.handle_message(db, s, found["config"], kind=body.kind, menu_id=body.menu_id, text=body.text, reply_to=body.reply_to))
 
 
 @router.post("/public/webchat/{key}/contact")
@@ -209,6 +215,36 @@ def post_booking(key: str, body: BookingBody, response: Response, authorization:
     if res.get("error"):
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"]})
     return ok(res)
+
+
+@router.patch("/public/webchat/{key}/message/{message_id}")
+def edit_message(key: str, message_id: str, body: EditBody, response: Response, authorization: Optional[str] = Header(default=None),
+                 db=Depends(get_supabase)):
+    """WEBCHAT-MSG-1: the visitor edits one of their own text messages (15 minutes)."""
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"msgedit:{s['id']}", 30, 600):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
+    out, err = msgsvc.edit(db, s, message_id, body.text)
+    if err:
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": err})
+    return ok({"message": out})
+
+
+@router.delete("/public/webchat/{key}/message/{message_id}")
+def delete_message(key: str, message_id: str, response: Response, authorization: Optional[str] = Header(default=None),
+                   db=Depends(get_supabase)):
+    """WEBCHAT-MSG-1: the visitor deletes one of their own messages for everyone."""
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"msgdel:{s['id']}", 30, 600):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
+    out, err = msgsvc.delete(db, s, message_id)
+    if err:
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": err})
+    return ok({"message": out})
 
 
 @router.post("/public/webchat/{key}/callback")
