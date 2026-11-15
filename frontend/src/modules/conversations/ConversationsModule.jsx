@@ -982,18 +982,26 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new window.MediaRecorder(stream)
+      const wanted = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+        .find((t) => window.MediaRecorder.isTypeSupported?.(t))
+      const recorder = wanted ? new window.MediaRecorder(stream, { mimeType: wanted }) : new window.MediaRecorder(stream)
       const rec = { recorder, stream, chunks: [], timer: null, discard: false }
-      recorder.ondataavailable = (e) => { if (e.data?.size) rec.chunks.push(e.data) }
+      recorder.ondataavailable = (e) => { if (e.data) rec.chunks.push(e.data) }
+      recorder.onerror = () => { setFileError('The recording failed. Please try again.') }
       recorder.onstop = () => {
         clearInterval(rec.timer)
         stream.getTracks().forEach(t => t.stop())
         recRef.current = null
         setRecording(false)
-        if (rec.discard || !rec.chunks.length) return
-        const type = recorder.mimeType || 'audio/webm'
+        if (rec.discard) return
+        const type = (recorder.mimeType || 'audio/webm').split(';')[0]
         const ext = type.includes('ogg') ? 'ogg' : type.includes('mp4') ? 'm4a' : 'webm'
-        const f = new File([new Blob(rec.chunks, { type })], `voice-note.${ext}`, { type })
+        const blob = new Blob(rec.chunks, { type })
+        if (blob.size < 200) {
+          setFileError('No sound was recorded. Check your microphone is not muted and is the selected input device, then try again.')
+          return
+        }
+        const f = new File([blob], `voice-note.${ext}`, { type })
         if (f.size > WEBCHAT_LIMIT_MB.audio * 1024 * 1024) {
           setFileError(`That voice note is too long — max ${WEBCHAT_LIMIT_MB.audio} MB.`)
           return
@@ -1001,7 +1009,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         setFile(f); setMode('media')
       }
       recRef.current = rec
-      recorder.start()
+      recorder.start(250)
       setRecSecs(0); setRecording(true)
       rec.timer = setInterval(() => {
         setRecSecs((n) => {
