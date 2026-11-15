@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from app.database import get_supabase
 from app.dependencies import get_current_org
 from app.models.common import ok
+from app.services import webchat_embed_service as embed
 from app.services import webchat_service as wc
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,40 @@ def get_settings(db=Depends(get_supabase), org=Depends(get_current_org)):
     cfg = wc.get_config(db, org["org_id"])
     key = wc.get_or_create_key(db, org["org_id"])
     return ok({"config": cfg, "key": key, "link": f"{wc.public_base()}/c/{key}",
-               "links": {s: f"{wc.public_base()}/c/{key}?s={s}" for s in ("instagram", "qr", "site")}})
+               "links": {s: f"{wc.public_base()}/c/{key}?s={s}" for s in ("instagram", "qr", "site", "facebook", "google", "whatsapp_status", "email", "sms")},
+               "embed": {"tag": embed.script_tag(wc.public_base(), key), "seen": embed.seen_list(db, org["org_id"])}})
+
+
+@router.get("/webchat/embed-seen")
+def embed_seen(db=Depends(get_supabase), org=Depends(get_current_org)):
+    """WEBCHAT-EMBED-2: websites that have loaded the bubble, newest first (powers 'Check installation')."""
+    _require_manager(org)
+    return ok({"seen": embed.seen_list(db, org["org_id"])})
+
+
+class EmbedEmail(BaseModel):
+    to_email: str = Field(max_length=200)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+@router.post("/webchat/embed-email")
+def embed_email(body: EmbedEmail, db=Depends(get_supabase), org=Depends(get_current_org)):
+    """WEBCHAT-EMBED-2: email the install instructions and code to the person who looks after the website.
+    The owner types the address and presses Send; only the instructions go out, nothing about customers."""
+    _require_manager(org)
+    to = (body.to_email or "").strip().lower()
+    if not wc._EMAIL_RE.match(to):
+        raise HTTPException(status_code=422, detail="That email address does not look right.")
+    if wc.rate_limited(f"embedmail:{org['org_id']}", 5, 3600):
+        raise HTTPException(status_code=429, detail="Too many emails. Try again in an hour.")
+    cfg = wc.get_config(db, org["org_id"])
+    key = wc.get_or_create_key(db, org["org_id"])
+    subject, text = embed.install_email(cfg["business_name"], body.note or "", embed.script_tag(wc.public_base(), key),
+                                        f"{wc.public_base()}/c/{key}")
+    from app.services.site_addon_billing_service import _send_email
+    if not _send_email(to, subject, text):
+        raise HTTPException(status_code=503, detail="The email could not be sent right now. Please try again, or copy the code yourself.")
+    return ok({"sent": True}, message="Instructions sent")
 
 
 @router.put("/webchat/settings")

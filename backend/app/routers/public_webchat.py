@@ -28,6 +28,7 @@ from app.models.common import ok
 from app.services import webchat_attachment_service as att
 from app.services import webchat_call_service as call
 from app.services import webchat_email_service as email_svc
+from app.services import webchat_embed_service as embed
 from app.services import webchat_flow_service as flow
 from app.services import webchat_msg_service as msgsvc
 from app.services import webchat_shop_service as shop
@@ -43,6 +44,7 @@ NOT_FOUND = HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message
 class StartBody(BaseModel):
     source: Optional[str] = Field(default=None, max_length=30)
     handoff: Optional[str] = Field(default=None, max_length=80)
+    embed_origin: Optional[str] = Field(default=None, max_length=300)      # WEBCHAT-EMBED-1: the website showing the chat frame
 
 
 class MessageBody(BaseModel):
@@ -122,6 +124,31 @@ def _snapshot(s: dict, cfg: dict, messages: list) -> dict:
     }
 
 
+def _embed_guard(found: dict, embed_origin: Optional[str]) -> None:
+    """A chat frame on a website that is not on the business's list is refused (only when a list is set)."""
+    if embed_origin is not None and not embed.origin_allowed(found["config"].get("allowed_domains"), embed_origin):
+        raise HTTPException(status_code=403, detail={"code": "EMBED_NOT_ALLOWED", "message": "This chat cannot be shown on this website."})
+
+
+@router.get("/public/webchat/{key}/widget")
+def widget_info(key: str, request: Request, db=Depends(get_supabase)):
+    """WEBCHAT-EMBED-1: what widget.js needs to draw the bubble, on any website. Open to every origin on purpose;
+    `allowed` says whether THIS website (the Origin header the browser sent) may show it."""
+    from fastapi.responses import JSONResponse
+    out = {"allowed": False}
+    found = wc.resolve_key(db, key)
+    if found:
+        cfg = found["config"]
+        out = {"allowed": embed.origin_allowed(cfg.get("allowed_domains"), request.headers.get("origin")),
+               "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "side": cfg.get("widget_side", "right")}
+    if out.get("allowed") and found:
+        from urllib.parse import urlparse
+        own = tuple(h for h in ((urlparse(wc.public_base()).hostname or ""),) if h)
+        embed.record_seen(db, found["org_id"], request.headers.get("origin"), own)      # lets Settings say "installed on ..."
+    return JSONResponse(content={"success": True, "data": out, "message": None, "error": None},
+                        headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"})
+
+
 @router.get("/public/webchat/{key}/config")
 def get_config(key: str, response: Response, db=Depends(get_supabase)):
     _nostore(response)
@@ -132,6 +159,7 @@ def get_config(key: str, response: Response, db=Depends(get_supabase)):
 def start_session(key: str, body: StartBody, request: Request, response: Response, db=Depends(get_supabase)):
     _nostore(response)
     found = _chat(db, key)
+    _embed_guard(found, body.embed_origin)
     org_id, cfg = found["org_id"], found["config"]
     iph = ip_hash(_client_ip(request))
     if wc.rate_limited(f"sess:{key}:{iph}", 20, 86400):
@@ -158,9 +186,11 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
 
 
 @router.get("/public/webchat/{key}/session")
-def resume_session(key: str, response: Response, authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
+def resume_session(key: str, response: Response, authorization: Optional[str] = Header(default=None),
+                   po: Optional[str] = Query(default=None, max_length=300), db=Depends(get_supabase)):
     _nostore(response)
     found = _chat(db, key)
+    _embed_guard(found, po)
     s = _session(db, found, authorization)
     return ok(_snapshot(s, found["config"], wc.list_messages(db, s)))
 

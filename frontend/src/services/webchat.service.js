@@ -14,13 +14,13 @@ const auth = (token) => (token ? { headers: { Authorization: `Bearer ${token}` }
 
 // ── Public chat page ─────────────────────────────────────────────────────────
 
-export async function startChat(key, { source, handoff } = {}) {
-  const res = await axios.post(`${BASE}/public/webchat/${key}/session`, { source, handoff })
+export async function startChat(key, { source, handoff, embedOrigin } = {}) {
+  const res = await axios.post(`${BASE}/public/webchat/${key}/session`, { source, handoff, ...(embedOrigin ? { embed_origin: embedOrigin } : {}) })
   return res.data.data
 }
 
-export async function resumeChat(key, token) {
-  const res = await axios.get(`${BASE}/public/webchat/${key}/session`, auth(token))
+export async function resumeChat(key, token, embedOrigin) {
+  const res = await axios.get(`${BASE}/public/webchat/${key}/session`, { ...auth(token), params: embedOrigin ? { po: embedOrigin } : {} })
   return res.data.data
 }
 
@@ -96,6 +96,16 @@ export async function getWebchatSettings() {
 
 export async function saveWebchatSettings(changes) {
   const r = await api.put('/api/v1/webchat/settings', changes)
+  return r.data.data
+}
+
+export async function getWebchatEmbedSeen() {
+  const r = await api.get('/api/v1/webchat/embed-seen')
+  return r.data.data.seen
+}
+
+export async function sendWebchatEmbedEmail(to_email, note) {
+  const r = await api.post('/api/v1/webchat/embed-email', { to_email, note: note || null })
   return r.data.data
 }
 
