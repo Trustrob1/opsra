@@ -57,6 +57,16 @@ export async function sendBooking(key, token, fields) {
   return res.data.data
 }
 
+export async function getChatConfig(key) {
+  const res = await axios.get(`${BASE}/public/webchat/${key}/config`)
+  return res.data.data
+}
+
+export async function requestChatCallback(key, token, phone) {
+  const res = await axios.post(`${BASE}/public/webchat/${key}/callback`, { phone: phone || null }, auth(token))
+  return res.data.data
+}
+
 export function chatErrorMessage(err, fallback = 'Something went wrong. Please try again.') {
   const d = err?.response?.data?.detail
   if (d && typeof d === 'object' && d.message) return d.message

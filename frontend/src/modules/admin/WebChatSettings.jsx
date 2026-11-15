@@ -188,6 +188,18 @@ export default function WebChatSettings() {
 
       <div style={card}>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!cfg.call_enabled} onChange={(e) => set('call_enabled', e.target.checked)} /> Show a call button in the chat
+        </label>
+        <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 8px' }}>
+          Visitors can phone you during your business hours (set under Settings, Business hours). Outside those hours the button explains that calls are closed, and offers a voice note, the chat, or a call back: a task for your team is created for when you open. Chat support is never switched off.
+        </p>
+        <label style={label} htmlFor="wc-callnum">Number visitors call (leave empty to use your business contact or WhatsApp number)</label>
+        <input id="wc-callnum" type="tel" inputMode="tel" maxLength={20} style={{ ...input, width: 240 }} value={cfg.call_number || ''}
+          onChange={(e) => set('call_number', e.target.value)} placeholder="0805 431 3945" />
+      </div>
+
+      <div style={card}>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
           <input type="checkbox" checked={!!cfg.shop_enabled} onChange={(e) => set('shop_enabled', e.target.checked)} /> Let visitors shop in the chat
         </label>
         <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>

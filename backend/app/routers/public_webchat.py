@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from app.database import get_supabase
 from app.models.common import ok
 from app.services import webchat_attachment_service as att
+from app.services import webchat_call_service as call
 from app.services import webchat_email_service as email_svc
 from app.services import webchat_flow_service as flow
 from app.services import webchat_shop_service as shop
@@ -67,6 +68,10 @@ class CartBody(BaseModel):
 class SaveChatBody(BaseModel):
     email: Optional[str] = Field(default=None, max_length=200)
     consent: bool = False
+
+
+class CallbackBody(BaseModel):
+    phone: Optional[str] = Field(default=None, max_length=30)
 
 
 class BookingBody(BaseModel):
@@ -204,6 +209,22 @@ def post_booking(key: str, body: BookingBody, response: Response, authorization:
     if res.get("error"):
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"]})
     return ok(res)
+
+
+@router.post("/public/webchat/{key}/callback")
+def post_callback(key: str, body: CallbackBody, response: Response, authorization: Optional[str] = Header(default=None),
+                  db=Depends(get_supabase)):
+    """WEBCHAT-CALL-1: the visitor asks for a call back; a task for a rep is due when calls reopen."""
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"callback:{s['id']}", 3, 86400):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "You have already asked for a call back today."})
+    res = call.request_callback(db, s, found["config"], body.phone)
+    if res.get("error"):
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"], "need_phone": bool(res.get("need_phone")),
+                                                     "ask_contact": "contact details" in res["error"]})
+    return ok({"messages": res["messages"]})
 
 
 # ── WEBCHAT-3b: shop (only when the business switched it on) ───────────────

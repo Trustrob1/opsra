@@ -69,6 +69,8 @@ DEFAULT_CONFIG: dict = {
     "shop_enabled": False,        # WEBCHAT-3b: product cards, cart and checkout link in the chat
     "goals": None,                # WEBCHAT-5b: what counts as a win in the funnel; None = automatic (booking, plus orders and payments when the shop is on)
     "stats_from": None,           # WEBCHAT-5b: ISO time; the numbers ignore anything before it (start counting from now)
+    "call_enabled": False,        # WEBCHAT-CALL-1: phone icon in the chat header; calls only in business hours
+    "call_number": "",            # digits; empty = the organisation's business contact / WhatsApp number
 }
 GOAL_KEYS = ("booking", "order", "paid", "whatsapp", "tap")
 
@@ -173,6 +175,10 @@ def sanitise_config(raw: dict) -> dict:
             out["human_resume_min"] = 30
     if "shop_enabled" in raw:
         out["shop_enabled"] = bool(raw["shop_enabled"])
+    if "call_enabled" in raw:
+        out["call_enabled"] = bool(raw["call_enabled"])
+    if "call_number" in raw:
+        out["call_number"] = normalise_phone(raw["call_number"]) or ""
     if "goals" in raw:
         g = raw["goals"]
         picked = [k for k in GOAL_KEYS if isinstance(g, list) and k in g]
@@ -239,7 +245,8 @@ def sanitise_config(raw: dict) -> dict:
 def get_config(db, org_id: str) -> dict:
     """Defaults + the org's stored settings. business_name falls back to the organisation's name."""
     try:
-        row = _one((db.table("organisations").select("name, webchat_config").eq("id", org_id).limit(1).execute()).data) or {}
+        row = _one((db.table("organisations").select("name, webchat_config, business_hours, timezone, org_whatsapp_number, org_business_contact_number")
+                    .eq("id", org_id).limit(1).execute()).data) or {}
     except Exception as exc:
         logger.warning("webchat get_config failed org=%s: %s", org_id, exc)
         row = {}
@@ -248,6 +255,9 @@ def get_config(db, org_id: str) -> dict:
     cfg.update(sanitise_config(stored))
     if not cfg.get("business_name"):
         cfg["business_name"] = row.get("name") or "Our team"
+    # read-only facts for the call button (no extra database trip); never saved back, never sent to visitors as-is
+    cfg["_call_org"] = {"business_hours": row.get("business_hours"), "timezone": row.get("timezone"),
+                        "fallback_number": row.get("org_business_contact_number") or row.get("org_whatsapp_number") or ""}
     return cfg
 
 
@@ -267,7 +277,17 @@ def public_view(cfg: dict) -> dict:
         "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
+        "call": _call_status(cfg),
     }
+
+
+def _call_status(cfg: dict) -> Optional[dict]:
+    try:
+        from app.services import webchat_call_service as call
+        return call.status(cfg)
+    except Exception as exc:
+        logger.warning("webchat call status failed: %s", exc)
+        return None
 
 
 # ── Keys ────────────────────────────────────────────────────────────────────

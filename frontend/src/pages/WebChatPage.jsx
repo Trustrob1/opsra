@@ -15,7 +15,7 @@
  * page also works as a plain chat for a business that uses nothing else from Opsra.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, chatErrorMessage } from '../services/webchat.service'
+import { startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -55,6 +55,8 @@ function Icon({ name, size = 20 }) {
   if (name === 'cart') return <svg {...common}><path d="M3 4h2.5l2.2 11h10.1l2-8H7" /><circle cx="9.5" cy="19" r="1.2" /><circle cx="17" cy="19" r="1.2" /></svg>
   if (name === 'bag') return <svg {...common}><path d="M5 8h14l-1 12H6L5 8z M9 8V6.5a3 3 0 016 0V8" /></svg>
   if (name === 'mail') return <svg {...common}><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="M4 7.5l8 6 8-6" /></svg>
+  if (name === 'phone') return <svg {...common}><path d="M6.6 3.5h2.8l1.4 4-1.8 1.3a11 11 0 005.2 5.2l1.3-1.8 4 1.4v2.8a2 2 0 01-2.2 2A15.5 15.5 0 014.6 5.7a2 2 0 012-2.2z" /></svg>
+  if (name === 'chat') return <svg {...common}><path d="M4 5.5h16v11H9.5L5 20v-3.5H4z" /></svg>
   if (name === 'menu') return <svg {...common}><path d="M4 7h16M4 12h16M4 17h10" /></svg>
   if (name === 'chev') return <svg {...common}><path d="M9 5l7 7-7 7" /></svg>
   if (name === 'clip') return <svg {...common}><path d="M20 11.5l-7.8 7.8a5 5 0 01-7-7l8-8a3.3 3.3 0 014.7 4.7l-8 8a1.7 1.7 0 01-2.4-2.4l7.4-7.4" /></svg>
@@ -183,7 +185,8 @@ export default function WebChatPage({ chatKey }) {
   const [hasContact, setHasContact] = useState(false)
   const [verified, setVerified] = useState(false)
   const [human, setHuman] = useState(false)
-  const [panel, setPanel] = useState(null)                // null | 'contact' | 'email' | 'booking' | 'shop' | 'cart' | 'save'
+  const [callPhone, setCallPhone] = useState(null)         // null = not asked yet, string = the phone field is showing
+  const [panel, setPanel] = useState(null)                // null | 'contact' | 'email' | 'booking' | 'shop' | 'cart' | 'save' | 'menu' | 'attach' | 'call'
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -331,6 +334,24 @@ export default function WebChatPage({ chatKey }) {
       setPending((n) => Math.max(0, n - 1))
     }
   }
+  const openCall = () => {
+    setError(''); setCallPhone(null); setPanel('call')
+    // the server decides open or closed; ask again so a page left open for hours is not out of date
+    getChatConfig(chatKey).then((c) => { if (c) setCfg((old) => (old ? { ...old, call: c.call } : old)) }).catch(() => {})
+  }
+  const callBack = () => {
+    if (!hasContact) { needContact('ask for a call back'); return }
+    act(async () => {
+      try {
+        const res = await requestChatCallback(chatKey, token.current, callPhone || undefined)
+        merge(res.messages); setPanel(null); setCallPhone(null)
+      } catch (e) {
+        if (e?.response?.data?.detail?.need_phone) { setCallPhone(''); setError('') ; return }
+        throw e
+      }
+    })
+  }
+  const voiceFromCall = () => { setPanel(null); startRec() }
   const sendMenu = (id) => {
     setPanel(null)
     const label = cfg.menu.find((m) => m.id === id)?.label || ''
@@ -535,10 +556,11 @@ export default function WebChatPage({ chatKey }) {
     </div></div></div>
   )
 
-  const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu', 'attach'].includes(panel)
+  const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu', 'attach', 'call'].includes(panel)
+  const call = cfg.call || null
   const visitorSpoke = messages.some((m) => m.role === 'visitor')
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
-  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?', attach: 'Send a file' }[panel]
+  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?', attach: 'Send a file', call: call?.open ? 'Call us' : 'Phone calls are closed right now' }[panel]
 
   return (
     <div style={S.page} className="wc-root">
@@ -547,6 +569,12 @@ export default function WebChatPage({ chatKey }) {
         <header style={S.head}>
           <div style={S.avatar} aria-hidden="true">{(cfg.business_name || '?').trim().charAt(0).toUpperCase()}</div>
           <h1 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.2px', lineHeight: 1.2 }}>{cfg.business_name}</h1>
+          {call && (
+            <button type="button" aria-label="Call us" aria-haspopup="dialog" onClick={openCall}
+              style={{ width: 48, height: 48, flex: 'none', margin: '-6px 0', border: 0, borderRadius: 999, background: panel === 'call' ? brand : 'transparent', color: panel === 'call' ? '#fff' : INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="phone" size={22} />
+            </button>
+          )}
           {cfg.menu.length > 0 && (
             <button type="button" aria-label="Menu" aria-haspopup="dialog" onClick={() => setPanel('menu')}
               style={{ width: 48, height: 48, flex: 'none', margin: '-6px -4px -6px 0', border: 0, borderRadius: 999, background: panel === 'menu' ? brand : 'transparent', color: panel === 'menu' ? '#fff' : INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -710,12 +738,58 @@ export default function WebChatPage({ chatKey }) {
                     {panel === 'save' && 'We will email you this chat, and tell you if the team replies after you have left.'}
                     {panel === 'menu' && 'Pick one and we will answer here.'}
                     {panel === 'attach' && 'Photos up to 10 MB. Documents up to 15 MB. Voice notes up to 2 minutes.'}
+                    {panel === 'call' && call && (call.open
+                      ? `Open now${call.closes ? `, until ${call.closes}` : ''}`
+                      : `Phone calls reopen ${call.reopens || 'when we are next open'}`)}
                   </p>
                 </div>
                 <button type="button" aria-label="Close" style={{ ...S.iconBtn, margin: '-6px -10px 0 0' }} onClick={closePanel}><Icon name="close" size={22} /></button>
               </div>
 
               {error && <div style={{ ...S.err, borderRadius: 8 }} role="alert">{error}</div>}
+
+              {panel === 'call' && call && (call.open ? (
+                <>
+                  <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: 13, color: MUTED }}>Our number</span>
+                    <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.3px', fontVariantNumeric: 'tabular-nums' }}>{call.display}</span>
+                  </div>
+                  <a href={`tel:+${call.number}`} style={{ ...S.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textDecoration: 'none', minHeight: 52 }}>
+                    <Icon name="phone" size={20} />Call now
+                  </a>
+                  <p style={{ margin: 0, fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.45 }}>
+                    Phone calls: {call.hours}. Chat support and sales are open 24/7.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>
+                    Only phone calls are closed. Our support and sales team is still here in this chat, 24/7. Pick what suits you:
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {[['Leave a voice note', 'Tell us what you need. We listen first thing in the morning.', 'mic', '#E6F4F5', brand, voiceFromCall],
+                      ['Keep chatting with us', 'Ask about prices, delivery or orders. We reply any time.', 'chat', '#E7ECFB', '#2F4AA8', () => setPanel(null)],
+                      ['Ask us to call you back', `A team member calls you ${call.reopens || 'when we open'}.`, 'phone', '#FFF1D9', '#8A5A00', callBack]].map(([t, sub, icon, bg, fg, fn]) => (
+                      <button key={t} type="button" disabled={busy} onClick={fn}
+                        style={{ minHeight: 64, width: '100%', boxSizing: 'border-box', padding: '10px 14px', border: `1px solid ${LINE}`, borderRadius: 16, background: '#fff', color: INK, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <span aria-hidden="true" style={{ width: 44, height: 44, flex: 'none', borderRadius: 999, background: bg, color: fg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={icon} size={22} /></span>
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ fontSize: 16, fontWeight: 600 }}>{t}</span>
+                          <span style={{ fontSize: 13, color: MUTED, lineHeight: 1.35 }}>{sub}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {callPhone !== null && (
+                    <form onSubmit={(e) => { e.preventDefault(); callBack() }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <label><span style={S.lab}>Phone number to call</span>
+                        <input style={S.field} value={callPhone} maxLength={30} inputMode="tel" autoComplete="tel" autoFocus
+                          onChange={(e) => setCallPhone(e.target.value)} /></label>
+                      <button type="submit" style={S.primary} disabled={busy || !callPhone.trim()}>Request call back</button>
+                    </form>
+                  )}
+                </>
+              ))}
 
               {panel === 'attach' && (
                 <div style={{ display: 'flex', gap: 4 }}>
