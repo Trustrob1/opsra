@@ -480,9 +480,10 @@ export default function WebChatPage({ chatKey }) {
                   <label><span style={S.lab}>Email <span style={{ fontWeight: 400, color: MUTED }}>(optional if you gave a number)</span></span>
                     <input style={S.field} value={contact.email} maxLength={200} inputMode="email" autoComplete="email"
                       onChange={(e) => setContact({ ...contact, email: e.target.value })} /></label>
-                  <input aria-hidden="true" tabIndex={-1} autoComplete="off" value={contact.website} name="website"
+                  {/* Spam trap. A textarea with an unrelated name, so Chrome autofill does not fill it (it filled a field named "website" and the server then silently dropped the contact form). */}
+                  <textarea aria-hidden="true" tabIndex={-1} autoComplete="off" value={contact.website} name="hp_note_x7" rows={1}
                     onChange={(e) => setContact({ ...contact, website: e.target.value })}
-                    style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
+                    style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
                   <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minHeight: 44, cursor: 'pointer' }}>
                     <input type="checkbox" checked={contact.consent} style={{ width: 22, height: 22, margin: '1px 0 0', accentColor: brand, flex: 'none' }}
                       onChange={(e) => setContact({ ...contact, consent: e.target.checked })} />
