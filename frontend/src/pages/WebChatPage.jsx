@@ -78,6 +78,22 @@ function Thumb({ src, alt, size = 72, brand }) {
   )
 }
 
+const fmtClock = (iso) => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+// WhatsApp-style ticks under the visitor's messages: one = sent, two = delivered, two in colour = the team has replied.
+function Ticks({ state, color }) {
+  const label = { sent: 'Sending', delivered: 'Delivered', read: 'Seen by the team' }[state]
+  return (
+    <svg role="img" aria-label={label} width="18" height="12" viewBox="0 0 18 12" fill="none" stroke={state === 'read' ? color : 'currentColor'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+      <path d="M1.5 6.5l3.2 3.2L11 2.5" />
+      {state !== 'sent' && <path d="M7 9.2l.5.5L14.5 2.5" />}
+    </svg>
+  )
+}
+
 function VoiceNote({ src, mine, brand }) {
   const ref = useRef(null)
   const [playing, setPlaying] = useState(false)
@@ -521,6 +537,7 @@ export default function WebChatPage({ chatKey }) {
 
   const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu', 'attach'].includes(panel)
   const visitorSpoke = messages.some((m) => m.role === 'visitor')
+  const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
   const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?', attach: 'Send a file' }[panel]
 
   return (
@@ -546,6 +563,10 @@ export default function WebChatPage({ chatKey }) {
                 {m.attachment
                   ? <AttachmentBubble a={m.attachment} mine={m.role === 'visitor'} brand={brand} />
                   : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: MUTED, margin: '0 4px' }}>
+                <span>{fmtClock(m.at)}</span>
+                {m.role === 'visitor' && <Ticks state={m.tmp ? 'sent' : (i < lastRepIdx ? 'read' : 'delivered')} color={brandDark} />}
               </div>
             </div>
           ))}

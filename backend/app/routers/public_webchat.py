@@ -308,11 +308,10 @@ def post_upload(key: str, response: Response, file: UploadFile = File(...), kind
         raise HTTPException(status_code=503, detail={"code": "UPLOAD_FAILED", "message": "We could not save your file. Please try again."})
     cfg = found["config"]
     out = [msg]
-    was_human = wc.is_human(s, cfg)
     flow._notify_human(db, s, cfg, f"Sent {att.label(kind)}")
     s = wc.set_human(db, s)
-    if not was_human:
-        out.append(wc.append_message(db, s, "bot", cfg.get("human_reply") or "Thanks. A team member will reply here as soon as they can."))
+    # always answer, so the visitor sees the file was received (a chat already with a person used to stay silent)
+    out.append(wc.append_message(db, s, "bot", f"Thanks, we received {att.label(kind)}. A team member will take a look and reply here."))
     return ok({"messages": out, "human": True})
 
 
