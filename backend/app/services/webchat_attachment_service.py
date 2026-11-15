@@ -128,8 +128,10 @@ def _signed_url(db, path: str) -> Optional[str]:
     return None
 
 
-def save_attachment(db, session: dict, kind: str, clean: dict, data: bytes) -> dict:
-    """Store the file and add it to the chat. Returns the message the page shows. Raises RuntimeError on a storage failure."""
+def save_attachment(db, session: dict, kind: str, clean: dict, data: bytes,
+                    sent_by: Optional[str] = None, reply_to: Optional[str] = None) -> dict:
+    """Store the file and add it to the chat. Returns the message the page shows. Raises RuntimeError on a storage failure.
+    sent_by = a team member's user id (WEBCHAT-STAFF-1): the message is then an outbound team message, not the visitor's."""
     org_id = session["org_id"]
     path = f"{org_id}/webchat/{session['id']}/{uuid.uuid4()}_{clean['name']}"
     try:
@@ -143,13 +145,23 @@ def save_attachment(db, session: dict, kind: str, clean: dict, data: bytes) -> d
     mid = str(uuid.uuid4())
     now = wc._iso(wc._now())
     text = "Voice note" if kind == "audio" else clean["name"]
-    db.table("whatsapp_messages").insert({
+    quote = wc.quote_for(db, session, reply_to) if reply_to else None
+    row = {
         "id": mid, "org_id": org_id, "lead_id": session["lead_id"], "channel": "webchat",
         "webchat_session_id": session["id"], "message_type": kind, "content": text,
-        "media_url": url, "storage_path": path, "direction": "inbound", "status": "delivered", "created_at": now,
-    }).execute()
-    return {"id": mid, "role": "visitor", "text": text, "at": now,
-            "attachment": {"kind": kind, "name": text, "size": len(data), "url": url, "mime": clean["mime"]}}
+        "media_url": url, "storage_path": path, "created_at": now,
+        "direction": "outbound" if sent_by else "inbound", "status": "sent" if sent_by else "delivered",
+    }
+    if sent_by:
+        row["sent_by"] = sent_by
+    if quote:
+        row["reply_to_id"] = quote["id"]
+    db.table("whatsapp_messages").insert(row).execute()
+    out = {"id": mid, "role": "rep" if sent_by else "visitor", "text": text, "at": now,
+           "attachment": {"kind": kind, "name": text, "size": len(data), "url": url, "mime": clean["mime"]}}
+    if quote:
+        out["reply_to"], out["reply"] = quote["id"], quote
+    return out
 
 
 def label(kind: str) -> str:

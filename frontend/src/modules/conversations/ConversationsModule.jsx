@@ -38,7 +38,7 @@ import {
   MessageCircle, Camera, Search, Circle, User, Bot,
   Paperclip, Send, Download, FileText, Video, File, Music,
   Image, Lightbulb, Clock, X, AlertTriangle,
-  Sparkles,
+  Sparkles, Reply, Mic, Pencil, Trash2, Copy, ChevronDown, Square,
 } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -51,6 +51,9 @@ import {
   sendInstagramMessage,
   sendMessengerMessage,
   sendWebchatMessage,
+  uploadWebchatFile,
+  editWebchatMessage,
+  deleteWebchatMessage,
   getMediaDownloadUrl,
   exportContactsCsv,
 } from '../../services/conversations.service'
@@ -79,6 +82,19 @@ const ACCEPTED_MEDIA = [
 ].join(',')
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024 // 25 MB
+
+// WEBCHAT-STAFF-1 — what the web chat accepts from the team (same limits as the visitor side)
+const WEBCHAT_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt'
+const WEBCHAT_LIMIT_MB = { image: 10, document: 15, audio: 5 }
+const WEBCHAT_EDIT_MIN = 15
+const VOICE_MAX_SECONDS = 300
+const webchatKind = (f) => (f.type?.startsWith('image/') ? 'image' : f.type?.startsWith('audio/') ? 'audio' : 'document')
+const replySnippet = (m) => {
+  if (m.message_type === 'image') return 'Photo'
+  if (m.message_type === 'audio') return 'Voice note'
+  if (m.message_type === 'document') return m.content || 'Document'
+  return m.content || ''
+}
 
 // Show inactivity nudge after 10 minutes — auto-resume fires at 15 minutes
 const HUMAN_MODE_NUDGE_MS = 10 * 60 * 1000
@@ -585,6 +601,8 @@ export default function ConversationsModule({ onOpenAria, simple = false, onOpen
       onDismissSuggestion={() => setKbSuggestion(null)}
       onJumpToMessage={handleJumpToMessage}
       highlightedMsgId={highlightedMsgId}
+      userId={user?.id}
+      onRefresh={() => loadMessages(false, true)}
     />
   ) : (
     <EmptyState totalUnread={totalUnread} />
@@ -748,9 +766,11 @@ function ConvRow({ conv, isActive, onSelect }) {
 
 // ─── Thread Panel ─────────────────────────────────────────────────────────────
 
-function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, humanModeDuration, showNudge, onDismissNudge, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onOpenAria, onBack, kbSuggestion, suggestionLoading, injectTextRef, onRequestSuggestion, onSuggestionFeedback, onDismissSuggestion, onJumpToMessage, highlightedMsgId }) {
+function ThreadPanel({ active, messages, loading, templates, threadStatus, statusLoading, humanModeDuration, showNudge, onDismissNudge, threadRef, onSent, onResumeAI, resuming, onPauseAI, pausing, onOpenAria, onBack, kbSuggestion, suggestionLoading, injectTextRef, onRequestSuggestion, onSuggestionFeedback, onDismissSuggestion, onJumpToMessage, highlightedMsgId, userId, onRefresh }) {
   const ch     = CHANNEL[active.channel] || CHANNEL.whatsapp
   const isLead = active.contact_type === 'lead'
+  const isWebchat = active.channel === 'webchat'
+  const [replyTo, setReplyTo] = useState(null)          // WEBCHAT-STAFF-1: { id, who, text }
   const { window_open: windowOpen, ai_paused: aiPaused } = threadStatus
 
   return (
@@ -841,7 +861,20 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
             No messages yet — send the first one below.
           </div>
         )}
-        {!loading && [...messages].reverse().map(msg => <Bubble key={msg.id} msg={msg} onRequestSuggestion={onRequestSuggestion} onJumpToMessage={onJumpToMessage} isHighlighted={!!msg.meta_message_id && highlightedMsgId === msg.meta_message_id} />)}
+        {!loading && [...messages].reverse().map(msg => (
+          <Bubble
+            key={msg.id}
+            msg={msg}
+            onRequestSuggestion={onRequestSuggestion}
+            onJumpToMessage={onJumpToMessage}
+            isHighlighted={!!(msg.meta_message_id || isWebchat) && highlightedMsgId === (msg.meta_message_id || msg.id)}
+            webchat={isWebchat}
+            userId={userId}
+            onReply={(m) => setReplyTo({ id: m.id, who: m.direction === 'outbound' ? (m.sent_by_name ? m.sent_by_name.split(' ')[0] : 'Bot') : (active.contact_name || 'Visitor'), text: replySnippet(m) })}
+            onEdit={async (id, text) => { await editWebchatMessage(id, text); onRefresh?.() }}
+            onDelete={async (id) => { await deleteWebchatMessage(id); setReplyTo((r) => (r?.id === id ? null : r)); onRefresh?.() }}
+          />
+        ))}
       </div>
 
       {/* ── Inactivity nudge ────────────────────────────────────────────── */}
@@ -896,6 +929,8 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
         templates={templates}
         onSent={onSent}
         injectTextRef={injectTextRef}
+        replyTo={isWebchat ? replyTo : null}
+        onClearReply={() => setReplyTo(null)}
       />
     </div>
   )
@@ -913,7 +948,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
 //
 // key={active.contact_id} ensures full reset on conversation switch.
 
-function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, statusLoading = false, templates = [], onSent, injectTextRef }) {
+function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, statusLoading = false, templates = [], onSent, injectTextRef, replyTo = null, onClearReply }) {
   const [mode, setMode]               = useState('text')
   const [text, setText]               = useState('')
   const [file, setFile]               = useState(null)       // File object
@@ -921,7 +956,66 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
   const [sending, setSending]         = useState(false)
   const [sendError, setSendError]     = useState(null)
   const fileInputRef                  = useRef(null)
+  const cameraInputRef                = useRef(null)
   const textareaRef                   = useRef(null)
+  const isWebchat                     = channel === 'webchat'
+  // WEBCHAT-STAFF-1 — voice note recorder
+  const [recording, setRecording]     = useState(false)
+  const [recSecs, setRecSecs]         = useState(0)
+  const recRef                        = useRef(null)         // { recorder, stream, chunks, timer }
+
+  useEffect(() => {
+    if (replyTo?.id) setTimeout(() => textareaRef.current?.focus(), 30)
+  }, [replyTo?.id])
+
+  // stop the microphone if the composer goes away mid-recording
+  useEffect(() => () => {
+    const r = recRef.current
+    if (r) { clearInterval(r.timer); r.discard = true; try { r.recorder.stop() } catch { /* already stopped */ } r.stream.getTracks().forEach(t => t.stop()) }
+  }, [])
+
+  const startRecording = async () => {
+    setFileError(null); setSendError(null)
+    if (!navigator.mediaDevices?.getUserMedia || typeof window.MediaRecorder === 'undefined') {
+      setFileError('Voice notes are not supported on this browser.')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new window.MediaRecorder(stream)
+      const rec = { recorder, stream, chunks: [], timer: null, discard: false }
+      recorder.ondataavailable = (e) => { if (e.data?.size) rec.chunks.push(e.data) }
+      recorder.onstop = () => {
+        clearInterval(rec.timer)
+        stream.getTracks().forEach(t => t.stop())
+        recRef.current = null
+        setRecording(false)
+        if (rec.discard || !rec.chunks.length) return
+        const type = recorder.mimeType || 'audio/webm'
+        const ext = type.includes('ogg') ? 'ogg' : type.includes('mp4') ? 'm4a' : 'webm'
+        const f = new File([new Blob(rec.chunks, { type })], `voice-note.${ext}`, { type })
+        if (f.size > WEBCHAT_LIMIT_MB.audio * 1024 * 1024) {
+          setFileError(`That voice note is too long — max ${WEBCHAT_LIMIT_MB.audio} MB.`)
+          return
+        }
+        setFile(f); setMode('media')
+      }
+      recRef.current = rec
+      recorder.start()
+      setRecSecs(0); setRecording(true)
+      rec.timer = setInterval(() => {
+        setRecSecs((n) => {
+          if (n + 1 >= VOICE_MAX_SECONDS) { try { recorder.stop() } catch { /* already stopped */ } }
+          return n + 1
+        })
+      }, 1000)
+    } catch {
+      setFileError('Could not use the microphone. Please allow microphone access and try again.')
+    }
+  }
+
+  const stopRecording = () => { try { recRef.current?.recorder.stop() } catch { /* already stopped */ } }
+  const cancelRecording = () => { if (recRef.current) recRef.current.discard = true; stopRecording() }
 
 
   // AI-SUGGEST-1 — allow parent to inject text into composer
@@ -961,7 +1055,14 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
     if (!f) return
     e.target.value = ''   // reset so same file can be reselected
 
-    if (f.size > MAX_MEDIA_BYTES) {
+    if (isWebchat) {
+      const k = webchatKind(f)
+      if (f.type?.startsWith('video/')) { setFileError('Videos cannot be sent in web chat. Send a photo, voice note or document.'); return }
+      if (f.size > WEBCHAT_LIMIT_MB[k] * 1024 * 1024) {
+        setFileError(`File too large — max ${WEBCHAT_LIMIT_MB[k]} MB for ${k === 'audio' ? 'a voice note' : k === 'image' ? 'a photo' : 'a document'} (this file is ${formatBytes(f.size)})`)
+        return
+      }
+    } else if (f.size > MAX_MEDIA_BYTES) {
       setFileError(`File too large — max 25 MB (this file is ${formatBytes(f.size)})`)
       return
     }
@@ -984,7 +1085,16 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
     const wasMediaSend = mode === 'media' && !!file
 
     try {
-      if (wasMediaSend) {
+      if (wasMediaSend && isWebchat) {
+        // WEBCHAT-STAFF-1 — a team member's photo / document / voice note
+        const fd = new FormData()
+        fd.append('lead_id', leadId)
+        fd.append('kind', webchatKind(file))
+        if (replyTo?.id) fd.append('reply_to', replyTo.id)
+        fd.append('file', file)
+        await uploadWebchatFile(fd)
+        onClearReply?.()
+      } else if (wasMediaSend) {
         const fd = new FormData()
         if (leadId)     fd.append('lead_id', leadId)
         if (customerId) fd.append('customer_id', customerId)
@@ -1002,7 +1112,8 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
           await sendMessengerMessage(leadId, text.trim())
         } else if (channel === 'webchat') {
           // Web chat — stored and shown on the visitor's page; no Meta call, no 24-hour window
-          await sendWebchatMessage(leadId, text.trim())
+          await sendWebchatMessage(leadId, text.trim(), replyTo?.id)
+          onClearReply?.()
         } else {
           const payload = {}
           if (leadId)     payload.lead_id = leadId
@@ -1018,7 +1129,8 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
 
       onSent?.()
     } catch (err) {
-      const msg = err.response?.data?.error?.message
+      const d = err.response?.data
+      const msg = d?.error?.message || (typeof d?.detail === 'string' ? d.detail : null)
       setSendError(msg || 'Failed to send — please try again.')
     } finally {
       setSending(false)
@@ -1063,6 +1175,32 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
         </div>
       )}
 
+      {/* WEBCHAT-STAFF-1 — replying to a specific message */}
+      {replyTo && !statusLoading && (
+        <div style={{ padding: '8px 14px 0', display: 'flex' }}>
+          <div style={{ flex: 1, minWidth: 0, background: '#fff', borderLeft: `4px solid ${ds.teal}`, borderRadius: 8, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Reply size={14} color={ds.teal} style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: ds.teal, fontFamily: ds.fontSyne }}>Replying to {replyTo.who}</div>
+              <div style={{ fontSize: 12, color: ds.gray, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replyTo.text}</div>
+            </div>
+            <button onClick={onClearReply} title="Cancel reply" style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 2, display: 'flex' }}><X size={16} /></button>
+          </div>
+        </div>
+      )}
+
+      {/* WEBCHAT-STAFF-1 — voice note recording */}
+      {recording && (
+        <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#D93025', flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 13, color: ds.dark, fontFamily: ds.fontDm }}>
+            Recording… {Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, '0')}
+          </span>
+          <button onClick={cancelRecording} title="Cancel recording" style={{ background: 'none', border: `1px solid ${ds.border}`, borderRadius: 20, padding: '6px 12px', cursor: 'pointer', color: ds.gray, fontSize: 12, fontFamily: ds.fontDm }}>Cancel</button>
+          <button onClick={stopRecording} title="Finish recording" style={{ background: ds.teal, border: 'none', borderRadius: 20, padding: '6px 14px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 600, fontFamily: ds.fontSyne, display: 'flex', alignItems: 'center', gap: 5 }}><Square size={11} fill="#fff" />Done</button>
+        </div>
+      )}
+
       {/* File preview chip */}
       {file && (
         <div style={{ padding: '8px 14px 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1091,16 +1229,16 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
       {/* Template mode removed — AI-SUGGEST-1 (templates only useful for broadcasts) */}
 
       {/* Text + attachment input row */}
-      {!statusLoading && (mode === 'text' || mode === 'media') && (
+      {!statusLoading && !recording && (mode === 'text' || mode === 'media') && (
         <div style={{ padding: mode === 'media' ? '4px 14px 10px' : '4px 14px 10px', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
 
           {/* Attachment button — hidden for Instagram (text only in UNIFIED-INBOX-1A) and in media mode */}
-          {mode === 'text' && channel !== 'instagram' && channel !== 'messenger' && channel !== 'webchat' && (
+          {mode === 'text' && channel !== 'instagram' && channel !== 'messenger' && (
             <>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={ACCEPTED_MEDIA}
+                accept={isWebchat ? WEBCHAT_ACCEPT : ACCEPTED_MEDIA}
                 onChange={handleFileSelect}
                 style={{ display: 'none' }}
               />
@@ -1113,6 +1251,25 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
               >
                 <Paperclip size={18} />
               </button>
+              {isWebchat && (
+                <>
+                  <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
+                  <button
+                    onClick={() => cameraInputRef.current?.click()}
+                    title="Take a photo"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: '6px 4px', flexShrink: 0, minHeight: 36, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.color = ds.teal}
+                    onMouseLeave={e => e.currentTarget.style.color = ds.gray}
+                  ><Camera size={18} /></button>
+                  <button
+                    onClick={startRecording}
+                    title="Record a voice note"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: '6px 4px', flexShrink: 0, minHeight: 36, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.color = ds.teal}
+                    onMouseLeave={e => e.currentTarget.style.color = ds.gray}
+                  ><Mic size={18} /></button>
+                </>
+              )}
             </>
           )}
 
@@ -1225,13 +1382,60 @@ function SendButton({ canSend, sending, onClick }) {
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted }) {
+function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted, webchat = false, userId, onReply, onEdit, onDelete }) {
   const isOut  = msg.direction === 'outbound'
   const d      = msg.created_at ? new Date(msg.created_at) : null
   const time   = d ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
   const date   = d ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''
   const isMedia = msg.message_type && msg.message_type !== 'text'
   const [downloading, setDownloading] = useState(false)
+
+  // WEBCHAT-STAFF-1 — message menu (reply / copy / edit / delete) and inline edit, web chat only
+  const [menuOpen, setMenuOpen]     = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [editing, setEditing]       = useState(false)
+  const [draft, setDraft]           = useState('')
+  const [busy, setBusy]             = useState(false)
+  const [actErr, setActErr]         = useState(null)
+  const menuRef                     = useRef(null)
+  const gone    = !!msg.deleted_at
+  const mine    = webchat && isOut && !!msg.sent_by && msg.sent_by === userId
+  const canEdit = mine && !gone && (!msg.message_type || msg.message_type === 'text') &&
+                  d && (Date.now() - d.getTime()) < WEBCHAT_EDIT_MIN * 60 * 1000
+  const hasMenu = webchat && !gone && !!msg.id
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) { setMenuOpen(false); setConfirmDel(false) } }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [menuOpen])
+
+  const copyText = async () => {
+    setMenuOpen(false)
+    try { await navigator.clipboard.writeText(msg.content || '') } catch { /* clipboard blocked: nothing to do */ }
+  }
+  const startEdit = () => { setMenuOpen(false); setActErr(null); setDraft(msg.content || ''); setEditing(true) }
+  const saveEdit = async () => {
+    const t = draft.trim()
+    if (!t || busy) return
+    if (t === (msg.content || '')) { setEditing(false); return }
+    setBusy(true); setActErr(null)
+    try { await onEdit?.(msg.id, t); setEditing(false) }
+    catch (err) {
+      const dd = err.response?.data
+      setActErr((typeof dd?.detail === 'string' && dd.detail) || dd?.error?.message || 'Could not edit this message.')
+    } finally { setBusy(false) }
+  }
+  const doDelete = async () => {
+    if (busy) return
+    setBusy(true); setActErr(null)
+    try { await onDelete?.(msg.id); setMenuOpen(false); setConfirmDel(false) }
+    catch (err) {
+      const dd = err.response?.data
+      setActErr((typeof dd?.detail === 'string' && dd.detail) || dd?.error?.message || 'Could not delete this message.')
+    } finally { setBusy(false) }
+  }
 
   // WhatsApp-style download: fetch a fresh signed URL from the backend,
   // then blob-download it so the file saves directly without opening a tab.
@@ -1287,9 +1491,51 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted }) {
   return (
     <div style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
       <div
-        data-meta-id={msg.meta_message_id || undefined}
-        style={{ maxWidth: '72%', background: isHighlighted ? '#FFF3B0' : (isOut ? '#DCF8C6' : '#fff'), border: `1px solid ${isOut ? '#B0DDB8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'background-color 0.4s ease' }}
+        data-meta-id={msg.meta_message_id || msg.id || undefined}
+        style={{ position: 'relative', maxWidth: '72%', background: isHighlighted ? '#FFF3B0' : (isOut ? '#DCF8C6' : '#fff'), border: `1px solid ${isOut ? '#B0DDB8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'background-color 0.4s ease' }}
       >
+        {hasMenu && (
+          <div ref={menuRef} style={{ position: 'absolute', top: 2, right: 4, zIndex: 3 }}>
+            <button
+              onClick={() => { setMenuOpen(o => !o); setConfirmDel(false) }}
+              title="Message options"
+              aria-label="Message options"
+              style={{ background: 'rgba(255,255,255,0.7)', border: 'none', borderRadius: 10, cursor: 'pointer', color: ds.gray, padding: '1px 3px', display: 'flex', alignItems: 'center', opacity: menuOpen ? 1 : 0.55 }}
+            ><ChevronDown size={14} /></button>
+            {menuOpen && (
+              <div role="menu" style={{ position: 'absolute', top: 22, right: 0, minWidth: 150, background: '#fff', border: `1px solid ${ds.border}`, borderRadius: 10, boxShadow: '0 6px 18px rgba(0,0,0,0.14)', padding: 4 }}>
+                {confirmDel ? (
+                  <div style={{ padding: '6px 8px' }}>
+                    <div style={{ fontSize: 12, color: ds.dark, marginBottom: 6, fontFamily: ds.fontDm }}>Delete for everyone? The visitor will see "This message was deleted".</div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={doDelete} disabled={busy} style={{ flex: 1, background: '#D93025', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 8px', fontSize: 12, cursor: busy ? 'wait' : 'pointer' }}>{busy ? '…' : 'Delete'}</button>
+                      <button onClick={() => setConfirmDel(false)} style={{ flex: 1, background: '#fff', color: ds.gray, border: `1px solid ${ds.border}`, borderRadius: 8, padding: '5px 8px', fontSize: 12, cursor: 'pointer' }}>Keep</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {[
+                      { k: 'reply', label: 'Reply', Icon: Reply, run: () => { setMenuOpen(false); onReply?.(msg) }, show: true },
+                      { k: 'copy', label: 'Copy', Icon: Copy, run: copyText, show: !isMedia && !!msg.content },
+                      { k: 'edit', label: 'Edit', Icon: Pencil, run: startEdit, show: canEdit },
+                      { k: 'delete', label: 'Delete', Icon: Trash2, run: () => setConfirmDel(true), show: mine, danger: true },
+                    ].filter(a => a.show).map(a => (
+                      <button
+                        key={a.k}
+                        role="menuitem"
+                        onClick={a.run}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', borderRadius: 8, padding: '7px 10px', fontSize: 13, cursor: 'pointer', color: a.danger ? '#D93025' : ds.dark, fontFamily: ds.fontDm, textAlign: 'left' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#F3F5F6' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
+                      ><a.Icon size={14} />{a.label}</button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Quoted-reply preview — shown when this message was a WhatsApp native
             reply to an earlier message (text or image). Clicking it jumps to and
             highlights the original, like native WhatsApp. Falls back to a generic
@@ -1373,11 +1619,28 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted }) {
               </div>
             )}
           </div>
+        ) : editing ? (
+          <div style={{ minWidth: 220 }}>
+            <textarea
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit() } if (e.key === 'Escape') setEditing(false) }}
+              rows={2}
+              maxLength={2000}
+              autoFocus
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', border: `1.5px solid ${ds.border}`, borderRadius: 8, padding: '6px 8px', fontSize: 13, fontFamily: ds.fontDm, outline: 'none' }}
+            />
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 5 }}>
+              <button onClick={() => setEditing(false)} style={{ background: '#fff', border: `1px solid ${ds.border}`, borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer', color: ds.gray }}>Cancel</button>
+              <button onClick={saveEdit} disabled={busy || !draft.trim()} style={{ background: ds.teal, border: 'none', borderRadius: 8, padding: '4px 12px', fontSize: 12, cursor: busy ? 'wait' : 'pointer', color: '#fff', fontWeight: 600 }}>{busy ? '…' : 'Save'}</button>
+            </div>
+          </div>
         ) : (
           <p style={{ fontSize: 13, color: msg.deleted_at ? ds.gray : ds.dark, fontStyle: msg.deleted_at ? 'italic' : 'normal', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
             {msg.content || (isMedia ? '(Media)' : '(Empty)')}
           </p>
         )}
+        {actErr && <div style={{ fontSize: 11.5, color: '#C0392B', marginTop: 4, fontFamily: ds.fontDm }}>{actErr}</div>}
 
         {!isOut && onRequestSuggestion && msg.content && (
           <button

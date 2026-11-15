@@ -17,7 +17,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from app.database import get_supabase
@@ -47,6 +47,11 @@ SALON_TEMPLATE = {
 
 class WebchatSend(BaseModel):
     lead_id: str = Field(..., max_length=36)
+    message: str = Field(..., min_length=1, max_length=2000)
+    reply_to: Optional[str] = Field(default=None, max_length=36)     # WEBCHAT-STAFF-1: quote an earlier message
+
+
+class WebchatEdit(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
 
 
@@ -79,12 +84,86 @@ def send_webchat_reply(payload: WebchatSend, db=Depends(get_supabase), org=Depen
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     try:
-        msg = wc.rep_send(db, org["org_id"], payload.lead_id, payload.message, org["id"])
+        msg = wc.rep_send(db, org["org_id"], payload.lead_id, payload.message, org["id"], reply_to=payload.reply_to)
     except LookupError:
         raise HTTPException(status_code=422, detail="This contact has no web chat to reply to.")
     except PermissionError:
         raise HTTPException(status_code=400, detail="This web chat has ended.")
     return ok(data=msg, message="Reply sent")
+
+
+# ── WEBCHAT-STAFF-1: staff send files, edit and delete their own web chat messages ─────────────────────────────
+
+def _session_of_message(db, org_id: str, mid: str) -> Optional[dict]:
+    """The web chat a message belongs to, found inside this business only (S1)."""
+    import re
+    if not isinstance(mid, str) or not re.match(r"^[0-9a-fA-F-]{36}$", mid):
+        return None
+    row = wc._one((db.table("whatsapp_messages").select("webchat_session_id").eq("id", mid).eq("org_id", org_id)
+                   .eq("channel", "webchat").limit(1).execute()).data)
+    if not row or not row.get("webchat_session_id"):
+        return None
+    return wc._one((db.table("webchat_sessions").select("*").eq("id", row["webchat_session_id"])
+                    .eq("org_id", org_id).limit(1).execute()).data)
+
+
+@router.post("/conversations/webchat/upload")
+def upload_webchat_file(lead_id: str = Form(..., max_length=36), kind: str = Form(...),
+                        reply_to: Optional[str] = Form(default=None, max_length=36),
+                        file: UploadFile = File(...), db=Depends(get_supabase), org=Depends(get_current_org)):
+    """A team member sends a photo, document or voice note into a web chat. The file's real type is checked from its bytes."""
+    from app.services import webchat_attachment_service as att
+    lead = (db.table("leads").select("id").eq("id", lead_id).eq("org_id", org["org_id"])
+            .is_("deleted_at", "null").limit(1).execute().data)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    s = wc.latest_session_for_lead(db, org["org_id"], lead_id)
+    if not s:
+        raise HTTPException(status_code=422, detail="This contact has no web chat to reply to.")
+    if s.get("status") != "active":
+        raise HTTPException(status_code=400, detail="This web chat has ended.")
+    if wc.rate_limited(f"repupload:{org['id']}", 30, 600):
+        raise HTTPException(status_code=429, detail="That is a lot of files. Please wait a few minutes.")
+    data = file.file.read(att.MAX_ANY + 1)
+    clean, err = att.validate(data, kind, file.filename)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+    try:
+        msg = att.save_attachment(db, s, kind, clean, data, sent_by=org["id"], reply_to=reply_to)
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="We could not save the file. Please try again.")
+    now = wc._iso(wc._now())
+    wc.set_state(db, s, human=True, rep_last_at=now, human_at=now)
+    try:
+        from app.services import webchat_followup_service as fu
+        fu.notify_rep_reply(db, s, wc.get_config(db, org["org_id"]), f"Sent you {att.label(kind)}")
+    except Exception as exc:
+        logger.warning("webchat rep file follow-up failed: %s", exc)
+    return ok(data=msg, message="File sent")
+
+
+@router.patch("/conversations/webchat/message/{message_id}")
+def edit_webchat_message(message_id: str, payload: WebchatEdit, db=Depends(get_supabase), org=Depends(get_current_org)):
+    from app.services import webchat_msg_service as msgs
+    s = _session_of_message(db, org["org_id"], message_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Message not found")
+    out, err = msgs.edit(db, s, message_id, payload.message, role="rep", user_id=org["id"])
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+    return ok(data=out, message="Message edited")
+
+
+@router.delete("/conversations/webchat/message/{message_id}")
+def delete_webchat_message(message_id: str, db=Depends(get_supabase), org=Depends(get_current_org)):
+    from app.services import webchat_msg_service as msgs
+    s = _session_of_message(db, org["org_id"], message_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Message not found")
+    out, err = msgs.delete(db, s, message_id, role="rep", user_id=org["id"])
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+    return ok(data=out, message="Message deleted")
 
 
 @router.get("/webchat/settings")

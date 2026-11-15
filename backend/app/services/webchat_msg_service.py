@@ -31,10 +31,14 @@ def _parse(v) -> Optional[datetime]:
         return None
 
 
-def _mine(found: Optional[tuple]) -> tuple[Optional[tuple], Optional[str]]:
+def _mine(found: Optional[tuple], role: str = "visitor", user_id: Optional[str] = None) -> tuple[Optional[tuple], Optional[str]]:
+    """role 'visitor' = the visitor's own messages. role 'rep' (WEBCHAT-STAFF-1) = messages THIS team member sent;
+    a colleague's, the bot's and the visitor's messages cannot be changed."""
     if not found:
         return None, "We could not find that message."
-    if found[2] != "visitor":
+    if found[2] != role:
+        return None, "You can only change your own messages."
+    if role == "rep" and str(found[1].get("sent_by") or "") != str(user_id or ""):
         return None, "You can only change your own messages."
     if found[1].get("deleted_at"):
         return None, "That message was already deleted."
@@ -56,8 +60,9 @@ def _save(db, session: dict, found: tuple, changes_db: dict, changes_hist: dict)
     return out
 
 
-def edit(db, session: dict, mid: str, text: Optional[str]) -> tuple[Optional[dict], Optional[str]]:
-    found, err = _mine(wc.find_message(db, session, mid))
+def edit(db, session: dict, mid: str, text: Optional[str], role: str = "visitor",
+         user_id: Optional[str] = None) -> tuple[Optional[dict], Optional[str]]:
+    found, err = _mine(wc.find_message(db, session, mid), role, user_id)
     if err:
         return None, err
     row = found[1]
@@ -80,8 +85,9 @@ def edit(db, session: dict, mid: str, text: Optional[str]) -> tuple[Optional[dic
                  {"text": new, "edited_at": now, "original": keep}), None
 
 
-def delete(db, session: dict, mid: str) -> tuple[Optional[dict], Optional[str]]:
-    found, err = _mine(wc.find_message(db, session, mid))
+def delete(db, session: dict, mid: str, role: str = "visitor",
+           user_id: Optional[str] = None) -> tuple[Optional[dict], Optional[str]]:
+    found, err = _mine(wc.find_message(db, session, mid), role, user_id)
     if err:
         return None, err
     row = found[1]

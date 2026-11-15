@@ -775,14 +775,15 @@ def is_human(session: dict, cfg: Optional[dict] = None) -> bool:
     return _now() - max(stamps) < timedelta(minutes=mins)
 
 
-def rep_send(db, org_id: str, lead_id: str, text: str, user_id: str) -> dict:
-    """A rep's reply into a web chat. Stored only; the visitor's page picks it up. No Meta call, no fee."""
+def rep_send(db, org_id: str, lead_id: str, text: str, user_id: str, reply_to: Optional[str] = None) -> dict:
+    """A rep's reply into a web chat. Stored only; the visitor's page picks it up. No Meta call, no fee.
+    reply_to: id of an earlier message of this chat to quote (WEBCHAT-STAFF-1)."""
     s = latest_session_for_lead(db, org_id, lead_id)
     if not s:
         raise LookupError("no web chat for this contact")
     if s.get("status") != "active":
         raise PermissionError("this web chat has ended")
-    msg = append_message(db, s, "rep", text, sent_by=user_id)
+    msg = append_message(db, s, "rep", text, sent_by=user_id, reply_to=reply_to)
     set_state(db, s, human=True, rep_last_at=_iso(_now()), human_at=_iso(_now()))
     try:
         from app.services import webchat_followup_service as fu

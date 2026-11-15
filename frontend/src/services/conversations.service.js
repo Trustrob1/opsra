@@ -83,8 +83,18 @@ export const sendMessengerMessage = (leadId, message) =>
   api.post('/api/v1/conversations/messenger/send', { lead_id: leadId, message })
 
 // WEBCHAT-1 — a rep's reply into a web chat (stored only; no Meta call)
-export const sendWebchatMessage = (leadId, message) =>
-  api.post('/api/v1/conversations/webchat/send', { lead_id: leadId, message })
+export const sendWebchatMessage = (leadId, message, replyTo) =>
+  api.post('/api/v1/conversations/webchat/send', { lead_id: leadId, message, ...(replyTo ? { reply_to: replyTo } : {}) })
+
+// WEBCHAT-STAFF-1 — photo / document / voice note (multipart: lead_id, kind, file, reply_to?), and edit / delete of your own message
+export const uploadWebchatFile = (formData) =>
+  api.post('/api/v1/conversations/webchat/upload', formData)
+
+export const editWebchatMessage = (messageId, message) =>
+  api.patch(`/api/v1/conversations/webchat/message/${messageId}`, { message })
+
+export const deleteWebchatMessage = (messageId) =>
+  api.delete(`/api/v1/conversations/webchat/message/${messageId}`)
 
 
 /**
