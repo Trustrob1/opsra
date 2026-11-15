@@ -26,6 +26,20 @@ const LINE = '#DCE4E8'
 const FIELD_LINE = '#B9C6CC'
 const BG = '#F4F7F8'
 
+// WEBCHAT-EMBED-1: inside the website bubble (widget.js) the page is opened with ?embed=1&po=<the website>
+const EMBED = (() => { try { return new URLSearchParams(window.location.search).get('embed') === '1' } catch { return false } })()
+function parentSite() {
+  if (!EMBED) return undefined
+  try {
+    const po = new URLSearchParams(window.location.search).get('po')
+    if (po) return po
+    if (window.location.ancestorOrigins?.length) return window.location.ancestorOrigins[0]
+    if (document.referrer) return new URL(document.referrer).origin
+  } catch { /* unknown */ }
+  return 'unknown'
+}
+const closeEmbed = () => { try { window.parent.postMessage({ source: 'opsra-chat', type: 'close' }, '*') } catch { /* not framed */ } }
+
 function readStore(key) { try { return window.localStorage.getItem(key) } catch { return null } }
 function writeStore(key, v) { try { v ? window.localStorage.setItem(key, v) : window.localStorage.removeItem(key) } catch { /* private mode */ } }
 
@@ -186,7 +200,7 @@ function ProductCard({ p, S, brand, busy, picked, setPicked, onAdd }) {
 }
 
 export default function WebChatPage({ chatKey }) {
-  const [state, setState] = useState('loading')           // loading | ready | closed | error
+  const [state, setState] = useState('loading')           // loading | ready | closed | blocked | error
   const [cfg, setCfg] = useState(null)
   const [messages, setMessages] = useState([])
   const [hasContact, setHasContact] = useState(false)
@@ -270,7 +284,7 @@ export default function WebChatPage({ chatKey }) {
     const handoff = params.get('h')
     const source = params.get('s') || (handoff ? 'whatsapp' : undefined)
     const fresh = async () => {
-      const snap = await startChat(chatKey, { source, handoff: handoff || undefined })
+      const snap = await startChat(chatKey, { source, handoff: handoff || undefined, embedOrigin: parentSite() })
       token.current = snap.token
       writeStore(tokenKey, snap.token)
       return snap
@@ -280,7 +294,7 @@ export default function WebChatPage({ chatKey }) {
         let snap
         const stored = handoff ? null : readStore(tokenKey)
         if (stored) {
-          try { token.current = stored; snap = await resumeChat(chatKey, stored) }
+          try { token.current = stored; snap = await resumeChat(chatKey, stored, parentSite()) }
           catch (e) { if (e?.response?.status === 401) snap = await fresh(); else throw e }
         } else {
           snap = await fresh()
@@ -290,7 +304,7 @@ export default function WebChatPage({ chatKey }) {
         apply(snap)
         if (snap.needs_email && snap.messages.length > 2) setPanel('email')
       } catch (e) {
-        if (!dead) setState(e?.response?.status === 404 ? 'closed' : 'error')
+        if (!dead) setState(e?.response?.data?.detail?.code === 'EMBED_NOT_ALLOWED' ? 'blocked' : e?.response?.status === 404 ? 'closed' : 'error')
       }
     })()
     return () => { dead = true }
@@ -632,6 +646,12 @@ export default function WebChatPage({ chatKey }) {
       <p style={{ margin: 0, maxWidth: 280 }}>The business is not taking chat messages at the moment. Please check back later.</p>
     </div></div></div>
   )
+  if (state === 'blocked') return (
+    <div style={S.page} className="wc-root">{css}<div style={S.shell}><div style={S.center}>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: INK }}>This chat cannot be shown here</h1>
+      <p style={{ margin: 0, maxWidth: 300 }}>The business has not allowed its chat on this website.</p>
+    </div></div></div>
+  )
   if (state === 'error') return (
     <div style={S.page} className="wc-root">{css}<div style={S.shell}><div style={S.center}>
       <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: INK }}>We could not open the chat</h1>
@@ -665,6 +685,9 @@ export default function WebChatPage({ chatKey }) {
               <Icon name="menu" size={20} />Menu
               {!menuSeen && <span aria-hidden="true" className="wc-ping" style={{ position: 'absolute', top: -2, right: -2, width: 12, height: 12, borderRadius: 999, background: '#E8590C', border: '2px solid #fff' }} />}
             </button>
+          )}
+          {EMBED && (
+            <button type="button" aria-label="Close chat" onClick={closeEmbed} style={{ ...S.iconBtn, margin: '-4px -6px -4px 0' }}><Icon name="close" size={22} /></button>
           )}
         </header>
 
