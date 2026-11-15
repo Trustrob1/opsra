@@ -34,6 +34,19 @@ export async function sendChat(key, token, payload) {
   return res.data.data
 }
 
+// WEBCHAT-ATTACH-1: a photo, voice note or document. kind: 'image' | 'audio' | 'document'.
+export async function uploadChatFile(key, token, file, kind, onProgress) {
+  const fd = new FormData()
+  fd.append('file', file, file.name || 'file')
+  fd.append('kind', kind)
+  const res = await axios.post(`${BASE}/public/webchat/${key}/upload`, fd, {
+    ...auth(token),
+    timeout: 120000,
+    onUploadProgress: (e) => { if (onProgress && e.total) onProgress(Math.round((e.loaded * 100) / e.total)) },
+  })
+  return res.data.data
+}
+
 export async function sendContact(key, token, payload) {
   const res = await axios.post(`${BASE}/public/webchat/${key}/contact`, payload, auth(token))
   return res.data.data

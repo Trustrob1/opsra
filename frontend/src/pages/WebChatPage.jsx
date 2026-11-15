@@ -15,7 +15,7 @@
  * page also works as a plain chat for a business that uses nothing else from Opsra.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { startChat, resumeChat, pollChat, sendChat, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, chatErrorMessage } from '../services/webchat.service'
+import { startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -30,6 +30,15 @@ function readStore(key) { try { return window.localStorage.getItem(key) } catch 
 function writeStore(key, v) { try { v ? window.localStorage.setItem(key, v) : window.localStorage.removeItem(key) } catch { /* private mode */ } }
 
 const naira = (n) => `₦${Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
+
+const MAX_MB = { image: 10, document: 15, audio: 5 }
+const DOC_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.txt'
+const IMG_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp'
+const REC_MAX_S = 120
+const BAR_H = [10, 18, 14, 24, 16, 28, 12, 20, 26, 14, 22, 10, 18, 24, 12, 20, 16, 26, 14, 18, 22, 12, 24, 16]
+const fmtTime = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`
+const recorderSupported = () => typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== 'undefined'
+const pickMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find((t) => window.MediaRecorder.isTypeSupported?.(t)) || ''
 
 function Linkified({ text, onTap }) {
   const parts = String(text || '').split(URL_RE)
@@ -48,6 +57,14 @@ function Icon({ name, size = 20 }) {
   if (name === 'mail') return <svg {...common}><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="M4 7.5l8 6 8-6" /></svg>
   if (name === 'menu') return <svg {...common}><path d="M4 7h16M4 12h16M4 17h10" /></svg>
   if (name === 'chev') return <svg {...common}><path d="M9 5l7 7-7 7" /></svg>
+  if (name === 'clip') return <svg {...common}><path d="M20 11.5l-7.8 7.8a5 5 0 01-7-7l8-8a3.3 3.3 0 014.7 4.7l-8 8a1.7 1.7 0 01-2.4-2.4l7.4-7.4" /></svg>
+  if (name === 'mic') return <svg {...common}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21" /></svg>
+  if (name === 'trash') return <svg {...common}><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13M10.5 11v6M13.5 11v6" /></svg>
+  if (name === 'play') return <svg {...common} fill="currentColor" stroke="none"><path d="M8 5.5v13l11-6.5z" /></svg>
+  if (name === 'pause') return <svg {...common} fill="currentColor" stroke="none"><rect x="7" y="5" width="3.6" height="14" rx="1" /><rect x="13.4" y="5" width="3.6" height="14" rx="1" /></svg>
+  if (name === 'image') return <svg {...common}><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><circle cx="9" cy="10" r="1.8" /><path d="M4 17l5-4.5 3.5 3L15 13l5 4.5" /></svg>
+  if (name === 'camera') return <svg {...common}><path d="M4 8.5h3l1.5-2.5h7L17 8.5h3a1 1 0 011 1V18a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5a1 1 0 011-1z" /><circle cx="12" cy="13.5" r="3.4" /></svg>
+  if (name === 'file') return <svg {...common}><path d="M7 3.5h7l4.5 4.5v12a1 1 0 01-1 1H7a1 1 0 01-1-1v-15a1 1 0 011-1z M14 3.5V8h4.5" /><path d="M9 13h6M9 16.5h6" /></svg>
   if (name === 'lock') return <svg {...common}><rect x="5" y="10.5" width="14" height="9.5" rx="2.2" /><path d="M8.5 10.5V8a3.5 3.5 0 017 0v2.5" /></svg>
   return null
 }
@@ -58,6 +75,59 @@ function Thumb({ src, alt, size = 72, brand }) {
     <div aria-hidden="true" style={{ width: size, height: size, flex: 'none', borderRadius: 14, background: `color-mix(in srgb, ${brand} 12%, white)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: brand }}>
       <Icon name="bag" size={Math.round(size * 0.42)} />
     </div>
+  )
+}
+
+function VoiceNote({ src, mine, brand }) {
+  const ref = useRef(null)
+  const [playing, setPlaying] = useState(false)
+  const [pos, setPos] = useState(0)
+  const [dur, setDur] = useState(0)
+  const toggle = () => { const a = ref.current; if (!a) return; if (a.paused) a.play().catch(() => {}); else a.pause() }
+  const total = Number.isFinite(dur) && dur > 0 ? dur : 0
+  const frac = total ? pos / total : 0
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: 230 }}>
+      <audio ref={ref} src={src} preload="metadata"
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setPos(0) }}
+        onTimeUpdate={(e) => setPos(e.currentTarget.currentTime)} onLoadedMetadata={(e) => setDur(e.currentTarget.duration)} />
+      <button type="button" aria-label={playing ? 'Pause voice note' : 'Play voice note'} onClick={toggle}
+        style={{ width: 44, height: 44, flex: 'none', border: 0, borderRadius: 999, background: mine ? '#fff' : brand, color: mine ? brand : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={playing ? 'pause' : 'play'} size={20} />
+      </button>
+      <div aria-hidden="true" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2, height: 30 }}>
+        {BAR_H.map((h, i) => <span key={i} style={{ display: 'block', width: 3, height: h, borderRadius: 2, background: 'currentColor', opacity: i / BAR_H.length < frac ? 1 : 0.4 }} />)}
+      </div>
+      <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{fmtTime(playing || pos ? pos : total)}</span>
+    </div>
+  )
+}
+
+function AttachmentBubble({ a, mine, brand }) {
+  if (a.kind === 'image') {
+    return (
+      <a href={a.uploading ? undefined : a.url} target="_blank" rel="noopener noreferrer" style={{ position: 'relative', display: 'block', lineHeight: 0 }}>
+        <img src={a.url} alt={a.name || 'Photo'} style={{ display: 'block', maxWidth: 240, maxHeight: 280, width: '100%', borderRadius: 14, background: '#e6edf0' }} />
+        {a.uploading && (
+          <span style={{ position: 'absolute', inset: 0, borderRadius: 14, background: 'rgba(20,34,43,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 14, fontWeight: 700, lineHeight: 1 }}>
+            {a.progress || 0}%
+          </span>
+        )}
+      </a>
+    )
+  }
+  if (a.kind === 'audio') return <VoiceNote src={a.url} mine={mine} brand={brand} />
+  return (
+    <a href={a.uploading ? undefined : a.url} target="_blank" rel="noopener noreferrer" download={a.name || true}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: 230, color: 'inherit', textDecoration: 'none' }}>
+      <span aria-hidden="true" style={{ width: 44, height: 44, flex: 'none', borderRadius: 12, background: mine ? 'rgba(255,255,255,0.2)' : `color-mix(in srgb, ${brand} 12%, white)`, color: mine ? '#fff' : brand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="file" size={24} />
+      </span>
+      <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <span style={{ fontSize: 15, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name || 'Document'}</span>
+        <span style={{ fontSize: 13, opacity: 0.85 }}>{a.uploading ? `Sending ${a.progress || 0}%` : 'Tap to open'}</span>
+      </span>
+    </a>
   )
 }
 
@@ -108,6 +178,12 @@ export default function WebChatPage({ chatKey }) {
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
   const [picked, setPicked] = useState({})                 // product id -> chosen variant id
+  const [rec, setRec] = useState(null)                    // null | { seconds } while recording a voice note
+  const recRef = useRef({ mr: null, stream: null, chunks: [], timer: null, cancelled: false, mime: '' })
+  const uploadRef = useRef(null)
+  const photoRef = useRef(null)
+  const cameraRef = useRef(null)
+  const docRef = useRef(null)
   const [pending, setPending] = useState(0)             // messages sent and waiting for the reply (drives the typing dots)
   const initialCount = useRef(0)                       // messages that were already there when the chat opened (no pop-in for those)
   const token = useRef(null)
@@ -186,7 +262,8 @@ export default function WebChatPage({ chatKey }) {
     const id = setInterval(async () => {
       if (document.hidden || !token.current) return
       try {
-        const last = messages.length ? messages[messages.length - 1].at : undefined
+        const real = messages.filter((m) => !m.tmp)
+        const last = real.length ? real[real.length - 1].at : undefined
         const res = await pollChat(chatKey, token.current, last)
         merge(res.messages)
         setHuman(!!res.human)
@@ -250,6 +327,77 @@ export default function WebChatPage({ chatKey }) {
     setText('')
     sendOptimistic(t, { kind: 'text', text: t }).then((ok) => { if (!ok) setText(t) })
   }
+  // WEBCHAT-ATTACH-1: photos, voice notes and documents. Shown at once with progress; the server checks the real file type.
+  const uploadFile = async (file, kind) => {
+    if (!file) return
+    if (file.size > MAX_MB[kind] * 1024 * 1024) { setError(`That file is too big. The limit is ${MAX_MB[kind]} MB.`); return }
+    const url = kind === 'document' ? undefined : URL.createObjectURL(file)
+    const name = kind === 'audio' ? 'Voice note' : (file.name || 'File')
+    const tmp = { id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: 'visitor', text: name, at: new Date().toISOString(), tmp: true,
+      attachment: { kind, name, url, uploading: true, progress: 0 } }
+    setMessages((cur) => [...cur, tmp])
+    setError('')
+    try {
+      const res = await uploadChatFile(chatKey, token.current, file, kind, (p) => setMessages((cur) => cur.map((m) => (m.id === tmp.id ? { ...m, attachment: { ...m.attachment, progress: p } } : m))))
+      setMessages((cur) => cur.filter((m) => m.id !== tmp.id))
+      handleReply(res)
+    } catch (e) {
+      setMessages((cur) => cur.filter((m) => m.id !== tmp.id))
+      if (e?.response?.data?.detail?.ask_contact) setPanel('contact')
+      setError(chatErrorMessage(e))
+    } finally {
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 8000)
+    }
+  }
+  uploadRef.current = uploadFile
+  const needContact = (why) => { setPanel('contact'); setError(`Please share your contact details first, then ${why}.`) }
+  const onAttach = () => { if (!hasContact) needContact('send your file'); else { setError(''); setPanel('attach') } }
+  const pickFile = (kind) => (e) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    setPanel(null)
+    uploadFile(f, kind)
+  }
+  const startRec = async () => {
+    if (!hasContact) { needContact('record your voice note'); return }
+    setError('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mime = pickMime()
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+      const r = recRef.current
+      r.mr = mr; r.stream = stream; r.chunks = []; r.cancelled = false; r.mime = mr.mimeType || mime
+      mr.ondataavailable = (ev) => { if (ev.data?.size) r.chunks.push(ev.data) }
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop())
+        clearInterval(r.timer)
+        setRec(null)
+        if (r.cancelled || !r.chunks.length) return
+        const type = (r.mime || 'audio/webm').split(';')[0]
+        const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm'
+        uploadRef.current?.(new File(r.chunks, `voice-note.${ext}`, { type }), 'audio')
+      }
+      mr.start()
+      setRec({ seconds: 0 })
+      r.timer = setInterval(() => setRec((c) => {
+        if (!c) return c
+        const n = c.seconds + 1
+        if (n >= REC_MAX_S && r.mr?.state === 'recording') r.mr.stop()
+        return { seconds: n }
+      }), 1000)
+    } catch {
+      setError('We could not use your microphone. Allow microphone access in your browser to send voice notes.')
+    }
+  }
+  const stopRec = () => { const r = recRef.current; r.cancelled = false; if (r.mr?.state === 'recording') r.mr.stop() }
+  const cancelRec = () => { const r = recRef.current; r.cancelled = true; if (r.mr?.state === 'recording') r.mr.stop() }
+  useEffect(() => () => {
+    const r = recRef.current
+    r.cancelled = true
+    clearInterval(r.timer)
+    try { if (r.mr?.state === 'recording') r.mr.stop() } catch { /* already stopped */ }
+  }, [])
+
   const submitContact = (e) => {
     e.preventDefault()
     act(async () => {
@@ -371,9 +519,9 @@ export default function WebChatPage({ chatKey }) {
     </div></div></div>
   )
 
-  const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu'].includes(panel)
+  const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu', 'attach'].includes(panel)
   const visitorSpoke = messages.some((m) => m.role === 'visitor')
-  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?' }[panel]
+  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?', attach: 'Send a file' }[panel]
 
   return (
     <div style={S.page} className="wc-root">
@@ -394,7 +542,11 @@ export default function WebChatPage({ chatKey }) {
           {messages.map((m, i) => (
             <div key={m.id} className={i >= initialCount.current ? 'wc-anim' : undefined} style={{ ...S.row(m.role), ...(i >= initialCount.current ? { animation: 'wc-pop 0.18s ease-out' } : {}), ...(m.tmp ? { opacity: 0.85 } : {}) }}>
               {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <span style={S.who}>{cfg.business_name} team</span>}
-              <div style={S.bubble(m.role)}><Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} /></div>
+              <div style={m.attachment ? { ...S.bubble(m.role), padding: m.attachment.kind === 'image' ? 4 : '10px 12px' } : S.bubble(m.role)}>
+                {m.attachment
+                  ? <AttachmentBubble a={m.attachment} mine={m.role === 'visitor'} brand={brand} />
+                  : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
+              </div>
             </div>
           ))}
 
@@ -429,12 +581,31 @@ export default function WebChatPage({ chatKey }) {
                 onClick={() => setPanel('cart')}><Icon name="cart" />Cart ({cart.count}){cart.count > 0 ? ` · ${naira(cart.total)}` : ''}</button>
             </div>
           )}
-          <form onSubmit={sendText} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
-            <input id="wc-text" style={S.input} value={text} maxLength={1000} placeholder="Type your message" autoComplete="off"
-              onChange={(e) => setText(e.target.value)} />
-            <button type="submit" aria-label="Send" style={S.send} disabled={busy || !text.trim()}><Icon name="send" size={22} /></button>
-          </form>
+          {rec ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button type="button" aria-label="Cancel and delete recording" onClick={cancelRec}
+                style={{ ...S.iconBtn, width: 48, height: 48, borderRadius: 999, background: '#FBE9E7', color: '#B3261E' }}><Icon name="trash" size={22} /></button>
+              <div role="status" style={{ flex: 1, height: 48, boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 999, background: BG, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 999, background: '#B3261E' }} />
+                <span style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmtTime(rec.seconds)}</span>
+                <span style={{ fontSize: 14, color: MUTED }}>Recording</span>
+              </div>
+              <button type="button" aria-label="Send voice note" style={S.send} onClick={stopRec}><Icon name="send" size={22} /></button>
+            </div>
+          ) : (
+            <form onSubmit={sendText} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button type="button" aria-label="Attach a file" onClick={onAttach} style={{ ...S.iconBtn, color: MUTED }}><Icon name="clip" size={22} /></button>
+              <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
+              <input id="wc-text" style={S.input} value={text} maxLength={1000} placeholder="Type your message" autoComplete="off"
+                onChange={(e) => setText(e.target.value)} />
+              {!text.trim() && recorderSupported()
+                ? <button type="button" aria-label="Record a voice note" style={{ ...S.send, marginLeft: 4 }} onClick={startRec}><Icon name="mic" size={22} /></button>
+                : <button type="submit" aria-label="Send" style={{ ...S.send, marginLeft: 4 }} disabled={busy || !text.trim()}><Icon name="send" size={22} /></button>}
+            </form>
+          )}
+          <input ref={photoRef} type="file" accept={IMG_ACCEPT} hidden onChange={pickFile('image')} />
+          <input ref={cameraRef} type="file" accept={IMG_ACCEPT} capture="environment" hidden onChange={pickFile('image')} />
+          <input ref={docRef} type="file" accept={DOC_ACCEPT} hidden onChange={pickFile('document')} />
           {hasContact && cfg.email_enabled && (
             <button type="button" style={S.linkBtn} onClick={() => setPanel('save')}><Icon name="mail" size={18} />Email me this chat</button>
           )}
@@ -517,10 +688,25 @@ export default function WebChatPage({ chatKey }) {
                     {panel === 'booking' && 'Fill in the details and the team will confirm.'}
                     {panel === 'save' && 'We will email you this chat, and tell you if the team replies after you have left.'}
                     {panel === 'menu' && 'Pick one and we will answer here.'}
+                    {panel === 'attach' && 'Photos up to 10 MB. Documents up to 15 MB. Voice notes up to 2 minutes.'}
                   </p>
                 </div>
                 <button type="button" aria-label="Close" style={{ ...S.iconBtn, margin: '-6px -10px 0 0' }} onClick={closePanel}><Icon name="close" size={22} /></button>
               </div>
+
+              {error && <div style={{ ...S.err, borderRadius: 8 }} role="alert">{error}</div>}
+
+              {panel === 'attach' && (
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[['Photos', 'image', '#E6F4F5', brand, photoRef], ['Camera', 'camera', '#FFF1D9', '#8A5A00', cameraRef], ['Document', 'file', '#E7ECFB', '#2F4AA8', docRef]].map(([label, icon, bg, fg, ref]) => (
+                    <button key={label} type="button" onClick={() => ref.current?.click()}
+                      style={{ flex: 1, minHeight: 96, border: 0, background: 'transparent', color: INK, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <span aria-hidden="true" style={{ width: 60, height: 60, borderRadius: 999, background: bg, color: fg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={icon} size={26} /></span>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {panel === 'menu' && (
                 <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
@@ -595,7 +781,6 @@ export default function WebChatPage({ chatKey }) {
                 </form>
               )}
 
-              {error && <div style={{ ...S.err, borderRadius: 8 }} role="alert">{error}</div>}
             </section>
           </>
         )}

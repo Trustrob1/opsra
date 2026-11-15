@@ -20,11 +20,12 @@ from __future__ import annotations
 import logging
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from app.database import get_supabase
 from app.models.common import ok
+from app.services import webchat_attachment_service as att
 from app.services import webchat_email_service as email_svc
 from app.services import webchat_flow_service as flow
 from app.services import webchat_shop_service as shop
@@ -283,6 +284,37 @@ def tap(key: str, response: Response, authorization: Optional[str] = Header(defa
 
 
 # ── WEBCHAT-4: email follow-ups ─────────────────────────────────────────────
+
+@router.post("/public/webchat/{key}/upload")
+def post_upload(key: str, response: Response, file: UploadFile = File(...), kind: str = Form(...),
+                authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
+    """WEBCHAT-ATTACH-1: a photo, voice note or document from the visitor. Needs contact details first; the file's
+    real type is checked from its bytes; the team is told, and the chat is handed to a person."""
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if not s.get("lead_id"):
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "ask_contact": True,
+                                                     "message": "Please share your contact details first, then send your file."})
+    if wc.rate_limited(f"upload:{s['id']}", 10, 600):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "That is a lot of files. Please wait a few minutes."})
+    data = file.file.read(att.MAX_ANY + 1)
+    clean, err = att.validate(data, kind, file.filename)
+    if err:
+        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": err})
+    try:
+        msg = att.save_attachment(db, s, kind, clean, data)
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail={"code": "UPLOAD_FAILED", "message": "We could not save your file. Please try again."})
+    cfg = found["config"]
+    out = [msg]
+    was_human = wc.is_human(s, cfg)
+    flow._notify_human(db, s, cfg, f"Sent {att.label(kind)}")
+    s = wc.set_human(db, s)
+    if not was_human:
+        out.append(wc.append_message(db, s, "bot", cfg.get("human_reply") or "Thanks. A team member will reply here as soon as they can."))
+    return ok({"messages": out, "human": True})
+
 
 @router.post("/public/webchat/{key}/save-chat")
 def save_chat(key: str, body: SaveChatBody, response: Response, authorization: Optional[str] = Header(default=None),

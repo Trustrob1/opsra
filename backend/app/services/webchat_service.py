@@ -471,8 +471,11 @@ def set_state(db, session: dict, **kv) -> dict:
 # ── Messages ────────────────────────────────────────────────────────────────
 
 def _out(role: str, row: dict) -> dict:
-    return {"id": row["id"], "role": role, "text": row.get("content") or row.get("text") or "",
-            "at": row.get("created_at") or row.get("at")}
+    out = {"id": row["id"], "role": role, "text": row.get("content") or row.get("text") or "",
+           "at": row.get("created_at") or row.get("at")}
+    if row.get("message_type") in ("image", "audio", "document") and row.get("media_url"):   # WEBCHAT-ATTACH-1
+        out["attachment"] = {"kind": row["message_type"], "name": out["text"], "url": row["media_url"]}
+    return out
 
 
 def append_message(db, session: dict, role: str, text: str, sent_by: Optional[str] = None) -> dict:
@@ -500,7 +503,7 @@ def list_messages(db, session: dict, after: Optional[str] = None, limit: int = 1
     if not session.get("lead_id"):
         msgs = list(session.get("history") or [])
         return [m for m in msgs if not after or m["at"] > after][-limit:]
-    q = (db.table("whatsapp_messages").select("id, content, created_at, direction, sent_by")
+    q = (db.table("whatsapp_messages").select("id, content, created_at, direction, sent_by, message_type, media_url")
          .eq("org_id", session["org_id"]).eq("webchat_session_id", session["id"])
          .order("created_at", desc=False).limit(limit))
     if after:
