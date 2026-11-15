@@ -3,18 +3,28 @@
  * WEBCHAT-1 — Opsra's own chat page: /c/:key
  *
  * A visitor taps a menu option or types; the answers are the business's own (scripted, no AI yet).
- * After the first answer the page asks for contact (name + WhatsApp number and/or email + consent).
+ * After the first answer the page asks for contact (name + phone/WhatsApp number and/or email + consent).
  * Visitors who came from WhatsApp (?h= hand-off link) already have a proven number, so only an optional
  * email is asked. A rep's reply from the Opsra inbox appears here within a few seconds (polling).
  *
  * The session token is kept in localStorage when the browser allows it (Instagram's in-app browser may not),
  * and the page works without it for the current visit.
+ *
+ * WEBCHAT-UI (Nov 2026): redesigned. Same logic and API calls; new look. The brand colour (cfg.brand_color) drives
+ * every accent; Shop, Cart and "Email me this chat" appear only when the business has them switched on, so the
+ * page also works as a plain chat for a business that uses nothing else from Opsra.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { startChat, resumeChat, pollChat, sendChat, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
+const FONT = "'DM Sans', system-ui, sans-serif"
+const INK = '#14222B'
+const MUTED = '#566770'
+const LINE = '#DCE4E8'
+const FIELD_LINE = '#B9C6CC'
+const BG = '#F4F7F8'
 
 function readStore(key) { try { return window.localStorage.getItem(key) } catch { return null } }
 function writeStore(key, v) { try { v ? window.localStorage.setItem(key, v) : window.localStorage.removeItem(key) } catch { /* private mode */ } }
@@ -28,25 +38,52 @@ function Linkified({ text, onTap }) {
     : <span key={i}>{p}</span>))
 }
 
-function ProductCard({ p, S, brand, busy, picked, setPicked, onAdd, bare }) {
+function Icon({ name, size = 20 }) {
+  const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, style: { flex: 'none' } }
+  if (name === 'send') return <svg {...common}><path d="M4 12l16-8-6 16-3-7-7-1z" /></svg>
+  if (name === 'back') return <svg {...common} strokeWidth="2.2"><path d="M15 5l-7 7 7 7" /></svg>
+  if (name === 'close') return <svg {...common} strokeWidth="2.2"><path d="M6 6l12 12M18 6L6 18" /></svg>
+  if (name === 'cart') return <svg {...common}><path d="M3 4h2.5l2.2 11h10.1l2-8H7" /><circle cx="9.5" cy="19" r="1.2" /><circle cx="17" cy="19" r="1.2" /></svg>
+  if (name === 'bag') return <svg {...common}><path d="M5 8h14l-1 12H6L5 8z M9 8V6.5a3 3 0 016 0V8" /></svg>
+  if (name === 'mail') return <svg {...common}><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="M4 7.5l8 6 8-6" /></svg>
+  if (name === 'lock') return <svg {...common}><rect x="5" y="10.5" width="14" height="9.5" rx="2.2" /><path d="M8.5 10.5V8a3.5 3.5 0 017 0v2.5" /></svg>
+  return null
+}
+
+function Thumb({ src, alt, size = 72, brand }) {
+  if (src) return <img src={src} alt={alt} loading="lazy" style={{ width: size, height: size, objectFit: 'cover', borderRadius: 14, flexShrink: 0 }} />
+  return (
+    <div aria-hidden="true" style={{ width: size, height: size, flex: 'none', borderRadius: 14, background: `color-mix(in srgb, ${brand} 12%, white)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: brand }}>
+      <Icon name="bag" size={Math.round(size * 0.42)} />
+    </div>
+  )
+}
+
+function ProductCard({ p, S, brand, busy, picked, setPicked, onAdd }) {
   const vid = picked[p.id]
   const shown = p.variants.length ? (p.variants.find((v) => v.id === vid)?.price ?? p.variants[0].price) : p.price
+  const from = p.variants.length > 1 && !vid
   return (
-    <div style={{ ...(bare ? { borderTop: '1px solid #eef2f4', padding: '10px 0' } : S.card), display: 'flex', gap: 10 }}>
-      {p.image_url && <img src={p.image_url} alt={p.title} loading="lazy" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, color: '#1c2b36', overflowWrap: 'anywhere' }}>{p.title}</div>
-        {p.description && <div style={{ fontSize: 13, color: '#4a6375', margin: '2px 0' }}>{p.description}</div>}
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#1c2b36' }}>{p.variants.length > 1 && !vid ? 'From ' : ''}{naira(p.variants.length > 1 && !vid ? Math.min(...p.variants.map((v) => v.price)) : shown)}</div>
-        {p.variants.length > 1 && (
-          <select aria-label={`Option for ${p.title}`} style={{ ...S.full, minHeight: 40, marginTop: 6 }} value={vid || ''}
+    <div style={S.card}>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Thumb src={p.image_url} alt={p.title} brand={brand} />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.2px', overflowWrap: 'anywhere' }}>{p.title}</span>
+          {p.description && <span style={{ fontSize: 14, lineHeight: 1.4, color: MUTED }}>{p.description}</span>}
+          <span style={{ fontSize: 16, fontWeight: 700, color: S.brandDark, marginTop: 2 }}>{from ? 'From ' : ''}{naira(from ? Math.min(...p.variants.map((v) => v.price)) : shown)}</span>
+        </div>
+      </div>
+      {p.variants.length > 1 && (
+        <label style={{ display: 'block', marginTop: 10 }}>
+          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 4 }}>Option</span>
+          <select aria-label={`Option for ${p.title}`} style={{ ...S.field, height: 44, padding: '0 12px', fontSize: 15 }} value={vid || ''}
             onChange={(e) => setPicked({ ...picked, [p.id]: e.target.value })}>
             <option value="">Choose an option</option>
             {p.variants.map((v) => <option key={v.id} value={v.id}>{v.label} - {naira(v.price)}</option>)}
           </select>
-        )}
-        <button type="button" style={{ ...S.chip, marginTop: 8, background: brand, color: '#fff' }} disabled={busy} onClick={() => onAdd(p)}>Add to cart</button>
-      </div>
+        </label>
+      )}
+      <button type="button" style={{ ...S.primary, marginTop: 12, minHeight: 44, fontSize: 15, fontWeight: 600 }} disabled={busy} onClick={() => onAdd(p)}>Add to cart</button>
     </div>
   )
 }
@@ -58,7 +95,7 @@ export default function WebChatPage({ chatKey }) {
   const [hasContact, setHasContact] = useState(false)
   const [verified, setVerified] = useState(false)
   const [human, setHuman] = useState(false)
-  const [panel, setPanel] = useState(null)                // null | 'contact' | 'email' | 'booking'
+  const [panel, setPanel] = useState(null)                // null | 'contact' | 'email' | 'booking' | 'shop' | 'cart' | 'save'
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -152,7 +189,7 @@ export default function WebChatPage({ chatKey }) {
     return () => clearInterval(id)
   }, [state, messages, chatKey, tokenKey, merge])
 
-  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight }, [messages, panel])
+  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight }, [messages, cards])
 
   const handleReply = (res) => {
     merge(res.messages)
@@ -169,6 +206,7 @@ export default function WebChatPage({ chatKey }) {
     try { await fn() } catch (e) { setError(chatErrorMessage(e)) } finally { setBusy(false) }
   }
 
+  const closePanel = () => { setPanel(null); setError('') }
   const sendMenu = (id) => act(async () => handleReply(await sendChat(chatKey, token.current, { kind: 'menu', menu_id: id })))
   const sendText = (e) => {
     e.preventDefault()
@@ -226,172 +264,276 @@ export default function WebChatPage({ chatKey }) {
     })
   }
 
+  const brandDark = `color-mix(in srgb, ${brand} 78%, black)`
+  const tint = `color-mix(in srgb, ${brand} 10%, white)`
+  const tintLine = `color-mix(in srgb, ${brand} 28%, white)`
+
   const S = {
-    page: { height: '100dvh', display: 'flex', justifyContent: 'center', background: '#eef2f4', fontFamily: "'DM Sans', system-ui, sans-serif" },
-    shell: { width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', background: '#fff', height: '100%', boxShadow: '0 0 24px rgba(0,0,0,0.06)' },
-    head: { background: brand, color: '#fff', padding: '14px 16px', fontWeight: 700, fontSize: 17 },
-    list: { flex: 1, overflowY: 'auto', padding: '14px 12px', background: '#f6f8f9' },
+    brandDark,
+    page: { height: '100dvh', display: 'flex', justifyContent: 'center', background: '#E4EAED', fontFamily: FONT, color: INK },
+    shell: { width: '100%', maxWidth: 520, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: BG, height: '100%', boxShadow: '0 0 24px rgba(0,0,0,0.06)' },
+    head: { flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fff', borderBottom: `1px solid ${LINE}` },
+    avatar: { width: 40, height: 40, flex: 'none', borderRadius: 999, background: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 },
+    list: { flex: 1, minHeight: 0, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
+    row: (role) => ({ alignSelf: role === 'visitor' ? 'flex-end' : 'flex-start', maxWidth: '82%', display: 'flex', flexDirection: 'column', gap: 3, alignItems: role === 'visitor' ? 'flex-end' : 'flex-start' }),
     bubble: (role) => ({
-      maxWidth: '82%', margin: role === 'visitor' ? '6px 0 6px auto' : '6px auto 6px 0', padding: '9px 12px', borderRadius: 14,
-      fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
-      background: role === 'visitor' ? brand : '#fff', color: role === 'visitor' ? '#fff' : '#1c2b36',
-      border: role === 'visitor' ? 'none' : '1px solid #dfe6ea',
+      padding: '10px 14px', fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+      borderRadius: role === 'visitor' ? '18px 18px 6px 18px' : '18px 18px 18px 6px',
+      background: role === 'visitor' ? brand : role === 'rep' ? tint : '#fff',
+      color: role === 'visitor' ? '#fff' : INK,
+      border: role === 'visitor' ? 'none' : `1px solid ${role === 'rep' ? tintLine : LINE}`,
     }),
-    who: { fontSize: 11, color: '#6b7f8d', margin: '8px 4px 0', fontWeight: 600 },
-    menu: { display: 'flex', flexWrap: 'wrap', gap: 8, padding: '8px 12px', background: '#fff', borderTop: '1px solid #e6ecef' },
-    chip: { minHeight: 40, padding: '8px 14px', borderRadius: 20, border: `1.5px solid ${brand}`, background: '#fff', color: brand, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-    form: { display: 'flex', gap: 8, padding: '8px 12px 12px', background: '#fff' },
-    input: { flex: 1, minWidth: 0, minHeight: 44, padding: '10px 12px', border: '1px solid #c9d6de', borderRadius: 10, fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box' },
-    send: { minHeight: 44, minWidth: 64, border: 0, borderRadius: 10, background: brand, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
-    card: { background: '#fff', border: '1px solid #dfe6ea', borderRadius: 12, padding: 14, margin: '10px 0' },
-    lab: { display: 'block', fontSize: 13, fontWeight: 600, color: '#2c4152', margin: '8px 0 4px' },
-    full: { width: '100%', minHeight: 44, padding: '10px 12px', border: '1px solid #c9d6de', borderRadius: 8, fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box' },
-    primary: { width: '100%', minHeight: 46, marginTop: 12, border: 0, borderRadius: 8, background: brand, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
-    err: { color: '#b3261e', fontSize: 13, padding: '0 12px 6px', minHeight: 4 },
-    center: { margin: 'auto', padding: 24, textAlign: 'center', color: '#4a6375', fontSize: 15 },
+    who: { fontSize: 12, fontWeight: 600, color: brandDark, marginLeft: 4 },
+    chips: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+    chip: { minHeight: 44, padding: '0 16px', borderRadius: 999, border: `1.5px solid ${brand}`, background: '#fff', color: brandDark, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+    dock: { flex: 'none', background: '#fff', borderTop: `1px solid ${LINE}`, padding: '10px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 },
+    action: { flex: 1, minHeight: 44, borderRadius: 12, border: `1px solid ${LINE}`, background: BG, color: INK, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    input: { flex: 1, minWidth: 0, height: 48, padding: '0 18px', border: `1px solid ${LINE}`, borderRadius: 999, fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', background: BG, color: INK },
+    send: { width: 48, height: 48, flex: 'none', border: 0, borderRadius: 999, background: brand, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    linkBtn: { alignSelf: 'center', minHeight: 44, margin: '-4px 0 -8px', border: 0, background: 'transparent', color: brandDark, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 },
+    card: { background: '#fff', border: `1px solid ${LINE}`, borderRadius: 18, padding: 14 },
+    lab: { display: 'block', fontSize: 14, fontWeight: 600, margin: '0 0 6px' },
+    field: { width: '100%', height: 48, padding: '0 14px', border: `1px solid ${FIELD_LINE}`, borderRadius: 12, fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff', color: INK },
+    primary: { width: '100%', minHeight: 50, border: 0, borderRadius: 12, background: brand, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
+    ghost: { width: '100%', minHeight: 44, border: 0, borderRadius: 12, background: 'transparent', color: brandDark, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+    outline: { width: '100%', minHeight: 44, border: `1px solid ${LINE}`, borderRadius: 12, background: '#fff', color: INK, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+    err: { flex: 'none', color: '#B3261E', background: '#FBE9E7', fontSize: 14, padding: '8px 16px' },
+    center: { margin: 'auto', padding: 32, textAlign: 'center', color: MUTED, fontSize: 15, lineHeight: 1.5, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 },
+    iconBtn: { width: 44, height: 44, flex: 'none', border: 0, borderRadius: 12, background: 'transparent', color: INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    page2: { position: 'absolute', inset: 0, background: BG, display: 'flex', flexDirection: 'column', zIndex: 3 },
+    scrim: { position: 'absolute', inset: 0, background: 'rgba(20,34,43,0.55)', zIndex: 4 },
+    sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 5, maxHeight: '92%', overflowY: 'auto', background: '#fff', borderRadius: '24px 24px 0 0', padding: '10px 20px 24px', display: 'flex', flexDirection: 'column', gap: 14 },
   }
 
-  if (state === 'loading') return <div style={S.page}><div style={S.shell}><div style={S.center}>Opening chat…</div></div></div>
-  if (state === 'closed') return <div style={S.page}><div style={S.shell}><div style={S.center}>This chat is not available right now.</div></div></div>
+  const css = (
+    <style>{`
+      .wc-root button:focus-visible, .wc-root input:focus-visible, .wc-root select:focus-visible { outline: 2px solid ${brand}; outline-offset: 2px; }
+      .wc-root button:disabled { opacity: 0.55; cursor: default; }
+      @keyframes wc-pulse { 0%,100% { opacity: .35; transform: scale(.92) } 50% { opacity: 1; transform: scale(1) } }
+      @media (prefers-reduced-motion: reduce) { .wc-pulse { animation: none !important; } }
+    `}</style>
+  )
+
+  if (state === 'loading') return (
+    <div style={S.page} className="wc-root">{css}<div style={S.shell}><div style={S.center}>
+      <div className="wc-pulse" aria-hidden="true" style={{ ...S.avatar, width: 64, height: 64, fontSize: 26, animation: 'wc-pulse 1.4s ease-in-out infinite' }}>·</div>
+      <div role="status" style={{ fontSize: 16, fontWeight: 600, color: INK }}>Opening chat</div>
+    </div></div></div>
+  )
+  if (state === 'closed') return (
+    <div style={S.page} className="wc-root">{css}<div style={S.shell}><div style={S.center}>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: INK }}>This chat is not available right now</h1>
+      <p style={{ margin: 0, maxWidth: 280 }}>The business is not taking chat messages at the moment. Please check back later.</p>
+    </div></div></div>
+  )
   if (state === 'error') return (
-    <div style={S.page}><div style={S.shell}><div style={S.center}>
-      We could not open the chat. <button style={{ ...S.chip, marginTop: 12 }} onClick={() => { writeStore(tokenKey, null); window.location.reload() }}>Try again</button>
+    <div style={S.page} className="wc-root">{css}<div style={S.shell}><div style={S.center}>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: INK }}>We could not open the chat</h1>
+      <p style={{ margin: 0, maxWidth: 280 }}>Check your internet connection, then try again.</p>
+      <button type="button" style={{ ...S.primary, width: 'auto', padding: '0 32px' }} onClick={() => { writeStore(tokenKey, null); window.location.reload() }}>Try again</button>
     </div></div></div>
   )
 
-  return (
-    <div style={S.page}>
-      <div style={S.shell}>
-        <div style={S.head}>{cfg.business_name}</div>
+  const sheetOpen = ['contact', 'email', 'booking', 'save'].includes(panel)
+  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat' }[panel]
 
-        <div style={S.list} ref={listRef} role="log" aria-live="polite" aria-label="Chat messages">
+  return (
+    <div style={S.page} className="wc-root">
+      {css}
+      <div style={S.shell}>
+        <header style={S.head}>
+          <div style={S.avatar} aria-hidden="true">{(cfg.business_name || '?').trim().charAt(0).toUpperCase()}</div>
+          <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.2px', lineHeight: 1.2 }}>{cfg.business_name}</h1>
+        </header>
+
+        <main style={S.list} ref={listRef} role="log" aria-live="polite" aria-label="Chat messages">
           {messages.map((m, i) => (
-            <div key={m.id}>
-              {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <div style={S.who}>{cfg.business_name} team</div>}
+            <div key={m.id} style={S.row(m.role)}>
+              {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <span style={S.who}>{cfg.business_name} team</span>}
               <div style={S.bubble(m.role)}><Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} /></div>
             </div>
           ))}
 
           {cards.length > 0 && !panel && cards.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} />)}
 
-          {panel === 'shop' && (
-            <div style={S.card}>
-              <div style={{ fontWeight: 700, color: '#1c2b36', marginBottom: 6 }}>Shop</div>
-              {products.length === 0 && <div style={{ fontSize: 14, color: '#4a6375' }}>No products to show right now.</div>}
-              {products.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} bare />)}
-              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={() => setPanel(null)}>Back to chat</button>
+          {cfg.menu.length > 0 && (
+            <div style={S.chips}>
+              {cfg.menu.map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
             </div>
           )}
 
-          {panel === 'cart' && (
-            <div style={S.card}>
-              <div style={{ fontWeight: 700, color: '#1c2b36', marginBottom: 6 }}>Your cart</div>
-              {cart.items.length === 0 && <div style={{ fontSize: 14, color: '#4a6375' }}>Your cart is empty.</div>}
-              {cart.items.map((i) => (
-                <div key={`${i.pid}-${i.vid}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #eef2f4', fontSize: 14 }}>
-                  <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{i.name} x{i.qty}</span>
-                  <span style={{ whiteSpace: 'nowrap' }}>{naira(i.price * i.qty)} <button type="button" aria-label={`Remove ${i.name}`} style={{ ...S.chip, minHeight: 32, padding: '2px 10px', marginLeft: 6 }} disabled={busy} onClick={() => removeLine(i)}>Remove</button></span>
-                </div>
-              ))}
-              {cart.items.length > 0 && <div style={{ fontWeight: 700, margin: '10px 0 0', textAlign: 'right' }}>Total {naira(cart.total)}</div>}
-              {cart.items.length > 0 && <button type="button" style={S.primary} disabled={busy} onClick={checkout}>Pay {naira(cart.total)}</button>}
-              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={openShop}>Keep shopping</button>
-              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={() => setPanel(null)}>Back to chat</button>
+          {human && (
+            <p style={{ margin: '4px 0', textAlign: 'center', fontSize: 13, color: MUTED }}>A team member will reply here.</p>
+          )}
+        </main>
+
+        {error && !sheetOpen && !panel && <div style={S.err} role="alert">{error}</div>}
+
+        <div style={S.dock}>
+          {cfg.shop_enabled && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" style={S.action} disabled={busy} onClick={openShop}><Icon name="bag" />Shop</button>
+              <button type="button" style={{ ...S.action, flex: 1.6, background: brand, borderColor: brand, color: '#fff' }} disabled={busy}
+                onClick={() => setPanel('cart')}><Icon name="cart" />Cart ({cart.count}){cart.count > 0 ? ` · ${naira(cart.total)}` : ''}</button>
             </div>
           )}
-
-          {panel === 'save' && (
-            <form style={S.card} onSubmit={submitSave}>
-              <div style={{ fontSize: 14, color: '#2c4152' }}>We will email you this chat, and tell you if the team replies after you have left.</div>
-              <label style={S.lab} htmlFor="wc-save-email">Email</label>
-              <input id="wc-save-email" style={S.full} value={saveForm.email} maxLength={200} inputMode="email" autoComplete="email" required
-                onChange={(e) => setSaveForm({ ...saveForm, email: e.target.value })} />
-              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: '#4a6375', margin: '10px 0 0' }}>
-                <input type="checkbox" checked={saveForm.consent} style={{ marginTop: 3 }}
-                  onChange={(e) => setSaveForm({ ...saveForm, consent: e.target.checked })} />
-                <span>Email me this chat and any replies from {cfg.business_name}. I can stop these emails any time.</span>
-              </label>
-              <button type="submit" style={S.primary} disabled={busy}>Email me this chat</button>
-              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={stopEmails} disabled={busy}>Stop follow-ups</button>
-              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={() => setPanel(null)}>Back to chat</button>
-            </form>
+          <form onSubmit={sendText} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
+            <input id="wc-text" style={S.input} value={text} maxLength={1000} placeholder="Type your message" autoComplete="off"
+              onChange={(e) => setText(e.target.value)} />
+            <button type="submit" aria-label="Send" style={S.send} disabled={busy || !text.trim()}><Icon name="send" size={22} /></button>
+          </form>
+          {hasContact && cfg.email_enabled && (
+            <button type="button" style={S.linkBtn} onClick={() => setPanel('save')}><Icon name="mail" size={18} />Email me this chat</button>
           )}
-
-          {panel === 'contact' && (
-            <form style={S.card} onSubmit={submitContact}>
-              <div style={{ fontSize: 14, color: '#2c4152', marginBottom: 4 }}>{cfg.contact_prompt}</div>
-              <label style={S.lab} htmlFor="wc-name">Your name</label>
-              <input id="wc-name" style={S.full} value={contact.name} maxLength={80} autoComplete="name" required
-                onChange={(e) => setContact({ ...contact, name: e.target.value })} />
-              <label style={S.lab} htmlFor="wc-phone">WhatsApp number</label>
-              <input id="wc-phone" style={S.full} value={contact.phone} maxLength={30} inputMode="tel" autoComplete="tel"
-                onChange={(e) => setContact({ ...contact, phone: e.target.value })} />
-              <label style={S.lab} htmlFor="wc-email">Email (optional if you gave a number)</label>
-              <input id="wc-email" style={S.full} value={contact.email} maxLength={200} inputMode="email" autoComplete="email"
-                onChange={(e) => setContact({ ...contact, email: e.target.value })} />
-              <input aria-hidden="true" tabIndex={-1} autoComplete="off" value={contact.website} name="website"
-                onChange={(e) => setContact({ ...contact, website: e.target.value })}
-                style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
-              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: '#4a6375', margin: '10px 0 0' }}>
-                <input type="checkbox" checked={contact.consent} style={{ marginTop: 3 }}
-                  onChange={(e) => setContact({ ...contact, consent: e.target.checked })} />
-                <span>{cfg.consent_text}</span>
-              </label>
-              <button type="submit" style={S.primary} disabled={busy}>Continue</button>
-            </form>
-          )}
-
-          {panel === 'email' && (
-            <form style={S.card} onSubmit={submitContact}>
-              <div style={{ fontSize: 14, color: '#2c4152' }}>Want a copy of this chat by email? Add your email (optional).</div>
-              <label style={S.lab} htmlFor="wc-email2">Email</label>
-              <input id="wc-email2" style={S.full} value={contact.email} maxLength={200} inputMode="email" autoComplete="email"
-                onChange={(e) => setContact({ ...contact, email: e.target.value, consent: !!e.target.value })} />
-              <button type="submit" style={S.primary} disabled={busy || !contact.email}>Save email</button>
-              <button type="button" style={{ ...S.chip, width: '100%', marginTop: 8 }} onClick={() => setPanel(null)}>No thanks</button>
-            </form>
-          )}
-
-          {panel === 'booking' && (
-            <form style={S.card} onSubmit={submitBooking}>
-              {cfg.booking_fields.map((f) => (
-                <div key={f.key}>
-                  <label style={S.lab} htmlFor={`wc-b-${f.key}`}>{f.label}</label>
-                  <input id={`wc-b-${f.key}`} style={S.full} value={booking[f.key] || ''} maxLength={300} required={f.required}
-                    onChange={(e) => setBooking({ ...booking, [f.key]: e.target.value })} />
-                </div>
-              ))}
-              <button type="submit" style={S.primary} disabled={busy}>Send booking request</button>
-            </form>
-          )}
-          {human && <div style={{ ...S.who, textAlign: 'center', margin: '12px 0' }}>A team member will reply here.</div>}
         </div>
 
-        {error && <div style={S.err} role="alert">{error}</div>}
-
-        {(cfg.menu.length > 0 || cfg.shop_enabled) && (
-          <div style={S.menu}>
-            {cfg.menu.map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
-            {cfg.shop_enabled && <button type="button" style={{ ...S.chip, background: brand, color: '#fff' }} disabled={busy} onClick={openShop}>Shop</button>}
-            {cfg.shop_enabled && cart.count > 0 && <button type="button" style={S.chip} disabled={busy} onClick={() => setPanel('cart')}>Cart ({cart.count}) {naira(cart.total)}</button>}
+        {panel === 'shop' && (
+          <div style={S.page2}>
+            <header style={S.head}>
+              <button type="button" aria-label="Back to chat" style={{ ...S.iconBtn, marginLeft: -8 }} onClick={closePanel}><Icon name="back" size={22} /></button>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Shop</h2>
+            </header>
+            <div style={{ ...S.list, flex: 1 }}>
+              {products.length === 0 && <p style={{ margin: 0, fontSize: 15, color: MUTED }}>No products to show right now.</p>}
+              {products.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} />)}
+            </div>
+            {error && <div style={S.err} role="alert">{error}</div>}
+            <div style={S.dock}>
+              <button type="button" style={{ ...S.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setPanel('cart')}>
+                <Icon name="cart" />View cart ({cart.count}){cart.count > 0 ? ` · ${naira(cart.total)}` : ''}
+              </button>
+            </div>
           </div>
         )}
 
-        {hasContact && cfg.email_enabled && !panel && (
-          <div style={{ padding: '0 12px 4px', background: '#fff', textAlign: 'right' }}>
-            <button type="button" onClick={() => setPanel('save')}
-              style={{ background: 'none', border: 0, color: brand, fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 32, fontFamily: 'inherit' }}>
-              Email me this chat
-            </button>
+        {panel === 'cart' && (
+          <div style={S.page2}>
+            <header style={S.head}>
+              <button type="button" aria-label="Back to chat" style={{ ...S.iconBtn, marginLeft: -8 }} onClick={closePanel}><Icon name="back" size={22} /></button>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Your cart</h2>
+            </header>
+            <div style={{ ...S.list, flex: 1 }}>
+              <div style={{ ...S.card, padding: '4px 16px 0' }}>
+                {cart.items.length === 0 && <p style={{ margin: 0, padding: '14px 0', fontSize: 15, color: MUTED }}>Your cart is empty.</p>}
+                {cart.items.map((i, n) => (
+                  <div key={`${i.pid}-${i.vid}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderTop: n ? `1px solid ${LINE}` : 'none' }}>
+                    <Thumb src={i.image_url} alt={i.name} size={56} brand={brand} />
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 15, fontWeight: 600, overflowWrap: 'anywhere' }}>{i.name}</span>
+                      <span style={{ fontSize: 13, color: MUTED }}>Quantity {i.qty}</span>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: brandDark }}>{naira(i.price * i.qty)}</span>
+                    </div>
+                    <button type="button" aria-label={`Remove ${i.name}`} style={{ minHeight: 44, padding: '0 10px', border: 0, background: 'transparent', color: '#B3261E', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }} disabled={busy} onClick={() => removeLine(i)}>Remove</button>
+                  </div>
+                ))}
+                {cart.items.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '16px 0', borderTop: `1px solid ${LINE}` }}>
+                    <span style={{ fontSize: 15, color: MUTED }}>Total</span>
+                    <b style={{ fontSize: 22, letterSpacing: '-0.4px' }}>{naira(cart.total)}</b>
+                  </div>
+                )}
+              </div>
+              {cart.items.length > 0 && (
+                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: MUTED, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <Icon name="lock" size={18} /><span>You pay on a secure page.</span>
+                </p>
+              )}
+            </div>
+            {error && <div style={S.err} role="alert">{error}</div>}
+            <div style={S.dock}>
+              {cart.items.length > 0 && <button type="button" style={S.primary} disabled={busy} onClick={checkout}>Pay {naira(cart.total)}</button>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={{ ...S.outline, flex: 1 }} onClick={openShop} disabled={busy}>Keep shopping</button>
+                <button type="button" style={{ ...S.ghost, flex: 1 }} onClick={closePanel}>Back to chat</button>
+              </div>
+            </div>
           </div>
         )}
 
-        <form style={S.form} onSubmit={sendText}>
-          <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type a message</label>
-          <input id="wc-text" style={S.input} value={text} maxLength={1000} placeholder="Type a message" autoComplete="off"
-            onChange={(e) => setText(e.target.value)} />
-          <button type="submit" style={S.send} disabled={busy || !text.trim()}>Send</button>
-        </form>
+        {sheetOpen && (
+          <>
+            <div style={S.scrim} onClick={closePanel} aria-hidden="true" />
+            <section role="dialog" aria-modal="true" aria-label={sheetTitle} style={S.sheet}>
+              <div aria-hidden="true" style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 999, background: LINE }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.3px' }}>{sheetTitle}</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: 14, lineHeight: 1.45, color: MUTED }}>
+                    {panel === 'contact' && cfg.contact_prompt}
+                    {panel === 'email' && 'Add your email and we will write to you there. This is optional.'}
+                    {panel === 'booking' && 'Fill in the details and the team will confirm.'}
+                    {panel === 'save' && 'We will email you this chat, and tell you if the team replies after you have left.'}
+                  </p>
+                </div>
+                <button type="button" aria-label="Close" style={{ ...S.iconBtn, margin: '-6px -10px 0 0' }} onClick={closePanel}><Icon name="close" size={22} /></button>
+              </div>
+
+              {panel === 'contact' && (
+                <form onSubmit={submitContact} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <label><span style={S.lab}>Your name</span>
+                    <input style={S.field} value={contact.name} maxLength={80} autoComplete="name" required
+                      onChange={(e) => setContact({ ...contact, name: e.target.value })} /></label>
+                  <label><span style={S.lab}>Phone or WhatsApp number</span>
+                    <input style={S.field} value={contact.phone} maxLength={30} inputMode="tel" autoComplete="tel"
+                      onChange={(e) => setContact({ ...contact, phone: e.target.value })} /></label>
+                  <label><span style={S.lab}>Email <span style={{ fontWeight: 400, color: MUTED }}>(optional if you gave a number)</span></span>
+                    <input style={S.field} value={contact.email} maxLength={200} inputMode="email" autoComplete="email"
+                      onChange={(e) => setContact({ ...contact, email: e.target.value })} /></label>
+                  <input aria-hidden="true" tabIndex={-1} autoComplete="off" value={contact.website} name="website"
+                    onChange={(e) => setContact({ ...contact, website: e.target.value })}
+                    style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
+                  <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minHeight: 44, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={contact.consent} style={{ width: 22, height: 22, margin: '1px 0 0', accentColor: brand, flex: 'none' }}
+                      onChange={(e) => setContact({ ...contact, consent: e.target.checked })} />
+                    <span style={{ fontSize: 14, lineHeight: 1.45 }}>{cfg.consent_text}</span>
+                  </label>
+                  <button type="submit" style={S.primary} disabled={busy}>Continue to chat</button>
+                </form>
+              )}
+
+              {panel === 'email' && (
+                <form onSubmit={submitContact} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <label><span style={S.lab}>Email address</span>
+                    <input style={S.field} value={contact.email} maxLength={200} inputMode="email" autoComplete="email"
+                      onChange={(e) => setContact({ ...contact, email: e.target.value, consent: !!e.target.value })} /></label>
+                  <button type="submit" style={S.primary} disabled={busy || !contact.email}>Save email</button>
+                  <button type="button" style={S.ghost} onClick={closePanel}>No thanks</button>
+                </form>
+              )}
+
+              {panel === 'booking' && (
+                <form onSubmit={submitBooking} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {cfg.booking_fields.map((f) => (
+                    <label key={f.key}><span style={S.lab}>{f.label}</span>
+                      <input style={S.field} value={booking[f.key] || ''} maxLength={300} required={f.required}
+                        onChange={(e) => setBooking({ ...booking, [f.key]: e.target.value })} /></label>
+                  ))}
+                  <button type="submit" style={S.primary} disabled={busy}>Send booking request</button>
+                </form>
+              )}
+
+              {panel === 'save' && (
+                <form onSubmit={submitSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <label><span style={S.lab}>Email address</span>
+                    <input style={S.field} value={saveForm.email} maxLength={200} inputMode="email" autoComplete="email" required
+                      onChange={(e) => setSaveForm({ ...saveForm, email: e.target.value })} /></label>
+                  <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minHeight: 44, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={saveForm.consent} style={{ width: 22, height: 22, margin: '1px 0 0', accentColor: brand, flex: 'none' }}
+                      onChange={(e) => setSaveForm({ ...saveForm, consent: e.target.checked })} />
+                    <span style={{ fontSize: 14, lineHeight: 1.45 }}>Email me this chat and any replies from {cfg.business_name}. I can stop these emails any time.</span>
+                  </label>
+                  <button type="submit" style={S.primary} disabled={busy}>Email me this chat</button>
+                  <div style={{ borderTop: `1px solid ${LINE}`, paddingTop: 6 }}>
+                    <button type="button" style={S.ghost} onClick={stopEmails} disabled={busy}>Stop follow-up emails</button>
+                  </div>
+                </form>
+              )}
+
+              {error && <div style={{ ...S.err, borderRadius: 8 }} role="alert">{error}</div>}
+            </section>
+          </>
+        )}
       </div>
     </div>
   )
