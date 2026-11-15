@@ -42,7 +42,7 @@ DEFAULT_CONFIG: dict = {
     "enabled": False,
     "business_name": "",
     "brand_color": "#028090",
-    "greeting": "Hi! How can we help you today? Pick an option below or type your question.",
+    "greeting": "Hi! How can we help you today? Pick an option below, or tap Menu at the top any time.",
     "menu": [],
     "booking_fields": [
         {"key": "service", "label": "What would you like to book?", "required": True},
@@ -50,7 +50,7 @@ DEFAULT_CONFIG: dict = {
     ],
     "contact_prompt": "To carry on, tell us who you are so we can reach you if we get disconnected.",
     "consent_text": "I agree to be contacted about my enquiry.",
-    "fallback": "I did not catch that. Pick one of the options below, or tap Talk to us.",
+    "fallback": "I did not catch that. Tap Menu at the top to see what we can help with, or type your question again.",
     "human_reply": "Thanks. A team member will reply here as soon as they can.",
     "booking_done": "Thank you. We have your request and will confirm shortly.",
     "redirect_mode": "always",
@@ -71,6 +71,11 @@ DEFAULT_CONFIG: dict = {
     "stats_from": None,           # WEBCHAT-5b: ISO time; the numbers ignore anything before it (start counting from now)
     "call_enabled": False,        # WEBCHAT-CALL-1: phone icon in the chat header; calls only in business hours
     "call_number": "",            # digits; empty = the organisation's business contact / WhatsApp number
+}
+# WEBCHAT-UI-3: the old default wording pointed at buttons under the message; the menu is now an icon at the top
+_LEGACY_TEXT = {
+    "greeting": {"Hi! How can we help you today? Pick an option below or type your question.": "Hi! How can we help you today? Pick an option below, or tap Menu at the top any time."},
+    "fallback": {"I did not catch that. Pick one of the options below, or tap Talk to us.": "I did not catch that. Tap Menu at the top to see what we can help with, or type your question again."},
 }
 GOAL_KEYS = ("booking", "order", "paid", "whatsapp", "tap")
 
@@ -253,6 +258,9 @@ def get_config(db, org_id: str) -> dict:
     cfg = dict(DEFAULT_CONFIG)
     stored = row.get("webchat_config") if isinstance(row.get("webchat_config"), dict) else {}
     cfg.update(sanitise_config(stored))
+    for k, m in _LEGACY_TEXT.items():          # a business that never changed the old default gets the new wording
+        if cfg.get(k) in m:
+            cfg[k] = m[cfg[k]]
     if not cfg.get("business_name"):
         cfg["business_name"] = row.get("name") or "Our team"
     # read-only facts for the call button (no extra database trip); never saved back, never sent to visitors as-is
@@ -275,7 +283,7 @@ def public_view(cfg: dict) -> dict:
     return {
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "greeting": cfg["greeting"],
         "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
-        "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"],
+        "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
         "call": _call_status(cfg),
     }

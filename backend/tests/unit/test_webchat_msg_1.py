@@ -111,3 +111,21 @@ def test_deleted_quote_text_and_out_hides_content():
     row = {"id": "1", "content": "secret", "direction": "inbound", "deleted_at": "2026-11-15T10:00:00+00:00", "created_at": "x"}
     assert wc._out("visitor", row)["text"] == ""
     assert wc._quote_of("visitor", row)["text"] == "This message was deleted"
+
+
+def test_old_default_wording_is_replaced_but_custom_text_is_kept():
+    class Q2:
+        def __init__(self, row): self.row = row
+        def select(self, *a, **k): return self
+        def eq(self, *a, **k): return self
+        def limit(self, *a, **k): return self
+        def execute(self): return type("R", (), {"data": [self.row]})
+    class DB2:
+        def __init__(self, cfg): self.cfg = cfg
+        def table(self, n): return Q2({"name": "Shop", "webchat_config": self.cfg})
+    old = {"fallback": "I did not catch that. Pick one of the options below, or tap Talk to us.", "greeting": "Hi! How can we help you today? Pick an option below or type your question."}
+    got = wc.get_config(DB2(old), "o1")
+    assert "Menu" in got["fallback"] and "Menu" in got["greeting"]
+    custom = wc.get_config(DB2({"fallback": "Sorry, say that again?"}), "o1")
+    assert custom["fallback"] == "Sorry, say that again?"
+    assert "fallback" in wc.public_view(got)

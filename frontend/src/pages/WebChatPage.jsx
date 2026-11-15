@@ -31,6 +31,8 @@ function writeStore(key, v) { try { v ? window.localStorage.setItem(key, v) : wi
 
 const naira = (n) => `₦${Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
 
+// the chat fills the screen; on a wide screen the words stay in a readable column in the middle
+const GUT = 'max(16px, calc((100% - 880px) / 2))'
 const EDIT_WINDOW_MS = 15 * 60 * 1000       // the server enforces this too
 const MAX_MB = { image: 10, document: 15, audio: 5 }
 const DOC_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.txt'
@@ -190,6 +192,7 @@ export default function WebChatPage({ chatKey }) {
   const [hasContact, setHasContact] = useState(false)
   const [verified, setVerified] = useState(false)
   const [human, setHuman] = useState(false)
+  const [menuSeen, setMenuSeen] = useState(() => { try { return localStorage.getItem(`wc_menu_seen_${chatKey}`) === '1' } catch { return false } })
   const [msgMenu, setMsgMenu] = useState(null)         // { id, top, mine } while the message menu is open
   const [replyTo, setReplyTo] = useState(null)         // { id, role, text } the visitor is replying to
   const [editing, setEditing] = useState(null)         // { id } while a sent message is being edited
@@ -352,6 +355,10 @@ export default function WebChatPage({ chatKey }) {
       setPending((n) => Math.max(0, n - 1))
     }
   }
+  const openMenu = () => {
+    setPanel('menu')
+    if (!menuSeen) { setMenuSeen(true); try { localStorage.setItem(`wc_menu_seen_${chatKey}`, '1') } catch { /* storage blocked */ } }
+  }
   const openCall = () => {
     setError(''); setCallPhone(null); setPanel('call')
     // the server decides open or closed; ask again so a page left open for hours is not out of date
@@ -411,7 +418,8 @@ export default function WebChatPage({ chatKey }) {
     const h = msgActions(m).length * 48 + 8
     let top = box.bottom - shell.top + 8
     if (top + h > shell.height - 130) top = Math.max(64, box.top - shell.top - h - 8)
-    setMsgMenu({ id: m.id, top, mine: m.role === 'visitor' })
+    const mine = m.role === 'visitor'
+    setMsgMenu({ id: m.id, top, mine, side: mine ? Math.max(8, shell.right - box.right) : Math.max(8, box.left - shell.left) })
   }
   const closeMsgMenu = () => setMsgMenu(null)
   const runMsgAction = (kind) => {
@@ -564,11 +572,11 @@ export default function WebChatPage({ chatKey }) {
 
   const S = {
     brandDark,
-    page: { height: '100dvh', display: 'flex', justifyContent: 'center', background: '#E4EAED', fontFamily: FONT, color: INK },
-    shell: { width: '100%', maxWidth: 520, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: BG, height: '100%', boxShadow: '0 0 24px rgba(0,0,0,0.06)' },
-    head: { flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fff', borderBottom: `1px solid ${LINE}` },
+    page: { height: '100dvh', display: 'flex', background: BG, fontFamily: FONT, color: INK },
+    shell: { width: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: BG, height: '100%' },
+    head: { flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: `12px ${GUT}`, background: '#fff', borderBottom: `1px solid ${LINE}` },
     avatar: { width: 40, height: 40, flex: 'none', borderRadius: 999, background: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 },
-    list: { flex: 1, minHeight: 0, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
+    list: { flex: 1, minHeight: 0, overflowY: 'auto', padding: `16px ${GUT}`, display: 'flex', flexDirection: 'column', gap: 12 },
     row: (role) => ({ alignSelf: role === 'visitor' ? 'flex-end' : 'flex-start', maxWidth: '82%', display: 'flex', flexDirection: 'column', gap: 3, alignItems: role === 'visitor' ? 'flex-end' : 'flex-start' }),
     bubble: (role) => ({
       padding: '10px 14px', fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
@@ -580,7 +588,7 @@ export default function WebChatPage({ chatKey }) {
     who: { fontSize: 12, fontWeight: 600, color: brandDark, marginLeft: 4 },
     chips: { display: 'flex', flexWrap: 'wrap', gap: 8 },
     chip: { minHeight: 44, padding: '0 16px', borderRadius: 999, border: `1.5px solid ${brand}`, background: '#fff', color: brandDark, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-    dock: { flex: 'none', background: '#fff', borderTop: `1px solid ${LINE}`, padding: '10px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 },
+    dock: { flex: 'none', background: '#fff', borderTop: `1px solid ${LINE}`, padding: `10px ${GUT} 14px`, display: 'flex', flexDirection: 'column', gap: 10 },
     action: { flex: 1, minHeight: 44, borderRadius: 12, border: `1px solid ${LINE}`, background: BG, color: INK, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 },
     input: { flex: 1, minWidth: 0, height: 48, padding: '0 18px', border: `1px solid ${LINE}`, borderRadius: 999, fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', background: BG, color: INK },
     send: { width: 48, height: 48, flex: 'none', border: 0, borderRadius: 999, background: brand, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
@@ -596,7 +604,7 @@ export default function WebChatPage({ chatKey }) {
     iconBtn: { width: 44, height: 44, flex: 'none', border: 0, borderRadius: 12, background: 'transparent', color: INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     page2: { position: 'absolute', inset: 0, background: BG, display: 'flex', flexDirection: 'column', zIndex: 3 },
     scrim: { position: 'absolute', inset: 0, background: 'rgba(20,34,43,0.55)', zIndex: 4 },
-    sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 5, maxHeight: '92%', overflowY: 'auto', background: '#fff', borderRadius: '24px 24px 0 0', padding: '10px 20px 24px', display: 'flex', flexDirection: 'column', gap: 14 },
+    sheet: { position: 'absolute', left: 0, right: 0, margin: '0 auto', maxWidth: 560, bottom: 0, zIndex: 5, maxHeight: '92%', overflowY: 'auto', background: '#fff', borderRadius: '24px 24px 0 0', padding: '10px 20px 24px', display: 'flex', flexDirection: 'column', gap: 14 },
   }
 
   const css = (
@@ -605,8 +613,10 @@ export default function WebChatPage({ chatKey }) {
       .wc-root button:disabled { opacity: 0.55; cursor: default; }
       @keyframes wc-pulse { 0%,100% { opacity: .35; transform: scale(.92) } 50% { opacity: 1; transform: scale(1) } }
       @keyframes wc-pop { from { opacity: 0; transform: translateY(8px) scale(.98) } to { opacity: 1; transform: none } }
+      @keyframes wc-ping { 0% { box-shadow: 0 0 0 0 rgba(232,89,12,.55) } 70%,100% { box-shadow: 0 0 0 9px rgba(232,89,12,0) } }
+      .wc-ping { animation: wc-ping 1.6s ease-out infinite }
       @keyframes wc-bounce { 0%,60%,100% { transform: translateY(0); opacity: .45 } 30% { transform: translateY(-4px); opacity: 1 } }
-      @media (prefers-reduced-motion: reduce) { .wc-pulse, .wc-anim, .wc-dot { animation: none !important; } }
+      @media (prefers-reduced-motion: reduce) { .wc-pulse, .wc-anim, .wc-dot, .wc-ping { animation: none !important; } }
     `}</style>
   )
 
@@ -650,9 +660,10 @@ export default function WebChatPage({ chatKey }) {
             </button>
           )}
           {cfg.menu.length > 0 && (
-            <button type="button" aria-label="Menu" aria-haspopup="dialog" onClick={() => setPanel('menu')}
-              style={{ width: 48, height: 48, flex: 'none', margin: '-6px -4px -6px 0', border: 0, borderRadius: 999, background: panel === 'menu' ? brand : 'transparent', color: panel === 'menu' ? '#fff' : INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="menu" size={22} />
+            <button type="button" aria-label="Menu" aria-haspopup="dialog" onClick={openMenu}
+              style={{ position: 'relative', height: 44, flex: 'none', margin: '-4px 0', padding: '0 14px 0 12px', border: `1.5px solid ${panel === 'menu' ? brand : tintLine}`, borderRadius: 999, background: panel === 'menu' ? brand : tint, color: panel === 'menu' ? '#fff' : brandDark, fontSize: 15, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="menu" size={20} />Menu
+              {!menuSeen && <span aria-hidden="true" className="wc-ping" style={{ position: 'absolute', top: -2, right: -2, width: 12, height: 12, borderRadius: 999, background: '#E8590C', border: '2px solid #fff' }} />}
             </button>
           )}
         </header>
@@ -683,6 +694,11 @@ export default function WebChatPage({ chatKey }) {
                   ? <AttachmentBubble a={m.attachment} mine={m.role === 'visitor'} brand={brand} />
                   : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
               </div>
+              )}
+              {m.role === 'bot' && cfg.menu.length > 0 && cfg.fallback && m.text === cfg.fallback && i === messages.length - 1 && (
+                <button type="button" style={{ ...S.chip, minHeight: 40, marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }} onClick={openMenu}>
+                  <Icon name="menu" size={18} />Open menu
+                </button>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: MUTED, margin: '0 4px' }}>
                 <span>{m.edited && !m.deleted ? 'Edited · ' : ''}{fmtClock(m.at)}</span>
@@ -719,7 +735,7 @@ export default function WebChatPage({ chatKey }) {
           return (
             <>
               <div style={{ ...S.scrim, background: 'rgba(20,34,43,0.35)' }} onClick={closeMsgMenu} aria-hidden="true" />
-              <div role="menu" aria-label="Message options" style={{ position: 'absolute', zIndex: 6, top: msgMenu.top, ...(msgMenu.mine ? { right: 16 } : { left: 16 }), width: 220, background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 28px rgba(20,34,43,0.22)' }}>
+              <div role="menu" aria-label="Message options" style={{ position: 'absolute', zIndex: 6, top: msgMenu.top, ...(msgMenu.mine ? { right: msgMenu.side } : { left: msgMenu.side }), width: 220, background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 28px rgba(20,34,43,0.22)' }}>
                 {msgActions(m).map(([k, label], n) => (
                   <button key={k} type="button" role="menuitem" onClick={() => runMsgAction(k)}
                     style={{ minHeight: 48, width: '100%', padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: '#fff', color: k === 'delete' ? '#B3261E' : INK, fontSize: 16, fontWeight: 500, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
