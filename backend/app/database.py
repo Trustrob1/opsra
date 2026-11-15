@@ -30,8 +30,11 @@ from __future__ import annotations
 
 import contextvars
 import logging
+import os
+import threading
 from typing import List, Optional
 
+import httpx
 from supabase import Client, create_client
 
 from app.config import settings
@@ -68,6 +71,116 @@ _active_clients: contextvars.ContextVar[Optional[List[Client]]] = contextvars.Co
 )
 
 
+# ---------------------------------------------------------------------------
+# DB-POOL-1 (Nov 2026): reuse open connections to Supabase.
+#
+# Every get_supabase() call builds a NEW Client (see above), and the cleanup
+# hooks close its session at the end of the request. Result: every database
+# call opened a brand-new TLS connection (TCP + TLS handshake = several
+# round trips) before it could send a query. With the backend far from the
+# database that cost more than the query itself.
+#
+# Fix: clients are still created fresh (so query-builder state is never
+# shared - the sign-out-loop bug), but each client's HTTP session is given a
+# SHARED, bounded connection pool, so connections stay open between calls.
+#  - one pool per OS process (a forked Celery child builds its own: sockets
+#    must never be shared across a fork)
+#  - bounded (max 40 open, 20 kept idle, idle ones dropped after 20 s), so
+#    the old "hundreds of stale connections" memory problem cannot return
+#  - the shared transport ignores close(), so the per-request cleanup that
+#    closes each client does not close the pool
+#  - switch off without a deploy: set env SUPABASE_POOL=0
+# ---------------------------------------------------------------------------
+
+
+class _SharedTransport(httpx.HTTPTransport):
+    """HTTP transport that stays open when a client that uses it is closed."""
+
+    def close(self) -> None:  # the pool belongs to the process, not to one client
+        return None
+
+
+_pool_lock = threading.Lock()
+_pool_pid: Optional[int] = None
+_pool_transport: Optional[_SharedTransport] = None
+
+
+def _pool_enabled() -> bool:
+    return os.environ.get("SUPABASE_POOL", "1").strip().lower() not in ("0", "false", "off", "no")
+
+
+def _shared_transport() -> _SharedTransport:
+    """The connection pool for THIS process (created on first use, again after a fork)."""
+    global _pool_pid, _pool_transport
+    pid = os.getpid()
+    if _pool_transport is None or _pool_pid != pid:
+        with _pool_lock:
+            if _pool_transport is None or _pool_pid != pid:
+                _pool_transport = _SharedTransport(
+                    limits=httpx.Limits(max_connections=40, max_keepalive_connections=20, keepalive_expiry=20.0),
+                )
+                _pool_pid = pid
+    return _pool_transport
+
+
+def _use_shared_pool(client: Client) -> None:
+    """Point the client's PostgREST session at the shared pool. Never raises: on any problem the
+    client simply keeps its own session (the old behaviour)."""
+    try:
+        old = client.postgrest.session
+        client.postgrest.session = type(old)(
+            base_url=old.base_url,
+            headers=old.headers,
+            timeout=old.timeout,
+            follow_redirects=True,
+            transport=_shared_transport(),
+        )
+        old.close()
+    except Exception:
+        logger.warning("DB-POOL-1: could not attach the shared pool; using a private connection", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# DB-POOL-1 part 2: build the TLS certificate setup once per process.
+# Every Supabase Client creates several httpx clients (auth, REST, storage, functions) and each one used to
+# reload the whole CA certificate bundle (about 40 ms of CPU each, so ~160 ms per get_supabase() call, on every
+# request). The result is a plain SSLContext that is safe to share, so build it once and hand it out again.
+# Only the ordinary case is cached (verify=True, no client certificate); anything else is built as before.
+# Off switch without a deploy: env SUPABASE_SSL_CACHE=0.
+# ---------------------------------------------------------------------------
+
+_ssl_cache: dict = {}
+
+
+def _install_ssl_cache() -> None:
+    try:
+        import httpx._transports.default as _hd
+
+        original = _hd.create_ssl_context
+        if getattr(original, "_opsra_cached", False):
+            return
+
+        def cached_create_ssl_context(*args, **kwargs):
+            if (os.environ.get("SUPABASE_SSL_CACHE", "1").strip().lower() in ("0", "false", "off", "no")
+                    or args or kwargs.get("cert") is not None or kwargs.get("verify", True) is not True):
+                return original(*args, **kwargs)
+            key = (bool(kwargs.get("trust_env", True)), bool(kwargs.get("http2", False)))
+            ctx = _ssl_cache.get(key)
+            if ctx is None:
+                ctx = original(*args, **kwargs)
+                _ssl_cache[key] = ctx
+            return ctx
+
+        cached_create_ssl_context._opsra_cached = True
+        cached_create_ssl_context._original = original
+        _hd.create_ssl_context = cached_create_ssl_context
+    except Exception:
+        logger.warning("DB-POOL-1: could not install the TLS setup cache", exc_info=True)
+
+
+_install_ssl_cache()
+
+
 def get_supabase() -> Client:
     """
     Return a fresh Supabase service-role client for this request.
@@ -98,6 +211,8 @@ def get_supabase() -> Client:
         settings.SUPABASE_URL,
         settings.SUPABASE_SERVICE_KEY,
     )
+    if _pool_enabled():
+        _use_shared_pool(client)                       # DB-POOL-1: keep connections open between calls
     clients = _active_clients.get()
     if clients is not None:
         clients.append(client)
