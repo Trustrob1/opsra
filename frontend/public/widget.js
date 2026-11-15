@@ -16,7 +16,7 @@
   window.__opsraChatLoaded = true
 
   var chatBase = new URL(script.src, location.href).origin
-  var api = (script.getAttribute('data-api') || 'https://api.opsra.com.ng').replace(/\/+$/, '')
+  var api = (script.getAttribute('data-api') || 'https://api.opsra.com.ng/api/v1').replace(/\/+$/, '')
   var source = (script.getAttribute('data-source') || 'website').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 30) || 'website'
 
   function start() {
