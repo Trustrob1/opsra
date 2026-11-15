@@ -22,6 +22,7 @@ import hashlib
 import logging
 import os
 import re
+import time
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -255,6 +256,7 @@ def save_config(db, org_id: str, changes: dict) -> dict:
     stored = cur.get("webchat_config") if isinstance(cur.get("webchat_config"), dict) else {}
     stored = {**stored, **sanitise_config(changes)}
     db.table("organisations").update({"webchat_config": stored}).eq("id", org_id).execute()
+    clear_key_cache()
     return get_config(db, org_id)
 
 
@@ -287,10 +289,31 @@ def get_or_create_key(db, org_id: str) -> str:
     raise RuntimeError("could not create a chat key")
 
 
+_KEY_CACHE: dict = {}          # WEBCHAT-SPEED-1: key -> (expires_at, result). Every chat request used to cost ~10 database round trips here.
+_KEY_CACHE_TTL_S = 30
+
+
+def clear_key_cache() -> None:
+    _KEY_CACHE.clear()
+
+
 def resolve_key(db, key: str) -> Optional[dict]:
-    """{'org_id', 'config'} for an active key whose org has the chat switched on; else None."""
+    """{'org_id', 'config'} for an active key whose org has the chat switched on; else None.
+    Positive answers are cached for 30 seconds per worker (settings and plan changes show up within that time)."""
     if not isinstance(key, str) or not re.match(r"^wc_[A-Za-z0-9_-]{8,40}$", key):
         return None
+    hit = _KEY_CACHE.get(key)
+    if hit and hit[0] > time.monotonic():
+        return hit[1]
+    res = _resolve_key_uncached(db, key)
+    if res is not None:
+        if len(_KEY_CACHE) > 500:
+            _KEY_CACHE.clear()
+        _KEY_CACHE[key] = (time.monotonic() + _KEY_CACHE_TTL_S, res)
+    return res
+
+
+def _resolve_key_uncached(db, key: str) -> Optional[dict]:
     row = _one((db.table("webchat_keys").select("org_id").eq("key", key).eq("active", True).limit(1).execute()).data)
     if not row:
         return None

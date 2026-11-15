@@ -108,6 +108,8 @@ export default function WebChatPage({ chatKey }) {
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
   const [picked, setPicked] = useState({})                 // product id -> chosen variant id
+  const [pending, setPending] = useState(0)             // messages sent and waiting for the reply (drives the typing dots)
+  const initialCount = useRef(0)                       // messages that were already there when the chat opened (no pop-in for those)
   const token = useRef(null)
   const listRef = useRef(null)
   const tokenKey = `wc_token_${chatKey}`
@@ -119,13 +121,17 @@ export default function WebChatPage({ chatKey }) {
     setMessages((cur) => {
       const seen = new Set(cur.map((m) => m.id))
       const add = incoming.filter((m) => !seen.has(m.id))
-      return add.length ? [...cur, ...add].sort((a, b) => String(a.at).localeCompare(String(b.at))) : cur
+      if (!add.length) return cur
+      const said = add.filter((m) => m.role === 'visitor').map((m) => m.text)
+      const kept = said.length ? cur.filter((m) => !(m.tmp && said.includes(m.text))) : cur
+      return [...kept, ...add].sort((a, b) => String(a.at).localeCompare(String(b.at)))
     })
   }, [])
 
   const apply = useCallback((snap) => {
     setCfg(snap.config)
     setMessages(snap.messages || [])
+    initialCount.current = (snap.messages || []).length
     setHasContact(!!snap.has_contact)
     setVerified(!!snap.verified_phone)
     setHuman(!!snap.human)
@@ -191,7 +197,11 @@ export default function WebChatPage({ chatKey }) {
     return () => clearInterval(id)
   }, [state, messages, chatKey, tokenKey, merge])
 
-  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight }, [messages, cards])
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    if (typeof el.scrollTo === 'function') el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); else el.scrollTop = el.scrollHeight
+  }, [messages, cards, pending])
 
   const handleReply = (res) => {
     merge(res.messages)
@@ -209,13 +219,36 @@ export default function WebChatPage({ chatKey }) {
   }
 
   const closePanel = () => { setPanel(null); setError('') }
-  const sendMenu = (id) => { setPanel(null); return act(async () => handleReply(await sendChat(chatKey, token.current, { kind: 'menu', menu_id: id }))) }
+  // Show the visitor's message at once, with typing dots until the reply arrives (the server can take a second or two).
+  const sendOptimistic = async (label, payload) => {
+    const tmp = { id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: 'visitor', text: label, at: new Date().toISOString(), tmp: true }
+    setMessages((cur) => [...cur, tmp])
+    setPending((n) => n + 1)
+    setError('')
+    try {
+      const res = await sendChat(chatKey, token.current, payload)
+      setMessages((cur) => cur.filter((m) => m.id !== tmp.id))
+      handleReply(res)
+      return true
+    } catch (e) {
+      setMessages((cur) => cur.filter((m) => m.id !== tmp.id))
+      setError(chatErrorMessage(e))
+      return false
+    } finally {
+      setPending((n) => Math.max(0, n - 1))
+    }
+  }
+  const sendMenu = (id) => {
+    setPanel(null)
+    const label = cfg.menu.find((m) => m.id === id)?.label || ''
+    return sendOptimistic(label, { kind: 'menu', menu_id: id })
+  }
   const sendText = (e) => {
     e.preventDefault()
     const t = text.trim()
     if (!t) return
     setText('')
-    act(async () => handleReply(await sendChat(chatKey, token.current, { kind: 'text', text: t })))
+    sendOptimistic(t, { kind: 'text', text: t }).then((ok) => { if (!ok) setText(t) })
   }
   const submitContact = (e) => {
     e.preventDefault()
@@ -312,7 +345,9 @@ export default function WebChatPage({ chatKey }) {
       .wc-root button:focus-visible, .wc-root input:focus-visible, .wc-root select:focus-visible { outline: 2px solid ${brand}; outline-offset: 2px; }
       .wc-root button:disabled { opacity: 0.55; cursor: default; }
       @keyframes wc-pulse { 0%,100% { opacity: .35; transform: scale(.92) } 50% { opacity: 1; transform: scale(1) } }
-      @media (prefers-reduced-motion: reduce) { .wc-pulse { animation: none !important; } }
+      @keyframes wc-pop { from { opacity: 0; transform: translateY(8px) scale(.98) } to { opacity: 1; transform: none } }
+      @keyframes wc-bounce { 0%,60%,100% { transform: translateY(0); opacity: .45 } 30% { transform: translateY(-4px); opacity: 1 } }
+      @media (prefers-reduced-motion: reduce) { .wc-pulse, .wc-anim, .wc-dot { animation: none !important; } }
     `}</style>
   )
 
@@ -346,16 +381,30 @@ export default function WebChatPage({ chatKey }) {
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.avatar} aria-hidden="true">{(cfg.business_name || '?').trim().charAt(0).toUpperCase()}</div>
-          <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.2px', lineHeight: 1.2 }}>{cfg.business_name}</h1>
+          <h1 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.2px', lineHeight: 1.2 }}>{cfg.business_name}</h1>
+          {cfg.menu.length > 0 && (
+            <button type="button" aria-label="Menu" aria-haspopup="dialog" onClick={() => setPanel('menu')}
+              style={{ width: 48, height: 48, flex: 'none', margin: '-6px -4px -6px 0', border: 0, borderRadius: 999, background: panel === 'menu' ? brand : 'transparent', color: panel === 'menu' ? '#fff' : INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="menu" size={22} />
+            </button>
+          )}
         </header>
 
         <main style={S.list} ref={listRef} role="log" aria-live="polite" aria-label="Chat messages">
           {messages.map((m, i) => (
-            <div key={m.id} style={S.row(m.role)}>
+            <div key={m.id} className={i >= initialCount.current ? 'wc-anim' : undefined} style={{ ...S.row(m.role), ...(i >= initialCount.current ? { animation: 'wc-pop 0.18s ease-out' } : {}), ...(m.tmp ? { opacity: 0.85 } : {}) }}>
               {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <span style={S.who}>{cfg.business_name} team</span>}
               <div style={S.bubble(m.role)}><Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} /></div>
             </div>
           ))}
+
+          {pending > 0 && (
+            <div role="status" aria-label="The team is typing" className="wc-anim" style={{ ...S.row('bot'), animation: 'wc-pop 0.18s ease-out' }}>
+              <div style={{ ...S.bubble('bot'), display: 'flex', alignItems: 'center', gap: 5, padding: '14px 16px' }}>
+                {[0, 1, 2].map((d) => <span key={d} className="wc-dot" aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: MUTED, animation: `wc-bounce 1.2s ease-in-out ${d * 0.16}s infinite` }} />)}
+              </div>
+            </div>
+          )}
 
           {cards.length > 0 && !panel && cards.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} />)}
 
@@ -381,9 +430,6 @@ export default function WebChatPage({ chatKey }) {
             </div>
           )}
           <form onSubmit={sendText} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {cfg.menu.length > 0 && (
-              <button type="button" aria-label="Open menu" style={{ ...S.action, flex: 'none', height: 48, padding: '0 14px', borderRadius: 999 }} disabled={busy} onClick={() => setPanel('menu')}><Icon name="menu" size={20} />Menu</button>
-            )}
             <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
             <input id="wc-text" style={S.input} value={text} maxLength={1000} placeholder="Type your message" autoComplete="off"
               onChange={(e) => setText(e.target.value)} />
