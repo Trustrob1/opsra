@@ -232,7 +232,8 @@ def _check_new_device(
             .maybe_single()
             .execute()
         )
-        device = result.data
+        # postgrest 0.16.x maybe_single().execute() returns None (not an object with .data) when no row matches
+        device = result.data if result is not None else None
         if isinstance(device, list):
             device = device[0] if device else None
 
@@ -279,7 +280,7 @@ def _check_new_device(
                 .maybe_single()
                 .execute()
             )
-            org_data = org_row.data
+            org_data = org_row.data if org_row is not None else None
             if isinstance(org_data, list):
                 org_data = org_data[0] if org_data else None
             phone_id = (org_data or {}).get("whatsapp_phone_id")
