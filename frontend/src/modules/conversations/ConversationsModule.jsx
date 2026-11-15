@@ -1001,7 +1001,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
           setFileError('No sound was recorded. Check your microphone is not muted and is the selected input device, then try again.')
           return
         }
-        const f = new File([blob], `voice-note.${ext}`, { type })
+        const f = new window.File([blob], `voice-note.${ext}`, { type })
         if (f.size > WEBCHAT_LIMIT_MB.audio * 1024 * 1024) {
           setFileError(`That voice note is too long — max ${WEBCHAT_LIMIT_MB.audio} MB.`)
           return
