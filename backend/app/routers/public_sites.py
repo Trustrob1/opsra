@@ -134,6 +134,8 @@ def preview_site(slug: str, request: Request, db=Depends(get_supabase)):
         logger.error("preview_site: render failed for slug=%s: %s", slug, exc)
         raise HTTPException(status_code=500, detail="This preview couldn't be rendered right now")
 
+    from app.services import site_chat_button                      # WEBCHAT-SITE-1: plain "Chat with us" link, no script
+    html = site_chat_button.add(db, site, html)
     headers = _preview_headers()
     if (site.get("tier") or "standard") == "imported":      # SITE-IMPORT 1b: scripts run, but in a sandbox
         from app.services import site_import_render
@@ -176,6 +178,8 @@ def preview_site_page(slug: str, page_path: str, request: Request, db=Depends(ge
     from app.services import site_import_render
     try:
         html = site_import_render.preview_page(db, site, page_path)
+        from app.services import site_chat_button                  # WEBCHAT-SITE-1
+        html = site_chat_button.add(db, site, html)
         d = site_import_render._current_design(db, site)
         base = site_import_render.public_base(db, d) if d else None
         from urllib.parse import urlsplit

@@ -995,6 +995,8 @@ def collect_export_files(db: Any, org_id: str, site_id: str) -> tuple:
         except ValueError as exc:
             raise ValidationFailed(str(exc))
         files.append(("index.html", html))
+    from app.services import site_chat_button                      # WEBCHAT-SITE-1: plain "Chat with us" link, no script
+    files = site_chat_button.add_to_files(db, site, files)
     have = {p.lower() for p, _ in files}
     origin = f"https://{domain}" if domain else None
     if "robots.txt" not in have:

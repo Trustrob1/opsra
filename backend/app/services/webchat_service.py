@@ -69,6 +69,9 @@ DEFAULT_CONFIG: dict = {
     "shop_enabled": False,        # WEBCHAT-3b: product cards, cart and checkout link in the chat
     "goals": None,                # WEBCHAT-5b: what counts as a win in the funnel; None = automatic (booking, plus orders and payments when the shop is on)
     "stats_from": None,           # WEBCHAT-5b: ISO time; the numbers ignore anything before it (start counting from now)
+    "allowed_domains": [],        # WEBCHAT-EMBED-1: websites that may show the chat bubble; empty = any website
+    "site_button": True,          # WEBCHAT-SITE-1: "Chat with us" link on websites built in Opsra
+    "widget_side": "right",       # WEBCHAT-EMBED-1: which corner the bubble sits in
     "call_enabled": False,        # WEBCHAT-CALL-1: phone icon in the chat header; calls only in business hours
     "call_number": "",            # digits; empty = the organisation's business contact / WhatsApp number
 }
@@ -180,6 +183,13 @@ def sanitise_config(raw: dict) -> dict:
             out["human_resume_min"] = 30
     if "shop_enabled" in raw:
         out["shop_enabled"] = bool(raw["shop_enabled"])
+    if "allowed_domains" in raw:
+        from app.services import webchat_embed_service as embed
+        out["allowed_domains"] = embed.sanitise_domains(raw["allowed_domains"])
+    if "site_button" in raw:
+        out["site_button"] = bool(raw["site_button"])
+    if "widget_side" in raw:
+        out["widget_side"] = "left" if raw["widget_side"] == "left" else "right"
     if "call_enabled" in raw:
         out["call_enabled"] = bool(raw["call_enabled"])
     if "call_number" in raw:
