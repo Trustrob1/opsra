@@ -46,6 +46,8 @@ function Icon({ name, size = 20 }) {
   if (name === 'cart') return <svg {...common}><path d="M3 4h2.5l2.2 11h10.1l2-8H7" /><circle cx="9.5" cy="19" r="1.2" /><circle cx="17" cy="19" r="1.2" /></svg>
   if (name === 'bag') return <svg {...common}><path d="M5 8h14l-1 12H6L5 8z M9 8V6.5a3 3 0 016 0V8" /></svg>
   if (name === 'mail') return <svg {...common}><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="M4 7.5l8 6 8-6" /></svg>
+  if (name === 'menu') return <svg {...common}><path d="M4 7h16M4 12h16M4 17h10" /></svg>
+  if (name === 'chev') return <svg {...common}><path d="M9 5l7 7-7 7" /></svg>
   if (name === 'lock') return <svg {...common}><rect x="5" y="10.5" width="14" height="9.5" rx="2.2" /><path d="M8.5 10.5V8a3.5 3.5 0 017 0v2.5" /></svg>
   return null
 }
@@ -207,7 +209,7 @@ export default function WebChatPage({ chatKey }) {
   }
 
   const closePanel = () => { setPanel(null); setError('') }
-  const sendMenu = (id) => act(async () => handleReply(await sendChat(chatKey, token.current, { kind: 'menu', menu_id: id })))
+  const sendMenu = (id) => { setPanel(null); return act(async () => handleReply(await sendChat(chatKey, token.current, { kind: 'menu', menu_id: id }))) }
   const sendText = (e) => {
     e.preventDefault()
     const t = text.trim()
@@ -334,8 +336,9 @@ export default function WebChatPage({ chatKey }) {
     </div></div></div>
   )
 
-  const sheetOpen = ['contact', 'email', 'booking', 'save'].includes(panel)
-  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat' }[panel]
+  const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu'].includes(panel)
+  const visitorSpoke = messages.some((m) => m.role === 'visitor')
+  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?' }[panel]
 
   return (
     <div style={S.page} className="wc-root">
@@ -356,7 +359,7 @@ export default function WebChatPage({ chatKey }) {
 
           {cards.length > 0 && !panel && cards.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} />)}
 
-          {cfg.menu.length > 0 && (
+          {cfg.menu.length > 0 && !visitorSpoke && !panel && (
             <div style={S.chips}>
               {cfg.menu.map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
             </div>
@@ -378,6 +381,9 @@ export default function WebChatPage({ chatKey }) {
             </div>
           )}
           <form onSubmit={sendText} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {cfg.menu.length > 0 && (
+              <button type="button" aria-label="Open menu" style={{ ...S.action, flex: 'none', height: 48, padding: '0 14px', borderRadius: 999 }} disabled={busy} onClick={() => setPanel('menu')}><Icon name="menu" size={20} />Menu</button>
+            )}
             <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
             <input id="wc-text" style={S.input} value={text} maxLength={1000} placeholder="Type your message" autoComplete="off"
               onChange={(e) => setText(e.target.value)} />
@@ -464,10 +470,22 @@ export default function WebChatPage({ chatKey }) {
                     {panel === 'email' && 'Add your email and we will write to you there. This is optional.'}
                     {panel === 'booking' && 'Fill in the details and the team will confirm.'}
                     {panel === 'save' && 'We will email you this chat, and tell you if the team replies after you have left.'}
+                    {panel === 'menu' && 'Pick one and we will answer here.'}
                   </p>
                 </div>
                 <button type="button" aria-label="Close" style={{ ...S.iconBtn, margin: '-6px -10px 0 0' }} onClick={closePanel}><Icon name="close" size={22} /></button>
               </div>
+
+              {panel === 'menu' && (
+                <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
+                  {cfg.menu.map((m, n) => (
+                    <button key={m.id} type="button" role="listitem" disabled={busy} onClick={() => sendMenu(m.id)}
+                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: '#fff', color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <span>{m.label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {panel === 'contact' && (
                 <form onSubmit={submitContact} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
