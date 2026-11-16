@@ -58,17 +58,17 @@
     var root = host.attachShadow({ mode: 'open' })
     root.innerHTML =
       '<style>' +
-      ':host{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
+      '.wrap,.wrap *{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
       '*{box-sizing:border-box}' +
       '.btn{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));' + side + ':20px;height:60px;min-width:60px;border:0;border-radius:999px;background:' + brand + ';color:#fff;cursor:pointer;display:flex;align-items:center;padding:0 8px;gap:0;box-shadow:0 6px 20px rgba(20,34,43,.28);transition:transform .15s ease}' +
       '.btn:hover{transform:scale(1.04)}.btn:focus-visible{outline:3px solid #fff;box-shadow:0 0 0 5px ' + brand + '}' +
-      '.av{position:relative;width:44px;height:44px;flex:none;border-radius:50%;border:2px solid #fff;background:#e7edf2;overflow:hidden}' +
+      '.av{display:block;position:relative;width:44px;height:44px;flex:none;border-radius:50%;border:2px solid #fff;background:#e7edf2;overflow:hidden}' +
       '.av img{width:100%;height:100%;object-fit:cover;display:block}' +
       '.av b{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font:600 18px system-ui,sans-serif;color:' + brand + '}' +
-      '.wrapav{position:relative;flex:none}' +
+      '.wrapav{display:block;position:relative;flex:none;width:44px;height:44px}' +
       '.dot{position:absolute;right:0;bottom:1px;width:12px;height:12px;border-radius:50%;background:#22c55e;border:2px solid #fff;display:none}' +
       '.on .dot{display:block}' +
-      '.lbl{max-width:0;overflow:hidden;white-space:nowrap;font-size:15px;font-weight:600;letter-spacing:.1px;transition:max-width .3s ease,margin .3s ease,opacity .2s ease;opacity:0;margin:0}' +
+      '.lbl{display:block;max-width:0;overflow:hidden;white-space:nowrap;font-size:15px;font-weight:600;letter-spacing:.1px;transition:max-width .3s ease,margin .3s ease,opacity .2s ease;opacity:0;margin:0}' +
       '.show .lbl{max-width:190px;margin:0 12px 0 10px;opacity:1}' +
       '.x{display:none;width:26px;height:26px;margin:0 11px}' +
       '.open .x{display:block}.open .wrapav,.open .lbl{display:none}' +
