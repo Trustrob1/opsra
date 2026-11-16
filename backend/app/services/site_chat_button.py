@@ -8,8 +8,8 @@ The site engine is script-free on purpose (no <script> in a page, strict securit
 on the page, and no policy needs loosening.
 
   * the chat that opens is the web chat of the account the site belongs to (sites.org_id)
-  * shown only when that account has its web chat switched on (and its plan allows it) and has not turned the button off
-    (web chat settings: site_button)
+  * shown only on a site whose own switch is on (Sites > open the site > Chat button; off by default, so a business that
+    builds sites for clients never puts its own chat on them), and only when the account's web chat is on and its plan allows it
   * the link is tagged ?s=site so the chat stats show these visitors
 Pure string work plus one config lookup. Never raises: any problem leaves the page exactly as it was (S14).
 """
@@ -51,8 +51,9 @@ def inject(html: str, button: str) -> str:
     return html + button
 
 
-def resolve(db: Any, org_id: str) -> Optional[dict]:
-    """{'link','color','side'} when this account's chat should be offered on its sites, else None."""
+def account_chat(db: Any, org_id: str) -> Optional[dict]:
+    """{'link','color','side'} when this account's web chat is on, set up and allowed by its plan, else None.
+    (Whether a particular SITE shows the button is the site's own switch: see resolve.)"""
     try:
         from app.services import webchat_plan_service as plan
         from app.services import webchat_service as wc
@@ -60,7 +61,7 @@ def resolve(db: Any, org_id: str) -> Optional[dict]:
         if not row:
             return None
         cfg = wc.get_config(db, org_id)
-        if not cfg.get("enabled") or not cfg.get("site_button", True):
+        if not cfg.get("enabled"):
             return None
         cfg = plan.apply(db, org_id, cfg)
         if cfg is None:
@@ -71,12 +72,31 @@ def resolve(db: Any, org_id: str) -> Optional[dict]:
         return None
 
 
+def site_switched_on(db: Any, org_id: str, site_id: Optional[str]) -> bool:
+    """The site's own switch (sites.chat_button, off by default). Anything unclear = off."""
+    if not site_id:
+        return False
+    try:
+        rows = (db.table("sites").select("chat_button").eq("id", site_id).eq("org_id", org_id).limit(1).execute().data) or []
+        return bool(rows and rows[0].get("chat_button") is True)
+    except Exception as exc:  # S14
+        logger.warning("site chat button: site flag failed site=%s: %s", site_id, exc)
+        return False
+
+
+def resolve(db: Any, org_id: str, site_id: Optional[str] = None) -> Optional[dict]:
+    """The button for ONE site: only when that site's switch is on AND the account's chat is on, set up and allowed."""
+    if not site_switched_on(db, org_id, site_id):
+        return None
+    return account_chat(db, org_id)
+
+
 def add(db: Any, site: dict, html: Any) -> Any:
     """html with the button added when it applies, else html unchanged."""
     try:
         if not isinstance(html, str):
             return html
-        info = resolve(db, site["org_id"])
+        info = resolve(db, site["org_id"], site.get("id"))
         return inject(html, button_html(info["link"], info["color"], info["side"])) if info else html
     except Exception as exc:  # S14
         logger.warning("site chat button: add failed: %s", exc)
@@ -86,7 +106,7 @@ def add(db: Any, site: dict, html: Any) -> Any:
 def add_to_files(db: Any, site: dict, files: list) -> list:
     """The export / publish file list with the button added to every .html page."""
     try:
-        info = resolve(db, site["org_id"])
+        info = resolve(db, site["org_id"], site.get("id"))
         if not info:
             return files
         btn = button_html(info["link"], info["color"], info["side"])

@@ -743,6 +743,32 @@ def patch_content(site_id: str, payload: SiteContentPatch, org=Depends(get_curre
     return ok(data=site, message="Content updated — call render to refresh the preview")
 
 
+class SiteChatButtonBody(BaseModel):
+    enabled: bool
+
+
+@router.get("/sites/{site_id}/chat-button")
+def get_chat_button(site_id: str, org=Depends(get_current_org), db=Depends(get_supabase)):
+    """WEBCHAT-SITE-2: is the Chat with us button on for this site, and is the account's web chat ready to be shown?"""
+    from app.services import site_chat_button
+    org_id = org["org_id"]
+    site = _get_site(db, org_id, site_id)
+    return ok(data={"enabled": site.get("chat_button") is True,
+                    "account_ready": site_chat_button.account_chat(db, org_id) is not None})
+
+
+@router.patch("/sites/{site_id}/chat-button")
+def set_chat_button(site_id: str, payload: SiteChatButtonBody, org=Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import site_chat_button
+    _require(org, _WRITE_ROLES)
+    org_id = org["org_id"]
+    _get_site(db, org_id, site_id)
+    db.table("sites").update({"chat_button": payload.enabled}).eq("id", site_id).eq("org_id", org_id).execute()
+    _log_event(db, org_id, site_id, f"user:{org.get('id')}", "chat_button_on" if payload.enabled else "chat_button_off")
+    return ok(data={"enabled": payload.enabled, "account_ready": site_chat_button.account_chat(db, org_id) is not None},
+              message="Chat button on. It appears after the next preview and publish." if payload.enabled else "Chat button off.")
+
+
 @router.patch("/sites/{site_id}/recipe")
 def patch_recipe(site_id: str, payload: SiteRecipePatch, org=Depends(get_current_org), db=Depends(get_supabase)):
     _require(org, _WRITE_ROLES)

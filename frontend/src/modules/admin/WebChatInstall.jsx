@@ -139,10 +139,7 @@ export default function WebChatInstall({ data, cfg, set, setMsg }) {
         )}
         {seen.length === 0 && checked && <p style={{ ...small, color: ds.dark }}>Not seen yet. Check that the code was saved on the live site (not only a draft), reload your website, then check again.</p>}
 
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, fontWeight: 600, marginTop: 14 }}>
-          <input type="checkbox" checked={cfg.site_button !== false} onChange={(e) => set('site_button', e.target.checked)} /> Show a "Chat with us" button on websites built in Opsra
-        </label>
-        <p style={small}>Opsra-built websites cannot run scripts, so they get a plain button that opens your chat page in a new tab. Press Save at the bottom after changing this.</p>
+        <p style={{ ...small, marginTop: 14 }}><strong>Websites built in Opsra:</strong> the "Chat with us" button is switched on per website. Open Sites, choose the website, and use its Chat button switch. It is off for every website until you switch it on.</p>
 
         <details style={{ marginTop: 14 }}>
           <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: ds.dark }}>Advanced: corner and allowed websites</summary>

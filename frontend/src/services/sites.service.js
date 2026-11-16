@@ -205,6 +205,10 @@ export const changeSiteAddon = (siteId, addonId, action, until) =>
 export const getSiteCapture = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/capture`))
 export const rotateSiteCaptureKey = (siteId) => unwrap(api.post(`/api/v1/sites/${siteId}/capture/rotate-key`))
 
+// ── WEBCHAT-SITE-2 — the "Chat with us" button, switched on per website ───────────────
+export const getSiteChatButton = (siteId) => unwrap(api.get(`/api/v1/sites/${siteId}/chat-button`))
+export const setSiteChatButton = (siteId, enabled) => unwrap(api.patch(`/api/v1/sites/${siteId}/chat-button`, { enabled }))
+
 // ── SITE-OPTIONS OPT-2 — option sets (staff) ─────────────────────────────────────────
 export const listOptionSets = (builderId) =>
   unwrap(api.get('/api/v1/site-option-sets', { params: builderId ? { builder_id: builderId } : {} }))

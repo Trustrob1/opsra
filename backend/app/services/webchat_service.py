@@ -70,7 +70,7 @@ DEFAULT_CONFIG: dict = {
     "goals": None,                # WEBCHAT-5b: what counts as a win in the funnel; None = automatic (booking, plus orders and payments when the shop is on)
     "stats_from": None,           # WEBCHAT-5b: ISO time; the numbers ignore anything before it (start counting from now)
     "allowed_domains": [],        # WEBCHAT-EMBED-1: websites that may show the chat bubble; empty = any website
-    "site_button": True,          # WEBCHAT-SITE-1: "Chat with us" link on websites built in Opsra
+    "site_button": False,         # WEBCHAT-SITE-1b: "Chat with us" link on websites built in Opsra; OFF until the business switches it on
     "widget_side": "right",       # WEBCHAT-EMBED-1: which corner the bubble sits in
     "call_enabled": False,        # WEBCHAT-CALL-1: phone icon in the chat header; calls only in business hours
     "call_number": "",            # digits; empty = the organisation's business contact / WhatsApp number
@@ -735,9 +735,34 @@ def save_contact(db, session: dict, clean: dict, consent_version: str = CONSENT_
 
 # ── Staff side ──────────────────────────────────────────────────────────────
 
-def notify_managers(db, org_id: str, title: str, body: str, lead_id: Optional[str], kind: str = "webchat") -> None:
+def assigned_rep_id(db, org_id: str, lead_id: Optional[str]) -> Optional[str]:
+    """The sales rep this lead is assigned to, if that person belongs to this business (else None)."""
+    if not lead_id:
+        return None
+    try:
+        lead = _one((db.table("leads").select("assigned_to").eq("id", lead_id).eq("org_id", org_id).limit(1).execute()).data)
+        rep = (lead or {}).get("assigned_to")
+        if not rep:
+            return None
+        user = _one((db.table("users").select("id").eq("id", rep).eq("org_id", org_id).limit(1).execute()).data)
+        return str(user["id"]) if user else None
+    except Exception as exc:
+        logger.warning("webchat assigned rep lookup failed lead=%s: %s", lead_id, exc)
+        return None
+
+
+def notify_managers(db, org_id: str, title: str, body: str, lead_id: Optional[str], kind: str = "webchat",
+                    to_assigned_rep: bool = False) -> None:
+    """to_assigned_rep: tell the lead's assigned rep instead of the managers (managers only when nobody is assigned)."""
     try:
         from app.services import funnel_service
+        rep = assigned_rep_id(db, org_id, lead_id) if to_assigned_rep else None
+        if rep:
+            db.table("notifications").insert({
+                "org_id": org_id, "user_id": rep, "title": title[:200], "body": body[:1000], "type": kind,
+                "resource_type": "lead", "resource_id": lead_id, "is_read": False, "created_at": _iso(_now()),
+            }).execute()
+            return
         funnel_service.notify_managers(db, org_id, title, body, kind, lead_id)
     except Exception as exc:
         logger.warning("webchat notify failed org=%s: %s", org_id, exc)
