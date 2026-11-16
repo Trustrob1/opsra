@@ -130,6 +130,20 @@ def _embed_guard(found: dict, embed_origin: Optional[str]) -> None:
         raise HTTPException(status_code=403, detail={"code": "EMBED_NOT_ALLOWED", "message": "This chat cannot be shown on this website."})
 
 
+def _chioma_flags(cfg: dict) -> dict:
+    """WEBCHAT-BUBBLE-1: what the launcher needs to show Chioma. assistant_active = AI answers are really on (plan included);
+    team_available = inside the business's set hours right now. The green dot shows only when a reply can come now.
+    Never raises: a problem here must not stop the bubble."""
+    try:
+        from app.services import webchat_call_service as call
+        org = cfg.get("_call_org") or {}
+        team = bool(call.open_state(org.get("business_hours"), org.get("timezone")).get("open"))
+    except Exception:
+        team = False
+    ai = bool(cfg.get("ai_enabled"))
+    return {"assistant_active": ai, "team_available": team, "online": ai or team}
+
+
 @router.get("/public/webchat/{key}/widget")
 def widget_info(key: str, request: Request, db=Depends(get_supabase)):
     """WEBCHAT-EMBED-1: what widget.js needs to draw the bubble, on any website. Open to every origin on purpose;
@@ -140,7 +154,8 @@ def widget_info(key: str, request: Request, db=Depends(get_supabase)):
     if found:
         cfg = found["config"]
         out = {"allowed": embed.origin_allowed(cfg.get("allowed_domains"), request.headers.get("origin")),
-               "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "side": cfg.get("widget_side", "right")}
+               "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "side": cfg.get("widget_side", "right"),
+               **_chioma_flags(cfg)}
     if out.get("allowed") and found:
         from urllib.parse import urlparse
         own = tuple(h for h in ((urlparse(wc.public_base()).hostname or ""),) if h)
