@@ -275,7 +275,7 @@ export default function WebChatPage({ chatKey }) {
     document.head.appendChild(m)
     return () => { document.head.removeChild(m) }
   }, [])
-  useEffect(() => { if (cfg?.business_name) document.title = `Chat with ${cfg.business_name}` }, [cfg])
+  useEffect(() => { if (cfg?.business_name) document.title = `Chat with Chioma · ${cfg.business_name}` }, [cfg])
 
   // open: hand-off link → resume stored session → new session
   useEffect(() => {
@@ -664,15 +664,38 @@ export default function WebChatPage({ chatKey }) {
   const call = cfg.call || null
   const visitorSpoke = messages.some((m) => m.role === 'visitor')
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
-  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can we help?', attach: 'Send a file', call: call?.open ? 'Call us' : 'Phone calls are closed right now', delete: 'Delete this message?' }[panel]
+  // WEBCHAT-BUBBLE-2: Chioma is the face; once a team member takes over, the header shows them instead (and swaps back when the bot resumes).
+  const chioma = cfg.chioma || {}
+  const withTeam = !!human
+  const teamWho = (lastRepIdx >= 0 && messages[lastRepIdx].by) || ''
+  const dotOn = withTeam ? !!chioma.team_available : !!chioma.online
+  const humanItem = cfg.human_menu_id ? cfg.menu.find((m) => m.id === cfg.human_menu_id) : null
+  const teamLine = chioma.team_available ? 'The team is online now.' : (chioma.reopens ? `The team is back ${chioma.reopens}.` : '')
+  const chiomaFace = (size) => (
+    <span aria-hidden="true" style={{ position: 'relative', width: size, height: size, flex: 'none', display: 'inline-block' }}>
+      <img src="/chioma/chioma-face-64.webp" srcSet="/chioma/chioma-face-64.webp 1x, /chioma/chioma-face-128.webp 2x" alt="" width={size} height={size}
+        style={{ width: size, height: size, borderRadius: 999, objectFit: 'cover', display: 'block', background: '#E7EDF2' }} />
+    </span>
+  )
+  const sheetTitle = { contact: 'Where can we reach you?', email: 'Get the reply by email?', booking: 'Send a booking request', save: 'Keep this chat', menu: 'How can I help?', attach: 'Send a file', call: call?.open ? 'Call us' : 'Phone calls are closed right now', delete: 'Delete this message?' }[panel]
 
   return (
     <div style={S.page} className="wc-root">
       {css}
       <div style={S.shell} ref={shellRef}>
         <header style={S.head}>
-          <div style={S.avatar} aria-hidden="true">{(cfg.business_name || '?').trim().charAt(0).toUpperCase()}</div>
-          <h1 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.2px', lineHeight: 1.2 }}>{cfg.business_name}</h1>
+          {withTeam
+            ? <div style={{ ...S.avatar, position: 'relative' }} aria-hidden="true">{(teamWho || cfg.business_name || '?').trim().charAt(0).toUpperCase()}</div>
+            : <span style={{ position: 'relative', flex: 'none', width: 44, height: 44 }}>{chiomaFace(44)}</span>}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.2px', lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{withTeam ? (teamWho || `${cfg.business_name} team`) : 'Chioma'}</span>
+              {dotOn && <span role="img" aria-label="Online" title="Online" style={{ width: 9, height: 9, flex: 'none', borderRadius: 999, background: '#22C55E' }} />}
+            </h1>
+            <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {withTeam ? (teamWho ? `${cfg.business_name} team` : 'Replying to you here') : `Virtual assistant for ${cfg.business_name}`}
+            </div>
+          </div>
           {call && (
             <button type="button" aria-label="Call us" aria-haspopup="dialog" onClick={openCall}
               style={{ width: 48, height: 48, flex: 'none', margin: '-6px 0', border: 0, borderRadius: 999, background: panel === 'call' ? brand : 'transparent', color: panel === 'call' ? '#fff' : INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -697,7 +720,8 @@ export default function WebChatPage({ chatKey }) {
             const tappable = !m.tmp && !m.deleted
             return (
             <div key={m.id} className={i >= initialCount.current ? 'wc-anim' : undefined} style={{ ...S.row(m.role), ...(i >= initialCount.current ? { animation: 'wc-pop 0.18s ease-out' } : {}), ...(m.tmp ? { opacity: 0.85 } : {}), ...(lifted ? { position: 'relative', zIndex: 5 } : {}) }}>
-              {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <span style={S.who}>{cfg.business_name} team</span>}
+              {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <span style={S.who}>{m.by ? `${m.by} · ${cfg.business_name} team` : `${cfg.business_name} team`}</span>}
+              {m.role === 'bot' && (i === 0 || messages[i - 1].role !== 'bot') && <span style={{ ...S.who, display: 'flex', alignItems: 'center', gap: 6 }}>{chiomaFace(22)}Chioma</span>}
               {m.deleted ? (
                 <div style={{ border: `1px dashed ${LINE}`, background: '#fff', color: MUTED, padding: '10px 14px', borderRadius: 18, fontSize: 14, fontStyle: 'italic' }}>
                   {m.role === 'visitor' ? 'You deleted this message' : 'This message was deleted'}
@@ -719,9 +743,14 @@ export default function WebChatPage({ chatKey }) {
               </div>
               )}
               {m.role === 'bot' && cfg.menu.length > 0 && cfg.fallback && m.text === cfg.fallback && i === messages.length - 1 && (
-                <button type="button" style={{ ...S.chip, minHeight: 40, marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }} onClick={openMenu}>
-                  <Icon name="menu" size={18} />Open menu
-                </button>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
+                  <button type="button" style={{ ...S.chip, minHeight: 40, display: 'flex', alignItems: 'center', gap: 8 }} onClick={openMenu}>
+                    <Icon name="menu" size={18} />Open menu
+                  </button>
+                  {humanItem && !human && (
+                    <button type="button" style={{ ...S.chip, minHeight: 40 }} disabled={busy} onClick={() => sendMenu(humanItem.id)}>Talk to the team</button>
+                  )}
+                </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: MUTED, margin: '0 4px' }}>
                 <span>{m.edited && !m.deleted ? 'Edited · ' : ''}{fmtClock(m.at)}</span>
@@ -732,7 +761,7 @@ export default function WebChatPage({ chatKey }) {
           })}
 
           {pending > 0 && (
-            <div role="status" aria-label="The team is typing" className="wc-anim" style={{ ...S.row('bot'), animation: 'wc-pop 0.18s ease-out' }}>
+            <div role="status" aria-label={withTeam ? 'The team is typing' : 'Chioma is typing'} className="wc-anim" style={{ ...S.row('bot'), animation: 'wc-pop 0.18s ease-out' }}>
               <div style={{ ...S.bubble('bot'), display: 'flex', alignItems: 'center', gap: 5, padding: '14px 16px' }}>
                 {[0, 1, 2].map((d) => <span key={d} className="wc-dot" aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: MUTED, animation: `wc-bounce 1.2s ease-in-out ${d * 0.16}s infinite` }} />)}
               </div>
@@ -748,7 +777,11 @@ export default function WebChatPage({ chatKey }) {
           )}
 
           {human && (
-            <p style={{ margin: '4px 0', textAlign: 'center', fontSize: 13, color: MUTED }}>A team member will reply here.</p>
+            <p style={{ margin: '4px 0', textAlign: 'center', fontSize: 13, color: MUTED }}>
+              {chioma.team_available || !chioma.reopens
+                ? `You are with the ${cfg.business_name} team now. A team member will reply here.`
+                : `The ${cfg.business_name} team is away right now and is back ${chioma.reopens}. Your message is saved and they will reply here.`}
+            </p>
           )}
         </main>
 
@@ -897,7 +930,7 @@ export default function WebChatPage({ chatKey }) {
                     {panel === 'email' && 'Add your email and we will write to you there. This is optional.'}
                     {panel === 'booking' && 'Fill in the details and the team will confirm.'}
                     {panel === 'save' && 'We will email you this chat, and tell you if the team replies after you have left.'}
-                    {panel === 'menu' && 'Pick one and we will answer here.'}
+                    {panel === 'menu' && 'Pick one and I will answer here.'}
                     {panel === 'delete' && 'It is removed for everyone, including our team. They will see "This message was deleted".'}
                     {panel === 'attach' && 'Photos up to 10 MB. Documents up to 15 MB. Voice notes up to 2 minutes.'}
                     {panel === 'call' && call && (call.open
@@ -972,14 +1005,25 @@ export default function WebChatPage({ chatKey }) {
                 </div>
               )}
 
-              {panel === 'menu' && (
+              {panel === 'menu' && cfg.menu.some((m) => m.id !== humanItem?.id) && (
                 <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
-                  {cfg.menu.map((m, n) => (
+                  {cfg.menu.filter((m) => m.id !== humanItem?.id).map((m, n) => (
                     <button key={m.id} type="button" role="listitem" disabled={busy} onClick={() => sendMenu(m.id)}
                       style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: '#fff', color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                       <span>{m.label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
                     </button>
                   ))}
+                </div>
+              )}
+
+              {panel === 'menu' && humanItem && (
+                <div style={{ marginTop: 18 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: MUTED, margin: '0 4px 4px' }}>Need a person?</div>
+                  {teamLine && <div style={{ fontSize: 13, color: MUTED, margin: '0 4px 8px' }}>{teamLine}</div>}
+                  <button type="button" disabled={busy} onClick={() => sendMenu(humanItem.id)}
+                    style={{ width: '100%', minHeight: 52, padding: '0 16px', border: `1px solid ${LINE}`, borderRadius: 16, background: '#fff', color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>{humanItem.label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
+                  </button>
                 </div>
               )}
 

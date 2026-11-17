@@ -125,7 +125,7 @@ def test_old_default_wording_is_replaced_but_custom_text_is_kept():
         def table(self, n): return Q2({"name": "Shop", "webchat_config": self.cfg})
     old = {"fallback": "I did not catch that. Pick one of the options below, or tap Talk to us.", "greeting": "Hi! How can we help you today? Pick an option below or type your question."}
     got = wc.get_config(DB2(old), "o1")
-    assert "Menu" in got["fallback"] and "Menu" in got["greeting"]
+    assert "Menu" in got["fallback"] and "Chioma" in got["greeting"]
     custom = wc.get_config(DB2({"fallback": "Sorry, say that again?"}), "o1")
     assert custom["fallback"] == "Sorry, say that again?"
     assert "fallback" in wc.public_view(got)

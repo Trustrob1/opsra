@@ -134,14 +134,8 @@ def _chioma_flags(cfg: dict) -> dict:
     """WEBCHAT-BUBBLE-1: what the launcher needs to show Chioma. assistant_active = AI answers are really on (plan included);
     team_available = inside the business's set hours right now. The green dot shows only when a reply can come now.
     Never raises: a problem here must not stop the bubble."""
-    try:
-        from app.services import webchat_call_service as call
-        org = cfg.get("_call_org") or {}
-        team = bool(call.open_state(org.get("business_hours"), org.get("timezone")).get("open"))
-    except Exception:
-        team = False
-    ai = bool(cfg.get("ai_enabled"))
-    return {"assistant_active": ai, "team_available": team, "online": ai or team}
+    f = wc.chioma_flags(cfg)
+    return {"assistant_active": f["assistant_active"], "team_available": f["team_available"], "online": f["online"]}
 
 
 @router.get("/public/webchat/{key}/widget")

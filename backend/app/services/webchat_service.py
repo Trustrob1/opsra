@@ -42,7 +42,7 @@ DEFAULT_CONFIG: dict = {
     "enabled": False,
     "business_name": "",
     "brand_color": "#028090",
-    "greeting": "Hi! How can we help you today? Pick an option below, or tap Menu at the top any time.",
+    "greeting": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question.",
     "menu": [],
     "booking_fields": [
         {"key": "service", "label": "What would you like to book?", "required": True},
@@ -77,7 +77,8 @@ DEFAULT_CONFIG: dict = {
 }
 # WEBCHAT-UI-3: the old default wording pointed at buttons under the message; the menu is now an icon at the top
 _LEGACY_TEXT = {
-    "greeting": {"Hi! How can we help you today? Pick an option below or type your question.": "Hi! How can we help you today? Pick an option below, or tap Menu at the top any time."},
+    "greeting": {"Hi! How can we help you today? Pick an option below or type your question.": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question.",
+                 "Hi! How can we help you today? Pick an option below, or tap Menu at the top any time.": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question."},
     "fallback": {"I did not catch that. Pick one of the options below, or tap Talk to us.": "I did not catch that. Tap Menu at the top to see what we can help with, or type your question again."},
 }
 GOAL_KEYS = ("booking", "order", "paid", "whatsapp", "tap")
@@ -288,9 +289,36 @@ def save_config(db, org_id: str, changes: dict) -> dict:
     return get_config(db, org_id)
 
 
+def chioma_flags(cfg: dict) -> dict:
+    """WEBCHAT-BUBBLE-1/2: what the launcher and the chat page need to show Chioma.
+    assistant_active = AI answers are really on (plan included); team_available = inside the business's set hours right now;
+    online = either (the green dot shows only when a reply can come now); reopens = when the team is back, in words (else "").
+    Never raises: a problem here must not stop the chat."""
+    team, reopens = False, ""
+    try:
+        from app.services import webchat_call_service as call
+        org = cfg.get("_call_org") or {}
+        st = call.open_state(org.get("business_hours"), org.get("timezone"))
+        team = bool(st.get("open"))
+        if not team and st.get("opens_at"):
+            reopens = call._opens_words(st.get("opens_at"), org.get("timezone"))
+    except Exception:
+        team, reopens = False, ""
+    ai = bool(cfg.get("ai_enabled"))
+    return {"assistant_active": ai, "team_available": team, "online": ai or team, "reopens": reopens}
+
+
+def _human_menu_id(cfg: dict) -> Optional[str]:
+    for m in cfg.get("menu") or []:
+        if m.get("action") == "human":
+            return m.get("id")
+    return None
+
+
 def public_view(cfg: dict) -> dict:
     """The only settings a visitor's browser receives."""
     return {
+        "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg),
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "greeting": cfg["greeting"],
         "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
@@ -624,6 +652,29 @@ def _attach_quotes(db, session: dict, outs: list, source_rows: list) -> list:
     return outs
 
 
+def _first_name(full: Optional[str]) -> str:
+    parts = str(full or "").strip().split()
+    return parts[0][:30] if parts else ""
+
+
+def _attach_rep_names(db, outs: list, rows: list) -> None:
+    """WEBCHAT-BUBBLE-2: the first name of the team member who wrote a reply (out['by']), so the visitor sees who joined.
+    One extra query at most; never raises; no name = the page says 'the team'."""
+    ids = sorted({str(r["sent_by"]) for r in rows if r.get("sent_by")})
+    if not ids:
+        return
+    try:
+        found = (db.table("users").select("id, full_name").in_("id", ids).execute().data) or []
+        names = {str(u["id"]): _first_name(u.get("full_name")) for u in found}
+    except Exception as exc:
+        logger.warning("webchat rep name lookup failed: %s", exc)
+        return
+    for o, r in zip(outs, rows):
+        n = names.get(str(r.get("sent_by") or ""))
+        if o.get("role") == "rep" and n:
+            o["by"] = n
+
+
 def list_messages(db, session: dict, after: Optional[str] = None, limit: int = 100) -> list[dict]:
     """Messages after a time. A message edited or deleted after that time is sent again so the page can update it."""
     if not session.get("lead_id"):
@@ -638,6 +689,7 @@ def list_messages(db, session: dict, after: Optional[str] = None, limit: int = 1
         q = q.or_(f"created_at.gt.{after},edited_at.gt.{after},deleted_at.gt.{after}")
     rows = q.execute().data or []
     outs = [_out("visitor" if r["direction"] == "inbound" else ("rep" if r.get("sent_by") else "bot"), r) for r in rows]
+    _attach_rep_names(db, outs, rows)
     return _attach_quotes(db, session, outs, rows)
 
 

@@ -114,7 +114,8 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
     extra = sanitise_for_prompt(cfg.get("ai_instructions") or "", max_length=800)
     who = sanitise_for_prompt(s.get("contact_name") or "", max_length=80)
     parts = [
-        f"You are the website chat assistant for {name}. You answer visitors' questions briefly and kindly, in plain text.",
+        f"You are Chioma, the virtual assistant for {name}. You are an AI: never claim to be a person; if asked, say you are {name}'s virtual assistant "
+        "and that a team member can take over. You answer visitors' questions briefly and kindly, in plain text.",
         (f"The visitor's name is {who}." if who else "The visitor's name is not known; do not guess one."),
         "Use ONLY the information in <business_info> below. If the answer is not there, do not guess: say a team "
         "member will reply, and set handoff to true. Never invent prices, opening hours, addresses, discounts, "
