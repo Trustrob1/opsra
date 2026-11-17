@@ -52,6 +52,15 @@ def test_shop_on_still_gets_cards_instruction():
     assert "so they see product cards" in p and '"products"' in p
 
 
+def test_a_product_with_no_price_says_price_on_request_never_n0():
+    db = _read_only_db()
+    db.tables["products"].append({"id": "p9", "org_id": ORG, "title": "Custom Web App", "price": None, "variants": [],
+                                  "catalog_images": [], "description": "Built to your needs", "available": True})
+    p = _prompt(db, "custom web app")
+    line = next(x for x in p.splitlines() if "Custom Web App" in x)
+    assert "price on request" in line and "N0" not in line
+
+
 def test_other_businesses_products_never_appear():
     p = _prompt(_read_only_db(), "other org item")
     assert "Other Org Item" not in p

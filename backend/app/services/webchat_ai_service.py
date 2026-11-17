@@ -145,7 +145,8 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
         if cat:
             def _line(c: dict) -> str:
                 tail = f" | {sanitise_for_prompt(c['blurb'], max_length=300)}" if c.get("blurb") else ""
-                return (f"- id={c['id']} | {sanitise_for_prompt(c['title'], max_length=80)} | N{c['price']:,.0f} | "
+                price = f"N{c['price']:,.0f}" if (c.get("price") or 0) > 0 else "price on request"      # no price set: never say N0
+                return (f"- id={c['id']} | {sanitise_for_prompt(c['title'], max_length=80)} | {price} | "
                         f"{'in stock' if c.get('in_stock') else 'out of stock'}{tail}")
             lines = "\n".join(_line(c) for c in cat)
             if cfg.get("shop_enabled"):
