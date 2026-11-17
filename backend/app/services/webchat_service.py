@@ -50,7 +50,7 @@ DEFAULT_CONFIG: dict = {
     ],
     "contact_prompt": "To carry on, tell us who you are so we can reach you if we get disconnected.",
     "consent_text": "I agree to be contacted about my enquiry.",
-    "fallback": "I did not catch that. Tap Menu at the top to see what we can help with, or type your question again.",
+    "fallback": "I am unable to answer that at the moment. Please tap Menu at the top to see the available options, or tap Talk to the team to speak with someone on our team.",
     "human_reply": "Thanks. A team member will reply here as soon as they can.",
     "booking_done": "Thank you. We have your request and will confirm shortly.",
     "redirect_mode": "always",
@@ -82,7 +82,8 @@ DEFAULT_CONFIG: dict = {
 _LEGACY_TEXT = {
     "greeting": {"Hi! How can we help you today? Pick an option below or type your question.": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question.",
                  "Hi! How can we help you today? Pick an option below, or tap Menu at the top any time.": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question."},
-    "fallback": {"I did not catch that. Pick one of the options below, or tap Talk to us.": "I did not catch that. Tap Menu at the top to see what we can help with, or type your question again."},
+    "fallback": {"I did not catch that. Pick one of the options below, or tap Talk to us.": "I am unable to answer that at the moment. Please tap Menu at the top to see the available options, or tap Talk to the team to speak with someone on our team.",
+                 "I did not catch that. Tap Menu at the top to see what we can help with, or type your question again.": "I am unable to answer that at the moment. Please tap Menu at the top to see the available options, or tap Talk to the team to speak with someone on our team."},
 }
 GOAL_KEYS = ("booking", "order", "paid", "whatsapp", "tap")
 
