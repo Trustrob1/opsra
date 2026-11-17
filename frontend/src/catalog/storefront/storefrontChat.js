@@ -30,3 +30,16 @@ export function viewingMessage(productId) {
   const pid = cleanProductId(productId)
   return pid ? { source: 'opsra-catalog', type: 'viewing', product: pid } : null
 }
+
+/** WEBCHAT-CATALOG-1c (BUBBLE-3): the one-line greeting above the button. On a product page it names the product. Fixed copy, no AI. */
+export function greetingText(orgName, productTitle) {
+  const t = String(productTitle ?? '').replace(/\s+/g, ' ').trim()
+  if (t) return `Questions about ${t.length > 40 ? `${t.slice(0, 39).trimEnd()}…` : t}? I can help.`
+  const n = String(orgName ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
+  return n ? `Hi, I’m Chioma. Ask me anything about ${n}.` : 'Hi, I’m Chioma. Ask me anything.'
+}
+
+/** Once per browser tab for each product (or the shop home), so the card is useful and never nags. */
+export function greetedKey(chatKey, productId) {
+  return `opsra_chioma_greeted_${chatKey}_${cleanProductId(productId) || 'home'}`
+}

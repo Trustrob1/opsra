@@ -270,6 +270,7 @@ export default function PublicCatalogShell() {
         <StorefrontChat
           chatKey={catalogData.chat.key} accent={resolveAccent(catalogData.style)} orgName={catalogData.orgName}
           productId={itemSlug && currentItem ? currentItem.id : null}
+          productTitle={itemSlug && currentItem ? currentItem.title : ''}
         />
       )}
       {cartApi.enabled && (

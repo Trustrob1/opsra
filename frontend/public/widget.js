@@ -34,6 +34,28 @@
     if (/product|item|\/p\/|\/shop\/.+/.test(p)) return 'product'
     return 'home'
   }
+  // WEBCHAT-CATALOG-1c: the real product name when the page declares one (schema.org Product or an og:type "product" page).
+  // Read in the browser only, shown as plain text, cut to 40 characters; if the page says nothing, the fixed line is used.
+  function pageProduct() {
+    var name = ''
+    try {
+      var nodes = document.querySelectorAll('script[type="application/ld+json"]')
+      for (var i = 0; i < nodes.length && !name; i++) {
+        var j = JSON.parse(nodes[i].textContent || 'null')
+        var list = Array.isArray(j) ? j : (j && j['@graph'] ? j['@graph'] : [j])
+        for (var k = 0; k < list.length && !name; k++) {
+          var t = list[k] && list[k]['@type']
+          if (t && (t === 'Product' || (Array.isArray(t) && t.indexOf('Product') >= 0)) && typeof list[k].name === 'string') name = list[k].name
+        }
+      }
+      if (!name) {
+        var ty = document.querySelector('meta[property="og:type"]'), ti = document.querySelector('meta[property="og:title"]')
+        if (ty && /product/i.test(ty.content || '') && ti) name = ti.content || ''
+      }
+    } catch (e) { name = '' }
+    name = String(name).replace(/\s+/g, ' ').trim()
+    return name.length > 40 ? name.slice(0, 39).replace(/\s+$/, '') + '\u2026' : name
+  }
   var GREETING = {
     home: 'Hi, I’m Chioma. Ask me anything about {n}.',
     product: 'Questions about this item? I can help.',
@@ -137,7 +159,8 @@
     if (!store('opsra_chioma_greeted_' + key)) {
       setTimeout(function () {
         if (isOpen || store('opsra_chioma_greeted_' + key)) return
-        root.querySelector('.ct').textContent = (GREETING[pageHint()] || GREETING.home).replace('{n}', name)
+        var prod = pageProduct()
+        root.querySelector('.ct').textContent = prod ? 'Questions about ' + prod + '? I can help.' : (GREETING[pageHint()] || GREETING.home).replace('{n}', name)
         card.classList.add('in')
         store('opsra_chioma_greeted_' + key, '1')
       }, 4000)                                   // the same moment the label folds into the photo

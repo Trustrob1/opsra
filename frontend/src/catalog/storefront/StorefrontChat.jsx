@@ -8,16 +8,17 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { readableOn } from './storefrontLogic'
-import { chatSrc, cleanProductId, viewingMessage } from './storefrontChat'
+import { chatSrc, cleanProductId, viewingMessage, greetingText, greetedKey } from './storefrontChat'
 
 const FACE = '/chioma/chioma-face-64.webp'
 const FACE2 = '/chioma/chioma-face-128.webp'
 
-export default function StorefrontChat({ chatKey, accent, orgName, productId }) {
+export default function StorefrontChat({ chatKey, accent, orgName, productId, productTitle }) {
   const [open, setOpen] = useState(false)
   const [everOpened, setEverOpened] = useState(false)
   const [folded, setFolded] = useState(false)
   const [src, setSrc] = useState('')
+  const [cardFor, setCardFor] = useState('')   // the greeted-key the card is showing for; it hides on its own when the product changes
   const frameRef = useRef(null)
   const btnRef = useRef(null)
   const lastSent = useRef('')
@@ -33,7 +34,24 @@ export default function StorefrontChat({ chatKey, accent, orgName, productId }) 
     return () => clearTimeout(t)
   }, [])
 
+  // WEBCHAT-CATALOG-1c: one short greeting card as the label folds, naming the product on a product page.
+  // Once per tab per product; closes when dismissed or the chat opens; skipped for reduced-motion visitors' label timing only.
+  useEffect(() => {
+    if (open) return undefined
+    const k = greetedKey(chatKey, pid)
+    let seen = false
+    try { seen = !!sessionStorage.getItem(k) } catch { /* storage can be blocked */ }
+    if (seen) return undefined
+    const t = setTimeout(() => {
+      setCardFor(k)
+      try { sessionStorage.setItem(k, '1') } catch { /* ignore */ }
+    }, 4000)
+    return () => clearTimeout(t)
+  }, [chatKey, pid, open])
+  const cardText = cardFor && cardFor === greetedKey(chatKey, pid) ? greetingText(orgName, productTitle) : ''
+
   const openChat = () => {
+    setCardFor('')
     if (!everOpened) {
       setSrc(chatSrc(chatKey, pid))
       lastSent.current = pid
@@ -81,17 +99,28 @@ export default function StorefrontChat({ chatKey, accent, orgName, productId }) 
         .sfc-av img { width: 100%; height: 100%; object-fit: cover; display: block }
         .sfc-lbl { display: block; max-width: 190px; overflow: hidden; white-space: nowrap; font-size: 15px; font-weight: 600; margin: 0 12px 0 10px; opacity: 1; transition: max-width .3s ease, margin .3s ease, opacity .2s ease }
         .sfc-folded .sfc-lbl { max-width: 0; margin: 0; opacity: 0 }
+        .sfc-card { position: fixed; right: 20px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); z-index: 900; max-width: 260px; background: #fff; color: #14222b; border: 0; text-align: left; font: inherit; font-size: 14px; line-height: 1.35; border-radius: 14px; padding: 12px 34px 12px 14px; box-shadow: 0 8px 28px rgba(20,34,43,.22); cursor: pointer; animation: sfc-rise .25s ease }
+        .sfc-cx { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border: 0; background: transparent; color: #5b6b76; font-size: 18px; line-height: 1; cursor: pointer; border-radius: 50% }
+        @keyframes sfc-rise { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
         .sfc-panel { position: fixed; right: 20px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); z-index: 1100; width: 380px; height: min(640px, calc(100dvh - 112px)); background: #fff; border-radius: 18px; overflow: hidden; box-shadow: 0 12px 40px rgba(20,34,43,.3); opacity: 0; transform: translateY(14px) scale(.98); pointer-events: none; visibility: hidden; transition: opacity .18s ease, transform .18s ease, visibility 0s .18s }
         .sfc-open .sfc-panel { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity .18s ease, transform .18s ease }
         .sfc-panel iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff }
         .sfc-open .sfc-btn { z-index: 1101 }
         @media (max-width: 480px) { .sfc-panel { inset: 0; width: 100%; height: 100dvh; border-radius: 0; transform: translateY(24px) } .sfc-open .sfc-panel { transform: none } .sfc-open .sfc-btn { display: none } }
-        @media (prefers-reduced-motion: reduce) { .sfc-btn, .sfc-panel, .sfc-lbl { transition: none } }
+        @media (max-width: 480px) { .sfc-card { left: 16px; right: 16px; max-width: none } }
+        @media (prefers-reduced-motion: reduce) { .sfc-btn, .sfc-panel, .sfc-lbl { transition: none } .sfc-card { animation: none } }
       `}</style>
       <div className={`${open ? 'sfc-open' : ''} ${folded ? 'sfc-folded' : ''}`}>
         <div className="sfc-panel" role="dialog" aria-label={label} aria-hidden={!open}>
           {everOpened && <iframe ref={frameRef} src={src} title={label} allow="microphone; clipboard-write" />}
         </div>
+        {!open && cardText && (
+          <div className="sfc-card" role="button" tabIndex={0} onClick={openChat}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChat() } }}>
+            <span>{cardText}</span>
+            <button type="button" className="sfc-cx" aria-label="Dismiss" onClick={(e) => { e.stopPropagation(); setCardFor('') }}>×</button>
+          </div>
+        )}
         {!open && (
           <button ref={btnRef} type="button" className="sfc-btn" aria-label={label} aria-expanded="false" onClick={openChat}
             style={{ background: accent, color: fg }}>

@@ -31,3 +31,18 @@ test('viewingMessage: only for a valid product', () => {
   assert.equal(viewingMessage(''), null)
   assert.equal(viewingMessage('a b'), null)
 })
+
+import { greetingText, greetedKey } from './storefrontChat.js'
+
+test('greetingText: names the product on a product page, the shop otherwise', () => {
+  assert.equal(greetingText('Royal Rest', 'Holiday Sleep Mattress'), 'Questions about Holiday Sleep Mattress? I can help.')
+  assert.equal(greetingText('Royal Rest', ''), 'Hi, I’m Chioma. Ask me anything about Royal Rest.')
+  assert.equal(greetingText('', null), 'Hi, I’m Chioma. Ask me anything.')
+  assert.ok(greetingText('X', 'A'.repeat(80)).includes('…'))
+  assert.equal(greetingText('X', '  Big   Bed  '), 'Questions about Big Bed? I can help.')
+})
+
+test('greetedKey: one per product per chat', () => {
+  assert.equal(greetedKey('wc_abcdefgh12', 'p1'), 'opsra_chioma_greeted_wc_abcdefgh12_p1')
+  assert.equal(greetedKey('wc_abcdefgh12', ''), 'opsra_chioma_greeted_wc_abcdefgh12_home')
+})
