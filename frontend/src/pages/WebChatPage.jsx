@@ -206,6 +206,9 @@ export default function WebChatPage({ chatKey }) {
   const [hasContact, setHasContact] = useState(false)
   const [verified, setVerified] = useState(false)
   const [human, setHuman] = useState(false)
+  const [contactStep, setContactStep] = useState(null)   // WEBCHAT-CONTACT-1: null | 'name' | 'phone' | 'consent' (Chioma is asking for details in the chat)
+  const [hiddenIds, setHiddenIds] = useState(null)       // WEBCHAT-CONTACT-1: back after a long quiet spell: earlier messages are folded away, one tap shows them
+  const [meName, setMeName] = useState('')
   const [menuSeen, setMenuSeen] = useState(() => { try { return localStorage.getItem(`wc_menu_seen_${chatKey}`) === '1' } catch { return false } })
   const [msgMenu, setMsgMenu] = useState(null)         // { id, top, mine } while the message menu is open
   const [replyTo, setReplyTo] = useState(null)         // { id, role, text } the visitor is replying to
@@ -261,7 +264,11 @@ export default function WebChatPage({ chatKey }) {
   const apply = useCallback((snap) => {
     setCfg(snap.config)
     setMessages(snap.messages || [])
-    initialCount.current = (snap.messages || []).length
+    const fold = !!snap.returning && (snap.messages || []).length > 0
+    setHiddenIds(fold ? new Set(snap.messages.map((m) => m.id)) : null)
+    initialCount.current = fold ? 0 : (snap.messages || []).length
+    setContactStep(snap.contact_step || null)
+    setMeName(snap.name ? String(snap.name).split(' ')[0].slice(0, 30) : '')
     setHasContact(!!snap.has_contact)
     setVerified(!!snap.verified_phone)
     setHuman(!!snap.human)
@@ -338,6 +345,7 @@ export default function WebChatPage({ chatKey }) {
     merge(res.messages)
     if (typeof res.human === 'boolean') setHuman(res.human)
     setCards(res.cards || [])
+    setContactStep(res.contact_step || null)
     if (res.form === 'booking') setPanel('booking')
     else if (res.ask_contact) setPanel('contact')
     else if (res.ask_email) setPanel('email')
@@ -562,6 +570,8 @@ export default function WebChatPage({ chatKey }) {
     act(async () => {
       const res = await sendContact(chatKey, token.current, { ...contact, name: verified ? undefined : contact.name })
       merge(res.messages)
+      setCards(res.cards || [])
+      setContactStep(null)
       setHasContact(true)
       setPanel(res.form === 'booking' ? 'booking' : null)
     })
@@ -688,7 +698,9 @@ export default function WebChatPage({ chatKey }) {
 
   const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu', 'attach', 'call', 'delete'].includes(panel)
   const call = cfg.call || null
-  const visitorSpoke = messages.some((m) => m.role === 'visitor')
+  const shown = hiddenIds ? messages.filter((m) => !hiddenIds.has(m.id)) : messages
+  const visitorSpoke = shown.some((m) => m.role === 'visitor')
+  const stepHint = contactStep === 'name' ? 'Your name' : contactStep === 'phone' ? 'Your WhatsApp number or email' : contactStep === 'consent' ? 'Reply Yes or No' : 'Type your message'
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
   // WEBCHAT-BUBBLE-2: Chioma is the face; once a team member takes over, the header shows them instead (and swaps back when the bot resumes).
   const chioma = cfg.chioma || {}
@@ -741,13 +753,21 @@ export default function WebChatPage({ chatKey }) {
         </header>
 
         <main style={S.list} ref={listRef} role="log" aria-live="polite" aria-label="Chat messages">
-          {messages.map((m, i) => {
+          {hiddenIds && (
+            <div role="note" style={{ margin: '4px 0 10px', padding: '12px 14px', borderRadius: 14, background: '#fff', border: `1px solid ${LINE}`, fontSize: 15, color: INK, textAlign: 'center' }}>
+              <div style={{ fontWeight: 600 }}>Welcome back{meName ? `, ${meName}` : ''}.</div>
+              <div style={{ color: MUTED, marginTop: 2 }}>How can I help today?</div>
+              <button type="button" onClick={() => { setHiddenIds(null); initialCount.current = messages.length }}
+                style={{ marginTop: 8, minHeight: 44, border: 0, background: 'transparent', color: brand, fontWeight: 600, fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Show earlier messages</button>
+            </div>
+          )}
+          {shown.map((m, i) => {
             const lifted = msgMenu?.id === m.id
             const tappable = !m.tmp && !m.deleted
             return (
             <div key={m.id} className={i >= initialCount.current ? 'wc-anim' : undefined} style={{ ...S.row(m.role), ...(i >= initialCount.current ? { animation: 'wc-pop 0.18s ease-out' } : {}), ...(m.tmp ? { opacity: 0.85 } : {}), ...(lifted ? { position: 'relative', zIndex: 5 } : {}) }}>
-              {m.role === 'rep' && (i === 0 || messages[i - 1].role !== 'rep') && <span style={S.who}>{m.by ? `${m.by} · ${cfg.business_name} team` : `${cfg.business_name} team`}</span>}
-              {m.role === 'bot' && (i === 0 || messages[i - 1].role !== 'bot') && <span style={{ ...S.who, display: 'flex', alignItems: 'center', gap: 6 }}>{chiomaFace(22)}Chioma</span>}
+              {m.role === 'rep' && (i === 0 || shown[i - 1].role !== 'rep') && <span style={S.who}>{m.by ? `${m.by} · ${cfg.business_name} team` : `${cfg.business_name} team`}</span>}
+              {m.role === 'bot' && (i === 0 || shown[i - 1].role !== 'bot') && <span style={{ ...S.who, display: 'flex', alignItems: 'center', gap: 6 }}>{chiomaFace(22)}Chioma</span>}
               {m.deleted ? (
                 <div style={{ border: `1px dashed ${LINE}`, background: '#fff', color: MUTED, padding: '10px 14px', borderRadius: 18, fontSize: 14, fontStyle: 'italic' }}>
                   {m.role === 'visitor' ? 'You deleted this message' : 'This message was deleted'}
@@ -768,7 +788,7 @@ export default function WebChatPage({ chatKey }) {
                   : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
               </div>
               )}
-              {m.role === 'bot' && cfg.menu.length > 0 && i === messages.length - 1 && ((cfg.fallback && m.text === cfg.fallback) || (cfg.scripted_tail && m.text.endsWith(cfg.scripted_tail))) && (
+              {m.role === 'bot' && cfg.menu.length > 0 && i === shown.length - 1 && ((cfg.fallback && m.text === cfg.fallback) || (cfg.scripted_tail && m.text.endsWith(cfg.scripted_tail))) && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
                   <button type="button" style={{ ...S.chip, minHeight: 40, display: 'flex', alignItems: 'center', gap: 8 }} onClick={openMenu}>
                     <Icon name="menu" size={18} />Open menu
@@ -796,7 +816,14 @@ export default function WebChatPage({ chatKey }) {
 
           {cards.length > 0 && !panel && cards.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} />)}
 
-          {cfg.menu.length > 0 && !visitorSpoke && !panel && (
+          {contactStep === 'consent' && !panel && (
+            <div style={S.chips}>
+              <button type="button" style={S.chip} disabled={busy} onClick={() => sendOptimistic('Yes', { kind: 'text', text: 'Yes' })}>Yes, that is okay</button>
+              <button type="button" style={S.chip} disabled={busy} onClick={() => sendOptimistic('No', { kind: 'text', text: 'No' })}>No thanks</button>
+            </div>
+          )}
+
+          {cfg.menu.length > 0 && !visitorSpoke && !panel && !contactStep && (
             <div style={S.chips}>
               {cfg.menu.map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
             </div>
@@ -864,7 +891,7 @@ export default function WebChatPage({ chatKey }) {
             <form onSubmit={sendText} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <button type="button" aria-label="Attach a file" onClick={onAttach} disabled={!!editing} style={{ ...S.iconBtn, color: MUTED, opacity: editing ? 0.4 : 1 }}><Icon name="clip" size={22} /></button>
               <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
-              <input id="wc-text" ref={inputRef} style={S.input} value={text} maxLength={1000} placeholder="Type your message" autoComplete="off"
+              <input id="wc-text" ref={inputRef} style={S.input} value={text} maxLength={1000} placeholder={stepHint} autoComplete="off" inputMode={contactStep === 'phone' ? 'tel' : undefined}
                 onChange={(e) => setText(e.target.value)} />
               {!text.trim() && !editing && recorderSupported()
                 ? <button type="button" aria-label="Record a voice note" style={{ ...S.send, marginLeft: 4 }} onClick={startRec}><Icon name="mic" size={22} /></button>

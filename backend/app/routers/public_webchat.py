@@ -116,11 +116,23 @@ def _session(db, found: dict, authorization: Optional[str]) -> dict:
     return s
 
 
+def _returning(s: dict, cfg: dict, messages: list) -> bool:
+    """WEBCHAT-CONTACT-1: the visitor is back after a long quiet spell, so the chat page opens with a fresh view
+    (the old messages stay saved and one tap shows them)."""
+    try:
+        hours = int(cfg.get("fresh_after_hours", 24) or 0)
+    except (TypeError, ValueError):
+        hours = 24
+    return bool(hours > 0 and messages and float(s.get("_idle_s") or 0) >= hours * 3600)
+
+
 def _snapshot(s: dict, cfg: dict, messages: list) -> dict:
     return {
         "messages": messages, "has_contact": bool(s.get("lead_id")), "name": s.get("contact_name"),
         "verified_phone": bool(s.get("phone_verified")), "needs_email": bool(s.get("phone_verified") and not s.get("contact_email")),
         "human": wc.is_human(s, cfg), "config": wc.public_view(cfg),
+        "contact_step": (s.get("state") or {}).get("contact_step"),
+        "returning": _returning(s, cfg, messages),
     }
 
 

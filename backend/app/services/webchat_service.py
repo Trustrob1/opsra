@@ -64,6 +64,8 @@ DEFAULT_CONFIG: dict = {
     "wa_template_name": "",
     "wa_template_lang": "en",
     "wa_monthly_cap": 100,
+    "contact_in_chat": True,      # WEBCHAT-CONTACT-1: ask for name / number / consent in the chat itself (False = the pop-up form)
+    "fresh_after_hours": 24,      # WEBCHAT-CONTACT-1: a visitor back after this many idle hours gets a fresh view (0 = always show the full history)
     "email_followups": True,      # WEBCHAT-4: email replies / confirmations to visitors who gave an email and consent
     "human_resume_min": 30,       # minutes of team silence after which the bot answers again
     "shop_enabled": False,        # WEBCHAT-3b: product cards, cart and checkout link in the chat
@@ -175,6 +177,13 @@ def sanitise_config(raw: dict) -> dict:
             out["wa_monthly_cap"] = max(1, min(int(raw["wa_monthly_cap"]), 5000))
         except (TypeError, ValueError):
             out["wa_monthly_cap"] = 100
+    if "contact_in_chat" in raw:
+        out["contact_in_chat"] = bool(raw["contact_in_chat"])
+    if "fresh_after_hours" in raw:
+        try:
+            out["fresh_after_hours"] = max(0, min(int(raw["fresh_after_hours"]), 720))
+        except (TypeError, ValueError):
+            out["fresh_after_hours"] = 24
     if "email_followups" in raw:
         out["email_followups"] = bool(raw["email_followups"])
     if "human_resume_min" in raw:
@@ -535,6 +544,7 @@ def authenticate(db, org_id: str, token: Optional[str]) -> Optional[dict]:
         last = datetime.fromisoformat(str(s.get("last_activity_at")).replace("Z", "+00:00"))
     except Exception:
         last = now - timedelta(days=1)
+    s["_idle_s"] = (now - last).total_seconds()          # WEBCHAT-CONTACT-1: read by the resume snapshot (never stored)
     if (now - last).total_seconds() > TOUCH_EVERY_S:
         upd = {"last_activity_at": _iso(now), "expires_at": _iso(now + timedelta(days=SESSION_DAYS))}
         try:

@@ -292,7 +292,7 @@ class TestFlow:
     def test_menu_tap_answers_then_asks_for_contact(self):
         from app.services import webchat_flow_service as f, webchat_service as wc
         db = _db()
-        s, cfg = _session(db), wc.get_config(db, ORG)
+        s, cfg = _session(db), wc.get_config(db, ORG); cfg["contact_in_chat"] = False
         r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
         assert [m["role"] for m in r["messages"]] == ["visitor", "bot"]
         assert r["messages"][1]["text"] == "We open 9 to 6."
@@ -302,7 +302,7 @@ class TestFlow:
     def test_typed_keyword_matches_and_unknown_gets_fallback(self):
         from app.services import webchat_flow_service as f, webchat_service as wc
         db = _db()
-        s, cfg = _session(db), wc.get_config(db, ORG)
+        s, cfg = _session(db), wc.get_config(db, ORG); cfg["contact_in_chat"] = False
         r = f.handle_message(db, s, cfg, kind="text", text="what are your opening hours?")
         assert r["messages"][1]["text"] == "We open 9 to 6."
         r = f.handle_message(db, s, cfg, kind="text", text="zzzz qqqq")
@@ -319,7 +319,7 @@ class TestFlow:
     def test_booking_needs_contact_first_then_shows_form(self):
         from app.services import webchat_flow_service as f, webchat_service as wc
         db = _db()
-        s, cfg = _session(db), wc.get_config(db, ORG)
+        s, cfg = _session(db), wc.get_config(db, ORG); cfg["contact_in_chat"] = False
         r = f.handle_message(db, s, cfg, kind="menu", menu_id="book")
         assert r["ask_contact"] is True and r["form"] is None and s["state"]["pending"] == "booking"
         with patch("app.services.funnel_service._find_org_lead", return_value=None), \
@@ -527,7 +527,7 @@ class TestPublicRoutes:
     def test_full_conversation(self, client):
         d, h = _start(client)
         r = client.post(f"/api/v1/public/webchat/{client.key}/message", json={"kind": "menu", "menu_id": "hours"}, headers=h)
-        assert r.status_code == 200 and r.json()["data"]["ask_contact"] is True
+        assert r.status_code == 200 and r.json()["data"]["contact_step"] == "name"
         with patch("app.services.funnel_service._find_org_lead", return_value=None), \
              patch("app.services.lead_service.create_lead", return_value={"id": "L7"}):
             r = client.post(f"/api/v1/public/webchat/{client.key}/contact", headers=h,

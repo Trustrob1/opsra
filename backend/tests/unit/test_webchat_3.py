@@ -318,7 +318,7 @@ class TestFlow:
         s, cfg = _session(db, contact=False), _cfg(db)
         with _claude('{"reply": "x", "handoff": false}') as cc:
             r = f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
-        assert r["ask_contact"] is True and not cc.called and s["state"]["pending_question"] == "do you do braids?"
+        assert r["contact_step"] == "name" and r["ask_contact"] is False and not cc.called and s["state"]["pending_question"] == "do you do braids?"
         with patch("app.services.funnel_service._find_org_lead", return_value=None), \
              patch("app.services.lead_service.create_lead", return_value={"id": "L9"}), \
              _claude('{"reply": "Yes we do braids.", "handoff": false}'):
@@ -376,3 +376,100 @@ class TestMenuAndAfterContact:
              patch("app.services.lead_service.create_lead", return_value={"id": "L9"}):
             res = f.handle_contact(db, s, cfg, name="Ada Obi", phone="08031234567", email=None, consent=True)
         assert [m["text"] for m in res["messages"]][1].startswith("What would you like to know?")
+
+
+class TestContactInChat:
+    """WEBCHAT-CONTACT-1: name -> number -> Yes, all in the chat."""
+
+    def _go(self, db, s, cfg, text, ai=None):
+        from app.services import webchat_flow_service as f
+        with patch("app.services.funnel_service._find_org_lead", return_value=None), \
+             patch("app.services.lead_service.create_lead", return_value={"id": "L9"}), \
+             _claude(ai or '{"reply": "Yes we do braids.", "handoff": false}'):
+            return f.handle_message(db, s, cfg, kind="text", text=text)
+
+    def test_full_script_ends_with_the_waiting_question_answered(self):
+        from app.services import webchat_flow_service as f
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        with _claude("x"):
+            r = f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
+        assert r["contact_step"] == "name" and "What name should I use?" in r["messages"][-1]["text"]
+        r = self._go(db, s, cfg, "my name is Ada Obi")
+        assert r["contact_step"] == "phone" and "Nice to meet you, Ada" in r["messages"][-1]["text"]
+        r = self._go(db, s, cfg, "0803 123 4567")
+        assert r["contact_step"] == "consent" and "ending 567" in r["messages"][-1]["text"]
+        assert r["messages"][0]["text"] == "My WhatsApp number (ends 567)"          # the number is not kept in the chat text
+        assert "0803" not in str(s.get("state"))[:0] + r["messages"][0]["text"]
+        r = self._go(db, s, cfg, "Yes")
+        texts = [m["text"] for m in r["messages"]]
+        assert r["contact_step"] is None and "Thank you. We have your details." in texts and "Yes we do braids." in texts
+        assert s["state"].get("contact_step") is None and not s["state"].get("pending_question")
+
+    def test_bad_number_is_asked_again_then_the_form_takes_over(self):
+        from app.services import webchat_flow_service as f
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        with _claude("x"):
+            f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
+        self._go(db, s, cfg, "Ada")
+        r = self._go(db, s, cfg, "12")
+        assert r["contact_step"] == "phone" and "does not look right" in r["messages"][-1]["text"] and r["ask_contact"] is False
+        r = self._go(db, s, cfg, "abc")
+        assert r["ask_contact"] is True and r["contact_step"] is None and "short form" in r["messages"][-1]["text"]
+
+    def test_email_instead_of_number_and_a_no_answer(self):
+        from app.services import webchat_flow_service as f
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        with _claude("x"):
+            f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
+        self._go(db, s, cfg, "Ada")
+        r = self._go(db, s, cfg, "ada@example.com")
+        assert r["contact_step"] == "consent" and r["messages"][0]["text"] == "My email address"
+        r = self._go(db, s, cfg, "no thanks")
+        assert r["contact_step"] is None and "I will not keep your details" in r["messages"][-1]["text"] and not s.get("lead_id")
+
+    def test_a_question_is_not_taken_as_a_name_and_a_menu_tap_abandons_it(self):
+        from app.services import webchat_flow_service as f
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        with _claude("x"):
+            f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
+        r = self._go(db, s, cfg, "what are your prices?")
+        assert r["contact_step"] == "name" and "did not catch a name" in r["messages"][-1]["text"]
+        r = f.handle_message(db, s, cfg, kind="menu", menu_id=cfg["menu"][0]["id"])
+        assert s["state"].get("contact_step") is None
+
+    def test_the_gentle_ask_after_a_first_answer_is_dropped_if_ignored_and_asked_once(self):
+        from app.services import webchat_flow_service as f
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        cfg["menu"] = [{"id": "hours", "label": "Opening hours", "answer": "We open 9 to 6.", "keywords": ["hours"]}]
+        cfg["ai_enabled"] = False
+        r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
+        assert r["contact_step"] == "name" and s["state"]["contact_optional"] is True
+        r = f.handle_message(db, s, cfg, kind="text", text="where are you located?")
+        assert s["state"].get("contact_step") is None and r["messages"][1]["text"] == cfg["fallback"]
+        r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
+        assert not r.get("contact_step") and r["ask_contact"] is False              # not asked a second time
+
+    def test_form_mode_still_works_when_switched_off(self):
+        from app.services import webchat_flow_service as f
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        cfg["contact_in_chat"] = False
+        with _claude("x"):
+            r = f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
+        assert r["ask_contact"] is True and not r.get("contact_step")
+
+    def test_config_and_resume_signals(self):
+        from app.services import webchat_service as wc
+        from app.routers import public_webchat as r
+        assert wc.sanitise_config({"contact_in_chat": False, "fresh_after_hours": "9999"}) == {"contact_in_chat": False, "fresh_after_hours": 720}
+        s = {"_idle_s": 25 * 3600, "state": {"contact_step": "phone"}}
+        assert r._returning(s, {"fresh_after_hours": 24}, [{"id": 1}]) is True
+        assert r._returning(s, {"fresh_after_hours": 24}, []) is False                  # nothing to hide
+        assert r._returning({"_idle_s": 3600}, {"fresh_after_hours": 24}, [{"id": 1}]) is False
+        assert r._returning(s, {"fresh_after_hours": 0}, [{"id": 1}]) is False          # switched off
+        assert r._snapshot({**s, "state": {"contact_step": "phone"}}, {"fresh_after_hours": 24, "business_name": "X", "brand_color": "#028090", "greeting": "g", "menu": [], "contact_prompt": "", "consent_text": "", "fallback": "", "booking_fields": []}, [])["contact_step"] == "phone"

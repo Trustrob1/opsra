@@ -24,6 +24,7 @@ from typing import Optional
 from app.services import webchat_service as wc
 from app.services import webchat_ai_service
 from app.services import webchat_shop_service
+from app.services import webchat_contact_service as contact
 
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,8 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         if not visitor_text:
             return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": wc.is_human(s, cfg)}
 
-    out = [wc.append_message(db, s, "visitor", visitor_text, reply_to=reply_to)]
+    shown = contact.shown_text(s, visitor_text) if kind == "text" else visitor_text      # WEBCHAT-CONTACT-1: a typed number is not kept in the chat text
+    out = [wc.append_message(db, s, "visitor", shown, reply_to=reply_to)]
     wc.update_session(db, s, {"turn_count": int(s.get("turn_count") or 0) + 1})
     if int(s.get("turn_count") or 0) == 1:
         wc.log_event(db, s["org_id"], s["id"], "started", s.get("source"))
@@ -110,6 +112,15 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             _notify_human(db, s, cfg, visitor_text)
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
         wc.set_state(db, s, human=False)      # team quiet for a while, or the visitor chose an option: the bot is back
+
+    if contact.step_of(s) and kind == "text" and contact.drops_quietly(s, visitor_text):
+        contact._clear(db, s)                                    # the gentle ask was ignored: carry on with what they actually said
+    if contact.step_of(s):                                       # WEBCHAT-CONTACT-1: Chioma is asking for details in the chat
+        if kind == "text":
+            r = contact.step(db, s, cfg, visitor_text, handle_contact)
+            return {"messages": out + r["messages"], "ask_contact": r["ask_contact"], "ask_email": False, "form": r["form"],
+                    "human": False, "cards": r["cards"], "contact_step": r["contact_step"]}
+        wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_nudged=True)   # tapped an option: moved on, do not nag
 
     if item is None:
         item = _match_item(cfg, visitor_text)
@@ -124,8 +135,11 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
 
     if item and item.get("action") == "booking":
         if not _has_contact(s):
-            out.append(wc.append_message(db, s, "bot", "Happy to help you book. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
             wc.set_state(db, s, pending="booking")
+            if contact.enabled(cfg):
+                out.append(contact.start(db, s, cfg, "Happy to help you book. I just need a couple of details first."))
+                return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False, "contact_step": "name"}
+            out.append(wc.append_message(db, s, "bot", "Happy to help you book. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
             return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": False}
         out.append(wc.append_message(db, s, "bot", "Great. Fill in the details below and we will confirm."))
         form = "booking"
@@ -134,8 +148,11 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
     elif kind == "text" and cfg.get("ai_enabled") and not _has_contact(s):
         # WEBCHAT-3: AI needs a contact first, so ask for one instead of the generic fallback
-        out.append(wc.append_message(db, s, "bot", "Happy to help with that. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
         wc.set_state(db, s, pending_question=visitor_text[:300])
+        if contact.enabled(cfg):
+            out.append(contact.start(db, s, cfg, "Happy to help with that. I just need a couple of details first."))
+            return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False, "contact_step": "name"}
+        out.append(wc.append_message(db, s, "bot", "Happy to help with that. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
         return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": False}
     else:
         ai = webchat_ai_service.answer(db, s, cfg, visitor_text) if kind == "text" else None
@@ -153,6 +170,13 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     state = s.get("state") or {}
     answered = int(state.get("answers") or 0) >= 1
     ask_contact = answered and not _has_contact(s)
+    if ask_contact and contact.enabled(cfg):
+        # WEBCHAT-CONTACT-1: ask once, in the chat, right after the first answer (not on every later turn)
+        if not state.get("contact_nudged"):
+            wc.set_state(db, s, contact_nudged=True)
+            out.append(contact.start(db, s, cfg, "So the team can follow up if you need them, I just need a couple of details.", optional=True))
+            return {"messages": out, "ask_contact": False, "ask_email": False, "form": form, "human": False, "cards": cards, "contact_step": "name"}
+        ask_contact = False
     ask_email = (answered and _has_contact(s) and s.get("phone_verified") and not s.get("contact_email")
                  and not state.get("email_asked"))
     if ask_email:
@@ -168,6 +192,7 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
     if err:
         return {"error": err}
     s = wc.save_contact(db, s, clean)
+    contact._clear(db, s)                      # WEBCHAT-CONTACT-1: the form (or the in-chat steps) is done, so no step stays open
     out, form, cards = [], None, []
     pending = (s.get("state") or {}).get("pending")
     if pending == "booking":
