@@ -111,7 +111,7 @@ def test_greeting_then_question_is_answered_without_details_first():
     texts = [m["text"] for m in r["messages"]]
     assert cc.called and texts[0] == "do you do braids?" and texts[1] == "Yes we do braids."      # the answer comes first
     assert r.get("contact_step") == "name"                    # details are asked AFTER the first answer
-    assert any("couple of details" in m["text"] for m in r["messages"])
+    assert "first name" in r["messages"][-1]["text"]
 
 
 def test_without_answer_first_the_old_order_is_kept():
@@ -130,7 +130,7 @@ def test_handoff_before_details_asks_for_them():
     with _claude('{"reply": "A team member will reply.", "handoff": true}'), patch.object(wc, "notify_managers"):
         r = f.handle_message(db, s, cfg, kind="text", text="can I get a discount on 10 wigs?")
     assert r["human"] is True and r.get("contact_step") == "name"
-    assert "reply to you" in r["messages"][-1]["text"]
+    assert "first name" in r["messages"][-1]["text"]
 
 
 def test_known_contact_greeting_still_gets_a_greeting_not_ai():

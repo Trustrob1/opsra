@@ -25,18 +25,19 @@ logger = logging.getLogger(__name__)
 MAX_TRIES = 2
 _YES = {"yes", "y", "yeah", "yep", "yup", "ok", "okay", "sure", "fine", "alright", "please", "go ahead", "yes please", "of course", "i agree", "agreed"}
 _NO = {"no", "n", "nope", "nah", "no thanks", "no thank you", "dont", "do not", "not now"}
-_LEAD_IN = re.compile(r"^(?:my name is|my name's|name is|i am|i'm|im|this is|it is|it's|its|call me)\s+", re.I)
-_QUESTION_WORDS = {"what", "how", "do", "does", "can", "is", "are", "where", "when", "why", "which", "who", "price", "much"}
 
+
+NAME_Q = "So the team knows who they are replying to, may I have your first name?"
+PHONE_Q = "What is your WhatsApp number?"
 
 # why the visitor needs to give details (a button they tapped) -> (what Chioma says first, what she says once they are done)
 INTROS = {
-    "callback": ("I will need a couple of details before the team can call you back.", "Tap the call button again to ask for your call back."),
-    "file": ("I just need a couple of details before you send a file.", "You can send your file now."),
-    "voice": ("I just need a couple of details before you send a voice note.", "You can record your voice note now."),
-    "checkout": ("I just need a couple of details first, so we can confirm your order.", "Tap Cart to check out."),
+    "callback": ("Happy to arrange a call back.", "Tap the call button again to ask for your call back."),
+    "file": ("Happy to take your file.", "You can send your file now."),
+    "voice": ("Happy to take your voice note.", "You can record your voice note now."),
+    "checkout": ("Happy to get your order moving.", "Tap Cart to check out."),
 }
-DEFAULT_INTRO = ("I just need a couple of details first.", "")
+DEFAULT_INTRO = ("", "")
 
 
 def enabled(cfg: dict) -> bool:
@@ -49,7 +50,7 @@ def step_of(s: dict) -> Optional[str]:
 
 
 def _clear(db, s: dict) -> None:
-    wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_after="")
+    wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_after="", contact_deflected=0)
 
 
 def start_for(db, s: dict, cfg: dict, why: str) -> dict:
@@ -64,21 +65,108 @@ def start(db, s: dict, cfg: dict, intro: str, optional: bool = False) -> dict:
     """Open the script with one bot message; returns that message. optional=True is the gentle ask after a first answer:
     if the visitor carries on with something else instead of giving a name, the script drops quietly."""
     wc.set_state(db, s, contact_step="name", contact_tries=0, contact_tmp={}, contact_optional=optional)
-    return wc.append_message(db, s, "bot", f"{intro} What name should I use?")
+    return wc.append_message(db, s, "bot", f"{intro} {NAME_Q}" if intro else NAME_Q)
+
+
+# Words that are never part of a person's name. Names that are also ordinary words (Will, Mark, Grace, Joy, Hope, Faith, Bill...) are
+# deliberately NOT here. NOT_NAME_ALONE is checked on one-word replies; NOT_NAME_ANYWHERE on every word of a longer reply.
+NOT_NAME_ANYWHERE = {
+    "i", "id", "ill", "ive", "im", "we", "you", "your", "yours", "my", "our", "me", "us", "he", "she", "they", "it", "its",
+    "the", "a", "an", "and", "or", "but", "if", "so", "to", "of", "in", "on", "at", "for", "with", "from", "by", "as", "about",
+    "is", "are", "was", "were", "am", "be", "been", "do", "does", "did", "done", "can", "could", "would", "should", "shall", "may", "might", "must",
+    "want", "wants", "wanted", "need", "needs", "needed", "like", "likes", "looking", "look", "buy", "sell", "selling", "get", "got", "give", "send",
+    "have", "has", "had", "make", "making", "tell", "show", "know", "think", "see", "come", "go", "going", "call", "talk", "speak", "chat", "ask", "asking",
+    "how", "what", "whats", "when", "where", "why", "which", "who", "whom", "whose", "much", "many", "any", "some", "all", "more", "less",
+    "price", "prices", "cost", "costs", "pay", "payment", "order", "available", "stock", "delivery", "info", "information", "details", "help", "service", "services",
+    "please", "pls", "plz", "thanks", "thank", "thx", "hello", "hi", "hey", "hiya", "yo", "yes", "yeah", "yep", "no", "nope", "nah", "ok", "okay", "sure",
+    "not", "nothing", "none", "skip", "never", "mind", "anything", "something", "everything", "this", "that", "these", "those", "there", "here",
+    "morning", "afternoon", "evening", "night", "good", "bad", "great", "fine", "well", "just", "only", "also", "too", "very", "really", "now", "later", "today", "tomorrow",
+    "website", "websites", "phone", "phones", "product", "products", "business", "company", "team", "someone", "somebody", "person", "human", "agent", "chioma",
+    "name", "names", "called", "whatsapp", "number", "email", "mail", "link", "app", "online", "store", "shop", "price", "quote", "booking", "book",
+}
+NOT_NAME_ALONE = NOT_NAME_ANYWHERE | {"asdf", "asdfg", "qwert", "zxcv", "hjkl", "lol", "haha", "hahaha", "test", "testing", "asdf", "qwerty", "xxx", "anonymous", "unknown", "nobody", "private", "secret", "admin"}
+_TRAILING = re.compile(r"[\s,.!]+(?:here|speaking|thanks|thank you|please|pls)$", re.I)
+_LEAD_FILLER = re.compile(r"^(?:(?:hi|hello|hey|hiya|good\s+(?:morning|afternoon|evening))\b[\s,.!:-]*)+", re.I)
+_LEAD_IN2 = re.compile(r"^(?:(?:you\s+can|they|people|everyone|everybody)\s+call\s+me|the\s+name\s+is|my\s+names?\s+is|my\s+name's|my\s+name\s+is|name\s+is|name's|names|i\s+am|i'm|i\s+m|im|this\s+is|it\s+is|it's|its|call\s+me|am)\s+", re.I)
+_NAME_WORD = re.compile(r"^[^\W\d_]+(?:['\u2019.-][^\W\d_]+)*\.?$", re.UNICODE)      # letters (any language), with ' - . inside
+QUESTION_STARTERS = {"what", "whats", "how", "do", "does", "did", "can", "could", "would", "will", "is", "are", "where", "when", "why", "which", "who",
+                     "price", "much", "any", "tell", "show", "i", "we", "please", "pls", "i'd", "i'll", "ill", "id"}
 
 
 def _clean_name(text: str) -> Optional[str]:
-    name = _LEAD_IN.sub("", wc._clean_text(text, 80)).strip(" .,!")
-    words = name.split()
-    if (len(name) < 2 or "?" in name or "@" in name or any(c.isdigit() for c in name) or len(words) > 4
-            or (words and words[0].lower() in _QUESTION_WORDS)):
+    """The visitor's first name from a free-typed reply, or None when the reply is not a name (a question, a greeting, a sentence,
+    a number, an address, a link, an emoji, junk). Stripping 'my name is', 'hi, I am' and a trailing 'here/speaking' is allowed."""
+    raw = wc._clean_text(text, 80)
+    if not raw or "?" in raw or "@" in raw or re.search(r"https?:|www\.|\.(?:com|ng|org|net|co)\b", raw, re.I):
         return None
-    return name
+    name = raw
+    for _ in range(3):                                           # 'hi, my name is Ada' -> 'Ada'
+        before = name
+        name = _LEAD_FILLER.sub("", name).strip()
+        name = _LEAD_IN2.sub("", name).strip()
+        name = _TRAILING.sub("", name).strip(" .,!;:-")
+        if name == before:
+            break
+    words = name.replace(",", " ").split()
+    if not words or len(words) > 4 or len(name) < 2 or len(name) > 60:
+        return None
+    for w in words:
+        if (not _NAME_WORD.match(w) or len(w.strip(".")) > 24 or re.search(r"(.)\1{3,}", w.lower())
+                or re.fullmatch(r"(.{3,5})\1+", w.strip(".").lower())):          # 'aaaa', 'asdfasdf', 'abcabc': keyboard mashing
+            return None
+    low = [w.strip(".").lower() for w in words]
+    if len(words) == 1:
+        if low[0] in NOT_NAME_ALONE or len(low[0]) < 2:
+            return None
+    else:
+        if any(w in NOT_NAME_ANYWHERE for w in low) or any(len(w) < 2 and not w.endswith(".") for w in words):
+            return None
+    fixed = [w if (not w.islower() and not w.isupper()) else w.capitalize() for w in words]         # keep McDonald; fix 'ada' and 'ADA'
+    return " ".join(fixed)
+
+
+def looks_like_question(text: str) -> bool:
+    """True when a reply that is not a name reads as a real question or request (so the visitor deserves an answer, not a second ask)."""
+    t = (text or "").strip()
+    words = re.sub(r"[^\w\s'\u2019]", " ", t.lower()).split()
+    return bool(t) and ("?" in t or len(words) >= 4 or (bool(words) and words[0] in QUESTION_STARTERS and len(words) >= 2))
 
 
 def drops_quietly(s: dict, text: str) -> bool:
     """True when the gentle ask is open, the visitor has not answered it with a name, and so the message is handled normally."""
     return step_of(s) == "name" and bool((s.get("state") or {}).get("contact_optional")) and _clean_name(text) is None
+
+
+def can_deflect(s: dict, text: str) -> bool:
+    """The REQUIRED ask is open (a person was asked for details so the team can help) and the visitor typed a real question instead of
+    an answer: it deserves an answer first, then the ask once more. Only once per ask; after that a wrong reply counts as a failed try."""
+    st = s.get("state") or {}
+    cur = step_of(s)
+    if not cur or st.get("contact_optional") or int(st.get("contact_deflected") or 0) >= 1:
+        return False
+    if cur == "name":
+        return _clean_name(text) is None and looks_like_question(text)
+    if cur == "phone":
+        return wc.normalise_phone((text or "").strip()) is None and looks_like_question(text)
+    low = re.sub(r"[^a-z ]", "", (text or "").lower()).strip()
+    return low not in _YES and low not in _NO and not low.startswith(("yes", "no ")) and looks_like_question(text)
+
+
+def reask(db, s: dict, cfg: dict) -> Optional[dict]:
+    """After a deflected question has been answered: say the open step's question again (once), keeping the script open."""
+    cur = step_of(s)
+    if not cur:
+        return None
+    wc.set_state(db, s, contact_deflected=1, contact_tries=0)
+    if cur == "name":
+        q = "Now, " + NAME_Q[0].lower() + NAME_Q[1:]
+    elif cur == "phone":
+        q = "Now, " + PHONE_Q[0].lower() + PHONE_Q[1:]
+    else:
+        tmp = (s.get("state") or {}).get("contact_tmp") or {}
+        ph = tmp.get("phone") or ""
+        q = f"Back to your details: is it okay for {cfg.get('business_name') or 'the team'} to contact you on the number ending {ph[-3:]} about your enquiry? Reply Yes or No."
+    return wc.append_message(db, s, "bot", q)
 
 
 def shown_text(s: dict, text: str) -> str:
@@ -124,10 +212,10 @@ def step(db, s: dict, cfg: dict, text: str, finish: Callable[..., dict]) -> dict
     if cur == "name":
         name = _clean_name(t)
         if not name:
-            return fail("I did not catch a name there. What should I call you?")
+            return fail("Sorry, I did not catch a first name there. What should I call you?")
         tmp["name"] = name
         wc.set_state(db, s, contact_step="phone", contact_tmp=tmp, contact_tries=0)
-        say(f"Nice to meet you, {_first(name)}. What is your WhatsApp number?")
+        say(f"Nice to meet you, {_first(name)}. {PHONE_Q}")
         return reply()
 
     if cur == "phone":

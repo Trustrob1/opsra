@@ -401,7 +401,7 @@ class TestContactInChat:
         s, cfg = _session(db, contact=False), _cfg(db)
         with _claude("x"):
             r = f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
-        assert r["contact_step"] == "name" and "What name should I use?" in r["messages"][-1]["text"]
+        assert r["contact_step"] == "name" and "first name" in r["messages"][-1]["text"]
         r = self._go(db, s, cfg, "my name is Ada Obi")
         assert r["contact_step"] == "phone" and "Nice to meet you, Ada" in r["messages"][-1]["text"]
         r = self._go(db, s, cfg, "0803 123 4567")
@@ -445,8 +445,8 @@ class TestContactInChat:
         s, cfg = _session(db, contact=False), _cfg(db)
         with _claude("x"):
             f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
-        r = self._go(db, s, cfg, "what are your prices?")
-        assert r["contact_step"] == "name" and "did not catch a name" in r["messages"][-1]["text"]
+        r = self._go(db, s, cfg, "hello")
+        assert r["contact_step"] == "name" and "did not catch a first name" in r["messages"][-1]["text"]
         r = f.handle_message(db, s, cfg, kind="menu", menu_id=cfg["menu"][0]["id"])
         assert s["state"].get("contact_step") is None
 
@@ -502,7 +502,7 @@ class TestContactStartFromButtons:
         db = _db()
         s, cfg = _session(db, contact=False), _cfg(db)
         out = self._call(monkeypatch, s, cfg, "checkout")
-        assert out["contact_step"] == "name" and "confirm your order" in out["messages"][0]["text"]
+        assert out["contact_step"] == "name" and "order moving" in out["messages"][0]["text"]
         with patch("app.services.funnel_service._find_org_lead", return_value=None), \
              patch("app.services.lead_service.create_lead", return_value={"id": "L9"}), _claude("x"):
             f.handle_message(db, s, cfg, kind="text", text="Ada")

@@ -81,7 +81,7 @@ def _notify_human(db, s: dict, cfg: dict, why: str) -> None:
 
 
 def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] = None,
-                   text: Optional[str] = None, reply_to: Optional[str] = None) -> dict:
+                   text: Optional[str] = None, reply_to: Optional[str] = None, _replay: bool = False) -> dict:
     """
     One visitor action. kind = 'menu' (tapped an option) or 'text'.
     Returns {messages, ask_contact, ask_email, form, human}; `messages` are the new messages in order
@@ -102,28 +102,45 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         if not visitor_text:
             return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": wc.is_human(s, cfg)}
 
-    shown = contact.shown_text(s, visitor_text) if kind == "text" else visitor_text      # WEBCHAT-CONTACT-1: a typed number is not kept in the chat text
-    wc.typing_clear("visitor", str(s["id"]))                     # WEBCHAT-CONTACT-1e: the message arrived, so they are no longer typing
-    out = [wc.append_message(db, s, "visitor", shown, reply_to=reply_to)]
-    wc.update_session(db, s, {"turn_count": int(s.get("turn_count") or 0) + 1})
-    if int(s.get("turn_count") or 0) == 1:
-        wc.log_event(db, s["org_id"], s["id"], "started", s.get("source"))
+    out = []
+    if not _replay:           # a replay answers a question that was just stored: do not store or count it twice
+        shown = contact.shown_text(s, visitor_text) if kind == "text" else visitor_text      # WEBCHAT-CONTACT-1: a typed number is not kept in the chat text
+        wc.typing_clear("visitor", str(s["id"]))                     # WEBCHAT-CONTACT-1e: the message arrived, so they are no longer typing
+        out.append(wc.append_message(db, s, "visitor", shown, reply_to=reply_to))
+        wc.update_session(db, s, {"turn_count": int(s.get("turn_count") or 0) + 1})
+        if int(s.get("turn_count") or 0) == 1:
+            wc.log_event(db, s["org_id"], s["id"], "started", s.get("source"))
 
     state = s.get("state") or {}
     if state.get("human"):
         taps_option = kind == "menu" and item is not None and item.get("action") != "human"
-        if wc.is_human(s, cfg) and not taps_option:
+        answering_details = kind == "text" and bool(contact.step_of(s)) and not _replay      # the visitor is typing their name or number, not writing to the team
+        if answering_details:
+            pass                                  # typing their name or number: the in-chat script below handles it and the hand-over stays on
+        elif wc.is_human(s, cfg) and not taps_option:
             _notify_human(db, s, cfg, visitor_text)
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
-        wc.set_state(db, s, human=False)      # team quiet for a while, or the visitor chose an option: the bot is back
+        else:
+            wc.set_state(db, s, human=False)      # team quiet for a while, or the visitor chose an option: the bot is back
 
-    if contact.step_of(s) and kind == "text" and contact.drops_quietly(s, visitor_text):
+    if contact.step_of(s) and kind == "text" and not _replay and contact.drops_quietly(s, visitor_text):
         contact._clear(db, s)                                    # the gentle ask was ignored: carry on with what they actually said
-    if contact.step_of(s):                                       # WEBCHAT-CONTACT-1: Chioma is asking for details in the chat
+    if contact.step_of(s) and kind == "text" and not _replay and contact.can_deflect(s, visitor_text):
+        # The team asked for details but the visitor asked a real question: answer it first, then ask once more.
+        res = handle_message(db, s, cfg, kind=kind, menu_id=menu_id, text=text, reply_to=reply_to, _replay=True)
+        again = contact.reask(db, s, cfg)
+        if again:
+            res["messages"] = out + list(res.get("messages") or []) + [again]
+            res["contact_step"] = contact.step_of(s)
+            res["ask_contact"], res["form"] = False, None
+        else:
+            res["messages"] = out + list(res.get("messages") or [])
+        return res
+    if contact.step_of(s) and not _replay:                       # WEBCHAT-CONTACT-1: Chioma is asking for details in the chat
         if kind == "text":
             r = contact.step(db, s, cfg, visitor_text, handle_contact)
             return {"messages": out + r["messages"], "ask_contact": r["ask_contact"], "ask_email": False, "form": r["form"],
-                    "human": False, "cards": r["cards"], "contact_step": r["contact_step"]}
+                    "human": wc.is_human(s, cfg), "cards": r["cards"], "contact_step": r["contact_step"]}
         wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_nudged=True)   # tapped an option: moved on, do not nag
 
     if kind == "text":
@@ -142,13 +159,16 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         wc.set_human(db, s)
         out.append(wc.append_message(db, s, "bot", handover.human_reply(cfg)))
         _notify_human(db, s, cfg, "Asked to talk to the team.")
+        if not _has_contact(s) and contact.enabled(cfg):          # ask in the chat, not with the pop-up form
+            out.append(contact.start(db, s, cfg, ""))
+            return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "contact_step": "name"}
         return {"messages": out, "ask_contact": not _has_contact(s), "ask_email": False, "form": None, "human": True}
 
     if item and item.get("action") == "booking":
         if not _has_contact(s):
             wc.set_state(db, s, pending="booking")
             if contact.enabled(cfg):
-                out.append(contact.start(db, s, cfg, "Happy to help you book. I just need a couple of details first."))
+                out.append(contact.start(db, s, cfg, "Happy to help you book."))
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False, "contact_step": "name"}
             out.append(wc.append_message(db, s, "bot", "Happy to help you book. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
             return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": False}
@@ -161,7 +181,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         # WEBCHAT-3: AI needs a contact first, so ask for one instead of the generic fallback
         wc.set_state(db, s, pending_question=visitor_text[:300])
         if contact.enabled(cfg):
-            out.append(contact.start(db, s, cfg, "Happy to help with that. I just need a couple of details first."))
+            out.append(contact.start(db, s, cfg, "Happy to help with that."))
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False, "contact_step": "name"}
         out.append(wc.append_message(db, s, "bot", "Happy to help with that. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
         return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": False}
@@ -178,7 +198,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                 _notify_human(db, s, cfg, "The assistant could not answer: " + visitor_text)
                 if not _has_contact(s):          # answer_first: the team cannot reach a visitor with no details, so ask for them now
                     if contact.enabled(cfg):
-                        out.append(contact.start(db, s, cfg, "So the team can reply to you, I just need a couple of details."))
+                        out.append(contact.start(db, s, cfg, ""))
                         return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards, "contact_step": "name"}
                     return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": True, "cards": cards}
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards}
@@ -190,11 +210,13 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     state = s.get("state") or {}
     answered = int(state.get("answers") or 0) >= 1
     ask_contact = answered and not _has_contact(s)
-    if ask_contact and contact.enabled(cfg):
+    if ask_contact and contact.enabled(cfg) and contact.step_of(s):
+        ask_contact = False               # the details script is already open (a question was answered mid-script): do not start a second one
+    elif ask_contact and contact.enabled(cfg):
         # WEBCHAT-CONTACT-1: ask once, in the chat, right after the first answer (not on every later turn)
         if not state.get("contact_nudged"):
             wc.set_state(db, s, contact_nudged=True)
-            out.append(contact.start(db, s, cfg, "So the team can follow up if you need them, I just need a couple of details.", optional=True))
+            out.append(contact.start(db, s, cfg, "", optional=True))
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": form, "human": False, "cards": cards, "contact_step": "name"}
         ask_contact = False
     ask_email = (answered and _has_contact(s) and s.get("phone_verified") and not s.get("contact_email")

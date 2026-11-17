@@ -361,6 +361,7 @@ class TestFlow:
         from app.services import webchat_flow_service as f, webchat_service as wc
         db = _db()
         s, cfg = _session(db), wc.get_config(db, ORG)
+        cfg["contact_in_chat"] = False            # in-chat details are tested in test_web_chat_contact_ask_fixes.py; here the team simply takes over
         with patch.object(wc, "notify_managers") as nm:
             r = f.handle_message(db, s, cfg, kind="menu", menu_id="team")
             assert r["human"] is True and s["state"]["human"] is True
