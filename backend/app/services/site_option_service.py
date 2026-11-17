@@ -103,7 +103,7 @@ def _settings(db: Any, org_id: str) -> dict:
 
 
 def public_base() -> str:
-    return os.environ.get("PUBLIC_API_URL", "https://opsra.onrender.com").rstrip("/")
+    return os.environ.get("PUBLIC_API_URL", "https://api.opsra.com.ng").rstrip("/")
 
 
 def link_url(token: str) -> str:
@@ -415,7 +415,7 @@ def notify_builder(db: Any, org_id: str, s: dict, item: dict, site: dict) -> Non
             return
         client = s.get("client_name") or site.get("client_business_name") or "Your client"
         business = site.get("client_business_name") or "the site"
-        url = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/") + "/builders"
+        url = os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/") + "/builders"
         text = (f"{client} picked \"{item['label']}\" ({business}).\n"
                 "Next step: create the payment link for this site in your builder portal and send it to your client.")
         from app.services import site_capture_service as cap

@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 SONNET_MODEL      = "claude-sonnet-4-6"          # routing — reliability critical
 HAIKU_MODEL       = "claude-haiku-4-5-20251001"  # formatting — cost efficient
-FRONTEND_URL      = os.getenv("FRONTEND_URL", "https://opsra-frontend.onrender.com")
+FRONTEND_URL      = os.getenv("FRONTEND_URL", "https://opsra.com.ng")
 API_BASE_URL      = os.getenv("API_BASE_URL", "")
 
 RATE_LIMIT_PER_HOUR  = 30

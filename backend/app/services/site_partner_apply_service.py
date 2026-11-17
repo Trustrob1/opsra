@@ -79,7 +79,7 @@ def _code_hash(request_id: str, code: str) -> str:
 
 
 def _base() -> str:
-    return os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    return os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
 
 
 def _send_email(to_email: str, subject: str, text: str) -> bool:

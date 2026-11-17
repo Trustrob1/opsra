@@ -83,7 +83,7 @@ def _one(data):
 
 def giveaway_url(slug: str) -> str:
     import os
-    base = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    base = os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
     return f"{base}/g/{slug}"
 
 
@@ -416,7 +416,7 @@ def attach_site(db: Any, entry: Optional[dict], site_id: str) -> None:
 
 def winner_url(raw_token: str) -> str:
     import os
-    base = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    base = os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
     return f"{base}/w/{raw_token}"
 
 
@@ -517,7 +517,7 @@ def winner_view(db: Any, raw_token: str, now: Optional[datetime] = None) -> dict
             stage, can_pay = "preview", True
             entry = _start_clock(db, entry, site)
         if site.get("slug") and site.get("rendered_html"):
-            base = os.getenv("PUBLIC_API_URL", "https://opsra.onrender.com").rstrip("/")
+            base = os.getenv("PUBLIC_API_URL", "https://api.opsra.com.ng").rstrip("/")
             preview_url = f"{base}/s/{site['slug']}"
     td = _takedown(entry, g)
     if stage == "preview" and td and now >= td:                 # past the last day: the hourly sweep has not run yet

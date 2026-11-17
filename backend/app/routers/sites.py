@@ -1258,7 +1258,7 @@ import os as _os
 
 
 def _form_public_url(raw_token: str) -> str:
-    frontend_base = _os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    frontend_base = _os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
     return f"{frontend_base}/f/{raw_token}"
 
 
@@ -1322,7 +1322,7 @@ def revoke_form(form_id: str, org=Depends(get_current_org), db=Depends(get_supab
 
 
 def _editor_public_url(raw_token: str) -> str:
-    frontend_base = _os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    frontend_base = _os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
     return f"{frontend_base}/b/login?t={raw_token}"
 
 

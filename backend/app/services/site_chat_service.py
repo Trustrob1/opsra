@@ -215,7 +215,7 @@ def _form_url(settings: dict, raw_token: str) -> str:
     # Per spec §7.3, the form lives on the FRONTEND at /f/{token} — a separate
     # host from the preview_base_url (which is the backend preview host).
     import os
-    frontend_base = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    frontend_base = os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
     return f"{frontend_base}/f/{raw_token}"
 
 
@@ -264,7 +264,7 @@ _EDITOR_LINK_EXPIRY_DAYS = 7   # spec §10
 
 def _editor_url(raw_token: str) -> str:
     import os
-    frontend_base = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    frontend_base = os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
     return f"{frontend_base}/b/login?t={raw_token}"
 
 
@@ -751,7 +751,7 @@ def _handle_unknown_number(db, org_id: str, number_row: dict, sender_phone: str,
         except Exception:
             logger.exception("[SITE-1B] pending builder insert failed org=%s phone=%s", org_id, sender_phone)
 
-    join_url = settings.get("join_url") or "https://opsra.onrender.com"
+    join_url = settings.get("join_url") or "https://opsra.com.ng"
     text = ("This number is for registered Opsra Site Builders. "
             f"Join here: {join_url}\n\nSomeone from our team will be in touch.")
     _send_text(db, org_id, number_row, sender_phone, text)

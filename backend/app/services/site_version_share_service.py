@@ -525,7 +525,7 @@ def notify_builder(db: Any, org_id: str, s: dict, item: dict, site: dict) -> Non
             return
         client = s.get("client_name") or site.get("client_business_name") or "Your client"
         business = site.get("client_business_name") or "the site"
-        url = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/") + "/builders"
+        url = os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/") + "/builders"
         shown = _item_price(item.get("price_ngn"), system_price(db, org_id))
         text = (f"{client} picked \"{item['label']}\" (₦{shown:,.0f}) for {business}. It is now the site's preview.\n"
                 "Next step: create the payment link in your builder portal and send it to your client.")

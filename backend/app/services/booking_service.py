@@ -998,7 +998,7 @@ def link_attach_booking(db, link_id: str, demo_id: str) -> None:
     db.table("booking_links").update({"demo_id": demo_id, "used_at": _now_iso()}).eq("id", link_id).execute()
 
 def public_base() -> str:
-    return (os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL") or "https://opsra-frontend.onrender.com").rstrip("/")
+    return (os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL") or "https://opsra.com.ng").rstrip("/")
 
 
 def auto_send_link_for_lead(db, org_id: str, lead_id: str, trigger: str = "qualified", stage: Optional[str] = None) -> dict:

@@ -32,7 +32,7 @@ def _err(status: int, code: str, msg: str):
 
 
 def public_api_base() -> str:
-    return (os.getenv("PUBLIC_API_URL") or "https://opsra.onrender.com").strip().rstrip("/")
+    return (os.getenv("PUBLIC_API_URL") or "https://api.opsra.com.ng").strip().rstrip("/")
 
 
 def _row(db, org_id: str) -> Optional[dict]:

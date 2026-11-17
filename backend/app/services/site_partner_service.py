@@ -54,7 +54,7 @@ def _new_slug() -> str:
 
 def partner_link_url(slug: str) -> str:
     import os
-    base = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    base = os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
     return f"{base}/p/{slug}"
 
 

@@ -66,7 +66,7 @@ def _one(data):
 
 
 def public_base() -> str:
-    return os.environ.get("PUBLIC_API_URL", "https://opsra.onrender.com").rstrip("/")
+    return os.environ.get("PUBLIC_API_URL", "https://api.opsra.com.ng").rstrip("/")
 
 
 def form_action_url(key: str) -> str:

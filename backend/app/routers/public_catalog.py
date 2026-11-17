@@ -299,7 +299,7 @@ async def og_catalog_compare(
 
     frontend_url = (
         str(request.base_url).rstrip("/").replace(
-            "opsra.onrender.com", "opsra-frontend.onrender.com"
+            "api.opsra.com.ng", "opsra.com.ng"
         )
     )
     # Allow FRONTEND_URL env override

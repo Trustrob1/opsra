@@ -76,7 +76,7 @@ def phone_variants(raw: str) -> list[str]:
 
 
 def _login_url(raw_token: str) -> str:
-    base = os.environ.get("FRONTEND_URL", "https://opsra-frontend.onrender.com").rstrip("/")
+    base = os.environ.get("FRONTEND_URL", "https://opsra.com.ng").rstrip("/")
     return f"{base}/b/login?t={raw_token}"
 
 

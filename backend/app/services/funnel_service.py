@@ -41,7 +41,7 @@ from app.services import funnel_messaging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "https://opsra.onrender.com").rstrip("/")
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "https://api.opsra.com.ng").rstrip("/")
 LAGOS = ZoneInfo("Africa/Lagos")
 PAGE = 1000  # Supabase default Max Rows
 

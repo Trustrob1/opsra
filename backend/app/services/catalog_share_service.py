@@ -187,7 +187,7 @@ def product_share_info(db, org_id: str, item_id: str, tag: Optional[str] = None,
 
 def api_base() -> str:
     """Where the preview page lives: the backend, because the front end is a static site that cannot answer crawlers."""
-    return (os.getenv("PUBLIC_API_URL") or "https://opsra.onrender.com").strip().rstrip("/")
+    return (os.getenv("PUBLIC_API_URL") or "https://api.opsra.com.ng").strip().rstrip("/")
 
 
 def _image_url(first) -> str:

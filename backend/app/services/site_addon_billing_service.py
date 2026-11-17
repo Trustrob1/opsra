@@ -78,7 +78,7 @@ def _pretty(dt: Optional[datetime]) -> str:
 
 
 def pay_url(raw_token: str) -> str:
-    base = os.environ.get("PUBLIC_API_URL", "https://opsra.onrender.com").rstrip("/")
+    base = os.environ.get("PUBLIC_API_URL", "https://api.opsra.com.ng").rstrip("/")
     return f"{base}/site-pay/{raw_token}"
 
 

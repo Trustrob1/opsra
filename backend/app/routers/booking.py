@@ -455,7 +455,7 @@ class LinkBody(BaseModel):
 
 
 def _public_base() -> str:
-    return (os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL") or "https://opsra-frontend.onrender.com").rstrip("/")
+    return (os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL") or "https://opsra.com.ng").rstrip("/")
 
 
 @staff.post("/booking/leads/{lead_id}/link", status_code=201)

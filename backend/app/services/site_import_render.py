@@ -201,7 +201,7 @@ def _load_page(db: Any, design: dict, path: str) -> str:
 
 
 def public_api_base() -> str:
-    return (os.getenv("PUBLIC_API_URL") or "https://opsra.onrender.com").strip().rstrip("/")
+    return (os.getenv("PUBLIC_API_URL") or "https://api.opsra.com.ng").strip().rstrip("/")
 
 
 # ---------------------------------------------------------------------------
