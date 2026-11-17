@@ -227,18 +227,24 @@ def answer(db, s: dict, cfg: dict, text: str) -> Optional[dict]:
         if not plan.use_ai_allowance(db, s["org_id"]):
             logger.info("webchat ai skipped org=%s reason=plan_allowance", s.get("org_id"))
             return None
-        system = build_system_prompt(db, s, cfg, safe)
-        hist = _history(db, s)
-        prompt = (f"<conversation>\n{hist}\n</conversation>\n\n" if hist else "") + f"<customer_message>\n{safe}\n</customer_message>"
-        raw = ai_service.call_claude(
-            prompt=prompt, model=pick_model(cfg, level), max_tokens=MAX_OUTPUT_TOKENS, system=system,
-            system_cache=True, org_id=s["org_id"], db=db, function_name=FUNCTION_NAME,
-        )
-        out = parse_reply(raw)
-        if out is None:
+        taken = True
+        try:
+            system = build_system_prompt(db, s, cfg, safe)
+            hist = _history(db, s)
+            prompt = (f"<conversation>\n{hist}\n</conversation>\n\n" if hist else "") + f"<customer_message>\n{safe}\n</customer_message>"
+            raw = ai_service.call_claude(
+                prompt=prompt, model=pick_model(cfg, level), max_tokens=MAX_OUTPUT_TOKENS, system=system,
+                system_cache=True, org_id=s["org_id"], db=db, function_name=FUNCTION_NAME,
+            )
+            out = parse_reply(raw)
+            if out is not None:
+                taken = False                # a real answer: the allowance stays used
+                wc.set_state(db, s, ai_turns=int((s.get("state") or {}).get("ai_turns") or 0) + 1)
+                return out
             return None
-        wc.set_state(db, s, ai_turns=int((s.get("state") or {}).get("ai_turns") or 0) + 1)
-        return out
+        finally:
+            if taken:                        # ONLY-1c-DOWN: no answer came back (API error, bad key, empty reply): give the allowance back
+                plan.give_back_ai_allowance(db, s["org_id"])
     except Exception as exc:
         logger.warning("webchat ai failed org=%s: %s", s.get("org_id"), exc)
         return None

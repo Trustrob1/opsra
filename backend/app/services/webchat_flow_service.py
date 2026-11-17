@@ -26,6 +26,7 @@ from app.services import webchat_ai_service
 from app.services import webchat_shop_service
 from app.services import webchat_contact_service as contact
 from app.services import webchat_greeting_service as greet
+from app.services import webchat_handover_service as handover
 
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ def _notify_human(db, s: dict, cfg: dict, why: str) -> None:
     name = s.get("contact_name") or "A web chat visitor"
     wc.notify_managers(db, s["org_id"], f"{name} is waiting on web chat", why[:300], s.get("lead_id"), "webchat_message", to_assigned_rep=True)
     wc.set_state(db, s, notified_at=now.isoformat())
+    handover.email_owner(db, s, cfg, why)           # ONLY-1c-DOWN: the owner may not be logged in, so they get an email too
 
 
 def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] = None,
@@ -135,9 +137,10 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
 
     form = None
     cards: list = []
+    choices: list = []
     if item and item.get("action") == "human":
         wc.set_human(db, s)
-        out.append(wc.append_message(db, s, "bot", cfg["human_reply"]))
+        out.append(wc.append_message(db, s, "bot", handover.human_reply(cfg)))
         _notify_human(db, s, cfg, "Asked to talk to the team.")
         return {"messages": out, "ask_contact": not _has_contact(s), "ask_email": False, "form": None, "human": True}
 
@@ -180,7 +183,9 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                     return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": True, "cards": cards}
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards}
         else:
-            out.append(wc.append_message(db, s, "bot", cfg["fallback"]))
+            na = handover.no_answer(cfg)          # ONLY-1c-DOWN: hours-aware, with menu / message / call choices
+            out.append(wc.append_message(db, s, "bot", na["text"]))
+            choices = na["choices"]
 
     state = s.get("state") or {}
     answered = int(state.get("answers") or 0) >= 1
@@ -196,7 +201,10 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                  and not state.get("email_asked"))
     if ask_email:
         wc.set_state(db, s, email_asked=True)
-    return {"messages": out, "ask_contact": ask_contact, "ask_email": bool(ask_email), "form": form, "human": False, "cards": cards}
+    res = {"messages": out, "ask_contact": ask_contact, "ask_email": bool(ask_email), "form": form, "human": False, "cards": cards}
+    if choices:
+        res["choices"] = choices
+    return res
 
 
 def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool) -> dict:

@@ -88,6 +88,13 @@ class FakeDB:
     def rows(self, name): return self.tables.get(name, [])
 
 
+
+def _no_answer_text(cfg):
+    """ONLY-1c-DOWN: the no-answer reply now depends on business hours; these test businesses set none, so it is the 'leave a message' wording."""
+    from app.services import webchat_handover_service as ho
+    return ho.no_answer(cfg)["text"]
+
+
 def _iso(dt): return dt.astimezone(timezone.utc).isoformat()
 def _now(): return datetime.now(timezone.utc)
 
@@ -332,7 +339,7 @@ class TestFlow:
         s, cfg = _session(db), _cfg(db)
         with _claude("x") as cc:
             r = f.handle_message(db, s, cfg, kind="text", text="zzzz qqqq")
-        assert not cc.called and r["messages"][-1]["text"] == cfg["fallback"]
+        assert not cc.called and r["messages"][-1]["text"] == _no_answer_text(cfg)
 
     def test_ai_failure_falls_back_to_script(self):
         from app.services import webchat_flow_service as f
@@ -340,7 +347,7 @@ class TestFlow:
         s, cfg = _session(db), _cfg(db)
         with _claude(""):
             r = f.handle_message(db, s, cfg, kind="text", text="zzzz qqqq")
-        assert r["messages"][-1]["text"] == cfg["fallback"]
+        assert r["messages"][-1]["text"] == _no_answer_text(cfg)
 
 
 class TestMenuAndAfterContact:
@@ -452,7 +459,7 @@ class TestContactInChat:
         r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
         assert r["contact_step"] == "name" and s["state"]["contact_optional"] is True
         r = f.handle_message(db, s, cfg, kind="text", text="where are you located?")
-        assert s["state"].get("contact_step") is None and r["messages"][1]["text"] == cfg["fallback"]
+        assert s["state"].get("contact_step") is None and r["messages"][1]["text"] == _no_answer_text(cfg)
         r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
         assert not r.get("contact_step") and r["ask_contact"] is False              # not asked a second time
 

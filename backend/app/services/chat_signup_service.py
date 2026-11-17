@@ -200,7 +200,7 @@ def verify(db: Any, request_id: str, code: str, password: str, now: Optional[dat
         pass
     settings = get_settings(db)
     _start_free_plan(db, org_id, now)
-    _turn_on_ai(db, org_id)
+    _turn_on_ai(db, org_id, req.get("phone_number"))
     _open_wallet(db, org_id, settings["starter_credit_ngn"])
     _tell_platform(db, org_id, req)
     return {"email": req["email"], "org_id": org_id, "starter_credit_ngn": settings["starter_credit_ngn"]}
@@ -217,7 +217,7 @@ def _start_free_plan(db: Any, org_id: str, now: datetime) -> None:
         logger.error("chat_signup: free plan not started org=%s: %s", org_id, exc)
 
 
-def _turn_on_ai(db: Any, org_id: str) -> None:
+def _turn_on_ai(db: Any, org_id: str, phone: Any = None) -> None:
     """Chioma's AI answers are the point of this product, so they start ON (the web chat default is off), and she may read the product list. The owner can switch
     them off in Admin > Web Chat. Existing settings in the web chat config are kept."""
     try:
@@ -226,9 +226,21 @@ def _turn_on_ai(db: Any, org_id: str) -> None:
         cfg["ai_enabled"] = True
         cfg["answer_first"] = True            # she answers first and asks for details after the first answer
         cfg["products_read"] = True           # ONLY-1c-PRODUCTS: she answers price and stock questions from the Products tab (no cards or cart)
+        number = _call_number(phone)
+        if number:                            # ONLY-1c-DOWN: the phone icon and Call us work from day one, on the owner's own number (editable)
+            cfg.setdefault("call_enabled", True)
+            cfg.setdefault("call_number", number)
         db.table("organisations").update({"webchat_config": cfg}).eq("id", org_id).execute()
     except Exception as exc:
         logger.error("chat_signup: AI not switched on org=%s: %s", org_id, exc)
+
+
+def _call_number(phone: Any) -> str:
+    try:
+        from app.services import webchat_service as wc
+        return wc.normalise_phone(str(phone or "")) or ""
+    except Exception:
+        return ""
 
 
 def _open_wallet(db: Any, org_id: str, starter_ngn: int) -> None:

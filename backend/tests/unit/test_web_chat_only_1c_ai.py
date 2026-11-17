@@ -35,4 +35,4 @@ def test_never_raises_when_the_database_fails():
 
 def test_verify_calls_it(monkeypatch):
     src = open(svc.__file__, encoding="utf-8").read()
-    assert "_turn_on_ai(db, org_id)" in src.split("def verify")[1].split("def _start_free_plan")[0]
+    assert "_turn_on_ai(db, org_id" in src.split("def verify")[1].split("def _start_free_plan")[0]

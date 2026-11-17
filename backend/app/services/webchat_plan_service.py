@@ -55,3 +55,8 @@ def apply(db, org_id: str, cfg: dict) -> Optional[dict]:
 def use_ai_allowance(db, org_id: str) -> bool:
     """Take one AI answer from the plan's monthly allowance. Not switched on -> True and nothing counted."""
     return acc.consume(db, "ai_assistant", org_id=org_id, n=1)
+
+
+def give_back_ai_allowance(db, org_id: str) -> bool:
+    """ONLY-1c-DOWN: the AI call failed, so the answer taken by use_ai_allowance is returned. Never raises."""
+    return acc.refund(db, "ai_assistant", org_id=org_id, n=1)

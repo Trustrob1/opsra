@@ -15,6 +15,7 @@
  * page also works as a plain chat for a business that uses nothing else from Opsra.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { choicesFromReply, visibleChoices } from '../utils/webchatChoices'
 import { viewingChat, startContactChat, pingTyping, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
@@ -228,6 +229,7 @@ export default function WebChatPage({ chatKey }) {
   const [booking, setBooking] = useState({})
   const [saveForm, setSaveForm] = useState({ email: '', consent: false })
   const [cards, setCards] = useState([])                   // AI-suggested product cards
+  const [choices, setChoices] = useState(null)             // ONLY-1c-DOWN: the buttons the server sent with a "cannot answer" reply ({mid, items})
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
   const [picked, setPicked] = useState({})                 // product id -> chosen variant id
@@ -349,6 +351,7 @@ export default function WebChatPage({ chatKey }) {
     merge(res.messages)
     if (typeof res.human === 'boolean') setHuman(res.human)
     setCards(res.cards || [])
+    setChoices(choicesFromReply(res))
     setContactStep(res.contact_step || null)
     if (res.form === 'booking') setPanel('booking')
     else if (res.ask_contact) setPanel('contact')
@@ -585,6 +588,7 @@ export default function WebChatPage({ chatKey }) {
       const res = await sendContact(chatKey, token.current, { ...contact, name: verified ? undefined : contact.name })
       merge(res.messages)
       setCards(res.cards || [])
+      setChoices(null)
       setContactStep(null)
       setHasContact(true)
       setPanel(res.form === 'booking' ? 'booking' : null)
@@ -802,16 +806,37 @@ export default function WebChatPage({ chatKey }) {
                   : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
               </div>
               )}
-              {m.role === 'bot' && cfg.menu.length > 0 && i === shown.length - 1 && ((cfg.fallback && m.text === cfg.fallback) || (cfg.scripted_tail && m.text.endsWith(cfg.scripted_tail))) && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
-                  <button type="button" style={{ ...S.chip, minHeight: 40, display: 'flex', alignItems: 'center', gap: 8 }} onClick={openMenu}>
-                    <Icon name="menu" size={18} />Open menu
-                  </button>
-                  {humanItem && !human && (
-                    <button type="button" style={{ ...S.chip, minHeight: 40 }} disabled={busy} onClick={() => sendMenu(humanItem.id)}>Talk to the team</button>
-                  )}
-                </div>
-              )}
+              {(() => {
+                // ONLY-1c-DOWN: the server's buttons win (they fit the clock: Leave a message after hours, Call us inside hours).
+                const mine = visibleChoices(choices, m, i === shown.length - 1, { hasHumanItem: !!humanItem, humanActive: human, callOn: !!call })
+                if (mine.length) {
+                  const onTap = { menu: openMenu, human: () => sendMenu(humanItem.id), call: openCall }
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
+                      {mine.map((c) => (
+                        <button key={c.id} type="button" style={{ ...S.chip, minHeight: 40, display: 'flex', alignItems: 'center', gap: 8 }}
+                          disabled={busy && c.id === 'human'} onClick={onTap[c.id]}>
+                          {c.id === 'menu' && <Icon name="menu" size={18} />}{c.label}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                }
+                // older replies (and a reload of the chat) have no server buttons: keep the text match
+                if (m.role === 'bot' && cfg.menu.length > 0 && i === shown.length - 1 && ((cfg.fallback && m.text === cfg.fallback) || (cfg.scripted_tail && m.text.endsWith(cfg.scripted_tail)))) {
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
+                      <button type="button" style={{ ...S.chip, minHeight: 40, display: 'flex', alignItems: 'center', gap: 8 }} onClick={openMenu}>
+                        <Icon name="menu" size={18} />Open menu
+                      </button>
+                      {humanItem && !human && (
+                        <button type="button" style={{ ...S.chip, minHeight: 40 }} disabled={busy} onClick={() => sendMenu(humanItem.id)}>Talk to the team</button>
+                      )}
+                    </div>
+                  )
+                }
+                return null
+              })()}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: MUTED, margin: '0 4px' }}>
                 <span>{m.edited && !m.deleted ? 'Edited · ' : ''}{fmtClock(m.at)}</span>
                 {m.role === 'visitor' && !m.deleted && <Ticks state={m.tmp ? 'sent' : (i < lastRepIdx ? 'read' : 'delivered')} color={brandDark} />}

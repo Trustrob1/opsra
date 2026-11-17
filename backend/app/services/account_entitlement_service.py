@@ -218,6 +218,36 @@ def consume(db: Any, key: str, *, org_id: str, n: int = 1, now: Optional[datetim
         return False
 
 
+def refund(db: Any, key: str, *, org_id: str, n: int = 1, now: Optional[datetime] = None) -> bool:
+    """ONLY-1c-DOWN: give back n units taken by consume() when the thing they paid for never happened (for example the AI
+    call failed). Not enforced, or no cap behind the feature -> nothing was counted, so nothing to give back (True).
+    Never goes below zero. Never raises."""
+    try:
+        if not reg.is_feature(key) or not org_id or not isinstance(n, int) or n <= 0:
+            return False
+        if not is_enforced(db, org_id):
+            return True
+        cap_key = reg.cap_for_feature(key)
+        if cap_key is None or reg.CAPS.get(cap_key) != "monthly":
+            return True
+        now = now or _now()
+        ps = ent.period_start(now).isoformat()
+        for _ in range(3):
+            row = _one((db.table("org_usage_counters").select("*").eq("org_id", org_id).eq("cap_key", cap_key)
+                        .eq("period_start", ps).limit(1).execute()).data)
+            if row is None:
+                return True
+            used = int(row.get("used") or 0)
+            res = (db.table("org_usage_counters").update({"used": max(used - n, 0), "updated_at": _iso(now)})
+                   .eq("id", row["id"]).eq("used", used).execute())
+            if res.data:
+                return True
+        return False
+    except Exception as exc:
+        logger.warning("account_entitlement.refund failed org=%s key=%s: %s", org_id, key, exc)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Staff actions
 # ---------------------------------------------------------------------------

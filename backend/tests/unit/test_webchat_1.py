@@ -89,6 +89,13 @@ class FakeDB:
     def rows(self, name): return self.tables.get(name, [])
 
 
+
+def _no_answer_text(cfg):
+    """ONLY-1c-DOWN: the no-answer reply now depends on business hours; these test businesses set none, so it is the 'leave a message' wording."""
+    from app.services import webchat_handover_service as ho
+    return ho.no_answer(cfg)["text"]
+
+
 def _iso(dt): return dt.astimezone(timezone.utc).isoformat()
 def _now(): return datetime.now(timezone.utc)
 
@@ -306,7 +313,7 @@ class TestFlow:
         r = f.handle_message(db, s, cfg, kind="text", text="what are your opening hours?")
         assert r["messages"][1]["text"] == "We open 9 to 6."
         r = f.handle_message(db, s, cfg, kind="text", text="zzzz qqqq")
-        assert r["messages"][1]["text"] == cfg["fallback"]
+        assert r["messages"][1]["text"] == _no_answer_text(cfg)
 
     def test_unknown_menu_id_and_empty_text_do_nothing(self):
         from app.services import webchat_flow_service as f, webchat_service as wc
