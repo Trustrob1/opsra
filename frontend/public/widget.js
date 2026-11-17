@@ -81,10 +81,8 @@
       '.card .cx{position:absolute;top:4px;right:4px;width:28px;height:28px;border:0;background:transparent;color:#5b6b76;font-size:18px;line-height:1;cursor:pointer;border-radius:50%}' +
       '@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}' +
       '.open .card{display:none}' +
-      '@media (max-width:480px){.panel{left:0;right:0;bottom:0;width:100%;height:88dvh;border-radius:18px 18px 0 0;transform:translateY(24px)}' +
-      '.open .panel{transform:none}.grab{display:block;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;touch-action:none;cursor:grab;background:linear-gradient(#fff,rgba(255,255,255,0))}' +
-      '.grab::after{content:"";display:block;width:40px;height:4px;border-radius:4px;background:#c4ced6;margin:7px auto 0}' +
-      '.open .btn{display:none}.card{left:16px;right:16px;max-width:none;bottom:calc(92px + env(safe-area-inset-bottom,0px))}}' +
+      '@media (max-width:480px){.panel{inset:0;width:100%;height:100dvh;border-radius:0;transform:translateY(24px)}' +
+      '.open .panel{transform:none}.open .btn{display:none}.card{left:16px;right:16px;max-width:none;bottom:calc(92px + env(safe-area-inset-bottom,0px))}}' +
       '@media (prefers-color-scheme:dark){.card{background:#1d2a33;color:#eef3f6}.card .cx{color:#a9b7c1}.panel{box-shadow:0 12px 40px rgba(0,0,0,.6)}.grab{background:linear-gradient(#1d2a33,rgba(29,42,51,0))}.grab::after{background:#566872}}' +
       '@media (prefers-reduced-motion:reduce){.btn,.panel,.lbl,.card.in{transition:none;animation:none}}' +
       '</style>' +
@@ -135,20 +133,20 @@
     }
     btn.addEventListener('click', function () { setOpen(!isOpen) })
 
-    // Greeting card: one short line, once per visit, about 6 seconds in, dismissible. Fixed copy, no AI.
+    // Greeting card: one short line, once per visit, as the label folds (about 4 seconds in), dismissible. Fixed copy, no AI.
     if (!store('opsra_chioma_greeted_' + key)) {
       setTimeout(function () {
         if (isOpen || store('opsra_chioma_greeted_' + key)) return
         root.querySelector('.ct').textContent = (GREETING[pageHint()] || GREETING.home).replace('{n}', name)
         card.classList.add('in')
         store('opsra_chioma_greeted_' + key, '1')
-      }, 6000)
+      }, 4000)                                   // the same moment the label folds into the photo
     }
     card.addEventListener('click', function () { setOpen(true) })
     card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true) } })
     root.querySelector('.cx').addEventListener('click', function (e) { e.stopPropagation(); card.classList.remove('in') })
 
-    // Phone: drag the handle down to close the sheet.
+    // Phone: the chat fills the whole screen (its own close button is in the chat header); the drag handle is not used.
     var startY = null
     grab.addEventListener('touchstart', function (e) { startY = e.touches[0].clientY }, { passive: true })
     grab.addEventListener('touchend', function (e) {
