@@ -51,6 +51,7 @@ import {
   sendInstagramMessage,
   sendMessengerMessage,
   sendWebchatMessage,
+  pingWebchatTyping,
   uploadWebchatFile,
   editWebchatMessage,
   deleteWebchatMessage,
@@ -1044,7 +1045,12 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }
 
+  const typingPingAt = useRef(0)
   const handleTextChange = (e) => {
+    if (isWebchat && leadId && e.target.value.trim() && Date.now() - typingPingAt.current > 3000) {
+      typingPingAt.current = Date.now()
+      pingWebchatTyping(leadId)                       // the visitor sees typing dots while we write
+    }
     setText(e.target.value)
     autoGrow(e.target)
     setSendError(null)

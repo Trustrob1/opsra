@@ -92,6 +92,22 @@ def send_webchat_reply(payload: WebchatSend, db=Depends(get_supabase), org=Depen
     return ok(data=msg, message="Reply sent")
 
 
+class TypingBody(BaseModel):
+    lead_id: str = Field(..., min_length=1, max_length=64)
+
+
+@router.post("/conversations/webchat/typing")
+def webchat_rep_typing(payload: TypingBody, db=Depends(get_supabase), org=Depends(get_current_org)):
+    """WEBCHAT-CONTACT-1d: the inbox tells the visitor's page that a team member is writing (sent every few seconds while typing)."""
+    if wc.rate_limited(f"reptype:{org['org_id']}:{payload.lead_id}", 40, 60):
+        return ok(data={})
+    lead = (db.table("leads").select("id").eq("id", payload.lead_id).eq("org_id", org["org_id"])
+            .is_("deleted_at", "null").limit(1).execute().data)
+    if lead:
+        wc.rep_typing(db, org["org_id"], payload.lead_id)
+    return ok(data={})
+
+
 # ── WEBCHAT-STAFF-1: staff send files, edit and delete their own web chat messages ─────────────────────────────
 
 def _session_of_message(db, org_id: str, mid: str) -> Optional[dict]:

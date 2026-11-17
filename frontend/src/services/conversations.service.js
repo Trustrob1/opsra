@@ -86,6 +86,10 @@ export const sendMessengerMessage = (leadId, message) =>
 export const sendWebchatMessage = (leadId, message, replyTo) =>
   api.post('/api/v1/conversations/webchat/send', { lead_id: leadId, message, ...(replyTo ? { reply_to: replyTo } : {}) })
 
+// WEBCHAT-CONTACT-1d — tell the visitor's page a team member is writing (best effort, never blocks typing)
+export const pingWebchatTyping = (leadId) =>
+  api.post('/api/v1/conversations/webchat/typing', { lead_id: leadId }).catch(() => null)
+
 // WEBCHAT-STAFF-1 — photo / document / voice note (multipart: lead_id, kind, file, reply_to?), and edit / delete of your own message
 export const uploadWebchatFile = (formData) =>
   api.post('/api/v1/conversations/webchat/upload', formData)

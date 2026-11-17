@@ -521,3 +521,41 @@ class TestLeadTrace:
                  patch("app.services.lead_service.write_timeline_event") as tl:
                 wc.save_contact(db, s, {"name": "Ada", "phone": "2348031234567", "email": None})
             assert tl.called and word in tl.call_args.kwargs["description"] and tl.call_args.kwargs["event_type"] == "webchat_started"
+
+
+class TestRepTypingAndLeadActivity:
+    """WEBCHAT-CONTACT-1d."""
+
+    def test_rep_typing_is_true_only_for_a_few_seconds(self):
+        from datetime import datetime, timedelta, timezone
+        from app.services import webchat_service as wc
+        iso = lambda d: d.astimezone(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        assert wc.rep_is_typing({"state": {"rep_typing_at": iso(now - timedelta(seconds=2))}}) is True
+        assert wc.rep_is_typing({"state": {"rep_typing_at": iso(now - timedelta(seconds=30))}}) is False
+        assert wc.rep_is_typing({"state": {}}) is False and wc.rep_is_typing({"state": {"rep_typing_at": "junk"}}) is False
+
+    def test_the_ping_marks_the_live_chat_and_a_reply_clears_it(self):
+        from app.services import webchat_service as wc
+        db = _db()
+        s = _session(db)
+        with patch.object(wc, "latest_session_for_lead", return_value=s):
+            wc.rep_typing(db, s["org_id"], "L1")
+            assert wc.rep_is_typing(s) is True
+            with patch("app.services.webchat_followup_service.notify_rep_reply"):
+                wc.rep_send(db, s["org_id"], "L1", "Hello Ada", "user-1")
+        assert wc.rep_is_typing(s) is False
+
+    def test_a_visitor_message_and_a_rep_reply_count_as_lead_activity(self):
+        from unittest.mock import MagicMock
+        from app.services import webchat_service as wc
+        db = _db()
+        s = _session(db)
+        with patch.object(wc, "touch_lead") as tl:
+            wc.append_message(db, s, "visitor", "hi")
+            wc.append_message(db, s, "bot", "hello")
+        assert tl.call_count == 1                                   # only the visitor's message
+        m = MagicMock()
+        wc.touch_lead(m, "o", "L1", "2026-11-17T10:00:00+00:00")
+        m.table.assert_called_with("leads")
+        assert m.table.return_value.update.call_args.args[0] == {"last_activity_at": "2026-11-17T10:00:00+00:00"}

@@ -642,6 +642,8 @@ def append_message(db, session: dict, role: str, text: str, sent_by: Optional[st
         if rid:
             row["reply_to_id"] = rid
         db.table("whatsapp_messages").insert(row).execute()
+        if role == "visitor":
+            touch_lead(db, session["org_id"], session["lead_id"], now)
     else:
         hist = list(session.get("history") or [])
         item = {"id": mid, "role": role, "text": text, "at": now}
@@ -653,6 +655,35 @@ def append_message(db, session: dict, role: str, text: str, sent_by: Optional[st
     if rid:
         out["reply_to"], out["reply"] = rid, quote
     return out
+
+
+def touch_lead(db, org_id: str, lead_id: str, now: Optional[str] = None) -> None:
+    """WEBCHAT-CONTACT-1d: a visitor writing in the chat counts as lead activity. The Lead Center sorts every column by
+    leads.last_activity_at, so without this an older lead that comes back through the chat stays buried far down its column."""
+    try:
+        db.table("leads").update({"last_activity_at": now or _iso(_now())}).eq("id", lead_id).eq("org_id", org_id).execute()
+    except Exception as exc:
+        logger.warning("webchat lead touch failed lead=%s: %s", lead_id, exc)
+
+
+REP_TYPING_S = 6
+
+
+def rep_is_typing(s: dict) -> bool:
+    """WEBCHAT-CONTACT-1d: a team member is writing a reply to this visitor right now (the inbox pings every few seconds)."""
+    t = (s.get("state") or {}).get("rep_typing_at")
+    if not t:
+        return False
+    try:
+        return (_now() - datetime.fromisoformat(str(t).replace("Z", "+00:00"))).total_seconds() <= REP_TYPING_S
+    except Exception:
+        return False
+
+
+def rep_typing(db, org_id: str, lead_id: str) -> None:
+    s = latest_session_for_lead(db, org_id, lead_id)
+    if s and s.get("status") == "active":
+        set_state(db, s, rep_typing_at=_iso(_now()))
 
 
 def _attach_quotes(db, session: dict, outs: list, source_rows: list) -> list:
@@ -802,7 +833,7 @@ def save_contact(db, session: dict, clean: dict, consent_version: str = CONSENT_
         created = True
     if not lead_id:
         raise RuntimeError("lead could not be created")
-    patch = {"consent_at": now, "consent_version": consent_version,
+    patch = {"consent_at": now, "consent_version": consent_version, "last_activity_at": now,
              "source_detail": f"webchat:{session.get('source') or 'link'}"[:100]}
     try:
         db.table("leads").update(patch).eq("id", lead_id).eq("org_id", org_id).execute()
@@ -905,7 +936,8 @@ def rep_send(db, org_id: str, lead_id: str, text: str, user_id: str, reply_to: O
     if s.get("status") != "active":
         raise PermissionError("this web chat has ended")
     msg = append_message(db, s, "rep", text, sent_by=user_id, reply_to=reply_to)
-    set_state(db, s, human=True, rep_last_at=_iso(_now()), human_at=_iso(_now()))
+    set_state(db, s, human=True, rep_last_at=_iso(_now()), human_at=_iso(_now()), rep_typing_at=None)
+    touch_lead(db, org_id, lead_id)
     try:
         from app.services import webchat_followup_service as fu
         fu.notify_rep_reply(db, s, get_config(db, org_id), text)   # WEBCHAT-4/4b: email or WhatsApp when the visitor has left

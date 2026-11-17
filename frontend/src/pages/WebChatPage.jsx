@@ -207,6 +207,7 @@ export default function WebChatPage({ chatKey }) {
   const [hasContact, setHasContact] = useState(false)
   const [verified, setVerified] = useState(false)
   const [human, setHuman] = useState(false)
+  const [repTyping, setRepTyping] = useState(false)    // WEBCHAT-CONTACT-1d: a team member is writing a reply
   const [contactStep, setContactStep] = useState(null)   // WEBCHAT-CONTACT-1: null | 'name' | 'phone' | 'consent' (Chioma is asking for details in the chat)
   const [hiddenIds, setHiddenIds] = useState(null)       // WEBCHAT-CONTACT-1: back after a long quiet spell: earlier messages are folded away, one tap shows them
   const [meName, setMeName] = useState('')
@@ -329,6 +330,7 @@ export default function WebChatPage({ chatKey }) {
         const res = await pollChat(chatKey, token.current, last)
         merge(res.messages)
         setHuman(!!res.human)
+        setRepTyping(!!res.rep_typing)
       } catch (e) {
         if (e?.response?.status === 401) { writeStore(tokenKey, null); setState('error') }
       }
@@ -817,8 +819,8 @@ export default function WebChatPage({ chatKey }) {
             )
           })}
 
-          {pending > 0 && (
-            <div role="status" aria-label={withTeam ? 'The team is typing' : 'Chioma is typing'} className="wc-anim" style={{ ...S.row('bot'), animation: 'wc-pop 0.18s ease-out' }}>
+          {(pending > 0 || repTyping) && (
+            <div role="status" aria-label={withTeam || repTyping ? 'The team is typing' : 'Chioma is typing'} className="wc-anim" style={{ ...S.row('bot'), animation: 'wc-pop 0.18s ease-out' }}>
               <div style={{ ...S.bubble('bot'), display: 'flex', alignItems: 'center', gap: 5, padding: '14px 16px' }}>
                 {[0, 1, 2].map((d) => <span key={d} className="wc-dot" aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: MUTED, animation: `wc-bounce 1.2s ease-in-out ${d * 0.16}s infinite` }} />)}
               </div>

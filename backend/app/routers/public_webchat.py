@@ -225,7 +225,8 @@ def poll_messages(key: str, response: Response, after: Optional[str] = Query(def
     s = _session(db, found, authorization)
     if wc.rate_limited(f"poll:{s['id']}", 120, 60):
         raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
-    return ok({"messages": wc.list_messages(db, s, after=after), "human": wc.is_human(s, found["config"])})
+    return ok({"messages": wc.list_messages(db, s, after=after), "human": wc.is_human(s, found["config"]),
+               "rep_typing": wc.rep_is_typing(s)})       # WEBCHAT-CONTACT-1d: shows the typing dots while the team writes
 
 
 @router.post("/public/webchat/{key}/message")
