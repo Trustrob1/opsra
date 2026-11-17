@@ -286,6 +286,8 @@ def _client(db, monkeypatch, template="owner", ran=None):
     app.dependency_overrides[get_supabase] = lambda: db
     app.dependency_overrides[get_current_org] = lambda: {"org_id": ORG, "id": "user-1", "roles": {"template": template}}
     monkeypatch.setattr(plan_gate_service, "allowed", lambda *a, **k: True)
+    import app.routers.knowledge as _kr
+    monkeypatch.setattr(_kr, "get_supabase", lambda: db)       # background reads open their own client; here that is the fake
     if ran is not None:
         monkeypatch.setattr(rf, "refresh_source", lambda db, src, *a, **k: ran.append(src["id"]))
     return TestClient(app)

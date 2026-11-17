@@ -71,6 +71,12 @@ class UrlPayload(BaseModel):
     url: str = Field(..., max_length=600)
 
 
+def _run_in_background(fn, *args) -> None:
+    """Runs after the response has gone. The request's own database client is closed by then (the cleanup that stops
+    connections piling up), so the job opens a fresh one instead of using the closed one."""
+    fn(get_supabase(), *args)
+
+
 def _start_web_job(kind: str, payload: UrlPayload, tasks: BackgroundTasks, org: dict, db):
     """One website or Google Doc is read at a time per business; the work runs after this call returns and the screen checks back."""
     try:
@@ -81,7 +87,7 @@ def _start_web_job(kind: str, payload: UrlPayload, tasks: BackgroundTasks, org: 
         raise HTTPException(status_code=409, detail={"code": "BUSY", "message": "We are still reading your last website or document. Please wait a moment."})
     label = web._host(address) if kind == "url" else "Google Doc"
     sid = ks.new_source(db, org["org_id"], org["id"], kind, label, source_url=(address if kind == "url" else payload.url.strip()), status="processing")
-    tasks.add_task(web.run_website if kind == "url" else web.run_gdoc, db, org["org_id"], sid, address)
+    tasks.add_task(_run_in_background, web.run_website if kind == "url" else web.run_gdoc, org["org_id"], sid, address)
     _audit(db, org, "knowledge.added", sid, {"kind": kind})
     return ok(data=ks.preview(db, org["org_id"], sid))
 
@@ -135,7 +141,7 @@ def refresh_now(source_id: str, tasks: BackgroundTasks, org=Depends(get_current_
     if last and str(last) > (datetime.now(timezone.utc) - timedelta(minutes=refresh.MANUAL_COOLDOWN_MIN)).isoformat():
         raise HTTPException(status_code=409, detail={"code": "TOO_SOON", "message": "It was checked a moment ago. Please try again in a few minutes."})
     db.table("knowledge_sources").update({"last_refreshed_at": datetime.now(timezone.utc).isoformat()}).eq("id", source_id).eq("org_id", org["org_id"]).execute()
-    tasks.add_task(refresh.refresh_source, db, src)
+    tasks.add_task(_run_in_background, refresh.refresh_source, src)
     return ok(data={"started": True})
 
 

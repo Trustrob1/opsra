@@ -183,6 +183,8 @@ def _client(db, monkeypatch, ran):
     app.dependency_overrides[get_supabase] = lambda: db
     app.dependency_overrides[get_current_org] = lambda: {"org_id": ORG, "id": "user-1", "roles": {"template": "owner"}}
     monkeypatch.setattr(plan_gate_service, "allowed", lambda *a, **k: True)
+    import app.routers.knowledge as _kr
+    monkeypatch.setattr(_kr, "get_supabase", lambda: db)       # background reads open their own client; here that is the fake
     monkeypatch.setattr(web, "run_website", lambda *a, **k: ran.append(("url", a[2:])))
     monkeypatch.setattr(web, "run_gdoc", lambda *a, **k: ran.append(("gdoc", a[2:])))
     return TestClient(app)
