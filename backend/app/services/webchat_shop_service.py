@@ -198,6 +198,57 @@ def viewing(db, s: dict, cfg: dict, product_id) -> dict:
         return empty
 
 
+ANSWER_DESC_CHARS = 420
+
+
+def _cut_at_sentence(text: str, n: int) -> str:
+    if len(text) <= n:
+        return text
+    head = text[:n]
+    end = max(head.rfind(". "), head.rfind("! "), head.rfind("? "))
+    if end >= n // 2:
+        return head[:end + 1]
+    return head.rsplit(" ", 1)[0].rstrip(",;:- ") + "..."
+
+
+def product_answer(db, s: dict, cfg: dict, question: str) -> Optional[str]:
+    """WEBCHAT-CATALOG-1b: no AI answer was possible (AI off, no credit, ...) but the visitor is looking at a product
+    (state.viewing, set from the Storefront). Reply from THIS business's own catalogue text instead of 'I did not catch that':
+    the description (about 420 characters, cut at a sentence), the price and whether it is in stock, then the Menu / team line.
+    Honest wording: if none of the question's words appear in the description it says it has no more detail. No AI, no cost.
+    Returns the text, or None (caller uses the normal fallback). Never raises."""
+    try:
+        pid = (s.get("state") or {}).get("viewing")
+        if not pid:
+            return None
+        p = _fetch_one(db, s["org_id"], str(pid))
+        if not p or not (p.get("title") or "").strip():
+            return None
+        title = str(p.get("title") or "")[:80]
+        desc = " ".join(str(p.get("catalog_description") or p.get("description") or "").split())
+        price = _num(p.get("price"))
+        in_stock = _stock_state(p, None) is None
+        if not desc and price <= 0:
+            return None
+        words = {w for w in re.findall(r"[a-z0-9]+", (question or "").lower()) if len(w) > 3}
+        blob = f"{title} {desc}".lower()
+        hit = bool(words) and any(w in blob for w in words)
+        lead = f"Here is what we have on {title}:" if hit or not desc else f"I do not have that exact detail. Here is what we have on {title}:"
+        parts = [lead]
+        if desc:
+            parts.append(_cut_at_sentence(desc, ANSWER_DESC_CHARS))
+        facts = []
+        if price > 0:
+            facts.append(f"From {_money(price)}" if len(p.get("variants") or []) > 1 else _money(price))
+        facts.append("In stock" if in_stock else "Out of stock right now")
+        parts.append(". ".join(facts) + ".")
+        parts.append(wc.SCRIPTED_TAIL)
+        return " ".join(parts)
+    except Exception as exc:
+        logger.warning("webchat product_answer failed org=%s: %s", s.get("org_id"), exc)
+        return None
+
+
 def catalogue_for_prompt(db, org_id: str, text: str, limit: int = 6) -> list[dict]:
     """Small id/title/price list handed to the AI so it can suggest real products."""
     return [{"id": c["id"], "title": c["title"], "price": c["price"]} for c in search(db, org_id, text, limit)]

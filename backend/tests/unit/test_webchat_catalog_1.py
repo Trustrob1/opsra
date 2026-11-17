@@ -207,3 +207,70 @@ def test_prompt_ignores_a_viewed_id_that_is_not_in_the_list(monkeypatch):
     monkeypatch.setattr(ai, "_knowledge", lambda *a, **k: "x")
     p = ai.build_system_prompt(_DB(), {"org_id": ORG, "state": {"viewing": "ghost"}}, {"business_name": "X", "shop_enabled": True}, "hi")
     assert "opened this chat from" not in p
+
+
+# ── WEBCHAT-CATALOG-1b: answer from the catalogue when no AI answer is possible ─────────────
+
+LATEX = {"id": "m1", "org_id": ORG, "title": "Holiday Sleep Mattress", "price": 705000, "available": True,
+         "variants": [{"id": "v1", "price": 705000}, {"id": "v2", "price": 945000}], "catalog_images": [],
+         "description": "Made from natural Malaysian latex, cotton and bamboo wood. It has two sides. Natural anti mosquito lemon grass treatment. " * 6,
+         "catalog_description": None}
+
+
+def test_product_answer_uses_the_catalogue_text_price_and_stock():
+    s = _s({"viewing": "m1"})
+    t = shop.product_answer(_DB(products=[LATEX]), s, {}, "what is the mattress made of?")
+    assert t.startswith("Here is what we have on Holiday Sleep Mattress:") and "natural Malaysian latex" in t
+    assert "From ₦705,000. In stock." in t and t.endswith(wc.SCRIPTED_TAIL)
+    assert len(t) < 700
+
+
+def test_product_answer_is_honest_when_the_question_is_not_in_the_text():
+    t = shop.product_answer(_DB(products=[LATEX]), _s({"viewing": "m1"}), {}, "do you deliver to Abuja?")
+    assert t.startswith("I do not have that exact detail. Here is what we have on Holiday Sleep Mattress:")
+
+
+def test_product_answer_cuts_at_a_sentence():
+    t = shop.product_answer(_DB(products=[LATEX]), _s({"viewing": "m1"}), {}, "latex")
+    body = t.split(":", 1)[1].split(" From ")[0].strip()
+    assert body.endswith(".") and not body.endswith("...")
+
+
+def test_product_answer_out_of_stock_and_nothing_to_say():
+    out = dict(LATEX, available=False)
+    assert "Out of stock right now." in shop.product_answer(_DB(products=[out]), _s({"viewing": "m1"}), {}, "latex")
+    bare = dict(LATEX, description="", price=0)
+    assert shop.product_answer(_DB(products=[bare]), _s({"viewing": "m1"}), {}, "latex") is None
+
+
+def test_product_answer_needs_a_viewed_product_from_this_business_and_never_raises():
+    assert shop.product_answer(_DB(), _s(), {}, "x") is None
+    assert shop.product_answer(_DB(products=[dict(LATEX, org_id="other")]), _s({"viewing": "m1"}), {}, "x") is None
+    class Bad:
+        def table(self, n): raise RuntimeError("x")
+    assert shop.product_answer(Bad(), _s({"viewing": "m1"}), {}, "x") is None
+
+
+def test_public_view_carries_the_tail():
+    assert wc.public_view(dict(wc.DEFAULT_CONFIG, business_name="X", _call_org={}))["scripted_tail"] == wc.SCRIPTED_TAIL
+
+
+def test_post_message_swaps_in_the_product_text_only_for_typed_questions_on_a_product(monkeypatch):
+    from app.routers import public_webchat as r
+    from app.services import webchat_flow_service as flow
+    seen = {}
+    sess = {"id": "s1", "org_id": ORG, "state": {"viewing": "m1"}}
+    monkeypatch.setattr(wc, "resolve_key", lambda db, k: {"org_id": ORG, "config": {"fallback": "STOCK", "shop_enabled": False}})
+    monkeypatch.setattr(wc, "authenticate", lambda db, org, tok: sess)
+    monkeypatch.setattr(wc, "rate_limited", lambda *a, **k: False)
+    monkeypatch.setattr(flow, "handle_message", lambda db, s, cfg, **k: seen.update(fallback=cfg["fallback"]) or {"messages": []})
+    monkeypatch.setattr(shop, "product_answer", lambda db, s, cfg, q: "PRODUCT TEXT")
+    class Resp:
+        headers = {}
+    r.post_message("wc_abcdefgh12", r.MessageBody(kind="text", text="what is it made of"), Resp(), "Bearer t", None)
+    assert seen["fallback"] == "PRODUCT TEXT"
+    r.post_message("wc_abcdefgh12", r.MessageBody(kind="menu", menu_id="a"), Resp(), "Bearer t", None)
+    assert seen["fallback"] == "STOCK"                                   # a tapped menu item never gets the product text
+    sess["state"] = {}
+    r.post_message("wc_abcdefgh12", r.MessageBody(kind="text", text="hello"), Resp(), "Bearer t", None)
+    assert seen["fallback"] == "STOCK"                                   # no product being viewed: unchanged

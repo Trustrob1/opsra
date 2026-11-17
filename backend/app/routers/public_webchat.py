@@ -223,7 +223,14 @@ def post_message(key: str, body: MessageBody, response: Response, authorization:
     s = _session(db, found, authorization)
     if wc.rate_limited(f"msg:{s['id']}", 30, 60):
         raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
-    return ok(flow.handle_message(db, s, found["config"], kind=body.kind, menu_id=body.menu_id, text=body.text, reply_to=body.reply_to))
+    cfg = found["config"]
+    if body.kind == "text" and (s.get("state") or {}).get("viewing"):
+        # WEBCHAT-CATALOG-1b: the visitor is on a Storefront product. If no AI answer can be given, the stock "I did not catch
+        # that" line is replaced by the product's own catalogue text (the flow uses cfg["fallback"] only when nothing else answered).
+        scripted = shop.product_answer(db, s, cfg, body.text or "")
+        if scripted:
+            cfg = {**cfg, "fallback": scripted}
+    return ok(flow.handle_message(db, s, cfg, kind=body.kind, menu_id=body.menu_id, text=body.text, reply_to=body.reply_to))
 
 
 @router.post("/public/webchat/{key}/contact")

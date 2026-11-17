@@ -289,6 +289,10 @@ def save_config(db, org_id: str, changes: dict) -> dict:
     return get_config(db, org_id)
 
 
+# WEBCHAT-CATALOG-1b: the closing line of a scripted product answer; the chat page puts Open menu + Talk to the team buttons under it
+SCRIPTED_TAIL = "Tap Menu for more options, or talk to the team."
+
+
 def chioma_flags(cfg: dict) -> dict:
     """WEBCHAT-BUBBLE-1/2: what the launcher and the chat page need to show Chioma.
     assistant_active = AI answers are really on (plan included); team_available = inside the business's set hours right now;
@@ -318,7 +322,7 @@ def _human_menu_id(cfg: dict) -> Optional[str]:
 def public_view(cfg: dict) -> dict:
     """The only settings a visitor's browser receives."""
     return {
-        "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg),
+        "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL,
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "greeting": cfg["greeting"],
         "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],

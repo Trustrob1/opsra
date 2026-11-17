@@ -768,7 +768,7 @@ export default function WebChatPage({ chatKey }) {
                   : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
               </div>
               )}
-              {m.role === 'bot' && cfg.menu.length > 0 && cfg.fallback && m.text === cfg.fallback && i === messages.length - 1 && (
+              {m.role === 'bot' && cfg.menu.length > 0 && i === messages.length - 1 && ((cfg.fallback && m.text === cfg.fallback) || (cfg.scripted_tail && m.text.endsWith(cfg.scripted_tail))) && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
                   <button type="button" style={{ ...S.chip, minHeight: 40, display: 'flex', alignItems: 'center', gap: 8 }} onClick={openMenu}>
                     <Icon name="menu" size={18} />Open menu
