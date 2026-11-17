@@ -782,6 +782,7 @@ def save_contact(db, session: dict, clean: dict, consent_version: str = CONSENT_
     org_id = session["org_id"]
     now = _iso(_now())
     lead_id = session.get("lead_id")
+    created = False
     if not lead_id and clean.get("phone"):
         lead_id = funnel_service._find_org_lead(db, org_id, clean["phone"])
     if not lead_id and clean.get("email"):
@@ -798,6 +799,7 @@ def save_contact(db, session: dict, clean: dict, consent_version: str = CONSENT_
         )
         lead = lead_service.create_lead(db=db, org_id=org_id, user_id=None, payload=payload, entry_path="webchat")
         lead_id = lead.get("id")
+        created = True
     if not lead_id:
         raise RuntimeError("lead could not be created")
     patch = {"consent_at": now, "consent_version": consent_version,
@@ -815,6 +817,15 @@ def save_contact(db, session: dict, clean: dict, consent_version: str = CONSENT_
     session = update_session(db, session, changes)
     _flush_history(db, session)
     log_event(db, org_id, session["id"], "contact", session.get("source"))
+    try:     # WEBCHAT-CONTACT-1c: a visible trace on the lead, so the chat is easy to find even when the number matched an older lead
+        from app.services import lead_service
+        who = (clean.get("name") or "A visitor")[:60]
+        how = "created from this chat" if created else "an existing lead, matched by WhatsApp number"
+        lead_service.write_timeline_event(db, org_id, lead_id, event_type="webchat_started", actor_id=None,
+                                          description=f"Web chat: {who} chatted with Chioma on your website ({how}). See Conversations.",
+                                          metadata={"session_id": session["id"], "source": session.get("source")})
+    except Exception as exc:
+        logger.warning("webchat timeline note failed lead=%s: %s", lead_id, exc)
     return session
 
 

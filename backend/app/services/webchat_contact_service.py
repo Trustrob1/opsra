@@ -2,7 +2,7 @@
 backend/app/services/webchat_contact_service.py
 WEBCHAT-CONTACT-1: asking for the visitor's details inside the chat, in Chioma's voice, instead of a pop-up form.
 
-A short fixed script (no AI is involved, so the name and number are never sent to the AI): name -> WhatsApp number (or email)
+A short fixed script (no AI is involved, so the name and number are never sent to the AI): name -> WhatsApp number
 -> a Yes / No consent question -> the same handle_contact the form uses (lead creation, consent record, the waiting question
 answered). Rules that keep it safe:
   - the number is checked with the same normaliser the form uses; the visitor's number is shown in the transcript only as
@@ -86,8 +86,6 @@ def shown_text(s: dict, text: str) -> str:
     if step_of(s) != "phone":
         return text
     t = (text or "").strip()
-    if "@" in t:
-        return "My email address"
     d = re.sub(r"\D", "", t)
     return f"My WhatsApp number (ends {d[-3:]})" if len(d) >= 3 else text
 
@@ -129,20 +127,14 @@ def step(db, s: dict, cfg: dict, text: str, finish: Callable[..., dict]) -> dict
             return fail("I did not catch a name there. What should I call you?")
         tmp["name"] = name
         wc.set_state(db, s, contact_step="phone", contact_tmp=tmp, contact_tries=0)
-        say(f"Nice to meet you, {_first(name)}. What is your WhatsApp number? You can give an email instead.")
+        say(f"Nice to meet you, {_first(name)}. What is your WhatsApp number?")
         return reply()
 
     if cur == "phone":
-        if "@" in t:
-            email = t.lower().strip(" .,")
-            if not wc._EMAIL_RE.match(email):
-                return fail("That email does not look right. Please check it, or send your WhatsApp number instead.")
-            tmp["email"], tmp["phone"], shown = email, None, "that email"
-        else:
-            phone = wc.normalise_phone(t)
-            if not phone:
-                return fail("That number does not look right. Please send it like 0803 123 4567, or give an email instead.")
-            tmp["phone"], tmp["email"], shown = phone, None, f"the number ending {phone[-3:]}"
+        phone = wc.normalise_phone(t)
+        if not phone:
+            return fail("That number does not look right. Please send your WhatsApp number, like 0803 123 4567.")
+        tmp["phone"], tmp["email"], shown = phone, None, f"the number ending {phone[-3:]}"
         wc.set_state(db, s, contact_step="consent", contact_tmp=tmp, contact_tries=0)
         say(f"Thank you. Is it okay for {cfg.get('business_name') or 'the team'} to contact you on {shown} about your enquiry? Reply Yes or No.")
         return reply()
