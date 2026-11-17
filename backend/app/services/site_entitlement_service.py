@@ -165,6 +165,7 @@ def get_config(settings: Optional[dict]) -> dict:
             "sellable": monthly > 0,
             "hidden": bool(raw.get("hidden")),
             "wa_only": key in reg.WA_ONLY_TIERS,
+            "chat_only": key in reg.CHAT_ONLY_TIERS,
             "recommended": reg.RECOMMENDED_START.get(key),
         }
     addons: dict = {}
@@ -235,7 +236,7 @@ def validate_pricing(pricing) -> None:
     if "tiers" in pricing:
         t = pricing["tiers"]
         if not isinstance(t, dict) or any(k not in reg.TIER_KEYS for k in t):
-            raise EntitlementError("Tier settings must use the tiers Capture, Convert, Grow, Scale and Chat Basic.")
+            raise EntitlementError("Tier settings must use the tiers Capture, Convert, Grow, Scale, Chat Basic and Chioma.")
         for k, v in t.items():
             check_item(v, reg.DEFAULT_LABELS[k], True)
     if "addons" in pricing:
@@ -271,7 +272,7 @@ def effective_status(row: dict, cfg: dict, now: datetime) -> str:
         return st
     paid_until = _parse(row.get("paid_until"))
     if paid_until is None:
-        return "active" if row.get("source") == "staff" else "pending"
+        return "active" if row.get("source") in ("staff", "free") else "pending"
     if now <= paid_until:
         return "active"
     grace_end = _parse(row.get("grace_until")) or (paid_until + timedelta(days=cfg["billing"]["grace_days"]))

@@ -54,7 +54,8 @@ def grant_for_org(db, org_id: str, now: datetime, dry_run: bool = False) -> Opti
     """Returns {"tier","kobo","applied"} when a grant was due, else None. Never raises."""
     try:
         c = acc._compute(db, org_id, now)
-        tier_row = next((r for r in c["rows"] if r.get("kind") == "tier" and r.get("effective_status") == "active"), None)
+        tier_row = next((r for r in c["rows"] if r.get("kind") == "tier" and r.get("effective_status") == "active"
+                         and r.get("source") != "free"), None)     # WEB-ONLY-1a: the free Chioma period pays from its starter credit only
         if not tier_row:
             return None
         amount_ngn = int(((c["cfg"]["tiers"].get(tier_row["key"]) or {}).get("included_credit_ngn")) or 0)
@@ -90,7 +91,8 @@ def ensure_wallet_and_grant(db, org_id: str, now: Optional[datetime] = None, req
         res = grant_for_org(db, org_id, now, dry_run=True)
         if res is None and cs.get_wallet(db, org_id) is None:
             c = acc._compute(db, org_id, now)
-            tier_row = next((r for r in c["rows"] if r.get("kind") == "tier" and r.get("effective_status") == "active"), None)
+            tier_row = next((r for r in c["rows"] if r.get("kind") == "tier" and r.get("effective_status") == "active"
+                             and r.get("source") != "free"), None)
             amount = int(((c["cfg"]["tiers"].get(tier_row["key"]) or {}).get("included_credit_ngn")) or 0) if tier_row else 0
             if amount <= 0:
                 return None

@@ -233,7 +233,7 @@ class OrgProvisionPayload(BaseModel):
     owner_full_name: str = Field(..., max_length=255)
     owner_password: str = Field(..., min_length=8)
     owner_whatsapp: Optional[str] = Field(default=None, max_length=20)
-    product_mode: Literal["full", "wa_automation"] = "full"   # WA-AUTO-1
+    product_mode: Literal["full", "wa_automation", "web_chat"] = "full"   # WA-AUTO-1, WEB-ONLY-1a
 
     @field_validator("slug")
     @classmethod
@@ -258,7 +258,7 @@ class OrgProvisionPayload(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ProductModePayload(BaseModel):
-    product_mode: Literal["full", "wa_automation"]
+    product_mode: Literal["full", "wa_automation", "web_chat"]
 
 
 @router.patch("/superadmin/organisations/{org_id}/product-mode")

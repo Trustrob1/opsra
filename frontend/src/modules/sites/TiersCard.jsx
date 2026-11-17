@@ -145,6 +145,7 @@ export default function TiersCard({ pricing, canEdit, onSaved, showToast, api = 
                 <h4 style={{ margin: 0, fontSize: 14, color: T.ink }}>{f.label}</h4>
                 {f.monthly_ngn > 0 ? <Badge tone="good">For sale</Badge> : <Badge tone="neutral">Not for sale yet</Badge>}
                 {t.wa_only && <Badge tone="neutral">WhatsApp-only businesses</Badge>}
+                {t.chat_only && <Badge tone="neutral">Web-chat-only businesses</Badge>}
               </div>
               {t.recommended && (
                 <p style={{ margin: 0, fontSize: 12.5, color: T.soft }}>

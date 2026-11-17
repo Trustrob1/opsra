@@ -120,9 +120,15 @@ def _paid_before(db: Any, org_id: str) -> bool:
 
 def _tier_fits_org(db: Any, org_id: str, d: dict) -> bool:
     """WA-AUTO-1b: a WhatsApp-automation-only business is offered the WhatsApp-only plan and nothing else; every other business
-    is never offered it. Any problem reading the mode counts as a normal business."""
+    is never offered it. WEB-ONLY-1a: a web-chat-only business is offered the Chioma plan(s) and nothing else; every other business
+    is never offered them. Any problem reading the mode counts as a normal business."""
     from app.services import product_mode as pmode
-    return bool(d.get("wa_only")) == pmode.is_wa_automation(db, org_id)
+    mode = pmode.get_mode(db, org_id)
+    if mode == pmode.WA_AUTOMATION:
+        return bool(d.get("wa_only"))
+    if mode == pmode.WEB_CHAT:
+        return bool(d.get("chat_only"))
+    return not d.get("wa_only") and not d.get("chat_only")
 
 
 def quote_for(db: Any, org_id: str, cfg: dict, key: str, now: datetime, row: Optional[dict] = None, interval: str = "month") -> dict:

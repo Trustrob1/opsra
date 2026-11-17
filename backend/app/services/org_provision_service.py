@@ -64,8 +64,12 @@ def auth_email_exists(email: str) -> bool:
     return False
 
 
-def provision_wa_org(db: Any, *, business_name: str, owner_name: str, email: str, password: str, whatsapp: str) -> dict:
-    """Returns {org_id, user_id, slug}. Raises ProvisionError with a plain message."""
+def provision_wa_org(db: Any, *, business_name: str, owner_name: str, email: str, password: str, whatsapp: str,
+                     product_mode: str = "wa_automation") -> dict:
+    """Returns {org_id, user_id, slug}. Raises ProvisionError with a plain message.
+    WEB-ONLY-1a: product_mode is 'wa_automation' (the WhatsApp sign-up) or 'web_chat' (the Chioma sign-up)."""
+    if product_mode not in ("wa_automation", "web_chat"):
+        raise ProvisionError("We could not create your account. Please try again in a few minutes.")
     from app.routers.superadmin import ROLE_TEMPLATES
     url, headers = _admin_headers()
     org_id = auth_user_id = None
@@ -73,7 +77,7 @@ def provision_wa_org(db: Any, *, business_name: str, owner_name: str, email: str
         slug = unique_slug(db, business_name)
         row = db.table("organisations").insert({
             "name": business_name, "slug": slug, "industry": "other", "timezone": "Africa/Lagos", "ticket_prefix": ticket_prefix(business_name),
-            "subscription_tier": "starter", "subscription_status": "active", "is_live": False, "product_mode": "wa_automation",
+            "subscription_tier": "starter", "subscription_status": "active", "is_live": False, "product_mode": product_mode,
             "plans_enforced": True,
             "business_hours": {d: {"start": "08:00", "end": "17:00"} for d in ("mon", "tue", "wed", "thu", "fri")}
                               | {"sat": {"start": "09:00", "end": "13:00"}, "sun": {"start": None, "end": None}},

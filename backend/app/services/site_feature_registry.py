@@ -13,12 +13,15 @@ tier and granted; nothing calls has_feature() for it yet, so it does nothing. It
 """
 from __future__ import annotations
 
-TIER_KEYS = ("capture", "convert", "grow", "scale", "automate")
+TIER_KEYS = ("capture", "convert", "grow", "scale", "automate", "chioma")
 # PLANS-1 (Nov 2026): the account plans are Chat Basic = automate, Growth = convert, Essential = grow, Scale = scale.
 # Capture stays the website entry plan. Labels for convert/grow are renamed in Settings > Pricing at go-live.
 # WA-AUTO-1b: "automate" is the WhatsApp-automation-only plan. Only businesses whose product_mode is wa_automation can buy it, and
 # they can buy nothing else. Websites never offer it. Its price is set in Superadmin pricing settings (not for sale until then).
 WA_ONLY_TIERS = ("automate",)
+# WEB-ONLY-1a: "chioma" is the web-chat-only plan (Chioma on the website, no WhatsApp). Only businesses whose product_mode is web_chat can
+# buy it, and websites never offer it. Its price is set in Superadmin pricing settings (not for sale until then).
+CHAT_ONLY_TIERS = ("chioma",)
 ADDON_KEYS = ("support_tickets", "renewals_winback", "dashboard_ask_data", "event_funnel", "extra_rep", "extra_wa_number", "booking")
 
 # Caps. "monthly" caps are consumed (site_usage_counters); "static" caps are a limit the feature reads (e.g. reps).
@@ -109,6 +112,9 @@ DEFAULT_TIER_FEATURES = {
     "scale": _CAPTURE + _CONVERT + ["selling_catalog", "selling_booking"] + _GROW + ["support_tickets", "extra_wa_number"],
     "automate": ["wa_leads", "wa_menu", "speed_alerts", "ai_assistant", "own_wa_number", "webchat_basic", "knowledge_base",
                  "leads_download", "multi_rep_inbox"],
+    # WEB-ONLY-1a: Chioma on the website only. The product list (selling_catalog) lets her answer about prices; the Storefront
+    # (catalog_storefront, payment_links) is a later add-on. The 30-product limit and the Business plan come in 1f.
+    "chioma": ["webchat_basic", "webchat_insights", "ai_assistant", "knowledge_base", "webchat_followups", "leads_download", "selling_catalog"],
 }
 DEFAULT_PICK_ONE = {
     "capture": [],
@@ -116,11 +122,13 @@ DEFAULT_PICK_ONE = {
     "grow": [],
     "scale": [],
     "automate": [],
+    "chioma": [],
 }
-DEFAULT_LABELS = {"capture": "Capture", "convert": "Growth", "grow": "Essential", "scale": "Scale", "automate": "Chat Basic"}   # PLANS-5: customer-facing names (keys unchanged)
+DEFAULT_LABELS = {"capture": "Capture", "convert": "Growth", "grow": "Essential", "scale": "Scale", "automate": "Chat Basic", "chioma": "Chioma"}   # PLANS-5: customer-facing names (keys unchanged)
 # Starting allowances, used until Superadmin saves its own. Prices are never defaulted.
 DEFAULT_TIER_CAPS = {
     "automate": {"ai_messages": 100, "users_included": 2, "reps": 2},
+    "chioma": {"ai_messages": 300, "users_included": 2},       # WEB-ONLY-1a (Trust, 17 Nov 2026: 300 AI answers, 2 users)
     "convert": {"ai_messages": 1000, "users_included": 3},
     "grow": {"ai_messages": 3000, "bulk_recipients": 500, "bookings": 500, "users_included": 5, "reps": 5},
     "scale": {"ai_messages": 8000, "bulk_recipients": 2000, "bookings": 2000, "users_included": 10, "reps": 10},
@@ -128,8 +136,9 @@ DEFAULT_TIER_CAPS = {
 # Shown in Superadmin pricing settings as a hint only (Trust, 24 Oct 2026: recommended start, price is fixed by Trust).
 # PLANS-3: naira of credit a plan includes every month (expires at month end, no rollover). Settings can override per tier
 # with included_credit_ngn. Chat Basic and Capture include none.
-DEFAULT_INCLUDED_CREDIT_NGN = {"convert": 2000, "grow": 7500, "scale": 15000}
+DEFAULT_INCLUDED_CREDIT_NGN = {"convert": 2000, "grow": 7500, "scale": 15000, "chioma": 6000}   # chioma: 300 web chats at N20 (Trust, 17 Nov 2026)
 RECOMMENDED_START = {
+    "chioma": {"monthly_ngn": 15000, "ai_messages": 300, "users_included": 2},
     "automate": {"monthly_ngn": 40000, "ai_messages": 100, "users_included": 2},
     "scale": {"monthly_ngn": 300000, "ai_messages": 8000, "users_included": 10},
 }

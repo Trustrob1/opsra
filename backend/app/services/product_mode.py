@@ -5,8 +5,11 @@ WA-AUTO-1 - what kind of customer an organisation is (organisations.product_mode
 
   'full'           the normal Opsra app (CRM and WhatsApp automation together)
   'wa_automation'  WhatsApp automation only: inbox, bot setup, knowledge, billing. The CRM screens and routes are closed.
+  'web_chat'       WEB-ONLY-1a: Chioma on the website only (no WhatsApp). The CRM routes are closed like wa_automation, but new
+                   web chat leads still announce themselves and are auto-assigned (see lead_service.create_lead), so this is a
+                   mode of its own and not a second use of wa_automation.
 
-  get_mode(db, org_id)       'full' or 'wa_automation'. Kept in memory for 60 seconds. ANY problem answers 'full', so a broken
+  get_mode(db, org_id)       'full', 'wa_automation' or 'web_chat'. Kept in memory for 60 seconds. ANY problem answers 'full', so a broken
                              lookup can never lock a business out (S14).
   is_wa_automation(db, org_id)
   set_mode(db, org_id, mode) used by Superadmin; clears the memory so the change shows at once on this server.
@@ -36,7 +39,9 @@ logger = logging.getLogger(__name__)
 
 FULL = "full"
 WA_AUTOMATION = "wa_automation"
-MODES = (FULL, WA_AUTOMATION)
+WEB_CHAT = "web_chat"
+MODES = (FULL, WA_AUTOMATION, WEB_CHAT)
+CLOSED_CRM_MODES = (WA_AUTOMATION, WEB_CHAT)     # modes with no CRM: crm_only answers 404 for them
 
 _TTL_SECONDS = 60
 _MAX_ENTRIES = 5000
@@ -85,9 +90,13 @@ def is_wa_automation(db: Any, org_id: Optional[str]) -> bool:
     return get_mode(db, org_id) == WA_AUTOMATION
 
 
+def is_web_chat(db: Any, org_id: Optional[str]) -> bool:
+    return get_mode(db, org_id) == WEB_CHAT
+
+
 def set_mode(db: Any, org_id: str, mode: str) -> dict:
     if mode not in MODES:
-        raise ValueError("product_mode must be 'full' or 'wa_automation'")
+        raise ValueError("product_mode must be 'full', 'wa_automation' or 'web_chat'")
     db.table("organisations").update({"product_mode": mode}).eq("id", org_id).execute()
     invalidate()
     return {"org_id": org_id, "product_mode": mode}
@@ -138,7 +147,7 @@ async def crm_only(request: Request, db=Depends(get_supabase)) -> None:
     try:
         sub = _token_subject(request)
         org_id = _org_for_user(db, sub) if sub else None
-        if org_id and get_mode(db, org_id) == WA_AUTOMATION:
+        if org_id and get_mode(db, org_id) in CLOSED_CRM_MODES:
             method, path = request.method.upper(), request.url.path
             blocked = not any(m == method and rx.match(path) for m, rx in ALLOWED)
     except Exception as exc:
@@ -146,4 +155,4 @@ async def crm_only(request: Request, db=Depends(get_supabase)) -> None:
         blocked = False
     if blocked:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND",
-                                                     "message": "This area is not part of a WhatsApp automation account."})
+                                                     "message": "This area is not part of your account."})

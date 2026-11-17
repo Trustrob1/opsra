@@ -18,7 +18,7 @@ const field = {
   minHeight: 36, padding: "6px 10px", background: "#0b1a24", color: "white", border: "1px solid #1e3a4f",
   borderRadius: 7, fontSize: 13, fontFamily: ds.fontDm, boxSizing: "border-box",
 };
-const TIERS = [["automate", "Chat Basic (WhatsApp only)"], ["convert", "Growth"], ["grow", "Essential"], ["scale", "Scale"], ["capture", "Capture (website entry plan)"]];
+const TIERS = [["chioma", "Chioma (web chat only)"], ["automate", "Chat Basic (WhatsApp only)"], ["convert", "Growth"], ["grow", "Essential"], ["scale", "Scale"], ["capture", "Capture (website entry plan)"]];
 const TIER_NAME = Object.fromEntries(TIERS.map(([k, l]) => [k, l.replace(/ \(.*\)$/, "")]));
 const errText = (e) => {
   const d = e?.response?.data?.detail;
