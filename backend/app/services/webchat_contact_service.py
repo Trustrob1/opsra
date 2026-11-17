@@ -29,6 +29,16 @@ _LEAD_IN = re.compile(r"^(?:my name is|my name's|name is|i am|i'm|im|this is|it 
 _QUESTION_WORDS = {"what", "how", "do", "does", "can", "is", "are", "where", "when", "why", "which", "who", "price", "much"}
 
 
+# why the visitor needs to give details (a button they tapped) -> (what Chioma says first, what she says once they are done)
+INTROS = {
+    "callback": ("I will need a couple of details before the team can call you back.", "Tap the call button again to ask for your call back."),
+    "file": ("I just need a couple of details before you send a file.", "You can send your file now."),
+    "voice": ("I just need a couple of details before you send a voice note.", "You can record your voice note now."),
+    "checkout": ("I just need a couple of details first, so we can confirm your order.", "Tap Cart to check out."),
+}
+DEFAULT_INTRO = ("I just need a couple of details first.", "")
+
+
 def enabled(cfg: dict) -> bool:
     return bool(cfg.get("contact_in_chat", True))
 
@@ -39,7 +49,15 @@ def step_of(s: dict) -> Optional[str]:
 
 
 def _clear(db, s: dict) -> None:
-    wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False)
+    wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_after="")
+
+
+def start_for(db, s: dict, cfg: dict, why: str) -> dict:
+    """The visitor tapped something that needs their details (call back, file, voice note, check out): ask in the chat."""
+    intro, after = INTROS.get(why, DEFAULT_INTRO)
+    msg = start(db, s, cfg, intro)
+    wc.set_state(db, s, contact_after=after)
+    return msg
 
 
 def start(db, s: dict, cfg: dict, intro: str, optional: bool = False) -> dict:

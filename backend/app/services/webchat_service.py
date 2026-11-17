@@ -350,7 +350,7 @@ def _human_menu_id(cfg: dict) -> Optional[str]:
 def public_view(cfg: dict) -> dict:
     """The only settings a visitor's browser receives."""
     return {
-        "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL,
+        "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL, "contact_in_chat": bool(cfg.get("contact_in_chat", True)),
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "greeting": cfg["greeting"],
         "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],

@@ -25,6 +25,12 @@ export async function viewingChat(key, token, product) {
   return res.data.data
 }
 
+// WEBCHAT-CONTACT-1: a button needs the visitor's details; Chioma asks in the chat ({ form: true } = open the form instead)
+export async function startContactChat(key, token, why) {
+  const res = await axios.post(`${BASE}/public/webchat/${key}/contact/start`, { why }, auth(token))
+  return res.data.data
+}
+
 export async function resumeChat(key, token, embedOrigin) {
   const res = await axios.get(`${BASE}/public/webchat/${key}/session`, { ...auth(token), params: embedOrigin ? { po: embedOrigin } : {} })
   return res.data.data

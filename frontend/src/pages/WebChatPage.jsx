@@ -15,7 +15,7 @@
  * page also works as a plain chat for a business that uses nothing else from Opsra.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { viewingChat, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
+import { viewingChat, startContactChat, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -40,6 +40,7 @@ function parentSite() {
 }
 const closeEmbed = () => { try { window.parent.postMessage({ source: 'opsra-chat', type: 'close' }, '*') } catch { /* not framed */ } }
 
+const NEED_WHY = { 'ask for a call back': 'callback', 'send your file': 'file', 'record your voice note': 'voice' }
 function readStore(key) { try { return window.localStorage.getItem(key) } catch { return null } }
 function writeStore(key, v) { try { v ? window.localStorage.setItem(key, v) : window.localStorage.removeItem(key) } catch { /* private mode */ } }
 
@@ -510,14 +511,24 @@ export default function WebChatPage({ chatKey }) {
       handleReply(res)
     } catch (e) {
       setMessages((cur) => cur.filter((m) => m.id !== tmp.id))
-      if (e?.response?.data?.detail?.ask_contact) setPanel('contact')
+      if (e?.response?.data?.detail?.ask_contact) { askInChat('file', 'Please share your contact details first, then send your file.'); return }
       setError(chatErrorMessage(e))
     } finally {
       if (url) setTimeout(() => URL.revokeObjectURL(url), 8000)
     }
   }
   uploadRef.current = uploadFile
-  const needContact = (why) => { setPanel('contact'); setError(`Please share your contact details first, then ${why}.`) }
+  // WEBCHAT-CONTACT-1: a button needs the visitor's details: Chioma asks in the chat; the form opens only if the business switched that off
+  const askInChat = async (why, formMsg) => {
+    if (cfg?.contact_in_chat !== false && token.current) {
+      try {
+        const res = await startContactChat(chatKey, token.current, why)
+        if (!res.form) { setPanel(null); setError(''); handleReply(res); return }
+      } catch { /* fall back to the form below */ }
+    }
+    setPanel('contact'); setError(formMsg)
+  }
+  const needContact = (why) => askInChat(NEED_WHY[why] || '', `Please share your contact details first, then ${why}.`)
   const onAttach = () => { if (!hasContact) needContact('send your file'); else { setError(''); setPanel('attach') } }
   const pickFile = (kind) => (e) => {
     const f = e.target.files?.[0]
@@ -597,13 +608,13 @@ export default function WebChatPage({ chatKey }) {
     setCart(await changeChatCart(chatKey, token.current, { action: 'remove', product_id: line.pid, variant_id: line.vid || undefined }))
   })
   const checkout = () => act(async () => {
-    if (!hasContact) { setPanel('contact'); setError('Please share your contact details first, then check out.'); return }
+    if (!hasContact) { await askInChat('checkout', 'Please share your contact details first, then check out.'); return }
     try {
       const res = await chatCheckout(chatKey, token.current)
       merge(res.messages); setCart(res.cart || { items: [], total: 0, count: 0 }); setPanel(null)
       if (res.human) setHuman(true)
     } catch (e) {
-      if (e?.response?.data?.detail?.ask_contact) { setPanel('contact'); setError('Please share your contact details first, then check out.') } else throw e
+      if (e?.response?.data?.detail?.ask_contact) await askInChat('checkout', 'Please share your contact details first, then check out.'); else throw e
     }
   })
   const submitBooking = (e) => {

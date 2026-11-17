@@ -473,3 +473,36 @@ class TestContactInChat:
         assert r._returning({"_idle_s": 3600}, {"fresh_after_hours": 24}, [{"id": 1}]) is False
         assert r._returning(s, {"fresh_after_hours": 0}, [{"id": 1}]) is False          # switched off
         assert r._snapshot({**s, "state": {"contact_step": "phone"}}, {"fresh_after_hours": 24, "business_name": "X", "brand_color": "#028090", "greeting": "g", "menu": [], "contact_prompt": "", "consent_text": "", "fallback": "", "booking_fields": []}, [])["contact_step"] == "phone"
+
+
+class TestContactStartFromButtons:
+    """WEBCHAT-CONTACT-1b: call back / file / voice / checkout ask in the chat too."""
+
+    def _call(self, monkeypatch, sess, cfg, why):
+        from app.routers import public_webchat as r
+        from app.services import webchat_service as wc
+        monkeypatch.setattr(wc, "resolve_key", lambda db, k: {"org_id": "o", "config": cfg})
+        monkeypatch.setattr(wc, "authenticate", lambda db, org, tok: sess)
+        monkeypatch.setattr(wc, "rate_limited", lambda *a, **k: False)
+        class Resp:
+            headers = {}
+        return r.post_contact_start("wc_abcdefgh12", r.ContactStartBody(why=why), Resp(), "Bearer t", _db()).data
+
+    def test_checkout_starts_the_chat_script_and_ends_with_its_own_next_step(self, monkeypatch):
+        from app.services import webchat_flow_service as f
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        out = self._call(monkeypatch, s, cfg, "checkout")
+        assert out["contact_step"] == "name" and "confirm your order" in out["messages"][0]["text"]
+        with patch("app.services.funnel_service._find_org_lead", return_value=None), \
+             patch("app.services.lead_service.create_lead", return_value={"id": "L9"}), _claude("x"):
+            f.handle_message(db, s, cfg, kind="text", text="Ada")
+            f.handle_message(db, s, cfg, kind="text", text="08031234567")
+            r = f.handle_message(db, s, cfg, kind="text", text="yes")
+        assert "Tap Cart to check out." in [m["text"] for m in r["messages"]]
+
+    def test_has_contact_or_switched_off(self, monkeypatch):
+        db = _db()
+        assert self._call(monkeypatch, _session(db, contact=True), _cfg(db), "file")["messages"] == []
+        cfg = _cfg(db); cfg["contact_in_chat"] = False
+        assert self._call(monkeypatch, _session(db, contact=False), cfg, "file")["form"] is True

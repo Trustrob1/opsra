@@ -192,6 +192,7 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
     if err:
         return {"error": err}
     s = wc.save_contact(db, s, clean)
+    after_note = (s.get("state") or {}).get("contact_after")      # read before the step state is cleared
     contact._clear(db, s)                      # WEBCHAT-CONTACT-1: the form (or the in-chat steps) is done, so no step stays open
     out, form, cards = [], None, []
     pending = (s.get("state") or {}).get("pending")
@@ -222,8 +223,9 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
                     out.append(wc.append_message(db, s, "bot", "I could not find that to answer right now, so I have passed your question to the team. They will reply here as soon as they can."))
                     _notify_human(db, s, cfg, "Asked before sharing details: " + waiting)
         else:
+            after = after_note
             tip = " or tap Menu" if cfg.get("menu") else ""
-            out.append(wc.append_message(db, s, "bot", "What would you like to know? You can type your question" + tip + "."))
+            out.append(wc.append_message(db, s, "bot", after or ("What would you like to know? You can type your question" + tip + ".")))
     return {"messages": out, "form": form, "cards": cards}
 
 

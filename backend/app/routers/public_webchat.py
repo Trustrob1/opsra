@@ -27,6 +27,7 @@ from app.database import get_supabase
 from app.models.common import ok
 from app.services import webchat_attachment_service as att
 from app.services import webchat_call_service as call
+from app.services import webchat_contact_service as contact
 from app.services import webchat_email_service as email_svc
 from app.services import webchat_embed_service as embed
 from app.services import webchat_flow_service as flow
@@ -259,6 +260,29 @@ def post_contact(key: str, body: ContactBody, response: Response, authorization:
     if res.get("error"):
         raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": res["error"]})
     return ok(res)
+
+
+class ContactStartBody(BaseModel):
+    why: str = Field(default="", max_length=20)
+
+
+@router.post("/public/webchat/{key}/contact/start")
+def post_contact_start(key: str, body: ContactStartBody, response: Response, authorization: Optional[str] = Header(default=None),
+                       db=Depends(get_supabase)):
+    """WEBCHAT-CONTACT-1: a button needs the visitor's details (call back, file, voice note, check out): Chioma asks in the chat.
+    {form: true} means the chat script is switched off for this business, so the page opens the form as before."""
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    cfg = found["config"]
+    if s.get("lead_id") or contact.step_of(s):
+        return ok({"messages": [], "contact_step": contact.step_of(s)})
+    if not contact.enabled(cfg):
+        return ok({"messages": [], "contact_step": None, "form": True})
+    if wc.rate_limited(f"cstart:{s['id']}", 10, 3600):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
+    why = body.why if body.why in contact.INTROS else ""
+    return ok({"messages": [contact.start_for(db, s, cfg, why)], "contact_step": "name"})
 
 
 @router.post("/public/webchat/{key}/booking")
