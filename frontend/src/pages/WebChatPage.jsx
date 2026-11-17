@@ -15,7 +15,7 @@
  * page also works as a plain chat for a business that uses nothing else from Opsra.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { viewingChat, startContactChat, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
+import { viewingChat, startContactChat, pingTyping, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -207,6 +207,7 @@ export default function WebChatPage({ chatKey }) {
   const [hasContact, setHasContact] = useState(false)
   const [verified, setVerified] = useState(false)
   const [human, setHuman] = useState(false)
+  const typingPing = useRef(0)
   const [repTyping, setRepTyping] = useState(false)    // WEBCHAT-CONTACT-1d: a team member is writing a reply
   const [contactStep, setContactStep] = useState(null)   // WEBCHAT-CONTACT-1: null | 'name' | 'phone' | 'consent' (Chioma is asking for details in the chat)
   const [hiddenIds, setHiddenIds] = useState(null)       // WEBCHAT-CONTACT-1: back after a long quiet spell: earlier messages are folded away, one tap shows them
@@ -905,7 +906,10 @@ export default function WebChatPage({ chatKey }) {
               <button type="button" aria-label="Attach a file" onClick={onAttach} disabled={!!editing} style={{ ...S.iconBtn, color: MUTED, opacity: editing ? 0.4 : 1 }}><Icon name="clip" size={22} /></button>
               <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
               <input id="wc-text" ref={inputRef} style={S.input} value={text} maxLength={1000} placeholder={stepHint} autoComplete="off" inputMode={contactStep === 'phone' ? 'tel' : undefined}
-                onChange={(e) => setText(e.target.value)} />
+                onChange={(e) => {
+                  setText(e.target.value)
+                  if (e.target.value.trim() && token.current && Date.now() - typingPing.current > 3000) { typingPing.current = Date.now(); pingTyping(chatKey, token.current) }   // the team's inbox shows "typing"
+                }} />
               {!text.trim() && !editing && recorderSupported()
                 ? <button type="button" aria-label="Record a voice note" style={{ ...S.send, marginLeft: 4 }} onClick={startRec}><Icon name="mic" size={22} /></button>
                 : <button type="submit" aria-label={editing ? 'Save the change' : 'Send'} style={{ ...S.send, marginLeft: 4 }} disabled={busy || !text.trim()}><Icon name={editing ? 'check' : 'send'} size={22} /></button>}

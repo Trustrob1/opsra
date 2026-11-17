@@ -667,23 +667,63 @@ def touch_lead(db, org_id: str, lead_id: str, now: Optional[str] = None) -> None
 
 
 REP_TYPING_S = 6
+_TYPING_LOCAL: dict = {}      # used only when Redis is not reachable
+
+
+def _typing_set(who: str, sid: str) -> None:
+    """WEBCHAT-CONTACT-1d/1e: 'who' is typing in chat 'sid' for the next few seconds. Kept in Redis (a few seconds, no database write),
+    NOT in the session state: a typing ping must never overwrite state that a message is changing at the same moment."""
+    try:
+        from app.services.ai_service import _get_redis
+        r = _get_redis()
+        if r is not None:
+            r.setex(f"wc:typing:{who}:{sid}", REP_TYPING_S, "1")
+            return
+    except Exception as exc:
+        logger.warning("webchat typing: redis unavailable (%s)", exc)
+    _TYPING_LOCAL[(who, sid)] = _now().timestamp() + REP_TYPING_S
+
+
+def _typing_get(who: str, sid: str) -> bool:
+    try:
+        from app.services.ai_service import _get_redis
+        r = _get_redis()
+        if r is not None:
+            return bool(r.exists(f"wc:typing:{who}:{sid}"))
+    except Exception:
+        pass
+    return _TYPING_LOCAL.get((who, sid), 0) > _now().timestamp()
+
+
+def typing_clear(who: str, sid: str) -> None:
+    _TYPING_LOCAL.pop((who, sid), None)
+    try:
+        from app.services.ai_service import _get_redis
+        r = _get_redis()
+        if r is not None:
+            r.delete(f"wc:typing:{who}:{sid}")
+    except Exception:
+        pass
 
 
 def rep_is_typing(s: dict) -> bool:
-    """WEBCHAT-CONTACT-1d: a team member is writing a reply to this visitor right now (the inbox pings every few seconds)."""
-    t = (s.get("state") or {}).get("rep_typing_at")
-    if not t:
-        return False
-    try:
-        return (_now() - datetime.fromisoformat(str(t).replace("Z", "+00:00"))).total_seconds() <= REP_TYPING_S
-    except Exception:
-        return False
+    """A team member is writing a reply to this visitor right now (the inbox pings every few seconds)."""
+    return _typing_get("rep", str(s.get("id")))
+
+
+def visitor_is_typing(s: Optional[dict]) -> bool:
+    """The visitor is writing a message right now (their page pings every few seconds while they type)."""
+    return bool(s) and _typing_get("visitor", str(s.get("id")))
+
+
+def visitor_typing(db, session: dict) -> None:
+    _typing_set("visitor", str(session["id"]))
 
 
 def rep_typing(db, org_id: str, lead_id: str) -> None:
     s = latest_session_for_lead(db, org_id, lead_id)
     if s and s.get("status") == "active":
-        set_state(db, s, rep_typing_at=_iso(_now()))
+        _typing_set("rep", str(s["id"]))
 
 
 def _attach_quotes(db, session: dict, outs: list, source_rows: list) -> list:
@@ -936,7 +976,8 @@ def rep_send(db, org_id: str, lead_id: str, text: str, user_id: str, reply_to: O
     if s.get("status") != "active":
         raise PermissionError("this web chat has ended")
     msg = append_message(db, s, "rep", text, sent_by=user_id, reply_to=reply_to)
-    set_state(db, s, human=True, rep_last_at=_iso(_now()), human_at=_iso(_now()), rep_typing_at=None)
+    set_state(db, s, human=True, rep_last_at=_iso(_now()), human_at=_iso(_now()))
+    typing_clear("rep", str(s["id"]))
     touch_lead(db, org_id, lead_id)
     try:
         from app.services import webchat_followup_service as fu

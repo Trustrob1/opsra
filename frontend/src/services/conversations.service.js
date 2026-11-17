@@ -90,6 +90,10 @@ export const sendWebchatMessage = (leadId, message, replyTo) =>
 export const pingWebchatTyping = (leadId) =>
   api.post('/api/v1/conversations/webchat/typing', { lead_id: leadId }).catch(() => null)
 
+// WEBCHAT-CONTACT-1e — is the visitor of this web chat typing right now?
+export const getWebchatVisitorTyping = (leadId) =>
+  api.get('/api/v1/conversations/webchat/typing', { params: { lead_id: leadId } }).then(r => !!r?.data?.data?.typing).catch(() => false)
+
 // WEBCHAT-STAFF-1 — photo / document / voice note (multipart: lead_id, kind, file, reply_to?), and edit / delete of your own message
 export const uploadWebchatFile = (formData) =>
   api.post('/api/v1/conversations/webchat/upload', formData)

@@ -108,6 +108,13 @@ def webchat_rep_typing(payload: TypingBody, db=Depends(get_supabase), org=Depend
     return ok(data={})
 
 
+@router.get("/conversations/webchat/typing")
+def webchat_visitor_typing(lead_id: str = Query(..., min_length=1, max_length=64), db=Depends(get_supabase), org=Depends(get_current_org)):
+    """WEBCHAT-CONTACT-1e: is the visitor of this lead's web chat typing right now? (the open inbox window asks every few seconds)"""
+    s = wc.latest_session_for_lead(db, org["org_id"], lead_id)      # only ever this business's own chats
+    return ok(data={"typing": bool(s and s.get("status") == "active" and wc.visitor_is_typing(s))})
+
+
 # ── WEBCHAT-STAFF-1: staff send files, edit and delete their own web chat messages ─────────────────────────────
 
 def _session_of_message(db, org_id: str, mid: str) -> Optional[dict]:

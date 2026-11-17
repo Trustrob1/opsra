@@ -31,6 +31,11 @@ export async function startContactChat(key, token, why) {
   return res.data.data
 }
 
+// WEBCHAT-CONTACT-1e: tell the team's inbox the visitor is typing (best effort)
+export function pingTyping(key, token) {
+  return axios.post(`${BASE}/public/webchat/${key}/typing`, {}, auth(token)).catch(() => null)
+}
+
 export async function resumeChat(key, token, embedOrigin) {
   const res = await axios.get(`${BASE}/public/webchat/${key}/session`, { ...auth(token), params: embedOrigin ? { po: embedOrigin } : {} })
   return res.data.data

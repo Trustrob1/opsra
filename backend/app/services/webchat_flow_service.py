@@ -100,6 +100,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": wc.is_human(s, cfg)}
 
     shown = contact.shown_text(s, visitor_text) if kind == "text" else visitor_text      # WEBCHAT-CONTACT-1: a typed number is not kept in the chat text
+    wc.typing_clear("visitor", str(s["id"]))                     # WEBCHAT-CONTACT-1e: the message arrived, so they are no longer typing
     out = [wc.append_message(db, s, "visitor", shown, reply_to=reply_to)]
     wc.update_session(db, s, {"turn_count": int(s.get("turn_count") or 0) + 1})
     if int(s.get("turn_count") or 0) == 1:

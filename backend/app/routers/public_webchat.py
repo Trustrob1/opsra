@@ -229,6 +229,18 @@ def poll_messages(key: str, response: Response, after: Optional[str] = Query(def
                "rep_typing": wc.rep_is_typing(s)})       # WEBCHAT-CONTACT-1d: shows the typing dots while the team writes
 
 
+@router.post("/public/webchat/{key}/typing")
+def post_typing(key: str, response: Response, authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
+    """WEBCHAT-CONTACT-1e: the visitor is typing; the team's inbox shows it. Sent at most every few seconds by the page."""
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"vtype:{s['id']}", 30, 60):
+        return ok({})
+    wc.visitor_typing(db, s)
+    return ok({})
+
+
 @router.post("/public/webchat/{key}/message")
 def post_message(key: str, body: MessageBody, response: Response, authorization: Optional[str] = Header(default=None),
                  db=Depends(get_supabase)):

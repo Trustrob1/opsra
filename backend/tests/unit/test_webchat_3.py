@@ -526,25 +526,32 @@ class TestLeadTrace:
 class TestRepTypingAndLeadActivity:
     """WEBCHAT-CONTACT-1d."""
 
-    def test_rep_typing_is_true_only_for_a_few_seconds(self):
-        from datetime import datetime, timedelta, timezone
+    def test_typing_flags_are_per_chat_and_expire_and_clear(self):
         from app.services import webchat_service as wc
-        iso = lambda d: d.astimezone(timezone.utc).isoformat()
-        now = datetime.now(timezone.utc)
-        assert wc.rep_is_typing({"state": {"rep_typing_at": iso(now - timedelta(seconds=2))}}) is True
-        assert wc.rep_is_typing({"state": {"rep_typing_at": iso(now - timedelta(seconds=30))}}) is False
-        assert wc.rep_is_typing({"state": {}}) is False and wc.rep_is_typing({"state": {"rep_typing_at": "junk"}}) is False
+        with patch("app.services.ai_service._get_redis", return_value=None):          # in-process fallback
+            wc._TYPING_LOCAL.clear()
+            assert wc.rep_is_typing({"id": "s1"}) is False and wc.visitor_is_typing({"id": "s1"}) is False
+            wc._typing_set("rep", "s1")
+            assert wc.rep_is_typing({"id": "s1"}) is True and wc.rep_is_typing({"id": "s2"}) is False
+            assert wc.visitor_is_typing({"id": "s1"}) is False                         # the two directions do not mix
+            wc.typing_clear("rep", "s1")
+            assert wc.rep_is_typing({"id": "s1"}) is False
+            wc._TYPING_LOCAL[("visitor", "s1")] = 0                                    # already expired
+            assert wc.visitor_is_typing({"id": "s1"}) is False
 
-    def test_the_ping_marks_the_live_chat_and_a_reply_clears_it(self):
+    def test_pings_do_not_touch_the_session_state_and_a_reply_clears_rep_typing(self):
         from app.services import webchat_service as wc
         db = _db()
         s = _session(db)
-        with patch.object(wc, "latest_session_for_lead", return_value=s):
+        before = dict(s["state"])
+        with patch("app.services.ai_service._get_redis", return_value=None), patch.object(wc, "latest_session_for_lead", return_value=s):
             wc.rep_typing(db, s["org_id"], "L1")
-            assert wc.rep_is_typing(s) is True
+            wc.visitor_typing(db, s)
+            assert wc.rep_is_typing(s) is True and wc.visitor_is_typing(s) is True
+            assert s["state"] == before                                                # no database write, so no race with a message
             with patch("app.services.webchat_followup_service.notify_rep_reply"):
                 wc.rep_send(db, s["org_id"], "L1", "Hello Ada", "user-1")
-        assert wc.rep_is_typing(s) is False
+            assert wc.rep_is_typing(s) is False
 
     def test_a_visitor_message_and_a_rep_reply_count_as_lead_activity(self):
         from unittest.mock import MagicMock

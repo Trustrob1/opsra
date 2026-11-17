@@ -52,6 +52,7 @@ import {
   sendMessengerMessage,
   sendWebchatMessage,
   pingWebchatTyping,
+  getWebchatVisitorTyping,
   uploadWebchatFile,
   editWebchatMessage,
   deleteWebchatMessage,
@@ -773,6 +774,16 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
   const isWebchat = active.channel === 'webchat'
   const [replyTo, setReplyTo] = useState(null)          // WEBCHAT-STAFF-1: { id, who, text }
   const { window_open: windowOpen, ai_paused: aiPaused } = threadStatus
+  // WEBCHAT-CONTACT-1e: while this web chat is open, ask every 2.5 s whether the visitor is typing and show the dots bubble
+  const [visitorTyping, setVisitorTyping] = useState(false)
+  useEffect(() => {
+    if (!isWebchat || !isLead || !active.contact_id) return undefined
+    let dead = false
+    const tick = async () => { const t = await getWebchatVisitorTyping(active.contact_id); if (!dead) setVisitorTyping(t) }
+    tick()
+    const id = setInterval(() => { if (!document.hidden) tick() }, 2500)
+    return () => { dead = true; clearInterval(id); setVisitorTyping(false) }
+  }, [isWebchat, isLead, active.contact_id])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -876,6 +887,14 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
             onDelete={async (id) => { await deleteWebchatMessage(id); setReplyTo((r) => (r?.id === id ? null : r)); onRefresh?.() }}
           />
         ))}
+        {visitorTyping && (
+          <div role="status" aria-label={`${active.contact_name || 'The visitor'} is typing`} style={{ display: 'flex', margin: '6px 0 4px' }}>
+            <style>{'@keyframes wcv-bounce{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}'}</style>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '11px 14px', display: 'flex', gap: 5, boxShadow: '0 1px 1px rgba(0,0,0,0.08)' }}>
+              {[0, 1, 2].map((d) => <span key={d} aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: '#8A98A3', animation: `wcv-bounce 1.2s ease-in-out ${d * 0.16}s infinite` }} />)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Inactivity nudge ────────────────────────────────────────────── */}
