@@ -200,6 +200,7 @@ def verify(db: Any, request_id: str, code: str, password: str, now: Optional[dat
         pass
     settings = get_settings(db)
     _start_free_plan(db, org_id, now)
+    _turn_on_ai(db, org_id)
     _open_wallet(db, org_id, settings["starter_credit_ngn"])
     _tell_platform(db, org_id, req)
     return {"email": req["email"], "org_id": org_id, "starter_credit_ngn": settings["starter_credit_ngn"]}
@@ -214,6 +215,18 @@ def _start_free_plan(db: Any, org_id: str, now: datetime) -> None:
         acc._log_event(db, org_id, "system", "free_plan_started", {"key": TIER_KEY})
     except Exception as exc:
         logger.error("chat_signup: free plan not started org=%s: %s", org_id, exc)
+
+
+def _turn_on_ai(db: Any, org_id: str) -> None:
+    """Chioma's AI answers are the point of this product, so they start ON (the web chat default is off). The owner can switch
+    them off in Admin > Web Chat. Existing settings in the web chat config are kept."""
+    try:
+        rows = (db.table("organisations").select("webchat_config").eq("id", org_id).limit(1).execute().data) or []
+        cfg = dict((rows[0].get("webchat_config") if rows else None) or {})
+        cfg["ai_enabled"] = True
+        db.table("organisations").update({"webchat_config": cfg}).eq("id", org_id).execute()
+    except Exception as exc:
+        logger.error("chat_signup: AI not switched on org=%s: %s", org_id, exc)
 
 
 def _open_wallet(db: Any, org_id: str, starter_ngn: int) -> None:
