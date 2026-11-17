@@ -218,13 +218,14 @@ def _start_free_plan(db: Any, org_id: str, now: datetime) -> None:
 
 
 def _turn_on_ai(db: Any, org_id: str) -> None:
-    """Chioma's AI answers are the point of this product, so they start ON (the web chat default is off). The owner can switch
+    """Chioma's AI answers are the point of this product, so they start ON (the web chat default is off), and she may read the product list. The owner can switch
     them off in Admin > Web Chat. Existing settings in the web chat config are kept."""
     try:
         rows = (db.table("organisations").select("webchat_config").eq("id", org_id).limit(1).execute().data) or []
         cfg = dict((rows[0].get("webchat_config") if rows else None) or {})
         cfg["ai_enabled"] = True
         cfg["answer_first"] = True            # she answers first and asks for details after the first answer
+        cfg["products_read"] = True           # ONLY-1c-PRODUCTS: she answers price and stock questions from the Products tab (no cards or cart)
         db.table("organisations").update({"webchat_config": cfg}).eq("id", org_id).execute()
     except Exception as exc:
         logger.error("chat_signup: AI not switched on org=%s: %s", org_id, exc)

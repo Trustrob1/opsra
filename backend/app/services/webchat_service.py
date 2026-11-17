@@ -70,6 +70,7 @@ DEFAULT_CONFIG: dict = {
     "email_followups": True,      # WEBCHAT-4: email replies / confirmations to visitors who gave an email and consent
     "human_resume_min": 30,       # minutes of team silence after which the bot answers again
     "shop_enabled": False,        # WEBCHAT-3b: product cards, cart and checkout link in the chat
+    "products_read": False,       # ONLY-1c-PRODUCTS: Chioma answers price / stock questions from the product list in plain text (no cards, cart or checkout)
     "goals": None,                # WEBCHAT-5b: what counts as a win in the funnel; None = automatic (booking, plus orders and payments when the shop is on)
     "stats_from": None,           # WEBCHAT-5b: ISO time; the numbers ignore anything before it (start counting from now)
     "allowed_domains": [],        # WEBCHAT-EMBED-1: websites that may show the chat bubble; empty = any website
@@ -195,6 +196,8 @@ def sanitise_config(raw: dict) -> dict:
             out["human_resume_min"] = 30
     if "shop_enabled" in raw:
         out["shop_enabled"] = bool(raw["shop_enabled"])
+    if "products_read" in raw:
+        out["products_read"] = bool(raw["products_read"])
     if "allowed_domains" in raw:
         from app.services import webchat_embed_service as embed
         out["allowed_domains"] = embed.sanitise_domains(raw["allowed_domains"])

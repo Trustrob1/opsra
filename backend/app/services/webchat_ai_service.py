@@ -119,7 +119,7 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
     stable = [
         f"You are Chioma, the virtual assistant for {name}. You are an AI: never claim to be a person; if asked, say you are {name}'s virtual assistant "
         "and that a team member can take over. You answer visitors' questions briefly and kindly, in plain text.",
-        f"Use ONLY the information in {'<business_info> and <products>' if cfg.get('shop_enabled') else '<business_info>'} below. If the answer is not there, do not guess: say a team "
+        f"Use ONLY the information in {'<business_info> and <products>' if (cfg.get('shop_enabled') or cfg.get('products_read')) else '<business_info>'} below. If the answer is not there, do not guess: say a team "
         "member will reply, and set handoff to true. Never invent prices, opening hours, addresses, discounts, "
         "delivery times, availability or product details such as size, colour or material. Never ask for card numbers, passwords or bank details.",
         "If the visitor greets you, in English, Pidgin or any Nigerian language (for example hello, good morning, how far, wetin dey, "
@@ -136,7 +136,7 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
     if extra:
         changing.append(f"<owner_notes>\n{extra}\n</owner_notes>")
     viewing_id = (s.get("state") or {}).get("viewing")
-    if cfg.get("shop_enabled"):
+    if cfg.get("shop_enabled") or cfg.get("products_read"):       # ONLY-1c-PRODUCTS: read-only products need no shop
         try:
             from app.services import webchat_shop_service as shop
             cat = shop.facts_for_prompt(db, s["org_id"], text, viewing_id)
@@ -148,10 +148,16 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
                 return (f"- id={c['id']} | {sanitise_for_prompt(c['title'], max_length=80)} | N{c['price']:,.0f} | "
                         f"{'in stock' if c.get('in_stock') else 'out of stock'}{tail}")
             lines = "\n".join(_line(c) for c in cat)
-            changing.append(f"<products>\n{lines}\n</products>\nIf the visitor is looking for something to buy, you may put up to "
-                            "three ids from <products> in \"products\" so they see product cards. Only use ids listed there. "
-                            "You cannot add to a cart or take payment; the visitor does that with the buttons. "
-                            "Never say an item is in stock unless <products> says so.")
+            if cfg.get("shop_enabled"):
+                changing.append(f"<products>\n{lines}\n</products>\nIf the visitor is looking for something to buy, you may put up to "
+                                "three ids from <products> in \"products\" so they see product cards. Only use ids listed there. "
+                                "You cannot add to a cart or take payment; the visitor does that with the buttons. "
+                                "Never say an item is in stock unless <products> says so.")
+            else:
+                changing.append(f"<products>\n{lines}\n</products>\nYou may tell the visitor a product's name, price, sizes, description and "
+                                "whether it is in stock, using only what <products> says. You cannot show product cards, add to a cart or take "
+                                "payment. If a product is not listed there, do not guess: say a team member will reply, and set handoff to true. "
+                                "Never say an item is in stock unless <products> says so.")
             if viewing_id and any(c["id"] == str(viewing_id) for c in cat):
                 title = next(c["title"] for c in cat if c["id"] == str(viewing_id))
                 changing.append(f"The visitor opened this chat from the page of {sanitise_for_prompt(title, max_length=80)} "

@@ -17,13 +17,13 @@ def _cfg(db):
 def test_ai_is_switched_on_for_a_new_business_with_no_config():
     db = FakeDB(organisations=[{"id": ORG, "webchat_config": None}])
     svc._turn_on_ai(db, ORG)
-    assert _cfg(db) == {"ai_enabled": True, "answer_first": True}
+    assert _cfg(db) == {"ai_enabled": True, "answer_first": True, "products_read": True}
 
 
 def test_existing_settings_are_kept():
     db = FakeDB(organisations=[{"id": ORG, "webchat_config": {"ai_enabled": False, "ai_model": "haiku", "greeting": "Hello"}}])
     svc._turn_on_ai(db, ORG)
-    assert _cfg(db) == {"ai_enabled": True, "answer_first": True, "ai_model": "haiku", "greeting": "Hello"}
+    assert _cfg(db) == {"ai_enabled": True, "answer_first": True, "products_read": True, "ai_model": "haiku", "greeting": "Hello"}
 
 
 def test_never_raises_when_the_database_fails():
