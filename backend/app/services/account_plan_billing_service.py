@@ -234,6 +234,11 @@ def credit_block(db: Any, org_id: str, cfg: dict, tier_key: Optional[str], now: 
             "low": bool(s.get("metering_enabled") and (balance <= 0 or (low_at > 0 and balance <= low_at))),
             "included": None,
         }
+        try:        # WEB-ONLY-1c: a web-chat-only business with no credit has its chat paused; the Billing strip says so
+            from app.services import chat_pause_service as _pause
+            block["chat_paused"] = bool(_pause.status(db, org_id)["paused"])
+        except Exception:
+            block["chat_paused"] = False
         monthly = int(((cfg["tiers"].get(tier_key) or {}).get("included_credit_ngn")) or 0) * 100 if tier_key else 0
         if monthly > 0:
             start = ent.period_start(now)

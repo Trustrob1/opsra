@@ -137,6 +137,13 @@ def _snapshot(s: dict, cfg: dict, messages: list) -> dict:
     }
 
 
+def _pause_guard(db, org_id: str) -> None:
+    """WEB-ONLY-1c: a web-chat-only business with no credit left has its chat paused until it subscribes or tops up."""
+    from app.services import chat_pause_service as pause
+    if pause.is_paused(db, org_id):
+        raise HTTPException(status_code=503, detail={"code": "CHAT_PAUSED", "message": pause.PAUSED_MESSAGE})
+
+
 def _embed_guard(found: dict, embed_origin: Optional[str]) -> None:
     """A chat frame on a website that is not on the business's list is refused (only when a list is set)."""
     if embed_origin is not None and not embed.origin_allowed(found["config"].get("allowed_domains"), embed_origin):
@@ -160,7 +167,8 @@ def widget_info(key: str, request: Request, db=Depends(get_supabase)):
     found = wc.resolve_key(db, key)
     if found:
         cfg = found["config"]
-        out = {"allowed": embed.origin_allowed(cfg.get("allowed_domains"), request.headers.get("origin")),
+        from app.services import chat_pause_service as pause
+        out = {"allowed": embed.origin_allowed(cfg.get("allowed_domains"), request.headers.get("origin")) and not pause.is_paused(db, found["org_id"]),
                "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "side": cfg.get("widget_side", "right"),
                **_chioma_flags(cfg)}
     if out.get("allowed") and found:
@@ -183,6 +191,7 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
     found = _chat(db, key)
     _embed_guard(found, body.embed_origin)
     org_id, cfg = found["org_id"], found["config"]
+    _pause_guard(db, org_id)
     iph = ip_hash(_client_ip(request))
     if wc.rate_limited(f"sess:{key}:{iph}", 20, 86400):
         raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Too many chats started. Please try again later."})
@@ -199,7 +208,9 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
         msgs = [wc.append_message(db, s, "bot", cfg["greeting"])]
         try:  # WA-BUDGET-1: Opsra's per-conversation fee, once per new conversation (idempotent per session)
             from app.services import credit_service
-            credit_service.meter_webchat_conversation(db, org_id, s.get("id"))
+            if credit_service.meter_webchat_conversation(db, org_id, s.get("id")) > 0:
+                from app.services import chat_pause_service as pause
+                pause.notify_after_charge(db, org_id)           # WEB-ONLY-1c: low-credit / paused note to the owner, at most every 3 days
         except Exception:
             logger.warning("webchat conversation fee failed org=%s", org_id)
     snap = _snapshot(s, cfg, msgs)
@@ -250,6 +261,7 @@ def post_message(key: str, body: MessageBody, response: Response, authorization:
     if wc.rate_limited(f"msg:{s['id']}", 30, 60):
         raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
     cfg = found["config"]
+    _pause_guard(db, found["org_id"])
     if body.kind == "text" and (s.get("state") or {}).get("viewing"):
         # WEBCHAT-CATALOG-1b: the visitor is on a Storefront product. If no AI answer can be given, the stock "I did not catch
         # that" line is replaced by the product's own catalogue text (the flow uses cfg["fallback"] only when nothing else answered).

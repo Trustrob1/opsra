@@ -203,7 +203,7 @@ function CreditStrip({ credit, onTopUp }) {
       <div><span style={{ fontSize: 12.5, opacity: 0.75 }}>Credit left</span><div style={{ fontSize: 18, fontWeight: 700, fontFamily: FONT }}>{naira(credit.balance_kobo)}</div></div>
       <div><span style={{ fontSize: 12.5, opacity: 0.75 }}>Used this month</span><div style={{ fontSize: 18, fontWeight: 700, fontFamily: FONT }}>{naira(credit.month_spend_kobo)}</div></div>
       {!credit.metering_enabled && <span style={{ fontSize: 12.5, opacity: 0.75 }}>Usage is not being charged to your balance yet.</span>}
-      {empty && <span style={{ fontSize: 13.5, fontWeight: 600 }}>You are out of credit. AI replies and message fees will stop.</span>}
+      {empty && <span style={{ fontSize: 13.5, fontWeight: 600 }}>{credit.chat_paused ? 'You are out of credit, so your web chat is paused. Choose a plan below or top up and it switches back on straight away.' : 'You are out of credit. AI replies and message fees will stop.'}</span>}
       {!empty && credit.low && <span style={{ fontSize: 13.5, fontWeight: 600 }}>Running low.</span>}
       <button type="button" className="bl-btn" style={{ ...button(true), marginLeft: 'auto' }} onClick={onTopUp}>Top up</button>
     </div>
