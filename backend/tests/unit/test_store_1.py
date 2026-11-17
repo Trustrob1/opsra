@@ -192,7 +192,7 @@ def test_public_extras_classic_exposes_nothing_extra():
     db = _shop_db()
     with _creds():
         out = sf.public_extras(db, BIZ, {"announcement": "hi"})
-    assert out == {"template": "classic", "shop": None, "style": None}
+    assert out == {"template": "classic", "shop": None, "chat": None, "style": None}
 
 
 def test_public_extras_storefront():

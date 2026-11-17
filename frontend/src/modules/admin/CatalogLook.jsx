@@ -176,6 +176,19 @@ export default function CatalogLook() {
             </div>
 
             <div style={{ marginTop: 16 }}>
+              <label htmlFor="sf-chat" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input id="sf-chat" type="checkbox" checked={look.chat_button !== false} onChange={(e) => set('chat_button', e.target.checked)}
+                  style={{ width: 22, height: 22, marginTop: 1, flex: 'none' }} />
+                <span>
+                  <span style={{ ...LABEL, display: 'block', marginBottom: 2 }}>Show the "Chat with Chioma" button</span>
+                  <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }}>
+                    A chat button in the corner of your Storefront. Chioma answers questions about the item the customer is looking at. It shows only while your web chat is on.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
               <label htmlFor="sf-logo" style={LABEL}>Logo link <span style={{ fontWeight: 400 }}>(optional)</span></label>
               <input id="sf-logo" style={INPUT} value={look.logo_url} placeholder="https://..."
                 onChange={(e) => set('logo_url', e.target.value)} />

@@ -19,6 +19,12 @@ export async function startChat(key, { source, handoff, embedOrigin } = {}) {
   return res.data.data
 }
 
+// WEBCHAT-CATALOG-1: the chat was opened from a product page; the server checks the id against this business's catalogue
+export async function viewingChat(key, token, product) {
+  const res = await axios.post(`${BASE}/public/webchat/${key}/viewing`, { product }, auth(token))
+  return res.data.data
+}
+
 export async function resumeChat(key, token, embedOrigin) {
   const res = await axios.get(`${BASE}/public/webchat/${key}/session`, { ...auth(token), params: embedOrigin ? { po: embedOrigin } : {} })
   return res.data.data

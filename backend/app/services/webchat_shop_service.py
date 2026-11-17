@@ -104,18 +104,24 @@ def _fetch_one(db, org_id: str, product_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
+def _rank(rows: list[dict], q: Optional[str]) -> list[dict]:
+    """A query ranks by word hits in title/description; no query (or no hit) keeps catalogue order."""
+    words = {w for w in re.findall(r"[a-z0-9]+", (q or "").lower()) if len(w) > 2}
+    if not words:
+        return rows
+
+    def score(p):
+        blob = f"{p.get('title') or ''} {p.get('catalog_description') or p.get('description') or ''}".lower()
+        return sum(1 for w in words if w in blob)
+    ranked = sorted(rows, key=score, reverse=True)
+    hits = [p for p in ranked if score(p) > 0]
+    return hits or ranked
+
+
 def search(db, org_id: str, q: Optional[str] = None, limit: int = LIST_LIMIT) -> list[dict]:
     """Cards for the Shop view. A query ranks by word hits in title/description; no query = catalogue order."""
     try:
-        rows = _fetch_all(db, org_id)
-        words = {w for w in re.findall(r"[a-z0-9]+", (q or "").lower()) if len(w) > 2}
-        if words:
-            def score(p):
-                blob = f"{p.get('title') or ''} {p.get('catalog_description') or p.get('description') or ''}".lower()
-                return sum(1 for w in words if w in blob)
-            ranked = sorted(rows, key=score, reverse=True)
-            hits = [p for p in ranked if score(p) > 0]
-            rows = hits or ranked
+        rows = _rank(_fetch_all(db, org_id), q)
         return [_card(p) for p in rows[:limit]]
     except Exception as exc:
         logger.warning("webchat shop search failed org=%s: %s", org_id, exc)
@@ -133,6 +139,63 @@ def cards_for(db, org_id: str, ids) -> list[dict]:
     except Exception as exc:
         logger.warning("webchat shop cards failed org=%s: %s", org_id, exc)
         return []
+
+
+FACT_DESC_CHARS = 300
+
+
+def facts_for_prompt(db, org_id: str, text: str, viewing_id: Optional[str] = None, limit: int = 6) -> list[dict]:
+    """WEBCHAT-CATALOG-1 (CATCHAT-3): what the AI may say about products: id, title, price, in stock or not and a short
+    description (about 300 characters). The product the visitor is looking at always comes first."""
+    try:
+        rows = _fetch_all(db, org_id)
+        ranked = _rank(rows, text)[:limit]
+        if viewing_id:
+            seen = next((p for p in rows if str(p.get("id")) == str(viewing_id)), None)
+            if seen:
+                ranked = [seen] + [p for p in ranked if str(p.get("id")) != str(viewing_id)][:max(limit - 1, 0)]
+        out = []
+        for p in ranked:
+            desc = " ".join(str(p.get("catalog_description") or p.get("description") or "").split())[:FACT_DESC_CHARS]
+            out.append({"id": str(p["id"]), "title": str(p.get("title") or "Product")[:80], "price": _num(p.get("price")),
+                        "in_stock": _stock_state(p, None) is None, "blurb": desc})
+        return out
+    except Exception as exc:
+        logger.warning("webchat shop facts failed org=%s: %s", org_id, exc)
+        return []
+
+
+def viewing(db, s: dict, cfg: dict, product_id) -> dict:
+    """WEBCHAT-CATALOG-1 (CATCHAT-2): the visitor opened the chat from a product page. Remember the product on the chat
+    session and say hello about it, once per product. The id is checked against THIS business's catalogue like an
+    AI-suggested id: unknown, other-business or hidden ids are ignored. With the shop off: title and price text only.
+    Returns {'messages': [...], 'cards': [...]} (both empty when there is nothing to say). Never raises."""
+    empty = {"messages": [], "cards": []}
+    try:
+        pid = str(product_id or "").strip()[:60]
+        if not pid or (s.get("state") or {}).get("viewing") == pid:
+            return empty
+        p = _fetch_one(db, s["org_id"], pid)
+        if not p or not (p.get("title") or "").strip():
+            return empty
+        card = _card(p)
+        shop_on = bool(cfg.get("shop_enabled"))
+        out_of_stock = p.get("available") is False
+        wc.set_state(db, s, viewing=pid, viewing_title=card["title"])
+        text = f"Asking about {card['title']}?"
+        if out_of_stock:
+            text += " It is out of stock right now. Ask me and I can suggest something similar."
+        elif shop_on:
+            text += " Here it is. Ask me anything about it, or add it to your cart."
+        elif card["price"] > 0:
+            text += f" It is {_money(card['price'])}. Ask me anything about it."
+        else:
+            text += " Ask me anything about it."
+        msg = wc.append_message(db, s, "bot", text)
+        return {"messages": [msg], "cards": [card] if (shop_on and not out_of_stock) else []}
+    except Exception as exc:
+        logger.warning("webchat viewing failed org=%s: %s", s.get("org_id"), exc)
+        return empty
 
 
 def catalogue_for_prompt(db, org_id: str, text: str, limit: int = 6) -> list[dict]:

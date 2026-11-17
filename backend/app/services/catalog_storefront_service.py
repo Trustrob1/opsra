@@ -6,6 +6,7 @@ STORE-1 - the "Storefront" look for the public catalog (backend only; no screen 
   resolve_template(db, org_id, catalog_config)   "storefront" or "classic" - what the public page should draw
   public_style(catalog_config)                   owner-typed Storefront text/colour/logo, cleaned for the browser
   shop_info(db, org_id)                          {"key": "wc_..."} when the cart can be used, else None
+  chat_info(db, org_id, catalog_config)          {"key": "wc_..."} when the chat button can show (Storefront only), else None
   discount_percent(price, compare_at)            whole-number "% off", or None when there is no real discount
 
 Rules
@@ -98,6 +99,28 @@ def shop_info(db, org_id: str) -> Optional[dict]:
         return None
 
 
+def chat_info(db, org_id: str, catalog_config: Optional[dict]) -> Optional[dict]:
+    """WEBCHAT-CATALOG-1: {'key': 'wc_...'} when the Storefront can show the "Chat with Chioma" button; otherwise None.
+    Needs: the owner has not switched the button off (default on), web chat on, the plan includes it, and the business
+    already has an active chat key. It does NOT need the shop or Paystack. Reading never creates a key. Never raises."""
+    try:
+        cfg = catalog_config if isinstance(catalog_config, dict) else {}
+        if cfg.get("chat_button") is False:
+            return None
+        from app.services import webchat_plan_service as plan
+        from app.services import webchat_service as wc
+
+        live = plan.apply(db, org_id, wc.get_config(db, org_id))
+        if not live or not live.get("enabled"):
+            return None
+        rows = (db.table("webchat_keys").select("key").eq("org_id", org_id).eq("active", True).limit(1).execute().data) or []
+        key = rows[0].get("key") if rows else None
+        return {"key": key} if key else None
+    except Exception as exc:
+        logger.warning("storefront chat_info failed org=%s: %s", org_id, exc)
+        return None
+
+
 def discount_percent(price, compare_at) -> Optional[int]:
     """Whole-number '% off' only when compare_at is really higher than price. Otherwise None (show nothing)."""
     try:
@@ -117,5 +140,6 @@ def public_extras(db, org_id: str, catalog_config: Optional[dict]) -> dict:
     return {
         "template": template,
         "shop": shop_info(db, org_id) if storefront else None,
+        "chat": chat_info(db, org_id, catalog_config) if storefront else None,     # WEBCHAT-CATALOG-1
         "style": public_style(catalog_config) if storefront else None,
     }

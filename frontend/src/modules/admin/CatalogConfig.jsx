@@ -172,7 +172,7 @@ export default function CatalogConfig() {
     setSaving(true)
     try {
       // STORE-6: never send the Look settings from here; the Look tab owns them
-      const STORE_KEYS = ['template', 'announcement', 'trust_points', 'accent', 'logo_url', 'show_categories']
+      const STORE_KEYS = ['template', 'announcement', 'trust_points', 'accent', 'logo_url', 'show_categories', 'chat_button']
       const payload = Object.fromEntries(Object.entries(config).filter(([k]) => !STORE_KEYS.includes(k)))
       const saved = await adminSvc.updateCatalogConfig(payload)
       const { tag_dimensions: _td, ...savedRest } = saved || {}

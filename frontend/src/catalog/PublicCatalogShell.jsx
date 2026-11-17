@@ -20,6 +20,8 @@ import CatalogSizeComparePage from './CatalogSizeComparePage'
 import StorefrontItemPage from './storefront/StorefrontItemPage'
 import StorefrontListPage from './storefront/StorefrontListPage'
 import CartDrawer from './storefront/CartDrawer'
+import StorefrontChat from './storefront/StorefrontChat'
+import { canShowChat } from './storefront/storefrontChat'
 import useStorefrontCart from './storefront/useStorefrontCart'
 import { listUrl, resolveAccent } from './storefront/storefrontLogic'
 import { cleanSource, canUseCart, decorateLines, catalogPathFromShort } from './storefront/storefrontCart'
@@ -82,6 +84,7 @@ export default function PublicCatalogShell() {
             items:           data.items || [],
             template:        data.template === 'storefront' ? 'storefront' : 'classic',
             shop:            data.shop || null,
+            chat:            data.chat || null,       // WEBCHAT-CATALOG-1
             style:           data.style || null,
           })
         setLoading(false)
@@ -263,6 +266,12 @@ export default function PublicCatalogShell() {
   const withCart = (page) => (
     <>
       {page}
+      {catalogData.template === 'storefront' && canShowChat(catalogData.chat) && (
+        <StorefrontChat
+          chatKey={catalogData.chat.key} accent={resolveAccent(catalogData.style)} orgName={catalogData.orgName}
+          productId={itemSlug && currentItem ? currentItem.id : null}
+        />
+      )}
       {cartApi.enabled && (
         <CartDrawer
           open={cartOpen} onClose={() => setCartOpen(false)}

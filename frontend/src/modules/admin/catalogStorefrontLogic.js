@@ -37,6 +37,7 @@ export function lookFromConfig(config) {
     announcement: String(c.announcement || ''),
     trust_points: [0, 1, 2].map((i) => pts[i] || ''),
     logo_url: String(c.logo_url || ''),
+    chat_button: c.chat_button !== false,          // WEBCHAT-CATALOG-1: on unless the owner switched it off
   }
 }
 
@@ -68,6 +69,7 @@ export function lookPayload(look) {
       trust_points: points,
       accent,
       logo_url: logo,
+      chat_button: look.chat_button !== false,
     },
   }
 }

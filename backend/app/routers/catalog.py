@@ -107,6 +107,7 @@ class CatalogConfigUpdate(BaseModel):
     trust_points:              Optional[List[str]]           = Field(None, max_length=storefront.TRUST_POINTS_MAX)
     accent:                    Optional[str]                 = Field(None, pattern=r'^(#[0-9a-fA-F]{6})?$')
     logo_url:                  Optional[str]                 = Field(None, max_length=storefront.LOGO_URL_MAX)
+    chat_button:               Optional[bool]                = None      # WEBCHAT-CATALOG-1: "Chat with Chioma" on the Storefront (default on)
 
     @field_validator("trust_points")
     @classmethod

@@ -15,7 +15,7 @@
  * page also works as a plain chat for a business that uses nothing else from Opsra.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
+import { viewingChat, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g
@@ -342,6 +342,32 @@ export default function WebChatPage({ chatKey }) {
     else if (res.ask_contact) setPanel('contact')
     else if (res.ask_email) setPanel('email')
   }
+
+  // WEBCHAT-CATALOG-1: opened from a Storefront product page (?p=) or told so later by the page around us (postMessage).
+  // The server checks the id against this business's catalogue; the chat works the same if anything here fails.
+  const handleReplyRef = useRef(handleReply)
+  handleReplyRef.current = handleReply
+  const viewingSent = useRef(null)
+  const sendViewing = useCallback(async (pid) => {
+    const id = String(pid || '').slice(0, 60)
+    if (!/^[A-Za-z0-9_-]{1,60}$/.test(id) || viewingSent.current === id || !token.current) return
+    viewingSent.current = id
+    try { handleReplyRef.current(await viewingChat(chatKey, token.current, id)) } catch { /* the chat still works */ }
+  }, [chatKey])
+  useEffect(() => {
+    if (state !== 'ready') return
+    let p = null
+    try { p = new URLSearchParams(window.location.search).get('p') } catch { /* ignore */ }
+    if (p) sendViewing(p)
+  }, [state, sendViewing])
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.origin !== window.location.origin || !e.data || e.data.source !== 'opsra-catalog' || e.data.type !== 'viewing') return
+      sendViewing(e.data.product)
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [sendViewing])
 
   const act = async (fn) => {
     if (busy) return

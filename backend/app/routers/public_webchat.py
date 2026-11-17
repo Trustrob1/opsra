@@ -321,6 +321,22 @@ def list_products(key: str, response: Response, q: Optional[str] = Query(default
     return ok({"products": shop.search(db, s["org_id"], q), "cart": shop.view(s)})
 
 
+class ViewingBody(BaseModel):
+    product: str = Field(max_length=60)
+
+
+@router.post("/public/webchat/{key}/viewing")
+def post_viewing(key: str, body: ViewingBody, response: Response, authorization: Optional[str] = Header(default=None),
+                 db=Depends(get_supabase)):
+    """WEBCHAT-CATALOG-1: the chat was opened from a product page (Storefront). Not gated by the shop switch."""
+    _nostore(response)
+    found = _chat(db, key)
+    s = _session(db, found, authorization)
+    if wc.rate_limited(f"view:{s['id']}", 30, 60):
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
+    return ok(shop.viewing(db, s, found["config"], body.product))
+
+
 @router.get("/public/webchat/{key}/cart")
 def get_cart(key: str, response: Response, authorization: Optional[str] = Header(default=None), db=Depends(get_supabase)):
     _nostore(response)

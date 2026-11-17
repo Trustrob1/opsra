@@ -5,7 +5,7 @@ import * as L from './catalogStorefrontLogic.js'
 
 // ---------------------------------------------------------------- Look
 test('lookFromConfig: defaults for an empty or junk config', () => {
-  assert.deepEqual(L.lookFromConfig(null), { template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '' })
+  assert.deepEqual(L.lookFromConfig(null), { template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '', chat_button: true })
   assert.equal(L.lookFromConfig({ template: 'weird' }).template, 'classic')
   assert.equal(L.lookFromConfig({ accent: 'red' }).accent, '')
   assert.deepEqual(L.lookFromConfig({ trust_points: 'x' }).trust_points, ['', '', ''])
@@ -13,7 +13,7 @@ test('lookFromConfig: defaults for an empty or junk config', () => {
 
 test('lookFromConfig: reads saved values', () => {
   const l = L.lookFromConfig({ template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B'], logo_url: 'https://x/y.png' })
-  assert.deepEqual(l, { template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B', ''], logo_url: 'https://x/y.png' })
+  assert.deepEqual(l, { template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B', ''], logo_url: 'https://x/y.png', chat_button: true })
 })
 
 test('effectiveAccent falls back to teal', () => {
@@ -24,13 +24,13 @@ test('effectiveAccent falls back to teal', () => {
 
 test('lookPayload: cleans and sends only the Storefront keys', () => {
   const r = L.lookPayload({ template: 'storefront', accent: ' #1F4FD8 ', announcement: '  Free   delivery ', trust_points: [' Pay  safely ', '', 'Fast'], logo_url: ' https://x/y.png ' })
-  assert.deepEqual(r.payload, { template: 'storefront', announcement: 'Free delivery', trust_points: ['Pay safely', 'Fast'], accent: '#1F4FD8', logo_url: 'https://x/y.png' })
-  assert.deepEqual(Object.keys(r.payload).sort(), ['accent', 'announcement', 'logo_url', 'template', 'trust_points'])
+  assert.deepEqual(r.payload, { template: 'storefront', announcement: 'Free delivery', trust_points: ['Pay safely', 'Fast'], accent: '#1F4FD8', logo_url: 'https://x/y.png', chat_button: true })
+  assert.deepEqual(Object.keys(r.payload).sort(), ['accent', 'announcement', 'chat_button', 'logo_url', 'template', 'trust_points'])
 })
 
 test('lookPayload: empty values are sent as empty so they clear', () => {
   const r = L.lookPayload({ template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '' })
-  assert.deepEqual(r.payload, { template: 'classic', announcement: '', trust_points: [], accent: '', logo_url: '' })
+  assert.deepEqual(r.payload, { template: 'classic', announcement: '', trust_points: [], accent: '', logo_url: '', chat_button: true })
 })
 
 test('lookPayload: owner-fixable errors', () => {
@@ -220,4 +220,14 @@ test('product share helpers', async () => {
   assert.equal(decodeURIComponent(whatsappShareLink('https://x.test/a', '').split('text=')[1]), 'https://x.test/a')
   assert.equal(productQrFileName('cloud-9-mattress'), 'product-qr-cloud-9-mattress.svg')
   assert.equal(productQrFileName(''), 'product-qr-link.svg')
+})
+
+test('chat_button: on by default, off only when the owner saved false, and a change is noticed', () => {
+  assert.equal(L.lookFromConfig({}).chat_button, true)
+  assert.equal(L.lookFromConfig({ chat_button: false }).chat_button, false)
+  assert.equal(L.lookFromConfig({ chat_button: 'x' }).chat_button, true)
+  const off = { ...L.lookFromConfig({}), chat_button: false }
+  assert.equal(L.lookPayload(off).payload.chat_button, false)
+  assert.equal(L.lookChanged(off, {}), true)
+  assert.equal(L.lookChanged(L.lookFromConfig({ chat_button: false }), { chat_button: false }), false)
 })
