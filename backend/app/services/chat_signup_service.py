@@ -224,6 +224,7 @@ def _turn_on_ai(db: Any, org_id: str) -> None:
         rows = (db.table("organisations").select("webchat_config").eq("id", org_id).limit(1).execute().data) or []
         cfg = dict((rows[0].get("webchat_config") if rows else None) or {})
         cfg["ai_enabled"] = True
+        cfg["answer_first"] = True            # she answers first and asks for details after the first answer
         db.table("organisations").update({"webchat_config": cfg}).eq("id", org_id).execute()
     except Exception as exc:
         logger.error("chat_signup: AI not switched on org=%s: %s", org_id, exc)

@@ -25,6 +25,7 @@ from app.services import webchat_service as wc
 from app.services import webchat_ai_service
 from app.services import webchat_shop_service
 from app.services import webchat_contact_service as contact
+from app.services import webchat_greeting_service as greet
 
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                     "human": False, "cards": r["cards"], "contact_step": r["contact_step"]}
         wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_nudged=True)   # tapped an option: moved on, do not nag
 
+    if kind == "text":
+        g = greet.classify(visitor_text, cfg.get("business_name") or "")
+        if g:            # WEB-ONLY-1c-GREET: a greeting, thanks or goodbye gets a warm reply from Chioma herself (no AI call, no credit)
+            out.append(wc.append_message(db, s, "bot", greet.reply(g, cfg.get("business_name") or "", turn=int(s.get("turn_count") or 0))))
+            return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False}
+
     if item is None:
         item = _match_item(cfg, visitor_text)
 
@@ -147,7 +154,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     elif item:
         out.append(wc.append_message(db, s, "bot", _answer_text(item)))
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
-    elif kind == "text" and cfg.get("ai_enabled") and not _has_contact(s):
+    elif kind == "text" and cfg.get("ai_enabled") and not _has_contact(s) and not cfg.get("answer_first"):
         # WEBCHAT-3: AI needs a contact first, so ask for one instead of the generic fallback
         wc.set_state(db, s, pending_question=visitor_text[:300])
         if contact.enabled(cfg):
@@ -159,11 +166,18 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         ai = webchat_ai_service.answer(db, s, cfg, visitor_text) if kind == "text" else None
         if ai:
             out.append(wc.append_message(db, s, "bot", ai["reply"]))
+            if not ai["handoff"]:
+                wc.set_state(db, s, answers=int((s.get("state") or {}).get("answers") or 0) + 1)     # counts as the first answer: details are asked next
             if cfg.get("shop_enabled") and ai.get("products"):
                 cards = webchat_shop_service.cards_for(db, s["org_id"], ai["products"])
             if ai["handoff"]:
                 wc.set_human(db, s)
                 _notify_human(db, s, cfg, "The assistant could not answer: " + visitor_text)
+                if not _has_contact(s):          # answer_first: the team cannot reach a visitor with no details, so ask for them now
+                    if contact.enabled(cfg):
+                        out.append(contact.start(db, s, cfg, "So the team can reply to you, I just need a couple of details."))
+                        return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards, "contact_step": "name"}
+                    return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": True, "cards": cards}
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards}
         else:
             out.append(wc.append_message(db, s, "bot", cfg["fallback"]))

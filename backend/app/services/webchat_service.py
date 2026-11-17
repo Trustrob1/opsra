@@ -56,6 +56,7 @@ DEFAULT_CONFIG: dict = {
     "redirect_mode": "always",
     "redirect_text": "",
     "ai_enabled": False,          # WEBCHAT-3: AI answers typed questions (after contact details)
+    "answer_first": False,        # WEB-ONLY-1c: the AI answers BEFORE the visitor gives contact details (details are asked after the first answer)
     "ai_model": "haiku",          # haiku (cheapest) | sonnet
     "ai_instructions": "",
     "ai_max_turns": 12,
@@ -219,6 +220,8 @@ def sanitise_config(raw: dict) -> dict:
                 out["stats_from"] = None
     if "ai_enabled" in raw:
         out["ai_enabled"] = bool(raw["ai_enabled"])
+    if "answer_first" in raw:
+        out["answer_first"] = bool(raw["answer_first"])
     if "ai_model" in raw:
         out["ai_model"] = raw["ai_model"] if raw["ai_model"] in ("haiku", "sonnet") else "haiku"
     if "ai_instructions" in raw:
