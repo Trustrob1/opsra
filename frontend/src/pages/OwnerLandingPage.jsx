@@ -351,6 +351,7 @@ export default function OwnerLandingPage() {
             <nav aria-label="Main" className={`ow-nav-links${menu ? " ow-open" : ""}`} onClick={() => setMenu(false)}>
               <a href="#product">Product</a>
               <a href="#use-cases">Use cases</a>
+              <a href="/chioma">Chioma</a>
               <a href="#plans">Pricing</a>
               <a href="#questions">Questions</a>
               <a href="/">Log in</a>
@@ -565,6 +566,19 @@ export default function OwnerLandingPage() {
           </figure>
         </section>
 
+        {/* ---------------- CHIOMA LINK (CHIOMA-LANDING-1) ---------------- */}
+        <section className="ow-wrap ow-chioma" aria-labelledby="chioma-h">
+          <div className="ow-chioma-card">
+            <div className="ow-chioma-copy">
+              <p className="ow-eyebrow ow-t-blue">New · Chioma</p>
+              <h2 id="chioma-h">Not on WhatsApp yet? Put Chioma on your website.</h2>
+              <p>The same front desk, as a chat on your site. Start free, no WhatsApp number needed.</p>
+              <a className="ow-btn ow-btn-blue" href="/chioma">Meet Chioma</a>
+            </div>
+            <img src="/images/chioma.jpg" alt="Chioma, the web chat assistant" width="300" height="300" loading="lazy" />
+          </div>
+        </section>
+
         {/* ---------------- DARK GRID ---------------- */}
         <section className="ow-dark" aria-labelledby="dark-h">
           <div className="ow-wrap ow-sec">
@@ -744,6 +758,7 @@ export default function OwnerLandingPage() {
               <a href="#product">How it works</a>
               <a href="#plans">Pricing</a>
               <a href="#questions">Questions</a>
+              <a href="/chioma">Chioma web chat</a>
             </div>
             <div>
               <b>Company</b>

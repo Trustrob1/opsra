@@ -86,6 +86,7 @@ import OwnerDashboardPage from './pages/OwnerDashboardPage'
 import SiteLandingPage from './pages/SiteLandingPage'   // SITE-LANDING
 import HostLandingPage from './pages/HostLandingPage'   // HOST-1
 import OwnerLandingPage from './pages/OwnerLandingPage'   // OWNER-LANDING-1
+import ChiomaLandingPage from './pages/ChiomaLandingPage'   // CHIOMA-LANDING-1
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -254,6 +255,10 @@ export default function App() {
   // OWNER-LANDING-1 — public landing page + pricing for business owners.
   if (window.location.pathname === '/business') {
     return <OwnerLandingPage />
+  }
+  // CHIOMA-LANDING-1 — public landing page for Chioma, the web chat assistant.
+  if (window.location.pathname === '/chioma') {
+    return <ChiomaLandingPage />
   }
   // SITE-LANDING — public builder landing page + sign-in. `/b/*` with no magic-link
   // token (bookmarked, or the link was already used) lands here instead of a dead end.
