@@ -94,7 +94,7 @@ def _knowledge(db, s: dict, cfg: dict, text: str) -> str:
     from app.services.ai_service import sanitise_for_prompt
     lines: list[str] = []
     for m in cfg.get("menu") or []:
-        if m.get("answer"):
+        if m.get("answer") and not m.get("builtin"):     # WEBCHAT-MENU-1: the built-in menu's generic lines are not business knowledge
             lines.append(f"- {sanitise_for_prompt(m['label'], max_length=60)}: {sanitise_for_prompt(m['answer'], max_length=700)}")
     try:
         from app.services.ai_agent_service import _fetch_kb_articles

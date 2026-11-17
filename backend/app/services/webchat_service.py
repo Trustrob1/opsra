@@ -258,6 +258,23 @@ def sanitise_config(raw: dict) -> dict:
     return out
 
 
+def default_menu(shop: bool) -> list:
+    """WEBCHAT-MENU-1: a business that has not set up any menu gets these three, so visitors always have the Menu button and a way to
+    reach the team. Plain, true-for-everyone wording only (no prices or facts are invented). No keywords on purpose: typed questions
+    such as 'what are your prices' must still reach the AI / product answer, not a canned reply."""
+    if shop:
+        order = "Tap Shop below to browse, add what you like to your cart and check out. Or tell me what you are looking for and I will help you find it."
+        price = "Tell me the item you have in mind and I will share its price, or tap Shop below to browse with prices."
+    else:
+        order = "Tell me what you are looking for and I will help. If you would rather speak to a person, tap Talk to the team and we will take your order."
+        price = "Tell me the item you have in mind and I will help with its price, or tap Talk to the team and we will send you a quote."
+    return [
+        {"id": "prices", "label": "See prices", "answer": price, "keywords": [], "builtin": True},
+        {"id": "order", "label": "How to order", "answer": order, "keywords": [], "builtin": True},
+        {"id": "human", "label": "Talk to the team", "action": "human", "keywords": [], "builtin": True},
+    ]
+
+
 def get_config(db, org_id: str) -> dict:
     """Defaults + the org's stored settings. business_name falls back to the organisation's name."""
     try:
@@ -274,6 +291,8 @@ def get_config(db, org_id: str) -> dict:
             cfg[k] = m[cfg[k]]
     if not cfg.get("business_name"):
         cfg["business_name"] = row.get("name") or "Our team"
+    if not cfg.get("menu"):                    # WEBCHAT-MENU-1: nothing set up yet, so start from the default menu (owner can edit it)
+        cfg["menu"] = default_menu(bool(cfg.get("shop_enabled")))
     # read-only facts for the call button (no extra database trip); never saved back, never sent to visitors as-is
     cfg["_call_org"] = {"business_hours": row.get("business_hours"), "timezone": row.get("timezone"),
                         "fallback_number": row.get("org_business_contact_number") or row.get("org_whatsapp_number") or ""}

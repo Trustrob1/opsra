@@ -341,3 +341,38 @@ class TestFlow:
         with _claude(""):
             r = f.handle_message(db, s, cfg, kind="text", text="zzzz qqqq")
         assert r["messages"][-1]["text"] == cfg["fallback"]
+
+
+class TestMenuAndAfterContact:
+    """WEBCHAT-MENU-1."""
+
+    def test_default_menu_when_none_set_and_no_keywords(self):
+        from app.services import webchat_service as wc
+        for shop in (True, False):
+            m = wc.default_menu(shop)
+            assert [x["id"] for x in m] == ["prices", "order", "human"] and m[2]["action"] == "human"
+            assert all(not x["keywords"] for x in m)                  # typed questions must still reach the AI
+        assert all(x["builtin"] for x in wc.default_menu(True))
+        assert "Shop" in wc.default_menu(True)[1]["answer"] and "Shop" not in wc.default_menu(False)[1]["answer"]
+
+    def test_if_the_ai_cannot_answer_after_the_form_the_team_is_told(self):
+        from app.services import webchat_flow_service as f, webchat_service as wc
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        with _claude('{"reply": "x", "handoff": false}'):
+            f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
+        with patch("app.services.funnel_service._find_org_lead", return_value=None), \
+             patch("app.services.lead_service.create_lead", return_value={"id": "L9"}), \
+             patch("app.services.webchat_ai_service.answer", return_value=None), patch.object(wc, "notify_managers") as nm:
+            res = f.handle_contact(db, s, cfg, name="Ada Obi", phone="08031234567", email=None, consent=True)
+        texts = [m["text"] for m in res["messages"]]
+        assert texts[0] == "Thank you. We have your details." and "passed your question to the team" in texts[1] and nm.called
+
+    def test_with_no_waiting_question_it_says_what_to_do_next(self):
+        from app.services import webchat_flow_service as f
+        db = _db()
+        s, cfg = _session(db, contact=False), _cfg(db)
+        with patch("app.services.funnel_service._find_org_lead", return_value=None), \
+             patch("app.services.lead_service.create_lead", return_value={"id": "L9"}):
+            res = f.handle_contact(db, s, cfg, name="Ada Obi", phone="08031234567", email=None, consent=True)
+        assert [m["text"] for m in res["messages"]][1].startswith("What would you like to know?")

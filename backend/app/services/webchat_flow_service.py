@@ -72,7 +72,7 @@ def _notify_human(db, s: dict, cfg: dict, why: str) -> None:
     except Exception:
         pass
     name = s.get("contact_name") or "A web chat visitor"
-    wc.notify_managers(db, s["org_id"], f"{name} is waiting on web chat", why[:300], s.get("lead_id"), "webchat_message")
+    wc.notify_managers(db, s["org_id"], f"{name} is waiting on web chat", why[:300], s.get("lead_id"), "webchat_message", to_assigned_rep=True)
     wc.set_state(db, s, notified_at=now.isoformat())
 
 
@@ -187,6 +187,18 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
                 if ai["handoff"]:
                     wc.set_human(db, s)
                     _notify_human(db, s, cfg, "The assistant could not answer: " + waiting)
+            else:
+                # WEBCHAT-MENU-1: the AI could not answer now (allowance, limit, error). Never leave the visitor hanging after the
+                # form: answer from the catalogue if they are on a product, otherwise say what happens next and tell the team.
+                scripted = webchat_shop_service.product_answer(db, s, cfg, waiting)
+                if scripted:
+                    out.append(wc.append_message(db, s, "bot", scripted))
+                else:
+                    out.append(wc.append_message(db, s, "bot", "I could not find that to answer right now, so I have passed your question to the team. They will reply here as soon as they can."))
+                    _notify_human(db, s, cfg, "Asked before sharing details: " + waiting)
+        else:
+            tip = " or tap Menu" if cfg.get("menu") else ""
+            out.append(wc.append_message(db, s, "bot", "What would you like to know? You can type your question" + tip + "."))
     return {"messages": out, "form": form, "cards": cards}
 
 
