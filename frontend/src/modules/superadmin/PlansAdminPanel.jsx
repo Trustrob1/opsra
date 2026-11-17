@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getPlanOrgs, grantOrgPlan, setOrgPlanStatus, setOrgEnforced } from "../../services/superadmin.service";
 import { ds } from "../../utils/ds";
 import WaSignupSettingsCard from "./WaSignupSettingsCard.jsx";
+import ChatSignupSettingsCard from "./ChatSignupSettingsCard.jsx";   // WEB-ONLY-1b
 import WaSetupRequestsCard from "./WaSetupRequestsCard.jsx";
 
 const card = { background: ds.dark2, border: "1px solid #1e3a4f", borderRadius: 12, padding: "18px 20px", marginBottom: 16 };
@@ -104,6 +105,7 @@ export default function PlansAdminPanel() {
       {error && <div role="alert" style={{ ...card, color: "#f87171", padding: 12 }}>{error}</div>}
       <WaSetupRequestsCard />
       <WaSignupSettingsCard />
+      <ChatSignupSettingsCard />
       <div style={{ ...card, display: "flex", gap: 24, flexWrap: "wrap" }}>
         <div><div style={{ fontSize: 11, color: "#3a5a6a" }}>BUSINESSES</div><div style={{ fontSize: 20, color: "white", fontWeight: 700 }}>{data.totals.businesses}</div></div>
         <div><div style={{ fontSize: 11, color: "#3a5a6a" }}>SWITCHED ON</div><div style={{ fontSize: 20, color: "white", fontWeight: 700 }}>{data.totals.enforced}</div></div>

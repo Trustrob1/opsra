@@ -8,7 +8,7 @@
  *   SALES_WA, DEMO_WA     international format, digits only.
  *   DEMO_KEY              the web chat key (wc_...) of the business whose chat the "Chat with Chioma now" button opens.
  *                         Empty = the button opens the WhatsApp demo instead. Use a dedicated demo business, not a customer's.
- *   START_HREF            where "Start free" goes. Until the web-chat-only sign-up exists it opens a WhatsApp message to sales.
+ *   START_HREF            where "Start free" goes: the public sign-up page /start/chat (WEB-ONLY-1b).
  *   PRICES                the plan figures shown. Change here, nowhere else.
  *
  * IMAGES (frontend/public/images): chioma.jpg (new), usecase-*.jpg and lead-center.jpg (shared with /business).
@@ -23,7 +23,7 @@ const DEMO_WA = "14753274055";
 const DEMO_KEY = "";
 
 const waHref = (num, text) => `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
-const START_HREF = waHref(SALES_WA, "Hi, I'd like to start free with Chioma on my website.");
+const START_HREF = "/start/chat";
 
 const PRICES = {
   freeCredit: "₦2,000",
@@ -208,7 +208,7 @@ export default function ChiomaLandingPage() {
               <a className="ch-hide-m" href="#price">Pricing</a>
               <a className="ch-hide-m" href="#questions">Questions</a>
               <a className="ch-hide-m" href="/business">Opsra for WhatsApp</a>
-              <a className="ch-btn ch-btn-white ch-sm" href={START_HREF} target="_blank" rel="noopener noreferrer">Start free</a>
+              <a className="ch-btn ch-btn-white ch-sm" href={START_HREF}>Start free</a>
             </nav>
           </div>
         </header>
@@ -224,7 +224,7 @@ export default function ChiomaLandingPage() {
               <span className="ch-h-short">Meet Chioma. She answers, asks for a WhatsApp number and hands warm leads to your team.</span>
             </p>
             <div className="ch-cta-row ch-hide-m">
-              <a className="ch-btn ch-btn-white" href={START_HREF} target="_blank" rel="noopener noreferrer">Start free</a>
+              <a className="ch-btn ch-btn-white" href={START_HREF}>Start free</a>
               <a className="ch-btn ch-btn-ghost" href={demoHref} target={demoTarget} rel="noopener noreferrer" onClick={openDemo}>Chat with Chioma now</a>
             </div>
             <p className="ch-fine ch-hide-m">{PRICES.freeCredit} free credit. No card, no time limit.</p>
@@ -249,7 +249,7 @@ export default function ChiomaLandingPage() {
             <p className="ch-cap ch-hide-m">Example conversation</p>
           </div>
           <div className="ch-cta-row ch-show-m">
-            <a className="ch-btn ch-btn-white" href={START_HREF} target="_blank" rel="noopener noreferrer">Start free</a>
+            <a className="ch-btn ch-btn-white" href={START_HREF}>Start free</a>
             <a className="ch-btn ch-btn-ghost" href={demoHref} target={demoTarget} rel="noopener noreferrer" onClick={openDemo}>Chat with Chioma now</a>
           </div>
         </div>
@@ -363,7 +363,7 @@ export default function ChiomaLandingPage() {
               <p className="ch-eyebrow">Start free</p>
               <p className="ch-fig">{PRICES.freeCredit} <small>free credit</small></p>
               <p>No card and no time limit. {PRICES.freeChats}, so you can see Chioma work on real visitors.</p>
-              <a className="ch-btn ch-btn-blue" href={START_HREF} target="_blank" rel="noopener noreferrer">Start free</a>
+              <a className="ch-btn ch-btn-blue" href={START_HREF}>Start free</a>
             </article>
             <article className="ch-price ch-t-purple">
               <p className="ch-eyebrow">Chioma plan</p>
@@ -393,7 +393,7 @@ export default function ChiomaLandingPage() {
           <div className="ch-cta-band">
             <h2 id="cta-h">Start free. See Chioma greet your first visitor today.</h2>
             <div className="ch-cta-row ch-cta-center">
-              <a className="ch-btn ch-btn-white" href={START_HREF} target="_blank" rel="noopener noreferrer">Start free</a>
+              <a className="ch-btn ch-btn-white" href={START_HREF}>Start free</a>
               <a className="ch-btn ch-btn-ghost" href={demoHref} target={demoTarget} rel="noopener noreferrer" onClick={openDemo}>Chat with Chioma now</a>
             </div>
           </div>

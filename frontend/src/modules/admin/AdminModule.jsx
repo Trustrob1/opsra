@@ -161,6 +161,8 @@ const TAB_GROUPS = [
 
 // WA-AUTO: a WhatsApp-automation-only business sees only the settings its product uses.
 const WA_ONLY_TABS = ['users', 'whatsapp', 'whatsapp-menu', 'whatsapp-numbers', 'webchat', 'credits', 'wa-sales-mode', 'ad-questions', 'sla-hours']
+// WEB-ONLY-1b: a web-chat-only business (Chioma on the website) sees users, web chat, its product list, credits and business hours.
+const CHAT_ONLY_TABS = ['users', 'webchat', 'catalog', 'credits', 'sla-hours']
 
 // Flat list for lookup
 const ALL_TABS = TAB_GROUPS.flatMap(g => g.tabs)
@@ -217,8 +219,8 @@ function SubTabBar({ tabs, active, onChange }) {
   )
 }
 
-export default function AdminModule({ user, waOnly = false }) {
-  const [tab, setTab]                     = useState(waOnly ? 'whatsapp' : 'users')
+export default function AdminModule({ user, waOnly = false, chatOnly = false }) {
+  const [tab, setTab]                     = useState(waOnly ? 'whatsapp' : chatOnly ? 'webchat' : 'users')
   const [salesSubTab, setSalesSubTab]     = useState('sales-mode')
   const [catalogSubTab, setCatalogSubTab] = useState('catalog-start')   // STORE-13: opens on Get started while setup is unfinished
   const [itemsIntent, setItemsIntent]     = useState(null)                // STORE-13: "add / import / photos" sent from Get started
@@ -326,8 +328,9 @@ export default function AdminModule({ user, waOnly = false }) {
     )
   }
 
-  const visibleGroups = waOnly
-    ? TAB_GROUPS.map(g => ({ ...g, tabs: g.tabs.filter(t => WA_ONLY_TABS.includes(t.id)) })).filter(g => g.tabs.length)
+  const onlyTabs = waOnly ? WA_ONLY_TABS : chatOnly ? CHAT_ONLY_TABS : null
+  const visibleGroups = onlyTabs
+    ? TAB_GROUPS.map(g => ({ ...g, tabs: g.tabs.filter(t => onlyTabs.includes(t.id)) })).filter(g => g.tabs.length)
     : TAB_GROUPS
   const activeTabMeta = ALL_TABS.find(t => t.id === tab)
   const ActiveIcon = activeTabMeta?.Icon ?? Settings

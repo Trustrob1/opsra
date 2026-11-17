@@ -258,6 +258,7 @@ export default function CreateOrg() {
         >
           <option value="full">Full Opsra (CRM and automation)</option>
           <option value="wa_automation">WhatsApp automation only</option>
+          <option value="web_chat">Web chat only (Chioma on the website)</option>
         </select>
 
         <div style={{ height: 1, background: "#1e3a4f", margin: "18px 0" }} />

@@ -71,6 +71,7 @@ import ReportsModule from './modules/reports/ReportsModule'
 import PerformanceModule from './modules/performance/PerformanceModule'
 import EventFunnelsModule from './modules/funnels/EventFunnelsModule'   // FUNNEL-1B
 import WaSignupPage from './pages/WaSignupPage'                      // WA-AUTO-5
+import ChatSignupPage from './pages/ChatSignupPage'                  // WEB-ONLY-1b
 import SitesModule from './modules/sites/SitesModule'                   // SITE-1A
 import BillingModule from './modules/billing/BillingModule'             // ACCOUNT-PLANS AP-3
 import BillingBanner from './modules/billing/BillingBanner'             // ACCOUNT-PLANS AP-3
@@ -251,6 +252,10 @@ export default function App() {
   // WA-AUTO-5 — public sign-up for WhatsApp-automation-only businesses.
   if (window.location.pathname === '/start/whatsapp') {
     return <WaSignupPage />
+  }
+  // WEB-ONLY-1b — public sign-up for web-chat-only businesses (Chioma on the website).
+  if (window.location.pathname === '/start/chat') {
+    return <ChatSignupPage />
   }
   // OWNER-LANDING-1 — public landing page + pricing for business owners.
   if (window.location.pathname === '/business') {
@@ -725,10 +730,13 @@ function AppShell() {
   // AP-8: Sites and Superadmin belong to Opsra's own organisation only. This hides them; the server checks again on every route.
   const [isPlatformOrg, setIsPlatformOrg] = useState(false)
   // WA-AUTO-1: 'wa_automation' orgs see the inbox, billing and admin only. Remembered locally so the first paint is right; the server is the real gate.
+  // WEB-ONLY-1b: 'web_chat' orgs (Chioma on the website) see the same trimmed app, with their own admin tabs and no WhatsApp set-up wizard.
   const [productMode, setProductMode] = useState(() => {
-    try { return localStorage.getItem('opsra_product_mode') === 'wa_automation' ? 'wa_automation' : 'full' } catch { return 'full' }
+    try { const v = localStorage.getItem('opsra_product_mode'); return v === 'wa_automation' || v === 'web_chat' ? v : 'full' } catch { return 'full' }
   })
   const isWaOnly = productMode === 'wa_automation'
+  const isChatOnly = productMode === 'web_chat'
+  const isNoCrm = isWaOnly || isChatOnly
   // WA-AUTO-3: the owner of a WhatsApp-only business sees the set-up wizard until it is finished (or put off for now).
   const [waWizard, setWaWizard] = useState('unknown')   // unknown | show | hide
   useEffect(() => {
@@ -743,7 +751,7 @@ function AppShell() {
     getPlatformStatus().then((r) => {
       if (!live) return
       setIsPlatformOrg(!!r?.is_platform)
-      const m = r?.product_mode === 'wa_automation' ? 'wa_automation' : 'full'
+      const m = r?.product_mode === 'wa_automation' || r?.product_mode === 'web_chat' ? r.product_mode : 'full'
       setProductMode(m)
       try { localStorage.setItem('opsra_product_mode', m) } catch {}
     }).catch(() => { if (live) setIsPlatformOrg(false) })
@@ -755,7 +763,7 @@ function AppShell() {
   // and actual page access never disagree.
   const _departmentId = user?.roles?.department_id ?? null
   const visibleNav = NAV.filter(item => {
-    if (isWaOnly) return item.id === 'conversations' || item.id === 'knowledge'
+    if (isNoCrm) return item.id === 'conversations' || item.id === 'knowledge'
     if (item.id === 'knowledge') return false
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
     // FUNNEL-1B: Event Funnels — owner / ops_manager (edit) and admin (read-only)
@@ -775,11 +783,11 @@ function AppShell() {
   })
 
   const [view, setView]                     = useState('leads')
-  // WA-AUTO-1: keep wa_automation orgs on screens they own.
+  // WA-AUTO-1: keep wa_automation orgs on screens they own (WEB-ONLY-1b: and web_chat orgs).
   useEffect(() => {
-    if (!isWaOnly) return
+    if (!isNoCrm) return
     if (!['conversations', 'knowledge', 'billing', 'admin'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
-  }, [isWaOnly, view])
+  }, [isNoCrm, view])
   const [selectedLeadId, setSelectedLeadId] = useState(null)
   const [showNotif, setShowNotif]           = useState(false)
   const [unreadCount, setUnreadCount]       = useState(0)
@@ -1232,17 +1240,17 @@ function AppShell() {
           <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} onOpenLead={(leadId) =>openLeadProfile(leadId)} /></div>
         )}
         {view === 'admin' && (
-          <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} waOnly={isWaOnly} /></div>
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><AdminModule user={user} waOnly={isWaOnly} chatOnly={isChatOnly} /></div>
         )}
         {view === 'billing' && ['owner', 'ops_manager', 'admin'].includes(_userTemplate) && (
           <div style={{ animation: 'fadeIn 0.25s ease', padding: 24 }}><BillingModule onOpenAdmin={() => { setActiveNav('admin'); setView('admin') }} /></div>
         )}
-        {view === 'knowledge' && isWaOnly && <KnowledgeModule />}
+        {view === 'knowledge' && isNoCrm && <KnowledgeModule />}
         {view === 'conversations' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}>
             {isWaOnly && waWizard === 'show'
               ? <WaSetupWizard onDone={() => setWaWizard('hide')} onSkip={() => setWaWizard('hide')} onOpenBilling={() => { setWaWizard('hide'); setActiveNav('billing'); setView('billing') }} />
-              : <ConversationsModule user={user} simple={isWaOnly} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} onOpenAria={() => setAriaOpen(true)} />}
+              : <ConversationsModule user={user} simple={isNoCrm} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} onOpenAria={() => setAriaOpen(true)} />}
           </div>
         )}
         {view === 'commissions' && (
@@ -1271,7 +1279,7 @@ function AppShell() {
       )}
 
       {/* Aria AI Assistant (M01-10b) */}
-      {!isWaOnly && <AriaButton
+      {!isNoCrm && <AriaButton
         onClick={() => setAriaOpen(prev => !prev)}
         hasBadge={ariaBadge}
         panelOpen={ariaOpen}
@@ -1283,7 +1291,7 @@ function AppShell() {
           try { localStorage.setItem('aria_minimised', next ? '1' : '0') } catch {}
         }}
       />}
-      {!isWaOnly && <AriaPanel open={ariaOpen} onClose={() => setAriaOpen(false)} briefing={ariaBriefing} onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }} />}
+      {!isNoCrm && <AriaPanel open={ariaOpen} onClose={() => setAriaOpen(false)} briefing={ariaBriefing} onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }} />}
 
       {/* Onboarding Checklist (ORG-ONBOARDING-B) */}
       <IOSInstallBanner />

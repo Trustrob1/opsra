@@ -196,6 +196,17 @@ export async function saveWaSignupSettings(payload) {
   return res.data.data;
 }
 
+// WEB-ONLY-1b - switches for the public Chioma sign-up (/start/chat)
+export async function getChatSignupSettings() {
+  const res = await axios.get(`${BASE}/api/v1/superadmin/chat-signup/settings`, { headers: _h() });
+  return res.data.data;
+}
+
+export async function saveChatSignupSettings(payload) {
+  const res = await axios.put(`${BASE}/api/v1/superadmin/chat-signup/settings`, payload, { headers: _h() });
+  return res.data.data;
+}
+
 export async function getWaSetupRequests() {
   const res = await axios.get(`${BASE}/api/v1/superadmin/wa-signup/setup-requests`, { headers: _h() });
   return res.data.data;
