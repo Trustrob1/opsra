@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { choicesFromReply, visibleChoices } from '../utils/webchatChoices'
+import { headerState } from '../utils/webchatHeader'
 import { viewingChat, startContactChat, pingTyping, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
@@ -722,9 +723,10 @@ export default function WebChatPage({ chatKey }) {
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
   // WEBCHAT-BUBBLE-2: Chioma is the face; once a team member takes over, the header shows them instead (and swaps back when the bot resumes).
   const chioma = cfg.chioma || {}
-  const withTeam = !!human
   const teamWho = (lastRepIdx >= 0 && messages[lastRepIdx].by) || ''
-  const dotOn = withTeam ? !!chioma.team_available : !!chioma.online
+  // The team takes the header only once a team member has replied or is typing; a bare hand-over (e.g. after hours) keeps Chioma.
+  const { withTeam, dotOn, subtitle: waitingLine } = headerState({ human, hasRepReply: lastRepIdx >= 0, repTyping, teamAvailable: !!chioma.team_available,
+    online: !!chioma.online, reopens: chioma.reopens, businessName: cfg.business_name })
   const humanItem = cfg.human_menu_id ? cfg.menu.find((m) => m.id === cfg.human_menu_id) : null
   const teamLine = chioma.team_available ? 'The team is online now.' : (chioma.reopens ? `The team is back ${chioma.reopens}.` : '')
   const chiomaFace = (size) => (
@@ -749,7 +751,7 @@ export default function WebChatPage({ chatKey }) {
               {dotOn && <span role="img" aria-label="Online" title="Online" style={{ width: 9, height: 9, flex: 'none', borderRadius: 999, background: '#22C55E' }} />}
             </h1>
             <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {withTeam ? (teamWho ? `${cfg.business_name} team` : 'Replying to you here') : `Virtual assistant for ${cfg.business_name}`}
+              {withTeam ? (teamWho ? `${cfg.business_name} team` : 'Replying to you here') : waitingLine}
             </div>
           </div>
           {call && (
