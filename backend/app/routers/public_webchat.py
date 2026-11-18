@@ -31,6 +31,7 @@ from app.services import webchat_contact_service as contact
 from app.services import webchat_email_service as email_svc
 from app.services import webchat_embed_service as embed
 from app.services import webchat_flow_service as flow
+from app.services import webchat_guard_service as guard
 from app.services import webchat_msg_service as msgsvc
 from app.services import webchat_shop_service as shop
 from app.services import webchat_service as wc
@@ -203,6 +204,8 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
     if not s:
         s, token = wc.create_session(db, org_id, source=body.source, ip_hash=iph)
         wc.log_event(db, org_id, s.get("id"), "visit", body.source)
+        if iph and wc.rate_limited(f"sessburst:{key}:{iph}", 5, 600):          # SAFE: five new chats from one address in ten minutes: the first message gets a check
+            wc.set_state(db, s, check_first=True)
     msgs = wc.list_messages(db, s)
     if not msgs:
         msgs = [wc.append_message(db, s, "bot", cfg["greeting"])]
@@ -264,6 +267,8 @@ def post_message(key: str, body: MessageBody, response: Response, authorization:
     if iph and wc.rate_limited(f"msgip:{iph}", 240, 3600):          # SAFE: limit by visitor address as well as by chat, so many new chats do not get round it
         raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
     cfg = {**found["config"], "_ip": iph}
+    if iph and not (s.get("state") or {}).get("ai_blocked") and guard.address_blocked(found["org_id"], iph):
+        wc.set_state(db, s, ai_blocked=True)          # SAFE: this address was blocked from the AI in another chat of this business
     _pause_guard(db, found["org_id"])
     if body.kind == "text" and (s.get("state") or {}).get("viewing"):
         # WEBCHAT-CATALOG-1b: the visitor is on a Storefront product. If no AI answer can be given, the stock "I did not catch

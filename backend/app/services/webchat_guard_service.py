@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
+import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.services import webchat_service as wc
@@ -69,7 +72,7 @@ def _is_attack(text: str) -> bool:
     return any(p.search(text) for p in _ATTACK)
 
 
-def screen_input(db, s: dict, text: str, business_name: str) -> Optional[dict]:
+def screen_input(db, s: dict, text: str, business_name: str, ip: Optional[str] = None) -> Optional[dict]:
     """{'reply', 'kind', 'blocked'?} when the message must not reach the AI, else None."""
     try:
         t = text or ""
@@ -81,6 +84,8 @@ def screen_input(db, s: dict, text: str, business_name: str) -> Optional[dict]:
             if blocked:
                 kv["ai_blocked"] = True
             wc.set_state(db, s, **kv)
+            if blocked and not state.get("ai_blocked") and ip:
+                block_address(s.get("org_id"), ip)          # the same visitor address gets no AI from this business for a while, in any chat
             return {"reply": attack_reply(business_name, strikes), "kind": "attack", "blocked": blocked and not state.get("ai_blocked"), "strikes": strikes}
         if _REVEAL.search(t):
             return {"reply": reveal_reply(business_name), "kind": "reveal"}
@@ -185,4 +190,119 @@ def check_reply(reply: str, facts: str, s: Optional[dict] = None) -> Optional[di
                 return {"reason": "link", "reply": HANDOFF_REPLIES["link"]}
     except Exception as exc:
         logger.warning("webchat guard check_reply failed: %s", exc)
+    return None
+
+
+# ── a block that spans chats ────────────────────────────────────────────────
+# Scope: one business, one visitor address, AI only. The chat, the menu and the team stay open, so a shared mobile address
+# can never lock a real customer out of reaching the business. First block 24 hours, a repeat within a week 7 days.
+
+BLOCK_HOURS = 24
+REPEAT_BLOCK_DAYS = 7
+_local_flags: dict = {}
+
+
+def _flag_set(name: str, ttl_s: int) -> None:
+    try:
+        from app.services.ai_service import _get_redis
+        r = _get_redis()
+        if r is not None:
+            r.set(f"wc:flag:{name}", "1", ex=int(ttl_s))
+            return
+    except Exception as exc:
+        logger.warning("webchat guard flag: redis unavailable (%s) - using in-process flag", exc)
+    if len(_local_flags) > 20_000:
+        _local_flags.clear()
+    _local_flags[name] = time.monotonic() + ttl_s
+
+
+def _flag_on(name: str) -> bool:
+    try:
+        from app.services.ai_service import _get_redis
+        r = _get_redis()
+        if r is not None:
+            return bool(r.exists(f"wc:flag:{name}"))
+    except Exception as exc:
+        logger.warning("webchat guard flag: redis unavailable (%s) - using in-process flag", exc)
+    return _local_flags.get(name, 0) > time.monotonic()
+
+
+def block_address(org_id: str, ip: str) -> None:
+    """Switch the AI off for this address at this business. Never raises."""
+    try:
+        repeat = wc.rate_limited(f"blocks:{org_id}:{ip}", 1, REPEAT_BLOCK_DAYS * 86400)      # True from the second block in a week
+        _flag_set(f"ipblock:{org_id}:{ip}", (REPEAT_BLOCK_DAYS * 86400) if repeat else (BLOCK_HOURS * 3600))
+    except Exception as exc:
+        logger.warning("webchat guard block_address failed: %s", exc)
+
+
+def address_blocked(org_id: str, ip: Optional[str]) -> bool:
+    try:
+        return bool(ip) and _flag_on(f"ipblock:{org_id}:{ip}")
+    except Exception:
+        return False
+
+
+# ── a human check after a burst ─────────────────────────────────────────────
+# No third-party service and no change to the page: Chioma asks a one-line sum in the chat. A script that fires messages without reading
+# the replies fails it; a person answers in two seconds. Passing skips the check for 30 minutes.
+
+BURST_MESSAGES, BURST_WINDOW_S = 10, 30
+VERIFIED_MIN, CHECK_TRIES, COOLDOWN_MIN = 30, 2, 5
+_WORDS = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen".split())}
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _later(minutes: int) -> str:
+    return (_now() + timedelta(minutes=minutes)).isoformat()
+
+
+def _future(iso) -> bool:
+    try:
+        return bool(iso) and datetime.fromisoformat(str(iso).replace("Z", "+00:00")) > _now()
+    except Exception:
+        return False
+
+
+def _number_in(text: str) -> Optional[int]:
+    m = re.search(r"\d+", text or "")
+    if m:
+        return int(m.group(0))
+    for w in re.findall(r"[a-z]+", (text or "").lower()):
+        if w in _WORDS:
+            return _WORDS[w]
+    return None
+
+
+def _challenge(db, s: dict, tries: int = 0, lead: str = "Quick check before we continue:") -> str:
+    a, b = 2 + secrets.randbelow(8), 2 + secrets.randbelow(8)
+    wc.set_state(db, s, human_check={"answer": a + b, "tries": tries})
+    return f"{lead} what is {a} + {b}?"
+
+
+def human_check(db, s: dict, text: str) -> Optional[dict]:
+    """None to carry on. {'reply': str or None} when this message is part of a check (None reply = stay quiet during the cool-off)."""
+    try:
+        state = s.get("state") or {}
+        if _future(state.get("check_cooldown_until")):
+            return {"reply": None}
+        pending = state.get("human_check")
+        if pending:
+            if _number_in(text) == pending.get("answer"):
+                wc.set_state(db, s, human_check=None, check_first=False, verified_until=_later(VERIFIED_MIN))
+                return {"reply": "Thanks, that is all I needed. How can I help you?", "passed": True}
+            tries = int(pending.get("tries") or 0) + 1
+            if tries >= CHECK_TRIES:
+                wc.set_state(db, s, human_check=None, check_cooldown_until=_later(COOLDOWN_MIN))
+                return {"reply": "I will pause here for a few minutes. Please try again shortly.", "failed": True}
+            return {"reply": _challenge(db, s, tries, "Not quite.")}
+        if _future(state.get("verified_until")):
+            return None
+        if state.get("check_first") or wc.rate_limited(f"burst:{s.get('id')}", BURST_MESSAGES, BURST_WINDOW_S):
+            return {"reply": _challenge(db, s), "asked": True}
+    except Exception as exc:
+        logger.warning("webchat guard human_check failed: %s", exc)
     return None
