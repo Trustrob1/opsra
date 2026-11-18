@@ -27,6 +27,7 @@ from app.services import webchat_shop_service
 from app.services import webchat_contact_service as contact
 from app.services import webchat_greeting_service as greet
 from app.services import webchat_handover_service as handover
+from app.services import webchat_guard_service as guard
 
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,14 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         g = greet.classify(visitor_text, cfg.get("business_name") or "")
         if g:            # WEB-ONLY-1c-GREET: a greeting, thanks or goodbye gets a warm reply from Chioma herself (no AI call, no credit)
             out.append(wc.append_message(db, s, "bot", greet.reply(g, cfg.get("business_name") or "", turn=int(s.get("turn_count") or 0))))
+            return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False}
+
+    if kind == "text" and cfg.get("ai_enabled"):
+        sc = guard.screen_input(db, s, visitor_text, cfg.get("business_name") or "")
+        if sc:          # SAFE: an override attempt, a question about how she works, or something outside the business: fixed reply, no AI call
+            out.append(wc.append_message(db, s, "bot", sc["reply"]))
+            if sc.get("blocked"):
+                _notify_human(db, s, cfg, "The assistant was switched off for this chat after repeated attempts to override it.")
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False}
 
     if item is None:

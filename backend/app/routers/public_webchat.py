@@ -254,13 +254,16 @@ def post_typing(key: str, response: Response, authorization: Optional[str] = Hea
 
 @router.post("/public/webchat/{key}/message")
 def post_message(key: str, body: MessageBody, response: Response, authorization: Optional[str] = Header(default=None),
-                 db=Depends(get_supabase)):
+                 db=Depends(get_supabase), request: Request = None):
     _nostore(response)
     found = _chat(db, key)
     s = _session(db, found, authorization)
     if wc.rate_limited(f"msg:{s['id']}", 30, 60):
         raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
-    cfg = found["config"]
+    iph = ip_hash(_client_ip(request)) if request is not None else None
+    if iph and wc.rate_limited(f"msgip:{iph}", 240, 3600):          # SAFE: limit by visitor address as well as by chat, so many new chats do not get round it
+        raise HTTPException(status_code=429, detail={"code": "RATE_LIMITED", "message": "Slow down a little."})
+    cfg = {**found["config"], "_ip": iph}
     _pause_guard(db, found["org_id"])
     if body.kind == "text" and (s.get("state") or {}).get("viewing"):
         # WEBCHAT-CATALOG-1b: the visitor is on a Storefront product. If no AI answer can be given, the stock "I did not catch

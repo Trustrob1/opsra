@@ -42,6 +42,8 @@ MAX_REPLY_CHARS = 600
 MAX_OUTPUT_TOKENS = 300
 SESSION_HOURLY_CAP = 20
 ORG_HOURLY_CAP = 300
+ORG_DAILY_CAP = 1500
+IP_DAILY_CAP = 60
 INJECTION_DECLINE = "I can only help with questions about our business. A team member will take it from here."
 
 DEFAULT_AI_MAX_TURNS = 12
@@ -70,6 +72,8 @@ def can_use_ai(db, s: dict, cfg: dict) -> tuple[bool, str]:
     """(allowed, reason). Cheap checks first; the Redis counters only run when everything else passes."""
     if not cfg.get("ai_enabled"):
         return False, "off"
+    if (s.get("state") or {}).get("ai_blocked"):          # SAFE: repeated attempts to override Chioma switch the AI off for this chat
+        return False, "blocked"
     if not s.get("lead_id") and not cfg.get("answer_first"):      # WEB-ONLY-1c: answer_first businesses answer before asking for details
         return False, "no_contact"
     state = s.get("state") or {}
@@ -89,6 +93,10 @@ def can_use_ai(db, s: dict, cfg: dict) -> tuple[bool, str]:
         return False, "session_rate"
     if wc.rate_limited(f"ai:o:{s['org_id']}", ORG_HOURLY_CAP, 3600):
         return False, "org_rate"
+    if wc.rate_limited(f"ai:od:{s['org_id']}", ORG_DAILY_CAP, 86400):       # SAFE: a daily ceiling on one business's AI use
+        return False, "org_daily"
+    if cfg.get("_ip") and wc.rate_limited(f"ai:ip:{cfg['_ip']}", IP_DAILY_CAP, 86400):      # SAFE: one visitor cannot open many chats to get round the per-chat cap
+        return False, "ip_daily"
     return True, "ok"
 
 
@@ -251,6 +259,12 @@ def answer(db, s: dict, cfg: dict, text: str) -> Optional[dict]:
             if out is not None:
                 from app.services import webchat_handover_service as _ho
                 out["reply"] = _ho.fix_availability(cfg, out["reply"])      # AWAY: never "chat now" when the team is not online
+                from app.services import webchat_guard_service as _guard
+                bad = _guard.check_reply(out["reply"], system.split(ai_service.CACHE_SPLIT, 1)[-1], s)      # SAFE: every figure, link and promise is checked against the facts she was given
+                if bad:
+                    logger.warning("webchat ai reply blocked org=%s reason=%s", s.get("org_id"), bad["reason"])
+                    wc.set_state(db, s, guarded=int((s.get("state") or {}).get("guarded") or 0) + 1)
+                    out = {"reply": bad["reply"], "handoff": True}
                 taken = False                # a real answer: the allowance stays used
                 wc.set_state(db, s, ai_turns=int((s.get("state") or {}).get("ai_turns") or 0) + 1)
                 return out
