@@ -138,16 +138,57 @@ def no_answer(cfg: dict) -> dict:
     return {"text": text, "choices": choices}
 
 
-def human_reply(cfg: dict) -> str:
-    """The confirmation after a visitor taps Talk to the team / Leave a message. Custom wording is kept."""
+def is_away(cfg: dict) -> bool:
+    """True when the business has set hours and the team is outside them."""
+    return team_state(cfg)[0] == TEAM_CLOSED
+
+
+def _until(reopens: str) -> str:
+    return f" until {reopens}" if reopens else ""
+
+
+def human_reply(cfg: dict, has_contact: bool = True) -> str:
+    """The reply after a visitor taps Talk to the team / Leave a message. Custom wording is kept.
+    Away: it invites the message (nothing has been written yet, so nothing is 'saved')."""
     stock = wc.DEFAULT_CONFIG["human_reply"]
     mine = cfg.get("human_reply") or stock
     if mine != stock:
         return mine
     state, reopens = team_state(cfg)
-    if state == TEAM_CLOSED and reopens:
-        return f"Thanks. Our team is away until {reopens}. Your message is saved, and they will reply here when they are back."
+    if state == TEAM_CLOSED:
+        if has_contact:
+            return (f"The team is away{_until(reopens)}. Type your message here and I will make sure they see it "
+                    f"{'when they are back' if reopens else 'as soon as they can'}.")
+        return f"The team is away{_until(reopens)}. I will make sure they see your request{' when they are back' if reopens else ''}."
     return stock
+
+
+def message_saved(cfg: dict) -> str:
+    """The confirmation once the visitor has actually written their message while the team is away."""
+    _, reopens = team_state(cfg)
+    return f"Got it. I have saved this for the team and they will reply here{(' ' + reopens) if reopens else ' as soon as they can'}."
+
+
+def team_prompt_line(cfg: dict) -> str:
+    """One line for the AI so she never promises a person who is not there."""
+    state, reopens = team_state(cfg)
+    if state == TEAM_OPEN:
+        return "The team is online now, so you may say a team member can chat with the visitor now."
+    if state == TEAM_CLOSED:
+        return (f"The team is away{_until(reopens)}. Never say the team can chat now or is available now. If the visitor wants a person, say you can leave "
+                "their message for the team and the team will reply here when they are back.")
+    return "You do not know the team's hours. Never say the team is available now; say you can pass the visitor's message to the team."
+
+
+_NOW = re.compile(r"\b(?:chat|speak|talk)(?:ing)?\s+(?:with|to)\s+you\s+(?:right\s+)?now\b|\b(?:available|online|free|around|here)\s+(?:right\s+)?now\b|\bright now\b[^.!?]{0,30}\bteam\b|\bteam\b[^.!?]{0,40}\bright now\b", re.I)
+
+
+def fix_availability(cfg: dict, reply: str) -> str:
+    """Safety net: when the team is not known to be online, a reply that says they can chat now is replaced."""
+    if team_state(cfg)[0] == TEAM_OPEN or not _NOW.search(reply or ""):
+        return reply
+    _, reopens = team_state(cfg)
+    return f"I can leave your message for the team and they will reply here when they are back." if reopens else "I can pass your message to the team and they will reply here as soon as they can."
 
 
 def email_owner(db, s: dict, cfg: dict, why: str) -> int:

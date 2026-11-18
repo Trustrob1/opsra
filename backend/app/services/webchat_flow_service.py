@@ -97,6 +97,8 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         if not item:
             return {"messages": [], "ask_contact": False, "ask_email": False, "form": None, "human": wc.is_human(s, cfg)}
         visitor_text = item["label"]
+        if item.get("action") == "human" and handover.is_away(cfg):
+            visitor_text = "Leave a message"          # AWAY: the button said Leave a message, so the bubble says it too
     else:
         visitor_text = wc._clean_text(text, wc.MAX_TEXT)
         if not visitor_text:
@@ -119,7 +121,15 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             pass                                  # typing their name or number: the in-chat script below handles it and the hand-over stays on
         elif wc.is_human(s, cfg) and not taps_option:
             _notify_human(db, s, cfg, visitor_text)
-            return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
+            # AWAY: nobody on the team is there to reply, so Chioma must not go silent. A person has not answered yet and the team is outside hours.
+            nobody_here = kind == "text" and not state.get("rep_last_at") and handover.is_away(cfg)
+            if nobody_here and state.get("awaiting_message"):
+                wc.set_state(db, s, awaiting_message=False)
+                out.append(wc.append_message(db, s, "bot", handover.message_saved(cfg)))
+                return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
+            if not nobody_here:
+                return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
+            # away and the message is already saved: fall through so Chioma answers as normal
         else:
             wc.set_state(db, s, human=False)      # team quiet for a while, or the visitor chose an option: the bot is back
 
@@ -157,8 +167,10 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     choices: list = []
     if item and item.get("action") == "human":
         wc.set_human(db, s)
-        out.append(wc.append_message(db, s, "bot", handover.human_reply(cfg)))
-        _notify_human(db, s, cfg, "Asked to talk to the team.")
+        out.append(wc.append_message(db, s, "bot", handover.human_reply(cfg, has_contact=_has_contact(s))))
+        if handover.is_away(cfg):
+            wc.set_state(db, s, awaiting_message=True)        # the visitor has not written anything yet: their next typed message is the one to save
+        _notify_human(db, s, cfg, "Asked to talk to the team." if not handover.is_away(cfg) else "Asked to leave a message (team away).")
         if not _has_contact(s) and contact.enabled(cfg):          # ask in the chat, not with the pop-up form
             out.append(contact.start(db, s, cfg, ""))
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "contact_step": "name"}

@@ -88,12 +88,12 @@ def test_human_reply_after_hours_says_when_back():
     cfg, _ = _cfg_for()
     with patch.object(ho, "team_state", return_value=("closed", "Monday at 8:00 am")):
         t = ho.human_reply(cfg)
-    assert "away until Monday at 8:00 am" in t and "saved" in t
+    assert "away until Monday at 8:00 am" in t and "Type your message" in t and "saved" not in t      # AWAY: invites the message, nothing is saved yet
 
 
 def test_human_reply_inside_hours_or_unknown_is_the_stock_line_and_custom_is_kept():
     cfg, _ = _cfg_for()
-    for st in (("open", ""), ("unknown", ""), ("closed", "")):
+    for st in (("open", ""), ("unknown", "")):
         with patch.object(ho, "team_state", return_value=st):
             assert ho.human_reply(cfg) == STOCK_HUMAN
     custom, _ = _cfg_for(human_reply="We will be in touch.")
