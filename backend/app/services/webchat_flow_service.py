@@ -57,6 +57,34 @@ def _match_item(cfg: dict, text: str) -> Optional[dict]:
     return best
 
 
+def _native_booking_link(db, s: dict) -> Optional[str]:
+    """A personal link to the business's real calendar (Opsra booking), or None when the business has not switched native booking on, has no
+    bookable service, or the visitor has no lead yet. The same link is reused for a day so repeated taps do not make a pile of links.
+    Never raises: on any problem the caller falls back to the booking request form."""
+    try:
+        from app.services import booking_service as bk
+        state = s.get("state") or {}
+        old = state.get("booking_link") or {}
+        if old.get("url") and old.get("at") and (datetime.now(timezone.utc) - datetime.fromisoformat(old["at"])) < timedelta(hours=24):
+            return old["url"]
+        if not s.get("lead_id") or not bk.get_settings(db, s["org_id"]).get("native_enabled"):
+            return None
+        services = bk.list_services(db, s["org_id"], active_only=True)
+        if not services:
+            return None
+        token = bk.create_link(db, s["org_id"], s["lead_id"], services[0]["id"], None)
+        url = f"{bk.public_base()}/b/{token}"
+        wc.set_state(db, s, booking_link={"url": url, "at": datetime.now(timezone.utc).isoformat()})
+        return url
+    except Exception as exc:
+        logger.warning("webchat native booking link failed org=%s: %s", s.get("org_id"), exc)
+        return None
+
+
+def _booking_link_text(url: str) -> str:
+    return f"Here is your personal booking link. Pick a time that suits you: {url}"
+
+
 def _answer_text(item: dict) -> str:
     text = item.get("answer") or ""
     link = item.get("link")
@@ -114,6 +142,13 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         if int(s.get("turn_count") or 0) == 1:
             wc.log_event(db, s["org_id"], s["id"], "started", s.get("source"))
 
+    if kind == "text" and not _replay:
+        hc = guard.human_check(db, s, visitor_text)       # SAFE: a burst of messages (or a burst of new chats) gets a one-line sum before Chioma carries on
+        if hc:
+            if hc.get("reply"):
+                out.append(wc.append_message(db, s, "bot", hc["reply"]))
+            return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": wc.is_human(s, cfg)}
+
     state = s.get("state") or {}
     if state.get("human"):
         taps_option = kind == "menu" and item is not None and item.get("action") != "human"
@@ -161,7 +196,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False}
 
     if kind == "text" and cfg.get("ai_enabled"):
-        sc = guard.screen_input(db, s, visitor_text, cfg.get("business_name") or "")
+        sc = guard.screen_input(db, s, visitor_text, cfg.get("business_name") or "", ip=cfg.get("_ip"))
         if sc:          # SAFE: an override attempt, a question about how she works, or something outside the business: fixed reply, no AI call
             out.append(wc.append_message(db, s, "bot", sc["reply"]))
             if sc.get("blocked"):
@@ -193,8 +228,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False, "contact_step": "name"}
             out.append(wc.append_message(db, s, "bot", "Happy to help you book. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
             return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": False}
-        out.append(wc.append_message(db, s, "bot", "Great. Fill in the details below and we will confirm."))
-        form = "booking"
+        link = _native_booking_link(db, s)
+        if link:          # BOOKING-LINK: a business with the full booking gets a real calendar, not a request form
+            out.append(wc.append_message(db, s, "bot", _booking_link_text(link)))
+        else:
+            out.append(wc.append_message(db, s, "bot", "Great. Fill in the details below and we will confirm."))
+            form = "booking"
     elif item:
         out.append(wc.append_message(db, s, "bot", _answer_text(item)))
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
@@ -273,8 +312,12 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
     pending = (s.get("state") or {}).get("pending")
     if pending == "booking":
         wc.set_state(db, s, pending=None)
-        out.append(wc.append_message(db, s, "bot", "Thank you. Now tell us what you need and we will confirm."))
-        form = "booking"
+        link = _native_booking_link(db, s)
+        if link:
+            out.append(wc.append_message(db, s, "bot", "Thank you. " + _booking_link_text(link)))
+        else:
+            out.append(wc.append_message(db, s, "bot", "Thank you. Now tell us what you need and we will confirm."))
+            form = "booking"
     else:
         out.append(wc.append_message(db, s, "bot", "Thank you. We have your details."))
         waiting = (s.get("state") or {}).get("pending_question")
