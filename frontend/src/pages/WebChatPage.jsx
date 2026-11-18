@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { choicesFromReply, visibleChoices } from '../utils/webchatChoices'
 import { headerState } from '../utils/webchatHeader'
 import { heldAskIds, withoutHeld, HOLD_MS } from '../utils/webchatReveal'
+import { tipSeen, markTipSeen, showTipFor } from '../utils/webchatTip'
 import { viewingChat, startContactChat, pingTyping, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
@@ -233,6 +234,8 @@ export default function WebChatPage({ chatKey }) {
   const [cards, setCards] = useState([])                   // AI-suggested product cards
   const [held, setHeld] = useState(() => new Set())       // ids of a details question held back for a moment (it reads as a second message)
   const holdTimer = useRef(null)
+  const [tipGone, setTipGone] = useState(() => tipSeen(typeof localStorage === 'undefined' ? null : localStorage))   // the one-time "tap a message" tip
+  const dismissTip = () => { setTipGone(true); markTipSeen(typeof localStorage === 'undefined' ? null : localStorage) }
   const [choices, setChoices] = useState(null)             // ONLY-1c-DOWN: the buttons the server sent with a "cannot answer" reply ({mid, items})
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
@@ -485,6 +488,7 @@ export default function WebChatPage({ chatKey }) {
     const h = msgActions(m).length * 48 + 8
     let top = box.bottom - shell.top + 8
     if (top + h > shell.height - 130) top = Math.max(64, box.top - shell.top - h - 8)
+    if (!tipGone) dismissTip()                       // they found the options: the tip has done its job
     const mine = m.role === 'visitor'
     setMsgMenu({ id: m.id, top, mine, side: mine ? Math.max(8, shell.right - box.right) : Math.max(8, box.left - shell.left) })
   }
@@ -805,19 +809,24 @@ export default function WebChatPage({ chatKey }) {
                   {m.role === 'visitor' ? 'You deleted this message' : 'This message was deleted'}
                 </div>
               ) : (
-              <div role={tappable ? 'button' : undefined} tabIndex={tappable ? 0 : undefined} aria-label={tappable ? 'Message options' : undefined}
-                onClick={tappable ? (e) => openMsgMenu(e, m) : undefined}
-                onKeyDown={tappable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMsgMenu(e, m) } } : undefined}
-                style={{ ...(m.attachment ? { ...S.bubble(m.role), padding: m.attachment.kind === 'image' ? 4 : '10px 12px' } : S.bubble(m.role)), cursor: tappable ? 'pointer' : 'default', ...(lifted ? { outline: `3px solid ${brand}55` } : {}) }}>
-                {m.reply && (
-                  <div style={{ background: m.role === 'visitor' ? 'rgba(255,255,255,0.18)' : '#F0F4F5', borderLeft: `4px solid ${m.role === 'visitor' ? '#fff' : brand}`, borderRadius: 8, padding: '6px 10px', margin: m.attachment?.kind === 'image' ? '6px 6px 6px' : '0 0 6px', textAlign: 'left' }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: m.role === 'visitor' ? '#fff' : brandDark }}>{whoLabel(m.reply.role)}</div>
-                    <div style={{ fontSize: 13, opacity: 0.9, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 220 }}>{m.reply.text}</div>
-                  </div>
-                )}
-                {m.attachment
-                  ? <AttachmentBubble a={m.attachment} mine={m.role === 'visitor'} brand={brand} />
-                  : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 0, maxWidth: '100%', flexDirection: m.role === 'visitor' ? 'row-reverse' : 'row' }}>
+              <div data-bubble="1" onClick={tappable ? (e) => openMsgMenu(e, m) : undefined}
+                  style={{ minWidth: 0, ...(m.attachment ? { ...S.bubble(m.role), padding: m.attachment.kind === 'image' ? 4 : '10px 12px' } : S.bubble(m.role)), cursor: tappable ? 'pointer' : 'default', ...(lifted ? { outline: `3px solid ${brand}55` } : {}) }}>
+                  {m.reply && (
+                    <div style={{ background: m.role === 'visitor' ? 'rgba(255,255,255,0.18)' : '#F0F4F5', borderLeft: `4px solid ${m.role === 'visitor' ? '#fff' : brand}`, borderRadius: 8, padding: '6px 10px', margin: m.attachment?.kind === 'image' ? '6px 6px 6px' : '0 0 6px', textAlign: 'left' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: m.role === 'visitor' ? '#fff' : brandDark }}>{whoLabel(m.reply.role)}</div>
+                      <div style={{ fontSize: 13, opacity: 0.9, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 220 }}>{m.reply.text}</div>
+                    </div>
+                  )}
+                  {m.attachment
+                    ? <AttachmentBubble a={m.attachment} mine={m.role === 'visitor'} brand={brand} />
+                    : <Linkified text={m.text} onTap={m.role === 'visitor' ? undefined : () => tapChat(chatKey, token.current)} />}
+                </div>
+                {tappable && <button type="button" aria-label="Message options" aria-haspopup="menu" disabled={!tappable}
+                    onClick={(e) => { const b = e.currentTarget.parentElement?.querySelector('[data-bubble]'); if (b) openMsgMenu({ currentTarget: b, target: b }, m) }}
+                    style={{ width: 32, height: 44, flex: 'none', border: 0, background: 'transparent', color: lifted ? brandDark : '#8A989F', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7" fill="currentColor" /><circle cx="12" cy="12" r="1.7" fill="currentColor" /><circle cx="19" cy="12" r="1.7" fill="currentColor" /></svg>
+                  </button>}
               </div>
               )}
               {(() => {
@@ -855,6 +864,16 @@ export default function WebChatPage({ chatKey }) {
                 <span>{m.edited && !m.deleted ? 'Edited · ' : ''}{fmtClock(m.at)}</span>
                 {m.role === 'visitor' && !m.deleted && <Ticks state={m.tmp ? 'sent' : (i < lastRepIdx ? 'read' : 'delivered')} color={brandDark} />}
               </div>
+              {showTipFor(m.id, { messages, seen: tipGone, menuOpen: !!msgMenu }) && (
+                <div role="note" style={{ position: 'relative', width: 250, marginTop: 6, background: INK, color: '#fff', borderRadius: 14, padding: '12px 14px', fontSize: 14, lineHeight: 1.4, textAlign: 'left' }}>
+                  <div aria-hidden="true" style={{ position: 'absolute', top: -6, right: 30, width: 12, height: 12, background: INK, transform: 'rotate(45deg)' }} />
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>You can change what you sent</div>
+                  <div style={{ opacity: 0.92 }}>Tap the dots or the message to reply, copy, edit or delete it.</div>
+                  <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={dismissTip} style={{ minHeight: 44, padding: '0 18px', border: 0, borderRadius: 999, background: '#fff', color: INK, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Got it</button>
+                  </div>
+                </div>
+              )}
             </div>
             )
           })}
