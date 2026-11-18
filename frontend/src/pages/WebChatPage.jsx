@@ -677,6 +677,7 @@ export default function WebChatPage({ chatKey }) {
     }),
     who: { fontSize: 12, fontWeight: 600, color: brandDark, marginLeft: 4 },
     chips: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+    chipPrimary: { minHeight: 44, padding: '0 18px', borderRadius: 999, border: `1.5px solid ${brand}`, background: brand, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
     chip: { minHeight: 44, padding: '0 16px', borderRadius: 999, border: `1.5px solid ${brand}`, background: SURF, color: brandDark, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
     dock: { flex: 'none', background: SURF, borderTop: `1px solid ${LINE}`, padding: `10px ${GUT} 14px`, display: 'flex', flexDirection: 'column', gap: 10 },
     action: { flex: 1, minHeight: 44, borderRadius: 12, border: `1px solid ${LINE}`, background: BG, color: INK, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 },
@@ -904,7 +905,7 @@ export default function WebChatPage({ chatKey }) {
 
           {cfg.menu.length > 0 && !visitorSpoke && !panel && !contactStep && (
             <div style={S.chips}>
-              {cfg.menu.map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
+              {cfg.menu.map((m) => <button key={m.id} type="button" style={m.primary ? S.chipPrimary : S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
             </div>
           )}
 
@@ -1144,8 +1145,8 @@ export default function WebChatPage({ chatKey }) {
                 <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
                   {cfg.menu.filter((m) => m.id !== humanItem?.id).map((m, n) => (
                     <button key={m.id} type="button" role="listitem" disabled={busy} onClick={() => sendMenu(m.id)}
-                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: SURF, color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                      <span>{m.label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
+                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: m.primary ? brand : SURF, color: m.primary ? '#fff' : INK, fontSize: 16, fontWeight: m.primary ? 700 : 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <span>{m.label}</span><span style={{ color: m.primary ? '#fff' : MUTED }}><Icon name="chev" size={18} /></span>
                     </button>
                   ))}
                 </div>

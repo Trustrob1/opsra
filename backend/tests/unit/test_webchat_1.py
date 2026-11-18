@@ -140,7 +140,7 @@ class TestConfig:
         from app.services import webchat_service as wc
         v = wc.public_view(wc.get_config(_db(), ORG))
         assert "redirect_text" not in v and "enabled" not in v
-        assert all(set(m) == {"id", "label"} for m in v["menu"])
+        assert all(set(m) <= {"id", "label", "primary"} for m in v["menu"])      # never the answer, keywords or action
 
     def test_save_config_merges(self):
         from app.services import webchat_service as wc

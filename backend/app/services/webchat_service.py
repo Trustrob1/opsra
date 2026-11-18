@@ -365,7 +365,7 @@ def public_view(cfg: dict) -> dict:
         "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL, "contact_in_chat": bool(cfg.get("contact_in_chat", True)),
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in CHAT_THEMES else "classic",
         "greeting": cfg["greeting"],
-        "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
+        "menu": [({"id": m["id"], "label": m["label"], "primary": True} if m.get("action") == "booking" else {"id": m["id"], "label": m["label"]}) for m in cfg["menu"]],      # a Book a call button is drawn solid
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
         "call": _call_status(cfg),
