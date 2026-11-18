@@ -226,6 +226,7 @@ def _turn_on_ai(db: Any, org_id: str, phone: Any = None) -> None:
         cfg["ai_enabled"] = True
         cfg["answer_first"] = True            # she answers first and asks for details after the first answer
         cfg["products_read"] = True           # ONLY-1c-PRODUCTS: she answers price and stock questions from the Products tab (no cards or cart)
+        cfg.setdefault("chat_theme", "blue")  # WEB-ONLY-1c-LOOK: new web chat only sign-ups start with the Opsra blue look (the owner can change it)
         number = _call_number(phone)
         if number:                            # ONLY-1c-DOWN: the phone icon and Call us work from day one, on the owner's own number (editable)
             cfg.setdefault("call_enabled", True)

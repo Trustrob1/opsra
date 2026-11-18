@@ -38,10 +38,13 @@ CONSENT_VERSION = "webchat-2026-10"
 MENU_MAX = 12
 TOUCH_EVERY_S = 300
 
+CHAT_THEMES = ("classic", "blue", "midnight", "ink")
+
 DEFAULT_CONFIG: dict = {
     "enabled": False,
     "business_name": "",
     "brand_color": "#028090",
+    "chat_theme": "classic",      # WEB-ONLY-1c-LOOK: classic | blue | midnight | ink (the chat page colours; see frontend utils/webchatTheme.js)
     "greeting": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question.",
     "menu": [],
     "booking_fields": [
@@ -165,6 +168,8 @@ def sanitise_config(raw: dict) -> dict:
     if "brand_color" in raw:
         c = str(raw["brand_color"] or "").strip()
         out["brand_color"] = c if re.match(r"^#[0-9a-fA-F]{6}$", c) else DEFAULT_CONFIG["brand_color"]
+    if "chat_theme" in raw:
+        out["chat_theme"] = raw["chat_theme"] if raw["chat_theme"] in CHAT_THEMES else DEFAULT_CONFIG["chat_theme"]
     if "wa_followups" in raw:
         out["wa_followups"] = bool(raw["wa_followups"])
     if "wa_followup_mode" in raw:
@@ -358,7 +363,8 @@ def public_view(cfg: dict) -> dict:
     """The only settings a visitor's browser receives."""
     return {
         "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL, "contact_in_chat": bool(cfg.get("contact_in_chat", True)),
-        "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "greeting": cfg["greeting"],
+        "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in CHAT_THEMES else "classic",
+        "greeting": cfg["greeting"],
         "menu": [{"id": m["id"], "label": m["label"]} for m in cfg["menu"]],
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),

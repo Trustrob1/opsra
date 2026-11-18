@@ -19,6 +19,7 @@ import { choicesFromReply, visibleChoices } from '../utils/webchatChoices'
 import { headerState } from '../utils/webchatHeader'
 import { heldAskIds, withoutHeld, HOLD_MS } from '../utils/webchatReveal'
 import { tipSeen, markTipSeen, showTipFor } from '../utils/webchatTip'
+import { themeTokens } from '../utils/webchatTheme'
 import { viewingChat, startContactChat, pingTyping, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
@@ -185,13 +186,13 @@ function ProductCard({ p, S, brand, busy, picked, setPicked, onAdd }) {
         <Thumb src={p.image_url} alt={p.title} brand={brand} />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.2px', overflowWrap: 'anywhere' }}>{p.title}</span>
-          {p.description && <span style={{ fontSize: 14, lineHeight: 1.4, color: MUTED }}>{p.description}</span>}
+          {p.description && <span style={{ fontSize: 14, lineHeight: 1.4, color: S.mutedText }}>{p.description}</span>}
           <span style={{ fontSize: 16, fontWeight: 700, color: S.brandDark, marginTop: 2 }}>{from ? 'From ' : ''}{naira(from ? Math.min(...p.variants.map((v) => v.price)) : shown)}</span>
         </div>
       </div>
       {p.variants.length > 1 && (
         <label style={{ display: 'block', marginTop: 10 }}>
-          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 4 }}>Option</span>
+          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: S.mutedText, marginBottom: 4 }}>Option</span>
           <select aria-label={`Option for ${p.title}`} style={{ ...S.field, height: 44, padding: '0 12px', fontSize: 15 }} value={vid || ''}
             onChange={(e) => setPicked({ ...picked, [p.id]: e.target.value })}>
             <option value="">Choose an option</option>
@@ -252,7 +253,10 @@ export default function WebChatPage({ chatKey }) {
   const listRef = useRef(null)
   const tokenKey = `wc_token_${chatKey}`
 
-  const brand = cfg?.brand_color || '#028090'
+  // The look (classic or one of the Opsra looks) is chosen by the business; every colour below comes from these tokens.
+  const T = themeTokens(cfg?.chat_theme, cfg?.brand_color)
+  const brand = T.brand
+  const INK = T.ink, MUTED = T.muted, LINE = T.line, FIELD_LINE = T.fieldLine, BG = T.bg, SURF = T.surface, FONT = T.font
 
   const merge = useCallback((incoming) => {
     if (!incoming?.length) return
@@ -651,49 +655,52 @@ export default function WebChatPage({ chatKey }) {
     })
   }
 
-  const brandDark = `color-mix(in srgb, ${brand} 78%, black)`
-  const tint = `color-mix(in srgb, ${brand} 10%, white)`
-  const tintLine = `color-mix(in srgb, ${brand} 28%, white)`
+  const brandDark = T.dark ? `color-mix(in srgb, ${brand} 55%, white)` : `color-mix(in srgb, ${brand} 78%, black)`
+  const tint = `color-mix(in srgb, ${brand} ${T.dark ? 24 : 10}%, ${SURF})`
+  const tintLine = `color-mix(in srgb, ${brand} ${T.dark ? 40 : 28}%, ${SURF})`
 
   const S = {
     brandDark,
+    mutedText: MUTED,
     page: { height: '100dvh', display: 'flex', background: BG, fontFamily: FONT, color: INK },
     shell: { width: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: BG, height: '100%' },
-    head: { flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: `12px ${GUT}`, background: '#fff', borderBottom: `1px solid ${LINE}` },
+    head: { flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: `12px ${GUT}`, background: SURF, borderBottom: `1px solid ${LINE}` },
     avatar: { width: 40, height: 40, flex: 'none', borderRadius: 999, background: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 },
     list: { flex: 1, minHeight: 0, overflowY: 'auto', padding: `16px ${GUT}`, display: 'flex', flexDirection: 'column', gap: 12 },
     row: (role) => ({ alignSelf: role === 'visitor' ? 'flex-end' : 'flex-start', maxWidth: '82%', display: 'flex', flexDirection: 'column', gap: 3, alignItems: role === 'visitor' ? 'flex-end' : 'flex-start' }),
     bubble: (role) => ({
       padding: '10px 14px', fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
       borderRadius: role === 'visitor' ? '18px 18px 6px 18px' : '18px 18px 18px 6px',
-      background: role === 'visitor' ? brand : role === 'rep' ? tint : '#fff',
-      color: role === 'visitor' ? '#fff' : INK,
-      border: role === 'visitor' ? 'none' : `1px solid ${role === 'rep' ? tintLine : LINE}`,
+      background: role === 'visitor' ? T.meBg : role === 'rep' ? tint : T.botBg,
+      color: role === 'visitor' ? T.meInk : INK,
+      border: role === 'visitor' ? 'none' : role === 'rep' ? `1px solid ${tintLine}` : (T.botBorder ? `1px solid ${LINE}` : 'none'),
     }),
     who: { fontSize: 12, fontWeight: 600, color: brandDark, marginLeft: 4 },
     chips: { display: 'flex', flexWrap: 'wrap', gap: 8 },
-    chip: { minHeight: 44, padding: '0 16px', borderRadius: 999, border: `1.5px solid ${brand}`, background: '#fff', color: brandDark, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-    dock: { flex: 'none', background: '#fff', borderTop: `1px solid ${LINE}`, padding: `10px ${GUT} 14px`, display: 'flex', flexDirection: 'column', gap: 10 },
+    chip: { minHeight: 44, padding: '0 16px', borderRadius: 999, border: `1.5px solid ${brand}`, background: SURF, color: brandDark, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+    dock: { flex: 'none', background: SURF, borderTop: `1px solid ${LINE}`, padding: `10px ${GUT} 14px`, display: 'flex', flexDirection: 'column', gap: 10 },
     action: { flex: 1, minHeight: 44, borderRadius: 12, border: `1px solid ${LINE}`, background: BG, color: INK, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 },
     input: { flex: 1, minWidth: 0, height: 48, padding: '0 18px', border: `1px solid ${LINE}`, borderRadius: 999, fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', background: BG, color: INK },
     send: { width: 48, height: 48, flex: 'none', border: 0, borderRadius: 999, background: brand, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     linkBtn: { alignSelf: 'center', minHeight: 44, margin: '-4px 0 -8px', border: 0, background: 'transparent', color: brandDark, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 },
-    card: { background: '#fff', border: `1px solid ${LINE}`, borderRadius: 18, padding: 14 },
+    card: { background: SURF, border: `1px solid ${LINE}`, borderRadius: 18, padding: 14 },
     lab: { display: 'block', fontSize: 14, fontWeight: 600, margin: '0 0 6px' },
-    field: { width: '100%', height: 48, padding: '0 14px', border: `1px solid ${FIELD_LINE}`, borderRadius: 12, fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff', color: INK },
+    field: { width: '100%', height: 48, padding: '0 14px', border: `1px solid ${FIELD_LINE}`, borderRadius: 12, fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', background: SURF, color: INK },
     primary: { width: '100%', minHeight: 50, border: 0, borderRadius: 12, background: brand, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
     ghost: { width: '100%', minHeight: 44, border: 0, borderRadius: 12, background: 'transparent', color: brandDark, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-    outline: { width: '100%', minHeight: 44, border: `1px solid ${LINE}`, borderRadius: 12, background: '#fff', color: INK, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-    err: { flex: 'none', color: '#B3261E', background: '#FBE9E7', fontSize: 14, padding: '8px 16px' },
+    outline: { width: '100%', minHeight: 44, border: `1px solid ${LINE}`, borderRadius: 12, background: SURF, color: INK, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+    err: { flex: 'none', color: T.error, background: T.errorBg, fontSize: 14, padding: '8px 16px' },
     center: { margin: 'auto', padding: 32, textAlign: 'center', color: MUTED, fontSize: 15, lineHeight: 1.5, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 },
     iconBtn: { width: 44, height: 44, flex: 'none', border: 0, borderRadius: 12, background: 'transparent', color: INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     page2: { position: 'absolute', inset: 0, background: BG, display: 'flex', flexDirection: 'column', zIndex: 3 },
-    scrim: { position: 'absolute', inset: 0, background: 'rgba(20,34,43,0.55)', zIndex: 4 },
-    sheet: { position: 'absolute', left: 0, right: 0, margin: '0 auto', maxWidth: 560, bottom: 0, zIndex: 5, maxHeight: '92%', overflowY: 'auto', background: '#fff', borderRadius: '24px 24px 0 0', padding: '10px 20px 24px', display: 'flex', flexDirection: 'column', gap: 14 },
+    scrim: { position: 'absolute', inset: 0, background: T.scrim, zIndex: 4 },
+    sheet: { position: 'absolute', left: 0, right: 0, margin: '0 auto', maxWidth: 560, bottom: 0, zIndex: 5, maxHeight: '92%', overflowY: 'auto', background: SURF, borderRadius: '24px 24px 0 0', padding: '10px 20px 24px', display: 'flex', flexDirection: 'column', gap: 14 },
   }
 
   const css = (
     <style>{`
+      ${T.id !== 'classic' ? "@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&display=swap');" : ''}
+      .wc-root { color-scheme: ${T.dark ? 'dark' : 'light'}; }
       .wc-root button:focus-visible, .wc-root input:focus-visible, .wc-root select:focus-visible { outline: 2px solid ${brand}; outline-offset: 2px; }
       .wc-root button:disabled { opacity: 0.55; cursor: default; }
       @keyframes wc-pulse { 0%,100% { opacity: .35; transform: scale(.92) } 50% { opacity: 1; transform: scale(1) } }
@@ -764,7 +771,7 @@ export default function WebChatPage({ chatKey }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.2px', lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{withTeam ? (teamWho || `${cfg.business_name} team`) : 'Chioma'}</span>
-              {dotOn && <span role="img" aria-label="Online" title="Online" style={{ width: 9, height: 9, flex: 'none', borderRadius: 999, background: '#22C55E' }} />}
+              {dotOn && <span role="img" aria-label="Online" title="Online" style={{ width: 9, height: 9, flex: 'none', borderRadius: 999, background: T.online }} />}
             </h1>
             <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {withTeam ? (teamWho ? `${cfg.business_name} team` : 'Replying to you here') : waitingLine}
@@ -790,7 +797,7 @@ export default function WebChatPage({ chatKey }) {
 
         <main style={S.list} ref={listRef} role="log" aria-live="polite" aria-label="Chat messages">
           {hiddenIds && (
-            <div role="note" style={{ margin: '4px 0 10px', padding: '12px 14px', borderRadius: 14, background: '#fff', border: `1px solid ${LINE}`, fontSize: 15, color: INK, textAlign: 'center' }}>
+            <div role="note" style={{ margin: '4px 0 10px', padding: '12px 14px', borderRadius: 14, background: SURF, border: `1px solid ${LINE}`, fontSize: 15, color: INK, textAlign: 'center' }}>
               <div style={{ fontWeight: 600 }}>Welcome back{meName ? `, ${meName}` : ''}.</div>
               <div style={{ color: MUTED, marginTop: 2 }}>How can I help today?</div>
               <button type="button" onClick={() => { setHiddenIds(null); initialCount.current = messages.length }}
@@ -805,7 +812,7 @@ export default function WebChatPage({ chatKey }) {
               {m.role === 'rep' && (i === 0 || shown[i - 1].role !== 'rep') && <span style={S.who}>{m.by ? `${m.by} · ${cfg.business_name} team` : `${cfg.business_name} team`}</span>}
               {m.role === 'bot' && (i === 0 || shown[i - 1].role !== 'bot') && <span style={{ ...S.who, display: 'flex', alignItems: 'center', gap: 6 }}>{chiomaFace(22)}Chioma</span>}
               {m.deleted ? (
-                <div style={{ border: `1px dashed ${LINE}`, background: '#fff', color: MUTED, padding: '10px 14px', borderRadius: 18, fontSize: 14, fontStyle: 'italic' }}>
+                <div style={{ border: `1px dashed ${LINE}`, background: SURF, color: MUTED, padding: '10px 14px', borderRadius: 18, fontSize: 14, fontStyle: 'italic' }}>
                   {m.role === 'visitor' ? 'You deleted this message' : 'This message was deleted'}
                 </div>
               ) : (
@@ -813,7 +820,7 @@ export default function WebChatPage({ chatKey }) {
               <div data-bubble="1" onClick={tappable ? (e) => openMsgMenu(e, m) : undefined}
                   style={{ minWidth: 0, ...(m.attachment ? { ...S.bubble(m.role), padding: m.attachment.kind === 'image' ? 4 : '10px 12px' } : S.bubble(m.role)), cursor: tappable ? 'pointer' : 'default', ...(lifted ? { outline: `3px solid ${brand}55` } : {}) }}>
                   {m.reply && (
-                    <div style={{ background: m.role === 'visitor' ? 'rgba(255,255,255,0.18)' : '#F0F4F5', borderLeft: `4px solid ${m.role === 'visitor' ? '#fff' : brand}`, borderRadius: 8, padding: '6px 10px', margin: m.attachment?.kind === 'image' ? '6px 6px 6px' : '0 0 6px', textAlign: 'left' }}>
+                    <div style={{ background: m.role === 'visitor' ? 'rgba(255,255,255,0.18)' : T.quote, borderLeft: `4px solid ${m.role === 'visitor' ? '#fff' : brand}`, borderRadius: 8, padding: '6px 10px', margin: m.attachment?.kind === 'image' ? '6px 6px 6px' : '0 0 6px', textAlign: 'left' }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: m.role === 'visitor' ? '#fff' : brandDark }}>{whoLabel(m.reply.role)}</div>
                       <div style={{ fontSize: 13, opacity: 0.9, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 220 }}>{m.reply.text}</div>
                     </div>
@@ -824,7 +831,7 @@ export default function WebChatPage({ chatKey }) {
                 </div>
                 {tappable && <button type="button" aria-label="Message options" aria-haspopup="menu" disabled={!tappable}
                     onClick={(e) => { const b = e.currentTarget.parentElement?.querySelector('[data-bubble]'); if (b) openMsgMenu({ currentTarget: b, target: b }, m) }}
-                    style={{ width: 32, height: 44, flex: 'none', border: 0, background: 'transparent', color: lifted ? brandDark : '#8A989F', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                    style={{ width: 32, height: 44, flex: 'none', border: 0, background: 'transparent', color: lifted ? brandDark : MUTED, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7" fill="currentColor" /><circle cx="12" cy="12" r="1.7" fill="currentColor" /><circle cx="19" cy="12" r="1.7" fill="currentColor" /></svg>
                   </button>}
               </div>
@@ -865,12 +872,12 @@ export default function WebChatPage({ chatKey }) {
                 {m.role === 'visitor' && !m.deleted && <Ticks state={m.tmp ? 'sent' : (i < lastRepIdx ? 'read' : 'delivered')} color={brandDark} />}
               </div>
               {showTipFor(m.id, { messages, seen: tipGone, menuOpen: !!msgMenu }) && (
-                <div role="note" style={{ position: 'relative', width: 250, marginTop: 6, background: INK, color: '#fff', borderRadius: 14, padding: '12px 14px', fontSize: 14, lineHeight: 1.4, textAlign: 'left' }}>
+                <div role="note" style={{ position: 'relative', width: 250, marginTop: 6, background: INK, color: SURF, borderRadius: 14, padding: '12px 14px', fontSize: 14, lineHeight: 1.4, textAlign: 'left' }}>
                   <div aria-hidden="true" style={{ position: 'absolute', top: -6, right: 30, width: 12, height: 12, background: INK, transform: 'rotate(45deg)' }} />
                   <div style={{ fontWeight: 700, marginBottom: 2 }}>You can change what you sent</div>
                   <div style={{ opacity: 0.92 }}>Tap the dots or the message to reply, copy, edit or delete it.</div>
                   <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-                    <button type="button" onClick={dismissTip} style={{ minHeight: 44, padding: '0 18px', border: 0, borderRadius: 999, background: '#fff', color: INK, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Got it</button>
+                    <button type="button" onClick={dismissTip} style={{ minHeight: 44, padding: '0 18px', border: 0, borderRadius: 999, background: SURF, color: INK, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Got it</button>
                   </div>
                 </div>
               )}
@@ -916,10 +923,10 @@ export default function WebChatPage({ chatKey }) {
           return (
             <>
               <div style={{ ...S.scrim, background: 'rgba(20,34,43,0.35)' }} onClick={closeMsgMenu} aria-hidden="true" />
-              <div role="menu" aria-label="Message options" style={{ position: 'absolute', zIndex: 6, top: msgMenu.top, ...(msgMenu.mine ? { right: msgMenu.side } : { left: msgMenu.side }), width: 220, background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 28px rgba(20,34,43,0.22)' }}>
+              <div role="menu" aria-label="Message options" style={{ position: 'absolute', zIndex: 6, top: msgMenu.top, ...(msgMenu.mine ? { right: msgMenu.side } : { left: msgMenu.side }), width: 220, background: SURF, borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 28px rgba(20,34,43,0.22)' }}>
                 {msgActions(m).map(([k, label], n) => (
                   <button key={k} type="button" role="menuitem" onClick={() => runMsgAction(k)}
-                    style={{ minHeight: 48, width: '100%', padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: '#fff', color: k === 'delete' ? '#B3261E' : INK, fontSize: 16, fontWeight: 500, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
+                    style={{ minHeight: 48, width: '100%', padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: SURF, color: k === 'delete' ? T.error : INK, fontSize: 16, fontWeight: 500, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
                     <Icon name={k === 'delete' ? 'trash' : k} size={20} />{label}
                   </button>
                 ))}
@@ -941,7 +948,7 @@ export default function WebChatPage({ chatKey }) {
           {rec ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button type="button" aria-label="Cancel and delete recording" onClick={cancelRec}
-                style={{ ...S.iconBtn, width: 48, height: 48, borderRadius: 999, background: '#FBE9E7', color: '#B3261E' }}><Icon name="trash" size={22} /></button>
+                style={{ ...S.iconBtn, width: 48, height: 48, borderRadius: 999, background: T.errorBg, color: T.error }}><Icon name="trash" size={22} /></button>
               <div role="status" style={{ flex: 1, height: 48, boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 999, background: BG, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 999, background: '#B3261E' }} />
                 <span style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmtTime(rec.seconds)}</span>
@@ -952,7 +959,7 @@ export default function WebChatPage({ chatKey }) {
           ) : (
             <>
             {(replyTo || editing) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F0F4F5', borderLeft: `4px solid ${brand}`, borderRadius: 10, padding: '8px 8px 8px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: T.quote, borderLeft: `4px solid ${brand}`, borderRadius: 10, padding: '8px 8px 8px 12px' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: brandDark }}>{editing ? 'Edit message' : `Replying to ${whoLabel(replyTo.role)}`}</div>
                   <div style={{ fontSize: 14, color: MUTED, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{editing ? (messages.find((x) => x.id === editing.id)?.text || '') : replyTo.text}</div>
@@ -1101,7 +1108,7 @@ export default function WebChatPage({ chatKey }) {
                       ['Keep chatting with us', 'Ask about prices, delivery or orders. We reply any time.', 'chat', '#E7ECFB', '#2F4AA8', () => setPanel(null)],
                       ['Ask us to call you back', `A team member calls you ${call.reopens || 'when we open'}.`, 'phone', '#FFF1D9', '#8A5A00', callBack]].map(([t, sub, icon, bg, fg, fn]) => (
                       <button key={t} type="button" disabled={busy} onClick={fn}
-                        style={{ minHeight: 64, width: '100%', boxSizing: 'border-box', padding: '10px 14px', border: `1px solid ${LINE}`, borderRadius: 16, background: '#fff', color: INK, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 14 }}>
+                        style={{ minHeight: 64, width: '100%', boxSizing: 'border-box', padding: '10px 14px', border: `1px solid ${LINE}`, borderRadius: 16, background: SURF, color: INK, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 14 }}>
                         <span aria-hidden="true" style={{ width: 44, height: 44, flex: 'none', borderRadius: 999, background: bg, color: fg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={icon} size={22} /></span>
                         <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <span style={{ fontSize: 16, fontWeight: 600 }}>{t}</span>
@@ -1137,7 +1144,7 @@ export default function WebChatPage({ chatKey }) {
                 <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
                   {cfg.menu.filter((m) => m.id !== humanItem?.id).map((m, n) => (
                     <button key={m.id} type="button" role="listitem" disabled={busy} onClick={() => sendMenu(m.id)}
-                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: '#fff', color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: SURF, color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                       <span>{m.label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
                     </button>
                   ))}
@@ -1149,7 +1156,7 @@ export default function WebChatPage({ chatKey }) {
                   <div style={{ fontSize: 13, fontWeight: 700, color: MUTED, margin: '0 4px 4px' }}>Need a person?</div>
                   {teamLine && <div style={{ fontSize: 13, color: MUTED, margin: '0 4px 8px' }}>{teamLine}</div>}
                   <button type="button" disabled={busy} onClick={() => sendMenu(humanItem.id)}
-                    style={{ width: '100%', minHeight: 52, padding: '0 16px', border: `1px solid ${LINE}`, borderRadius: 16, background: '#fff', color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    style={{ width: '100%', minHeight: 52, padding: '0 16px', border: `1px solid ${LINE}`, borderRadius: 16, background: SURF, color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span>{humanItem.label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
                   </button>
                 </div>

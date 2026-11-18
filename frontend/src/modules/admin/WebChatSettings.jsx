@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { getWebchatSettings, saveWebchatSettings, applyWebchatTemplate, getWebchatStats, testWebchatWhatsapp } from '../../services/webchat.service'
 import { ds } from '../../utils/ds'
+import { THEME_IDS, THEME_LABELS, THEME_HINTS, themeTokens, normaliseTheme } from '../../utils/webchatTheme'
 import WebChatInsights from './WebChatInsights'
 import WebChatInstall from './WebChatInstall'
 
@@ -15,6 +16,35 @@ const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadiu
 const label = { display: 'block', fontSize: 12, fontWeight: 600, color: ds.dark, margin: '10px 0 4px', fontFamily: ds.fontDm }
 const input = { width: '100%', boxSizing: 'border-box', minHeight: 40, padding: '8px 10px', border: `1px solid ${ds.border}`, borderRadius: ds.radius.sm, fontSize: 14, fontFamily: ds.fontDm }
 const btn = (primary) => ({ minHeight: 40, padding: '8px 16px', borderRadius: ds.radius.sm, border: primary ? 0 : `1px solid ${ds.teal}`, background: primary ? ds.teal : '#fff', color: primary ? '#fff' : ds.teal, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: ds.fontDm })
+
+// WEB-ONLY-1c-LOOK: the owner picks how the chat looks. Each card draws a tiny chat in that look.
+function LookPicker({ value, brand, onChange }) {
+  const current = normaliseTheme(value)
+  return (
+    <fieldset style={{ border: 0, margin: '10px 0 0', padding: 0 }}>
+      <legend style={{ ...label, margin: '0 0 6px', padding: 0 }}>Chat look</legend>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+        {THEME_IDS.map((id) => {
+          const t = themeTokens(id, brand)
+          const on = id === current
+          return (
+            <label key={id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: ds.radius.sm, cursor: 'pointer',
+              border: `2px solid ${on ? ds.teal : ds.border}`, background: '#fff' }}>
+              <input type="radio" name="wc-look" value={id} checked={on} onChange={() => onChange(id)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }} />
+              <span aria-hidden="true" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 10, background: t.bg, border: `1px solid ${t.line}` }}>
+                <span style={{ alignSelf: 'flex-start', height: 14, width: '70%', borderRadius: 8, background: t.botBg, border: t.botBorder ? `1px solid ${t.line}` : 'none' }} />
+                <span style={{ alignSelf: 'flex-end', height: 14, width: '55%', borderRadius: 8, background: t.meBg }} />
+                <span style={{ alignSelf: 'flex-start', height: 14, width: '40%', borderRadius: 999, border: `1.5px solid ${t.brand}`, background: t.surface }} />
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: ds.dark, fontFamily: ds.fontDm }}>{THEME_LABELS[id]}{on ? ' ✓' : ''}</span>
+              <span style={{ fontSize: 12, color: ds.gray, fontFamily: ds.fontDm, lineHeight: 1.35 }}>{THEME_HINTS[id]}</span>
+            </label>
+          )
+        })}
+      </div>
+    </fieldset>
+  )
+}
 
 const blankItem = () => ({ id: `item${Date.now().toString(36).slice(-5)}`, label: '', answer: '', keywords: [], link: undefined })
 
@@ -98,8 +128,12 @@ export default function WebChatSettings() {
         <input id="wc-bn" style={input} value={cfg.business_name} maxLength={120} onChange={(e) => set('business_name', e.target.value)} />
         <label style={label} htmlFor="wc-gr">Greeting</label>
         <textarea id="wc-gr" style={{ ...input, minHeight: 60 }} value={cfg.greeting} maxLength={400} onChange={(e) => set('greeting', e.target.value)} />
+        <LookPicker value={cfg.chat_theme} brand={cfg.brand_color} onChange={(v) => set('chat_theme', v)} />
         <label style={label} htmlFor="wc-col">Colour</label>
         <input id="wc-col" type="color" value={cfg.brand_color} onChange={(e) => set('brand_color', e.target.value)} style={{ width: 60, height: 36 }} />
+        {normaliseTheme(cfg.chat_theme) !== 'classic' && cfg.brand_color.toLowerCase() === '#028090' && (
+          <p style={{ fontSize: 12, color: ds.gray, margin: '6px 0 0', fontFamily: ds.fontDm }}>The Opsra looks use Opsra blue until you pick your own colour here.</p>
+        )}
       </div>
 
       <div style={card}>
