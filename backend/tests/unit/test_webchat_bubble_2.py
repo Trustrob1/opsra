@@ -94,7 +94,8 @@ def _page():
 
 def test_page_shows_label_and_scripted_states():
     js = _page()
-    assert "Virtual assistant for ${cfg.business_name}" in js            # rule 1: same label in every mode
+    hdr = open(os.path.join(_ROOT, "frontend", "src", "utils", "webchatHeader.js"), encoding="utf-8").read()
+    assert "Virtual assistant for ${businessName}" in hdr and "waitingLine" in js          # rule 1: same label in every mode (now built in webchatHeader.js)
     assert "How can I help?" in js and "Need a person?" in js
     assert "Talk to the team" in js and "Open menu" in js                # stock reply gets Menu + Talk to the team
     assert "/chioma/chioma-face-64.webp" in js

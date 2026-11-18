@@ -14,6 +14,7 @@ A business that wrote its own fallback / hand-over wording keeps it (it still ge
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from app.services import webchat_service as wc
@@ -49,6 +50,60 @@ def _call_on(cfg: dict) -> bool:
 
 def _has_human_item(cfg: dict) -> bool:
     return any(m.get("action") == "human" for m in (cfg.get("menu") or []))
+
+
+def team_choice(cfg: dict) -> Optional[dict]:
+    """The button that reaches a person: Talk to the team inside hours, Leave a message after hours. None when the menu has no team item."""
+    if not _has_human_item(cfg):
+        return None
+    state, _ = team_state(cfg)
+    return {"id": "human", "label": "Leave a message" if state == TEAM_CLOSED else "Talk to the team"}
+
+
+_MENTIONS_TEAM = re.compile(r"\b(?:talk to (?:the )?team|talk to us|leave a message|speak (?:to|with) (?:the )?team)\b", re.I)
+_MENTIONS_MENU = re.compile(r"\b(?:tap|press|click|open|use|select)\b[^.!?]{0,30}\bmenu\b", re.I)
+
+
+def reply_choices(cfg: dict, reply: str, offer_team: bool = False) -> list:
+    """Buttons to show under an AI reply. Chioma cannot see the screen, so any button she names (or the team, when she offers it) is put
+    on screen with the reply: she never points at something the visitor cannot find."""
+    out: list = []
+    if _MENTIONS_MENU.search(reply or "") and cfg.get("menu"):
+        out.append({"id": "menu", "label": "Open menu"})
+    if offer_team or _MENTIONS_TEAM.search(reply or ""):
+        t = team_choice(cfg)
+        if t:
+            out.append(t)
+    return out
+
+
+_WHERE_TEAM = re.compile(
+    r"\b(?:where|how)\b[^.?!]{0,30}\b(?:tap|click|press|find|see|get to|reach|open|use|locate)\b[^.?!]{0,40}\b(?:talk to (?:the |a )?team|talk to us|the team button|team button|the team)\b", re.I)
+
+
+_WHERE_IS_TEAM_BUTTON = re.compile(r"\b(?:where|how)\b[^.?!]{0,25}\b(?:is|are)\b[^.?!]{0,15}\b(?:talk to (?:the )?team|talk to us|(?:the )?team button|(?:the )?talk button)\b", re.I)
+
+
+def asks_where_team(text: str) -> bool:
+    """'Where do I tap Talk to the team?' is a question about the screen, not a request to hand over."""
+    return bool(_WHERE_TEAM.search(text or "") or _WHERE_IS_TEAM_BUTTON.search(text or ""))
+
+
+def where_team(cfg: dict) -> Optional[dict]:
+    """{'text', 'choices'}: point the visitor at the button by showing it. None when there is no team item in the menu."""
+    t = team_choice(cfg)
+    if not t:
+        return None
+    state, reopens = team_state(cfg)
+    if state == TEAM_CLOSED:
+        away = f" until {reopens}" if reopens else ""
+        text = f"The team is away{away}, but you can leave them a message with the button below and they will reply here."
+    else:
+        text = "Here it is: tap the button below to chat with the team. You will also always find it as the first option in the Menu."
+    choices = [t]
+    if cfg.get("menu"):
+        choices.insert(0, {"id": "menu", "label": "Open menu"})
+    return {"text": text, "choices": choices}
 
 
 def no_answer(cfg: dict) -> dict:

@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { choicesFromReply, visibleChoices } from '../utils/webchatChoices'
 import { headerState } from '../utils/webchatHeader'
+import { heldAskIds, withoutHeld, HOLD_MS } from '../utils/webchatReveal'
 import { viewingChat, startContactChat, pingTyping, startChat, resumeChat, pollChat, sendChat, uploadChatFile, sendContact, sendBooking, getChatProducts, changeChatCart, chatCheckout, saveChatByEmail, stopChatEmails, tapChat, getChatConfig, requestChatCallback, editChatMessage, deleteChatMessage, chatErrorMessage } from '../services/webchat.service'
 
 const POLL_MS = 4000
@@ -230,6 +231,8 @@ export default function WebChatPage({ chatKey }) {
   const [booking, setBooking] = useState({})
   const [saveForm, setSaveForm] = useState({ email: '', consent: false })
   const [cards, setCards] = useState([])                   // AI-suggested product cards
+  const [held, setHeld] = useState(() => new Set())       // ids of a details question held back for a moment (it reads as a second message)
+  const holdTimer = useRef(null)
   const [choices, setChoices] = useState(null)             // ONLY-1c-DOWN: the buttons the server sent with a "cannot answer" reply ({mid, items})
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
@@ -353,7 +356,15 @@ export default function WebChatPage({ chatKey }) {
     if (typeof res.human === 'boolean') setHuman(res.human)
     setCards(res.cards || [])
     setChoices(choicesFromReply(res))
-    setContactStep(res.contact_step || null)
+    const hold = heldAskIds(res)
+    if (hold.length) {
+      // the answer shows now; the details question follows after Chioma's typing dots
+      setHeld(new Set(hold)); setContactStep(null)
+      clearTimeout(holdTimer.current)
+      holdTimer.current = setTimeout(() => { setHeld(new Set()); setContactStep(res.contact_step || null) }, HOLD_MS)
+    } else {
+      setContactStep(res.contact_step || null)
+    }
     if (res.form === 'booking') setPanel('booking')
     else if (res.ask_contact) setPanel('contact')
     else if (res.ask_email) setPanel('email')
@@ -577,6 +588,7 @@ export default function WebChatPage({ chatKey }) {
   const stopRec = () => { const r = recRef.current; r.cancelled = false; if (r.mr?.state === 'recording') r.mr.stop() }
   const cancelRec = () => { const r = recRef.current; r.cancelled = true; if (r.mr?.state === 'recording') r.mr.stop() }
   useEffect(() => () => {
+    clearTimeout(holdTimer.current)
     const r = recRef.current
     r.cancelled = true
     clearInterval(r.timer)
@@ -717,9 +729,9 @@ export default function WebChatPage({ chatKey }) {
 
   const sheetOpen = ['contact', 'email', 'booking', 'save', 'menu', 'attach', 'call', 'delete'].includes(panel)
   const call = cfg.call || null
-  const shown = hiddenIds ? messages.filter((m) => !hiddenIds.has(m.id)) : messages
+  const shown = withoutHeld(hiddenIds ? messages.filter((m) => !hiddenIds.has(m.id)) : messages, held)
   const visitorSpoke = shown.some((m) => m.role === 'visitor')
-  const stepHint = contactStep === 'name' ? 'Your name' : contactStep === 'phone' ? 'Your WhatsApp number or email' : contactStep === 'consent' ? 'Reply Yes or No' : 'Type your message'
+  const stepHint = contactStep === 'name' ? 'Your first name' : contactStep === 'phone' ? 'Your WhatsApp number' : contactStep === 'consent' ? 'Reply Yes or No' : 'Type your message'
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
   // WEBCHAT-BUBBLE-2: Chioma is the face; once a team member takes over, the header shows them instead (and swaps back when the bot resumes).
   const chioma = cfg.chioma || {}
@@ -847,7 +859,7 @@ export default function WebChatPage({ chatKey }) {
             )
           })}
 
-          {(pending > 0 || repTyping) && (
+          {(pending > 0 || repTyping || held.size > 0) && (
             <div role="status" aria-label={withTeam || repTyping ? 'The team is typing' : 'Chioma is typing'} className="wc-anim" style={{ ...S.row('bot'), animation: 'wc-pop 0.18s ease-out' }}>
               <div style={{ ...S.bubble('bot'), display: 'flex', alignItems: 'center', gap: 5, padding: '14px 16px' }}>
                 {[0, 1, 2].map((d) => <span key={d} className="wc-dot" aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: MUTED, animation: `wc-bounce 1.2s ease-in-out ${d * 0.16}s infinite` }} />)}

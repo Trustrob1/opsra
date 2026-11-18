@@ -177,6 +177,10 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     elif item:
         out.append(wc.append_message(db, s, "bot", _answer_text(item)))
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
+    elif kind == "text" and handover.asks_where_team(visitor_text) and handover.where_team(cfg):
+        wt = handover.where_team(cfg)         # a question about the screen: show the button, no hand-over, no AI call
+        out.append(wc.append_message(db, s, "bot", wt["text"]))
+        choices = wt["choices"]
     elif kind == "text" and cfg.get("ai_enabled") and not _has_contact(s) and not cfg.get("answer_first"):
         # WEBCHAT-3: AI needs a contact first, so ask for one instead of the generic fallback
         wc.set_state(db, s, pending_question=visitor_text[:300])
@@ -193,6 +197,8 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                 wc.set_state(db, s, answers=int((s.get("state") or {}).get("answers") or 0) + 1)     # counts as the first answer: details are asked next
             if cfg.get("shop_enabled") and ai.get("products"):
                 cards = webchat_shop_service.cards_for(db, s["org_id"], ai["products"])
+            if not ai["handoff"]:
+                choices = handover.reply_choices(cfg, ai["reply"], bool(ai.get("offer_team")))     # buttons she names or offers are shown
             if ai["handoff"]:
                 wc.set_human(db, s)
                 _notify_human(db, s, cfg, "The assistant could not answer: " + visitor_text)
@@ -217,7 +223,10 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         if not state.get("contact_nudged"):
             wc.set_state(db, s, contact_nudged=True)
             out.append(contact.start(db, s, cfg, "", optional=True))
-            return {"messages": out, "ask_contact": False, "ask_email": False, "form": form, "human": False, "cards": cards, "contact_step": "name"}
+            nudge = {"messages": out, "ask_contact": False, "ask_email": False, "form": form, "human": False, "cards": cards, "contact_step": "name"}
+            if choices:
+                nudge["choices"] = choices          # a button Chioma named in her answer is still shown, under the details question
+            return nudge
         ask_contact = False
     ask_email = (answered and _has_contact(s) and s.get("phone_verified") and not s.get("contact_email")
                  and not state.get("email_asked"))
