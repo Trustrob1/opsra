@@ -89,3 +89,16 @@ def test_no_offer_without_topics():
     cfg["menu"] = [m for m in cfg["menu"] if m.get("action") == "human"]
     s = _session(db)
     assert _tap(db, s, cfg, _hid(cfg))["human"] is True
+
+
+def test_question_typed_while_asked_for_a_name_is_answered_when_team_is_away():
+    """Away + Leave a message + asked for a first name + visitor types a question: she answers it (not 'saved for the team'), then asks the name once more."""
+    db = _db(ai=False); s = _session(db, contact=False); cfg = _cfg(db)
+    with patch.object(ho, "is_away", return_value=True), patch.object(wc, "notify_managers"):
+        r = _tap(db, s, cfg, _hid(cfg))
+        assert r["contact_step"] == "name"
+        r = flow.handle_message(db, s, cfg, kind="text", menu_id=None, text="When do you open and what are your hours?", reply_to=None)
+    bot = [m["text"] for m in r["messages"] if m["role"] == "bot"]
+    assert any("We open 9 to 6" in x for x in bot)
+    assert not any(x.startswith("Got it") or "saved this for the team" in x.lower() for x in bot)
+    assert bot[-1].startswith("Now, so the team knows") and r["contact_step"] == "name"

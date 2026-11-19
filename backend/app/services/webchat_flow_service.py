@@ -181,7 +181,9 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             _notify_human(db, s, cfg, visitor_text)
             # AWAY: nobody on the team is there to reply, so Chioma must not go silent. A person has not answered yet and the team is outside hours.
             nobody_here = kind == "text" and not state.get("rep_last_at") and handover.is_away(cfg)
-            if nobody_here and state.get("awaiting_message"):
+            if nobody_here and state.get("awaiting_message") and _replay:
+                wc.set_state(db, s, awaiting_message=False)     # DEFLECT: a question typed while asked for a name is answered below, and the team already has it
+            elif nobody_here and state.get("awaiting_message"):
                 wc.set_state(db, s, awaiting_message=False)
                 out.append(wc.append_message(db, s, "bot", handover.message_saved(cfg)))
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True}
