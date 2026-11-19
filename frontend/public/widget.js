@@ -7,7 +7,8 @@
  * Buttons: data-chioma="open" opens the chat, data-chioma-ask="What do you charge?" opens it with that question,
  *   data-chioma-menu="<button id>" opens it with one of the chat buttons already tapped.
  * Ask bar (ASKBAR-1, when switched on in Settings): put <div data-chioma-slot></div> where it should sit (add data-chioma-theme="dark" on a dark section);
- *   without one it docks at the bottom of the screen. Visitors can minimize it into the round launcher.
+ *   without one it docks at the bottom of the screen. It wears the same look as the chat; data-chioma-theme="dark" or "light" forces one.
+ *   Visitors can minimize it into the round launcher.
  * The launcher and the panel live in a shadow root so the website's own styles cannot break them.
  */
 (function () {
@@ -71,6 +72,15 @@
 
   function build(d) {
     var brand = /^#[0-9a-fA-F]{6}$/.test(d.brand_color || '') ? d.brand_color : '#028090'
+    // The same look as the chat the business chose (webchatTheme.js): its theme colours, and the Opsra blue accent when the old default colour was never changed.
+    var THEMES = {
+      classic: { dark: false, surface: '#FFFFFF', ink: '#14222B', muted: '#566770', line: '#DCE4E8', field: '#F4F7F8', fieldLine: '#B9C6CC' },
+      blue: { dark: false, surface: '#FFFFFF', ink: '#1B1F28', muted: '#5B6270', line: '#E1E5EC', field: '#F4F6FB', fieldLine: '#B4BBC8' },
+      midnight: { dark: true, surface: '#1B2029', ink: '#F2F4F8', muted: '#A5ADBB', line: '#2A303B', field: '#14181F', fieldLine: '#3A4252' },
+      ink: { dark: false, surface: '#FFFFFF', ink: '#1B1F28', muted: '#5B6270', line: '#E9ECF2', field: '#F1F3F7', fieldLine: '#B4BBC8' }
+    }
+    var themeId = THEMES[d.chat_theme] ? d.chat_theme : 'classic'
+    if (themeId !== 'classic' && brand.toLowerCase() === '#028090') brand = '#2467E3'
     var name = String(d.business_name || 'us').slice(0, 80)
     var left = d.side === 'left'
     var online = !!d.online
@@ -149,7 +159,8 @@
       frame.title = 'Chat with Chioma. Virtual assistant for ' + name
       frame.setAttribute('allow', 'microphone; clipboard-write')
       frame.src = chatBase + '/c/' + key + '?embed=1&s=' + encodeURIComponent(source) + '&po=' + encodeURIComponent(location.origin) +
-        (pending && pending.menu_id ? '&m=' + encodeURIComponent(pending.menu_id) : '') + (pending && pending.text ? '&q=' + encodeURIComponent(pending.text) : '')
+        (pending && pending.menu_id ? '&m=' + encodeURIComponent(pending.menu_id) : '') + (pending && pending.text ? '&q=' + encodeURIComponent(pending.text) : '') +
+        (pending && pending.open === 'menu' ? '&o=menu' : '') + '&th=' + themeId
       pending = null
       panel.appendChild(frame)
     }
@@ -195,12 +206,12 @@
     // ASKBAR-1: open the chat with a question typed by the visitor, or with one of the chat buttons already tapped.
     function ask(o) {
       o = o || {}
-      var msg = { menu_id: /^[A-Za-z0-9_-]{1,40}$/.test(o.menu_id || '') ? o.menu_id : '', text: String(o.text || '').replace(/\s+/g, ' ').trim().slice(0, 500) }
+      var msg = { menu_id: /^[A-Za-z0-9_-]{1,40}$/.test(o.menu_id || '') ? o.menu_id : '', text: String(o.text || '').replace(/\s+/g, ' ').trim().slice(0, 500), open: o.open === 'menu' ? 'menu' : '' }
       var fresh = !frame
-      if (msg.menu_id || msg.text) pending = msg
+      if (msg.menu_id || msg.text || msg.open) pending = msg
       setOpen(true)
-      if (!fresh && (msg.menu_id || msg.text)) {
-        try { frame.contentWindow.postMessage({ source: 'opsra-host', type: 'ask', menu_id: msg.menu_id, text: msg.text }, chatBase) } catch (e) { /* ignore */ }
+      if (!fresh && (msg.menu_id || msg.text || msg.open)) {
+        try { frame.contentWindow.postMessage({ source: 'opsra-host', type: 'ask', menu_id: msg.menu_id, text: msg.text, open: msg.open }, chatBase) } catch (e) { /* ignore */ }
         pending = null
       }
     }
@@ -223,32 +234,32 @@
       if (!bar || lstore(minKey) === '1') return
       var slot = document.querySelector('[data-chioma-slot]')
       var docked = !slot
-      var dark = !!slot && slot.getAttribute('data-chioma-theme') === 'dark'
+      var over = slot ? slot.getAttribute('data-chioma-theme') : ''
+      var P = THEMES[over === 'dark' ? 'midnight' : over === 'light' ? 'classic' : themeId]
       var chips = (Array.isArray(bar.chips) ? bar.chips : []).slice(0, 3)
       var host2 = document.createElement('div')
       host2.setAttribute('data-opsra-chat-bar', '')
       host2.style.cssText = docked ? 'all:initial;position:fixed;z-index:2147482990;left:0;right:0;bottom:0;height:0' : 'all:initial;display:block;width:100%'
       var r = host2.attachShadow({ mode: 'open' })
-      var ink = dark ? '#fff' : '#14222b', sub = dark ? '#c9d1f0' : '#5b6b76', field = '#fff', fieldInk = '#14222b'
-      var card = dark ? 'background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22)' : 'background:#fff;border:1px solid #d9dee3'
-      var chipLine = dark ? 'rgba(255,255,255,.4)' : '#cfd6dc'
       r.innerHTML =
         '<style>' +
-        '*{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
-        '.bar{' + (docked ? 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));width:min(460px,calc(100vw - 24px));box-shadow:0 12px 36px rgba(20,34,43,.28);' : 'position:relative;width:100%;max-width:640px;') +
-        'border-radius:18px;padding:10px 12px 12px;color:' + ink + ';' + (docked ? 'background:#fff;color:#14222b;border:1px solid #d9dee3;' : card) + '}' +
+        '*{box-sizing:border-box;font-family:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
+        '.bar{' + (docked ? 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));width:min(460px,calc(100vw - 24px));box-shadow:0 12px 36px rgba(0,0,0,' + (P.dark ? '.5' : '.22') + ');' : 'position:relative;width:100%;max-width:640px;') +
+        'border-radius:18px;padding:10px 12px 12px;background:' + P.surface + ';color:' + P.ink + ';border:1px solid ' + P.line + '}' +
         '.top{display:flex;align-items:center;justify-content:space-between;min-height:24px}' +
-        '.who{font-size:13px;font-weight:500;color:' + (docked ? '#5b6b76' : sub) + '}' +
-        '.min{width:44px;height:44px;margin:-10px -8px -10px 0;border:0;background:transparent;color:inherit;font-size:24px;line-height:1;cursor:pointer;border-radius:50%}' +
-        '.min:focus-visible,.go:focus-visible,.chip:focus-visible,input:focus-visible{outline:3px solid ' + brand + ';outline-offset:2px}' +
-        'form{display:flex;align-items:center;gap:10px;background:' + field + ';border-radius:14px;padding:8px 8px 8px 10px;border:1px solid #e3e7ea}' +
-        '.av{position:relative;width:40px;height:40px;flex:none}.av img{width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;background:#e7edf2}' +
-        '.dot{position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:#22c55e;border:2px solid #fff;display:none}.on .dot{display:block}' +
-        'input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:16px;color:' + fieldInk + ';padding:8px 0}input::placeholder{color:#5b6b76}' +
+        '.who{font-size:13px;font-weight:500;color:' + P.muted + '}' +
+        '.min{width:44px;height:44px;margin:-10px -8px -10px 0;border:0;background:transparent;color:' + P.muted + ';font-size:24px;line-height:1;cursor:pointer;border-radius:50%}' +
+        '.min:focus-visible,.go:focus-visible,.chip:focus-visible{outline:3px solid ' + brand + ';outline-offset:2px}' +
+        'form{display:flex;align-items:center;gap:10px;background:' + P.field + ';border-radius:14px;padding:6px 6px 6px 8px;border:1px solid ' + P.fieldLine + '}' +
+        'form:focus-within{border-color:' + brand + ';box-shadow:0 0 0 3px ' + brand + '40}' +
+        '.av{position:relative;width:40px;height:40px;flex:none}.av img{width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;background:' + P.line + '}' +
+        '.dot{position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:#22c55e;border:2px solid ' + P.surface + ';display:none}.on .dot{display:block}' +
+        'input{flex:1;min-width:0;border:0;outline:0;box-shadow:none;background:transparent;font:inherit;font-size:16px;color:' + P.ink + ';padding:8px 0;text-overflow:ellipsis}input::placeholder{color:' + P.muted + ';opacity:1}' +
         '.go{width:40px;height:40px;flex:none;border:0;border-radius:50%;background:' + brand + ';color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}' +
         '.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}' +
-        '.chip{font-size:13px;font-weight:500;color:' + (docked ? '#14222b' : ink) + ';background:transparent;border:1px solid ' + (docked ? '#cfd6dc' : chipLine) + ';border-radius:999px;padding:9px 13px;cursor:pointer;min-height:36px}' +
+        '.chip{font:inherit;font-size:13px;font-weight:500;color:' + P.ink + ';background:transparent;border:1px solid ' + P.fieldLine + ';border-radius:999px;padding:9px 13px;cursor:pointer;min-height:36px}' +
         '.chip.p{background:' + brand + ';border-color:' + brand + ';color:#fff;font-weight:600}' +
+        '.chip.m{color:' + P.muted + '}' +
         '@media (prefers-reduced-motion:no-preference){.bar{animation:up .3s ease}@keyframes up{from{opacity:0;margin-top:8px}to{opacity:1;margin-top:0}}}' +
         '</style>' +
         '<div class="bar' + (online ? ' on' : '') + '" role="region" aria-label="Ask Chioma">' +
@@ -257,7 +268,8 @@
         '<form><span class="av"><img alt="" width="40" height="40"><span class="dot"></span></span>' +
         '<input type="text" maxlength="500" aria-label="Ask Chioma a question" placeholder="' + esc(bar.text || 'Ask me anything…') + '" autocomplete="off">' +
         '<button class="go" type="submit" aria-label="Ask"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>' +
-        (chips.length ? '<div class="chips">' + chips.map(function (c) { return '<button class="chip' + (c.primary ? ' p' : '') + '" type="button" data-id="' + esc(c.id) + '">' + esc(c.label) + '</button>' }).join('') + '</div>' : '') +
+        (chips.length || bar.more ? '<div class="chips">' + chips.map(function (c) { return '<button class="chip' + (c.primary ? ' p' : '') + '" type="button" data-id="' + esc(c.id) + '">' + esc(c.label) + '</button>' }).join('') +
+          (bar.more ? '<button class="chip m" type="button" data-more="1" aria-label="More options">More \u203a</button>' : '') + '</div>' : '') +
         '</div>'
       var im = r.querySelector('.av img')
       im.src = img + '64.webp'
@@ -265,7 +277,7 @@
       im.addEventListener('error', function () { im.style.visibility = 'hidden' })
       var inp = r.querySelector('input')
       r.querySelector('form').addEventListener('submit', function (e) { e.preventDefault(); ask({ text: inp.value }); inp.value = '' })
-      Array.prototype.forEach.call(r.querySelectorAll('.chip'), function (b) { b.addEventListener('click', function () { ask({ menu_id: b.getAttribute('data-id') }) }) })
+      Array.prototype.forEach.call(r.querySelectorAll('.chip'), function (b) { b.addEventListener('click', function () { if (b.getAttribute('data-more')) ask({ open: 'menu' }); else ask({ menu_id: b.getAttribute('data-id') }) }) })
       var io = null
       r.querySelector('.min').addEventListener('click', function () {
         lstore(minKey, '1')

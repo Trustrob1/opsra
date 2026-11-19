@@ -386,7 +386,8 @@ def ask_bar_view(cfg: dict) -> Optional[dict]:
     items = [m for m in (cfg.get("menu") or []) if m.get("id") and m.get("label")]
     items.sort(key=lambda m: 0 if m.get("action") == "booking" else 1)          # stable: the rest keep their order
     return {"text": _clean_text(cfg.get("ask_bar_text"), 60) or DEFAULT_CONFIG["ask_bar_text"],
-            "chips": [{"id": m["id"], "label": str(m["label"])[:60], "primary": m.get("action") == "booking"} for m in items[:3]]}
+            "chips": [{"id": m["id"], "label": str(m["label"])[:60], "primary": m.get("action") == "booking"} for m in items[:3]],
+            "more": len(items) > 3}                                              # a More button opens the chat's full button list
 
 
 def _call_status(cfg: dict) -> Optional[dict]:

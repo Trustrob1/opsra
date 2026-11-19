@@ -476,11 +476,12 @@ export default function WebChatPage({ chatKey }) {
   // ASKBAR-1: the website's ask bar opens the chat with a typed question (?q=) or a tapped chat button (?m=), or says so later (postMessage).
   // The button id must be one of this business's own buttons; a typed question is sent like any message the visitor types.
   const askRef = useRef(null)
-  askRef.current = { cfg, sendMenu, sendOptimistic }
+  askRef.current = { cfg, sendMenu, sendOptimistic, openMenu }
   const askedFirst = useRef(false)
-  const runAsk = useCallback((menuId, q) => {
+  const runAsk = useCallback((menuId, q, open) => {
     const c = askRef.current
     if (!c?.cfg) return
+    if (open === 'menu') { c.openMenu(); return }
     const text = String(q || '').replace(/\s+/g, ' ').trim().slice(0, 500)
     if (menuId && c.cfg.menu.some((m) => m.id === menuId)) c.sendMenu(menuId)
     else if (text) c.sendOptimistic(text, { kind: 'text', text })
@@ -490,14 +491,14 @@ export default function WebChatPage({ chatKey }) {
     askedFirst.current = true
     try {
       const p = new URLSearchParams(window.location.search)
-      const m = p.get('m'), q = p.get('q')
-      if (m || q) runAsk(m, q)
+      const m = p.get('m'), q = p.get('q'), o = p.get('o')
+      if (m || q || o) runAsk(m, q, o)
     } catch { /* the chat still works */ }
   }, [state, runAsk])
   useEffect(() => {
     const onMsg = (e) => {
       if (!EMBED || e.source !== window.parent || !e.data || e.data.source !== 'opsra-host' || e.data.type !== 'ask') return
-      runAsk(e.data.menu_id, e.data.text)
+      runAsk(e.data.menu_id, e.data.text, e.data.open)
     }
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)
@@ -743,12 +744,17 @@ export default function WebChatPage({ chatKey }) {
     `}</style>
   )
 
-  if (state === 'loading') return (
-    <div style={S.page} className="wc-root">{css}<div style={S.shell}><div style={S.center}>
-      <div className="wc-pulse" aria-hidden="true" style={{ ...S.avatar, width: 64, height: 64, fontSize: 26, animation: 'wc-pulse 1.4s ease-in-out infinite' }}>·</div>
-      <div role="status" style={{ fontSize: 16, fontWeight: 600, color: INK }}>Opening chat</div>
-    </div></div></div>
-  )
+  if (state === 'loading') {
+    // No words and nothing at first: the chat opens in the colours the business chose (the website passes ?th=), and a small dot only shows if it takes a moment.
+    let th = null
+    try { th = new URLSearchParams(window.location.search).get('th') } catch { /* ignore */ }
+    const L = themeTokens(th, undefined)
+    return (
+      <div style={{ ...S.page, background: L.bg }} className="wc-root">{css}<div style={{ ...S.shell, background: L.bg }}><div style={S.center}>
+        <div className="wc-pulse" role="status" aria-label="Opening chat" style={{ width: 28, height: 28, borderRadius: '50%', background: L.brand, opacity: 0, animation: 'wc-pulse 1.4s ease-in-out 0.8s infinite' }} />
+      </div></div></div>
+    )
+  }
   if (state === 'closed') return (
     <div style={S.page} className="wc-root">{css}<div style={S.shell}><div style={S.center}>
       <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: INK }}>This chat is not available right now</h1>

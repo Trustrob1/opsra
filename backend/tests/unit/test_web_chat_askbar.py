@@ -37,6 +37,16 @@ def test_view_chips_book_first_and_at_most_three():
     assert set(v["chips"][0]) == {"id", "label", "primary"}            # no answers leave the server
 
 
+def test_more_flag_only_when_there_are_more_buttons():
+    assert wc.ask_bar_view(_cfg(ask_bar=True))["more"] is True                      # four buttons, three shown
+    assert wc.ask_bar_view(_cfg(ask_bar=True, menu=MENU[:3]))["more"] is False
+
+
+def test_widget_info_carries_the_chat_theme():
+    assert _widget(_cfg(chat_theme="midnight"))["chat_theme"] == "midnight"
+    assert _widget(_cfg(chat_theme="nonsense"))["chat_theme"] == "classic"
+
+
 def test_view_with_no_menu_still_works():
     assert wc.ask_bar_view(_cfg(ask_bar=True, menu=[]))["chips"] == []
 
@@ -62,5 +72,5 @@ JS = (pathlib.Path(__file__).resolve().parents[3] / "frontend" / "public" / "wid
 
 
 def test_script_has_the_hooks():
-    for needle in ("data-chioma-slot", "data-chioma-ask", "d.bar", "opsra_chioma_bar_min_", "IntersectionObserver", "OpsraChat = {", "ask:"):
+    for needle in ("data-chioma-slot", "data-chioma-ask", "d.bar", "opsra_chioma_bar_min_", "IntersectionObserver", "OpsraChat = {", "ask:", "o=menu", "data-more", "midnight", "form:focus-within"):
         assert needle in JS, needle
