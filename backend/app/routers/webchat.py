@@ -60,7 +60,12 @@ class TestWhatsapp(BaseModel):
 
 
 class TemplateBody(BaseModel):
-    template: Literal["salon"]
+    template: str = Field(default="salon", max_length=30)
+
+
+class TeachBody(BaseModel):
+    menu_id: str = Field(..., min_length=1, max_length=30)
+    keyword: str = Field(..., min_length=1, max_length=30)
 
 
 def _require_manager(org: dict) -> None:
@@ -240,7 +245,60 @@ def put_settings(changes: dict, db=Depends(get_supabase), org=Depends(get_curren
 @router.post("/webchat/settings/template")
 def apply_template(body: TemplateBody, db=Depends(get_supabase), org=Depends(get_current_org)):
     _require_manager(org)
-    return ok(wc.save_config(db, org["org_id"], SALON_TEMPLATE))
+    from app.services import webchat_smart_service as smart
+    chosen = smart.STARTERS.get(body.template)
+    if not chosen:
+        raise HTTPException(status_code=422, detail="Pick one of the starter menus.")
+    return ok(wc.save_config(db, org["org_id"], {"menu": chosen["menu"]}))
+
+
+@router.get("/webchat/starters")
+def starters(org=Depends(get_current_org)):
+    _require_manager(org)
+    from app.services import webchat_smart_service as smart
+    return ok(smart.starter_list())
+
+
+@router.get("/webchat/checklist")
+def checklist(db=Depends(get_supabase), org=Depends(get_current_org)):
+    """SMART-1: what is still missing for Chioma to be useful (menu, keywords, hours, number, address, booking, unanswered)."""
+    _require_manager(org)
+    from app.services import knowledge_gap_service as kg
+    from app.services import webchat_smart_service as smart
+    try:
+        open_n = len(kg.list_open(db, org["org_id"]))
+    except Exception:
+        open_n = 0
+    return ok(smart.checklist(wc.get_config(db, org["org_id"]), open_n))
+
+
+@router.get("/webchat/unanswered")
+def unanswered(db=Depends(get_supabase), org=Depends(get_current_org)):
+    """SMART-1: typed questions Chioma could not answer, with a suggested keyword for each."""
+    _require_manager(org)
+    from app.services import knowledge_gap_service as kg
+    from app.services import webchat_smart_service as smart
+    rows = kg.list_open(db, org["org_id"])
+    for r in rows:
+        r["suggest"] = smart.suggest_keyword(r.get("question") or "")
+    return ok(rows[:50])
+
+
+@router.post("/webchat/unanswered/{gap_id}/teach")
+def teach_unanswered(gap_id: str, body: TeachBody, db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    from app.services import webchat_smart_service as smart
+    try:
+        return ok(smart.teach(db, org["org_id"], gap_id, body.menu_id, body.keyword))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/webchat/unanswered/{gap_id}/dismiss")
+def dismiss_unanswered(gap_id: str, db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    from app.services import knowledge_gap_service as kg
+    return ok(kg.dismiss(db, org["org_id"], gap_id))
 
 
 @router.post("/webchat/settings/test-whatsapp")

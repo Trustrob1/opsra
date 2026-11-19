@@ -126,8 +126,30 @@ export async function sendWebchatEmbedEmail(to_email, note) {
   return r.data.data
 }
 
-export async function applyWebchatTemplate(template) {
+export async function applyWebchatTemplate(template = 'salon') {
   const r = await api.post('/api/v1/webchat/settings/template', { template })
+  return r.data.data
+}
+
+// SMART-1: setup checklist, starter menus, and the questions Chioma could not answer
+export async function getWebchatStarters() {
+  const r = await api.get('/api/v1/webchat/starters')
+  return r.data.data
+}
+export async function getWebchatChecklist() {
+  const r = await api.get('/api/v1/webchat/checklist')
+  return r.data.data
+}
+export async function getWebchatUnanswered() {
+  const r = await api.get('/api/v1/webchat/unanswered')
+  return r.data.data
+}
+export async function teachWebchat(gapId, menuId, keyword) {
+  const r = await api.post(`/api/v1/webchat/unanswered/${gapId}/teach`, { menu_id: menuId, keyword })
+  return r.data.data
+}
+export async function dismissWebchatUnanswered(gapId) {
+  const r = await api.post(`/api/v1/webchat/unanswered/${gapId}/dismiss`)
   return r.data.data
 }
 

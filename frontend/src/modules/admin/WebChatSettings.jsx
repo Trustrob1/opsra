@@ -6,11 +6,12 @@
  * Backend: routers/webchat.py (owner / ops manager only).
  */
 import { useEffect, useState } from 'react'
-import { getWebchatSettings, saveWebchatSettings, applyWebchatTemplate, getWebchatStats, testWebchatWhatsapp } from '../../services/webchat.service'
+import { getWebchatSettings, saveWebchatSettings, getWebchatStats, testWebchatWhatsapp } from '../../services/webchat.service'
 import { ds } from '../../utils/ds'
 import { THEME_IDS, THEME_LABELS, THEME_HINTS, themeTokens, normaliseTheme } from '../../utils/webchatTheme'
 import WebChatInsights from './WebChatInsights'
 import WebChatInstall from './WebChatInstall'
+import WebChatHelper from './WebChatHelper'
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
 const label = { display: 'block', fontSize: 12, fontWeight: 600, color: ds.dark, margin: '10px 0 4px', fontFamily: ds.fontDm }
@@ -46,6 +47,16 @@ function LookPicker({ value, brand, onChange }) {
   )
 }
 
+const guideToText = (g) => (g?.steps || []).map((s) => (s.options?.length ? `${s.q}: ${s.options.join(' | ')}` : s.q)).join('\n')
+const parseGuide = (text, done) => ({
+  steps: text.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 4).map((l) => {
+    const [q, ...rest] = l.split(':')
+    const opts = rest.join(':').split('|').map((o) => o.trim()).filter(Boolean).slice(0, 5)
+    return { q: q.trim(), options: opts }
+  }),
+  done: done || '',
+})
+
 const blankItem = () => ({ id: `item${Date.now().toString(36).slice(-5)}`, label: '', answer: '', keywords: [], link: undefined })
 
 export default function WebChatSettings() {
@@ -75,13 +86,6 @@ export default function WebChatSettings() {
     setBusy(true); setMsg('')
     try { const c = await saveWebchatSettings(cfg); setCfg(c); setMsg('Saved.') }
     catch (e) { setMsg(e?.response?.data?.detail || 'Could not save. Please try again.') }
-    finally { setBusy(false) }
-  }
-  const template = async () => {
-    if (cfg.menu.length && !window.confirm('Replace your current menu with the salon starter menu?')) return
-    setBusy(true)
-    try { const c = await applyWebchatTemplate('salon'); setCfg(c); setMsg('Starter menu added. Replace the [bracketed] answers with your own before you switch the chat on.') }
-    catch { setMsg('Could not add the starter menu.') }
     finally { setBusy(false) }
   }
   const sendTest = async () => {
@@ -123,9 +127,13 @@ export default function WebChatSettings() {
 
       <WebChatInsights baseLink={data.link} />
 
+      <WebChatHelper cfg={cfg} setCfg={setCfg} setMsg={setMsg} />
+
       <div style={card}>
         <label style={label} htmlFor="wc-bn">Business name shown at the top</label>
         <input id="wc-bn" style={input} value={cfg.business_name} maxLength={120} onChange={(e) => set('business_name', e.target.value)} />
+        <label style={label} htmlFor="wc-ad">Address (so Chioma can answer "where are you")</label>
+        <input id="wc-ad" style={input} value={cfg.address || ''} maxLength={200} onChange={(e) => set('address', e.target.value)} />
         <label style={label} htmlFor="wc-gr">Greeting</label>
         <textarea id="wc-gr" style={{ ...input, minHeight: 60 }} value={cfg.greeting} maxLength={400} onChange={(e) => set('greeting', e.target.value)} />
         <LookPicker value={cfg.chat_theme} brand={cfg.brand_color} onChange={(v) => set('chat_theme', v)} />
@@ -139,7 +147,6 @@ export default function WebChatSettings() {
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <strong style={{ fontSize: 14, color: ds.dark }}>Menu (what visitors can tap)</strong>
-          <button type="button" style={btn(false)} onClick={template} disabled={busy}>Use salon starter menu</button>
         </div>
         {cfg.menu.map((m, i) => (
           <div key={m.id} style={{ borderTop: `1px solid ${ds.border}`, marginTop: 12, paddingTop: 8 }}>
@@ -147,11 +154,22 @@ export default function WebChatSettings() {
             <input id={`m-l-${i}`} style={input} value={m.label} maxLength={60} onChange={(e) => setItem(i, { label: e.target.value })} />
             <label style={label} htmlFor={`m-t-${i}`}>What it does</label>
             <select id={`m-t-${i}`} style={input} value={m.action || 'answer'}
-              onChange={(e) => setItem(i, e.target.value === 'answer' ? { action: undefined } : { action: e.target.value })}>
+              onChange={(e) => setItem(i, e.target.value === 'answer' ? { action: undefined } : e.target.value === 'guide' && !m.guide ? { action: 'guide', guide: { steps: [{ q: 'What do you need?', options: ['Option 1', 'Option 2'] }], done: '' } } : { action: e.target.value })}>
               <option value="answer">Shows an answer</option>
               <option value="booking">Opens the booking form</option>
+              <option value="guide">Asks a few questions, then tells your team</option>
               <option value="human">Hands over to your team</option>
             </select>
+            {m.action === 'guide' && (
+              <>
+                <label style={label} htmlFor={`m-g-${i}`}>Questions (one per line; put tap options after a colon, separated by |)</label>
+                <textarea id={`m-g-${i}`} style={{ ...input, minHeight: 90 }} defaultValue={guideToText(m.guide)}
+                  placeholder={'What do you need?: Website | Training | Not sure\nWhen do you need it?: This week | This month'}
+                  onChange={(e) => setItem(i, { guide: parseGuide(e.target.value, m.guide?.done) })} />
+                <label style={label} htmlFor={`m-gd-${i}`}>Message after the last question (optional)</label>
+                <input id={`m-gd-${i}`} style={input} value={m.guide?.done || ''} maxLength={300} onChange={(e) => setItem(i, { guide: { ...(m.guide || { steps: [] }), done: e.target.value } })} />
+              </>
+            )}
             {!m.action && (
               <>
                 <label style={label} htmlFor={`m-a-${i}`}>Answer</label>

@@ -28,6 +28,8 @@ from app.services import webchat_contact_service as contact
 from app.services import webchat_greeting_service as greet
 from app.services import webchat_handover_service as handover
 from app.services import webchat_guard_service as guard
+from app.services import webchat_smart_service as smart
+from app.services import knowledge_gap_service as kgap
 
 
 logger = logging.getLogger(__name__)
@@ -51,22 +53,26 @@ def _match_item(cfg: dict, text: str, strict: bool = False) -> Optional[dict]:
     whole button label as a phrase, and a broad question ('tell me about your services') is never taken for one button."""
     t = f" {re.sub(r'[^a-z0-9 ]', ' ', (text or '').lower())} "
     long_msg = strict and len(t.split()) > _SHORT_WORDS
-    if long_msg and _BROAD.search(text or ""):
-        return None
-    best, best_hits = None, 0
-    for it in cfg["menu"]:
-        hits = 0
-        for kw in it.get("keywords") or []:
-            if kw and f" {kw} " in t or (kw and len(kw) >= 4 and kw in t):
-                hits += 1
-        label = re.sub(r"[^a-z0-9 ]", " ", it["label"].lower()).strip()
-        if label and label in t:
-            hits += 2
-        if hits > best_hits:
-            best, best_hits = it, hits
-    if long_msg and best_hits < 2:
+    broad = bool(_BROAD.search(text or ""))          # 'your services', 'tell me more': a question about everything, not about one button
+    ranked = smart.rank(cfg, text)                   # SMART-1: forgives plurals, filler words and small typos
+    best_hits, best = (ranked[0][0], ranked[0][1]) if ranked else (0, None)
+    if best_hits <= 0:
+        best = None
+    if (long_msg or broad) and best_hits < 2:
         return None
     return best
+
+
+def _overview(cfg: dict) -> Optional[dict]:
+    """{'text', 'choices'} for a broad question when no AI is reading it: the business's own buttons to tap, never one wrong answer."""
+    topics = [m for m in cfg.get("menu", []) if m.get("action") != "human" and m.get("id") and m.get("label")]
+    if not topics:
+        return None
+    topics.sort(key=lambda m: 0 if m.get("action") == "booking" else 1)
+    choices = [{"id": "item", "menu_id": m["id"], "label": str(m["label"])[:40]} for m in topics[:4]]
+    if len(topics) > 4:
+        choices.append({"id": "menu", "label": "More"})
+    return {"text": "Here is what I can help with. Tap one to find out more.", "choices": choices}
 
 
 def _native_booking_link(db, s: dict) -> Optional[str]:
@@ -117,6 +123,48 @@ def _human_offer(db, s: dict, cfg: dict, kind: str) -> Optional[dict]:
     wc.set_state(db, s, offer="shown")
     wc.log_event(db, s["org_id"], s["id"], "tap", s.get("source"), ref="offer_shown")
     return {"messages": [wc.append_message(db, s, "bot", text)], "ask_contact": False, "ask_email": False, "form": None, "human": False, "choices": choices}
+
+
+def _record_gap(db, s: dict, text: str) -> None:
+    """SMART-1: a typed question nobody could answer goes on the owner's 'not answered' list (never raises, numbers and emails hidden)."""
+    try:
+        kgap.record(db, s["org_id"], text, s.get("lead_id"))
+    except Exception as exc:
+        logger.warning("webchat gap record failed: %s", exc)
+
+
+def _to_team(db, s: dict, cfg: dict, out: list, note: str, reply_text: Optional[str] = None) -> dict:
+    """Hand the chat to the team: the bot goes quiet, the team is told, and details are asked in the chat if the visitor is new."""
+    wc.set_human(db, s)
+    out.append(wc.append_message(db, s, "bot", reply_text or handover.human_reply(cfg, has_contact=_has_contact(s))))
+    if handover.is_away(cfg):
+        wc.set_state(db, s, awaiting_message=True)        # the visitor has not written anything yet: their next typed message is the one to save
+    _notify_human(db, s, cfg, note)
+    if not _has_contact(s) and contact.enabled(cfg):          # ask in the chat, not with the pop-up form
+        out.append(contact.start(db, s, cfg, ""))
+        return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "contact_step": "name"}
+    return {"messages": out, "ask_contact": not _has_contact(s), "ask_email": False, "form": None, "human": True}
+
+
+def _guide_answer(db, s: dict, cfg: dict, out: list, g: dict, text: str) -> Optional[dict]:
+    """SMART-1: the visitor is answering a guided question. Their answer is stored; the next question is asked, or at the end the
+    team gets one tidy summary. A real question (a ? or a long message) leaves the guide and is answered normally (returns None)."""
+    item = next((m for m in cfg.get("menu", []) if m.get("id") == g.get("id") and m.get("guide")), None)
+    if not item or "?" in text or len(text.split()) > 10:
+        wc.set_state(db, s, guide=None)
+        return None
+    steps = item["guide"]["steps"]
+    answers = list(g.get("answers") or []) + [text[:100]]
+    if len(answers) < len(steps):
+        wc.set_state(db, s, guide={"id": item["id"], "answers": answers})
+        pr = smart.guide_prompt(item["guide"], len(answers))
+        out.append(wc.append_message(db, s, "bot", pr["text"]))
+        return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False, "choices": pr["choices"]}
+    wc.set_state(db, s, guide=None)
+    summary = smart.guide_summary(item, answers)
+    wc.log_event(db, s["org_id"], s["id"], "tap", s.get("source"), ref="guide_done")
+    done = item["guide"].get("done") or "Thank you. I have passed this to the team and they will reply here."
+    return _to_team(db, s, cfg, out, "New request: " + summary, reply_text=done)
 
 
 def _answer_text(item: dict) -> str:
@@ -225,6 +273,13 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                     "human": wc.is_human(s, cfg), "cards": r["cards"], "contact_step": r["contact_step"]}
         wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_nudged=True)   # tapped an option: moved on, do not nag
 
+    if kind == "menu" and state.get("guide"):
+        wc.set_state(db, s, guide=None)                    # they tapped something else: the guided questions are dropped
+    if kind == "text" and state.get("guide") and not _replay:
+        res = _guide_answer(db, s, cfg, out, state["guide"], visitor_text)
+        if res is not None:
+            return res
+
     if kind == "text":
         g = greet.classify(visitor_text, cfg.get("business_name") or "")
         if g:            # WEB-ONLY-1c-GREET: a greeting, thanks or goodbye gets a warm reply from Chioma herself (no AI call, no credit)
@@ -245,6 +300,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         item = _match_item(cfg, visitor_text, strict=ai_reads)         # MATCH-2: a sentence goes to the AI when she is on
         if item is None and ai_reads:
             loose_item = _match_item(cfg, visitor_text)               # kept for when the AI has no answer (allowance used up, error)
+        if item is not None and kind == "text":
+            ties = smart.weak_ties(cfg, visitor_text)                 # SMART-1: two buttons fit equally well: ask which, do not guess
+            if len(ties) >= 2:
+                out.append(wc.append_message(db, s, "bot", "Which of these do you mean?"))
+                return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False,
+                        "choices": [smart._item_choice(m) for m in ties]}
 
     form = None
     cards: list = []
@@ -258,15 +319,13 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         if (s.get("state") or {}).get("offer") == "shown":
             wc.set_state(db, s, offer="skipped")                 # they took the offer's "connect me" button: counted, then straight through
             wc.log_event(db, s["org_id"], s["id"], "tap", s.get("source"), ref="offer_skipped")
-        wc.set_human(db, s)
-        out.append(wc.append_message(db, s, "bot", handover.human_reply(cfg, has_contact=_has_contact(s))))
-        if handover.is_away(cfg):
-            wc.set_state(db, s, awaiting_message=True)        # the visitor has not written anything yet: their next typed message is the one to save
-        _notify_human(db, s, cfg, "Asked to talk to the team." if not handover.is_away(cfg) else "Asked to leave a message (team away).")
-        if not _has_contact(s) and contact.enabled(cfg):          # ask in the chat, not with the pop-up form
-            out.append(contact.start(db, s, cfg, ""))
-            return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "contact_step": "name"}
-        return {"messages": out, "ask_contact": not _has_contact(s), "ask_email": False, "form": None, "human": True}
+        return _to_team(db, s, cfg, out, "Asked to talk to the team." if not handover.is_away(cfg) else "Asked to leave a message (team away).")
+
+    if item and item.get("action") == "guide" and item.get("guide"):
+        wc.set_state(db, s, guide={"id": item["id"], "answers": []})      # SMART-1: a few tap-to-answer questions
+        pr = smart.guide_prompt(item["guide"], 0)
+        out.append(wc.append_message(db, s, "bot", pr["text"]))
+        return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False, "choices": pr["choices"]}
 
     if item and item.get("action") == "booking":
         if not _has_contact(s):
@@ -286,6 +345,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         out.append(wc.append_message(db, s, "bot", _answer_text(item)))
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
         just_answered = True
+        choices = smart.related(cfg, item)                # SMART-1: where to go next, so the visitor is never at a dead end
+    elif kind == "text" and (info := smart.info_answer(cfg, visitor_text)):
+        out.append(wc.append_message(db, s, "bot", info))           # SMART-1: hours, phone, address from the business's own details, free
+        wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
+        just_answered = True
+        choices = smart.related(cfg, {})
     elif kind == "text" and handover.asks_where_team(visitor_text) and handover.where_team(cfg):
         wt = handover.where_team(cfg)         # a question about the screen: show the button, no hand-over, no AI call
         out.append(wc.append_message(db, s, "bot", wt["text"]))
@@ -315,6 +380,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             if not ai["handoff"]:
                 choices = handover.reply_choices(cfg, ai["reply"], bool(ai.get("offer_team")))     # buttons she names or offers are shown
             if ai["handoff"]:
+                _record_gap(db, s, visitor_text)
                 wc.set_human(db, s)
                 _notify_human(db, s, cfg, "The assistant could not answer: " + visitor_text)
                 if not _has_contact(s):          # answer_first: the team cannot reach a visitor with no details, so ask for them now
@@ -323,10 +389,20 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                         return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards, "contact_step": "name"}
                     return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": True, "cards": cards}
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards}
+        elif kind == "text" and _BROAD.search(visitor_text or "") and _overview(cfg):
+            ov = _overview(cfg)                   # MATCH-2: a broad question and nobody to read it: show the buttons, not a wrong answer
+            out.append(wc.append_message(db, s, "bot", ov["text"]))
+            choices = ov["choices"]
         else:
             na = handover.no_answer(cfg)          # ONLY-1c-DOWN: hours-aware, with menu / message / call choices
             out.append(wc.append_message(db, s, "bot", na["text"]))
             choices = na["choices"]
+            if kind == "text" and not junk:
+                _record_gap(db, s, visitor_text)
+            if handover.is_away(cfg):                # SMART-1: nobody is there now, so a booking is the most useful first button
+                bk = next((m for m in cfg.get("menu", []) if m.get("action") == "booking"), None)
+                if bk:
+                    choices = [smart._item_choice(bk)] + [c for c in choices if c.get("id") != "item"]
 
     state = s.get("state") or {}
     answered = int(state.get("answers") or 0) >= 1

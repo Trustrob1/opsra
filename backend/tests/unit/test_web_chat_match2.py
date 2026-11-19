@@ -41,7 +41,7 @@ def test_a_sentence_with_two_keywords_or_the_label_still_matches():
 
 
 def test_the_old_behaviour_is_kept_when_not_strict():
-    assert _id("I want to learn about your services", False) == "learn"
+    assert _id("I would like to learn how this works for my shop", False) == "learn"
 
 
 def test_the_ai_answers_the_sentence_and_the_button_text_is_not_used():
@@ -56,7 +56,7 @@ def test_the_ai_answers_the_sentence_and_the_button_text_is_not_used():
 def test_no_ai_answer_falls_back_to_the_keyword_button_not_the_cannot_answer_line():
     db = _db(); s = _session(db); cfg = _cfg(db); cfg["menu"] = MENU
     with patch.object(flow.webchat_ai_service, "answer", return_value=None):
-        r = flow.handle_message(db, s, cfg, kind="text", menu_id=None, text="I want to learn about your services", reply_to=None)
+        r = flow.handle_message(db, s, cfg, kind="text", menu_id=None, text="I would like to learn how this works for my shop", reply_to=None)
     assert any("LEARN ANSWER" in m["text"] for m in r["messages"] if m["role"] == "bot")
 
 
@@ -71,3 +71,22 @@ def test_junk_messages_do_not_call_the_ai():
 def test_context_is_trimmed():
     from app.services import webchat_ai_service as ai
     assert ai.HISTORY_MESSAGES == 4
+
+
+# ── AI off: a broad question shows the buttons, a specific one still answers ──
+
+def test_ai_off_broad_question_shows_the_buttons_not_one_answer():
+    db = _db(ai=False); s = _session(db); cfg = _cfg(db); cfg["menu"] = MENU
+    r = flow.handle_message(db, s, cfg, kind="text", menu_id=None, text="I want to learn about your services", reply_to=None)
+    bot = [m["text"] for m in r["messages"] if m["role"] == "bot"]
+    assert not any("LEARN ANSWER" in x for x in bot) and "Here is what I can help with" in bot[-1]
+    ids = [c["menu_id"] for c in r["choices"] if c["id"] == "item"]
+    assert ids == ["book", "websites", "learn"] and all(c["id"] != "human" for c in r["choices"])
+
+
+def test_ai_off_specific_questions_still_get_the_button_answer():
+    db = _db(ai=False); s = _session(db); cfg = _cfg(db); cfg["menu"] = MENU
+    r = flow.handle_message(db, s, cfg, kind="text", menu_id=None, text="I want to learn about your training courses", reply_to=None)
+    assert any("LEARN ANSWER" in m["text"] for m in r["messages"] if m["role"] == "bot")
+    r = flow.handle_message(db, s, cfg, kind="text", menu_id=None, text="tell me more about website prices", reply_to=None)
+    assert any("WEBSITES ANSWER" in m["text"] for m in r["messages"] if m["role"] == "bot")

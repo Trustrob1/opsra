@@ -79,6 +79,7 @@ DEFAULT_CONFIG: dict = {
     "allowed_domains": [],        # WEBCHAT-EMBED-1: websites that may show the chat bubble; empty = any website
     "site_button": False,         # WEBCHAT-SITE-1b: "Chat with us" link on websites built in Opsra; OFF until the business switches it on
     "widget_side": "right",       # WEBCHAT-EMBED-1: which corner the bubble sits in
+    "address": "",                # SMART-1: where the business is, so Chioma can answer "where are you" without AI
     "human_offer": False,         # HUMAN-OFFER-1: the first tap on Talk to the team gets one offer of a quick answer first
     "ask_bar": False,             # ASKBAR-1: show the Chioma ask bar on the website (inline at a placeholder, or docked at the bottom)
     "ask_bar_text": "Ask me anything…",
@@ -211,6 +212,8 @@ def sanitise_config(raw: dict) -> dict:
         out["allowed_domains"] = embed.sanitise_domains(raw["allowed_domains"])
     if "site_button" in raw:
         out["site_button"] = bool(raw["site_button"])
+    if "address" in raw:
+        out["address"] = _clean_text(raw["address"], 200)
     if "human_offer" in raw:
         out["human_offer"] = bool(raw["human_offer"])
     if "ask_bar" in raw:
@@ -265,6 +268,12 @@ def sanitise_config(raw: dict) -> dict:
             action = it.get("action")
             if action in ("booking", "human"):
                 item["action"] = action
+            elif action == "guide":                       # SMART-1: a few tap-to-answer questions, then the team gets a summary
+                from app.services import webchat_smart_service as _smart
+                g = _smart.clean_guide(it.get("guide"))
+                if not g:
+                    continue
+                item["action"], item["guide"] = "guide", g
             else:
                 item["answer"] = _clean_text(it.get("answer"), 1000)
                 link = it.get("link")

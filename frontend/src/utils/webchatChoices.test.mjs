@@ -33,3 +33,8 @@ console.log('webchatChoices: all tests passed')
 const offer = choicesFromReply({ messages: msgs, choices: [{ id: 'item', menu_id: 'hours', label: 'Opening hours' }, { id: 'item', menu_id: '../x', label: 'Bad' }, { id: 'item', label: 'None' }, { id: 'human', label: 'No, connect me to the team' }] })
 assert.deepEqual(offer.items, [{ id: 'item', label: 'Opening hours', menu_id: 'hours' }, { id: 'human', label: 'No, connect me to the team' }])
 console.log('ok')
+
+// SMART-1: tap-to-answer options of a guided question keep their label
+const say = choicesFromReply({ messages: msgs, choices: [{ id: 'say', label: 'Website' }, { id: 'say', label: 'Training' }, { id: 'say', label: ' ' }] })
+assert.deepEqual(say.items, [{ id: 'say', label: 'Website' }, { id: 'say', label: 'Training' }])
+console.log('ok')
