@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 FUNCTION_NAME = "webchat_ai_turn"
 HISTORY_MESSAGES = 8
 MAX_REPLY_CHARS = 600
+SHORT_SENTENCES = 3          # LENGTH: a chat reply is never longer than this, however much the knowledge base holds
+SHORT_CHARS = 320
 MAX_OUTPUT_TOKENS = 300
 SESSION_HOURLY_CAP = 20
 ORG_HOURLY_CAP = 300
@@ -135,7 +137,7 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
         "If the visitor greets you, in English, Pidgin or any Nigerian language (for example hello, good morning, how far, wetin dey, "
         "e kaaro, kedu, sannu, salaam), greet them back warmly first, then help with the rest of their message. If they say thank you "
         "or goodbye, reply warmly and briefly.",
-        "Keep every reply to at most three short sentences. No markdown, no lists, no emojis unless the visitor uses them.",
+        "Keep every reply to two or three short sentences, about 40 words, however much information you have. People do not read long chat messages: give the one most useful answer, then offer more (for example \"Want the details?\"). No markdown, no lists, no emojis unless the visitor uses them.",
         "You cannot see the chat screen. Never tell the visitor to tap, press or click a button, a menu or a link, and never name a button. "
         "If a person on the team could help better, say you can pass them to the team and set offer_team to true: the page then shows the button under your message. "
         "If the visitor asks where to find or how to reach the team, answer that you can pass them to the team, set offer_team to true and leave handoff false. "
@@ -184,6 +186,19 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
     return "\n\n".join(stable) + CACHE_SPLIT + "\n\n".join(changing)
 
 
+def shorten(text: str) -> str:
+    """At most SHORT_SENTENCES sentences and about SHORT_CHARS characters, cut at a sentence end (never mid-sentence)."""
+    parts = [x for x in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if x]
+    out = ""
+    for x in parts[:SHORT_SENTENCES]:
+        if out and len(out) + 1 + len(x) > SHORT_CHARS:
+            break
+        out = f"{out} {x}".strip()
+    if len(out) > SHORT_CHARS + 80:                  # one very long sentence: cut at the last word that fits and end it cleanly
+        out = out[:SHORT_CHARS].rsplit(" ", 1)[0].rstrip(",;: ") + "."
+    return out
+
+
 def parse_reply(raw: str) -> Optional[dict]:
     """{'reply', 'handoff'} from the model's text, or None when there is nothing usable."""
     raw = (raw or "").strip()
@@ -204,7 +219,7 @@ def parse_reply(raw: str) -> Optional[dict]:
         return None                       # looked like JSON but broken: do not show it to a customer
     else:
         reply, handoff, prods, offer_team = raw, False, [], False
-    reply = wc._clean_text(re.sub(r"[*_`#]+", "", reply), MAX_REPLY_CHARS)
+    reply = shorten(wc._clean_text(re.sub(r"[*_`#]+", "", reply), MAX_REPLY_CHARS))
     if not reply:
         return None
     out = {"reply": reply, "handoff": handoff}
@@ -213,6 +228,14 @@ def parse_reply(raw: str) -> Optional[dict]:
     if prods:
         out["products"] = prods
     return out
+
+
+def ho_line_times(cfg: dict) -> str:
+    try:
+        from app.services import webchat_handover_service as _ho
+        return _ho.team_state(cfg)[1] or ""
+    except Exception:
+        return ""
 
 
 def _history(db, s: dict) -> str:
@@ -260,11 +283,13 @@ def answer(db, s: dict, cfg: dict, text: str) -> Optional[dict]:
                 from app.services import webchat_handover_service as _ho
                 out["reply"] = _ho.fix_availability(cfg, out["reply"])      # AWAY: never "chat now" when the team is not online
                 from app.services import webchat_guard_service as _guard
-                bad = _guard.check_reply(out["reply"], system.split(ai_service.CACHE_SPLIT, 1)[-1], s)      # SAFE: every figure, link and promise is checked against the facts she was given
+                facts = system.split(ai_service.CACHE_SPLIT, 1)[-1] + "\n" + hist + "\n" + (ho_line_times(cfg))       # what she was given, what was already said in this chat, the reopening time
+                bad = _guard.check_reply(out["reply"], facts, s)      # SAFE: every figure, link and promise is checked against the facts she was given
                 if bad:
-                    logger.warning("webchat ai reply blocked org=%s reason=%s", s.get("org_id"), bad["reason"])
+                    logger.warning("webchat ai reply blocked org=%s reason=%s reply=%r", s.get("org_id"), bad["reason"], out["reply"][:300])
                     wc.set_state(db, s, guarded=int((s.get("state") or {}).get("guarded") or 0) + 1)
-                    out = {"reply": bad["reply"], "handoff": True}
+                    kept = _guard.scrub(out["reply"], facts, s, bad["reason"])
+                    out = {"reply": shorten(kept), "handoff": False} if kept else {"reply": bad["reply"], "handoff": True}
                 taken = False                # a real answer: the allowance stays used
                 wc.set_state(db, s, ai_turns=int((s.get("state") or {}).get("ai_turns") or 0) + 1)
                 return out

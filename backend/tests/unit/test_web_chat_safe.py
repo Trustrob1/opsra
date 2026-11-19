@@ -226,3 +226,33 @@ def test_router_limits_one_address_across_chats(monkeypatch):
     with pytest.raises(HTTPException) as e:
         r.post_message("wc_abcdefgh12", r.MessageBody(kind="text", text="hi"), Resp(), "Bearer t", None, Req())
     assert e.value.status_code == 429 and not seen
+
+
+# ── SAFE-3: vendor names the business itself uses, times already said, patched replies, short replies ──
+
+def test_a_vendor_name_in_the_business_information_is_not_a_leak():
+    facts = FACTS + " Claude Agents: we build AI agents with Claude."
+    assert g.check_reply("We build Claude Agents that do your follow-ups.", facts) is None
+    assert g.check_reply("We build Claude Agents that do your follow-ups.", FACTS)["reason"] == "leak"       # not in the information: still caught
+    assert g.check_reply("I am Claude, built by Anthropic.", facts)["reason"] == "leak"                      # saying she is it: always caught
+
+
+def test_a_time_already_said_in_the_chat_is_known():
+    assert g.check_reply("The team replies tomorrow at 8:00 am.", FACTS + "\nAssistant: back at 8:00 am") is None
+
+
+def test_scrub_drops_only_the_bad_sentence():
+    r = "We build websites and AI agents for small businesses. Calls are at 4pm daily."
+    out = g.scrub(r, FACTS, None, "time")
+    assert out == "We build websites and AI agents for small businesses."
+    assert g.scrub("Calls are at 4pm daily.", FACTS, None, "time") is None                 # nothing useful left: the stock line is used
+    assert g.scrub("I promise it will arrive tomorrow.", FACTS, None, "commitment") is None
+
+
+def test_shorten_keeps_replies_short():
+    from app.services.webchat_ai_service import shorten
+    long = " ".join(f"This is sentence number {i} about our many services and packages." for i in range(8))
+    out = shorten(long)
+    assert out.count(".") <= 3 and len(out) <= 400 and out.endswith(".")
+    assert shorten("Hello there.") == "Hello there."
+    assert len(shorten("word " * 200)) <= 340

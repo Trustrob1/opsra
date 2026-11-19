@@ -108,7 +108,10 @@ _COMMIT = re.compile(
     r"\bi(?:'ve| have| will|'ll)\s+(?:book(?:ed)?|confirm(?:ed)?|reserve[d]?|approve[d]?|hold|refund(?:ed)?|cancel(?:led|ed)?|process(?:ed)?|ordered)\b|"
     r"\b(?:refund|discount|booking|order|payment|reservation)\b[^.!?]{0,20}\b(?:is |has been |have been |was )?(?:approved|confirmed|processed|successful|guaranteed)\b|"
     r"\bguarantee[sd]?\b|\bi promise\b|\bwe promise\b|\bi can give you (?:a )?discount\b", re.I)
-_LEAK = re.compile(r"\b(?:system prompt|my instructions|my prompt|as an ai language model|anthropic|openai|chat ?gpt|claude)\b|<\s*/?\s*(?:business_info|owner_notes|customer_message|products)\s*>", re.I)
+_LEAK = re.compile(r"\b(?:system prompt|my instructions|my prompt|as an ai language model)\b|<\s*/?\s*(?:business_info|owner_notes|customer_message|products)\s*>|"
+                   r"\b(?:i am|i'm|this is|you are talking to)\s+(?:claude|chat ?gpt|gpt|an? (?:large )?language model)\b|"
+                   r"\b(?:made|built|created|trained|powered|developed) by (?:anthropic|openai)\b", re.I)
+_VENDOR = re.compile(r"\b(?:anthropic|openai|chat ?gpt|claude)\b", re.I)        # a business may sell or use these (Claude Agents): fine when its own information says so
 
 HANDOFF_REPLIES = {
     "price": "I do not want to give you a wrong figure, so a team member will confirm that for you.",
@@ -164,12 +167,26 @@ def _host(url: str) -> str:
     return re.sub(r"^(?:https?://)?(?:www\.)?", "", url.lower()).split("/")[0].rstrip(".,")
 
 
+def _sentences(text: str) -> list:
+    return [x for x in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if x]
+
+
+def scrub(reply: str, facts: str, s: Optional[dict], reason: str) -> Optional[str]:
+    """For a price, time, phone or link the business never gave: keep the sentences that are fine and drop the ones that are not.
+    None when nothing useful is left (or for a promise or a real leak, which are never patched)."""
+    if reason not in ("price", "time", "phone", "link"):
+        return None
+    keep = [x for x in _sentences(reply) if check_reply(x, facts, s) is None]
+    out = " ".join(keep).strip()
+    return out if len(out) >= 25 and check_reply(out, facts, s) is None else None
+
+
 def check_reply(reply: str, facts: str, s: Optional[dict] = None) -> Optional[dict]:
     """None when the reply is fine, else {'reason', 'reply'}: the reply to show instead."""
     try:
         r, f = reply or "", facts or ""
         fl = f.lower()
-        if _LEAK.search(r):
+        if _LEAK.search(r) or any(m.group(0).lower() not in fl for m in _VENDOR.finditer(r)):
             return {"reason": "leak", "reply": HANDOFF_REPLIES["leak"]}
         for m in _COMMIT.finditer(r):
             if m.group(0).lower() not in fl:

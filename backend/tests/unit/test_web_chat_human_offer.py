@@ -102,3 +102,14 @@ def test_question_typed_while_asked_for_a_name_is_answered_when_team_is_away():
     assert any("We open 9 to 6" in x for x in bot)
     assert not any(x.startswith("Got it") or "saved this for the team" in x.lower() for x in bot)
     assert bot[-1].startswith("Now, so the team knows") and r["contact_step"] == "name"
+
+
+def test_ai_reply_with_one_bad_sentence_is_patched_and_long_replies_are_cut():
+    from app.services import webchat_ai_service as ai
+    from tests.unit.test_webchat_3 import _claude
+    db = _db(); s = _session(db); cfg = _cfg(db)
+    raw = '{"reply": "We open 9 to 6, Monday to Saturday. Our hotline is 08099999999. Come by any time. Bring a friend. Bring two.", "handoff": false}'
+    with _claude(raw), patch("app.services.webchat_plan_service.use_ai_allowance", return_value=True):
+        out = ai.answer(db, s, cfg, "when are you open")
+    assert out and out["handoff"] is False and "08099999999" not in out["reply"] and out["reply"].startswith("We open 9 to 6")
+    assert out["reply"].count(".") <= 3
