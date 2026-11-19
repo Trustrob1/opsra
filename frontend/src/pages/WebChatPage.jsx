@@ -473,6 +473,36 @@ export default function WebChatPage({ chatKey }) {
     sendOptimistic(t, { kind: 'text', text: t, ...(rq ? { reply_to: rq.id } : {}) }, rq).then((ok) => { if (!ok) { setText(t); if (rq) setReplyTo(rq) } })
   }
 
+  // ASKBAR-1: the website's ask bar opens the chat with a typed question (?q=) or a tapped chat button (?m=), or says so later (postMessage).
+  // The button id must be one of this business's own buttons; a typed question is sent like any message the visitor types.
+  const askRef = useRef(null)
+  askRef.current = { cfg, sendMenu, sendOptimistic }
+  const askedFirst = useRef(false)
+  const runAsk = useCallback((menuId, q) => {
+    const c = askRef.current
+    if (!c?.cfg) return
+    const text = String(q || '').replace(/\s+/g, ' ').trim().slice(0, 500)
+    if (menuId && c.cfg.menu.some((m) => m.id === menuId)) c.sendMenu(menuId)
+    else if (text) c.sendOptimistic(text, { kind: 'text', text })
+  }, [])
+  useEffect(() => {
+    if (state !== 'ready' || askedFirst.current || !askRef.current?.cfg) return
+    askedFirst.current = true
+    try {
+      const p = new URLSearchParams(window.location.search)
+      const m = p.get('m'), q = p.get('q')
+      if (m || q) runAsk(m, q)
+    } catch { /* the chat still works */ }
+  }, [state, runAsk])
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (!EMBED || e.source !== window.parent || !e.data || e.data.source !== 'opsra-host' || e.data.type !== 'ask') return
+      runAsk(e.data.menu_id, e.data.text)
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [runAsk])
+
   // WEBCHAT-MSG-1: tap a message for Reply / Copy / Edit / Delete (like WhatsApp)
   const whoLabel = (role) => (role === 'visitor' ? 'You' : role === 'rep' ? `${cfg.business_name} team` : cfg.business_name)
   const msgActions = (m) => {

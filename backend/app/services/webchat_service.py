@@ -79,6 +79,8 @@ DEFAULT_CONFIG: dict = {
     "allowed_domains": [],        # WEBCHAT-EMBED-1: websites that may show the chat bubble; empty = any website
     "site_button": False,         # WEBCHAT-SITE-1b: "Chat with us" link on websites built in Opsra; OFF until the business switches it on
     "widget_side": "right",       # WEBCHAT-EMBED-1: which corner the bubble sits in
+    "ask_bar": False,             # ASKBAR-1: show the Chioma ask bar on the website (inline at a placeholder, or docked at the bottom)
+    "ask_bar_text": "Ask me anything…",
     "call_enabled": False,        # WEBCHAT-CALL-1: phone icon in the chat header; calls only in business hours
     "call_number": "",            # digits; empty = the organisation's business contact / WhatsApp number
 }
@@ -208,6 +210,10 @@ def sanitise_config(raw: dict) -> dict:
         out["allowed_domains"] = embed.sanitise_domains(raw["allowed_domains"])
     if "site_button" in raw:
         out["site_button"] = bool(raw["site_button"])
+    if "ask_bar" in raw:
+        out["ask_bar"] = bool(raw["ask_bar"])
+    if "ask_bar_text" in raw:
+        out["ask_bar_text"] = _clean_text(raw["ask_bar_text"], 60) or DEFAULT_CONFIG["ask_bar_text"]
     if "widget_side" in raw:
         out["widget_side"] = "left" if raw["widget_side"] == "left" else "right"
     if "call_enabled" in raw:
@@ -370,6 +376,17 @@ def public_view(cfg: dict) -> dict:
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
         "call": _call_status(cfg),
     }
+
+
+def ask_bar_view(cfg: dict) -> Optional[dict]:
+    """ASKBAR-1: what widget.js needs to draw the ask bar, or None when the business has not switched it on.
+    Chips are the first three chat buttons, a Book a call button first. Labels only; the answers stay on the server."""
+    if not cfg.get("ask_bar"):
+        return None
+    items = [m for m in (cfg.get("menu") or []) if m.get("id") and m.get("label")]
+    items.sort(key=lambda m: 0 if m.get("action") == "booking" else 1)          # stable: the rest keep their order
+    return {"text": _clean_text(cfg.get("ask_bar_text"), 60) or DEFAULT_CONFIG["ask_bar_text"],
+            "chips": [{"id": m["id"], "label": str(m["label"])[:60], "primary": m.get("action") == "booking"} for m in items[:3]]}
 
 
 def _call_status(cfg: dict) -> Optional[dict]:

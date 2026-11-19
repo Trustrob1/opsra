@@ -171,7 +171,7 @@ def widget_info(key: str, request: Request, db=Depends(get_supabase)):
         from app.services import chat_pause_service as pause
         out = {"allowed": embed.origin_allowed(cfg.get("allowed_domains"), request.headers.get("origin")) and not pause.is_paused(db, found["org_id"]),
                "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "side": cfg.get("widget_side", "right"),
-               **_chioma_flags(cfg)}
+               "bar": wc.ask_bar_view(cfg), **_chioma_flags(cfg)}
     if out.get("allowed") and found:
         from urllib.parse import urlparse
         own = tuple(h for h in ((urlparse(wc.public_base()).hostname or ""),) if h)

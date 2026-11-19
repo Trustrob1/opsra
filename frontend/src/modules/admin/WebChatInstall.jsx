@@ -141,6 +141,21 @@ export default function WebChatInstall({ data, cfg, set, setMsg }) {
 
         <p style={{ ...small, marginTop: 14 }}><strong>Websites built in Opsra:</strong> the "Chat with us" button is switched on per website. Open Sites, choose the website, and use its Chat button switch. It is off for every website until you switch it on.</p>
 
+        <hr style={{ border: 0, borderTop: `1px solid ${ds.border}`, margin: '12px 0' }} />
+        <h4 style={{ fontSize: 14, color: ds.dark, margin: '0 0 4px' }}>Ask bar on your website</h4>
+        <p style={small}>A clear "Ask Chioma" bar with your first chat buttons, so visitors see it without hunting for the bubble. Visitors can minimize it, and it then becomes the round bubble.</p>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, minHeight: 44 }}>
+          <input type="checkbox" checked={!!cfg.ask_bar} onChange={(e) => set('ask_bar', e.target.checked)} />
+          Show the ask bar on my website
+        </label>
+        {cfg.ask_bar && (
+          <>
+            <label style={label} htmlFor="wc-bar-text">Words inside the bar</label>
+            <input id="wc-bar-text" style={input} maxLength={60} value={cfg.ask_bar_text || ''} onChange={(e) => set('ask_bar_text', e.target.value)} placeholder="Ask me anything…" />
+            <p style={small}>Where it appears: add <code>{'<div data-chioma-slot></div>'}</code> to your page, under your main button for example. On a dark section use <code>{'<div data-chioma-slot data-chioma-theme="dark"></div>'}</code>. Without it, the bar sits at the bottom of the screen. Press Save at the bottom after changing these.</p>
+          </>
+        )}
+
         <details style={{ marginTop: 14 }}>
           <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: ds.dark }}>Advanced: corner and allowed websites</summary>
           <label style={label} htmlFor="wc-side">Corner for the bubble</label>
