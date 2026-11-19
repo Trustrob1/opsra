@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { choicesFromReply, visibleChoices } from '../utils/webchatChoices'
+import { menuView } from '../utils/webchatMenu'
 import { headerState } from '../utils/webchatHeader'
 import { heldAskIds, withoutHeld, HOLD_MS } from '../utils/webchatReveal'
 import { tipSeen, markTipSeen, showTipFor } from '../utils/webchatTip'
@@ -225,6 +226,7 @@ export default function WebChatPage({ chatKey }) {
   const inputRef = useRef(null)
   const shellRef = useRef(null)
   const [callPhone, setCallPhone] = useState(null)         // null = not asked yet, string = the phone field is showing
+  const [menuAll, setMenuAll] = useState(false)             // MENU-MORE: the visitor tapped More options
   const [panel, setPanel] = useState(null)                // null | 'contact' | 'email' | 'booking' | 'shop' | 'cart' | 'save' | 'menu' | 'attach' | 'call'
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -429,7 +431,8 @@ export default function WebChatPage({ chatKey }) {
       setPending((n) => Math.max(0, n - 1))
     }
   }
-  const openMenu = () => {
+  const openMenu = (all = false) => {
+    setMenuAll(all === true)
     setPanel('menu')
     if (!menuSeen) { setMenuSeen(true); try { localStorage.setItem(`wc_menu_seen_${chatKey}`, '1') } catch { /* storage blocked */ } }
   }
@@ -481,7 +484,7 @@ export default function WebChatPage({ chatKey }) {
   const runAsk = useCallback((menuId, q, open) => {
     const c = askRef.current
     if (!c?.cfg) return
-    if (open === 'menu') { c.openMenu(); return }
+    if (open === 'menu') { c.openMenu(true); return }          // the website's More chip: show the whole list
     const text = String(q || '').replace(/\s+/g, ' ').trim().slice(0, 500)
     if (menuId && c.cfg.menu.some((m) => m.id === menuId)) c.sendMenu(menuId)
     else if (text) c.sendOptimistic(text, { kind: 'text', text })
@@ -1180,12 +1183,22 @@ export default function WebChatPage({ chatKey }) {
 
               {panel === 'menu' && cfg.menu.some((m) => m.id !== humanItem?.id) && (
                 <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
-                  {cfg.menu.filter((m) => m.id !== humanItem?.id).map((m, n) => (
+                  {menuView(cfg.menu.filter((m) => m.id !== humanItem?.id), menuAll).shown.map((m, n) => (
                     <button key={m.id} type="button" role="listitem" disabled={busy} onClick={() => sendMenu(m.id)}
                       style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: m.primary ? brand : SURF, color: m.primary ? '#fff' : INK, fontSize: 16, fontWeight: m.primary ? 700 : 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                       <span>{m.label}</span><span style={{ color: m.primary ? '#fff' : MUTED }}><Icon name="chev" size={18} /></span>
                     </button>
                   ))}
+                  {(() => {
+                    const v = menuView(cfg.menu.filter((m) => m.id !== humanItem?.id), menuAll)
+                    if (!v.hidden && !v.canCollapse) return null
+                    return (
+                      <button type="button" onClick={() => setMenuAll(!menuAll)} aria-expanded={menuAll}
+                        style={{ minHeight: 48, padding: '0 16px', border: 0, borderTop: `1px solid ${LINE}`, background: SURF, color: brand, fontSize: 15, fontWeight: 700, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {menuAll ? 'Show fewer options' : `More options (${v.hidden})`}
+                      </button>
+                    )
+                  })()}
                 </div>
               )}
 

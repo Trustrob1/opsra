@@ -199,3 +199,30 @@ def test_teach_adds_the_keyword_and_closes_the_question():
     assert "catering" in next(m for m in saved if m["id"] == "websites")["keywords"]
     with pytest.raises(ValueError):
         smart.teach(_DB(), ORG, "g1", "human", "x1")
+
+
+# ── MENU-MORE: featured buttons lead ────────────────────────────────────────
+
+def test_featured_flag_is_kept_and_sent_to_visitors():
+    out = wc.sanitise_config({"menu": [{"id": "a", "label": "A", "answer": "x", "featured": True}, {"id": "b", "label": "B", "answer": "y"}]})
+    assert out["menu"][0].get("featured") is True and "featured" not in out["menu"][1]
+    cfg = dict(wc.DEFAULT_CONFIG); cfg.update(out); cfg["business_name"] = "X"
+    pv = wc.public_view(cfg)["menu"]
+    assert pv[0].get("featured") is True and "featured" not in pv[1]
+
+
+def test_ask_bar_chips_lead_with_featured_buttons():
+    cfg = {"ask_bar": True, "menu": [{"id": "a", "label": "A"}, {"id": "b", "label": "B", "featured": True}, {"id": "c", "label": "C"},
+                                      {"id": "d", "label": "D"}, {"id": "t", "label": "Team", "action": "human", "featured": True}]}
+    bar = wc.ask_bar_view(cfg)
+    assert [c["id"] for c in bar["chips"]] == ["b"] and bar["more"] is True
+    cfg["menu"][1].pop("featured")
+    bar = wc.ask_bar_view(cfg)
+    assert [c["id"] for c in bar["chips"]] == ["a", "b", "c"]
+
+
+def test_related_and_overview_prefer_featured():
+    cfg = {"menu": [{"id": "a", "label": "A", "answer": "x"}, {"id": "b", "label": "B", "answer": "y", "featured": True}, {"id": "c", "label": "C", "answer": "z"},
+                    {"id": "h", "label": "Team", "action": "human"}]}
+    assert smart.related(cfg, {"id": "c"})[0]["menu_id"] == "b"
+    assert flow._overview(cfg)["choices"][0]["menu_id"] == "b"

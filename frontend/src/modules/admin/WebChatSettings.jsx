@@ -147,11 +147,17 @@ export default function WebChatSettings() {
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <strong style={{ fontSize: 14, color: ds.dark }}>Menu (what visitors can tap)</strong>
+          <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0', flexBasis: '100%' }}>
+            Tick “Show first in the chat menu” on the buttons you want visitors to see first (for example for a campaign). The others sit under a “More options” button, so nothing is lost. With none ticked, a long menu shows its first five.
+          </p>
         </div>
         {cfg.menu.map((m, i) => (
           <div key={m.id} style={{ borderTop: `1px solid ${ds.border}`, marginTop: 12, paddingTop: 8 }}>
             <label style={label} htmlFor={`m-l-${i}`}>Button text</label>
             <input id={`m-l-${i}`} style={input} value={m.label} maxLength={60} onChange={(e) => setItem(i, { label: e.target.value })} />
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, margin: '10px 0 0' }}>
+              <input type="checkbox" checked={!!m.featured} onChange={(e) => setItem(i, { featured: e.target.checked || undefined })} /> Show first in the chat menu
+            </label>
             <label style={label} htmlFor={`m-t-${i}`}>What it does</label>
             <select id={`m-t-${i}`} style={input} value={m.action || 'answer'}
               onChange={(e) => setItem(i, e.target.value === 'answer' ? { action: undefined } : e.target.value === 'guide' && !m.guide ? { action: 'guide', guide: { steps: [{ q: 'What do you need?', options: ['Option 1', 'Option 2'] }], done: '' } } : { action: e.target.value })}>

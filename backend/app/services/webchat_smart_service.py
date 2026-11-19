@@ -115,7 +115,7 @@ def _item_choice(it: dict) -> dict:
 def related(cfg: dict, item: dict, n: int = 3) -> list:
     """Buttons to show under an answer: the next few topics (booking first), then the team. Never the one just answered."""
     others = [m for m in (cfg.get("menu") or []) if m.get("id") and m.get("label") and m["id"] != item.get("id") and m.get("action") != "human"]
-    others.sort(key=lambda m: 0 if m.get("action") in ("booking", "guide") else 1)
+    others.sort(key=lambda m: (0 if m.get("featured") else 1, 0 if m.get("action") in ("booking", "guide") else 1))
     out = [_item_choice(m) for m in others[:n]]
     if any(m.get("action") == "human" for m in (cfg.get("menu") or [])):
         out.append({"id": "human", "label": "Talk to the team"})

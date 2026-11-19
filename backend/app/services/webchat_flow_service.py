@@ -68,7 +68,7 @@ def _overview(cfg: dict) -> Optional[dict]:
     topics = [m for m in cfg.get("menu", []) if m.get("action") != "human" and m.get("id") and m.get("label")]
     if not topics:
         return None
-    topics.sort(key=lambda m: 0 if m.get("action") == "booking" else 1)
+    topics.sort(key=lambda m: (0 if m.get("featured") else 1, 0 if m.get("action") == "booking" else 1))
     choices = [{"id": "item", "menu_id": m["id"], "label": str(m["label"])[:40]} for m in topics[:4]]
     if len(topics) > 4:
         choices.append({"id": "menu", "label": "More"})
@@ -114,7 +114,7 @@ def _human_offer(db, s: dict, cfg: dict, kind: str) -> Optional[dict]:
     topics = [m for m in cfg.get("menu", []) if m.get("action") != "human" and m.get("id") and m.get("label")]
     if not topics:
         return None
-    topics.sort(key=lambda m: 0 if m.get("action") == "booking" else 1)
+    topics.sort(key=lambda m: (0 if m.get("featured") else 1, 0 if m.get("action") == "booking" else 1))
     away = handover.is_away(cfg)
     text = ("Our team is away right now, but I can often answer straight away. What is it about?" if away
             else "Happy to connect you. What is it about? I can often answer straight away.")

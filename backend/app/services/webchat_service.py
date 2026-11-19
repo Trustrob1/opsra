@@ -279,6 +279,8 @@ def sanitise_config(raw: dict) -> dict:
                 link = it.get("link")
                 if isinstance(link, dict) and _clean_url(link.get("url")):
                     item["link"] = {"label": _clean_text(link.get("label"), 60) or "Open", "url": _clean_url(link["url"])}
+            if it.get("featured"):
+                item["featured"] = True                      # MENU-MORE: shown first in the chat menu; the rest sit under "More options"
             kws = it.get("keywords") if isinstance(it.get("keywords"), list) else []
             item["keywords"] = [_clean_text(k, 30).lower() for k in kws[:15] if _clean_text(k, 30)]
             menu.append(item)
@@ -383,7 +385,7 @@ def public_view(cfg: dict) -> dict:
         "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL, "contact_in_chat": bool(cfg.get("contact_in_chat", True)),
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in CHAT_THEMES else "classic",
         "greeting": cfg["greeting"],
-        "menu": [({"id": m["id"], "label": m["label"], "primary": True} if m.get("action") == "booking" else {"id": m["id"], "label": m["label"]}) for m in cfg["menu"]],      # a Book a call button is drawn solid
+        "menu": [{"id": m["id"], "label": m["label"], **({"primary": True} if m.get("action") == "booking" else {}), **({"featured": True} if m.get("featured") else {})} for m in cfg["menu"]],      # a Book a call button is drawn solid
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
         "call": _call_status(cfg),
@@ -396,10 +398,13 @@ def ask_bar_view(cfg: dict) -> Optional[dict]:
     if not cfg.get("ask_bar"):
         return None
     items = [m for m in (cfg.get("menu") or []) if m.get("id") and m.get("label")]
-    items.sort(key=lambda m: 0 if m.get("action") == "booking" else 1)          # stable: the rest keep their order
+    featured = [m for m in items if m.get("featured") and m.get("action") != "human"]
+    pool = featured or items                       # MENU-MORE: the owner's featured buttons lead (a campaign can feature just one or two)
+    pool = sorted(pool, key=lambda m: 0 if m.get("action") == "booking" else 1)          # stable: the rest keep their order
+    chips = pool[:3]
     return {"text": _clean_text(cfg.get("ask_bar_text"), 60) or DEFAULT_CONFIG["ask_bar_text"],
-            "chips": [{"id": m["id"], "label": str(m["label"])[:60], "primary": m.get("action") == "booking"} for m in items[:3]],
-            "more": len(items) > 3}                                              # a More button opens the chat's full button list
+            "chips": [{"id": m["id"], "label": str(m["label"])[:60], "primary": m.get("action") == "booking"} for m in chips],
+            "more": len(items) > len(chips)}                                              # a More button opens the chat's full button list
 
 
 def _call_status(cfg: dict) -> Optional[dict]:
