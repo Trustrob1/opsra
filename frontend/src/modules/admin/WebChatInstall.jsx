@@ -142,6 +142,13 @@ export default function WebChatInstall({ data, cfg, set, setMsg }) {
         <p style={{ ...small, marginTop: 14 }}><strong>Websites built in Opsra:</strong> the "Chat with us" button is switched on per website. Open Sites, choose the website, and use its Chat button switch. It is off for every website until you switch it on.</p>
 
         <hr style={{ border: 0, borderTop: `1px solid ${ds.border}`, margin: '12px 0' }} />
+        <h4 style={{ fontSize: 14, color: ds.dark, margin: '0 0 4px' }}>Offer a quick answer before the team</h4>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, minHeight: 44 }}>
+          <input type="checkbox" checked={!!cfg.human_offer} onChange={(e) => set('human_offer', e.target.checked)} />
+          When a visitor's first tap is Talk to the team, Chioma offers to help first
+        </label>
+        <p style={small}>She asks what it is about and shows your top buttons, with a clear "No, connect me to the team" button. It happens once per chat and never when someone types that they want a person. Press Save at the bottom after changing this.</p>
+        <hr style={{ border: 0, borderTop: `1px solid ${ds.border}`, margin: '12px 0' }} />
         <h4 style={{ fontSize: 14, color: ds.dark, margin: '0 0 4px' }}>Ask bar on your website</h4>
         <p style={small}>A clear "Ask Chioma" bar with your first chat buttons, so visitors see it without hunting for the bubble. Visitors can minimize it, and it then becomes the round bubble.</p>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, minHeight: 44 }}>

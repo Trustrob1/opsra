@@ -85,6 +85,28 @@ def _booking_link_text(url: str) -> str:
     return f"Here is your personal booking link. Pick a time that suits you: {url}"
 
 
+def _human_offer(db, s: dict, cfg: dict, kind: str) -> Optional[dict]:
+    """HUMAN-OFFER-1: a visitor whose very first action is tapping Talk to the team is offered one quick answer first: the business's top buttons,
+    plus a clear button to carry straight on to the team. Once per chat, never for typed requests (they asked for a person in words), and
+    never when the visitor has already asked or been answered something. The second tap goes straight through."""
+    st = s.get("state") or {}
+    if (not cfg.get("human_offer") or kind != "menu" or st.get("offer") or st.get("answers")
+            or wc.is_human(s, cfg)):
+        return None
+    topics = [m for m in cfg.get("menu", []) if m.get("action") != "human" and m.get("id") and m.get("label")]
+    if not topics:
+        return None
+    topics.sort(key=lambda m: 0 if m.get("action") == "booking" else 1)
+    away = handover.is_away(cfg)
+    text = ("Our team is away right now, but I can often answer straight away. What is it about?" if away
+            else "Happy to connect you. What is it about? I can often answer straight away.")
+    choices = [{"id": "item", "menu_id": m["id"], "label": str(m["label"])[:40]} for m in topics[:3]]
+    choices.append({"id": "human", "label": "Leave a message for the team" if away else "No, connect me to the team"})
+    wc.set_state(db, s, offer="shown")
+    wc.log_event(db, s["org_id"], s["id"], "tap", s.get("source"), ref="offer_shown")
+    return {"messages": [wc.append_message(db, s, "bot", text)], "ask_contact": False, "ask_email": False, "form": None, "human": False, "choices": choices}
+
+
 def _answer_text(item: dict) -> str:
     text = item.get("answer") or ""
     link = item.get("link")
@@ -209,7 +231,15 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     form = None
     cards: list = []
     choices: list = []
+    just_answered = False
     if item and item.get("action") == "human":
+        offer = _human_offer(db, s, cfg, kind)
+        if offer:
+            offer["messages"] = out + offer["messages"]
+            return offer
+        if (s.get("state") or {}).get("offer") == "shown":
+            wc.set_state(db, s, offer="skipped")                 # they took the offer's "connect me" button: counted, then straight through
+            wc.log_event(db, s["org_id"], s["id"], "tap", s.get("source"), ref="offer_skipped")
         wc.set_human(db, s)
         out.append(wc.append_message(db, s, "bot", handover.human_reply(cfg, has_contact=_has_contact(s))))
         if handover.is_away(cfg):
@@ -237,6 +267,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     elif item:
         out.append(wc.append_message(db, s, "bot", _answer_text(item)))
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
+        just_answered = True
     elif kind == "text" and handover.asks_where_team(visitor_text) and handover.where_team(cfg):
         wt = handover.where_team(cfg)         # a question about the screen: show the button, no hand-over, no AI call
         out.append(wc.append_message(db, s, "bot", wt["text"]))
@@ -255,6 +286,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             out.append(wc.append_message(db, s, "bot", ai["reply"]))
             if not ai["handoff"]:
                 wc.set_state(db, s, answers=int((s.get("state") or {}).get("answers") or 0) + 1)     # counts as the first answer: details are asked next
+                just_answered = True
             if cfg.get("shop_enabled") and ai.get("products"):
                 cards = webchat_shop_service.cards_for(db, s["org_id"], ai["products"])
             if not ai["handoff"]:
@@ -292,6 +324,13 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                  and not state.get("email_asked"))
     if ask_email:
         wc.set_state(db, s, email_asked=True)
+    if just_answered and not ask_contact and (s.get("state") or {}).get("offer") == "shown":
+        # HUMAN-OFFER-1: they took the offer and got an answer: ask once whether that was enough, with the team one tap away
+        out.append(wc.append_message(db, s, "bot", "Did that help? If not, I can bring in the team."))
+        if not any(c.get("id") == "human" for c in choices):
+            choices = choices + [{"id": "human", "label": "Leave a message" if handover.is_away(cfg) else "Talk to the team"}]
+        wc.set_state(db, s, offer="answered")
+        wc.log_event(db, s["org_id"], s["id"], "tap", s.get("source"), ref="offer_answered")
     res = {"messages": out, "ask_contact": ask_contact, "ask_email": bool(ask_email), "form": form, "human": False, "cards": cards}
     if choices:
         res["choices"] = choices

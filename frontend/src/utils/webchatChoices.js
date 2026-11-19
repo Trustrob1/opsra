@@ -3,13 +3,13 @@
  * ONLY-1c-DOWN: the buttons the server sends with a "Chioma cannot answer" reply: Open menu, Talk to the team / Leave a message,
  * Call us / Request a call back. Pure functions so they can be tested without a browser.
  */
-const KNOWN = new Set(['menu', 'human', 'call'])
+const KNOWN = new Set(['menu', 'human', 'call', 'item'])     // 'item' (HUMAN-OFFER-1): one of the business's own chat buttons, by menu_id
 
 /** {mid, items} for the last bot message of a reply that came with choices, else null. Unknown or label-less choices are dropped. */
 export function choicesFromReply(res) {
   const items = (Array.isArray(res?.choices) ? res.choices : [])
-    .filter((c) => c && KNOWN.has(c.id) && typeof c.label === 'string' && c.label.trim())
-    .map((c) => ({ id: c.id, label: c.label.trim().slice(0, 40) }))
+    .filter((c) => c && KNOWN.has(c.id) && typeof c.label === 'string' && c.label.trim() && (c.id !== 'item' || /^[A-Za-z0-9_-]{1,40}$/.test(c.menu_id || '')))
+    .map((c) => (c.id === 'item' ? { id: c.id, label: c.label.trim().slice(0, 40), menu_id: c.menu_id } : { id: c.id, label: c.label.trim().slice(0, 40) }))
   if (!items.length) return null
   const bots = (Array.isArray(res?.messages) ? res.messages : []).filter((m) => m && m.role === 'bot' && m.id)
   const last = bots[bots.length - 1]

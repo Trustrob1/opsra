@@ -28,3 +28,8 @@ assert.deepEqual(ids(visibleChoices(ch, msgs[1], true, { ...on, humanActive: tru
 assert.deepEqual(ids(visibleChoices(ch, msgs[1], true, { ...on, hasHumanItem: false })), ['menu', 'call'])
 assert.deepEqual(ids(visibleChoices(ch, msgs[1], true, { ...on, callOn: false })), ['menu', 'human'])
 console.log('webchatChoices: all tests passed')
+
+// HUMAN-OFFER-1: topic buttons carry a menu_id; bad ids are dropped
+const offer = choicesFromReply({ messages: msgs, choices: [{ id: 'item', menu_id: 'hours', label: 'Opening hours' }, { id: 'item', menu_id: '../x', label: 'Bad' }, { id: 'item', label: 'None' }, { id: 'human', label: 'No, connect me to the team' }] })
+assert.deepEqual(offer.items, [{ id: 'item', label: 'Opening hours', menu_id: 'hours' }, { id: 'human', label: 'No, connect me to the team' }])
+console.log('ok')

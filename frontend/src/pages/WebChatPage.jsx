@@ -881,8 +881,8 @@ export default function WebChatPage({ chatKey }) {
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
                       {mine.map((c) => (
-                        <button key={c.id} type="button" style={{ ...S.chip, minHeight: 40, display: 'flex', alignItems: 'center', gap: 8 }}
-                          disabled={busy && c.id === 'human'} onClick={onTap[c.id]}>
+                        <button key={c.id === 'item' ? `item-${c.menu_id}` : c.id} type="button" style={{ ...S.chip, minHeight: 40, display: 'flex', alignItems: 'center', gap: 8 }}
+                          disabled={busy && (c.id === 'human' || c.id === 'item')} onClick={c.id === 'item' ? () => sendMenu(c.menu_id) : onTap[c.id]}>
                           {c.id === 'menu' && <Icon name="menu" size={18} />}{c.label}
                         </button>
                       ))}
