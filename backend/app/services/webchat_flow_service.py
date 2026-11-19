@@ -40,9 +40,19 @@ def _has_contact(s: dict) -> bool:
     return bool(s.get("lead_id"))
 
 
-def _match_item(cfg: dict, text: str) -> Optional[dict]:
-    """Keyword / label match for typed text. First item with the most keyword hits wins; no hits → None."""
+_SHORT_WORDS = 3          # MATCH-2: up to this many words is a button word; longer is a sentence
+_BROAD = re.compile(r"\b(?:your services|our services|what (?:do|can) you (?:do|offer|help)|what (?:services|else)|tell me more|more about (?:you|your|what)|"
+                    r"what is (?:this|it) about|about you|what you (?:do|offer))\b", re.I)
+
+
+def _match_item(cfg: dict, text: str, strict: bool = False) -> Optional[dict]:
+    """Keyword / label match for typed text. First item with the most keyword hits wins; no hits → None.
+    MATCH-2 (strict, used when Chioma's AI can read the message instead): a sentence of more than 3 words needs two keyword hits or the
+    whole button label as a phrase, and a broad question ('tell me about your services') is never taken for one button."""
     t = f" {re.sub(r'[^a-z0-9 ]', ' ', (text or '').lower())} "
+    long_msg = strict and len(t.split()) > _SHORT_WORDS
+    if long_msg and _BROAD.search(text or ""):
+        return None
     best, best_hits = None, 0
     for it in cfg["menu"]:
         hits = 0
@@ -54,6 +64,8 @@ def _match_item(cfg: dict, text: str) -> Optional[dict]:
             hits += 2
         if hits > best_hits:
             best, best_hits = it, hits
+    if long_msg and best_hits < 2:
+        return None
     return best
 
 
@@ -227,8 +239,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                 _notify_human(db, s, cfg, "The assistant was switched off for this chat after repeated attempts to override it.")
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False}
 
+    loose_item = None
     if item is None:
-        item = _match_item(cfg, visitor_text)
+        ai_reads = kind == "text" and bool(cfg.get("ai_enabled"))
+        item = _match_item(cfg, visitor_text, strict=ai_reads)         # MATCH-2: a sentence goes to the AI when she is on
+        if item is None and ai_reads:
+            loose_item = _match_item(cfg, visitor_text)               # kept for when the AI has no answer (allowance used up, error)
 
     form = None
     cards: list = []
@@ -283,8 +299,13 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         out.append(wc.append_message(db, s, "bot", "Happy to help with that. First, " + cfg["contact_prompt"][0].lower() + cfg["contact_prompt"][1:]))
         return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": False}
     else:
-        ai = webchat_ai_service.answer(db, s, cfg, visitor_text) if kind == "text" else None
-        if ai:
+        junk = not re.search(r"[A-Za-z0-9]{2}", visitor_text or "")      # COST: an emoji, a lone letter or '???' is not worth an AI call
+        ai = webchat_ai_service.answer(db, s, cfg, visitor_text) if (kind == "text" and not junk) else None
+        if not ai and loose_item and loose_item.get("action") not in ("human", "booking"):
+            out.append(wc.append_message(db, s, "bot", _answer_text(loose_item)))        # no AI answer: the old keyword answer beats "I cannot answer"
+            wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
+            just_answered = True
+        elif ai:
             out.append(wc.append_message(db, s, "bot", ai["reply"]))
             if not ai["handoff"]:
                 wc.set_state(db, s, answers=int((s.get("state") or {}).get("answers") or 0) + 1)     # counts as the first answer: details are asked next

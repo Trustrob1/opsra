@@ -37,7 +37,7 @@ from app.services import webchat_service as wc
 logger = logging.getLogger(__name__)
 
 FUNCTION_NAME = "webchat_ai_turn"
-HISTORY_MESSAGES = 8
+HISTORY_MESSAGES = 4          # COST: the last four messages are enough context for a short chat answer
 MAX_REPLY_CHARS = 600
 SHORT_SENTENCES = 3          # LENGTH: a chat reply is never longer than this, however much the knowledge base holds
 SHORT_CHARS = 320
@@ -111,8 +111,8 @@ def _knowledge(db, s: dict, cfg: dict, text: str) -> str:
     try:
         from app.services.ai_agent_service import _fetch_kb_articles
         found = _fetch_kb_articles(db, s["org_id"], text)
-        for a in found[:(5 if any(x.get("chunk") for x in found) else 3)]:      # WA-AUTO-4a: knowledge chunks are longer
-            size = 1400 if a.get("chunk") else 500
+        for a in found[:3]:      # COST: the three best chunks, trimmed (was five at 1,400 characters)
+            size = 800 if a.get("chunk") else 400
             lines.append(f"- {sanitise_for_prompt(a.get('title') or '', max_length=80)}: "
                          f"{sanitise_for_prompt((a.get('content') or '')[:size], max_length=size)}")
     except Exception as exc:
@@ -134,6 +134,8 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
         f"Use ONLY the information in {'<business_info> and <products>' if (cfg.get('shop_enabled') or cfg.get('products_read')) else '<business_info>'} below. If the answer is not there, do not guess: say a team "
         "member will reply, and set handoff to true. Never invent prices, opening hours, addresses, discounts, "
         "delivery times, availability or product details such as size, colour or material. Never ask for card numbers, passwords or bank details.",
+        "If the visitor asks broadly (your services, what you do, tell me more), give a one-sentence overview of the main things the business offers, "
+        "then ask which they would like to hear about. Do not pick just one.",
         "If the visitor greets you, in English, Pidgin or any Nigerian language (for example hello, good morning, how far, wetin dey, "
         "e kaaro, kedu, sannu, salaam), greet them back warmly first, then help with the rest of their message. If they say thank you "
         "or goodbye, reply warmly and briefly.",
@@ -244,7 +246,7 @@ def _history(db, s: dict) -> str:
     except Exception:
         return ""
     label = {"visitor": "Visitor", "bot": "Assistant", "rep": "Team"}
-    return "\n".join(f"{label.get(m['role'], 'Assistant')}: {m['text'][:300]}" for m in msgs)
+    return "\n".join(f"{label.get(m['role'], 'Assistant')}: {m['text'][:220]}" for m in msgs)
 
 
 def answer(db, s: dict, cfg: dict, text: str) -> Optional[dict]:
