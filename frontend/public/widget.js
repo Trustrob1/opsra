@@ -80,6 +80,7 @@
       ink: { dark: false, surface: '#FFFFFF', ink: '#1B1F28', muted: '#5B6270', line: '#E9ECF2', field: '#F1F3F7', fieldLine: '#B4BBC8' }
     }
     var themeId = THEMES[d.chat_theme] ? d.chat_theme : 'classic'
+    var T = THEMES[themeId]
     if (themeId !== 'classic' && brand.toLowerCase() === '#028090') brand = '#2467E3'
     var name = String(d.business_name || 'us').slice(0, 80)
     var left = d.side === 'left'
@@ -109,10 +110,12 @@
       '.hidebtn:not(.open) .btn,.hidebtn:not(.open) .card{display:none}' +
       '.x{display:none;width:26px;height:26px;margin:0 11px}' +
       '.open .x{display:block}.open .wrapav,.open .lbl{display:none}' +
-      '.panel{position:fixed;bottom:calc(92px + env(safe-area-inset-bottom,0px));' + side + ':20px;width:380px;height:min(640px,calc(100dvh - 112px));background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 12px 40px rgba(20,34,43,.3);opacity:0;transform:translateY(12px) scale(.98);pointer-events:none;visibility:hidden;transition:opacity .15s ease,transform .15s ease,visibility 0s .15s}' +
+      '.panel{position:fixed;bottom:calc(92px + env(safe-area-inset-bottom,0px));' + side + ':20px;width:380px;height:min(640px,calc(100dvh - 112px));background:' + T.surface + ';border-radius:18px;overflow:hidden;box-shadow:0 12px 40px rgba(20,34,43,.3);opacity:0;transform:translateY(12px) scale(.98);pointer-events:none;visibility:hidden;transition:opacity .15s ease,transform .15s ease,visibility 0s .15s}' +
       '.open .panel{opacity:1;transform:none;pointer-events:auto;visibility:visible;transition:opacity .15s ease,transform .15s ease}' +
       '.grab{display:none}' +
-      'iframe{width:100%;height:100%;border:0;background:#fff;display:block}' +
+      '.panel:before{content:"";position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:3px solid ' + T.line + ';border-top-color:' + brand + ';box-sizing:border-box}' +
+      '@media (prefers-reduced-motion:no-preference){.panel:before{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}}' +
+      'iframe{position:relative;width:100%;height:100%;border:0;background:transparent;display:block}' +
       '.card{position:fixed;bottom:calc(92px + env(safe-area-inset-bottom,0px));' + side + ':20px;max-width:260px;background:#fff;color:#14222b;border-radius:14px;padding:12px 34px 12px 14px;font-size:14px;line-height:1.35;box-shadow:0 8px 28px rgba(20,34,43,.25);cursor:pointer;display:none;border:0;text-align:left;font-family:inherit}' +
       '.card.in{display:block;animation:rise .25s ease}' +
       '.card .cx{position:absolute;top:4px;right:4px;width:28px;height:28px;border:0;background:transparent;color:#5b6b76;font-size:18px;line-height:1;cursor:pointer;border-radius:50%}' +
@@ -164,6 +167,22 @@
       pending = null
       panel.appendChild(frame)
     }
+    // WEBCHAT-WARM-1: once the website has finished loading, load the chat page once in a hidden frame (it starts no chat) so the
+    // first open comes from the browser cache instead of a blank panel.
+    function warmUp() {
+      try {
+        if (frame || window.__opsraWarm) return
+        window.__opsraWarm = true
+        var w = document.createElement('iframe')
+        w.setAttribute('aria-hidden', 'true'); w.tabIndex = -1; w.title = ''
+        w.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden'
+        w.src = chatBase + '/c/' + key + '?embed=1&warm=1&th=' + themeId
+        w.addEventListener('load', function () { setTimeout(function () { try { w.remove() } catch (e) { /* ignore */ } }, 3000) })
+        root.appendChild(w)
+      } catch (e) { /* the chat still opens normally */ }
+    }
+    function warmSoon() { (window.requestIdleCallback || function (f) { setTimeout(f, 1500) })(warmUp) }
+    if (document.readyState === 'complete') warmSoon(); else window.addEventListener('load', warmSoon)
     function setOpen(v) {
       isOpen = !!v
       if (isOpen) { ensureFrame(); card.classList.remove('in'); store('opsra_chioma_greeted_' + key, '1') }

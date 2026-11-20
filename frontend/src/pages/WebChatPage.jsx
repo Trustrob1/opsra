@@ -44,6 +44,9 @@ function parentSite() {
   } catch { /* unknown */ }
   return 'unknown'
 }
+// WEBCHAT-WARM-1: the website's widget loads this page once in a hidden frame (?warm=1) so the real chat opens from cache.
+// A warm-up frame never starts a chat session, so it creates no visitor, no events and no lead.
+const WARM = (() => { try { return new URLSearchParams(window.location.search).get('warm') === '1' } catch { return false } })()
 const closeEmbed = () => { try { window.parent.postMessage({ source: 'opsra-chat', type: 'close' }, '*') } catch { /* not framed */ } }
 
 const NEED_WHY = { 'ask for a call back': 'callback', 'send your file': 'file', 'record your voice note': 'voice' }
@@ -304,6 +307,7 @@ export default function WebChatPage({ chatKey }) {
 
   // open: hand-off link → resume stored session → new session
   useEffect(() => {
+    if (WARM) return undefined
     let dead = false
     const params = new URLSearchParams(window.location.search)
     const handoff = params.get('h')
