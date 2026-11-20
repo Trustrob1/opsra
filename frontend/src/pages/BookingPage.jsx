@@ -4,7 +4,8 @@
  * Times show in the visitor's own timezone.
  */
 import { useEffect, useState, useCallback } from 'react'
-import SlotPicker, { fmtFull } from '../modules/booking/SlotPicker'
+import { fmtFull } from '../modules/booking/SlotPicker'
+import CalendarPicker from '../modules/booking/CalendarPicker'
 import { getLink, getLinkSlots, linkBook, linkReschedule, linkCancel, linkVerifyPayment, apiError } from '../services/booking.service'
 import '../modules/booking/booking.css'
 
@@ -159,10 +160,9 @@ export default function BookingPage({ token }) {
     )
   }
 
-  return (
-    <Shell>
+  const side = (
+    <aside className="bk-side">
       {head}
-      <p className="bk-sec">{mode === 'reschedule' ? 'Pick a new time' : 'Pick a time'}</p>
       {mode !== 'reschedule' && (info.staff || []).length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <label className="bk-tz" htmlFor="bk-who" style={{ display: 'block', marginBottom: 4 }}>Who would you like to see?</label>
@@ -173,20 +173,31 @@ export default function BookingPage({ token }) {
           </select>
         </div>
       )}
-      <SlotPicker slots={slots} tz={tz} value={picked} onChange={setPicked} />
-      <p className="bk-tz">Times shown in your timezone ({tz})</p>
-      {info.deposit && mode !== 'reschedule' && <p className="bk-tz" style={{ fontWeight: 600 }}>A {money(info.deposit.amount, info.deposit.currency)} deposit secures your time. You will pay on the next step.</p>}
-      {err && <p className="bk-err" role="alert">{err}</p>}
-      <div className="bk-actions">
-        <button className="bk-btn" disabled={!picked || busy} onClick={doBook}>
-          {busy ? 'Saving…' : picked ? `${info.deposit && mode !== 'reschedule' ? 'Continue with' : 'Confirm'} ${fmtFull(picked, tz)}` : 'Choose a time'}
-        </button>
-        {mode === 'reschedule' && <button className="bk-btn bk-btn-ghost" onClick={() => { setMode('pick'); setPicked(null) }}>Back</button>}
+      <p className="bk-tz">Times are shown in your timezone ({tz}).</p>
+    </aside>
+  )
+
+  return (
+    <Shell wide>
+      <div className="bk-split">
+        {side}
+        <section>
+          <CalendarPicker slots={slots} tz={tz} value={picked} onChange={setPicked} />
+          {info.deposit && mode !== 'reschedule' && <p className="bk-tz" style={{ fontWeight: 600 }}>A {money(info.deposit.amount, info.deposit.currency)} deposit secures your time. You will pay on the next step.</p>}
+          {err && <p className="bk-err" role="alert">{err}</p>}
+          <div className="bk-bar">
+            <div className="bk-bar-sum"><small>YOUR BOOKING</small><b>{picked ? fmtFull(picked, tz) : 'Choose a time'}</b></div>
+            {mode === 'reschedule' && <button className="bk-btn bk-btn-ghost" onClick={() => { setMode('pick'); setPicked(null) }}>Back</button>}
+            <button className="bk-btn" disabled={!picked || busy} onClick={doBook}>
+              {busy ? 'Saving…' : picked ? (info.deposit && mode !== 'reschedule' ? 'Continue' : 'Confirm') : 'Choose a time'}
+            </button>
+          </div>
+        </section>
       </div>
     </Shell>
   )
 }
 
-function Shell({ children }) {
-  return <main className="bk-page"><div className="bk-card">{children}</div></main>
+function Shell({ children, wide }) {
+  return <main className="bk-page"><div className={`bk-card${wide ? ' bk-wide' : ''}`}>{children}</div></main>
 }
