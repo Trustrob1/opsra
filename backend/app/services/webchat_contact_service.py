@@ -40,6 +40,23 @@ INTROS = {
 DEFAULT_INTRO = ("", "")
 
 
+_YES_LEAD = re.compile(r"^(?:y|yes|yeah|yea|yep|yup|ya|ok|okay|sure|alright|please|pls|abeg|definitely|absolutely|of course|go ahead|why not|i would|i do|i agree|agreed|fine)\b")
+_NO_LEAD = re.compile(r"^(?:n|no|nope|nah|not now|no thanks|no thank you|maybe later|later|dont|do not)\b")
+
+
+def is_yes(text: str) -> bool:
+    """A short reply that says yes in any of the usual ways ('yes', 'yeah sure', 'ok please', 'yes I would'). Never a long message."""
+    if "?" in (text or ""):
+        return False
+    low = re.sub(r"[^a-z ]", " ", (text or "").lower()).split()
+    return 0 < len(low) <= 5 and bool(_YES_LEAD.match(" ".join(low))) and not _NO_LEAD.match(" ".join(low))
+
+
+def is_no(text: str) -> bool:
+    low = re.sub(r"[^a-z ]", " ", (text or "").lower()).split()
+    return 0 < len(low) <= 5 and bool(_NO_LEAD.match(" ".join(low)))
+
+
 def enabled(cfg: dict) -> bool:
     return bool(cfg.get("contact_in_chat", True))
 
@@ -148,8 +165,7 @@ def can_deflect(s: dict, text: str) -> bool:
         return _clean_name(text) is None and looks_like_question(text)
     if cur == "phone":
         return wc.normalise_phone((text or "").strip()) is None and looks_like_question(text)
-    low = re.sub(r"[^a-z ]", "", (text or "").lower()).strip()
-    return low not in _YES and low not in _NO and not low.startswith(("yes", "no ")) and looks_like_question(text)
+    return not is_yes(text) and not is_no(text) and looks_like_question(text)
 
 
 def reask(db, s: dict, cfg: dict) -> Optional[dict]:
@@ -165,7 +181,7 @@ def reask(db, s: dict, cfg: dict) -> Optional[dict]:
     else:
         tmp = (s.get("state") or {}).get("contact_tmp") or {}
         ph = tmp.get("phone") or ""
-        q = f"Back to your details: is it okay for {cfg.get('business_name') or 'the team'} to contact you on the number ending {ph[-3:]} about your enquiry? Reply Yes or No."
+        q = f"Back to your details: is it okay for {cfg.get('business_name') or 'the team'} to contact you on the number ending {ph[-3:]} about your enquiry?"
     return wc.append_message(db, s, "bot", q)
 
 
@@ -224,23 +240,29 @@ def step(db, s: dict, cfg: dict, text: str, finish: Callable[..., dict]) -> dict
             return fail("That number does not look right. Please send your WhatsApp number, like 0803 123 4567.")
         tmp["phone"], tmp["email"], shown = phone, None, f"the number ending {phone[-3:]}"
         wc.set_state(db, s, contact_step="consent", contact_tmp=tmp, contact_tries=0)
-        say(f"Thank you. Is it okay for {cfg.get('business_name') or 'the team'} to contact you on {shown} about your enquiry? Reply Yes or No.")
-        return reply()
+        say(f"Thank you. Is it okay for {cfg.get('business_name') or 'the team'} to contact you on {shown} about your enquiry?")
+        return reply(choices=[{"id": "say", "label": "Yes"}, {"id": "say", "label": "No"}])
 
     if cur == "consent":
-        low = re.sub(r"[^a-z ]", "", t.lower()).strip()
-        if low in _NO or low.startswith("no "):
+        if is_no(t):
             _clear(db, s)
-            say("No problem, I will not keep your details. You can still tap Menu, or ask me anything and I will share what I can.")
+            say("No problem, I will not keep your details. You can still tap Menu, or ask me anything and I will share what I can."
+                if cfg.get("ai_enabled") else "No problem, I will not keep your details. You can still tap Menu to see what I can help with.")
             return reply(contact_step=None)
-        if low in _YES or low.startswith("yes"):
+        if is_yes(t):
             res = finish(db, s, cfg, name=tmp.get("name"), phone=tmp.get("phone"), email=tmp.get("email"), consent=True)
             if res.get("error"):
                 _clear(db, s)
                 say("Let us finish this with a short form instead.")
                 return reply(ask_contact=True, contact_step=None)
             _clear(db, s)
-            return reply(messages=out + (res.get("messages") or []), form=res.get("form"), cards=res.get("cards") or [], contact_step=None)
-        return fail("Please reply Yes or No.")
+            return reply(messages=out + (res.get("messages") or []), form=res.get("form"), cards=res.get("cards") or [], contact_step=None,
+                         **({"choices": res["choices"]} if res.get("choices") else {}))
+        n = tries + 1
+        if n >= MAX_TRIES:
+            return fail("Please reply Yes or No.")
+        wc.set_state(db, s, contact_tries=n)
+        say("Sorry, I need a yes or no here.")
+        return reply(choices=[{"id": "say", "label": "Yes"}, {"id": "say", "label": "No"}])
 
     return reply(contact_step=None)

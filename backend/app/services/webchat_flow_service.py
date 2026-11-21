@@ -63,6 +63,23 @@ def _match_item(cfg: dict, text: str, strict: bool = False) -> Optional[dict]:
     return best
 
 
+_BOOK_Q = re.compile(r"\b(?:book|booking|appointment|schedule|reserve)\b", re.I)
+
+
+def _booking_offer(cfg: dict, answer: str) -> Optional[dict]:
+    """OPEN-OFFER-1: the booking button when this answer ends by offering a booking ('Want to book a time?'), else None. The offer stays open
+    until the visitor takes it or does something else, so a typed 'yes' means yes and a details ask in between cannot swallow it."""
+    tail = (answer or "").strip().splitlines()[-1:] or [""]
+    if not tail[0].rstrip().endswith("?") or not _BOOK_Q.search(tail[0]):
+        return None
+    return next((m for m in cfg.get("menu", []) if m.get("action") == "booking" and m.get("id")), None)
+
+
+def _open_offer_item(cfg: dict, s: dict) -> Optional[dict]:
+    oid = (s.get("state") or {}).get("open_offer")
+    return next((m for m in cfg.get("menu", []) if m.get("id") == oid and m.get("action") == "booking"), None) if oid else None
+
+
 def _overview(cfg: dict) -> Optional[dict]:
     """{'text', 'choices'} for a broad question when no AI is reading it: the business's own buttons to tap, never one wrong answer."""
     topics = [m for m in cfg.get("menu", []) if m.get("action") != "human" and m.get("id") and m.get("label")]
@@ -269,9 +286,26 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     if contact.step_of(s) and not _replay:                       # WEBCHAT-CONTACT-1: Chioma is asking for details in the chat
         if kind == "text":
             r = contact.step(db, s, cfg, visitor_text, handle_contact)
-            return {"messages": out + r["messages"], "ask_contact": r["ask_contact"], "ask_email": False, "form": r["form"],
-                    "human": wc.is_human(s, cfg), "cards": r["cards"], "contact_step": r["contact_step"]}
+            res = {"messages": out + r["messages"], "ask_contact": r["ask_contact"], "ask_email": False, "form": r["form"],
+                   "human": wc.is_human(s, cfg), "cards": r["cards"], "contact_step": r["contact_step"]}
+            if r.get("choices"):
+                res["choices"] = r["choices"]
+            return res
         wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_nudged=True)   # tapped an option: moved on, do not nag
+
+    offer_item = _open_offer_item(cfg, s)
+    if offer_item and not _replay:
+        wc.set_state(db, s, open_offer=None)              # OPEN-OFFER-1: whatever the visitor does next, the offer is settled (a new answer can open another)
+        if kind == "text" and contact.is_yes(visitor_text):
+            item = offer_item                              # 'yes' to "Want to book a time?" is the Book button
+        elif kind == "text" and contact.is_no(visitor_text):
+            out.append(wc.append_message(db, s, "bot", "No problem. Is there anything else I can help with?"))
+            ov = _overview(cfg)
+            res = {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False}
+            if ov:
+                res["choices"] = ov["choices"]
+            return res
+        state = s.get("state") or {}
 
     if kind == "menu" and state.get("guide"):
         wc.set_state(db, s, guide=None)                    # they tapped something else: the guided questions are dropped
@@ -343,7 +377,8 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             form = "booking"
     elif item:
         out.append(wc.append_message(db, s, "bot", _answer_text(item)))
-        wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
+        bk_offer = _booking_offer(cfg, _answer_text(item)) if item.get("action") != "booking" else None
+        wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1, open_offer=(bk_offer or {}).get("id"))
         just_answered = True
         choices = smart.related(cfg, item)                # SMART-1: where to go next, so the visitor is never at a dead end
     elif kind == "text" and (info := smart.info_answer(cfg, visitor_text)):
@@ -389,6 +424,11 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                         return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards, "contact_step": "name"}
                     return {"messages": out, "ask_contact": True, "ask_email": False, "form": None, "human": True, "cards": cards}
                 return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": True, "cards": cards}
+        elif kind == "text" and not junk and cfg.get("shop_enabled") and (pm := webchat_shop_service.text_matches(db, s["org_id"], visitor_text)):
+            out.append(wc.append_message(db, s, "bot", webchat_shop_service.match_reply(pm)))        # BOT-PRODUCTS-1: no AI, but the words name a product: show it
+            cards = webchat_shop_service.cards_for(db, s["org_id"], [str(p["id"]) for p in pm])
+            wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
+            just_answered = True
         elif kind == "text" and _BROAD.search(visitor_text or "") and _overview(cfg):
             ov = _overview(cfg)                   # MATCH-2: a broad question and nobody to read it: show the buttons, not a wrong answer
             out.append(wc.append_message(db, s, "bot", ov["text"]))
@@ -480,8 +520,23 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
                     _notify_human(db, s, cfg, "Asked before sharing details: " + waiting)
         else:
             after = after_note
-            tip = " or tap Menu" if cfg.get("menu") else ""
-            out.append(wc.append_message(db, s, "bot", after or ("What would you like to know? You can type your question" + tip + ".")))
+            offer = _open_offer_item(cfg, s)
+            if offer and not after:
+                # OPEN-OFFER-1: they were asked "Want to book a time?" before their details were taken: ask it again, with the button
+                first = (s.get("contact_name") or "").split(" ")[0]
+                out.append(wc.append_message(db, s, "bot", f"Thank you{', ' + first if first else ''}. Would you like to book a time?"))
+                return {"messages": out, "form": form, "cards": cards, "choices": [smart._item_choice(offer)]}
+            if after:
+                out.append(wc.append_message(db, s, "bot", after))
+            elif cfg.get("ai_enabled"):
+                tip = " or tap Menu" if cfg.get("menu") else ""
+                out.append(wc.append_message(db, s, "bot", "What would you like to know? You can type your question" + tip + "."))
+            else:
+                # BOT-WORDING-1: nothing reads free questions here, so do not invite them: show what can be tapped
+                ov = _overview(cfg)
+                out.append(wc.append_message(db, s, "bot", "What would you like to know? Tap one of these."))
+                if ov:
+                    return {"messages": out, "form": form, "cards": cards, "choices": ov["choices"]}
     return {"messages": out, "form": form, "cards": cards}
 
 

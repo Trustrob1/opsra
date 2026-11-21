@@ -164,7 +164,7 @@
       frame.setAttribute('allow', 'microphone; clipboard-write')
       frame.src = chatBase + '/c/' + key + '?embed=1&s=' + encodeURIComponent(source) + '&po=' + encodeURIComponent(location.origin) +
         (pending && pending.menu_id ? '&m=' + encodeURIComponent(pending.menu_id) : '') + (pending && pending.text ? '&q=' + encodeURIComponent(pending.text) : '') +
-        (pending && (pending.open === 'menu' || pending.open === 'shop') ? '&o=' + pending.open : '') + '&th=' + themeId
+        (pending && pending.open === 'menu' ? '&o=menu' : '') + (pending && pending.open === 'shop' ? '&o=shop' : '') + '&th=' + themeId
       pending = null
       panel.appendChild(frame)
     }

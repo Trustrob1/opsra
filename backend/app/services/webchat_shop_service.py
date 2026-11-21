@@ -118,6 +118,44 @@ def _rank(rows: list[dict], q: Optional[str]) -> list[dict]:
     return hits or ranked
 
 
+_GENERIC_TITLE_WORDS = {"with", "from", "that", "this", "your", "daily", "pack", "set", "new", "best", "free"}
+
+
+def text_matches(db, org_id: str, text: str, limit: int = 3) -> list[dict]:
+    """BOT-PRODUCTS-1: products whose TITLE the visitor's typed words name ('do you have a water flosser', 'toothpaste price'), for when no AI
+    reads the message. Needs a real title word (4+ letters, plural-tolerant); no hit, or too many hits to be a clear match, gives []. Never raises."""
+    try:
+        words = {re.sub(r"s$", "", w) for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(w) >= 4}
+        if not words:
+            return []
+        hits = []
+        for p in _fetch_all(db, org_id):
+            title_words = {re.sub(r"s$", "", w) for w in re.findall(r"[a-z0-9]+", str(p.get("title") or "").lower())
+                           if len(w) >= 4 and w not in _GENERIC_TITLE_WORDS}
+            n = len(words & title_words)
+            if n:
+                hits.append((n, p))
+        if not hits or len(hits) > limit + 1:
+            return []
+        hits.sort(key=lambda h: h[0], reverse=True)
+        top = hits[0][0]
+        best = [p for n, p in hits if n == top]
+        return best[:limit] if len(best) <= limit else []
+    except Exception as exc:
+        logger.warning("webchat text_matches failed org=%s: %s", org_id, exc)
+        return []
+
+
+def match_reply(rows: list[dict]) -> str:
+    """The sentence that goes with the product cards for a typed product question."""
+    if len(rows) == 1:
+        p = rows[0]
+        price = _num(p.get("price"))
+        stock = "" if _stock_state(p, None) is None else " It is out of stock right now."
+        return f"Yes, we have the {str(p.get('title') or 'product')[:80]}" + (f" at {_money(price)}." if price > 0 else ".") + stock + " Tap Add to cart below, or tap Shop to see everything."
+    return "Here is what we have that matches. Tap Add to cart on the one you want, or tap Shop to see everything."
+
+
 def search(db, org_id: str, q: Optional[str] = None, limit: int = LIST_LIMIT) -> list[dict]:
     """Cards for the Shop view. A query ranks by word hits in title/description; no query = catalogue order."""
     try:
