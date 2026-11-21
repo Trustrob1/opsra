@@ -965,6 +965,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
 // key={active.contact_id} ensures full reset on conversation switch.
 
 function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, statusLoading = false, templates = [], onSent, injectTextRef, replyTo = null, onClearReply }) {
+  const isMobile                      = useIsMobile()
   const [mode, setMode]               = useState('text')
   const [text, setText]               = useState('')
   const [file, setFile]               = useState(null)       // File object
@@ -973,6 +974,8 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
   const [sendError, setSendError]     = useState(null)
   const fileInputRef                  = useRef(null)
   const cameraInputRef                = useRef(null)
+  const galleryInputRef               = useRef(null)
+  const [attachOpen, setAttachOpen]    = useState(false)
   const textareaRef                   = useRef(null)
   const isWebchat                     = channel === 'webchat'
   // WEBCHAT-STAFF-1 — voice note recorder
@@ -1182,7 +1185,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
   const barBg = '#FFFFFF'
 
   return (
-    <div style={{ background: barBg, borderTop: `1px solid ${ds.border}`, flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <div style={{ position: 'relative', background: barBg, borderTop: `1px solid ${ds.border}`, flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
 
       {/* Window status loading — shown while first fetch is in-flight */}
       {statusLoading && (
@@ -1261,42 +1264,43 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
       {!statusLoading && !recording && (mode === 'text' || mode === 'media') && (
         <div style={{ padding: '8px 10px 10px', display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
 
-          {/* Attachment button — hidden for Instagram (text only in UNIFIED-INBOX-1A) and in media mode */}
+          {/* Attachment menu (UI-REDESIGN-1c): one paperclip opens Photo / Camera / Document / Voice note — hidden for Instagram/Messenger (text only) and in media mode */}
           {mode === 'text' && channel !== 'instagram' && channel !== 'messenger' && (
             <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={isWebchat ? WEBCHAT_ACCEPT : ACCEPTED_MEDIA}
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                title="Attach image, video, audio or document (max 25 MB)"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 20, padding: 0, flexShrink: 0, width: 38, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.color = ds.teal}
-                onMouseLeave={e => e.currentTarget.style.color = ds.gray}
-              >
-                <Paperclip size={18} />
-              </button>
+              <input ref={fileInputRef} type="file" accept={isWebchat ? WEBCHAT_ACCEPT : ACCEPTED_MEDIA} onChange={handleFileSelect} style={{ display: 'none' }} />
+              <input ref={galleryInputRef} type="file" accept={isWebchat ? 'image/jpeg,image/png,image/gif,image/webp' : 'image/*,video/*'} onChange={handleFileSelect} style={{ display: 'none' }} />
               {isWebchat && (
+                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
+              )}
+              <button
+                onClick={() => setAttachOpen(o => !o)}
+                title="Attach a photo, camera shot, document or voice note (max 25 MB)"
+                aria-label="Attach"
+                aria-expanded={attachOpen}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: attachOpen ? ds.teal : ds.gray, padding: 0, flexShrink: 0, width: 44, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}
+              >
+                {attachOpen ? <X size={22} /> : <Paperclip size={22} />}
+              </button>
+              {attachOpen && (
                 <>
-                  <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: 'none' }} />
-                  <button
-                    onClick={() => cameraInputRef.current?.click()}
-                    title="Take a photo"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 0, flexShrink: 0, width: 38, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.color = ds.teal}
-                    onMouseLeave={e => e.currentTarget.style.color = ds.gray}
-                  ><Camera size={18} /></button>
-                  <button
-                    onClick={startRecording}
-                    title="Record a voice note"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 0, flexShrink: 0, width: 38, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.color = ds.teal}
-                    onMouseLeave={e => e.currentTarget.style.color = ds.gray}
-                  ><Mic size={18} /></button>
+                  <div onClick={() => setAttachOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                  <div style={{ position: 'absolute', bottom: '100%', left: 10, right: isMobile ? 10 : 'auto', width: isMobile ? 'auto' : 340, marginBottom: 8, zIndex: 41, background: '#fff', border: `1px solid ${ds.border}`, borderRadius: 20, boxShadow: '0 8px 28px rgba(27,31,40,0.16)', padding: '18px 12px 14px', display: 'grid', gridTemplateColumns: `repeat(${isWebchat ? 4 : 2}, 1fr)`, gap: 12 }}>
+                    {[
+                      { key: 'photo',  label: 'Photo',      Icon: Image,    bg: '#E4EDFD', fg: '#2467E3', run: () => galleryInputRef.current?.click(), show: true },
+                      { key: 'camera', label: 'Camera',     Icon: Camera,   bg: '#FDE7F0', fg: '#C21E56', run: () => cameraInputRef.current?.click(),  show: isWebchat },
+                      { key: 'doc',    label: 'Document',   Icon: FileText, bg: '#EFE6FB', fg: '#5E1BB8', run: () => fileInputRef.current?.click(),    show: true },
+                      { key: 'voice',  label: 'Voice note', Icon: Mic,      bg: '#E3F4EA', fg: '#176A3C', run: () => startRecording(),                 show: isWebchat },
+                    ].filter(o => o.show).map(o => (
+                      <button
+                        key={o.key}
+                        onClick={() => { setAttachOpen(false); o.run() }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: 0, fontFamily: ds.fontDm }}
+                      >
+                        <span style={{ width: 52, height: 52, borderRadius: '50%', background: o.bg, color: o.fg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><o.Icon size={24} /></span>
+                        <span style={{ fontSize: 13, color: '#3C4352', fontWeight: 500 }}>{o.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </>
               )}
             </>
