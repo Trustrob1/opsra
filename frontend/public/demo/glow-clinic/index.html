@@ -97,6 +97,17 @@ section.sec{padding:88px 0}
 .steps b{display:block;font-weight:500}
 .steps span{font-size:14.5px;color:var(--body)}
 
+
+.pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.pcard{background:var(--grey);border-radius:24px;padding:14px 14px 20px;display:flex;flex-direction:column;gap:6px}
+.pimg{aspect-ratio:1/1;border-radius:16px;margin-bottom:10px;background:#fff}
+.pimg img{object-fit:contain;background:#fff}
+.pcard h3{font-size:16px;padding:0 6px}
+.pcard p{font-size:13.5px;padding:0 6px}
+.prow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 6px 0;margin-top:auto}
+.prow .link{font-size:13px;min-height:36px}
+@media (max-width:1000px){.pgrid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.pgrid{gap:12px}.pcard{padding:10px 10px 16px}.pcard h3{font-size:14.5px}.prow{flex-direction:column;align-items:flex-start}}
 /* visit */
 .visit{background:var(--grey)}
 .visit .chip,.svc .chip{background:#fff}
@@ -152,7 +163,7 @@ footer{padding:36px 0 44px;font-size:14px;color:var(--body)}
       Glow Dental &amp; Skin Clinic
     </a>
     <nav aria-label="Main"><ul>
-      <li><a href="#top">Home</a></li><li><a href="#about">About</a></li><li><a href="#services">Services</a></li><li><a href="#visit">Visit</a></li>
+      <li><a href="#top">Home</a></li><li><a href="#about">About</a></li><li><a href="#services">Services</a></li><li><a href="#shop">Shop</a></li><li><a href="#visit">Visit</a></li>
     </ul></nav>
     <a class="btn grey" href="#contact">Contact <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
   </div>
@@ -255,6 +266,64 @@ footer{padding:36px 0 44px;font-size:14px;color:var(--body)}
         <li><i>3</i><div><b>Come in</b><span>We confirm by message and see you at the clinic.</span></div></li>
       </ol>
       <a class="btn" href="#contact">Book Appointment <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="shop">
+  <div class="wrap">
+    <span class="chip">Shop</span>
+    <h2 style="margin-top:16px">Care products for home</h2>
+    <p class="muted" style="margin:14px 0 36px;max-width:520px">Order any time, day or night. Chioma helps you choose, takes your order in the chat and sends a secure payment link.</p>
+    <div class="pgrid">
+      <article class="pcard">
+        <div class="ph pimg"><svg class="art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="#DCE1FD"/><rect x="40" y="30" width="20" height="42" rx="8" fill="#C9D2FC"/></svg><img src="images/products/sonic-electric-toothbrush.jpg" alt="Sonic Electric Toothbrush" loading="lazy" onerror="this.remove()"></div>
+        <h3>Sonic Electric Toothbrush</h3>
+        <p class="muted">Rechargeable, 3 modes, 2 brush heads</p>
+        <div class="prow"><b class="price">₦38,000</b><button class="link" type="button" data-chioma-ask="I would like to buy the Sonic Electric Toothbrush">Order in chat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </article>
+      <article class="pcard">
+        <div class="ph pimg"><svg class="art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="#DCE1FD"/><rect x="40" y="30" width="20" height="42" rx="8" fill="#C9D2FC"/></svg><img src="images/products/whitening-toothpaste.jpg" alt="Whitening Toothpaste" loading="lazy" onerror="this.remove()"></div>
+        <h3>Whitening Toothpaste</h3>
+        <p class="muted">75ml, with fluoride</p>
+        <div class="prow"><b class="price">₦6,500</b><button class="link" type="button" data-chioma-ask="I would like to buy the Whitening Toothpaste">Order in chat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </article>
+      <article class="pcard">
+        <div class="ph pimg"><svg class="art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="#DCE1FD"/><rect x="40" y="30" width="20" height="42" rx="8" fill="#C9D2FC"/></svg><img src="images/products/sensitive-teeth-toothpaste.jpg" alt="Sensitive Teeth Toothpaste" loading="lazy" onerror="this.remove()"></div>
+        <h3>Sensitive Teeth Toothpaste</h3>
+        <p class="muted">75ml, gentle daily use</p>
+        <div class="prow"><b class="price">₦5,500</b><button class="link" type="button" data-chioma-ask="I would like to buy the Sensitive Teeth Toothpaste">Order in chat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </article>
+      <article class="pcard">
+        <div class="ph pimg"><svg class="art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="#DCE1FD"/><rect x="40" y="30" width="20" height="42" rx="8" fill="#C9D2FC"/></svg><img src="images/products/water-flosser.jpg" alt="Water Flosser" loading="lazy" onerror="this.remove()"></div>
+        <h3>Water Flosser</h3>
+        <p class="muted">Cordless, 3 pressure settings</p>
+        <div class="prow"><b class="price">₦32,000</b><button class="link" type="button" data-chioma-ask="I would like to buy the Water Flosser">Order in chat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </article>
+      <article class="pcard">
+        <div class="ph pimg"><svg class="art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="#DCE1FD"/><rect x="40" y="30" width="20" height="42" rx="8" fill="#C9D2FC"/></svg><img src="images/products/smile-care-kit.jpg" alt="Smile Care Kit" loading="lazy" onerror="this.remove()"></div>
+        <h3>Smile Care Kit</h3>
+        <p class="muted">Gift set for the whole routine</p>
+        <div class="prow"><b class="price">₦48,000</b><button class="link" type="button" data-chioma-ask="I would like to buy the Smile Care Kit">Order in chat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </article>
+      <article class="pcard">
+        <div class="ph pimg"><svg class="art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="#DCE1FD"/><rect x="40" y="30" width="20" height="42" rx="8" fill="#C9D2FC"/></svg><img src="images/products/daily-spf-50-sunscreen.jpg" alt="Daily SPF 50 Sunscreen" loading="lazy" onerror="this.remove()"></div>
+        <h3>Daily SPF 50 Sunscreen</h3>
+        <p class="muted">50ml, light under makeup</p>
+        <div class="prow"><b class="price">₦14,000</b><button class="link" type="button" data-chioma-ask="I would like to buy the Daily SPF 50 Sunscreen">Order in chat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </article>
+      <article class="pcard">
+        <div class="ph pimg"><svg class="art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="#DCE1FD"/><rect x="40" y="30" width="20" height="42" rx="8" fill="#C9D2FC"/></svg><img src="images/products/vitamin-c-brightening-serum.jpg" alt="Vitamin C Brightening Serum" loading="lazy" onerror="this.remove()"></div>
+        <h3>Vitamin C Brightening Serum</h3>
+        <p class="muted">30ml, for an even looking tone</p>
+        <div class="prow"><b class="price">₦22,000</b><button class="link" type="button" data-chioma-ask="I would like to buy the Vitamin C Brightening Serum">Order in chat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </article>
+      <article class="pcard">
+        <div class="ph pimg"><svg class="art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="24" fill="#DCE1FD"/><rect x="40" y="30" width="20" height="42" rx="8" fill="#C9D2FC"/></svg><img src="images/products/gentle-foaming-cleanser.jpg" alt="Gentle Foaming Cleanser" loading="lazy" onerror="this.remove()"></div>
+        <h3>Gentle Foaming Cleanser</h3>
+        <p class="muted">150ml, for everyday use</p>
+        <div class="prow"><b class="price">₦11,500</b><button class="link" type="button" data-chioma-ask="I would like to buy the Gentle Foaming Cleanser">Order in chat <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </article>
     </div>
   </div>
 </section>
