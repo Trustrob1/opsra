@@ -507,10 +507,11 @@ export default function WebChatPage({ chatKey }) {
     const onMsg = (e) => {
       if (!EMBED || e.source !== window.parent || !e.data || e.data.source !== 'opsra-host' || e.data.type !== 'ask') return
       runAsk(e.data.menu_id, e.data.text, e.data.open)
+      if (e.data.product) { setPanel(null); sendViewing(e.data.product) }          // a Shop now button on one product: that product, not the whole list
     }
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)
-  }, [runAsk])
+  }, [runAsk, sendViewing])
 
   // WEBCHAT-MSG-1: tap a message for Reply / Copy / Edit / Delete (like WhatsApp)
   const whoLabel = (role) => (role === 'visitor' ? 'You' : role === 'rep' ? `${cfg.business_name} team` : cfg.business_name)

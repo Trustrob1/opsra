@@ -224,7 +224,7 @@ def viewing(db, s: dict, cfg: dict, product_id) -> dict:
         if out_of_stock:
             text += " It is out of stock right now. Ask me and I can suggest something similar."
         elif shop_on:
-            text += " Here it is. Ask me anything about it, or add it to your cart."
+            text += " Here it is. Ask me anything about it, add it to your cart, or tap Shop to see everything else."
         elif card["price"] > 0:
             text += f" It is {_money(card['price'])}. Ask me anything about it."
         else:
