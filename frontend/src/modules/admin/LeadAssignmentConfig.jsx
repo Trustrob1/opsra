@@ -649,7 +649,7 @@ function ShiftEditor({ form, setForm, formErr, users, saving, onSave, onCancel, 
           onClick={onSave}
           disabled={saving}
           style={{
-            background: saving ? '#015F6B' : ds.teal,
+            background: saving ? '#1F54B8' : ds.teal,
             color: 'white', border: 'none', borderRadius: 9,
             padding: '10px 22px', fontSize: 13, fontWeight: 600,
             fontFamily: ds.fontSyne, cursor: saving ? 'not-allowed' : 'pointer',

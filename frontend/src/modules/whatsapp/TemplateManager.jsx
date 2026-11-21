@@ -164,7 +164,7 @@ export default function TemplateManager() {
       borderRadius: 14, overflow: 'hidden',
     },
     th: {
-      background: '#E0F4F6', color: '#015F6B', fontWeight: 600,
+      background: '#E4EDFD', color: '#1F54B8', fontWeight: 600,
       padding: '11px 16px', textAlign: 'left',
       fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.6px',
     },
@@ -179,8 +179,8 @@ export default function TemplateManager() {
     },
     empty: { padding: 32, textAlign: 'center', color: ds.gray, fontSize: 13 },
     hint: {
-      background: '#E0F4F6', border: `1px solid #B0DDD9`, borderRadius: 8,
-      padding: '10px 14px', fontSize: 12.5, color: '#015F6B', marginBottom: 16,
+      background: '#E4EDFD', border: `1px solid #B0DDD9`, borderRadius: 8,
+      padding: '10px 14px', fontSize: 12.5, color: '#1F54B8', marginBottom: 16,
     },
   }
 

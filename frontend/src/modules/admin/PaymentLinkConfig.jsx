@@ -316,7 +316,7 @@ const S = {
     fontWeight: 500, marginBottom: 5,
   },
   input: {
-    border: '1.5px solid #D6E8EC', borderRadius: 8, padding: '8px 11px',
+    border: '1.5px solid #E1E5EC', borderRadius: 8, padding: '8px 11px',
     fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%',
     boxSizing: 'border-box', background: 'white',
   },
@@ -346,12 +346,12 @@ const S = {
     padding: '3px 10px',
   },
   codeBox: {
-    flex: 1, background: '#F5FAFB', border: '1.5px solid #D6E8EC',
+    flex: 1, background: '#F6F7FA', border: '1.5px solid #E1E5EC',
     borderRadius: 8, padding: '8px 12px', fontSize: 12.5,
     color: '#1a7a8a', fontFamily: 'monospace', wordBreak: 'break-all',
   },
   copyBtn: {
-    padding: '8px 14px', background: '#E0F4F6', color: '#1a7a8a',
+    padding: '8px 14px', background: '#E4EDFD', color: '#1a7a8a',
     border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0,
   },

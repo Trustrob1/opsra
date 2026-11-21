@@ -171,7 +171,7 @@ function ItemEditor({ items, setItems, sectionKey, actionOptions = ACTION_OPTION
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
                   <label style={S.label}>What happens</label>
-                  <div style={{ ...S.input, background: '#F5FAFB', color: '#7A9BAD', cursor: 'default', fontSize: 12 }}>
+                  <div style={{ ...S.input, background: '#F6F7FA', color: '#7A9BAD', cursor: 'default', fontSize: 12 }}>
                     {actionOptions.find(a => a.value === item.action)?.label || '—'}
                   </div>
                 </div>
@@ -513,7 +513,7 @@ const S = {
     fontWeight: 500, marginBottom: 4,
   },
   input: {
-    border: '1.5px solid #D6E8EC', borderRadius: 8, padding: '8px 11px',
+    border: '1.5px solid #E1E5EC', borderRadius: 8, padding: '8px 11px',
     fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%',
     boxSizing: 'border-box', background: 'white',
   },
@@ -522,12 +522,12 @@ const S = {
     padding: '14px 0', borderBottom: '1px solid #F0F6F8',
   },
   arrowBtn: {
-    background: 'none', border: '1px solid #D6E8EC', borderRadius: 5,
+    background: 'none', border: '1px solid #E1E5EC', borderRadius: 5,
     cursor: 'pointer', padding: '2px 5px', fontSize: 10, color: '#7A9BAD',
     lineHeight: 1.4,
   },
   addBtn: {
-    padding: '6px 14px', background: '#E0F4F6', color: '#1a7a8a',
+    padding: '6px 14px', background: '#E4EDFD', color: '#1a7a8a',
     border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer',
   },

@@ -53,7 +53,7 @@ function ChannelCard({ icon: Icon, title, description, connected, disabled, disa
       border: `1.5px solid ${connected ? ds.teal : '#dde4e8'}`,
       borderRadius: 12,
       padding: 20,
-      background: connected ? 'rgba(2,128,144,0.04)' : 'white',
+      background: connected ? 'rgba(36,103,227,0.04)' : 'white',
       opacity: disabled ? 0.6 : 1,
       transition: 'all 0.15s',
     }}>

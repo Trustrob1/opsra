@@ -354,14 +354,16 @@ function ModalOverlay({ children, onClose }) {
         background: 'rgba(0,0,0,0.45)',
         zIndex: ds.z.modal,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16,
+        padding: (typeof window !== 'undefined' && window.innerWidth < 600) ? 0 : 16,
       }}
     >
       <div style={{
         background: 'white',
-        borderRadius: ds.radius.xxl,
+        borderRadius: (typeof window !== 'undefined' && window.innerWidth < 600) ? 0 : 24,
         width: 680, maxWidth: '100%',
-        maxHeight: '90vh', overflowY: 'auto',
+        maxHeight: (typeof window !== 'undefined' && window.innerWidth < 600) ? '100dvh' : '90vh',
+        height: (typeof window !== 'undefined' && window.innerWidth < 600) ? '100dvh' : undefined,
+        overflowY: 'auto',
         boxShadow: ds.modalShadow,
       }}>
         {children}
@@ -378,7 +380,7 @@ function TwoCol({ children }) {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: validChildren.length === 1 ? '1fr' : '1fr 1fr',
+      gridTemplateColumns: (validChildren.length === 1 || (typeof window !== 'undefined' && window.innerWidth < 600)) ? '1fr' : '1fr 1fr',
       gap: 14, marginBottom: 0,
     }}>
       {validChildren}
@@ -417,15 +419,14 @@ const headerStyle = {
 }
 
 const labelStyle = {
-  fontSize: 12, fontWeight: 500, color: ds.gray,
-  textTransform: 'uppercase', letterSpacing: '0.6px',
+  fontSize: 14, fontWeight: 600, color: '#3C4352',
 }
 
 const inputStyle = {
   width: '100%',
   border: `1.5px solid ${ds.border}`,
-  borderRadius: ds.radius.md,
-  padding: '11px 14px', fontSize: 13.5,
+  borderRadius: 12,
+  padding: '12px 16px', fontSize: 16, minHeight: 48,
   color: ds.dark, fontFamily: ds.fontDm,
   background: 'white', outline: 'none',
   boxSizing: 'border-box', transition: 'border-color 0.2s',
@@ -434,7 +435,7 @@ const inputStyle = {
 const closeBtn = { background: 'none', border: 'none', fontSize: 20, color: ds.gray, cursor: 'pointer', padding: '4px 8px' }
 const primaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 8,
-  padding: '11px 22px', borderRadius: ds.radius.md, border: 'none',
+  padding: '11px 22px', borderRadius: 999, border: 'none',
   background: ds.teal, color: 'white', fontSize: 13.5, fontWeight: 600,
   fontFamily: ds.fontSyne, cursor: 'pointer', transition: 'all 0.15s',
   minHeight: 44,

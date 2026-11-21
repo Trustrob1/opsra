@@ -177,10 +177,10 @@ export default function CustomerList({ onSelectCustomer }) {
     tableWrap: {
       background: '#fff', border: `1px solid ${ds.border}`,
       borderRadius: 14, overflow: 'hidden',
-      boxShadow: '0 2px 12px rgba(2,128,144,0.05)',
+      boxShadow: '0 2px 12px rgba(36,103,227,0.05)',
     },
     th: {
-      background: '#E0F4F6', color: '#015F6B', fontWeight: 600,
+      background: '#E4EDFD', color: '#1F54B8', fontWeight: 600,
       padding: '11px 16px', textAlign: 'left',
       fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.6px',
     },
@@ -325,7 +325,7 @@ export default function CustomerList({ onSelectCustomer }) {
                     borderLeft: hasAttention ? `3px solid #ED8936` : '3px solid transparent',
                   }}
                   onClick={() => onSelectCustomer?.(c.id)}
-                  onMouseEnter={e => e.currentTarget.style.background = '#F5FAFB'}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F6F7FA'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}
                 >
                   <td style={S.td}>

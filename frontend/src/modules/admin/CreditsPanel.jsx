@@ -16,7 +16,7 @@ const card = panel
 const h3 = { ...panelTitle, margin: 0 }
 const btn = button
 const KINDS = { ai: 'AI replies', meta: 'WhatsApp fees', fee: 'Automation fees', topup: 'Top-up', adjust: 'Adjustment', refund: 'Refund', expiry: 'Expired credit' }
-const SHADE = { ai: ds.teal, meta: '#0D1B2A', fee: '#9AA9B8' }
+const SHADE = { ai: ds.teal, meta: '#1B1F28', fee: '#9AA9B8' }
 
 const lsGet = () => { try { return localStorage.getItem(PENDING_KEY) } catch { return null } }
 const lsSet = (v) => { try { v ? localStorage.setItem(PENDING_KEY, v) : localStorage.removeItem(PENDING_KEY) } catch { /* private mode */ } }

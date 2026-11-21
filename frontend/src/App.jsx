@@ -163,7 +163,7 @@ export default function App() {
     const link  = document.createElement('link')
     link.id     = 'opsra-fonts'
     link.rel    = 'stylesheet'
-    link.href   = 'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap'
+    link.href   = 'https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap'
     document.head.appendChild(link)
   }, [])
 
@@ -341,36 +341,36 @@ function UpdatePasswordScreen() {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: ds.dark, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div style={{ background: ds.dark2, border: '1px solid #1e3a4f', borderRadius: 16, padding: '48px 44px', width: '100%', maxWidth: 420, boxShadow: '0 32px 80px rgba(0,0,0,0.5)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: ds.light, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ background: 'white', border: `1px solid ${ds.border}`, borderRadius: 28, padding: '48px 44px', width: '100%', maxWidth: 420, boxShadow: '0 24px 60px rgba(20,24,31,0.10)' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
           <OpsraMark size={44} />
           <div>
-            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: 0 }}>Opsra</p>
-            <p style={{ fontSize: 11, color: '#6B8FA0', letterSpacing: '1px', textTransform: 'uppercase', margin: 0 }}>AI Growth System</p>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: 0 }}>Opsra</p>
+            <p style={{ fontSize: 11, color: '#5B6270', letterSpacing: '1px', textTransform: 'uppercase', margin: 0 }}>AI Growth System</p>
           </div>
         </div>
 
         {done ? (
           <>
             <div style={{ display:'flex',justifyContent:'center',marginBottom:16}}><CheckSquare size={40} color={ds.green} strokeWidth={1.5} /></div>
-            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 12px', textAlign: 'center' }}>Password updated</h1>
-            <p style={{ fontSize: 13, color: '#7A9BAD', textAlign: 'center', lineHeight: 1.6 }}>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 12px', textAlign: 'center' }}>Password updated</h1>
+            <p style={{ fontSize: 13, color: '#5B6270', textAlign: 'center', lineHeight: 1.6 }}>
               Your password has been changed successfully.<br />
               Redirecting you to sign in…
             </p>
           </>
         ) : (
           <>
-            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: 'white', margin: '0 0 8px' }}>Set new password</h1>
-            <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 28, lineHeight: 1.6 }}>Choose a strong password for your Opsra account.</p>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: ds.dark, margin: '0 0 8px' }}>Set new password</h1>
+            <p style={{ fontSize: 13, color: '#5B6270', marginBottom: 28, lineHeight: 1.6 }}>Choose a strong password for your Opsra account.</p>
 
             {error && (
-              <div style={{ background: '#1a0a0a', border: '1px solid #5a1a1a', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>
-                <p style={{ fontSize: 13, color: '#FF9A9A', margin: 0 }}>{error}</p>
+              <div style={{ background: '#FDECEA', border: '1px solid #F5C6C2', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>
+                <p style={{ fontSize: 13, color: '#B3261E', margin: 0 }}>{error}</p>
                 {(errorCode || !accessToken) && (
-                  <a href="/" style={{ fontSize: 12, color: '#5a9aaa', display: 'block', marginTop: 8, textDecoration: 'underline' }}>
+                  <a href="/" style={{ fontSize: 12, color: '#1F54B8', display: 'block', marginTop: 8, textDecoration: 'underline' }}>
                     ← Back to sign in to request a new link
                   </a>
                 )}
@@ -390,7 +390,7 @@ function UpdatePasswordScreen() {
               />
               <button
                 type="button" onClick={() => setShowPwd(p => !p)}
-                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#5B6270', fontSize: 16, padding: 4, lineHeight: 1 }}
                 title={showPwd ? 'Hide password' : 'Show password'}
               >{showPwd ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
@@ -404,7 +404,7 @@ function UpdatePasswordScreen() {
               />
               <button
                 type="button" onClick={() => setShowConfirm(p => !p)}
-                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#5B6270', fontSize: 16, padding: 4, lineHeight: 1 }}
                 title={showConfirm ? 'Hide password' : 'Show password'}
               >{showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
@@ -535,28 +535,28 @@ function LoginScreen({ onAuth }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: ds.dark, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+    <div style={{ position: 'fixed', inset: 0, background: ds.light, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
       <div style={{
-        background:   ds.dark2,
-        border:       '1px solid #1e3a4f',
-        borderRadius: 16,
+        background:   'white',
+        border:       `1px solid ${ds.border}`,
+        borderRadius: 28,
         padding:      '48px 44px',
         width:        '100%',
         maxWidth:     420,
-        boxShadow:    '0 32px 80px rgba(0,0,0,0.5)',
+        boxShadow:    '0 24px 60px rgba(20,24,31,0.10)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
           <OpsraMark size={44} />
           <div>
-            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: 0 }}>Opsra</p>
-            <p style={{ fontSize: 11, color: '#6B8FA0', letterSpacing: '1px', textTransform: 'uppercase', margin: 0 }}>AI Growth System</p>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: 0 }}>Opsra</p>
+            <p style={{ fontSize: 11, color: '#5B6270', letterSpacing: '1px', textTransform: 'uppercase', margin: 0 }}>AI Growth System</p>
           </div>
         </div>
 
         {mfaStep ? (
           <>
-            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 8px' }}>Two-factor authentication</h1>
-            <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 24, lineHeight: 1.6 }}>Enter the 6-digit code from your authenticator app.</p>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 8px' }}>Two-factor authentication</h1>
+            <p style={{ fontSize: 13, color: '#5B6270', marginBottom: 24, lineHeight: 1.6 }}>Enter the 6-digit code from your authenticator app.</p>
             <label style={loginLabel}>Authentication code</label>
             <input
               type="text" inputMode="numeric" placeholder="000000" maxLength={6}
@@ -564,19 +564,19 @@ function LoginScreen({ onAuth }) {
               onKeyDown={handleKeyDown} autoComplete="one-time-code"
               style={{ ...loginInput, marginBottom: 24, letterSpacing: '0.3em', textAlign: 'center', fontSize: 22 }}
             />
-            {error && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>{error}</p>}
+            {error && <p style={{ fontSize: 13, color: '#B3261E', marginBottom: 16 }}>{error}</p>}
             <button onClick={handleMfaVerify} disabled={loading} style={loginBtn(loading)}>
               {loading ? <Spinner label="Verifying…" /> : 'Verify code'}
             </button>
             <button onClick={() => { setMfaStep(false); setPendingAuth(null); setMfaCode(''); setError(null) }}
-              style={{ width: '100%', background: 'none', border: 'none', marginTop: 12, fontSize: 13, color: '#7A9BAD', cursor: 'pointer', textDecoration: 'underline' }}>
+              style={{ width: '100%', background: 'none', border: 'none', marginTop: 12, fontSize: 13, color: '#5B6270', cursor: 'pointer', textDecoration: 'underline' }}>
               ← Back to sign in
             </button>
           </>
         ) : forgotView === 'forgot' ? (
           <>
-            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 8px' }}>Reset your password</h1>
-            <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 24, lineHeight: 1.6 }}>Enter your email address and we'll send you a reset link.</p>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 8px' }}>Reset your password</h1>
+            <p style={{ fontSize: 13, color: '#5B6270', marginBottom: 24, lineHeight: 1.6 }}>Enter your email address and we'll send you a reset link.</p>
             <label style={loginLabel}>Email address</label>
             <input
               type="email" placeholder="you@example.com"
@@ -585,13 +585,13 @@ function LoginScreen({ onAuth }) {
               autoComplete="email"
               style={{ ...loginInput, marginBottom: 24 }}
             />
-            {forgotError && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>{forgotError}</p>}
+            {forgotError && <p style={{ fontSize: 13, color: '#B3261E', marginBottom: 16 }}>{forgotError}</p>}
             <button onClick={handleForgotSubmit} disabled={forgotLoading} style={loginBtn(forgotLoading)}>
               {forgotLoading ? <Spinner label="Sending…" /> : 'Send Reset Link'}
             </button>
             <button
               onClick={() => { setForgotView('login'); setForgotError(null) }}
-              style={{ width: '100%', background: 'none', border: 'none', marginTop: 12, fontSize: 13, color: '#7A9BAD', cursor: 'pointer', textDecoration: 'underline' }}
+              style={{ width: '100%', background: 'none', border: 'none', marginTop: 12, fontSize: 13, color: '#5B6270', cursor: 'pointer', textDecoration: 'underline' }}
             >
               ← Back to sign in
             </button>
@@ -599,12 +599,12 @@ function LoginScreen({ onAuth }) {
         ) : forgotView === 'reset_sent' ? (
           <>
             <div style={{ display:'flex',justifyContent:'center',marginBottom: 16 }}><Mail size={40} color={ds.teal} strokeWidth={1.5} /></div>
-            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: 'white', margin: '0 0 12px', textAlign: 'center' }}>Check your email</h1>
-            <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 24, lineHeight: 1.6, textAlign: 'center' }}>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 12px', textAlign: 'center' }}>Check your email</h1>
+            <p style={{ fontSize: 13, color: '#5B6270', marginBottom: 24, lineHeight: 1.6, textAlign: 'center' }}>
               If an account exists for <strong style={{ color: '#A0BDC8' }}>{forgotEmail}</strong>, a reset link has been sent.<br />
               The link expires in 1 hour.
             </p>
-            <p style={{ fontSize: 12, color: '#4a6a7a', background: '#0e2030', borderRadius: 8, padding: '10px 14px', lineHeight: 1.6, marginBottom: 20 }}>
+            <p style={{ fontSize: 12, color: '#5B6270', background: '#F6F7FA', borderRadius: 8, padding: '10px 14px', lineHeight: 1.6, marginBottom: 20 }}>
               Didn't receive it? Check your spam folder, or contact your administrator who can send the link directly.
             </p>
             <button
@@ -616,8 +616,8 @@ function LoginScreen({ onAuth }) {
           </>
         ) : (
           <>
-            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 26, color: 'white', margin: '0 0 8px' }}>Welcome back</h1>
-            <p style={{ fontSize: 14, color: '#7A9BAD', marginBottom: 28, lineHeight: 1.6 }}>Sign in to access your operations dashboard.</p>
+            <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 26, color: ds.dark, margin: '0 0 8px' }}>Welcome back</h1>
+            <p style={{ fontSize: 14, color: '#5B6270', marginBottom: 28, lineHeight: 1.6 }}>Sign in to access your operations dashboard.</p>
             <label style={loginLabel}>Email address</label>
             <input type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={handleKeyDown} autoComplete="email" style={loginInput} />
             <label style={loginLabel}>Password</label>
@@ -631,11 +631,11 @@ function LoginScreen({ onAuth }) {
               />
               <button
                 type="button" onClick={() => setShowLoginPwd(p => !p)}
-                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A9BAD', fontSize: 16, padding: 4, lineHeight: 1 }}
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#5B6270', fontSize: 16, padding: 4, lineHeight: 1 }}
                 title={showLoginPwd ? 'Hide password' : 'Show password'}
               >{showLoginPwd ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 13, color: '#7A9BAD', cursor: 'pointer', userSelect: 'none' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 13, color: '#5B6270', cursor: 'pointer', userSelect: 'none' }}>
               <input
                 type="checkbox"
                 checked={keepSignedIn}
@@ -645,26 +645,26 @@ function LoginScreen({ onAuth }) {
               Keep me signed in
             </label>
             {idleMsg && (
-              <div style={{ background: '#0e2a38', border: '1px solid #1e4a60', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#7ecfea', lineHeight: 1.5 }}>
+              <div style={{ background: '#E4EDFD', border: '1px solid #C9DAF8', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#1F54B8', lineHeight: 1.5 }}>
                 <span style={{display:'inline-flex',alignItems:'center',gap:6}}><Lock size={14} />You have been logged out due to inactivity.</span>
               </div>
             )}
-            {error && <p style={{ fontSize: 13, color: '#FF9A9A', marginBottom: 16 }}>{error}</p>}
+            {error && <p style={{ fontSize: 13, color: '#B3261E', marginBottom: 16 }}>{error}</p>}
             <button onClick={handleLogin} disabled={loading} style={loginBtn(loading)}>
               {loading ? <Spinner label="Signing in…" /> : 'Sign In'}
             </button>
-            <p style={{ fontSize: 12, color: '#3a5a6a', textAlign: 'center', marginTop: 16 }}>
+            <p style={{ fontSize: 12, color: '#5B6270', textAlign: 'center', marginTop: 16 }}>
               <button
                 onClick={() => { setForgotView('forgot'); setForgotEmail(''); setForgotError(null) }}
-                style={{ background: 'none', border: 'none', color: '#5a9aaa', cursor: 'pointer', fontSize: 12, textDecoration: 'underline', padding: 0 }}
+                style={{ background: 'none', border: 'none', color: '#1F54B8', cursor: 'pointer', fontSize: 12, textDecoration: 'underline', padding: 0 }}
               >
                 Forgot your password?
               </button>
             </p>
-            <p style={{ fontSize: 11, color: '#2a4a5a', textAlign: 'center', marginTop: 8 }}>
-              <a href="/privacy" style={{ color: '#3a6a7a', textDecoration: 'none' }}>Privacy Policy</a>
+            <p style={{ fontSize: 11, color: '#5B6270', textAlign: 'center', marginTop: 8 }}>
+              <a href="/privacy" style={{ color: '#5B6270', textDecoration: 'none' }}>Privacy Policy</a>
               {" · "}
-              <a href="/terms" style={{ color: '#3a6a7a', textDecoration: 'none' }}>Terms of Service</a>
+              <a href="/terms" style={{ color: '#5B6270', textDecoration: 'none' }}>Terms of Service</a>
             </p>
           </>
         )}
@@ -876,182 +876,100 @@ function AppShell() {
   const userInitial = user?.full_name?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? '?'
   const userName    = user?.full_name ?? user?.email ?? 'User'
 
-  // Sidebar nav content — shared between desktop sidebar and mobile drawer
-  const collapsed = !isMobile && sidebarCollapsed   // desktop-only collapse; mobile drawer always full-width
+  // ── UI-REDESIGN-1 shell: light sidebar (no module numbers), light top bar, mobile bottom tab bar + More sheet ──
+  const collapsed = !isMobile && sidebarCollapsed   // desktop-only collapse
+  const [moreOpen, setMoreOpen] = useState(false)
+  // The Setup checklist's floating tab is gone; the checklist opens from the Admin section instead.
+  const [setupAvailable, setSetupAvailable] = useState(false)
+  useEffect(() => {
+    const sync = () => setSetupAvailable(window.__opsraSetupAvailable === true)
+    sync()
+    window.addEventListener('opsra:setup-state', sync)
+    return () => window.removeEventListener('opsra:setup-state', sync)
+  }, [])
+  const [threadOpen, setThreadOpen] = useState(false)   // a conversation is open on a phone: hide the tab bar for the message box
+  useEffect(() => {
+    const sync = () => setThreadOpen(window.__opsraThreadOpen === true)
+    sync()
+    window.addEventListener('opsra:thread-state', sync)
+    return () => window.removeEventListener('opsra:thread-state', sync)
+  }, [])
+  const hideTabs = isMobile && view === 'conversations' && threadOpen
+  const canBilling = ['owner', 'ops_manager', 'admin'].includes(_userTemplate)
+  const openSetup = () => { setMoreOpen(false); window.dispatchEvent(new Event('opsra:open-setup')) }
+  const goTo = (id) => { setMoreOpen(false); setActiveNav(id); setView(id); setSelectedLeadId(null) }
+  const NAV_INK = '#3C4352'
 
-  const SidebarContent = () => (
+  const navRow = (key, label, Icon, isActive, onClick, disabled) => (
+    <button
+      key={key} type="button" onClick={onClick}
+      title={disabled ? 'Coming soon' : (collapsed ? label : undefined)}
+      aria-current={isActive ? 'page' : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        width: 'calc(100% - 16px)', margin: '1px 8px', padding: collapsed ? 0 : '0 12px', minHeight: 42,
+        borderRadius: 10, border: 'none', cursor: disabled ? 'default' : 'pointer',
+        fontFamily: ds.fontDm, fontSize: 14.5, fontWeight: isActive ? 600 : 500, textAlign: 'left',
+        color: isActive ? ds.tealDark : NAV_INK, background: isActive ? ds.mint : 'transparent',
+        opacity: disabled ? 0.5 : 1, transition: 'background 0.15s',
+      }}
+    >
+      {Icon && <Icon size={19} strokeWidth={isActive ? 2.2 : 1.8} style={{ flexShrink: 0 }} />}
+      {!collapsed && <span style={{ flex: 1, lineHeight: 1.3 }}>{label}</span>}
+    </button>
+  )
+  const groupLabel = (text) => (
+    <div style={{ padding: '14px 20px 4px', fontSize: 11.5, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{text}</div>
+  )
+
+  const sidebarContent = (
     <>
-      {/* Mobile drawer header */}
-      {isMobile && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <OpsraMark size={32} />
-            <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>Opsra</span>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            style={{ background: 'none', border: 'none', color: '#7A9BAD', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
-          ><X size={20} /></button>
-        </div>
-      )}
-
-      {/* Modules header + desktop collapse toggle */}
-      <div style={{
-        display: 'flex', alignItems: 'center',
-        justifyContent: collapsed ? 'center' : 'space-between',
-        padding: collapsed ? '20px 0 8px' : '20px 16px 8px',
-      }}>
-        {!collapsed && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
-            Modules
-          </span>
-        )}
-        {!isMobile && (
-          <button
-            onClick={toggleSidebarCollapsed}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: '#5a8a9f', padding: 4, borderRadius: 6,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        )}
+      <div style={{ paddingTop: 8 }}>
+        {NAV_GROUPS.map(group => {
+          const itemsInGroup = visibleNav.filter(item => item.group === group.id)
+          if (itemsInGroup.length === 0) return null   // e.g. Insights entirely hidden for a role
+          return (
+            <div key={group.id}>
+              {!collapsed && groupLabel(group.label)}
+              {collapsed && group.id !== 'sales_marketing' && <div style={{ height: 1, background: ds.border, margin: '10px 12px 4px' }} />}
+              {itemsInGroup.map(item => navRow(item.id, item.label, NAV_ICONS[item.id], activeNav === item.id, () => handleNavClick(item.id), !item.active))}
+            </div>
+          )
+        })}
+        {!collapsed && groupLabel('Admin')}
+        {collapsed && <div style={{ height: 1, background: ds.border, margin: '14px 12px 4px' }} />}
+        {canBilling && navRow('billing', 'Billing', CreditCard, activeNav === 'billing', () => goTo('billing'))}
+        {navRow('admin', 'Admin Dashboard', Settings, activeNav === 'admin', () => goTo('admin'))}
+        {setupAvailable && navRow('setup', 'Setup checklist', CheckSquare, false, openSetup)}
       </div>
-
-      {NAV_GROUPS.map(group => {
-        const itemsInGroup = visibleNav.filter(item => item.group === group.id)
-        if (itemsInGroup.length === 0) return null   // e.g. Insights entirely hidden for a role
-        return (
-          <div key={group.id}>
-            {!collapsed && (
-              <div style={{ padding: '14px 16px 4px', fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
-                {group.label}
-              </div>
-            )}
-            {collapsed && group.id !== 'sales_marketing' && (
-              <div style={{ height: 1, background: '#1a2f3f', margin: '10px 10px 4px' }} />
-            )}
-            {itemsInGroup.map(item => {
-              const isActive = activeNav === item.id
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => handleNavClick(item.id)}
-                  title={!item.active ? 'Coming soon' : (collapsed ? item.label : undefined)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    padding: collapsed ? '11px 0' : '11px 16px', margin: '2px 8px', borderRadius: 9,
-                    cursor: item.active ? 'pointer' : 'default', transition: 'all 0.18s',
-                    fontSize: 13.5, fontWeight: 500,
-                    color:      isActive ? 'white' : (item.active ? '#7A9BAD' : '#3a5a6a'),
-                    background: isActive ? ds.teal : 'none',
-                    opacity:    item.active ? 1 : 0.5,
-                    minHeight:  44,   // 44px tap target on mobile
-                  }}
-                >
-                  <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)', flexShrink: 0 }}>
-                    {(() => { const Icon = NAV_ICONS[item.id]; return Icon ? <Icon size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /> : null })()}
-                  </div>
-                  {!collapsed && (
-                    <>
-                      <span style={{ flex: 1, lineHeight: 1.3 }}>{item.label}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.6)' : '#3a5a6a' }}>{item.module}</span>
-                    </>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )
-      })}
-
-      {!collapsed && (
-        <div style={{ padding: '20px 16px 8px', fontSize: 10, fontWeight: 600, color: '#3a5a6a', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 8 }}>
-          Admin
-        </div>
-      )}
-      {collapsed && (
-        <div style={{ height: 1, background: '#1a2f3f', margin: '14px 10px 6px' }} />
-      )}
-
-      {['owner', 'ops_manager', 'admin'].includes(_userTemplate) && (() => {
-        const isActive = activeNav === 'billing'
-        return (
-          <div
-            onClick={() => { setActiveNav('billing'); setView('billing'); setSelectedLeadId(null); closeSidebarOnMobile() }}
-            title={collapsed ? 'Billing' : undefined}
-            style={{
-              display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              padding: collapsed ? '11px 0' : '11px 16px', margin: '2px 8px', borderRadius: 9,
-              cursor: 'pointer', transition: 'all 0.18s', fontSize: 13.5, fontWeight: 500,
-              color: isActive ? 'white' : '#7A9BAD', background: isActive ? ds.teal : 'none', minHeight: 44,
-            }}
-          >
-            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }}><CreditCard size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /></div>
-            {!collapsed && <span style={{ flex: 1 }}>Billing</span>}
-          </div>
-        )
-      })()}
-
-      {(() => {
-        const isActive = activeNav === 'admin'
-        return (
-          <div
-            onClick={() => { setActiveNav('admin'); setView('admin'); setSelectedLeadId(null); closeSidebarOnMobile() }}
-            title={collapsed ? 'Admin Dashboard' : undefined}
-            style={{
-              display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 12,
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              padding: collapsed ? '11px 0' : '11px 16px', margin: '2px 8px', borderRadius: 9,
-              cursor: 'pointer', transition: 'all 0.18s', fontSize: 13.5, fontWeight: 500,
-              color: isActive ? 'white' : '#7A9BAD', background: isActive ? ds.teal : 'none', minHeight: 44,
-            }}
-          >
-            <div style={{ width: 30, height: 30, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }}><Settings size={16} color={isActive ? 'white' : '#7A9BAD'} strokeWidth={isActive ? 2.5 : 1.8} /></div>
-            {!collapsed && <span style={{ flex: 1 }}>Admin Dashboard</span>}
-          </div>
-        )
-      })()}
-
-      {/* Mobile-only: user info + availability toggle + sign out at bottom of drawer */}
-      {isMobile && (
-        <div style={{ marginTop: 'auto', padding: '16px', borderTop: '1px solid #1a2f3f' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <div style={{ position: 'relative', flexShrink: 0 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: isOOO ? '#6B7280' : ds.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white', fontFamily: ds.fontSyne }}>
-                {userInitial}
-              </div>
-              <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: isOOO ? '#F59E0B' : ds.green, border: '2px solid #0f2535' }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, color: '#A0BDC8', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: isOOO ? '#F59E0B' : ds.green, marginTop: 2 }}><Circle size={8} fill='currentColor' strokeWidth={0} />{isOOO ? 'Out of Office' : 'Available'}</div>
-            </div>
-          </div>
-          <button
-            onClick={handleAvailabilityToggle}
-            disabled={oooLoading}
-            style={{ width: '100%', background: 'none', border: '1px solid ' + (isOOO ? '#F59E0B' : '#2a4a5a'), borderRadius: 8, padding: '9px', fontSize: 13, color: isOOO ? '#F59E0B' : '#7A9BAD', cursor: 'pointer', marginBottom: 8 }}
-          >
-            {oooLoading ? '…' : isOOO ? 'Mark as Available' : 'Go Out of Office'}
-          </button>
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            style={{ width: '100%', background: 'none', border: '1px solid #2a4a5a', borderRadius: 8, padding: '10px', fontSize: 13, color: '#7A9BAD', cursor: 'pointer' }}
-          >
-            {loggingOut ? 'Signing out…' : 'Sign out'}
-          </button>
-        </div>
-      )}
+      <div style={{ marginTop: 'auto', padding: 12 }}>
+        <button
+          type="button" onClick={toggleSidebarCollapsed}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={{ width: '100%', minHeight: 40, border: `1px solid ${ds.border}`, borderRadius: 10, background: 'white', color: NAV_INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: ds.fontDm, fontSize: 14, fontWeight: 600 }}
+        >
+          {collapsed ? <ChevronRight size={16} /> : <><ChevronLeft size={16} />Collapse menu</>}
+        </button>
+      </div>
     </>
   )
+
+  // Mobile bottom tabs: the same modules the drawer showed, in the same role rules, with the rest under More.
+  const TAB_ORDER = ['leads', 'conversations', 'tasks', 'support']
+  const TAB_SHORT = { conversations: 'Chats', tasks: 'Tasks', support: 'Support', knowledge: 'Knowledge' }
+  const tabItems = (isNoCrm ? visibleNav : TAB_ORDER.map(id => visibleNav.find(n => n.id === id))).filter(Boolean).slice(0, 4)
+  const tabIds = tabItems.map(n => n.id)
+  const moreActive = !tabIds.includes(activeNav)
+  const tile = (key, label, Icon, onClick, tone) => (
+    <button key={key} type="button" onClick={onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minHeight: 44, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600, color: ds.dark, textAlign: 'center', padding: 0 }}>
+      <span style={{ width: 52, height: 52, borderRadius: 16, background: tone === 'admin' ? '#EFE6FB' : ds.mint, color: tone === 'admin' ? ds.purple : ds.tealDark, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={23} strokeWidth={1.9} /></span>
+      <span style={{ lineHeight: 1.2 }}>{label}</span>
+    </button>
+  )
+
+  const pillBtn = { ...topbarBtn }
 
   return (
     <div style={{ fontFamily: ds.fontDm, background: ds.light, minHeight: '100vh' }}>
@@ -1059,43 +977,24 @@ function AppShell() {
       {/* ── Topbar ─────────────────────────────────────────────────────────── */}
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0,
-        height: 60, background: ds.dark, zIndex: ds.z.topbar,
-        borderBottom: '1px solid #1a2f3f',
-        display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12,
+        height: 60, background: 'white', zIndex: ds.z.topbar,
+        borderBottom: `1px solid ${ds.border}`,
+        display: 'flex', alignItems: 'center', padding: isMobile ? '0 8px 0 16px' : '0 20px', gap: 12,
       }}>
-        {/* Mobile: hamburger */}
-        {isMobile ? (
-          <>
-            <button
-              onClick={() => setSidebarOpen(true)}
-              style={{ background: 'none', border: 'none', color: '#7A9BAD', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center' }}
-              aria-label="Open menu"
-            ><Menu size={20} /></button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white', flex: 1 }}>
-              <OpsraMark size={28} />
-              Opsra
-            </div>
-          </>
-        ) : (
-          /* Desktop: logo */
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: 'white' }}>
-            <OpsraMark size={32} />
-            Opsra
-            <span style={{ background: ds.teal, color: 'white', fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.8px', marginLeft: 4 }}>Leads</span>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: isMobile ? 18 : 19, letterSpacing: '-0.03em', color: ds.dark, flex: isMobile ? 1 : undefined }}>
+          <OpsraMark size={isMobile ? 28 : 32} />
+          Opsra
+        </div>
 
-        <div style={{ marginLeft: isMobile ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16 }}>
+        <div style={{ marginLeft: isMobile ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 14 }}>
           {!isMobile && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ width: 8, height: 8, background: ds.green, borderRadius: '50%', animation: 'pulse 2s infinite' }} />
-                <span style={{ fontSize: 12, color: '#7A9BAD' }}>Live</span>
+                <span style={{ fontSize: 13, color: ds.gray }}>Live</span>
               </div>
               {isPlatformOrg && ['owner', 'ops_manager'].includes(_userTemplate) && (
-                <>
-                  <button onClick={() => { setView('superadmin'); setActiveNav('') }} style={topbarBtn}>Superadmin</button>
-                </>
+                <button onClick={() => { setView('superadmin'); setActiveNav('') }} style={pillBtn}>Superadmin</button>
               )}
             </>
           )}
@@ -1103,11 +1002,12 @@ function AppShell() {
           {/* Notification bell — always visible */}
           <button
             onClick={() => setShowNotif(true)}
-            style={{ position: 'relative', background: 'none', border: '1px solid #2a4a5a', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', color: '#7A9BAD', minWidth: 40, minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+            style={{ position: 'relative', background: 'white', border: isMobile ? 'none' : `1px solid ${ds.border}`, borderRadius: 999, cursor: 'pointer', color: NAV_INK, width: 44, height: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
-            <Bell size={16} />
+            <Bell size={isMobile ? 22 : 19} />
             {unreadCount > 0 && (
-              <span style={{ position: 'absolute', top: -6, right: -6, background: '#EF4444', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, fontFamily: ds.fontSyne }}>
+              <span style={{ position: 'absolute', top: isMobile ? 4 : -4, right: isMobile ? 2 : -4, background: '#E53E3E', color: 'white', borderRadius: 9, minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
@@ -1118,22 +1018,22 @@ function AppShell() {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                 <div style={{ position: 'relative' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: isOOO ? '#6B7280' : ds.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'white', fontFamily: ds.fontSyne }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: isOOO ? '#6B7280' : ds.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>
                     {userInitial}
                   </div>
-                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: isOOO ? '#F59E0B' : ds.green, border: '2px solid ' + ds.dark }} />
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: isOOO ? '#F59E0B' : ds.green, border: '2px solid white' }} />
                 </div>
-                <span style={{ fontSize: 13, color: '#A0BDC8', fontWeight: 500 }}>{userName}</span>
+                <span style={{ fontSize: 14, color: NAV_INK, fontWeight: 500 }}>{userName}</span>
               </div>
               <button
                 onClick={handleAvailabilityToggle}
                 disabled={oooLoading}
                 title={isOOO ? 'You are out of office — click to mark available' : 'Click to go out of office'}
-                style={{ ...topbarBtn, borderColor: isOOO ? '#F59E0B' : '#2a4a5a', color: isOOO ? '#F59E0B' : '#7A9BAD' }}
+                style={{ ...pillBtn, borderColor: isOOO ? '#F59E0B' : ds.border, color: isOOO ? '#B45309' : NAV_INK }}
               >
                 {oooLoading ? '…' : isOOO ? 'OOO' : 'Available'}
               </button>
-              <button onClick={handleLogout} disabled={loggingOut} style={topbarBtn}>
+              <button onClick={handleLogout} disabled={loggingOut} style={pillBtn}>
                 {loggingOut ? 'Signing out…' : 'Sign out'}
               </button>
             </>
@@ -1143,49 +1043,87 @@ function AppShell() {
 
       {/* ── Sidebar (desktop) ─────────────────────────────────────────────── */}
       {!isMobile && (
-        <nav style={{
+        <nav aria-label="Main" style={{
           position: 'fixed', top: 60, left: 0, bottom: 0,
           width: sidebarCollapsed ? SIDEBAR_W_CLOSED : SIDEBAR_W_OPEN,
-          background: ds.dark2,
-          borderRight: '1px solid #1a2f3f',
+          background: 'white',
+          borderRight: `1px solid ${ds.border}`,
           overflowY: 'auto', overflowX: 'hidden', zIndex: ds.z.sidebar,
           display: 'flex', flexDirection: 'column',
           transition: 'width 0.2s ease',
         }}>
-          <SidebarContent />
+          {sidebarContent}
         </nav>
       )}
 
-      {/* ── Mobile sidebar drawer ─────────────────────────────────────────── */}
+      {/* ── Mobile: bottom tab bar + More sheet ───────────────────────────── */}
       {isMobile && (
         <>
-          {/* Backdrop */}
-          {sidebarOpen && (
-            <div
-              onClick={handleBackdropClick}
-              style={{
-                position: 'fixed', inset: 0,
-                background: 'rgba(0,0,0,0.55)',
-                zIndex: ds.z.mobileDrawer - 1,
-                animation: 'fadeIn 0.15s ease',
-              }}
-            />
-          )}
-          {/* Drawer */}
-          <nav style={{
-            position: 'fixed', top: 0, left: 0, bottom: 0,
-            width: 280, background: ds.dark2,
-            borderRight: '1px solid #1a2f3f',
-            overflowY: 'auto',
-            zIndex: ds.z.mobileDrawer,
-            transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
-            transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-            display: 'flex', flexDirection: 'column',
-          }}
-            ref={sidebarRef}
-          >
-            <SidebarContent />
+          <nav aria-label="Main" style={{
+            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: ds.z.mobileDrawer - 1,
+            background: 'white', borderTop: `1px solid ${ds.border}`,
+            display: hideTabs ? 'none' : 'flex', padding: '6px 4px', paddingBottom: 'calc(6px + env(safe-area-inset-bottom))', boxSizing: 'border-box',
+          }}>
+            {tabItems.map(item => {
+              const Icon = NAV_ICONS[item.id]
+              const on = activeNav === item.id
+              return (
+                <button key={item.id} type="button" onClick={() => goTo(item.id)} aria-current={on ? 'page' : undefined}
+                  style={{ flex: 1, minWidth: 0, minHeight: 56, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontFamily: ds.fontDm, fontSize: 12, fontWeight: on ? 700 : 600, color: on ? ds.tealDark : ds.gray }}>
+                  <span style={{ width: 56, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: on ? ds.mint : 'transparent' }}>{Icon && <Icon size={22} strokeWidth={on ? 2.2 : 1.8} />}</span>
+                  {TAB_SHORT[item.id] ?? item.label}
+                </button>
+              )
+            })}
+            <button type="button" onClick={() => setMoreOpen(true)} aria-label="More" aria-expanded={moreOpen}
+              style={{ flex: 1, minWidth: 0, minHeight: 56, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontFamily: ds.fontDm, fontSize: 12, fontWeight: moreActive ? 700 : 600, color: moreActive ? ds.tealDark : ds.gray }}>
+              <span style={{ width: 56, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: moreActive ? ds.mint : 'transparent' }}><Menu size={22} strokeWidth={moreActive ? 2.2 : 1.8} /></span>
+              More
+            </button>
           </nav>
+
+          {moreOpen && (
+            <>
+              <div onClick={() => setMoreOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(20,24,31,0.45)', zIndex: ds.z.mobileDrawer, animation: 'fadeIn 0.15s ease' }} />
+              <div role="dialog" aria-label="All modules" style={{
+                position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: ds.z.mobileDrawer + 1,
+                background: 'white', borderRadius: '24px 24px 0 0', maxHeight: '88vh', overflowY: 'auto',
+                padding: '10px 16px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', boxSizing: 'border-box',
+                animation: 'fadeIn 0.2s ease',
+              }}>
+                <div style={{ width: 40, height: 5, borderRadius: 999, background: ds.border, margin: '0 auto 14px' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '14px 6px' }}>
+                  {visibleNav.map(item => tile(item.id, item.label, NAV_ICONS[item.id] ?? Settings, () => { if (item.active) goTo(item.id) }))}
+                </div>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '18px 0 8px' }}>Admin</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '14px 6px' }}>
+                  {canBilling && tile('billing', 'Billing', CreditCard, () => goTo('billing'), 'admin')}
+                  {tile('admin', 'Admin Dashboard', Settings, () => goTo('admin'), 'admin')}
+                  {setupAvailable && tile('setup', 'Setup checklist', CheckSquare, openSetup, 'admin')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 18, paddingTop: 14, borderTop: `1px solid ${ds.border}` }}>
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: isOOO ? '#6B7280' : ds.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: 'white' }}>{userInitial}</div>
+                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: isOOO ? '#F59E0B' : ds.green, border: '2px solid white' }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, color: ds.dark, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: isOOO ? '#B45309' : '#176A3C', marginTop: 2 }}><Circle size={8} fill="currentColor" strokeWidth={0} />{isOOO ? 'Out of office' : 'Available'}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button type="button" onClick={handleAvailabilityToggle} disabled={oooLoading}
+                    style={{ flex: 1, minHeight: 46, border: `1px solid ${isOOO ? '#F59E0B' : ds.border}`, borderRadius: 999, background: 'white', color: isOOO ? '#B45309' : NAV_INK, fontFamily: ds.fontDm, fontSize: 14.5, fontWeight: 600, cursor: 'pointer' }}>
+                    {oooLoading ? '…' : isOOO ? 'Mark as Available' : 'Go Out of Office'}
+                  </button>
+                  <button type="button" onClick={handleLogout} disabled={loggingOut}
+                    style={{ flex: 1, minHeight: 46, border: `1px solid ${ds.border}`, borderRadius: 999, background: 'white', color: NAV_INK, fontFamily: ds.fontDm, fontSize: 14.5, fontWeight: 600, cursor: 'pointer' }}>
+                    {loggingOut ? 'Signing out…' : 'Sign out'}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -1196,7 +1134,7 @@ function AppShell() {
         minHeight:    'calc(100vh - 60px)',
         transition:   isMobile ? undefined : 'margin-left 0.2s ease',
         // Bottom padding on mobile to not clip content behind potential bottom bars
-        paddingBottom: isMobile ? 16 : 0,
+        paddingBottom: isMobile ? (hideTabs ? 0 : 'calc(84px + env(safe-area-inset-bottom))') : 0,
       }}>
         <BillingBanner role={_userTemplate} onOpen={() => { setActiveNav('billing'); setView('billing') }} />
         <PlanNotice role={_userTemplate} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} />
@@ -1279,18 +1217,7 @@ function AppShell() {
       )}
 
       {/* Aria AI Assistant (M01-10b) */}
-      {!isNoCrm && <AriaButton
-        onClick={() => setAriaOpen(prev => !prev)}
-        hasBadge={ariaBadge}
-        panelOpen={ariaOpen}
-        view={view}
-        minimised={ariaMinimised}
-        onMinimise={() => {
-          const next = !ariaMinimised
-          setAriaMinimised(next)
-          try { localStorage.setItem('aria_minimised', next ? '1' : '0') } catch {}
-        }}
-      />}
+      {/* Floating Aria button removed (UI-REDESIGN-1). Aria opens from the conversation header's Ask Aria. */}
       {!isNoCrm && <AriaPanel open={ariaOpen} onClose={() => setAriaOpen(false)} briefing={ariaBriefing} onBadgeClear={() => { setAriaBadge(false); setAriaBriefing(null) }} />}
 
       {/* Onboarding Checklist (ORG-ONBOARDING-B) */}
@@ -1331,28 +1258,27 @@ function Spinner({ label }) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const loginLabel = {
-  display: 'block', fontSize: 12, fontWeight: 500,
-  color: '#7A9BAD', textTransform: 'uppercase',
-  letterSpacing: '0.8px', marginBottom: 8,
+  display: 'block', fontSize: 14, fontWeight: 600,
+  color: '#3C4352', marginBottom: 6,
 }
 
 const loginInput = {
-  width: '100%', background: ds.dark, border: '1.5px solid #1e3a4f',
-  borderRadius: 10, padding: '14px 16px', fontSize: 14,
-  color: 'white', fontFamily: ds.fontDm, outline: 'none',
+  width: '100%', background: 'white', border: `1.5px solid ${ds.border}`,
+  borderRadius: 14, padding: '15px 16px', fontSize: 16,
+  color: ds.dark, fontFamily: ds.fontDm, outline: 'none',
   transition: 'border-color 0.2s', marginBottom: 20, boxSizing: 'border-box',
 }
 
 const loginBtn = (loading) => ({
-  width: '100%', background: loading ? '#015F6B' : ds.teal,
-  color: 'white', border: 'none', borderRadius: 10, padding: 15,
-  fontSize: 15, fontWeight: 600, fontFamily: ds.fontSyne,
+  width: '100%', background: loading ? '#1F54B8' : ds.teal,
+  color: 'white', border: 'none', borderRadius: 999, padding: 15,
+  fontSize: 16, fontWeight: 600, fontFamily: ds.fontSyne,
   cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 0.2s',
 })
 
 const topbarBtn = {
-  background: 'none', border: '1px solid #2a4a5a',
-  borderRadius: 7, padding: '5px 12px',
-  fontSize: 12, color: '#7A9BAD', cursor: 'pointer',
+  background: 'white', border: `1px solid ${ds.border}`,
+  borderRadius: 999, padding: '0 16px', minHeight: 40,
+  fontSize: 13.5, fontWeight: 600, color: '#3C4352', cursor: 'pointer',
   transition: 'all 0.15s', fontFamily: ds.fontDm,
 }

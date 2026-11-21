@@ -351,7 +351,7 @@ function StatusTick({ status }) {
     return <span style={{ fontSize: 11, color: ds.gray }} title="Delivered">✓✓</span>
   }
   if (status === 'read') {
-    return <span style={{ fontSize: 11, color: '#028090' }} title="Read">✓✓</span>
+    return <span style={{ fontSize: 11, color: '#2467E3' }} title="Read">✓✓</span>
   }
   if (status === 'failed') {
     return <span style={{ fontSize: 11, color: '#C0392B' }} title="Failed">✗</span>

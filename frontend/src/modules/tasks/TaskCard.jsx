@@ -260,7 +260,7 @@ export default function TaskCard({
         transition:   'box-shadow 0.15s',
       }}
       onMouseEnter={e => {
-        if (!isCompleted && !isArchived) e.currentTarget.style.boxShadow = '0 2px 8px rgba(2,128,144,0.1)'
+        if (!isCompleted && !isArchived) e.currentTarget.style.boxShadow = '0 2px 8px rgba(36,103,227,0.1)'
       }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
     >

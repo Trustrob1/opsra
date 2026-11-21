@@ -138,7 +138,7 @@ function Spinner() {
       display:      'inline-block',
       width:        14,
       height:       14,
-      border:       `2px solid rgba(2,128,144,0.2)`,
+      border:       `2px solid rgba(36,103,227,0.2)`,
       borderTop:    `2px solid ${ds.teal}`,
       borderRadius: '50%',
       animation:    'spin 0.7s linear infinite',

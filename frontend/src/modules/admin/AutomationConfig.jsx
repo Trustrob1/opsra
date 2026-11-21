@@ -72,7 +72,7 @@ export default function AutomationConfig() {
 
       {/* Conversion template card */}
       <div style={{
-        background: '#F5FAFB', border: '1px solid #D6E8EC',
+        background: '#F6F7FA', border: '1px solid #E1E5EC',
         borderRadius: 12, padding: '20px 22px', marginBottom: 24,
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16 }}>
@@ -97,7 +97,7 @@ export default function AutomationConfig() {
             placeholder="e.g. payment_confirmation"
             style={{
               flex: 1, padding: '9px 13px', fontSize: 13.5,
-              border: `1.5px solid ${isDirty ? ds.teal : '#D6E8EC'}`,
+              border: `1.5px solid ${isDirty ? ds.teal : '#E1E5EC'}`,
               borderRadius: 8, outline: 'none',
               fontFamily: ds.fontDm, color: '#0a1a24',
               background: 'white', transition: 'border-color 0.15s',
@@ -108,7 +108,7 @@ export default function AutomationConfig() {
               onClick={() => { setTemplateName(savedTemplate); setSaveErr('') }}
               style={{
                 padding: '9px 14px', background: 'white',
-                border: '1.5px solid #D6E8EC', borderRadius: 8,
+                border: '1.5px solid #E1E5EC', borderRadius: 8,
                 fontSize: 13, color: '#7A9BAD', cursor: 'pointer',
                 fontFamily: ds.fontDm,
               }}

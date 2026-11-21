@@ -95,7 +95,7 @@ function LogEntry({ log, linkedTo }) {
 
   return (
     <div style={{
-      background: '#F5FAFB', border: '1px solid #E8EDF0', borderRadius: 10,
+      background: '#F6F7FA', border: '1px solid #E8EDF0', borderRadius: 10,
       padding: '14px 16px', marginBottom: 10,
     }}>
       {/* Header row */}

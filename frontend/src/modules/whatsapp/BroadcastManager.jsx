@@ -165,7 +165,7 @@ export default function BroadcastManager() {
       borderRadius: 14, overflow: 'hidden',
     },
     th: {
-      background: '#E0F4F6', color: '#015F6B', fontWeight: 600,
+      background: '#E4EDFD', color: '#1F54B8', fontWeight: 600,
       padding: '11px 16px', textAlign: 'left',
       fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.6px',
     },

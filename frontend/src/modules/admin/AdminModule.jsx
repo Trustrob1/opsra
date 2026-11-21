@@ -435,7 +435,7 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
                         ? `3px solid ${ds.teal}`
                         : '3px solid transparent',
                       background: isActive
-                        ? 'rgba(2,128,144,0.12)'
+                        ? 'rgba(36,103,227,0.12)'
                         : 'transparent',
                       transition: 'background 0.12s',
                     }}

@@ -74,7 +74,7 @@ function RiskBadge({ risk }) {
 // ── Field display ─────────────────────────────────────────────────────────────
 function ProfileField({ label, value, fallback = '—' }) {
   return (
-    <div style={{ background: '#F5FAFB', borderRadius: 8, padding: '10px 14px' }}>
+    <div style={{ background: '#F6F7FA', borderRadius: 8, padding: '10px 14px' }}>
       <div style={{ fontSize: 11, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 500, marginBottom: 3 }}>
         {label}
       </div>
@@ -90,7 +90,7 @@ function NpsStars({ score }) {
   return (
     <span>
       {[1,2,3,4,5].map(n => (
-        <span key={n} style={{ color: n <= score ? '#F4A261' : '#D6E8EC', fontSize: 16 }}>★</span>
+        <span key={n} style={{ color: n <= score ? '#F4A261' : '#E1E5EC', fontSize: 16 }}>★</span>
       ))}
     </span>
   )
@@ -334,7 +334,7 @@ export default function CustomerProfile({ customerId, onBack }) {
     biz: { fontSize: 13, color: ds.gray, marginTop: 3 },
     waNum: { fontSize: 13, color: '#25D366', fontWeight: 600, marginTop: 6 },
     tabBar: {
-      display: 'flex', gap: 4, background: '#F5FAFB',
+      display: 'flex', gap: 4, background: '#F6F7FA',
       padding: 4, borderRadius: 10, marginBottom: 20,
       flexWrap: 'wrap',
     },
@@ -373,7 +373,7 @@ export default function CustomerProfile({ customerId, onBack }) {
       fontFamily: ds.fontHead, cursor: 'pointer',
     },
     editBtn: {
-      padding: '8px 16px', background: '#E0F4F6', color: ds.teal,
+      padding: '8px 16px', background: '#E4EDFD', color: ds.teal,
       border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 600,
       fontFamily: ds.fontHead, cursor: 'pointer',
     },
@@ -552,7 +552,7 @@ export default function CustomerProfile({ customerId, onBack }) {
             </div>
             {/* Deal Value — managers can edit, everyone can see */}
             <div style={{
-              background: '#F5FAFB', borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+              background: '#F6F7FA', borderRadius: 8, padding: '10px 14px', marginBottom: 14,
             }}>
               <div style={{ fontSize: 11, color: ds.gray, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 500, marginBottom: 6 }}>
                 Deal Value
@@ -733,7 +733,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                     {cartSession.cart.map((item, i) => (
                       <div key={i} style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        background: '#F5FAFB', borderRadius: 8, padding: '9px 12px',
+                        background: '#F6F7FA', borderRadius: 8, padding: '9px 12px',
                       }}>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>{item.name}</div>
@@ -921,7 +921,7 @@ export default function CustomerProfile({ customerId, onBack }) {
             <div style={S.empty}>No NPS responses yet. NPS is collected quarterly and post-support.</div>
           ) : nps.map(n => (
             <div key={n.id} style={{
-              background: '#F5FAFB', borderRadius: 10, padding: '12px 16px', marginBottom: 10,
+              background: '#F6F7FA', borderRadius: 10, padding: '12px 16px', marginBottom: 10,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <div>
@@ -976,7 +976,7 @@ export default function CustomerProfile({ customerId, onBack }) {
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 20 }}>
               <thead>
-                <tr style={{ background: '#F5FAFB' }}>
+                <tr style={{ background: '#F6F7FA' }}>
                   {['Name', 'Phone', 'Role', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#7A9BAD', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid #E2EFF4' }}>
                       {h}
@@ -1008,7 +1008,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                               .then(() => setContacts(prev => prev.map(x => x.id === c.id ? { ...x, status: 'active' } : x)))
                               .catch(() => setContactErr('Failed to approve contact.'))
                           }}
-                          style={{ padding: '4px 10px', background: '#E0F4F6', color: ds.teal, border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                          style={{ padding: '4px 10px', background: '#E4EDFD', color: ds.teal, border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                         >
                           Approve
                         </button>
@@ -1047,7 +1047,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                     {label}
                   </label>
                   <input
-                    style={{ border: '1.5px solid #D6E8EC', borderRadius: 8, padding: '8px 11px', fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                    style={{ border: '1.5px solid #E1E5EC', borderRadius: 8, padding: '8px 11px', fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' }}
                     value={contactForm[field]}
                     onChange={e => setContactForm(f => ({ ...f, [field]: e.target.value }))}
                     placeholder={label.replace(' *', '')}

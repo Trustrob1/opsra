@@ -5,28 +5,28 @@
  */
 export const ds = {
   // Colours
-  teal:      '#028090',
-  tealLight: '#00A896',
-  tealDark:  '#015F6B',
-  mint:      '#E0F4F6',
-  dark:      '#0D1B2A',
-  dark2:     '#112233',
+  teal:      '#2467E3',
+  tealLight: '#4C86EE',
+  tealDark:  '#1F54B8',
+  mint:      '#E4EDFD',
+  dark:      '#1B1F28',
+  dark2:     '#1B2029',
   accent:    '#F4A261',
   green:     '#27AE60',
   red:       '#E05252',
-  purple:    '#7B2FBE',
-  gray:      '#6B7C8E',
-  light:     '#F5FAFB',
+  purple:    '#5E1BB8',
+  gray:      '#5B6270',
+  light:     '#F6F7FA',
   white:     '#FFFFFF',
-  border:    '#D6E8EC',
+  border:    '#E1E5EC',
 
   // Typography
-  fontSyne: "'Poppins', sans-serif",
-  fontDm:   "'Poppins', sans-serif",
+  fontSyne: "'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
+  fontDm:   "'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
 
   // Shadows
-  cardShadow:  '0 2px 12px rgba(2,128,144,0.05)',
-  hoverShadow: '0 3px 12px rgba(2,128,144,0.15)',
+  cardShadow:  '0 2px 12px rgba(36,103,227,0.05)',
+  hoverShadow: '0 3px 12px rgba(36,103,227,0.15)',
   modalShadow: '0 24px 60px rgba(0,0,0,0.25)',
 
   // Radii
@@ -50,7 +50,7 @@ export const SCORE_STYLE = {
 /** Pipeline stages in declaration order */
 export const STAGES = [
   { key: 'new',           label: 'New',           dot: '#6B7C8E' },
-  { key: 'contacted',     label: 'Contacted',     dot: '#028090' },
+  { key: 'contacted',     label: 'Contacted',     dot: '#2467E3' },
   { key: 'meeting_done',  label: 'Demo Done',     dot: '#7B2FBE' },
   { key: 'proposal_sent', label: 'Proposal Sent', dot: '#F4A261' },
   { key: 'converted',     label: 'Converted',     dot: '#27AE60' },
@@ -61,7 +61,7 @@ export const STAGES = [
 /** Stage badge colours (used on LeadProfile) */
 export const STAGE_STYLE = {
   new:           { bg: '#EAF0F2', color: '#6B7C8E' },
-  contacted:     { bg: '#E0F4F6', color: '#015F6B' },
+  contacted:     { bg: '#E4EDFD', color: '#1F54B8' },
   meeting_done:  { bg: '#EDE0FF', color: '#5B1E9C' },
   proposal_sent: { bg: '#FFF3E0', color: '#C05A00' },
   converted:     { bg: '#E8F8EE', color: '#1A7A40' },

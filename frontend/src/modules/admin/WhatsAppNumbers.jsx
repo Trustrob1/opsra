@@ -21,7 +21,7 @@ const MODE_LABELS = {
   ai_agent: { label: 'AI Agent', color: '#d97706', bg: '#fffbeb' },
   event_funnel: { label: 'Event Funnel', color: '#0f766e', bg: '#ecfdf5' },   // FUNNEL-1B
   site_builder: { label: 'Site Builder', color: '#0369a1', bg: '#eff6ff' },   // SITE-1B
-  webchat_redirect: { label: 'Web chat redirect', color: '#028090', bg: '#E0F4F6' },   // WEBCHAT-2
+  webchat_redirect: { label: 'Web chat redirect', color: '#2467E3', bg: '#E4EDFD' },   // WEBCHAT-2
 }
 
 const inputStyle = {

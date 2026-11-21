@@ -164,7 +164,7 @@ export default function CreateOrg() {
             disabled={loginLoading}
             style={{
               width: "100%",
-              background: loginLoading ? "#015F6B" : ds.teal,
+              background: loginLoading ? "#1F54B8" : ds.teal,
               color: "white",
               border: "none",
               borderRadius: 10,
@@ -276,7 +276,7 @@ export default function CreateOrg() {
           style={{
             width: "100%",
             marginTop: 18,
-            background: loading ? "#015F6B" : ds.teal,
+            background: loading ? "#1F54B8" : ds.teal,
             color: "white",
             border: "none",
             borderRadius: 10,

@@ -671,7 +671,7 @@ export default function LeadsPipeline({ onOpenLead, onOpenDemoQueue }) {
           <input
             type="text" placeholder="Search name, business, email…"
             value={filterSearch} onChange={e => setFilterSearch(e.target.value)}
-            style={{ border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, padding: '8px 14px', fontSize: 13, color: ds.dark, fontFamily: ds.fontDm, background: 'white', outline: 'none', width: isMobile ? '100%' : 240, minHeight: 40 }}
+            style={{ border: `1.5px solid ${ds.border}`, borderRadius: 999, padding: '0 18px', minHeight: 44, fontSize: 15, color: ds.dark, fontFamily: ds.fontDm, background: 'white', outline: 'none', width: isMobile ? '100%' : 240, minHeight: 40 }}
           />
           {!isMobile && (
             <>
@@ -837,7 +837,7 @@ function LoadingCard() {
   )
 }
 
-const primaryBtn    = { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: ds.radius.md, border: 'none', background: ds.teal, color: 'white', fontSize: 13.5, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer', transition: 'all 0.15s' }
+const primaryBtn    = { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '0 20px', minHeight: 44, borderRadius: 999, border: 'none', background: ds.teal, color: 'white', fontSize: 14.5, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer', transition: 'all 0.15s' }
 const secondaryBtn  = { ...primaryBtn, background: 'white', color: ds.teal, border: `1.5px solid ${ds.teal}` }
-const filterSelect  = { border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, padding: '8px 12px', fontSize: 13, color: ds.dark, fontFamily: ds.fontDm, background: 'white', outline: 'none', cursor: 'pointer' }
+const filterSelect  = { border: `1.5px solid ${ds.border}`, borderRadius: 999, padding: '0 16px', minHeight: 44, fontSize: 14.5, color: ds.dark, fontFamily: ds.fontDm, background: 'white', outline: 'none', cursor: 'pointer' }
 const loadMoreBtn   = { width: '100%', marginTop: 6, padding: '8px 0', borderRadius: ds.radius.md, border: `1.5px dashed ${ds.border}`, background: 'white', color: ds.teal, fontSize: 12, fontWeight: 600, fontFamily: ds.fontSyne, cursor: 'pointer' }

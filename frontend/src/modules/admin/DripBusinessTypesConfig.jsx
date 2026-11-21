@@ -149,21 +149,21 @@ export default function DripBusinessTypesConfig() {
       fontFamily: ds.fontHead, cursor: 'pointer',
     },
     hint: {
-      background: '#E0F4F6', border: `1px solid #B0DDD9`, borderRadius: 8,
-      padding: '10px 14px', fontSize: 12.5, color: '#015F6B', marginBottom: 18,
+      background: '#E4EDFD', border: `1px solid #B0DDD9`, borderRadius: 8,
+      padding: '10px 14px', fontSize: 12.5, color: '#1F54B8', marginBottom: 18,
     },
     card: {
       background: '#fff', border: `1px solid ${ds.border}`,
       borderRadius: 14, overflow: 'hidden',
     },
     tableHead: {
-      background: '#E0F4F6', padding: '10px 16px',
+      background: '#E4EDFD', padding: '10px 16px',
       display: 'grid',
       gridTemplateColumns: '1fr 160px 80px 36px',
       gap: 10, alignItems: 'center',
     },
     hdrCell: {
-      fontSize: 11, color: '#015F6B', fontWeight: 600,
+      fontSize: 11, color: '#1F54B8', fontWeight: 600,
       textTransform: 'uppercase', letterSpacing: '0.6px',
     },
     row: {
@@ -183,7 +183,7 @@ export default function DripBusinessTypesConfig() {
       border: `1.5px solid ${ds.border}`, borderRadius: 8,
       padding: '7px 10px', fontSize: 11.5,
       fontFamily: 'monospace', outline: 'none', width: '100%',
-      boxSizing: 'border-box', color: '#015F6B', background: '#F4FDFD',
+      boxSizing: 'border-box', color: '#1F54B8', background: '#F4FDFD',
     },
     removeBtn: {
       background: '#FFE8E8', color: '#C0392B', border: 'none',
@@ -202,7 +202,7 @@ export default function DripBusinessTypesConfig() {
       fontWeight: 600, cursor: 'pointer',
     },
     addBtn: {
-      margin: '12px 16px', padding: '8px 16px', background: '#E0F4F6',
+      margin: '12px 16px', padding: '8px 16px', background: '#E4EDFD',
       color: ds.teal, border: `1px dashed ${ds.teal}`, borderRadius: 9,
       fontSize: 13, fontWeight: 600, fontFamily: ds.fontHead, cursor: 'pointer',
     },
@@ -307,7 +307,7 @@ export default function DripBusinessTypesConfig() {
                   <span
                     style={{
                       ...S.badge,
-                      background: t.enabled ? '#E0F4F6' : '#F0F4F7',
+                      background: t.enabled ? '#E4EDFD' : '#F0F4F7',
                       color: t.enabled ? ds.teal : ds.gray,
                     }}
                   >

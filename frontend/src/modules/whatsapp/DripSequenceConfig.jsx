@@ -143,8 +143,8 @@ export default function DripSequenceConfig({ isOwner = false }) {
       fontFamily: ds.fontHead, cursor: 'pointer',
     },
     hint: {
-      background: '#E0F4F6', border: `1px solid #B0DDD9`, borderRadius: 8,
-      padding: '10px 14px', fontSize: 12.5, color: '#015F6B', marginBottom: 18,
+      background: '#E4EDFD', border: `1px solid #B0DDD9`, borderRadius: 8,
+      padding: '10px 14px', fontSize: 12.5, color: '#1F54B8', marginBottom: 18,
     },
     adminHint: {
       background: '#FFF3CD', border: `1px solid #FFD97D`, borderRadius: 8,
@@ -162,13 +162,13 @@ export default function DripSequenceConfig({ isOwner = false }) {
       alignItems: 'start',
     },
     seqHeader: {
-      background: '#E0F4F6', padding: '10px 16px',
+      background: '#E4EDFD', padding: '10px 16px',
       display: 'grid',
       gridTemplateColumns: '36px 2fr 2fr 80px 1fr 36px',
       gap: 10, alignItems: 'center',
     },
     hdrCell: {
-      fontSize: 11, color: '#015F6B', fontWeight: 600,
+      fontSize: 11, color: '#1F54B8', fontWeight: 600,
       textTransform: 'uppercase', letterSpacing: '0.6px',
     },
     input: {
@@ -193,7 +193,7 @@ export default function DripSequenceConfig({ isOwner = false }) {
       justifyContent: 'center', flexShrink: 0, marginTop: 4,
     },
     orderNum: {
-      width: 28, height: 28, background: '#E0F4F6', color: ds.teal,
+      width: 28, height: 28, background: '#E4EDFD', color: ds.teal,
       borderRadius: '50%', display: 'flex', alignItems: 'center',
       justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0,
     },
@@ -207,11 +207,11 @@ export default function DripSequenceConfig({ isOwner = false }) {
     bizAllChip: (allSelected) => ({
       padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
       cursor: 'pointer', border: 'none',
-      background: allSelected ? '#E0F4F6' : '#EAF0F2',
+      background: allSelected ? '#E4EDFD' : '#EAF0F2',
       color: allSelected ? ds.teal : ds.gray,
     }),
     addRowBtn: {
-      margin: '12px 16px', padding: '8px 16px', background: '#E0F4F6',
+      margin: '12px 16px', padding: '8px 16px', background: '#E4EDFD',
       color: ds.teal, border: `1px dashed ${ds.teal}`, borderRadius: 9,
       fontSize: 13, fontWeight: 600, fontFamily: ds.fontHead, cursor: 'pointer',
     },

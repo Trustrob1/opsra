@@ -171,7 +171,7 @@ export default function ScoringRubric() {
           onClick={handleSave}
           disabled={saving}
           style={{
-            background:   saving ? '#015F6B' : ds.teal,
+            background:   saving ? '#1F54B8' : ds.teal,
             color:        'white',
             border:       'none',
             borderRadius: 8,

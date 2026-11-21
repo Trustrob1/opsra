@@ -21,7 +21,7 @@ const btn = button
 const lsGet = () => { try { return localStorage.getItem(PENDING_PLAN_KEY) } catch { return null } }
 const lsSet = (v) => { try { v ? localStorage.setItem(PENDING_PLAN_KEY, v) : localStorage.removeItem(PENDING_PLAN_KEY) } catch { /* private mode */ } }
 const day = (v) => (v ? String(v).slice(0, 10) : '—')
-const STATUS = { active: ['Active', '#00A896'], grace: ['Ended, still on for a few days', '#F4A261'], paused: ['Paused', '#FFB4B4'], pending: ['Not paid yet', '#9FB6C4'] }
+const STATUS = { active: ['Active', '#4C86EE'], grace: ['Ended, still on for a few days', '#F4A261'], paused: ['Paused', '#FFB4B4'], pending: ['Not paid yet', '#9FB6C4'] }
 const ACTION = { new: 'Choose', renewal: 'Renew', upgrade: 'Upgrade', switch: 'Switch to this', downgrade_renewal: 'Renew at this price', downgrade: 'Switch at next renewal' }
 const ORDER_KIND = { seats: 'Extra users', new: 'New plan', renewal: 'Renewal', upgrade: 'Upgrade', switch: 'Switch', downgrade_renewal: 'Renewal (lower plan)' }
 const CAP_LABEL = { ai_messages: 'AI replies this month', bulk_recipients: 'Bulk message recipients this month', bookings: 'Bookings this month' }

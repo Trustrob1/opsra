@@ -222,7 +222,7 @@ function ItemEditor({ items, setItems, actionOptions, contactTypeMap, sectionKey
               ) : (
                 <>
                   <label style={S.label}>Contact type (auto)</label>
-                  <div style={{ ...S.input, background: '#F5FAFB', color: '#7A9BAD', cursor: 'default' }}>
+                  <div style={{ ...S.input, background: '#F6F7FA', color: '#7A9BAD', cursor: 'default' }}>
                     {item.contact_type || contactTypeMap[item.action] || 'other'}
                   </div>
                 </>
@@ -459,7 +459,7 @@ export default function CustomerMenuConfig() {
             <label key={opt.value} style={{
               display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer',
               padding: '12px 14px', borderRadius: 10,
-              border: `1.5px solid ${behavior === opt.value ? ds.teal : '#D6E8EC'}`,
+              border: `1.5px solid ${behavior === opt.value ? ds.teal : '#E1E5EC'}`,
               background: behavior === opt.value ? '#F0FAFA' : '#FAFAFA',
             }}>
               <input
@@ -740,7 +740,7 @@ const S = {
     fontWeight: 500, marginBottom: 4,
   },
   input: {
-    border: '1.5px solid #D6E8EC', borderRadius: 8, padding: '8px 11px',
+    border: '1.5px solid #E1E5EC', borderRadius: 8, padding: '8px 11px',
     fontSize: 13, fontFamily: 'inherit', outline: 'none', width: '100%',
     boxSizing: 'border-box', background: 'white',
   },
@@ -749,12 +749,12 @@ const S = {
     padding: '14px 0', borderBottom: '1px solid #F0F6F8',
   },
   arrowBtn: {
-    background: 'none', border: '1px solid #D6E8EC', borderRadius: 5,
+    background: 'none', border: '1px solid #E1E5EC', borderRadius: 5,
     cursor: 'pointer', padding: '2px 5px', fontSize: 10, color: '#7A9BAD',
     lineHeight: 1.4,
   },
   addBtn: {
-    padding: '6px 14px', background: '#E0F4F6', color: '#1a7a8a',
+    padding: '6px 14px', background: '#E4EDFD', color: '#1a7a8a',
     border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer',
   },

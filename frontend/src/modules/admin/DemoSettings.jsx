@@ -69,7 +69,7 @@ export default function DemoSettings() {
     borderRadius: ds.radius.xl,
     padding: '24px 28px',
     marginBottom: 20,
-    boxShadow: '0 2px 12px rgba(2,128,144,0.05)',
+    boxShadow: '0 2px 12px rgba(36,103,227,0.05)',
   }
 
   const labelStyle = {

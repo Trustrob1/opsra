@@ -2,7 +2,7 @@
  * frontend/src/modules/funnels/funnelUi.jsx
  * FUNNEL-1B — shared UI components for the Event Funnels module.
  *
- * Matches Opsra's existing look (ds.js tokens, Poppins, white cards on #F5FAFB,
+ * Matches Opsra's existing look (ds.js tokens, Poppins, white cards on #F6F7FA,
  * #E4EEF2 borders, #0a1a24 ink, #7A9BAD muted) — same family as SalesRecordTab / Business Activities.
  * Finish rules: tabular numbers wherever figures line up, visible :focus-visible
  * rings, 44px tap targets on mobile, Lucide icons only (no emoji in UI chrome),
@@ -53,7 +53,7 @@ export function Kpi({ label, value, sub, tone, icon: Icon }) {
 
 const BTN = {
   primary:   { bg: T.teal, fg: '#fff', bd: T.teal, hover: T.tealDark },
-  secondary: { bg: '#fff', fg: T.ink, bd: T.lineStrong, hover: '#F5FAFB' },
+  secondary: { bg: '#fff', fg: T.ink, bd: T.lineStrong, hover: '#F6F7FA' },
   ghost:     { bg: 'transparent', fg: T.teal, bd: 'transparent', hover: T.mint },
   danger:    { bg: '#fff', fg: T.bad, bd: '#F2C4BF', hover: T.badBg },
 }

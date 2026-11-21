@@ -146,6 +146,18 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
     setExpanded(false)
   }
 
+  // UI-REDESIGN-1: open from the sidebar / More sheet, and tell the shell whether there is a checklist to open.
+  useEffect(() => {
+    const open = () => setExpanded(true)
+    window.addEventListener('opsra:open-setup', open)
+    return () => window.removeEventListener('opsra:open-setup', open)
+  }, [])
+  useEffect(() => {
+    window.__opsraSetupAvailable = !!canSee && !orgIsLive
+    window.dispatchEvent(new Event('opsra:setup-state'))
+    return () => { window.__opsraSetupAvailable = false; window.dispatchEvent(new Event('opsra:setup-state')) }
+  }, [canSee, orgIsLive])
+
   // ── Derived state ────────────────────────────────────────────────────────
   const percent      = checklist?.percent_complete ?? 0
   const goLiveReady  = checklist?.go_live_ready    ?? false
@@ -173,56 +185,11 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
           100% { transform: scale(1);   opacity: 1; }
         }
         .ocl-go-btn:hover { background: rgba(0,188,212,0.18) !important; }
-        .ocl-tab:hover    { background: #015F6B !important; }
+        .ocl-tab:hover    { background: #1F54B8 !important; }
         .ocl-item:hover   { background: rgba(255,255,255,0.04) !important; }
       `}</style>
 
-      {/* ── Collapsed tab ──────────────────────────────────────────────── */}
-      {!expanded && !liveSuccess && (
-        <div
-          className="ocl-tab"
-          onClick={() => setExpanded(true)}
-          title="Setup Checklist"
-          style={{
-            position:   'fixed',
-            top:        '50%',
-            right:      0,
-            transform:  'translateY(-50%)',
-            zIndex:     panelZ,
-            background: ds.dark2,
-            border:     '1px solid #1a3a4a',
-            borderRight:'none',
-            borderRadius: '12px 0 0 12px',
-            padding:    '14px 10px',
-            cursor:     'pointer',
-            display:    'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap:        6,
-            transition: 'background 0.18s',
-            boxShadow:  '-4px 0 20px rgba(0,0,0,0.3)',
-          }}
-        >
-          <div style={{ position: 'relative', width: 44, height: 44 }}>
-            <ProgressRing percent={percent} />
-            <div style={{
-              position:  'absolute', inset: 0,
-              display:   'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize:  10, fontWeight: 700, color: 'white',
-              fontFamily: ds.fontSyne,
-            }}>
-              {doneCount}/{totalItems}
-            </div>
-          </div>
-          <span style={{
-            fontSize: 9, fontWeight: 600, color: '#7A9BAD',
-            textTransform: 'uppercase', letterSpacing: '0.8px',
-            writingMode: 'vertical-rl', textOrientation: 'mixed',
-          }}>
-            Setup
-          </span>
-        </div>
-      )}
+      {/* Collapsed tab removed (UI-REDESIGN-1): the checklist now opens from Admin > Setup checklist. */}
 
       {/* ── Expanded panel — Pattern 26: always mounted ─────────────────── */}
       <div style={{

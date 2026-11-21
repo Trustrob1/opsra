@@ -38,7 +38,7 @@ import {
   MessageCircle, Camera, Search, Circle, User, Bot,
   Paperclip, Send, Download, FileText, Video, File, Music,
   Image, Lightbulb, Clock, X, AlertTriangle,
-  Sparkles, Reply, Mic, Pencil, Trash2, Copy, ChevronDown, Square,
+  Sparkles, Reply, Mic, Pencil, Trash2, Copy, ChevronDown, ChevronLeft, Square,
 } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -69,7 +69,7 @@ const CHANNEL = {
   whatsapp:  { label: 'WhatsApp',  icon: 'whatsapp',  IconComp: MessageCircle, color: '#25D366', bg: '#E8F8EE' },
   instagram: { label: 'Instagram', icon: 'instagram', IconComp: Camera,        color: '#C13584', bg: '#FCE4EC' },
   messenger: { label: 'Messenger', icon: 'messenger', IconComp: MessageCircle,      color: '#0084FF', bg: '#E3F2FD' },
-  webchat:   { label: 'Web chat',  icon: 'webchat',   IconComp: MessageCircle,      color: '#028090', bg: '#E0F4F6' },   // WEBCHAT-1
+  webchat:   { label: 'Web chat',  icon: 'webchat',   IconComp: MessageCircle,      color: '#2467E3', bg: '#E4EDFD' },   // WEBCHAT-1
 }
 
 const THREAD_POLL_MS = 5000
@@ -610,9 +610,17 @@ export default function ConversationsModule({ onOpenAria, simple = false, onOpen
     <EmptyState totalUnread={totalUnread} />
   )
 
+  // UI-REDESIGN-1: tell the shell when a chat is open on a phone so the bottom tab bar steps aside for the message box.
+  const threadOpenMobile = isMobile && panel !== 'list'
+  useEffect(() => {
+    window.__opsraThreadOpen = threadOpenMobile
+    window.dispatchEvent(new Event('opsra:thread-state'))
+    return () => { window.__opsraThreadOpen = false; window.dispatchEvent(new Event('opsra:thread-state')) }
+  }, [threadOpenMobile])
+
   if (isMobile) {
     return (
-      <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', background: ds.light, overflow: 'hidden' }}>
+      <div style={{ height: panel === 'list' ? 'calc(100dvh - 60px - 64px - env(safe-area-inset-bottom))' : 'calc(100dvh - 60px)', display: 'flex', flexDirection: 'column', background: ds.light, overflow: 'hidden' }}>
         {panel === 'list' ? listPanel : threadPanel}
       </div>
     )
@@ -751,7 +759,7 @@ function ConvRow({ conv, isActive, onSelect }) {
             {conv.ai_paused && (
               <span title='Human mode — AI paused' style={{ display:'flex', alignItems:'center' }}><User size={12} color={ds.gray} /></span>
             )}
-            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, fontWeight: 600, fontFamily: ds.fontSyne, background: isLead ? '#FFF3E0' : '#E0F4F6', color: isLead ? '#C05A00' : ds.teal }}>
+            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, fontWeight: 600, fontFamily: ds.fontSyne, background: isLead ? '#FFF3E0' : '#E4EDFD', color: isLead ? '#C05A00' : ds.teal }}>
               {isLead ? 'Lead' : 'CX'}
             </span>
             {hasNew && (
@@ -788,84 +796,72 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div style={{ padding: '10px 16px', borderBottom: `1px solid ${ds.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 11, flexShrink: 0, minHeight: 60 }}>
-        {onBack && (
-          <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.teal, fontSize: 22, padding: '4px 6px 4px 0', lineHeight: 1, flexShrink: 0, minWidth: 36, minHeight: 44, display: 'flex', alignItems: 'center' }}>←</button>
-        )}
-
-        <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, background: isLead ? `linear-gradient(135deg, ${ds.accent}, #C05A00)` : `linear-gradient(135deg, ${ds.teal}, ${ds.tealDark})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#fff' }}>
-          {initials(active.contact_name)}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: ds.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {active.contact_name}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 20, background: ch.bg, color: ch.color, fontWeight: 600, fontFamily: ds.fontSyne }}>
-              {ch.IconComp && <ch.IconComp size={11} color={ch.color} strokeWidth={2} />} {ch.label}
-            </span>
-            <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 20, fontWeight: 600, fontFamily: ds.fontSyne, background: isLead ? '#FFF3E0' : '#E0F4F6', color: isLead ? '#C05A00' : ds.teal }}>
-              {isLead ? 'Lead' : 'Customer'}
-            </span>
-            {active.phone && <span style={{ fontSize: 11, color: ds.gray }}>{active.phone}</span>}
-          </div>
-        </div>
-
-        {/* ── AI / Human mode controls ──────────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-          {aiPaused ? (
-            <>
-              <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#FFF3E0', color: '#C05A00', fontWeight: 700, fontFamily: ds.fontSyne }}>
-                Human Mode{humanModeDuration ? ` · ${humanModeDuration}` : ''}
-              </span>
-              <button
-                onClick={onResumeAI}
-                disabled={resuming}
-                style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, border: `1px solid ${ds.teal}`, background: '#fff', color: ds.teal, fontWeight: 600, cursor: resuming ? 'not-allowed' : 'pointer', fontFamily: ds.fontSyne, opacity: resuming ? 0.6 : 1 }}
-              >
-                {resuming ? 'Resuming…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Bot size={11} />Resume AI</span>}
-              </button>
-            </>
-          ) : (
-            <>
-              <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, background: '#E8F8EE', color: '#27AE60', fontWeight: 700, fontFamily: ds.fontSyne, display:'inline-flex', alignItems:'center', gap:4 }}>
-                <Bot size={10} strokeWidth={2.5} />AI Active
-              </span>
-              <button
-                onClick={onPauseAI}
-                disabled={pausing}
-                style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, border: '1px solid #C05A00', background: '#fff', color: '#C05A00', fontWeight: 600, cursor: pausing ? 'not-allowed' : 'pointer', fontFamily: ds.fontSyne, opacity: pausing ? 0.6 : 1 }}
-              >
-                {pausing ? 'Taking over…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><User size={11} />Take over</span>}
-              </button>
-            </>
+      {/* ── Header (UI-REDESIGN-1, option A): name row + status strip ──────── */}
+      <div style={{ flexShrink: 0, background: '#fff', borderBottom: `1px solid ${ds.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: onBack ? '8px 12px 8px 6px' : '10px 20px', minHeight: 60 }}>
+          {onBack && (
+            <button onClick={onBack} aria-label="Back to conversations" style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.dark, padding: 0, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={24} /></button>
           )}
-
-          {/* Ask Aria — opens Aria panel without leaving Conversations */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{ width: 42, height: 42, borderRadius: '50%', background: isLead ? '#FFF1D9' : ds.mint, color: isLead ? '#8A4B00' : ds.tealDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15 }}>
+              {initials(active.contact_name)}
+            </div>
+            <span title={ch.label} style={{ position: 'absolute', right: -3, bottom: -3, width: 20, height: 20, borderRadius: '50%', background: '#fff', border: `1.5px solid ${ds.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {ch.IconComp && <ch.IconComp size={11} color={ch.color} strokeWidth={2.2} />}
+            </span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16.5, color: ds.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{active.contact_name}</span>
+              <span style={{ flexShrink: 0, fontSize: 11.5, padding: '2px 8px', borderRadius: 20, fontWeight: 700, background: isLead ? '#FFF1D9' : ds.mint, color: isLead ? '#8A4B00' : ds.tealDark }}>{isLead ? 'Lead' : 'Customer'}</span>
+            </div>
+            <div style={{ fontSize: 13, color: ds.gray, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {ch.label}{active.phone ? ` · ${active.phone}` : ''}
+            </div>
+          </div>
+          {/* Ask Aria — opens the Aria panel without leaving Conversations */}
           {onOpenAria && (
             <button
               onClick={onOpenAria}
               title="Ask Aria — AI Operations Assistant"
-              style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 20, border: `1px solid #1e3a4f`, background: '#0e2030', color: ds.teal, fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontSyne, display: 'flex', alignItems: 'center', gap: 4 }}
-              onMouseEnter={e => e.currentTarget.style.background = '#1a3040'}
-              onMouseLeave={e => e.currentTarget.style.background = '#0e2030'}
+              aria-label="Ask Aria"
+              style={{ flexShrink: 0, minHeight: 40, minWidth: 40, padding: onBack ? 0 : '0 14px', borderRadius: 999, border: `1px solid ${ds.border}`, background: '#fff', color: ds.purple, fontWeight: 600, fontSize: 13.5, cursor: 'pointer', fontFamily: ds.fontDm, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
             >
-              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Sparkles size={11} />Ask Aria</span>
+              <Sparkles size={16} />{!onBack && 'Ask Aria'}
             </button>
           )}
         </div>
+
+        {/* AI / Human status strip — sending a message switches to Human mode; Resume AI hands the chat back */}
+        {aiPaused ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px', background: '#FFF3E0', borderTop: '1px solid #FFE0B2', minHeight: 44, boxSizing: 'border-box' }}>
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#B45309', flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: '#8A4B00' }}>You are replying{humanModeDuration ? ` · ${humanModeDuration}` : ''}</span>
+            <button
+              onClick={onResumeAI}
+              disabled={resuming}
+              style={{ minHeight: 36, padding: '0 16px', borderRadius: 999, border: '1.5px solid #176A3C', background: '#fff', color: '#176A3C', fontWeight: 600, fontSize: 14, cursor: resuming ? 'not-allowed' : 'pointer', fontFamily: ds.fontDm, display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+            >
+              {resuming ? 'Resuming…' : <><Bot size={16} />Resume AI</>}
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: '#E3F4EA', borderTop: '1px solid #CDE9D7', minHeight: 44, boxSizing: 'border-box' }}>
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#176A3C', flexShrink: 0 }} />
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#176A3C' }}>AI is replying</span>
+            {!onBack && <span style={{ fontSize: 13, color: '#3C4352', marginLeft: 'auto' }}>Send a message to take over</span>}
+          </div>
+        )}
       </div>
 
       {/* ── Message thread ──────────────────────────────────────────────── */}
       <div
         ref={threadRef}
-        style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: '#ECE5DD', padding: '14px 14px 8px' }}
+        style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: ds.light, padding: '14px 14px 8px' }}
       >
         {loading && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
-            <div style={{ width: 26, height: 26, border: `3px solid rgba(2,128,144,0.2)`, borderTopColor: ds.teal, borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+            <div style={{ width: 26, height: 26, border: `3px solid rgba(36,103,227,0.2)`, borderTopColor: ds.teal, borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
           </div>
         )}
         {!loading && messages.length === 0 && (
@@ -1183,10 +1179,10 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
   )
 
   // ── Styles ─────────────────────────────────────────────────────────────
-  const barBg = '#F0F0F0'
+  const barBg = '#FFFFFF'
 
   return (
-    <div style={{ background: barBg, borderTop: `1px solid #DDD`, flexShrink: 0 }}>
+    <div style={{ background: barBg, borderTop: `1px solid ${ds.border}`, flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
 
       {/* Window status loading — shown while first fetch is in-flight */}
       {statusLoading && (
@@ -1263,7 +1259,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
 
       {/* Text + attachment input row */}
       {!statusLoading && !recording && (mode === 'text' || mode === 'media') && (
-        <div style={{ padding: mode === 'media' ? '4px 14px 10px' : '4px 14px 10px', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+        <div style={{ padding: '8px 12px 12px', display: 'flex', alignItems: 'flex-end', gap: 4 }}>
 
           {/* Attachment button — hidden for Instagram (text only in UNIFIED-INBOX-1A) and in media mode */}
           {mode === 'text' && channel !== 'instagram' && channel !== 'messenger' && (
@@ -1278,7 +1274,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
               <button
                 onClick={() => fileInputRef.current?.click()}
                 title="Attach image, video, audio or document (max 25 MB)"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 20, padding: '6px 4px', flexShrink: 0, minHeight: 36, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 20, padding: 0, flexShrink: 0, width: 44, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.color = ds.teal}
                 onMouseLeave={e => e.currentTarget.style.color = ds.gray}
               >
@@ -1290,14 +1286,14 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
                   <button
                     onClick={() => cameraInputRef.current?.click()}
                     title="Take a photo"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: '6px 4px', flexShrink: 0, minHeight: 36, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 0, flexShrink: 0, width: 44, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
                     onMouseEnter={e => e.currentTarget.style.color = ds.teal}
                     onMouseLeave={e => e.currentTarget.style.color = ds.gray}
                   ><Camera size={18} /></button>
                   <button
                     onClick={startRecording}
                     title="Record a voice note"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: '6px 4px', flexShrink: 0, minHeight: 36, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 0, flexShrink: 0, width: 44, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
                     onMouseEnter={e => e.currentTarget.style.color = ds.teal}
                     onMouseLeave={e => e.currentTarget.style.color = ds.gray}
                   ><Mic size={18} /></button>
@@ -1319,16 +1315,16 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
                 flex: 1,
                 resize: 'none',
                 border: `1.5px solid ${ds.border}`,
-                borderRadius: 20,
-                padding: '9px 14px',
-                fontSize: 13,
+                borderRadius: 24,
+                padding: '12px 18px',
+                fontSize: 16,
                 fontFamily: ds.fontDm,
                 outline: 'none',
-                background: '#fff',
+                background: ds.light,
                 color: ds.dark,
                 lineHeight: 1.5,
                 overflowY: 'auto',
-                minHeight: 38,
+                minHeight: 48,
                 maxHeight: 120,
                 boxSizing: 'border-box',
               }}
@@ -1390,11 +1386,12 @@ function SendButton({ canSend, sending, onClick }) {
       disabled={!canSend}
       title="Send message"
       style={{
-        width: 38,
-        height: 38,
+        width: 48,
+        height: 48,
+        marginLeft: 4,
         borderRadius: '50%',
         border: 'none',
-        background: canSend ? ds.teal : '#CCC',
+        background: canSend ? ds.teal : '#C9CED8',
         color: '#fff',
         cursor: canSend ? 'pointer' : 'not-allowed',
         display: 'flex',
@@ -1407,7 +1404,7 @@ function SendButton({ canSend, sending, onClick }) {
     >
       {sending
         ? <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
-        : <Send size={16} />
+        : <Send size={20} />
       }
     </button>
   )
@@ -1525,7 +1522,7 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted, webc
     <div style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
       <div
         data-meta-id={msg.meta_message_id || msg.id || undefined}
-        style={{ position: 'relative', maxWidth: '72%', background: isHighlighted ? '#FFF3B0' : (isOut ? '#DCF8C6' : '#fff'), border: `1px solid ${isOut ? '#B0DDB8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'background-color 0.4s ease' }}
+        style={{ position: 'relative', maxWidth: '72%', background: isHighlighted ? '#FFF3B0' : (isOut ? '#E4EDFD' : '#fff'), border: `1px solid ${isOut ? '#C9DAF8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'background-color 0.4s ease' }}
       >
         {hasMenu && (
           <div ref={menuRef} style={{ position: 'absolute', top: 2, right: 4, zIndex: 3 }}>
@@ -1805,7 +1802,7 @@ function Chip({ active, color, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      style={{ padding: '4px 11px', borderRadius: 20, border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontSyne, background: active ? color : ds.light, color: active ? '#fff' : ds.gray, transition: 'all 0.15s', minHeight: 28 }}
+      style={{ padding: '0 14px', minHeight: 34, borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontSyne, background: active ? color : ds.light, color: active ? '#fff' : ds.gray, transition: 'all 0.15s', minHeight: 28 }}
     >
       {children}
     </button>

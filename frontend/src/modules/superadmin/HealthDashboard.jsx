@@ -170,7 +170,7 @@ function LoginGate({ onAuthed }) {
           onClick={handleLogin}
           disabled={loading}
           style={{
-            width: "100%", background: loading ? "#015F6B" : ds.teal,
+            width: "100%", background: loading ? "#1F54B8" : ds.teal,
             color: "white", border: "none", borderRadius: 10, padding: "12px",
             fontSize: 14, fontWeight: 600, fontFamily: ds.fontSyne,
             cursor: loading ? "not-allowed" : "pointer",

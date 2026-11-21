@@ -119,7 +119,7 @@ export default function SalesModeConfig() {
               onClick={() => setPending(m.value)}
               style={{
                 background:   isSelected ? '#F0FAFA' : 'white',
-                border:       `2px solid ${isSelected ? ds.teal : '#D6E8EC'}`,
+                border:       `2px solid ${isSelected ? ds.teal : '#E1E5EC'}`,
                 borderRadius: 12,
                 padding:      '18px 18px 16px',
                 textAlign:    'left',
