@@ -453,7 +453,7 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         # WEBCHAT-CONTACT-1: ask once, in the chat, right after the first answer (not on every later turn)
         if not state.get("contact_nudged"):
             wc.set_state(db, s, contact_nudged=True)
-            out.append(contact.start(db, s, cfg, "", optional=True))
+            out.append(contact.start(db, s, cfg, "Happy to help.", optional=True))        # a friendly lead-in, so it reads as a chat, not a form
             nudge = {"messages": out, "ask_contact": False, "ask_email": False, "form": form, "human": False, "cards": cards, "contact_step": "name"}
             if choices:
                 nudge["choices"] = choices          # a button Chioma named in her answer is still shown, under the details question

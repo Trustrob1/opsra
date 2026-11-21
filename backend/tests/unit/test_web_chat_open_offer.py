@@ -132,3 +132,11 @@ def test_typed_product_words_show_the_product_card_without_ai():
     assert [c["id"] for c in r["cards"]] == ["P1"] and "Water Flosser" in _texts(r)[-1] and "unable to answer" not in _texts(r)[-1]
     r = f.handle_message(db, s, cfg, kind="text", text="blah blah nothing")
     assert not r.get("cards")
+
+
+def test_the_first_details_ask_has_a_friendly_lead_in():
+    db = _db(ai=False, menu=MENU)
+    s, cfg = _session(db, contact=False), _cfg(db)
+    r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
+    last = _texts(r)[-1]
+    assert last.startswith("Happy to help. So the team knows") and "first name" in last
