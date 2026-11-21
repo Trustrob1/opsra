@@ -5,7 +5,8 @@
  * Optional attributes: data-source="homepage" (shows up in your chat stats), data-api="https://..." (testing only).
  * Page controls: window.OpsraChat.open(), .close(), .toggle(), .ask('a question').
  * Buttons: data-chioma="open" opens the chat, data-chioma-ask="What do you charge?" opens it with that question,
- *   data-chioma-menu="<button id>" opens it with one of the chat buttons already tapped.
+ *   data-chioma-menu="<button id>" opens it with one of the chat buttons already tapped,
+ *   data-chioma-open="shop" opens it with the Shop panel showing (no typed sentence, so nothing can be misread).
  * Ask bar (ASKBAR-1, when switched on in Settings): put <div data-chioma-slot></div> where it should sit (add data-chioma-theme="dark" on a dark section);
  *   without one it docks at the bottom of the screen. It wears the same look as the chat; data-chioma-theme="dark" or "light" forces one.
  *   Visitors can minimize it into the round launcher.
@@ -163,7 +164,7 @@
       frame.setAttribute('allow', 'microphone; clipboard-write')
       frame.src = chatBase + '/c/' + key + '?embed=1&s=' + encodeURIComponent(source) + '&po=' + encodeURIComponent(location.origin) +
         (pending && pending.menu_id ? '&m=' + encodeURIComponent(pending.menu_id) : '') + (pending && pending.text ? '&q=' + encodeURIComponent(pending.text) : '') +
-        (pending && pending.open === 'menu' ? '&o=menu' : '') + '&th=' + themeId
+        (pending && (pending.open === 'menu' || pending.open === 'shop') ? '&o=' + pending.open : '') + '&th=' + themeId
       pending = null
       panel.appendChild(frame)
     }
@@ -225,7 +226,7 @@
     // ASKBAR-1: open the chat with a question typed by the visitor, or with one of the chat buttons already tapped.
     function ask(o) {
       o = o || {}
-      var msg = { menu_id: /^[A-Za-z0-9_-]{1,40}$/.test(o.menu_id || '') ? o.menu_id : '', text: String(o.text || '').replace(/\s+/g, ' ').trim().slice(0, 500), open: o.open === 'menu' ? 'menu' : '' }
+      var msg = { menu_id: /^[A-Za-z0-9_-]{1,40}$/.test(o.menu_id || '') ? o.menu_id : '', text: String(o.text || '').replace(/\s+/g, ' ').trim().slice(0, 500), open: o.open === 'menu' || o.open === 'shop' ? o.open : '' }
       var fresh = !frame
       if (msg.menu_id || msg.text || msg.open) pending = msg
       setOpen(true)
@@ -237,10 +238,10 @@
     window.OpsraChat = { open: function () { setOpen(true) }, close: function () { setOpen(false) }, toggle: function () { setOpen(!isOpen) },
       ask: function (text) { ask({ text: text }) } }
     document.addEventListener('click', function (e) {
-      var el = e.target && e.target.closest ? e.target.closest('[data-chioma],[data-chioma-ask],[data-chioma-menu]') : null
+      var el = e.target && e.target.closest ? e.target.closest('[data-chioma],[data-chioma-ask],[data-chioma-menu],[data-chioma-open]') : null
       if (!el) return
       e.preventDefault()
-      ask({ text: el.getAttribute('data-chioma-ask') || '', menu_id: el.getAttribute('data-chioma-menu') || '' })
+      ask({ text: el.getAttribute('data-chioma-ask') || '', menu_id: el.getAttribute('data-chioma-menu') || '', open: el.getAttribute('data-chioma-open') || '' })
     })
 
     // The ask bar: inline where the website put <div data-chioma-slot>, else docked at the bottom. Minimizing it brings back the launcher.

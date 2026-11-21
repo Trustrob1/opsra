@@ -488,6 +488,7 @@ export default function WebChatPage({ chatKey }) {
   const runAsk = useCallback((menuId, q, open) => {
     const c = askRef.current
     if (!c?.cfg) return
+    if (open === 'shop') { if (c.cfg.shop_enabled && c.openShop) c.openShop(); return }          // a Shop now button on the website: straight to the shop
     if (open === 'menu') { c.openMenu(true); return }          // the website's More chip: show the whole list
     const text = String(q || '').replace(/\s+/g, ' ').trim().slice(0, 500)
     if (menuId && c.cfg.menu.some((m) => m.id === menuId)) c.sendMenu(menuId)
@@ -665,6 +666,7 @@ export default function WebChatPage({ chatKey }) {
     const r = await getChatProducts(chatKey, token.current)
     setProducts(r.products || []); setCart(r.cart || { items: [], total: 0, count: 0 }); setPanel('shop')
   })
+  askRef.current.openShop = openShop
   const addToCart = (p) => act(async () => {
     const vid = picked[p.id] || (p.variants.length === 1 ? p.variants[0].id : undefined)
     if (p.variants.length && !vid) { setError('Please choose an option first.'); return }
