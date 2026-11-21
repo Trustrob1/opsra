@@ -857,7 +857,7 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
       {/* ── Message thread ──────────────────────────────────────────────── */}
       <div
         ref={threadRef}
-        style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: ds.light, padding: '14px 14px 8px' }}
+        style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', background: ds.light, padding: '14px 14px 8px' }}
       >
         {loading && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
@@ -1259,7 +1259,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
 
       {/* Text + attachment input row */}
       {!statusLoading && !recording && (mode === 'text' || mode === 'media') && (
-        <div style={{ padding: '8px 12px 12px', display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+        <div style={{ padding: '8px 10px 10px', display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
 
           {/* Attachment button — hidden for Instagram (text only in UNIFIED-INBOX-1A) and in media mode */}
           {mode === 'text' && channel !== 'instagram' && channel !== 'messenger' && (
@@ -1274,7 +1274,7 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
               <button
                 onClick={() => fileInputRef.current?.click()}
                 title="Attach image, video, audio or document (max 25 MB)"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 20, padding: 0, flexShrink: 0, width: 44, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, fontSize: 20, padding: 0, flexShrink: 0, width: 38, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.color = ds.teal}
                 onMouseLeave={e => e.currentTarget.style.color = ds.gray}
               >
@@ -1286,14 +1286,14 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
                   <button
                     onClick={() => cameraInputRef.current?.click()}
                     title="Take a photo"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 0, flexShrink: 0, width: 44, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 0, flexShrink: 0, width: 38, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
                     onMouseEnter={e => e.currentTarget.style.color = ds.teal}
                     onMouseLeave={e => e.currentTarget.style.color = ds.gray}
                   ><Camera size={18} /></button>
                   <button
                     onClick={startRecording}
                     title="Record a voice note"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 0, flexShrink: 0, width: 44, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: ds.gray, padding: 0, flexShrink: 0, width: 38, height: 48, justifyContent: 'center', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
                     onMouseEnter={e => e.currentTarget.style.color = ds.teal}
                     onMouseLeave={e => e.currentTarget.style.color = ds.gray}
                   ><Mic size={18} /></button>
@@ -1309,14 +1309,17 @@ function InlineComposer({ leadId, customerId, channel = 'whatsapp', windowOpen, 
               value={text}
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+              placeholder={typeof window !== 'undefined' && window.innerWidth < 768 ? 'Message' : 'Type a message… (Enter to send, Shift+Enter for new line)'}
               rows={1}
               style={{
                 flex: 1,
+                minWidth: 0,
+                width: '100%',
                 resize: 'none',
                 border: `1.5px solid ${ds.border}`,
                 borderRadius: 24,
                 padding: '12px 18px',
+                height: 48,
                 fontSize: 16,
                 fontFamily: ds.fontDm,
                 outline: 'none',
@@ -1522,7 +1525,7 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted, webc
     <div style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
       <div
         data-meta-id={msg.meta_message_id || msg.id || undefined}
-        style={{ position: 'relative', maxWidth: '72%', background: isHighlighted ? '#FFF3B0' : (isOut ? '#E4EDFD' : '#fff'), border: `1px solid ${isOut ? '#C9DAF8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'background-color 0.4s ease' }}
+        style={{ position: 'relative', maxWidth: '82%', minWidth: 0, overflowWrap: 'anywhere', background: isHighlighted ? '#FFF3B0' : (isOut ? '#E4EDFD' : '#fff'), border: `1px solid ${isOut ? '#C9DAF8' : ds.border}`, borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'background-color 0.4s ease' }}
       >
         {hasMenu && (
           <div ref={menuRef} style={{ position: 'absolute', top: 2, right: 4, zIndex: 3 }}>
@@ -1666,7 +1669,7 @@ function Bubble({ msg, onRequestSuggestion, onJumpToMessage, isHighlighted, webc
             </div>
           </div>
         ) : (
-          <p style={{ fontSize: 13, color: msg.deleted_at ? ds.gray : ds.dark, fontStyle: msg.deleted_at ? 'italic' : 'normal', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+          <p style={{ fontSize: 13, color: msg.deleted_at ? ds.gray : ds.dark, fontStyle: msg.deleted_at ? 'italic' : 'normal', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
             {msg.content || (isMedia ? '(Media)' : '(Empty)')}
           </p>
         )}
