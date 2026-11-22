@@ -681,6 +681,7 @@ export default function WebChatPage({ chatKey }) {
     try {
       const res = await chatCheckout(chatKey, token.current)
       merge(res.messages); setCart(res.cart || { items: [], total: 0, count: 0 }); setPanel(null)
+      setCards([])                    // CHECKOUT-LINK-1: the product card stays under the payment link otherwise and hides it
       if (res.human) setHuman(true)
     } catch (e) {
       if (e?.response?.data?.detail?.ask_contact) await askInChat('checkout', 'Please share your contact details first, then check out.'); else throw e
