@@ -16,7 +16,7 @@ def test_cart_icon_only_when_something_is_in_the_cart():
 
 def test_phone_moves_into_the_menu_in_shop_mode():
     assert "{call && !cfg.shop_enabled && (" in SRC
-    assert "[['All products', openShop, 'bag'], ...(call ? [['Call us', openCall, 'phone']] : [])]" in SRC
+    assert "(cfg.shop_enabled && call ? [['Call us', openCall, 'phone']] : [])" in SRC
 
 
 def test_all_products_chip_and_added_notice():

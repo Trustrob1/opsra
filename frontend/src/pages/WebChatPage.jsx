@@ -1198,7 +1198,9 @@ export default function WebChatPage({ chatKey }) {
                       : `Phone calls reopen ${call.reopens || 'when we are next open'}`)}
                   </p>
                 </div>
-                <button type="button" aria-label="Close" style={{ ...S.iconBtn, margin: '-6px -10px 0 0' }} onClick={closePanel}><Icon name="close" size={22} /></button>
+                {panel !== 'menu' && (
+                  <button type="button" aria-label="Close" style={{ ...S.iconBtn, margin: '-6px -10px 0 0' }} onClick={closePanel}><Icon name="close" size={22} /></button>
+                )}
               </div>
 
               {error && <div style={{ ...S.err, borderRadius: 8 }} role="alert">{error}</div>}
@@ -1265,22 +1267,17 @@ export default function WebChatPage({ chatKey }) {
                 </div>
               )}
 
-              {panel === 'menu' && cfg.shop_enabled && (
-                <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
-                  {[['All products', openShop, 'bag'], ...(call ? [['Call us', openCall, 'phone']] : [])].map(([label, fn, icon], n) => (
-                    <button key={label} type="button" role="listitem" disabled={busy} onClick={fn}
-                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: SURF, color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <Icon name={icon} size={20} /><span style={{ flex: 1 }}>{label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
+              {panel === 'menu' && (cfg.shop_enabled || cfg.menu.some((m) => m.id !== humanItem?.id)) && (
+                <div role="list" style={{ display: 'flex', flexDirection: 'column', flex: 'none', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
+                  {cfg.shop_enabled && (
+                    <button type="button" role="listitem" disabled={busy} onClick={openShop}
+                      style={{ minHeight: 52, padding: '0 16px', border: 0, background: SURF, color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <Icon name="bag" size={20} /><span style={{ flex: 1 }}>All products</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
                     </button>
-                  ))}
-                </div>
-              )}
-
-              {panel === 'menu' && cfg.menu.some((m) => m.id !== humanItem?.id) && (
-                <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
+                  )}
                   {menuView(cfg.menu.filter((m) => m.id !== humanItem?.id), menuAll).shown.map((m, n) => (
                     <button key={m.id} type="button" role="listitem" disabled={busy} onClick={() => sendMenu(m.id)}
-                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: m.primary ? brand : SURF, color: m.primary ? '#fff' : INK, fontSize: 16, fontWeight: m.primary ? 700 : 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: (n || cfg.shop_enabled) ? `1px solid ${LINE}` : 'none', background: m.primary ? brand : SURF, color: m.primary ? '#fff' : INK, fontSize: 16, fontWeight: m.primary ? 700 : 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                       <span>{m.label}</span><span style={{ color: m.primary ? '#fff' : MUTED }}><Icon name="chev" size={18} /></span>
                     </button>
                   ))}
@@ -1297,14 +1294,18 @@ export default function WebChatPage({ chatKey }) {
                 </div>
               )}
 
-              {panel === 'menu' && humanItem && (
-                <div style={{ marginTop: 18 }}>
+              {panel === 'menu' && (humanItem || (cfg.shop_enabled && call)) && (
+                <div style={{ marginTop: 18, flex: 'none' }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: MUTED, margin: '0 4px 4px' }}>Need a person?</div>
                   {teamLine && <div style={{ fontSize: 13, color: MUTED, margin: '0 4px 8px' }}>{teamLine}</div>}
-                  <button type="button" disabled={busy} onClick={() => sendMenu(humanItem.id)}
-                    style={{ width: '100%', minHeight: 52, padding: '0 16px', border: `1px solid ${LINE}`, borderRadius: 16, background: SURF, color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>{humanItem.label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
-                  </button>
+                  <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
+                    {[...(humanItem ? [[humanItem.label, () => sendMenu(humanItem.id), null]] : []), ...(cfg.shop_enabled && call ? [['Call us', openCall, 'phone']] : [])].map(([label, fn, icon], n) => (
+                      <button key={label} type="button" role="listitem" disabled={busy} onClick={fn}
+                        style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: SURF, color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {icon && <Icon name={icon} size={20} />}<span style={{ flex: 1 }}>{label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
