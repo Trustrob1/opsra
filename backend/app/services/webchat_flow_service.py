@@ -406,6 +406,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
             just_answered = True
         elif ai:
+            if ai["handoff"] and (cfg.get("shop_enabled") or cfg.get("products_read")):
+                # BASIC-Q-1: the AI could not find the detail, but the visitor is looking at a product: answer from its catalogue
+                # text and offer the team, instead of calling the team in and asking for contact details.
+                pa = webchat_shop_service.product_answer(db, s, cfg, visitor_text)
+                if pa:
+                    ai = {"reply": pa, "handoff": False, "products": [], "offer_team": True}
             out.append(wc.append_message(db, s, "bot", ai["reply"]))
             if not ai["handoff"]:
                 wc.set_state(db, s, answers=int((s.get("state") or {}).get("answers") or 0) + 1)     # counts as the first answer: details are asked next
