@@ -1016,7 +1016,12 @@ export default function WebChatPage({ chatKey }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button type="button" style={{ ...S.chipPrimary, width: '100%', minHeight: 52, fontSize: 16 }} disabled={busy}
                 onClick={() => (pairOpening.main.kind === 'shop' ? openShop() : sendMenu(pairOpening.main.id))}>{pairOpening.main.label}</button>
-              {!speakOpen ? (
+              {pairOpening.shortcuts && pairOpening.shortcuts.length > 0 ? (
+                <div style={S.chips}>
+                  {pairOpening.shortcuts.map((c) => <button key={c.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(c.id)}>{c.label}</button>)}
+                  <button type="button" style={{ ...S.chip, background: 'transparent', color: brand, borderColor: brand, fontWeight: 600 }} disabled={busy} onClick={() => openMenu(true)}>{pairOpening.more_label || 'More options'}</button>
+                </div>
+              ) : !speakOpen ? (
                 <button type="button" style={{ ...S.chip, width: '100%', minHeight: 52, fontSize: 16, fontWeight: 600 }} disabled={busy} onClick={() => setSpeakOpen(true)}>{pairOpening.speak_label}</button>
               ) : (
                 <>

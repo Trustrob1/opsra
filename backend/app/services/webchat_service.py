@@ -319,6 +319,24 @@ CAMPAIGNS_MAX = 30
 RESERVED_TAGS = ("instagram", "qr", "site", "facebook", "google", "whatsapp_status", "email", "sms", "whatsapp", "website", "link")
 
 
+SHORTCUTS_MAX = 4
+
+
+def clean_shortcuts(raw) -> list:
+    """AD-SHORTCUTS-1: the quick-question buttons an ad shows under its main button: up to four of the business's own chat menu
+    items, each with an optional shorter label. Only ids and words are stored; what a button says when tapped is the menu item's own answer."""
+    out, seen = [], set()
+    for it in (raw if isinstance(raw, list) else [])[:SHORTCUTS_MAX * 2]:
+        sid = re.sub(r"[^a-z0-9_-]", "", str((it.get("id") if isinstance(it, dict) else it) or "").lower())[:30]
+        if not sid or sid in seen:
+            continue
+        seen.add(sid)
+        out.append({"id": sid, "label": _clean_text(it.get("label"), 30) if isinstance(it, dict) else ""})
+        if len(out) >= SHORTCUTS_MAX:
+            break
+    return out
+
+
 def clean_campaigns(raw) -> list:
     """OPENING-CTA-2: the owner's ads. The tag is what the link carries (?s=tag); the text lives here on the server, never in the link,
     so nobody can make a link that shows a business's chat with words of their own."""
@@ -334,6 +352,7 @@ def clean_campaigns(raw) -> list:
                     "main": re.sub(r"[^a-z0-9_-]", "", str(it.get("main") or "").lower())[:30],
                     "main_label": _clean_text(it.get("main_label"), 40),
                     "greeting": _clean_text(it.get("greeting"), 400),
+                    "shortcuts": clean_shortcuts(it.get("shortcuts")),
                     "image": (str(it.get("image")) if isinstance(it.get("image"), str) and AD_IMAGE_KEY.match(it["image"]) else ""),
                     "video": (str(it.get("video")) if isinstance(it.get("video"), str) and AD_VIDEO_KEY.match(it["video"]) else "")})
     return out
@@ -402,11 +421,22 @@ def opening_for(cfg: dict, source=None) -> dict:
     bo = cfg.get("opening") if isinstance(cfg.get("opening"), dict) else {}
     ov = opening_view({**cfg, "opening": {"style": "pair", "main": camp["main"], "main_label": camp.get("main_label") or "",
                                          "speak_label": bo.get("speak_label") or "", "speak_reply": bo.get("speak_reply") or ""}})
-    return ov if ov.get("style") == "pair" else base
+    if ov.get("style") != "pair":
+        return base
+    items = {m.get("id"): m for m in (cfg.get("menu") or []) if m.get("id") and m.get("action") != "human"}
+    chips = []                                          # AD-SHORTCUTS-1: only buttons that still exist; never the main button or the talk-to-a-person one
+    for sc in camp.get("shortcuts") or []:
+        m = items.get(sc.get("id"))
+        if m and m.get("id") != camp.get("main"):
+            chips.append({"id": m["id"], "label": sc.get("label") or str(m.get("label") or "")})
+    if chips:
+        ov = {**ov, "shortcuts": chips[:SHORTCUTS_MAX], "more_label": MORE_LABEL}
+    return ov
 
 
 OPENING_STYLES = ("list", "pair")
 SPEAK_LABEL = "Speak to Chioma"
+MORE_LABEL = "More options"
 SPEAK_REPLY = "Happy to help. Tap a topic below, or type your question."
 
 

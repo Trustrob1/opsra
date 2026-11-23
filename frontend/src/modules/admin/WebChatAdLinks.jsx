@@ -58,7 +58,13 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
   const items = (cfg.menu || []).filter((m) => m.action !== 'human')
   const copy = (t) => { try { navigator.clipboard.writeText(t); setMsg('Copied.') } catch { setMsg(t) } }
   const upd = (i, patch) => set('campaigns', camps.map((c, j) => (j === i ? { ...c, ...patch } : c)))
-  const add = () => { set('campaigns', [...camps, { tag: '', label: '', main: (cfg.shop_enabled ? 'shop' : (items[0] && items[0].id) || ''), main_label: '', greeting: '' }]); setOpen(camps.length) }
+  const defaultMain = cfg.shop_enabled ? 'shop' : (items[0] && items[0].id) || ''
+  const add = () => { set('campaigns', [...camps, { tag: '', label: '', main: defaultMain, main_label: '', greeting: '', shortcuts: items.filter((m) => m.id !== defaultMain).slice(0, 4).map((m) => ({ id: m.id, label: '' })) }]); setOpen(camps.length) }
+  const toggleShortcut = (i, c, id, on) => {                               // AD-SHORTCUTS-1: up to four of your chat buttons shown under the main button
+    const cur = Array.isArray(c.shortcuts) ? c.shortcuts : []
+    upd(i, { shortcuts: on ? (cur.length >= 4 ? cur : [...cur, { id, label: '' }]) : cur.filter((s) => s.id !== id) })
+  }
+  const renameShortcut = (i, c, id, text) => upd(i, { shortcuts: (c.shortcuts || []).map((s) => (s.id === id ? { ...s, label: text } : s)) })
   const remove = (i) => { if (window.confirm('Remove this ad? Its links will show your normal chat.')) { set('campaigns', camps.filter((_, j) => j !== i)); setOpen(0) } }
   const pick = async (i, file) => {
     if (!file) return
@@ -124,6 +130,24 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
                 </select>
                 <label style={label} htmlFor={`ad-ml-${i}`}>Words on that button (optional)</label>
                 <input id={`ad-ml-${i}`} style={{ ...input, maxWidth: 320 }} maxLength={40} value={c.main_label || ''} onChange={(e) => upd(i, { main_label: e.target.value })} placeholder="Book inspection" />
+                {c.main && (
+                  <>
+                    <p style={{ ...label, marginBottom: 4 }}>Quick questions under the main button (up to 4)</p>
+                    <p style={small}>Visitors tap one to get that answer straight away. A “More options” button after them opens everything else.</p>
+                    {items.filter((m) => m.id !== c.main).map((m) => {
+                      const sc = (c.shortcuts || []).find((x) => x.id === m.id)
+                      const full = !sc && (c.shortcuts || []).length >= 4
+                      return (
+                        <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0', flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, minWidth: 220 }}>
+                            <input type="checkbox" checked={!!sc} disabled={full} onChange={(e) => toggleShortcut(i, c, m.id, e.target.checked)} /> {m.label}
+                          </label>
+                          {sc && <input aria-label={`Words on the ${m.label} button for this ad`} style={{ ...input, maxWidth: 220 }} maxLength={30} value={sc.label || ''} placeholder={m.label} onChange={(e) => renameShortcut(i, c, m.id, e.target.value)} />}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
                 <label style={label} htmlFor={`ad-greet-${i}`}>Greeting for this ad (optional)</label>
                 <textarea id={`ad-greet-${i}`} rows={2} style={input} maxLength={400} value={c.greeting || ''} onChange={(e) => upd(i, { greeting: e.target.value })}
                   placeholder="Hi, I'm Chioma. Asking about the Lekki 3-bed duplex? I can share prices and book your inspection." />
