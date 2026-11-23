@@ -249,7 +249,7 @@ def apply_template(body: TemplateBody, db=Depends(get_supabase), org=Depends(get
     chosen = smart.STARTERS.get(body.template)
     if not chosen:
         raise HTTPException(status_code=422, detail="Pick one of the starter menus.")
-    return ok(wc.save_config(db, org["org_id"], {"menu": chosen["menu"]}))
+    return ok(wc.save_config(db, org["org_id"], {"menu": chosen["menu"], "opening": chosen.get("opening") or {"style": "list"}}))      # OPENING-CTA-1: a starter also sets the two-button first screen
 
 
 @router.get("/webchat/starters")

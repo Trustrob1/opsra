@@ -222,7 +222,7 @@ def _quote_guide(options: list) -> dict:
 
 
 STARTERS = {
-    "salon": {"label": "Salon or beauty", "menu": [
+    "salon": {"label": "Salon or beauty", "opening": {"style": "pair", "main": "book"}, "menu": [
         {"id": "services", "label": "Services and prices", "keywords": ["price", "cost", "how much", "service", "braid", "wig", "hair"], "answer": "[Add your services and prices here]"},
         {"id": "products", "label": "Hair products", "keywords": ["product", "shampoo", "oil", "extension"], "answer": "[Add what you sell and how to order]"},
         {"id": "hours", "label": "Opening hours", "keywords": ["open", "close", "hours", "time"], "answer": "[Add your opening hours]"},
@@ -230,14 +230,14 @@ STARTERS = {
         {"id": "book", "label": "Book an appointment", "action": "booking", "keywords": ["book", "appointment", "reserve"]},
         {"id": "talk", "label": "Talk to us", "action": "human", "keywords": ["human", "person", "call", "agent"]},
     ]},
-    "services": {"label": "Services, agency or consulting", "menu": [
+    "services": {"label": "Services, agency or consulting", "opening": {"style": "pair", "main": "book"}, "menu": [
         {"id": "services", "label": "What we do", "keywords": ["service", "services", "offer", "help", "work"], "answer": "[Describe your main services in two sentences]"},
         {"id": "pricing", "label": "Prices", "keywords": ["price", "prices", "pricing", "cost", "how much", "quote", "package"], "answer": "[Add your prices, or how a quote works]"},
         {"id": "quote", "label": "Get a quote", "action": "guide", "keywords": ["quote", "estimate", "proposal"], "guide": _quote_guide(["[Service 1]", "[Service 2]", "Something else"])},
         {"id": "book", "label": "Book a call", "action": "booking", "keywords": ["book", "appointment", "schedule", "call me", "call back"]},
         {"id": "talk", "label": "Talk to the team", "action": "human", "keywords": []},
     ]},
-    "restaurant": {"label": "Restaurant or food", "menu": [
+    "restaurant": {"label": "Restaurant or food", "opening": {"style": "pair", "main": "reserve"}, "menu": [
         {"id": "menu", "label": "Our menu", "keywords": ["menu", "food", "eat", "dish", "meal", "drink"], "answer": "[Add your menu or a link to it]"},
         {"id": "hours", "label": "Opening hours", "keywords": ["open", "close", "hours", "time"], "answer": "[Add your opening hours]"},
         {"id": "delivery", "label": "Delivery", "keywords": ["deliver", "delivery", "dispatch", "rider"], "answer": "[Add where you deliver, the fee and how long it takes]"},
@@ -245,19 +245,50 @@ STARTERS = {
         {"id": "location", "label": "Where to find us", "keywords": ["where", "location", "address", "direction"], "answer": "[Add your address]"},
         {"id": "talk", "label": "Talk to the team", "action": "human", "keywords": []},
     ]},
-    "shop": {"label": "Shop or retail", "menu": [
+    "shop": {"label": "Shop or retail", "opening": {"style": "pair", "main": "order", "main_label": "Buy now"}, "menu": [
         {"id": "products", "label": "What we sell", "keywords": ["product", "products", "sell", "item", "stock", "available"], "answer": "[Add what you sell and how to order]"},
         {"id": "pricing", "label": "Prices", "keywords": ["price", "prices", "cost", "how much"], "answer": "[Add your prices, or tell visitors to ask for an item]"},
         {"id": "delivery", "label": "Delivery and payment", "keywords": ["deliver", "delivery", "pay", "payment", "transfer", "shipping"], "answer": "[Add how you deliver and how customers pay]"},
         {"id": "order", "label": "Place an order", "action": "guide", "keywords": ["order", "buy", "purchase"], "guide": _quote_guide(["[Item 1]", "[Item 2]", "Something else"])},
         {"id": "talk", "label": "Talk to the team", "action": "human", "keywords": []},
     ]},
-    "clinic": {"label": "Clinic or health", "menu": [
+    "clinic": {"label": "Clinic or health", "opening": {"style": "pair", "main": "book"}, "menu": [
         {"id": "services", "label": "Our services", "keywords": ["service", "services", "treatment", "doctor", "test", "checkup"], "answer": "[Add the services you offer]"},
         {"id": "fees", "label": "Fees", "keywords": ["price", "prices", "fee", "fees", "cost", "how much"], "answer": "[Add your consultation fees, or how to get them]"},
         {"id": "hours", "label": "Opening hours", "keywords": ["open", "close", "hours", "time"], "answer": "[Add your opening hours]"},
         {"id": "book", "label": "Book an appointment", "action": "booking", "keywords": ["book", "appointment", "reserve", "see a doctor"]},
         {"id": "location", "label": "Where to find us", "keywords": ["where", "location", "address", "direction"], "answer": "[Add your address]"},
+        {"id": "talk", "label": "Talk to the team", "action": "human", "keywords": []},
+    ]},
+    # OPENING-CTA-1: more kinds of business. Answers are placeholders in [brackets] for the owner to replace.
+    "real_estate": {"label": "Real estate or property", "opening": {"style": "pair", "main": "inspect"}, "menu": [
+        {"id": "listings", "label": "Available properties", "keywords": ["property", "properties", "available", "house", "apartment", "land", "plot", "duplex", "flat", "listing"], "answer": "[List what is available, with the location and price, or say how to see the list]"},
+        {"id": "pricing", "label": "Prices and payment plans", "keywords": ["price", "prices", "cost", "how much", "payment plan", "installment", "instalment", "pay"], "answer": "[Add your prices and payment plans]"},
+        {"id": "docs", "label": "Documents and title", "keywords": ["document", "documents", "title", "survey", "deed", "paper", "papers"], "answer": "[Add the documents a buyer receives, for example title and survey]"},
+        {"id": "location", "label": "Locations", "keywords": ["where", "location", "address", "direction", "area", "estate"], "answer": "[Add the locations and your office address]"},
+        {"id": "inspect", "label": "Book inspection", "action": "booking", "keywords": ["inspect", "inspection", "visit", "view", "viewing", "site"]},
+        {"id": "talk", "label": "Talk to the team", "action": "human", "keywords": []},
+    ]},
+    "school": {"label": "School or training", "opening": {"style": "pair", "main": "visit"}, "menu": [
+        {"id": "programmes", "label": "Programmes", "keywords": ["programme", "programmes", "program", "course", "courses", "class", "classes", "curriculum"], "answer": "[Add your programmes or classes]"},
+        {"id": "fees", "label": "Fees", "keywords": ["fee", "fees", "price", "cost", "how much", "tuition"], "answer": "[Add your fees and how to pay]"},
+        {"id": "admission", "label": "How to apply", "keywords": ["admission", "apply", "application", "enrol", "enroll", "register", "requirements"], "answer": "[Add the steps and requirements to apply]"},
+        {"id": "location", "label": "Where to find us", "keywords": ["where", "location", "address", "direction"], "answer": "[Add your address]"},
+        {"id": "visit", "label": "Book a school visit", "action": "booking", "keywords": ["visit", "tour", "book", "appointment"]},
+        {"id": "talk", "label": "Talk to the team", "action": "human", "keywords": []},
+    ]},
+    "events": {"label": "Events, venue or catering", "opening": {"style": "pair", "main": "date"}, "menu": [
+        {"id": "offer", "label": "What we offer", "keywords": ["service", "services", "offer", "package", "packages", "hall", "decor", "catering"], "answer": "[Describe your venue, packages or services]"},
+        {"id": "pricing", "label": "Prices and packages", "keywords": ["price", "prices", "cost", "how much", "quote", "rate", "rates"], "answer": "[Add your prices, or how a quote works]"},
+        {"id": "location", "label": "Where to find us", "keywords": ["where", "location", "address", "direction"], "answer": "[Add your address]"},
+        {"id": "date", "label": "Check a date", "action": "booking", "keywords": ["date", "available", "availability", "book", "reserve"]},
+        {"id": "talk", "label": "Talk to the team", "action": "human", "keywords": []},
+    ]},
+    "travel": {"label": "Travel, visa or relocation", "opening": {"style": "pair", "main": "book"}, "menu": [
+        {"id": "services", "label": "What we help with", "keywords": ["service", "services", "visa", "travel", "ticket", "flight", "relocation", "study", "shipping"], "answer": "[Describe what you help with]"},
+        {"id": "fees", "label": "Fees", "keywords": ["fee", "fees", "price", "cost", "how much", "charge"], "answer": "[Add your fees, or how a quote works]"},
+        {"id": "process", "label": "How it works", "keywords": ["process", "how", "steps", "requirements", "documents", "time", "long"], "answer": "[Add the steps and how long each takes]"},
+        {"id": "book", "label": "Book a consultation", "action": "booking", "keywords": ["book", "consultation", "appointment", "call"]},
         {"id": "talk", "label": "Talk to the team", "action": "human", "keywords": []},
     ]},
 }

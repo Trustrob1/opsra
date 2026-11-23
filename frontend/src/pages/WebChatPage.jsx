@@ -230,6 +230,7 @@ export default function WebChatPage({ chatKey }) {
   const shellRef = useRef(null)
   const [callPhone, setCallPhone] = useState(null)         // null = not asked yet, string = the phone field is showing
   const [menuAll, setMenuAll] = useState(false)             // MENU-MORE: the visitor tapped More options
+  const [speakOpen, setSpeakOpen] = useState(false)         // OPENING-CTA-1: the visitor tapped Speak to Chioma on the two-button first screen
   const [panel, setPanel] = useState(null)                // null | 'contact' | 'email' | 'booking' | 'shop' | 'cart' | 'save' | 'menu' | 'attach' | 'call'
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -790,6 +791,7 @@ export default function WebChatPage({ chatKey }) {
   const call = cfg.call || null
   const shown = withoutHeld(hiddenIds ? messages.filter((m) => !hiddenIds.has(m.id)) : messages, held)
   const visitorSpoke = shown.some((m) => m.role === 'visitor')
+  const pairOpening = cfg.opening && cfg.opening.style === 'pair' && cfg.opening.main ? cfg.opening : null          // OPENING-CTA-1: one main action + Speak to Chioma
   const stepHint = contactStep === 'name' ? 'Your first name' : contactStep === 'phone' ? 'Your WhatsApp number' : contactStep === 'consent' ? 'Reply Yes or No' : 'Type your message'
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
   // WEBCHAT-BUBBLE-2: Chioma is the face; once a team member takes over, the header shows them instead (and swaps back when the bot resumes).
@@ -951,7 +953,24 @@ export default function WebChatPage({ chatKey }) {
             </div>
           )}
 
-          {cfg.menu.length > 0 && !visitorSpoke && !panel && !contactStep && (
+          {pairOpening && cfg.menu.length > 0 && !visitorSpoke && !panel && !contactStep && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button type="button" style={{ ...S.chipPrimary, width: '100%', minHeight: 52, fontSize: 16 }} disabled={busy}
+                onClick={() => (pairOpening.main.kind === 'shop' ? openShop() : sendMenu(pairOpening.main.id))}>{pairOpening.main.label}</button>
+              {!speakOpen ? (
+                <button type="button" style={{ ...S.chip, width: '100%', minHeight: 52, fontSize: 16, fontWeight: 600 }} disabled={busy} onClick={() => setSpeakOpen(true)}>{pairOpening.speak_label}</button>
+              ) : (
+                <>
+                  <p style={{ margin: '2px 0 0', fontSize: 14, color: MUTED }}>{pairOpening.speak_reply}</p>
+                  <div style={S.chips}>
+                    {cfg.menu.filter((m) => !(pairOpening.main.kind === 'menu' && m.id === pairOpening.main.id)).map((m) => <button key={m.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {!pairOpening && cfg.menu.length > 0 && !visitorSpoke && !panel && !contactStep && (
             <div style={S.chips}>
               {cfg.menu.map((m) => <button key={m.id} type="button" style={m.primary ? S.chipPrimary : S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
             </div>

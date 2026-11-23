@@ -149,6 +149,39 @@ export default function WebChatInstall({ data, cfg, set, setMsg }) {
         </label>
         <p style={small}>She asks what it is about and shows your top buttons, with a clear "No, connect me to the team" button. It happens once per chat and never when someone types that they want a person. Press Save at the bottom after changing this.</p>
         <hr style={{ border: 0, borderTop: `1px solid ${ds.border}`, margin: '12px 0' }} />
+        <h4 style={{ fontSize: 14, color: ds.dark, margin: '0 0 4px' }}>First screen of the chat</h4>
+        <p style={small}>Choose what a visitor sees first. With two buttons, they see one main action and a Speak to Chioma button that opens the other topics. This suits visitors who arrive from an ad. Press Save at the bottom after changing this.</p>
+        {(() => {
+          const op = cfg.opening && cfg.opening.style === 'pair' ? cfg.opening : { style: 'list' }
+          const items = (cfg.menu || []).filter((m) => m.action !== 'human')
+          const setOp = (patch) => set('opening', { ...op, ...patch })
+          return (
+            <>
+              <label style={label} htmlFor="wc-open-style">What visitors see first</label>
+              <select id="wc-open-style" style={{ ...input, maxWidth: 320 }} value={op.style}
+                onChange={(e) => (e.target.value === 'pair' ? set('opening', { style: 'pair', main: op.main || (cfg.shop_enabled ? 'shop' : (items[0] && items[0].id) || ''), main_label: op.main_label || '', speak_label: op.speak_label || '', speak_reply: op.speak_reply || '' }) : set('opening', { style: 'list' }))}>
+                <option value="list">All my buttons</option>
+                <option value="pair">Two buttons: one main action and Speak to Chioma</option>
+              </select>
+              {op.style === 'pair' && (
+                <>
+                  <label style={label} htmlFor="wc-open-main">Main button</label>
+                  <select id="wc-open-main" style={{ ...input, maxWidth: 320 }} value={op.main || ''} onChange={(e) => setOp({ main: e.target.value })}>
+                    {cfg.shop_enabled && <option value="shop">Shop now (opens the shop)</option>}
+                    {items.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                  <label style={label} htmlFor="wc-open-mainlabel">Words on the main button (optional)</label>
+                  <input id="wc-open-mainlabel" style={{ ...input, maxWidth: 320 }} maxLength={40} value={op.main_label || ''} onChange={(e) => setOp({ main_label: e.target.value })} placeholder="Buy now" />
+                  <label style={label} htmlFor="wc-open-speak">Words on the second button</label>
+                  <input id="wc-open-speak" style={{ ...input, maxWidth: 320 }} maxLength={30} value={op.speak_label || ''} onChange={(e) => setOp({ speak_label: e.target.value })} placeholder="Speak to Chioma" />
+                  <label style={label} htmlFor="wc-open-reply">Line shown above the topics after they tap it</label>
+                  <input id="wc-open-reply" style={input} maxLength={200} value={op.speak_reply || ''} onChange={(e) => setOp({ speak_reply: e.target.value })} placeholder="Happy to help. Tap a topic below, or type your question." />
+                </>
+              )}
+            </>
+          )
+        })()}
+        <hr style={{ border: 0, borderTop: `1px solid ${ds.border}`, margin: '12px 0' }} />
         <h4 style={{ fontSize: 14, color: ds.dark, margin: '0 0 4px' }}>Ask bar on your website</h4>
         <p style={small}>A clear "Ask Chioma" bar with your first chat buttons, so visitors see it without hunting for the bubble. Visitors can minimize it, and it then becomes the round bubble.</p>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, minHeight: 44 }}>

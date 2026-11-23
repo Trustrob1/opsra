@@ -83,6 +83,7 @@ DEFAULT_CONFIG: dict = {
     "human_offer": False,         # HUMAN-OFFER-1: the first tap on Talk to the team gets one offer of a quick answer first
     "ask_bar": False,             # ASKBAR-1: show the Chioma ask bar on the website (inline at a placeholder, or docked at the bottom)
     "ask_bar_text": "Ask me anything…",
+    "opening": {"style": "list"},  # OPENING-CTA-1: list = every button on the first screen (as before); pair = two big buttons (one main action + Speak to Chioma)
     "call_enabled": False,        # WEBCHAT-CALL-1: phone icon in the chat header; calls only in business hours
     "call_number": "",            # digits; empty = the organisation's business contact / WhatsApp number
 }
@@ -285,6 +286,8 @@ def sanitise_config(raw: dict) -> dict:
             item["keywords"] = [_clean_text(k, 30).lower() for k in kws[:15] if _clean_text(k, 30)]
             menu.append(item)
         out["menu"] = menu
+    if "opening" in raw:
+        out["opening"] = clean_opening(raw["opening"])
     if "booking_fields" in raw and isinstance(raw["booking_fields"], list):
         fields, seen = [], set()
         for f in raw["booking_fields"][:8]:
@@ -297,6 +300,44 @@ def sanitise_config(raw: dict) -> dict:
                 fields.append({"key": key, "label": label, "required": bool(f.get("required", True))})
         out["booking_fields"] = fields
     return out
+
+
+OPENING_STYLES = ("list", "pair")
+SPEAK_LABEL = "Speak to Chioma"
+SPEAK_REPLY = "Happy to help. Tap a topic below, or type your question."
+
+
+def clean_opening(raw) -> dict:
+    """OPENING-CTA-1: the first-screen setting. style list (default) keeps every button on show; style pair shows one main button
+    (a menu button id, or "shop") and a Speak to Chioma button that opens the other topics. Unknown values fall back to list."""
+    if not isinstance(raw, dict) or raw.get("style") not in OPENING_STYLES or raw.get("style") == "list":
+        return {"style": "list"}
+    main = re.sub(r"[^a-z0-9_-]", "", str(raw.get("main") or "").lower())[:30]
+    if not main:
+        return {"style": "list"}
+    return {"style": "pair", "main": main,
+            "main_label": _clean_text(raw.get("main_label"), 40),
+            "speak_label": _clean_text(raw.get("speak_label"), 30) or SPEAK_LABEL,
+            "speak_reply": _clean_text(raw.get("speak_reply"), 200) or SPEAK_REPLY}
+
+
+def opening_view(cfg: dict) -> dict:
+    """What the chat page needs for the first screen. Falls back to the plain list when the main button no longer exists
+    (deleted, or shop switched off), so a visitor is never shown a dead button."""
+    op = cfg.get("opening") if isinstance(cfg.get("opening"), dict) else {}
+    if op.get("style") != "pair" or not op.get("main"):
+        return {"style": "list"}
+    items = {m.get("id"): m for m in (cfg.get("menu") or []) if m.get("id")}
+    if op["main"] == "shop":
+        if not cfg.get("shop_enabled"):
+            return {"style": "list"}
+        kind, label = "shop", "Shop now"
+    elif op["main"] in items:
+        kind, label = "menu", str(items[op["main"]].get("label") or "")
+    else:
+        return {"style": "list"}
+    return {"style": "pair", "main": {"id": op["main"], "kind": kind, "label": op.get("main_label") or label},
+            "speak_label": op.get("speak_label") or SPEAK_LABEL, "speak_reply": op.get("speak_reply") or SPEAK_REPLY}
 
 
 def default_menu(shop: bool) -> list:
@@ -384,7 +425,7 @@ def public_view(cfg: dict) -> dict:
     return {
         "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL, "contact_in_chat": bool(cfg.get("contact_in_chat", True)),
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in CHAT_THEMES else "classic",
-        "greeting": cfg["greeting"],
+        "greeting": cfg["greeting"], "opening": opening_view(cfg),
         "menu": [{"id": m["id"], "label": m["label"], **({"primary": True} if m.get("action") == "booking" else {}), **({"featured": True} if m.get("featured") else {})} for m in cfg["menu"]],      # a Book a call button is drawn solid
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
