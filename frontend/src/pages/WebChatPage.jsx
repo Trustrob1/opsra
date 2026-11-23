@@ -688,6 +688,41 @@ export default function WebChatPage({ chatKey }) {
       if (e?.response?.data?.detail?.ask_contact) await askInChat('checkout', 'Please share your contact details first, then check out.'); else throw e
     }
   })
+  // STORE-CHIOMA-1: "Buy now" on the Storefront puts the chosen product (and size) in the cart and opens the cart, ready to check out.
+  // It waits until the chat is ready and not busy; the server checks the product and size like any other add to cart.
+  const buyWant = useRef(null)
+  const runBuy = () => {
+    const w = buyWant.current
+    if (!w || !token.current || busy) return
+    buyWant.current = null
+    act(async () => {
+      setCart(await changeChatCart(chatKey, token.current, { action: 'add', product_id: w.pid, variant_id: w.vid || undefined, qty: 1 }))
+      setPanel('cart')
+    })
+  }
+  const runBuyRef = useRef(runBuy)
+  runBuyRef.current = runBuy
+  useEffect(() => {
+    if (state !== 'ready') return
+    let b = null
+    let bv = ''
+    try { const q = new URLSearchParams(window.location.search); b = q.get('b'); bv = q.get('bv') || '' } catch { /* ignore */ }
+    if (b && /^[A-Za-z0-9_-]{1,60}$/.test(b)) buyWant.current = { pid: b, vid: /^[A-Za-z0-9_.:-]{1,80}$/.test(bv) ? bv : '' }
+    runBuyRef.current()
+  }, [state])
+  useEffect(() => { if (!busy) runBuyRef.current() }, [busy])
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.origin !== window.location.origin || !e.data || e.data.source !== 'opsra-catalog' || e.data.type !== 'buy') return
+      const pid = String(e.data.product || '')
+      const vid = String(e.data.variant || '')
+      if (!/^[A-Za-z0-9_-]{1,60}$/.test(pid)) return
+      buyWant.current = { pid, vid: /^[A-Za-z0-9_.:-]{1,80}$/.test(vid) ? vid : '' }
+      runBuyRef.current()
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
   const submitBooking = (e) => {
     e.preventDefault()
     act(async () => {

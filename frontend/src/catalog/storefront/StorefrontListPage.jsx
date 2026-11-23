@@ -9,6 +9,7 @@ import {
   resolveAccent, readableOn, categoryChips, otherFilterDims, filterItems, cardView, readUrlState, listUrl, quickAddState,
 } from './storefrontLogic'
 import { cartVariantId } from './storefrontCart'
+import { askChioma } from './storefrontChat'
 import { INK, MUTED, LINE, FONT, placeholder, useManrope } from './storefrontTheme'
 import {
   Icon, WhatsAppIcon, ChromeStyles, Announcement, StorefrontHeader, StorefrontFooter,
@@ -89,13 +90,16 @@ function Finder({ questions, accent, onAnswer, onClear, done, matchCount, itemWo
 }
 
 export default function StorefrontListPage({
-  orgName, orgSlug, waNumber, catalogConfig, style, wizardQuestions = [], items = [], onSelectItem, onShowCompare, headerCart, cart,
+  orgName, orgSlug, waNumber, catalogConfig, style, wizardQuestions = [], items = [], onSelectItem, onShowCompare, headerCart, cart, chiomaChat,
 }) {
   useManrope()
   const accent = resolveAccent(style)
   const onAccent = readableOn(accent)
   // STORE-8: a small add button under each product. "added" shows for two seconds; a failure is shown on its own card.
   const cartOn = !!(cart && cart.enabled)
+  // STORE-CHIOMA-1: with Chioma on, each card offers Buy now (or Choose size) and Ask Chioma; WhatsApp is not shown.
+  const chioma = !!(chiomaChat && chiomaChat.key)
+  const chiomaShop = chioma && !!chiomaChat.shop && !catalogConfig?.price_on_request
   const [addState, setAddState] = useState({ id: null, phase: '' })
   const timer = useRef(null)
   async function quickAdd(it) {
@@ -190,6 +194,16 @@ export default function StorefrontListPage({
           <div aria-live="polite" style={{ fontSize: 14, color: MUTED }}>{countText}</div>
         </div>
 
+        {chioma && (
+          <section aria-label="Chioma" style={{ marginTop: 20, padding: '16px 20px', borderRadius: 16, background: '#F5F4F0', display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800 }}>Not sure which {singular.toLowerCase()}?</div>
+              <div style={{ marginTop: 2, fontSize: 14, color: MUTED }}>{chiomaShop ? 'Chioma can help you choose, answer your questions and take your order.' : 'Chioma can help you choose and answer your questions.'}</div>
+            </div>
+            <button type="button" onClick={() => askChioma({ action: 'open' })} style={{ minHeight: 48, padding: '0 22px', borderRadius: 12, border: 0, background: accent, color: onAccent, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Speak to Chioma</button>
+          </section>
+        )}
+
         {(chips.length > 0 || dims.length > 0) && (
           <div className="sf-chips" role="group" aria-label="Browse by category" style={{ marginTop: 24 }}>
             {chips.length > 0 && (
@@ -275,7 +289,8 @@ export default function StorefrontListPage({
             {shown.map((it, i) => {
               const v = cardView(it, catalogConfig)
               const soldLabel = catalogConfig?.availability_labels?.unavailable || 'Out of stock'
-              const quick = quickAddState(it, { cartOn, config: catalogConfig })
+              const quick = chioma ? null : quickAddState(it, { cartOn, config: catalogConfig })
+              const cq = chiomaShop ? quickAddState(it, { cartOn: true, config: catalogConfig }) : null
               const mine = addState.id === it.id ? addState.phase : ''
               return (
                 <div key={it.id || it.slug}>
@@ -300,6 +315,22 @@ export default function StorefrontListPage({
                     </div>
                   )}
                 </button>
+                {chioma && (
+                  <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                    {cq && (
+                      <button type="button" aria-label={cq === 'add' ? `Buy ${v.title} now` : `Choose a size for ${v.title}`}
+                        onClick={() => (cq === 'add' ? askChioma({ action: 'buy', product: it.id, variant: cartVariantId(it, null) }) : onSelectItem(it))}
+                        style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                          ...(cq === 'add' ? { border: 0, background: accent, color: onAccent } : { border: `1.5px solid ${LINE}`, background: '#fff', color: INK }) }}>
+                        {cq === 'add' ? 'Buy now' : 'Choose size'}
+                      </button>
+                    )}
+                    <button type="button" aria-label={`Ask Chioma about ${v.title}`} onClick={() => askChioma({ action: 'open', product: it.id })}
+                      style={{ width: '100%', minHeight: 40, borderRadius: 12, border: 0, background: 'transparent', color: INK, fontSize: 14, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Ask Chioma
+                    </button>
+                  </div>
+                )}
                 {quick && (
                   <button type="button" disabled={mine === 'adding'}
                     aria-label={quick === 'add' ? `Add ${v.title} to cart` : `Choose a size for ${v.title}`}
@@ -327,17 +358,23 @@ export default function StorefrontListPage({
           </div>
         )}
 
-        {waHelp && (
+        {(waHelp || chioma) && (
           <section style={{ marginTop: 72, padding: '32px 36px', borderRadius: 20, background: INK, color: '#fff', display: 'flex', gap: 24, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: 22, fontWeight: 800 }}>Need help choosing?</div>
-              <div style={{ marginTop: 6, fontSize: 14, color: '#D5D8DB' }}>Our team can recommend the right {singular.toLowerCase()} for you on WhatsApp.</div>
+              <div style={{ marginTop: 6, fontSize: 14, color: '#D5D8DB' }}>{chioma ? `Chioma can recommend the right ${singular.toLowerCase()} for you, day or night.` : `Our team can recommend the right ${singular.toLowerCase()} for you on WhatsApp.`}</div>
             </div>
+            {chioma ? (
+              <button type="button" onClick={() => askChioma({ action: 'open' })} style={{
+                minHeight: 52, padding: '0 26px', borderRadius: 14, border: 0, background: '#fff', color: INK, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              }}>Speak to Chioma</button>
+            ) : (
             <a href={waHelp} target="_blank" rel="noopener noreferrer" style={{
               minHeight: 52, padding: '0 26px', borderRadius: 14, background: '#fff', color: INK, display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 700,
             }}>
               <WhatsAppIcon stroke={INK} />Chat on WhatsApp
             </a>
+            )}
           </section>
         )}
 

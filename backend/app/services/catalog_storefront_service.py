@@ -100,7 +100,7 @@ def shop_info(db, org_id: str) -> Optional[dict]:
 
 
 def chat_info(db, org_id: str, catalog_config: Optional[dict]) -> Optional[dict]:
-    """WEBCHAT-CATALOG-1: {'key': 'wc_...'} when the Storefront can show the "Chat with Chioma" button; otherwise None.
+    """WEBCHAT-CATALOG-1: {'key': 'wc_...', 'shop': whether Chioma's own cart is on} when the Storefront can show the "Chat with Chioma" button; otherwise None.
     Needs: the owner has not switched the button off (default on), web chat on, the plan includes it, and the business
     already has an active chat key. It does NOT need the shop or Paystack. Reading never creates a key. Never raises."""
     try:
@@ -115,7 +115,7 @@ def chat_info(db, org_id: str, catalog_config: Optional[dict]) -> Optional[dict]
             return None
         rows = (db.table("webchat_keys").select("key").eq("org_id", org_id).eq("active", True).limit(1).execute().data) or []
         key = rows[0].get("key") if rows else None
-        return {"key": key} if key else None
+        return {"key": key, "shop": bool(live.get("shop_enabled"))} if key else None
     except Exception as exc:
         logger.warning("storefront chat_info failed org=%s: %s", org_id, exc)
         return None

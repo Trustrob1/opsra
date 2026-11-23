@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { readableOn } from './storefrontLogic'
-import { chatSrc, cleanProductId, viewingMessage, greetingText, greetedKey } from './storefrontChat'
+import { chatSrc, cleanProductId, cleanVariantId, viewingMessage, buyMessage, greetingText, greetedKey, CHIOMA_EVENT } from './storefrontChat'
 
 const FACE = '/chioma/chioma-face-64.webp'
 const FACE2 = '/chioma/chioma-face-128.webp'
@@ -50,19 +50,35 @@ export default function StorefrontChat({ chatKey, accent, orgName, productId, pr
   }, [chatKey, pid, open])
   const cardText = cardFor && cardFor === greetedKey(chatKey, pid) ? greetingText(orgName, productTitle) : ''
 
-  const openChat = () => {
+  const post = (m) => {
+    try { if (m && frameRef.current && frameRef.current.contentWindow) frameRef.current.contentWindow.postMessage(m, window.location.origin) } catch { /* ignore */ }
+  }
+  // opts.product: show the chat on this product (a card on the list page); opts.buy: also put it in the cart and open the cart.
+  const openChat = (opts) => {
+    const want = (opts && cleanProductId(opts.product)) || pid
+    const buy = opts && opts.buy && cleanProductId(opts.buy.product) ? { product: cleanProductId(opts.buy.product), variant: cleanVariantId(opts.buy.variant) } : null
     setCardFor('')
     if (!everOpened) {
-      setSrc(chatSrc(chatKey, pid))
-      lastSent.current = pid
+      setSrc(chatSrc(chatKey, want, buy))
+      lastSent.current = want
       setEverOpened(true)
-    } else if (pid && pid !== lastSent.current) {
-      lastSent.current = pid
-      const m = viewingMessage(pid)
-      try { if (m && frameRef.current && frameRef.current.contentWindow) frameRef.current.contentWindow.postMessage(m, window.location.origin) } catch { /* ignore */ }
+    } else {
+      if (want && want !== lastSent.current) { lastSent.current = want; post(viewingMessage(want)) }
+      if (buy) post(buyMessage(buy.product, buy.variant))
     }
     setOpen(true)
   }
+  const openRef = useRef(openChat)
+  useEffect(() => { openRef.current = openChat })
+  useEffect(() => {
+    const on = (e) => {
+      const d = (e && e.detail) || {}
+      if (d.action === 'buy') openRef.current({ product: d.product, buy: { product: d.product, variant: d.variant } })
+      else openRef.current({ product: d.product })
+    }
+    window.addEventListener(CHIOMA_EVENT, on)
+    return () => window.removeEventListener(CHIOMA_EVENT, on)
+  }, [])
   const closeChat = () => { setOpen(false); try { if (btnRef.current) btnRef.current.focus() } catch { /* ignore */ } }
 
   // Moving to another product while the chat is open: tell the chat.
@@ -115,14 +131,14 @@ export default function StorefrontChat({ chatKey, accent, orgName, productId, pr
           {everOpened && <iframe ref={frameRef} src={src} title={label} allow="microphone; clipboard-write" />}
         </div>
         {!open && cardText && (
-          <div className="sfc-card" role="button" tabIndex={0} onClick={openChat}
+          <div className="sfc-card" role="button" tabIndex={0} onClick={() => openChat()}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChat() } }}>
             <span>{cardText}</span>
             <button type="button" className="sfc-cx" aria-label="Dismiss" onClick={(e) => { e.stopPropagation(); setCardFor('') }}>×</button>
           </div>
         )}
         {!open && (
-          <button ref={btnRef} type="button" className="sfc-btn" aria-label={label} aria-expanded="false" onClick={openChat}
+          <button ref={btnRef} type="button" className="sfc-btn" aria-label={label} aria-expanded="false" onClick={() => openChat()}
             style={{ background: accent, color: fg }}>
             <span className="sfc-av" aria-hidden="true"><img src={FACE} srcSet={`${FACE} 1x, ${FACE2} 2x`} alt="" width="44" height="44" /></span>
             <span className="sfc-lbl">Chat with Chioma</span>

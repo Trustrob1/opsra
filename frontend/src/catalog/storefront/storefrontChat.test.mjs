@@ -46,3 +46,35 @@ test('greetedKey: one per product per chat', () => {
   assert.equal(greetedKey('wc_abcdefgh12', 'p1'), 'opsra_chioma_greeted_wc_abcdefgh12_p1')
   assert.equal(greetedKey('wc_abcdefgh12', ''), 'opsra_chioma_greeted_wc_abcdefgh12_home')
 })
+
+// STORE-CHIOMA-1
+import { cleanVariantId, buyMessage, CHIOMA_EVENT, askChioma } from './storefrontChat.js'
+
+test('chatSrc: carries a buy request only with a clean product id', () => {
+  assert.equal(chatSrc('wc_abcdefgh12', 'p1', { product: 'p1', variant: 'v-2' }), '/c/wc_abcdefgh12?embed=1&s=catalog&p=p1&b=p1&bv=v-2')
+  assert.equal(chatSrc('wc_abcdefgh12', 'p1', { product: 'p1' }), '/c/wc_abcdefgh12?embed=1&s=catalog&p=p1&b=p1')
+  assert.equal(chatSrc('wc_abcdefgh12', 'p1', { product: 'bad id&x=1', variant: 'v' }), '/c/wc_abcdefgh12?embed=1&s=catalog&p=p1')
+  assert.equal(chatSrc('wc_abcdefgh12', 'p1', { product: 'p1', variant: 'a&b=c' }), '/c/wc_abcdefgh12?embed=1&s=catalog&p=p1&b=p1')
+})
+
+test('cleanVariantId and buyMessage', () => {
+  assert.equal(cleanVariantId('abc-1_2'), 'abc-1_2')
+  assert.equal(cleanVariantId('a b'), '')
+  assert.equal(cleanVariantId(null), '')
+  assert.deepEqual(buyMessage('p1', 'v1'), { source: 'opsra-catalog', type: 'buy', product: 'p1', variant: 'v1' })
+  assert.deepEqual(buyMessage('p1', '<x>'), { source: 'opsra-catalog', type: 'buy', product: 'p1', variant: '' })
+  assert.equal(buyMessage('', 'v1'), null)
+})
+
+test('askChioma sends one window event, and never throws without a window', () => {
+  assert.equal(CHIOMA_EVENT, 'opsra-chioma')
+  assert.doesNotThrow(() => askChioma({ action: 'open' }))
+  const seen = []
+  globalThis.window = { dispatchEvent: (e) => { seen.push(e); return true } }
+  globalThis.CustomEvent = class { constructor(t, o) { this.type = t; this.detail = o.detail } }
+  askChioma({ action: 'buy', product: 'p1' })
+  delete globalThis.window; delete globalThis.CustomEvent
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].type, 'opsra-chioma')
+  assert.deepEqual(seen[0].detail, { action: 'buy', product: 'p1' })
+})

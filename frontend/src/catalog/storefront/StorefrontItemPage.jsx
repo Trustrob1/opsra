@@ -13,6 +13,7 @@ import {
 } from './storefrontLogic'
 import { INK, MUTED, LINE, FONT, placeholder, useManrope } from './storefrontTheme'
 import { cartVariantId } from './storefrontCart'
+import { askChioma } from './storefrontChat'
 import { Icon, WhatsAppIcon, ChromeStyles, Announcement, StorefrontHeader, StorefrontFooter } from './StorefrontChrome'
 
 function normaliseImages(raw) {
@@ -23,7 +24,7 @@ function normaliseImages(raw) {
 
 export default function StorefrontItemPage({
   orgName, waNumber, catalogConfig, style, item, items = [], onBack, onSelectItem, onShowCompare, onPickCategory,
-  cart, headerCart, onOpenCart,
+  cart, headerCart, onOpenCart, chiomaChat,
 }) {
   useManrope()
   const accent = resolveAccent(style)
@@ -94,6 +95,11 @@ export default function StorefrontItemPage({
     if (ok && onOpenCart) onOpenCart()
   }
 
+  // STORE-CHIOMA-1: with Chioma on, the main choices are Buy now (her cart, checked out inside the chat) and Speak to Chioma. WhatsApp ordering is not shown.
+  const chioma = !!(chiomaChat && chiomaChat.key)
+  const chiomaShop = chioma && !!chiomaChat.shop && !catalogConfig?.price_on_request
+  const canBuy = inStock && !needsSize
+  const buyLabel = !inStock ? unavailLabel : needsSize ? 'Pick a size to buy' : 'Buy now'
   const mainImg = images[photo]
 
   return (
@@ -253,7 +259,21 @@ export default function StorefrontItemPage({
             )}
 
             <div style={{ marginTop: 26 }}>
-              {cartOn ? (
+              {chioma ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {chiomaShop && (
+                    <button type="button" disabled={!canBuy} aria-disabled={!canBuy}
+                      onClick={() => askChioma({ action: 'buy', product: item.id, variant: cartVariantId(item, selected) })} style={{
+                        width: '100%', height: 56, borderRadius: 14, border: 0, fontSize: 16, fontWeight: 700,
+                        background: canBuy ? accent : '#E6E4DF', color: canBuy ? onAccent : '#5C6166', cursor: canBuy ? 'pointer' : 'not-allowed',
+                      }}>{buyLabel}</button>
+                  )}
+                  <button type="button" onClick={() => askChioma({ action: 'open', product: item.id })} style={{
+                    width: '100%', height: chiomaShop ? 52 : 56, borderRadius: 14, fontSize: chiomaShop ? 15 : 16, fontWeight: 700, cursor: 'pointer',
+                    border: chiomaShop ? `1.5px solid ${INK}` : 0, background: chiomaShop ? '#fff' : accent, color: chiomaShop ? INK : onAccent,
+                  }}>Speak to Chioma</button>
+                </div>
+              ) : cartOn ? (
                 <div style={{ display: 'grid', gap: 12 }}>
                   <button onClick={addToCart} disabled={!canAdd || cart.busy} aria-disabled={!canAdd || cart.busy} style={{
                     width: '100%', height: 56, borderRadius: 14, border: 0, fontSize: 16, fontWeight: 700,

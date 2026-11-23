@@ -262,6 +262,8 @@ export default function PublicCatalogShell() {
   }
 
   const openCart = () => setCartOpen(true)
+  // STORE-CHIOMA-1: when Chioma is on for this storefront, its buttons lead to Chioma (same condition as the chat bubble)
+  const chiomaChat = catalogData.template === 'storefront' && canShowChat(catalogData.chat) ? catalogData.chat : null
   const headerCart = cartApi.enabled ? { count: cartApi.cart.count, onOpen: openCart } : null
   const withCart = (page) => (
     <>
@@ -307,6 +309,7 @@ export default function PublicCatalogShell() {
         cart={cartApi}
         headerCart={headerCart}
         onOpenCart={openCart}
+        chiomaChat={chiomaChat}
       />
     )
   }
@@ -337,6 +340,7 @@ export default function PublicCatalogShell() {
         onShowCompare={handleShowCompare}
         headerCart={headerCart}
         cart={cartApi}
+        chiomaChat={chiomaChat}
       />
     )
   }

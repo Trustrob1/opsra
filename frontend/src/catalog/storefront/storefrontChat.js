@@ -20,9 +20,31 @@ export function cleanProductId(v) {
 }
 
 /** The chat page shown inside the panel (same site). The product id is optional. */
-export function chatSrc(key, productId) {
+export function chatSrc(key, productId, buy) {
   const pid = cleanProductId(productId)
-  return `/c/${key}?embed=1&s=catalog${pid ? `&p=${encodeURIComponent(pid)}` : ''}`
+  const b = buy ? cleanProductId(buy.product) : ''
+  const bv = b ? cleanVariantId(buy.variant) : ''
+  return `/c/${key}?embed=1&s=catalog${pid ? `&p=${encodeURIComponent(pid)}` : ''}${b ? `&b=${encodeURIComponent(b)}${bv ? `&bv=${encodeURIComponent(bv)}` : ''}` : ''}`
+}
+
+const VID = /^[A-Za-z0-9_.:-]{1,80}$/
+
+/** A product option (size) id we are willing to pass to the chat, or ''. The server checks it against the product. */
+export function cleanVariantId(v) {
+  const s = String(v ?? '').trim()
+  return VID.test(s) ? s : ''
+}
+
+/** STORE-CHIOMA-1: "Buy now": the chat puts this product (and size) in its cart and opens the cart, ready to check out. */
+export function buyMessage(productId, variantId) {
+  const pid = cleanProductId(productId)
+  return pid ? { source: 'opsra-catalog', type: 'buy', product: pid, variant: cleanVariantId(variantId) } : null
+}
+
+/** The storefront's buttons ask the Chioma panel to open (or to buy) through this one window event. */
+export const CHIOMA_EVENT = 'opsra-chioma'
+export function askChioma(detail) {
+  try { window.dispatchEvent(new CustomEvent(CHIOMA_EVENT, { detail })) } catch { /* no window: nothing to open */ }
 }
 
 /** The message sent to the chat page when the visitor moves to another product while the panel is open. */
