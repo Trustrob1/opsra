@@ -371,6 +371,7 @@ export default function WebChatPage({ chatKey }) {
     if (typeof res.human === 'boolean') setHuman(res.human)
     setCards(res.cards || [])
     setChoices(choicesFromReply(res))
+    if (res.cart) { setCart(res.cart); setPanel(null); setCards([]) }      // ORDER-CONFIRM-1: checkout ran right after the details
     const hold = heldAskIds(res)
     if (hold.length) {
       // the answer shows now; the details question follows after Chioma's typing dots

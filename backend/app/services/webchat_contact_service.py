@@ -69,14 +69,14 @@ def step_of(s: dict) -> Optional[str]:
 
 
 def _clear(db, s: dict) -> None:
-    wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_after="", contact_deflected=0)
+    wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_after="", contact_resume="", contact_deflected=0)
 
 
 def start_for(db, s: dict, cfg: dict, why: str) -> dict:
     """The visitor tapped something that needs their details (call back, file, voice note, check out): ask in the chat."""
     intro, after = INTROS.get(why, DEFAULT_INTRO)
     msg = start(db, s, cfg, intro)
-    wc.set_state(db, s, contact_after=after)
+    wc.set_state(db, s, contact_after=after, contact_resume=("checkout" if why == "checkout" else ""))   # ORDER-CONFIRM-1
     return msg
 
 
@@ -301,7 +301,8 @@ def step(db, s: dict, cfg: dict, text: str, finish: Callable[..., dict]) -> dict
                 return reply(ask_contact=True, contact_step=None)
             _clear(db, s)
             return reply(messages=out + (res.get("messages") or []), form=res.get("form"), cards=res.get("cards") or [], contact_step=None,
-                         **({"choices": res["choices"]} if res.get("choices") else {}))
+                         **({"choices": res["choices"]} if res.get("choices") else {}),
+                         **({"cart": res["cart"], "human": res.get("human", False)} if res.get("cart") is not None else {}))
         n = tries + 1
         if n >= MAX_TRIES:
             return fail("Please reply Yes or No.")

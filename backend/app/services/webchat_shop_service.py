@@ -384,6 +384,30 @@ def _summary(cart: list[dict]) -> str:
     return "\n".join(lines) + f"\nTotal: {_money(_totals(cart))}"
 
 
+def _hold_for_team(db, s: dict, cfg: dict, cart: list[dict], total: float, out: list, note: str = "", ref=None, log: bool = True) -> dict:
+    """ORDER-CONFIRM-1: keep the order, tell the visitor a person is confirming stock, and tell the team what to do next.
+    The visitor then pays by the link or bank details the team sends in this chat, and can upload the receipt there."""
+    wc.set_human(db, s)
+    wc.set_state(db, s, cart=[], pending_order={"summary": _summary(cart)[:600], "total": total, "at": wc._iso(wc._now()), "status": "awaiting_stock"},
+                 last_checkout={"total": total, "at": wc._iso(wc._now()), "reference": ref})
+    out.append(wc.append_message(db, s, "bot", "Thank you. We are confirming that everything is in stock and will send your payment details "
+                                               "here shortly. After you pay, you can upload your receipt here with the paperclip." + note))
+    pay = (cfg.get("payment_instructions") or "").strip()
+    body = (f"{_money(total)}. Confirm stock, then send the payment link or bank details in this chat. Customer uploads the receipt there.\n"
+            + _summary(cart) + (f"\nSaved bank details:\n{pay}" if pay else ""))
+    if log:
+        wc.log_event(db, s["org_id"], s["id"], "order", s.get("source"), ref=ref)
+    wc.notify_managers(db, s["org_id"], f"Order to confirm: {s.get('contact_name') or 'web chat visitor'}", body[:700], s["lead_id"], "webchat_order")
+    try:
+        from app.services import lead_service
+        lead_service.write_timeline_event(db, s["org_id"], s["lead_id"], event_type="webchat_order", actor_id=None,
+                                          description="Web chat order waiting for stock confirmation: " + _summary(cart)[:500],
+                                          metadata={"total": total, "lines": len(cart), "status": "awaiting_stock"})
+    except Exception as exc:
+        logger.warning("webchat order timeline failed: %s", exc)
+    return {"messages": out, "cart": view(s), "human": True, "held": True}
+
+
 def checkout(db, s: dict, cfg: dict) -> dict:
     """
     Make a Paystack link for the cart. Returns {messages, cart, checkout_url?, human?} or {"error"}.
@@ -404,6 +428,8 @@ def checkout(db, s: dict, cfg: dict) -> dict:
     note = (f" (No longer available and removed: {', '.join(dropped)}.)" if dropped else "")
     url = None
     ref = None
+    if cfg.get("order_mode") == "team":                          # ORDER-CONFIRM-1: the owner wants stock confirmed by a person first
+        return _hold_for_team(db, s, cfg, cart, total, out, note)
     try:
         from app.services.paystack_storefront_service import generate_payment_link
         res = generate_payment_link(db=db, org_id=s["org_id"], lead_id=s["lead_id"], amount=total,
@@ -415,13 +441,8 @@ def checkout(db, s: dict, cfg: dict) -> dict:
 
     wc.log_event(db, s["org_id"], s["id"], "order", s.get("source"), ref=ref)      # WEBCHAT-5b
 
-    if not url:
-        wc.set_human(db, s)
-        out.append(wc.append_message(db, s, "bot", "Thank you. We could not make a payment link just now, so a team member will "
-                                                   "complete your order with you here." + note))
-        wc.notify_managers(db, s["org_id"], f"Order request: {s.get('contact_name') or 'web chat visitor'}",
-                           _summary(cart)[:500], s["lead_id"], "webchat_order")
-        return {"messages": out, "cart": view(s), "human": True}
+    if not url:                                                  # no payment link possible (for example no Paystack): a person completes it
+        return _hold_for_team(db, s, cfg, cart, total, out, note, ref=ref, log=False)     # the order event was logged just above
 
     out.append(wc.append_message(db, s, "bot", f"Your order:\n{_summary(cart)}\n\nPay securely here: {url}{note}"))
     try:

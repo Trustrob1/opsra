@@ -288,6 +288,8 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             r = contact.step(db, s, cfg, visitor_text, handle_contact)
             res = {"messages": out + r["messages"], "ask_contact": r["ask_contact"], "ask_email": False, "form": r["form"],
                    "human": wc.is_human(s, cfg), "cards": r["cards"], "contact_step": r["contact_step"]}
+            if r.get("cart") is not None:                                # ORDER-CONFIRM-1: checkout ran right after the details
+                res["cart"], res["human"] = r["cart"], bool(r.get("human"))
             if r.get("choices"):
                 res["choices"] = r["choices"]
             return res
@@ -485,9 +487,16 @@ def handle_contact(db, s: dict, cfg: dict, *, name, phone, email, consent: bool)
         return {"error": err}
     s = wc.save_contact(db, s, clean)
     after_note = (s.get("state") or {}).get("contact_after")      # read before the step state is cleared
+    resume = (s.get("state") or {}).get("contact_resume")
     contact._clear(db, s)                      # WEBCHAT-CONTACT-1: the form (or the in-chat steps) is done, so no step stays open
     out, form, cards = [], None, []
     pending = (s.get("state") or {}).get("pending")
+    if resume == "checkout" and webchat_shop_service._cart(s):       # ORDER-CONFIRM-1: they pressed Pay first: carry on to checkout now
+        res = webchat_shop_service.checkout(db, s, cfg)
+        if not res.get("error"):
+            first = wc.append_message(db, s, "bot", "Thank you. We have your details.")
+            return {"messages": [first] + list(res.get("messages") or []), "form": None, "cards": [], "cart": res.get("cart"),
+                    "human": bool(res.get("human"))}
     if pending == "booking":
         wc.set_state(db, s, pending=None)
         link = _native_booking_link(db, s)

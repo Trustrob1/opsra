@@ -496,6 +496,13 @@ def post_upload(key: str, response: Response, file: UploadFile = File(...), kind
         raise HTTPException(status_code=503, detail={"code": "UPLOAD_FAILED", "message": "We could not save your file. Please try again."})
     cfg = found["config"]
     out = [msg]
+    po = (s.get("state") or {}).get("pending_order")
+    if po and kind in ("image", "document"):          # ORDER-CONFIRM-1: with an order waiting, a photo or document is the payment receipt
+        wc.set_state(db, s, pending_order={**po, "status": "receipt_uploaded"})
+        flow._notify_human(db, s, cfg, "Payment receipt uploaded for the order waiting on payment. Check it and confirm here.")
+        s = wc.set_human(db, s)
+        out.append(wc.append_message(db, s, "bot", "Thank you. We received your payment receipt. A team member will confirm your payment here shortly."))
+        return ok({"messages": out, "human": True})
     flow._notify_human(db, s, cfg, f"Sent {att.label(kind)}")
     s = wc.set_human(db, s)
     # always answer, so the visitor sees the file was received (a chat already with a person used to stay silent)

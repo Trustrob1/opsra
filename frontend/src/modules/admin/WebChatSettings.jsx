@@ -271,6 +271,30 @@ export default function WebChatSettings() {
         </p>
       </div>
 
+      {cfg.shop_enabled && (
+        <div style={card}>
+          <strong style={{ fontSize: 14, color: ds.dark }}>When a customer checks out</strong>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, marginTop: 8 }}>
+            <input type="radio" name="wc-ordermode" checked={cfg.order_mode !== 'team'} onChange={() => set('order_mode', 'link')} />
+            <span>Send the payment link straight away (needs Paystack connected)</span>
+          </label>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, marginTop: 6 }}>
+            <input type="radio" name="wc-ordermode" checked={cfg.order_mode === 'team'} onChange={() => set('order_mode', 'team')} />
+            <span>A team member confirms stock first, then sends the payment link or bank details in the chat</span>
+          </label>
+          {cfg.order_mode === 'team' && (
+            <>
+              <label style={{ display: 'block', fontSize: 13, color: ds.gray, margin: '10px 0 4px' }}>Bank details for the team to send (optional, shown to your team in the order alert)</label>
+              <textarea rows={3} maxLength={600} value={cfg.payment_instructions || ''} onChange={(e) => set('payment_instructions', e.target.value)}
+                placeholder="Account name, bank, account number" style={{ width: '100%', boxSizing: 'border-box', fontSize: 14, padding: 8, borderRadius: 8, border: `1px solid ${ds.border || '#ddd'}`, fontFamily: 'inherit' }} />
+            </>
+          )}
+          <p style={{ fontSize: 12, color: ds.gray, margin: '8px 0 0' }}>
+            Your team is alerted with the order. The customer is told you are confirming stock, can upload their payment receipt in the chat, and your team confirms it there. If Paystack is not connected, orders always go to your team this way.
+          </p>
+        </div>
+      )}
+
       <div style={card}>
         <strong style={{ fontSize: 14, color: ds.dark }}>When Chioma asks for contact details</strong>
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, marginTop: 8 }}>
