@@ -128,7 +128,7 @@ export default function WebChatSettings() {
 
       <WebChatAdLinks data={data} cfg={cfg} set={set} setMsg={setMsg} />
 
-      <WebChatInsights baseLink={data.link} />
+      <WebChatInsights baseLink={data.link} ads={cfg.campaigns} />
 
       <WebChatHelper cfg={cfg} setCfg={setCfg} setMsg={setMsg} />
 

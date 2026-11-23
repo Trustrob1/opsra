@@ -135,3 +135,24 @@ def test_reserved_tags_match_the_built_in_share_links():
     comp = (ROOT / "frontend" / "src" / "modules" / "admin" / "WebChatAdLinks.jsx").read_text(encoding="utf-8")
     for t in wc.RESERVED_TAGS:
         assert f"'{t}'" in comp, t                                           # the screen warns about the same names the server drops
+
+
+# ── the per-ad report and the WhatsApp reply link ───────────────────────────
+
+def test_insights_shows_ads_by_name_even_with_no_visits_yet():
+    admin = ROOT / "frontend" / "src" / "modules" / "admin"
+    ins = (admin / "WebChatInsights.jsx").read_text(encoding="utf-8")
+    assert "ads = []" in ins and "adByTag" in ins and "Ad · " in ins
+    assert "rows.map(" in ins and "f.sources.map(" not in ins            # the table is drawn from sources plus the ads with no visits
+    assert "ads={cfg.campaigns}" in (admin / "WebChatSettings.jsx").read_text(encoding="utf-8")
+
+
+def test_whatsapp_reply_visitor_is_not_asked_for_a_number_again():
+    from app.services import webchat_flow_service as flow
+    from app.services import webchat_service as svc
+    # the one-time reply link makes a session that already carries the proven number and the lead
+    src = (ROOT / "backend" / "app" / "services" / "webchat_service.py").read_text(encoding="utf-8")
+    assert '"phone_verified": True' in src and '"lead_id": lead_id' in src and '"contact_phone": phone' in src
+    assert flow._has_contact({"lead_id": "L1", "contact_phone": "+2348000000000"}) is True
+    assert flow._has_contact({}) is False
+    assert svc.create_handoff                                              # exists; the link carries ?h=

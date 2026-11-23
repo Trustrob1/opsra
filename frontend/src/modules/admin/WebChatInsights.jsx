@@ -36,7 +36,7 @@ function Stat({ label, value, sub }) {
   )
 }
 
-export default function WebChatInsights({ baseLink }) {
+export default function WebChatInsights({ baseLink, ads = [] }) {
   const [days, setDays] = useState(30)
   const [an, setAn] = useState(null)
   const [err, setErr] = useState('')
@@ -93,6 +93,10 @@ export default function WebChatInsights({ baseLink }) {
   }
 
   const f = an?.funnel, c = an?.chats, cost = an?.cost, w = an?.wallet
+  // OPENING-CTA-2: an ad made in Links for ads shows by its name, and shows even before anyone has opened it.
+  const adList = Array.isArray(ads) ? ads.filter((a) => a && a.tag) : []
+  const adByTag = Object.fromEntries(adList.map((a) => [a.tag, a.label || a.tag]))
+  const rows = f ? [...f.sources, ...adList.filter((a) => !f.sources.some((s) => s.source === a.tag)).map((a) => ({ source: a.tag, visit: 0, started: 0, contact: 0, catalog_visit: 0, revenue_kobo: 0 }))] : []
   const budget = w?.ai_monthly_budget_kobo
   const used = w?.month_ai_spend_kobo || 0
   const usedPct = budget ? Math.min(100, Math.round((100 * used) / budget)) : 0
@@ -149,25 +153,25 @@ export default function WebChatInsights({ baseLink }) {
             </div>
 
             <p style={{ ...h, marginTop: 16 }}>By where they came from</p>
-            {f.sources.length === 0 ? <p style={small}>No visits yet in this period.</p> : (
+            {rows.length === 0 ? <p style={small}>No visits yet in this period.</p> : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead><tr style={{ textAlign: 'left', color: ds.gray }}>
                     {['Source', 'Link opens', 'Visits', 'Started', 'Contact', ...f.steps.slice(3).map((s) => s.label), ...(f.goals.includes('paid') ? ['Paid in'] : [])].map((x) => <th key={x} style={{ padding: '4px 8px', fontWeight: 600 }}>{x}</th>)}
                   </tr></thead>
-                  <tbody>{f.sources.map((s) => (
+                  <tbody>{rows.map((s) => (
                     <tr key={s.source} style={{ borderTop: `1px solid ${ds.border}` }}>
-                      <td style={{ padding: '6px 8px', fontWeight: 600 }}>{s.source}</td>
+                      <td style={{ padding: '6px 8px', fontWeight: 600 }}>{adByTag[s.source] || s.source}{adByTag[s.source] && <span style={{ display: 'block', fontSize: 11, fontWeight: 400, color: ds.gray }}>Ad · {s.source}</span>}</td>
                       <td style={{ padding: '6px 8px' }}>{s.catalog_visit || 0}</td>
                       <td style={{ padding: '6px 8px' }}>{s.visit}</td><td style={{ padding: '6px 8px' }}>{s.started}</td>
                       <td style={{ padding: '6px 8px' }}>{s.contact}</td>
-                      {f.goals.map((g) => <td key={g} style={{ padding: '6px 8px' }}>{s[GOAL_KIND[g]]}</td>)}
+                      {f.goals.map((g) => <td key={g} style={{ padding: '6px 8px' }}>{s[GOAL_KIND[g]] || 0}</td>)}
                       {f.goals.includes('paid') && <td style={{ padding: '6px 8px' }}>{naira(s.revenue_kobo)}</td>}
                     </tr>))}</tbody>
                 </table>
               </div>
             )}
-            {f.sources.length > 0 && <p style={small}>Link opens counts each time a tagged store or product link is opened (once per visitor per session). Visits counts people who opened the chat.</p>}
+            {rows.length > 0 && <p style={small}>Link opens counts each time a tagged store or product link is opened (once per visitor per session). Visits counts people who opened the chat.</p>}
 
             <p style={{ ...h, marginTop: 16 }}>What happened in the chats</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
