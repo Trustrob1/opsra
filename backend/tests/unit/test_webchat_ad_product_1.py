@@ -105,14 +105,14 @@ def test_an_ad_with_no_product_gives_only_the_general_answer():
     assert _bot(_tap(db, s, cfg, "firm")) == "It is both."
 
 
-def test_buttons_under_the_answer_are_the_ads_other_shortcuts_then_see_other_products_and_more_options():
+def test_buttons_under_the_answer_are_the_ads_other_shortcuts_then_more_options():
     db, s, cfg = _setup()
     ch = _tap(db, s, cfg, "firm")["choices"]
     assert [c.get("menu_id") for c in ch[:2]] == ["delivery", "prices"]
-    assert [(c["id"], c["label"]) for c in ch[2:]] == [("shop", "See other products"), ("menu", "More options")]
+    assert [(c["id"], c["label"]) for c in ch[2:]] == [("menu", "More options")]          # no separate See other products pill: More options opens All products
 
 
-def test_no_see_other_products_button_when_the_shop_is_off():
+def test_shop_off_keeps_the_same_buttons_minus_the_main_one():
     db, s, cfg = _setup(shop_on=False)
     ch = _tap(db, s, cfg, "firm")["choices"]
     assert [c["id"] for c in ch] == ["item", "menu"] and ch[0]["menu_id"] == "delivery"          # Prices is this ad's main button here, so not repeated
@@ -147,10 +147,33 @@ def test_frontend_wiring():
     p = (FE / "pages" / "WebChatPage.jsx").read_text(encoding="utf-8")
     assert "setAdProduct(snap.ad_product || null)" in p
     assert "{adProduct && !visitorSpoke && !panel && !contactStep && (" in p
-    assert "pairOpening.main.kind !== 'shop' && <button" in p and ">See other products</button>" in p
-    assert "call: openCall, shop: openShop }" in p
-    assert "'say', 'shop'" in (FE / "utils" / "webchatChoices.js").read_text(encoding="utf-8")
+    assert "See other products" not in p and "shop: openShop" not in p          # dropped: More options opens the menu, whose first row is All products
+    assert "'shop'" not in (FE / "utils" / "webchatChoices.js").read_text(encoding="utf-8")
     a = (FE / "modules" / "admin" / "WebChatAdLinks.jsx").read_text(encoding="utf-8")
     assert "Product this ad is about (optional)" in a and "getWebchatProducts().then(" in a
     assert "Answer to ${m.label} for this ad" in a and "maxLength={600}" in a
     assert "api.get('/api/v1/webchat/products')" in (FE / "services" / "webchat.service.js").read_text(encoding="utf-8")
+
+
+# ── AD-PRODUCT-1b: descriptions synced from a web page hold markup; visitors and the AI only ever see words ──
+
+def test_plain_drops_tags_cut_off_tags_and_decodes_entities():
+    assert shop._plain('<div id="content-inspection-panel" class="raw_components--panel" data-testid="x" tabindex="') == ""
+    assert shop._plain("<p>Soft &amp; firm</p><script>alert(1)</script><style>p{}</style> <b>mattress</b>&nbsp;now") == "Soft & firm mattress now"
+    assert shop._plain("Plain words stay.") == "Plain words stay." and shop._plain(None) == ""
+
+
+def test_card_line_and_ai_facts_never_carry_markup():
+    db = _shop_db()
+    junk = '<div id="content-inspection-panel" class="a"><p>Cooling <b>gel</b> layer.</p></div><div id="x" tabindex="'
+    for p in db.tables["products"]:
+        if p["id"] == "p1":
+            p["catalog_description"] = junk
+    s = _session(db)
+    s["source"] = "elite"
+    cfg = {**_cfg(db), "shop_enabled": True, "campaigns": wc.clean_campaigns([{"tag": "elite", "main": "shop", "product": "p1"}])}
+    card = shop.ad_product(db, s, cfg)
+    assert card["description"] == "Cooling gel layer."
+    assert "<" not in shop.product_line(db, s, cfg) and "Cooling gel layer." in shop.product_line(db, s, cfg)
+    assert "<" not in shop.product_answer(db, s, cfg, "is it cool?")
+    assert all("<" not in (f.get("blurb") or "") for f in shop.facts_for_prompt(db, s["org_id"], "bonnet", "p1"))

@@ -3,7 +3,7 @@
  * ONLY-1c-DOWN: the buttons the server sends with a "Chioma cannot answer" reply: Open menu, Talk to the team / Leave a message,
  * Call us / Request a call back. Pure functions so they can be tested without a browser.
  */
-const KNOWN = new Set(['menu', 'human', 'call', 'item', 'say', 'shop'])     // 'shop' (AD-PRODUCT-1): See other products, opens the shop list     // 'say' (SMART-1): a tap-to-answer option of a guided question; sends its label as the visitor's reply     // 'item' (HUMAN-OFFER-1): one of the business's own chat buttons, by menu_id
+const KNOWN = new Set(['menu', 'human', 'call', 'item', 'say'])     // 'say' (SMART-1): a tap-to-answer option of a guided question; sends its label as the visitor's reply     // 'item' (HUMAN-OFFER-1): one of the business's own chat buttons, by menu_id
 
 /** {mid, items} for the last bot message of a reply that came with choices, else null. Unknown or label-less choices are dropped. */
 export function choicesFromReply(res) {

@@ -222,10 +222,8 @@ def _ad_shortcut_text(db, s: dict, cfg: dict, item: dict, sc: dict) -> str:
 
 
 def _ad_followups(cfg: dict, s: dict, item: dict) -> list:
-    """AD-PRODUCT-1: the buttons under a shortcut's answer: the ad's other shortcuts, then See other products (when the shop is on) and More options."""
+    """AD-PRODUCT-1: the buttons under a shortcut's answer: the ad's other shortcuts, then More options (the menu, whose first row is All products)."""
     out = [smart._item_choice({"id": sc["id"], "label": sc["label"]}) for sc in wc.ad_shortcuts(cfg, s.get("source")) if sc["id"] != item.get("id")]
-    if cfg.get("shop_enabled"):
-        out.append({"id": "shop", "label": "See other products"})
     out.append({"id": "menu", "label": "More options"})
     return out
 

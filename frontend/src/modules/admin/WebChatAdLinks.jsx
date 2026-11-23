@@ -139,7 +139,7 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
                   {c.product && !products.some((p) => p.id === c.product) && <option value={c.product}>Chosen product (not in the list)</option>}
                   {products.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
                 </select>
-                <p style={small}>People from this ad see that product first, with its price and an Add to cart button. Chioma knows which product they mean when they ask a question, and a “See other products” button shows the rest.</p>
+                <p style={small}>People from this ad see that product first, with its price and an Add to cart button. Chioma knows which product they mean when they ask a question, and the “More options” button opens the menu, where All products shows the rest.</p>
                 {c.main && (
                   <>
                     <p style={{ ...label, marginBottom: 4 }}>Quick questions under the main button (up to 4)</p>

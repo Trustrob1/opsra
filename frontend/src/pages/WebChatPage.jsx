@@ -950,7 +950,7 @@ export default function WebChatPage({ chatKey }) {
                 // ONLY-1c-DOWN: the server's buttons win (they fit the clock: Leave a message after hours, Call us inside hours).
                 const mine = visibleChoices(choices, m, i === shown.length - 1, { hasHumanItem: !!humanItem, humanActive: human, callOn: !!call })
                 if (mine.length) {
-                  const onTap = { menu: openMenu, human: () => sendMenu(humanItem.id), call: openCall, shop: openShop }
+                  const onTap = { menu: openMenu, human: () => sendMenu(humanItem.id), call: openCall }
                   const tapChoice = (c) => (c.id === 'item' ? () => sendMenu(c.menu_id) : c.id === 'say' ? () => sendOptimistic(c.label, { kind: 'text', text: c.label }) : onTap[c.id])
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
@@ -1029,7 +1029,6 @@ export default function WebChatPage({ chatKey }) {
               {pairOpening.shortcuts && pairOpening.shortcuts.length > 0 ? (
                 <div style={S.chips}>
                   {pairOpening.shortcuts.map((c) => <button key={c.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(c.id)}>{c.label}</button>)}
-                  {adProduct && cfg.shop_enabled && pairOpening.main.kind !== 'shop' && <button type="button" style={S.chip} disabled={busy} onClick={openShop}>See other products</button>}
                   <button type="button" style={{ ...S.chip, background: 'transparent', color: brand, borderColor: brand, fontWeight: 600 }} disabled={busy} onClick={() => openMenu(true)}>{pairOpening.more_label || 'More options'}</button>
                 </div>
               ) : !speakOpen ? (
