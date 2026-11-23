@@ -325,7 +325,10 @@ export default function WebChatPage({ chatKey }) {
         let snap
         const stored = handoff ? null : readStore(tokenKey)
         if (stored) {
-          try { token.current = stored; snap = await resumeChat(chatKey, stored, parentSite()) }
+          try {
+            token.current = stored; snap = await resumeChat(chatKey, stored, parentSite(), params.get('s') || undefined)
+            if (snap && snap.restart) snap = await fresh()          // AD-FRESH-1: an ad link opened over an older chat from elsewhere starts a new chat
+          }
           catch (e) { if (e?.response?.status === 401) snap = await fresh(); else throw e }
         } else {
           snap = await fresh()

@@ -223,11 +223,14 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
 
 @router.get("/public/webchat/{key}/session")
 def resume_session(key: str, response: Response, authorization: Optional[str] = Header(default=None),
-                   po: Optional[str] = Query(default=None, max_length=300), db=Depends(get_supabase)):
+                   po: Optional[str] = Query(default=None, max_length=300), s_: Optional[str] = Query(default=None, alias="s", max_length=60),
+                   db=Depends(get_supabase)):
     _nostore(response)
     found = _chat(db, key)
     _embed_guard(found, po)
     s = _session(db, found, authorization)
+    if wc.wants_fresh_chat(found["config"], s, s_):            # AD-FRESH-1: an ad link over an older chat from elsewhere starts a new one
+        return ok({"restart": True})
     return ok(_snapshot(s, found["config"], wc.list_messages(db, s)))
 
 

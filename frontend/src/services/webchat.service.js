@@ -36,8 +36,8 @@ export function pingTyping(key, token) {
   return axios.post(`${BASE}/public/webchat/${key}/typing`, {}, auth(token)).catch(() => null)
 }
 
-export async function resumeChat(key, token, embedOrigin) {
-  const res = await axios.get(`${BASE}/public/webchat/${key}/session`, { ...auth(token), params: embedOrigin ? { po: embedOrigin } : {} })
+export async function resumeChat(key, token, embedOrigin, source) {
+  const res = await axios.get(`${BASE}/public/webchat/${key}/session`, { ...auth(token), params: { ...(embedOrigin ? { po: embedOrigin } : {}), ...(source ? { s: source } : {}) } })
   return res.data.data
 }
 

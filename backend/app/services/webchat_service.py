@@ -406,6 +406,16 @@ def campaign_for(cfg: dict, source) -> Optional[dict]:
     return None
 
 
+def wants_fresh_chat(cfg: dict, session: dict, link_source) -> bool:
+    """AD-FRESH-1: the visitor opened a link of one of the owner's ads (a known tag) but their saved chat began somewhere else and has no
+    contact details yet: start a new chat so they see that ad's greeting, picture and buttons. A chat with details is never replaced,
+    and a link with no tag, an unknown tag or the same tag as the chat changes nothing."""
+    if not link_source or session.get("lead_id"):
+        return False
+    tag = clean_source(link_source)
+    return bool(campaign_for(cfg, tag)) and tag != (session.get("source") or "")
+
+
 def greeting_for(cfg: dict, source=None) -> str:
     c = campaign_for(cfg, source)
     return (c or {}).get("greeting") or cfg["greeting"]
