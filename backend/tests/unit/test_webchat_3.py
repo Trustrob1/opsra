@@ -450,18 +450,18 @@ class TestContactInChat:
         r = f.handle_message(db, s, cfg, kind="menu", menu_id=cfg["menu"][0]["id"])
         assert s["state"].get("contact_step") is None
 
-    def test_the_gentle_ask_after_a_first_answer_is_dropped_if_ignored_and_asked_once(self):
+    def test_a_plain_answer_never_asks_for_a_name(self):
         from app.services import webchat_flow_service as f
         db = _db()
         s, cfg = _session(db, contact=False), _cfg(db)
         cfg["menu"] = [{"id": "hours", "label": "Opening hours", "answer": "We open 9 to 6.", "keywords": ["hours"]}]
         cfg["ai_enabled"] = False
         r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
-        assert r["contact_step"] == "name" and s["state"]["contact_optional"] is True
+        assert not r.get("contact_step") and r["ask_contact"] is False              # NAME-AT-ACTION-1: no name question after a plain answer
         r = f.handle_message(db, s, cfg, kind="text", text="where are you located?")
         assert s["state"].get("contact_step") is None and r["messages"][1]["text"] == _no_answer_text(cfg)
         r = f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
-        assert not r.get("contact_step") and r["ask_contact"] is False              # not asked a second time
+        assert not r.get("contact_step") and r["ask_contact"] is False              # still not asked
 
     def test_form_mode_still_works_when_switched_off(self):
         from app.services import webchat_flow_service as f

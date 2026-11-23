@@ -110,8 +110,8 @@ def test_greeting_then_question_is_answered_without_details_first():
         r = f.handle_message(db, s, cfg, kind="text", text="do you do braids?")
     texts = [m["text"] for m in r["messages"]]
     assert cc.called and texts[0] == "do you do braids?" and texts[1] == "Yes we do braids."      # the answer comes first
-    assert r.get("contact_step") == "name"                    # details are asked AFTER the first answer
-    assert "first name" in r["messages"][-1]["text"]
+    assert not r.get("contact_step") and r["ask_contact"] is False      # NAME-AT-ACTION-1: a plain answer never asks for a name
+    assert "first name" not in r["messages"][-1]["text"]
 
 
 def test_without_answer_first_the_old_order_is_kept():

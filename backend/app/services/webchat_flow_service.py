@@ -450,14 +450,8 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     if ask_contact and contact.enabled(cfg) and contact.step_of(s):
         ask_contact = False               # the details script is already open (a question was answered mid-script): do not start a second one
     elif ask_contact and contact.enabled(cfg):
-        # WEBCHAT-CONTACT-1: ask once, in the chat, right after the first answer (not on every later turn)
-        if not state.get("contact_nudged"):
-            wc.set_state(db, s, contact_nudged=True)
-            out.append(contact.start(db, s, cfg, "Happy to help.", optional=True))        # a friendly lead-in, so it reads as a chat, not a form
-            nudge = {"messages": out, "ask_contact": False, "ask_email": False, "form": form, "human": False, "cards": cards, "contact_step": "name"}
-            if choices:
-                nudge["choices"] = choices          # a button Chioma named in her answer is still shown, under the details question
-            return nudge
+        # NAME-AT-ACTION-1: a plain answer never triggers the name question. Details are asked only when the visitor
+        # takes an action that needs them (book, call back, check out, send a file or voice note, ask for the team).
         ask_contact = False
     ask_email = (answered and _has_contact(s) and s.get("phone_verified") and not s.get("contact_email")
                  and not state.get("email_asked"))

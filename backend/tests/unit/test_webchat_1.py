@@ -535,7 +535,7 @@ class TestPublicRoutes:
     def test_full_conversation(self, client):
         d, h = _start(client)
         r = client.post(f"/api/v1/public/webchat/{client.key}/message", json={"kind": "menu", "menu_id": "hours"}, headers=h)
-        assert r.status_code == 200 and r.json()["data"]["contact_step"] == "name"
+        assert r.status_code == 200 and not r.json()["data"].get("contact_step")      # NAME-AT-ACTION-1
         with patch("app.services.funnel_service._find_org_lead", return_value=None), \
              patch("app.services.lead_service.create_lead", return_value={"id": "L7"}):
             r = client.post(f"/api/v1/public/webchat/{client.key}/contact", headers=h,
