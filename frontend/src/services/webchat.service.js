@@ -119,6 +119,14 @@ export async function uploadWebchatAdImage(file) {
   return r.data.data
 }
 
+// OPENING-CTA-6: the video for one ad (MP4 or WebM, up to 25 MB). Returns { video: key to save on the ad, url }.
+export async function uploadWebchatAdVideo(file) {
+  const fd = new FormData()
+  fd.append('file', file, file.name || 'video')
+  const r = await api.post('/api/v1/webchat/ad-video', fd, { timeout: 180000 })
+  return r.data.data
+}
+
 export async function saveWebchatSettings(changes) {
   const r = await api.put('/api/v1/webchat/settings', changes)
   return r.data.data

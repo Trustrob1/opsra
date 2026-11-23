@@ -846,7 +846,11 @@ export default function WebChatPage({ chatKey }) {
         </header>
 
         <main style={S.list} ref={listRef} role="log" aria-live="polite" aria-label="Chat messages">
-          {cfg.ad_image && !hiddenIds && (
+          {cfg.ad_video && !hiddenIds && (
+            <video src={cfg.ad_video} poster={cfg.ad_image || undefined} controls playsInline preload="metadata" onError={(e) => { e.currentTarget.style.display = 'none' }}
+              style={{ display: 'block', width: '100%', maxHeight: 280, background: '#000', borderRadius: 14, border: `1px solid ${LINE}`, flex: 'none' }} />
+          )}
+          {cfg.ad_image && !cfg.ad_video && !hiddenIds && (
             <img src={cfg.ad_image} alt="" loading="eager" decoding="async" onError={(e) => { e.currentTarget.style.display = 'none' }}
               style={{ display: 'block', width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 14, border: `1px solid ${LINE}`, flex: 'none' }} />
           )}

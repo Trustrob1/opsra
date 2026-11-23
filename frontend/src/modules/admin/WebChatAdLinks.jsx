@@ -9,7 +9,7 @@
  */
 import { useState } from 'react'
 import { ds } from '../../utils/ds'
-import { uploadWebchatAdImage, chatErrorMessage } from '../../services/webchat.service'
+import { uploadWebchatAdImage, uploadWebchatAdVideo, chatErrorMessage } from '../../services/webchat.service'
 import { shrinkImage } from './imageShrink'
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
@@ -52,6 +52,8 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
   const [page, setPage] = useState('')
   const [urls, setUrls] = useState({})          // picture key -> address, for what was just uploaded
   const [busy, setBusy] = useState(-1)
+  const [vbusy, setVbusy] = useState(-1)
+  const [vurls, setVurls] = useState({})
   const camps = Array.isArray(cfg.campaigns) ? cfg.campaigns : []
   const items = (cfg.menu || []).filter((m) => m.action !== 'human')
   const copy = (t) => { try { navigator.clipboard.writeText(t); setMsg('Copied.') } catch { setMsg(t) } }
@@ -67,6 +69,17 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
       upd(i, { image: res.image })
       setMsg('Picture added. Press Save to keep it.')
     } catch (e) { setMsg(chatErrorMessage ? chatErrorMessage(e, 'Could not add the picture. Try a JPG, PNG or WebP under 5 MB.') : 'Could not add the picture.') } finally { setBusy(-1) }
+  }
+  const pickVideo = async (i, file) => {
+    if (!file) return
+    if (file.size > 25 * 1024 * 1024) { setMsg('That video is over 25 MB. Export a shorter or smaller one.'); return }
+    setVbusy(i)
+    try {
+      const res = await uploadWebchatAdVideo(file)
+      setVurls((u) => ({ ...u, [res.video]: res.url }))
+      upd(i, { video: res.video })
+      setMsg('Video added. Press Save to keep it.')
+    } catch (e) { setMsg(chatErrorMessage(e, 'Could not add the video. Use an MP4 or WebM under 25 MB.')) } finally { setVbusy(-1) }
   }
   const base = data.link || ''
   const biz = cfg.business_name || 'us'
@@ -123,6 +136,15 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
                   <input id={`ad-pic-${i}`} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { pick(i, e.target.files && e.target.files[0]); e.target.value = '' }} />
                   <button type="button" style={btn(false)} disabled={busy === i} onClick={() => document.getElementById(`ad-pic-${i}`).click()}>{busy === i ? 'Adding…' : c.image ? 'Change picture' : 'Add a picture'}</button>
                   {c.image && <button type="button" style={btn(false)} onClick={() => upd(i, { image: '' })}>Remove picture</button>}
+                </div>
+                <label style={label} htmlFor={`ad-vid-${i}`}>Video from the ad (optional)</label>
+                <p style={small}>For a video ad, use the same video. MP4 (H.264) or WebM, up to 25 MB, so keep it short. Phone videos in .mov format will not work: export an MP4. Visitors tap to play it, so it does not use their data until they do. If you add a picture too, it shows before the video plays.</p>
+                {(vurls[c.video] || (data.ad_videos || {})[c.tag]) && <video src={vurls[c.video] || data.ad_videos[c.tag]} controls preload="metadata" playsInline style={{ display: 'block', maxWidth: 260, maxHeight: 180, background: '#000', borderRadius: ds.radius.sm, marginBottom: 8 }} />}
+                {c.video && !(vurls[c.video] || (data.ad_videos || {})[c.tag]) && <p style={small}>A video is added. It shows here after you press Save.</p>}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input id={`ad-vid-${i}`} type="file" accept="video/mp4,video/webm" hidden onChange={(e) => { pickVideo(i, e.target.files && e.target.files[0]); e.target.value = '' }} />
+                  <button type="button" style={btn(false)} disabled={vbusy === i} onClick={() => document.getElementById(`ad-vid-${i}`).click()}>{vbusy === i ? 'Adding… this can take a minute' : c.video ? 'Change video' : 'Add a video'}</button>
+                  {c.video && <button type="button" style={btn(false)} onClick={() => upd(i, { video: '' })}>Remove video</button>}
                 </div>
 
                 {!bad && c.tag && (

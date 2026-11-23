@@ -325,24 +325,46 @@ def clean_campaigns(raw) -> list:
                     "main": re.sub(r"[^a-z0-9_-]", "", str(it.get("main") or "").lower())[:30],
                     "main_label": _clean_text(it.get("main_label"), 40),
                     "greeting": _clean_text(it.get("greeting"), 400),
-                    "image": (str(it.get("image")) if isinstance(it.get("image"), str) and AD_IMAGE_KEY.match(it["image"]) else "")})
+                    "image": (str(it.get("image")) if isinstance(it.get("image"), str) and AD_IMAGE_KEY.match(it["image"]) else ""),
+                    "video": (str(it.get("video")) if isinstance(it.get("video"), str) and AD_VIDEO_KEY.match(it["video"]) else "")})
     return out
 
 
 AD_IMAGE_KEY = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp)$")      # OPENING-CTA-5: the picture is a file the owner uploaded through Opsra, named by a random key
+AD_VIDEO_KEY = re.compile(r"^[0-9a-f]{32}\.(mp4|webm)$")          # OPENING-CTA-6: a video the owner uploaded, same idea as the picture
+AD_VIDEO_MAX_BYTES = 25 * 1024 * 1024
 _ORG_ID = re.compile(r"^[0-9a-fA-F-]{36}$")
 
 
-def ad_image_url(org_id, key) -> Optional[str]:
+def ad_image_url(org_id, key, _key=None) -> Optional[str]:
     """Public address of an ad's picture. Built here from the business id and the stored key, so a saved setting can never point a visitor's browser at another website."""
-    if not isinstance(org_id, str) or not _ORG_ID.match(org_id) or not isinstance(key, str) or not AD_IMAGE_KEY.match(key):
+    real = _key if _key is not None else key
+    pattern = AD_VIDEO_KEY if _key is not None else AD_IMAGE_KEY
+    if not isinstance(org_id, str) or not _ORG_ID.match(org_id) or not isinstance(real, str) or not pattern.match(real):
         return None
     try:
         from app.config import settings
         base = (settings.SUPABASE_URL or "").rstrip("/")
     except Exception:
         return None
-    return f"{base}/storage/v1/object/public/catalog/{org_id}/webchat-ads/{key}" if base else None
+    return f"{base}/storage/v1/object/public/catalog/{org_id}/webchat-ads/{real}" if base else None
+
+
+def ad_video_url(org_id, key) -> Optional[str]:
+    """Public address of an ad's video, built the same way as the picture's: from the business id and a key we issued."""
+    if not isinstance(key, str) or not AD_VIDEO_KEY.match(key):
+        return None
+    return ad_image_url(org_id, "0" * 32 + ".jpg", _key=key)
+
+
+def sniff_video(data: bytes) -> Optional[tuple]:
+    """(mime, extension) for a real MP4 or WebM, judged from the bytes. QuickTime (.mov) and photo-format files are refused."""
+    head = bytes(data[:16])
+    if len(head) >= 12 and head[4:8] == b"ftyp" and head[8:12] not in (b"qt  ", b"heic", b"heix", b"hevc", b"mif1", b"msf1", b"avif"):
+        return "video/mp4", "mp4"
+    if head.startswith(b"\x1a\x45\xdf\xa3"):
+        return "video/webm", "webm"
+    return None
 
 
 def campaign_for(cfg: dict, source) -> Optional[dict]:
@@ -499,6 +521,7 @@ def public_view(cfg: dict, source: Optional[str] = None, org_id: Optional[str] =
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in CHAT_THEMES else "classic",
         "greeting": greeting_for(cfg, source), "opening": opening_for(cfg, source),
         "ad_image": ad_image_url(org_id, (campaign_for(cfg, source) or {}).get("image")),
+        "ad_video": ad_video_url(org_id, (campaign_for(cfg, source) or {}).get("video")),
         "menu": [{"id": m["id"], "label": m["label"], **({"primary": True} if m.get("action") == "booking" else {}), **({"featured": True} if m.get("featured") else {})} for m in cfg["menu"]],      # a Book a call button is drawn solid
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),

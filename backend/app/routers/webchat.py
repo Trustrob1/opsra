@@ -202,6 +202,7 @@ def get_settings(db=Depends(get_supabase), org=Depends(get_current_org)):
     return ok({"config": cfg, "key": key, "link": f"{wc.public_base()}/c/{key}",
                "links": {s: f"{wc.public_base()}/c/{key}?s={s}" for s in ("instagram", "qr", "site", "facebook", "google", "whatsapp_status", "email", "sms")},
                "ad_images": {c["tag"]: wc.ad_image_url(org["org_id"], c.get("image")) for c in (cfg.get("campaigns") or []) if c.get("image")},
+               "ad_videos": {c["tag"]: wc.ad_video_url(org["org_id"], c.get("video")) for c in (cfg.get("campaigns") or []) if c.get("video")},
                "embed": {"tag": embed.script_tag(wc.public_base(), key), "seen": embed.seen_list(db, org["org_id"])}})
 
 
@@ -259,6 +260,29 @@ def upload_ad_image(file: UploadFile = File(...), db=Depends(get_supabase), org=
         logger.warning("webchat ad image upload failed org=%s: %s", org["org_id"], exc)
         raise HTTPException(status_code=503, detail="We could not save the picture. Please try again.")
     return ok({"image": key, "url": wc.ad_image_url(org["org_id"], key)})
+
+
+@router.post("/webchat/ad-video")
+def upload_ad_video(file: UploadFile = File(...), db=Depends(get_supabase), org=Depends(get_current_org)):
+    """OPENING-CTA-6: the video for one ad. A real MP4 or WebM (checked from its bytes) up to 25 MB; returns the key to save on the ad."""
+    import uuid
+    _require_manager(org)
+    if wc.rate_limited(f"advid:{org['org_id']}", 10, 3600):
+        raise HTTPException(status_code=429, detail="That is a lot of videos. Please wait a few minutes.")
+    data = file.file.read(wc.AD_VIDEO_MAX_BYTES + 1)
+    if len(data) > wc.AD_VIDEO_MAX_BYTES:
+        raise HTTPException(status_code=422, detail="That video is over 25 MB. Export a shorter or smaller one.")
+    sniffed = wc.sniff_video(data)
+    if not sniffed:
+        raise HTTPException(status_code=422, detail="Use an MP4 or WebM video.")
+    mime, ext = sniffed
+    key = f"{uuid.uuid4().hex}.{ext}"
+    try:
+        db.storage.from_("catalog").upload(path=f"{org['org_id']}/webchat-ads/{key}", file=data, file_options={"content-type": mime, "upsert": "false"})
+    except Exception as exc:
+        logger.warning("webchat ad video upload failed org=%s: %s", org["org_id"], exc)
+        raise HTTPException(status_code=503, detail="We could not save the video. It may be too large for storage; try a smaller one.")
+    return ok({"video": key, "url": wc.ad_video_url(org["org_id"], key)})
 
 
 @router.put("/webchat/settings")

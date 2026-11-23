@@ -28,7 +28,7 @@ def test_default_has_no_campaigns():
 
 def test_clean_keeps_good_entries_and_defaults_the_label():
     out = wc.sanitise_config({"campaigns": [{"tag": "Lekki-3-Bed", "label": "  Lekki  ", "main": "Inspect", "greeting": " Hello "}, {"tag": "x1"}]})["campaigns"]
-    assert out[0] == {"tag": "lekki-3-bed", "label": "Lekki", "main": "inspect", "main_label": "", "greeting": "Hello", "image": ""}
+    assert out[0] == {"tag": "lekki-3-bed", "label": "Lekki", "main": "inspect", "main_label": "", "greeting": "Hello", "image": "", "video": ""}
     assert out[1]["label"] == "x1" and out[1]["main"] == "" and out[1]["greeting"] == ""
 
 
@@ -233,7 +233,136 @@ def test_upload_endpoint_checks_the_real_file_and_the_screen_shows_the_picture()
     assert "_require_manager(org)" in body and "_sniff(data" in body and '("jpg", "png", "webp")' in body      # owners and managers only; the real file type is checked
     assert '"ad_images":' in src
     page = (ROOT / "frontend" / "src" / "pages" / "WebChatPage.jsx").read_text(encoding="utf-8")
-    assert "{cfg.ad_image && !hiddenIds && (" in page and "src={cfg.ad_image}" in page
+    assert "{cfg.ad_image && !cfg.ad_video && !hiddenIds && (" in page and "src={cfg.ad_image}" in page
     comp = (ROOT / "frontend" / "src" / "modules" / "admin" / "WebChatAdLinks.jsx").read_text(encoding="utf-8")
     assert "uploadWebchatAdImage" in comp and "Add a picture" in comp
     assert "export async function uploadWebchatAdImage" in (ROOT / "frontend" / "src" / "services" / "webchat.service.js").read_text(encoding="utf-8")
+
+
+# ── the ad's video ──────────────────────────────────────────────────────────
+
+VKEY = "c" * 32 + ".mp4"
+
+
+def test_only_a_video_key_we_issued_is_kept():
+    ok = wc.sanitise_config({"campaigns": [{"tag": "a", "video": VKEY}, {"tag": "b", "video": "d" * 32 + ".webm"}]})["campaigns"]
+    assert ok[0]["video"] == VKEY and ok[1]["video"].endswith(".webm")
+    for bad in ("https://evil.example/v.mp4", "../v.mp4", "c" * 32 + ".mov", "c" * 32 + ".jpg", VKEY.upper(), "", None, 7):
+        assert wc.sanitise_config({"campaigns": [{"tag": "a", "video": bad}]})["campaigns"][0]["video"] == ""
+    assert wc.sanitise_config({"campaigns": [{"tag": "a", "video": VKEY}]})["campaigns"][0]["image"] == ""     # picture and video are separate
+
+
+def test_video_address_is_built_here_and_a_picture_key_is_not_a_video():
+    assert wc.ad_video_url(ORG, VKEY).endswith(f"/public/catalog/{ORG}/webchat-ads/{VKEY}")
+    assert wc.ad_video_url(ORG, KEY) is None and wc.ad_image_url(ORG, VKEY) is None
+    assert wc.ad_video_url("../x", VKEY) is None and wc.ad_video_url(None, VKEY) is None and wc.ad_video_url(ORG, None) is None
+
+
+def test_visitor_gets_the_video_only_from_its_own_ad():
+    cfg = _cfg(campaigns=[{"tag": "lekki-3bed", "main": "inspect", "video": VKEY, "image": KEY}, {"tag": "promo", "main": "buy", "video": "d" * 32 + ".webm"}])
+    pv = wc.public_view(cfg, "lekki-3bed", ORG)
+    assert pv["ad_video"].endswith(VKEY) and pv["ad_image"].endswith(KEY) and "d" * 32 not in str(pv)
+    assert wc.public_view(cfg, "promo", ORG)["ad_image"] is None and wc.public_view(cfg, "promo", ORG)["ad_video"].endswith(".webm")
+    assert wc.public_view(cfg, "instagram", ORG)["ad_video"] is None and wc.public_view(cfg, "lekki-3bed")["ad_video"] is None
+
+
+def test_video_type_is_judged_from_the_bytes():
+    assert wc.sniff_video(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00") == ("video/mp4", "mp4")
+    assert wc.sniff_video(b"\x00\x00\x00\x18ftypisom\x00\x00\x00\x00") == ("video/mp4", "mp4")
+    assert wc.sniff_video(b"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01") == ("video/webm", "webm")
+    for bad in (b"\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00", b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00", b"GIF89a" + b"0" * 20, b"<svg onload=1>", b"", b"MZ" + b"0" * 30):
+        assert wc.sniff_video(bad) is None
+
+
+def test_video_upload_endpoint_and_screens_are_wired():
+    src = (ROOT / "backend" / "app" / "routers" / "webchat.py").read_text(encoding="utf-8")
+    body = src.split('@router.post("/webchat/ad-video")', 1)[1].split("@router.put", 1)[0]
+    assert "_require_manager(org)" in body and "wc.sniff_video(data)" in body and "wc.AD_VIDEO_MAX_BYTES" in body and "rate_limited" in body
+    assert '"ad_videos":' in src and wc.AD_VIDEO_MAX_BYTES == 25 * 1024 * 1024
+    page = (ROOT / "frontend" / "src" / "pages" / "WebChatPage.jsx").read_text(encoding="utf-8")
+    assert "{cfg.ad_video && !hiddenIds && (" in page and 'preload="metadata"' in page and "playsInline" in page and "controls" in page
+    assert "autoPlay" not in page                                                       # nothing plays or downloads until the visitor taps
+    assert "cfg.ad_image && !cfg.ad_video" in page                                      # a video replaces the picture, which becomes its cover
+    comp = (ROOT / "frontend" / "src" / "modules" / "admin" / "WebChatAdLinks.jsx").read_text(encoding="utf-8")
+    assert "uploadWebchatAdVideo" in comp and "Add a video" in comp and "25 * 1024 * 1024" in comp
+    assert "export async function uploadWebchatAdVideo" in (ROOT / "frontend" / "src" / "services" / "webchat.service.js").read_text(encoding="utf-8")
+
+
+# ── the upload endpoints, called directly ───────────────────────────────────
+
+class _Up:
+    def __init__(self, data, name="ad.mp4"):
+        import io as _io
+        self.file, self.filename = _io.BytesIO(data), name
+
+
+class _Bucket:
+    def __init__(self, log, fail): self.log, self.fail = log, fail
+    def upload(self, path, file, file_options):
+        if self.fail:
+            raise RuntimeError("storage down")
+        self.log.append((path, len(file), file_options["content-type"]))
+
+
+class _DB:
+    def __init__(self, fail=False): self.log, self.fail = [], fail
+    @property
+    def storage(self):
+        outer = self
+        class _S:
+            def from_(self, name): return _Bucket(outer.log, outer.fail)
+        return _S()
+
+
+OWNER = {"org_id": ORG, "id": "u1", "roles": {"template": "owner"}}
+MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00" + b"0" * 64
+
+
+def _call(fn, up, org=OWNER, db=None):
+    from unittest.mock import patch
+    from app.routers import webchat as r
+    with patch.object(wc, "rate_limited", return_value=False):
+        return fn(file=up, db=db or _DB(), org=org)
+
+
+def test_video_upload_saves_a_real_mp4_under_a_random_key_in_this_business_folder():
+    from app.routers import webchat as r
+    db = _DB()
+    res = _call(r.upload_ad_video, _Up(MP4), db=db).data
+    assert wc.AD_VIDEO_KEY.match(res["video"]) and res["url"].endswith(f"/{ORG}/webchat-ads/{res['video']}")
+    assert db.log[0][0] == f"{ORG}/webchat-ads/{res['video']}" and db.log[0][2] == "video/mp4"
+
+
+def test_video_upload_refuses_big_wrong_type_and_non_managers():
+    from fastapi import HTTPException
+    from app.routers import webchat as r
+    for up, code in ((_Up(MP4 + b"0" * wc.AD_VIDEO_MAX_BYTES), 422), (_Up(b"<script>alert(1)</script>", "x.mp4"), 422), (_Up(b"\x00\x00\x00\x14ftypqt  " + b"0" * 40, "x.mov"), 422)):
+        try:
+            _call(r.upload_ad_video, up)
+            assert False, "should refuse"
+        except HTTPException as e:
+            assert e.status_code == code
+    try:
+        _call(r.upload_ad_video, _Up(MP4), org={**OWNER, "roles": {"template": "sales_rep"}})
+        assert False, "a sales rep must not upload"
+    except HTTPException as e:
+        assert e.status_code == 403
+    try:
+        _call(r.upload_ad_video, _Up(MP4), db=_DB(fail=True))
+        assert False
+    except HTTPException as e:
+        assert e.status_code == 503
+
+
+def test_picture_upload_accepts_jpg_and_refuses_svg_gif_and_other_files():
+    from fastapi import HTTPException
+    from app.routers import webchat as r
+    jpg = b"\xff\xd8\xff\xe0" + b"0" * 64
+    res = _call(r.upload_ad_image, _Up(jpg, "a.jpg")).data
+    assert wc.AD_IMAGE_KEY.match(res["image"])
+    for bad in (b"<svg xmlns='http://www.w3.org/2000/svg' onload='x()'/>", b"GIF89a" + b"0" * 40, b"%PDF-1.4" + b"0" * 40):
+        try:
+            _call(r.upload_ad_image, _Up(bad, "a.jpg"))
+            assert False, "should refuse"
+        except HTTPException as e:
+            assert e.status_code == 422
