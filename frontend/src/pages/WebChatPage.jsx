@@ -999,12 +999,7 @@ export default function WebChatPage({ chatKey }) {
 
           {cards.length > 0 && !panel && cards.map((p) => <ProductCard key={p.id} p={p} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} />)}
 
-          {contactStep === 'consent' && !panel && (
-            <div style={S.chips}>
-              <button type="button" style={S.chip} disabled={busy} onClick={() => sendOptimistic('Yes', { kind: 'text', text: 'Yes' })}>Yes, that is okay</button>
-              <button type="button" style={S.chip} disabled={busy} onClick={() => sendOptimistic('No', { kind: 'text', text: 'No' })}>No thanks</button>
-            </div>
-          )}
+          {/* ONE-YESNO-1: the consent question already brings its own Yes / No buttons from the server */}
 
           {added && !panel && added.at === messages.length && (
             <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
