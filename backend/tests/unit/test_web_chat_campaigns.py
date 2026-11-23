@@ -28,7 +28,7 @@ def test_default_has_no_campaigns():
 
 def test_clean_keeps_good_entries_and_defaults_the_label():
     out = wc.sanitise_config({"campaigns": [{"tag": "Lekki-3-Bed", "label": "  Lekki  ", "main": "Inspect", "greeting": " Hello "}, {"tag": "x1"}]})["campaigns"]
-    assert out[0] == {"tag": "lekki-3-bed", "label": "Lekki", "main": "inspect", "main_label": "", "greeting": "Hello"}
+    assert out[0] == {"tag": "lekki-3-bed", "label": "Lekki", "main": "inspect", "main_label": "", "greeting": "Hello", "image": ""}
     assert out[1]["label"] == "x1" and out[1]["main"] == "" and out[1]["greeting"] == ""
 
 
@@ -111,7 +111,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 def test_session_start_uses_the_ad_greeting():
     src = (ROOT / "backend" / "app" / "routers" / "public_webchat.py").read_text(encoding="utf-8")
-    assert 'wc.greeting_for(cfg, s.get("source"))' in src and 'wc.public_view(cfg, s.get("source"))' in src
+    assert 'wc.greeting_for(cfg, s.get("source"))' in src and 'wc.public_view(cfg, s.get("source"), s.get("org_id"))' in src
 
 
 def test_widget_reads_the_chioma_address_tag_and_keeps_old_hooks():
@@ -194,3 +194,46 @@ def test_widget_sends_the_ad_tag_to_the_bar_and_endpoint_accepts_it():
     assert "'?s=' + encodeURIComponent(source)" in js and "'/widget'" in js
     src = (ROOT / "backend" / "app" / "routers" / "public_webchat.py").read_text(encoding="utf-8")
     assert "wc.ask_bar_view(cfg, s)" in src and "def widget_info(key: str, request: Request, s:" in src
+
+
+# ── the ad's picture ────────────────────────────────────────────────────────
+
+ORG = "11111111-2222-3333-4444-555555555555"
+KEY = "a" * 32 + ".jpg"
+
+
+def test_only_a_key_we_issued_is_kept_as_the_picture():
+    good = wc.sanitise_config({"campaigns": [{"tag": "a", "image": KEY}]})["campaigns"][0]["image"]
+    assert good == KEY
+    for bad in ("https://evil.example/x.jpg", "../../x.jpg", "A" * 32 + ".jpg", "a" * 31 + ".jpg", "a" * 32 + ".gif", "a" * 32 + ".svg", "", None, 5, ["x"]):
+        assert wc.sanitise_config({"campaigns": [{"tag": "a", "image": bad}]})["campaigns"][0]["image"] == ""
+
+
+def test_picture_address_is_built_from_the_business_id_and_key():
+    url = wc.ad_image_url(ORG, KEY)
+    assert url.endswith(f"/storage/v1/object/public/catalog/{ORG}/webchat-ads/{KEY}")
+    for org, key in (("../x", KEY), (None, KEY), (ORG, "x.jpg"), (ORG, None), (ORG, "https://evil/x.jpg")):
+        assert wc.ad_image_url(org, key) is None
+
+
+def test_visitor_gets_the_picture_only_from_its_own_ad_and_never_a_list():
+    cfg = _cfg(campaigns=[{"tag": "lekki-3bed", "main": "inspect", "image": KEY}, {"tag": "promo", "main": "buy", "image": "b" * 32 + ".png"}])
+    pv = wc.public_view(cfg, "lekki-3bed", ORG)
+    assert pv["ad_image"].endswith(KEY) and "b" * 32 not in str(pv)
+    assert wc.public_view(cfg, "promo", ORG)["ad_image"].endswith("b" * 32 + ".png")
+    assert wc.public_view(cfg, "instagram", ORG)["ad_image"] is None and wc.public_view(cfg, None, ORG)["ad_image"] is None
+    assert wc.public_view(cfg, "lekki-3bed")["ad_image"] is None                     # no business id: nothing to build from
+    assert wc.public_view(_cfg(), "promo", ORG)["ad_image"] is None                   # an ad with no picture
+
+
+def test_upload_endpoint_checks_the_real_file_and_the_screen_shows_the_picture():
+    root = ROOT / "backend" / "app" / "routers" / "webchat.py"
+    src = root.read_text(encoding="utf-8")
+    body = src.split('@router.post("/webchat/ad-image")', 1)[1].split("@router.put", 1)[0]
+    assert "_require_manager(org)" in body and "_sniff(data" in body and '("jpg", "png", "webp")' in body      # owners and managers only; the real file type is checked
+    assert '"ad_images":' in src
+    page = (ROOT / "frontend" / "src" / "pages" / "WebChatPage.jsx").read_text(encoding="utf-8")
+    assert "{cfg.ad_image && !hiddenIds && (" in page and "src={cfg.ad_image}" in page
+    comp = (ROOT / "frontend" / "src" / "modules" / "admin" / "WebChatAdLinks.jsx").read_text(encoding="utf-8")
+    assert "uploadWebchatAdImage" in comp and "Add a picture" in comp
+    assert "export async function uploadWebchatAdImage" in (ROOT / "frontend" / "src" / "services" / "webchat.service.js").read_text(encoding="utf-8")

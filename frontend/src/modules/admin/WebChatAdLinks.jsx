@@ -9,6 +9,8 @@
  */
 import { useState } from 'react'
 import { ds } from '../../utils/ds'
+import { uploadWebchatAdImage, chatErrorMessage } from '../../services/webchat.service'
+import { shrinkImage } from './imageShrink'
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
 const label = { display: 'block', fontSize: 12, fontWeight: 600, color: ds.dark, margin: '10px 0 4px', fontFamily: ds.fontDm }
@@ -48,12 +50,24 @@ function CopyRow({ title, hint, value, copy, rows }) {
 export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
   const [open, setOpen] = useState(0)
   const [page, setPage] = useState('')
+  const [urls, setUrls] = useState({})          // picture key -> address, for what was just uploaded
+  const [busy, setBusy] = useState(-1)
   const camps = Array.isArray(cfg.campaigns) ? cfg.campaigns : []
   const items = (cfg.menu || []).filter((m) => m.action !== 'human')
   const copy = (t) => { try { navigator.clipboard.writeText(t); setMsg('Copied.') } catch { setMsg(t) } }
   const upd = (i, patch) => set('campaigns', camps.map((c, j) => (j === i ? { ...c, ...patch } : c)))
   const add = () => { set('campaigns', [...camps, { tag: '', label: '', main: (cfg.shop_enabled ? 'shop' : (items[0] && items[0].id) || ''), main_label: '', greeting: '' }]); setOpen(camps.length) }
   const remove = (i) => { if (window.confirm('Remove this ad? Its links will show your normal chat.')) { set('campaigns', camps.filter((_, j) => j !== i)); setOpen(0) } }
+  const pick = async (i, file) => {
+    if (!file) return
+    setBusy(i)
+    try {
+      const res = await uploadWebchatAdImage(await shrinkImage(file))
+      setUrls((u) => ({ ...u, [res.image]: res.url }))
+      upd(i, { image: res.image })
+      setMsg('Picture added. Press Save to keep it.')
+    } catch (e) { setMsg(chatErrorMessage ? chatErrorMessage(e, 'Could not add the picture. Try a JPG, PNG or WebP under 5 MB.') : 'Could not add the picture.') } finally { setBusy(-1) }
+  }
   const base = data.link || ''
   const biz = cfg.business_name || 'us'
 
@@ -101,6 +115,15 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
                 <textarea id={`ad-greet-${i}`} rows={2} style={input} maxLength={400} value={c.greeting || ''} onChange={(e) => upd(i, { greeting: e.target.value })}
                   placeholder="Hi, I'm Chioma. Asking about the Lekki 3-bed duplex? I can share prices and book your inspection." />
                 <p style={small}>Say only what is true about the ad. Leave it empty to use your normal greeting.</p>
+                <label style={label} htmlFor={`ad-pic-${i}`}>Picture from the ad (optional)</label>
+                <p style={small}>Use the same picture as your ad, so visitors see it at the top of the chat. JPG, PNG or WebP, up to 5 MB.</p>
+                {(urls[c.image] || (data.ad_images || {})[c.tag]) && <img src={urls[c.image] || data.ad_images[c.tag]} alt={`Picture for ${c.label || 'this ad'}`} style={{ display: 'block', maxWidth: 260, maxHeight: 160, objectFit: 'cover', borderRadius: ds.radius.sm, border: `1px solid ${ds.border}`, marginBottom: 8 }} />}
+                {c.image && !(urls[c.image] || (data.ad_images || {})[c.tag]) && <p style={small}>A picture is added. It shows here after you press Save.</p>}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input id={`ad-pic-${i}`} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { pick(i, e.target.files && e.target.files[0]); e.target.value = '' }} />
+                  <button type="button" style={btn(false)} disabled={busy === i} onClick={() => document.getElementById(`ad-pic-${i}`).click()}>{busy === i ? 'Adding…' : c.image ? 'Change picture' : 'Add a picture'}</button>
+                  {c.image && <button type="button" style={btn(false)} onClick={() => upd(i, { image: '' })}>Remove picture</button>}
+                </div>
 
                 {!bad && c.tag && (
                   <div style={{ marginTop: 6 }}>

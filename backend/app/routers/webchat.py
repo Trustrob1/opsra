@@ -201,6 +201,7 @@ def get_settings(db=Depends(get_supabase), org=Depends(get_current_org)):
     key = wc.get_or_create_key(db, org["org_id"])
     return ok({"config": cfg, "key": key, "link": f"{wc.public_base()}/c/{key}",
                "links": {s: f"{wc.public_base()}/c/{key}?s={s}" for s in ("instagram", "qr", "site", "facebook", "google", "whatsapp_status", "email", "sms")},
+               "ad_images": {c["tag"]: wc.ad_image_url(org["org_id"], c.get("image")) for c in (cfg.get("campaigns") or []) if c.get("image")},
                "embed": {"tag": embed.script_tag(wc.public_base(), key), "seen": embed.seen_list(db, org["org_id"])}})
 
 
@@ -234,6 +235,30 @@ def embed_email(body: EmbedEmail, db=Depends(get_supabase), org=Depends(get_curr
     if not _send_email(to, subject, text):
         raise HTTPException(status_code=503, detail="The email could not be sent right now. Please try again, or copy the code yourself.")
     return ok({"sent": True}, message="Instructions sent")
+
+
+@router.post("/webchat/ad-image")
+def upload_ad_image(file: UploadFile = File(...), db=Depends(get_supabase), org=Depends(get_current_org)):
+    """OPENING-CTA-5: the picture for one ad. A real JPG, PNG or WebP (checked from its bytes) up to 5 MB; returns the key to save on the ad."""
+    import uuid
+    from app.services import webchat_attachment_service as att
+    _require_manager(org)
+    if wc.rate_limited(f"adimg:{org['org_id']}", 20, 3600):
+        raise HTTPException(status_code=429, detail="That is a lot of pictures. Please wait a few minutes.")
+    data = file.file.read(5 * 1024 * 1024 + 1)
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="That picture is over 5 MB. Choose a smaller one.")
+    sniffed = att._sniff(data, "image", file.filename or "")
+    if not sniffed or sniffed[1] not in ("jpg", "png", "webp"):
+        raise HTTPException(status_code=422, detail="Use a JPG, PNG or WebP picture.")
+    mime, ext = sniffed
+    key = f"{uuid.uuid4().hex}.{ext}"
+    try:
+        db.storage.from_("catalog").upload(path=f"{org['org_id']}/webchat-ads/{key}", file=data, file_options={"content-type": mime, "upsert": "false"})
+    except Exception as exc:
+        logger.warning("webchat ad image upload failed org=%s: %s", org["org_id"], exc)
+        raise HTTPException(status_code=503, detail="We could not save the picture. Please try again.")
+    return ok({"image": key, "url": wc.ad_image_url(org["org_id"], key)})
 
 
 @router.put("/webchat/settings")

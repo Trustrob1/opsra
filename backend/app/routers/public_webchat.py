@@ -132,7 +132,7 @@ def _snapshot(s: dict, cfg: dict, messages: list) -> dict:
     return {
         "messages": messages, "has_contact": bool(s.get("lead_id")), "name": s.get("contact_name"),
         "verified_phone": bool(s.get("phone_verified")), "needs_email": bool(s.get("phone_verified") and not s.get("contact_email")),
-        "human": wc.is_human(s, cfg), "config": wc.public_view(cfg, s.get("source")),
+        "human": wc.is_human(s, cfg), "config": wc.public_view(cfg, s.get("source"), s.get("org_id")),
         "contact_step": (s.get("state") or {}).get("contact_step"),
         "returning": _returning(s, cfg, messages),
     }

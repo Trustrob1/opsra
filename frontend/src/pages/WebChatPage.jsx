@@ -846,6 +846,10 @@ export default function WebChatPage({ chatKey }) {
         </header>
 
         <main style={S.list} ref={listRef} role="log" aria-live="polite" aria-label="Chat messages">
+          {cfg.ad_image && !hiddenIds && (
+            <img src={cfg.ad_image} alt="" loading="eager" decoding="async" onError={(e) => { e.currentTarget.style.display = 'none' }}
+              style={{ display: 'block', width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 14, border: `1px solid ${LINE}`, flex: 'none' }} />
+          )}
           {hiddenIds && (
             <div role="note" style={{ margin: '4px 0 10px', padding: '12px 14px', borderRadius: 14, background: SURF, border: `1px solid ${LINE}`, fontSize: 15, color: INK, textAlign: 'center' }}>
               <div style={{ fontWeight: 600 }}>Welcome back{meName ? `, ${meName}` : ''}.</div>

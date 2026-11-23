@@ -111,6 +111,14 @@ export async function getWebchatSettings() {
   return r.data.data
 }
 
+// OPENING-CTA-5: the picture for one ad. Returns { image: key to save on the ad, url: where it shows }.
+export async function uploadWebchatAdImage(file) {
+  const fd = new FormData()
+  fd.append('file', file, file.name || 'picture')
+  const r = await api.post('/api/v1/webchat/ad-image', fd)
+  return r.data.data
+}
+
 export async function saveWebchatSettings(changes) {
   const r = await api.put('/api/v1/webchat/settings', changes)
   return r.data.data

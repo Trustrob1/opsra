@@ -324,8 +324,25 @@ def clean_campaigns(raw) -> list:
         out.append({"tag": tag, "label": _clean_text(it.get("label"), 60) or tag,
                     "main": re.sub(r"[^a-z0-9_-]", "", str(it.get("main") or "").lower())[:30],
                     "main_label": _clean_text(it.get("main_label"), 40),
-                    "greeting": _clean_text(it.get("greeting"), 400)})
+                    "greeting": _clean_text(it.get("greeting"), 400),
+                    "image": (str(it.get("image")) if isinstance(it.get("image"), str) and AD_IMAGE_KEY.match(it["image"]) else "")})
     return out
+
+
+AD_IMAGE_KEY = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp)$")      # OPENING-CTA-5: the picture is a file the owner uploaded through Opsra, named by a random key
+_ORG_ID = re.compile(r"^[0-9a-fA-F-]{36}$")
+
+
+def ad_image_url(org_id, key) -> Optional[str]:
+    """Public address of an ad's picture. Built here from the business id and the stored key, so a saved setting can never point a visitor's browser at another website."""
+    if not isinstance(org_id, str) or not _ORG_ID.match(org_id) or not isinstance(key, str) or not AD_IMAGE_KEY.match(key):
+        return None
+    try:
+        from app.config import settings
+        base = (settings.SUPABASE_URL or "").rstrip("/")
+    except Exception:
+        return None
+    return f"{base}/storage/v1/object/public/catalog/{org_id}/webchat-ads/{key}" if base else None
 
 
 def campaign_for(cfg: dict, source) -> Optional[dict]:
@@ -475,12 +492,13 @@ def _human_menu_id(cfg: dict) -> Optional[str]:
     return None
 
 
-def public_view(cfg: dict, source: Optional[str] = None) -> dict:
+def public_view(cfg: dict, source: Optional[str] = None, org_id: Optional[str] = None) -> dict:
     """The only settings a visitor's browser receives. `source` is the chat's link tag: an ad it names changes the greeting and first screen."""
     return {
         "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL, "contact_in_chat": bool(cfg.get("contact_in_chat", True)),
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in CHAT_THEMES else "classic",
         "greeting": greeting_for(cfg, source), "opening": opening_for(cfg, source),
+        "ad_image": ad_image_url(org_id, (campaign_for(cfg, source) or {}).get("image")),
         "menu": [{"id": m["id"], "label": m["label"], **({"primary": True} if m.get("action") == "booking" else {}), **({"featured": True} if m.get("featured") else {})} for m in cfg["menu"]],      # a Book a call button is drawn solid
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
