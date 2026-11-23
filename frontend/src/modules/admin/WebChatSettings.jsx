@@ -11,6 +11,7 @@ import { ds } from '../../utils/ds'
 import { THEME_IDS, THEME_LABELS, THEME_HINTS, themeTokens, normaliseTheme } from '../../utils/webchatTheme'
 import WebChatInsights from './WebChatInsights'
 import WebChatInstall from './WebChatInstall'
+import WebChatAdLinks from './WebChatAdLinks'
 import WebChatHelper from './WebChatHelper'
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
@@ -124,6 +125,8 @@ export default function WebChatSettings() {
       </div>
 
       <WebChatInstall data={data} cfg={cfg} set={set} setMsg={setMsg} />
+
+      <WebChatAdLinks data={data} cfg={cfg} set={set} setMsg={setMsg} />
 
       <WebChatInsights baseLink={data.link} />
 

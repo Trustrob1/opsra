@@ -25,6 +25,14 @@
   var chatBase = new URL(script.src, location.href).origin
   var api = (script.getAttribute('data-api') || 'https://api.opsra.com.ng/api/v1').replace(/\/+$/, '')
   var source = (script.getAttribute('data-source') || 'website').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 30) || 'website'
+  // OPENING-CTA-2: an ad that goes to this website can add ?chioma=<campaign tag> to the page address. The tag becomes the chat's source
+  // (so the ad's greeting, first button and stats apply) and is remembered for the visit, in case the visitor moves to another page.
+  try {
+    var adTag = new URLSearchParams(location.search).get('chioma')
+    adTag = adTag ? adTag.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 30) : ''
+    if (adTag) { source = adTag; try { sessionStorage.setItem('opsra_chioma_src', adTag) } catch (e) { /* storage blocked: the tag still works on this page */ } }
+    else { var kept = ''; try { kept = sessionStorage.getItem('opsra_chioma_src') || '' } catch (e) { /* ignore */ } if (/^[A-Za-z0-9_-]{1,30}$/.test(kept)) source = kept }
+  } catch (e) { /* the chat still opens with the default tag */ }
 
   function start() {
     fetch(api + '/public/webchat/' + key + '/widget', { credentials: 'omit' })

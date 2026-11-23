@@ -132,7 +132,7 @@ def _snapshot(s: dict, cfg: dict, messages: list) -> dict:
     return {
         "messages": messages, "has_contact": bool(s.get("lead_id")), "name": s.get("contact_name"),
         "verified_phone": bool(s.get("phone_verified")), "needs_email": bool(s.get("phone_verified") and not s.get("contact_email")),
-        "human": wc.is_human(s, cfg), "config": wc.public_view(cfg),
+        "human": wc.is_human(s, cfg), "config": wc.public_view(cfg, s.get("source")),
         "contact_step": (s.get("state") or {}).get("contact_step"),
         "returning": _returning(s, cfg, messages),
     }
@@ -208,7 +208,7 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
             wc.set_state(db, s, check_first=True)
     msgs = wc.list_messages(db, s)
     if not msgs:
-        msgs = [wc.append_message(db, s, "bot", cfg["greeting"])]
+        msgs = [wc.append_message(db, s, "bot", wc.greeting_for(cfg, s.get("source")))]          # OPENING-CTA-2: an ad link can open with its own greeting
         try:  # WA-BUDGET-1: Opsra's per-conversation fee, once per new conversation (idempotent per session)
             from app.services import credit_service
             if credit_service.meter_webchat_conversation(db, org_id, s.get("id")) > 0:

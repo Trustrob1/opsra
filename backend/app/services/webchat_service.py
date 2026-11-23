@@ -83,6 +83,7 @@ DEFAULT_CONFIG: dict = {
     "human_offer": False,         # HUMAN-OFFER-1: the first tap on Talk to the team gets one offer of a quick answer first
     "ask_bar": False,             # ASKBAR-1: show the Chioma ask bar on the website (inline at a placeholder, or docked at the bottom)
     "ask_bar_text": "Ask me anything…",
+    "campaigns": [],               # OPENING-CTA-2: one per ad: {tag, label, main, main_label, greeting}; a chat opened with ?s=<tag> gets that ad's greeting and starting button
     "opening": {"style": "list"},  # OPENING-CTA-1: list = every button on the first screen (as before); pair = two big buttons (one main action + Speak to Chioma)
     "call_enabled": False,        # WEBCHAT-CALL-1: phone icon in the chat header; calls only in business hours
     "call_number": "",            # digits; empty = the organisation's business contact / WhatsApp number
@@ -286,6 +287,8 @@ def sanitise_config(raw: dict) -> dict:
             item["keywords"] = [_clean_text(k, 30).lower() for k in kws[:15] if _clean_text(k, 30)]
             menu.append(item)
         out["menu"] = menu
+    if "campaigns" in raw:
+        out["campaigns"] = clean_campaigns(raw["campaigns"])
     if "opening" in raw:
         out["opening"] = clean_opening(raw["opening"])
     if "booking_fields" in raw and isinstance(raw["booking_fields"], list):
@@ -300,6 +303,58 @@ def sanitise_config(raw: dict) -> dict:
                 fields.append({"key": key, "label": label, "required": bool(f.get("required", True))})
         out["booking_fields"] = fields
     return out
+
+
+CAMPAIGNS_MAX = 30
+# The six share-link channels and the built-in sources keep their meaning in the stats, so a campaign cannot reuse them.
+RESERVED_TAGS = ("instagram", "qr", "site", "facebook", "google", "whatsapp_status", "email", "sms", "whatsapp", "website", "link")
+
+
+def clean_campaigns(raw) -> list:
+    """OPENING-CTA-2: the owner's ads. The tag is what the link carries (?s=tag); the text lives here on the server, never in the link,
+    so nobody can make a link that shows a business's chat with words of their own."""
+    out, seen = [], set()
+    for it in (raw if isinstance(raw, list) else [])[:CAMPAIGNS_MAX]:
+        if not isinstance(it, dict):
+            continue
+        tag = re.sub(r"[^a-z0-9_-]", "", str(it.get("tag") or "").lower())[:30]
+        if not tag or tag in seen or tag in RESERVED_TAGS:
+            continue
+        seen.add(tag)
+        out.append({"tag": tag, "label": _clean_text(it.get("label"), 60) or tag,
+                    "main": re.sub(r"[^a-z0-9_-]", "", str(it.get("main") or "").lower())[:30],
+                    "main_label": _clean_text(it.get("main_label"), 40),
+                    "greeting": _clean_text(it.get("greeting"), 400)})
+    return out
+
+
+def campaign_for(cfg: dict, source) -> Optional[dict]:
+    """The ad this chat came from, or None (an unknown tag just means a normal chat)."""
+    if not source:
+        return None
+    tag = clean_source(source)
+    for c in cfg.get("campaigns") or []:
+        if isinstance(c, dict) and c.get("tag") == tag:
+            return c
+    return None
+
+
+def greeting_for(cfg: dict, source=None) -> str:
+    c = campaign_for(cfg, source)
+    return (c or {}).get("greeting") or cfg["greeting"]
+
+
+def opening_for(cfg: dict, source=None) -> dict:
+    """The first screen for this visitor: an ad's starting button leads (two-button screen), otherwise the business's own setting.
+    An ad whose starting button no longer exists quietly falls back to the business's setting."""
+    base = opening_view(cfg)
+    camp = campaign_for(cfg, source)
+    if not camp or not camp.get("main"):
+        return base
+    bo = cfg.get("opening") if isinstance(cfg.get("opening"), dict) else {}
+    ov = opening_view({**cfg, "opening": {"style": "pair", "main": camp["main"], "main_label": camp.get("main_label") or "",
+                                         "speak_label": bo.get("speak_label") or "", "speak_reply": bo.get("speak_reply") or ""}})
+    return ov if ov.get("style") == "pair" else base
 
 
 OPENING_STYLES = ("list", "pair")
@@ -420,12 +475,12 @@ def _human_menu_id(cfg: dict) -> Optional[str]:
     return None
 
 
-def public_view(cfg: dict) -> dict:
-    """The only settings a visitor's browser receives."""
+def public_view(cfg: dict, source: Optional[str] = None) -> dict:
+    """The only settings a visitor's browser receives. `source` is the chat's link tag: an ad it names changes the greeting and first screen."""
     return {
         "chioma": chioma_flags(cfg), "human_menu_id": _human_menu_id(cfg), "scripted_tail": SCRIPTED_TAIL, "contact_in_chat": bool(cfg.get("contact_in_chat", True)),
         "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in CHAT_THEMES else "classic",
-        "greeting": cfg["greeting"], "opening": opening_view(cfg),
+        "greeting": greeting_for(cfg, source), "opening": opening_for(cfg, source),
         "menu": [{"id": m["id"], "label": m["label"], **({"primary": True} if m.get("action") == "booking" else {}), **({"featured": True} if m.get("featured") else {})} for m in cfg["menu"]],      # a Book a call button is drawn solid
         "contact_prompt": cfg["contact_prompt"], "consent_text": cfg["consent_text"], "fallback": cfg["fallback"],
         "booking_fields": cfg["booking_fields"], "shop_enabled": bool(cfg.get("shop_enabled")), "email_enabled": bool(cfg.get("email_followups", True)),
