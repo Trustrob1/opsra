@@ -138,6 +138,21 @@ def _snapshot(s: dict, cfg: dict, messages: list) -> dict:
     }
 
 
+def _first_messages(db, org_id: str, cfg: dict, s: dict) -> list:
+    """The chat's messages; a brand-new chat gets its greeting (an ad link opens with that ad's own words) and is metered once."""
+    msgs = wc.list_messages(db, s)
+    if not msgs:
+        msgs = [wc.append_message(db, s, "bot", wc.greeting_for(cfg, s.get("source")))]          # OPENING-CTA-2: an ad link can open with its own greeting
+        try:  # WA-BUDGET-1: Opsra's per-conversation fee, once per new conversation (idempotent per session)
+            from app.services import credit_service
+            if credit_service.meter_webchat_conversation(db, org_id, s.get("id")) > 0:
+                from app.services import chat_pause_service as pause
+                pause.notify_after_charge(db, org_id)           # WEB-ONLY-1c: low-credit / paused note to the owner, at most every 3 days
+        except Exception:
+            logger.warning("webchat conversation fee failed org=%s", org_id)
+    return msgs
+
+
 def _pause_guard(db, org_id: str) -> None:
     """WEB-ONLY-1c: a web-chat-only business with no credit left has its chat paused until it subscribes or tops up."""
     from app.services import chat_pause_service as pause
@@ -206,16 +221,7 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
         wc.log_event(db, org_id, s.get("id"), "visit", body.source)
         if iph and wc.rate_limited(f"sessburst:{key}:{iph}", 5, 600):          # SAFE: five new chats from one address in ten minutes: the first message gets a check
             wc.set_state(db, s, check_first=True)
-    msgs = wc.list_messages(db, s)
-    if not msgs:
-        msgs = [wc.append_message(db, s, "bot", wc.greeting_for(cfg, s.get("source")))]          # OPENING-CTA-2: an ad link can open with its own greeting
-        try:  # WA-BUDGET-1: Opsra's per-conversation fee, once per new conversation (idempotent per session)
-            from app.services import credit_service
-            if credit_service.meter_webchat_conversation(db, org_id, s.get("id")) > 0:
-                from app.services import chat_pause_service as pause
-                pause.notify_after_charge(db, org_id)           # WEB-ONLY-1c: low-credit / paused note to the owner, at most every 3 days
-        except Exception:
-            logger.warning("webchat conversation fee failed org=%s", org_id)
+    msgs = _first_messages(db, org_id, cfg, s)
     snap = _snapshot(s, cfg, msgs)
     snap["token"] = token
     return ok(snap)
@@ -229,8 +235,16 @@ def resume_session(key: str, response: Response, authorization: Optional[str] = 
     found = _chat(db, key)
     _embed_guard(found, po)
     s = _session(db, found, authorization)
-    if wc.wants_fresh_chat(found["config"], s, s_):            # AD-FRESH-1: an ad link over an older chat from elsewhere starts a new one
-        return ok({"restart": True})
+    if wc.wants_fresh_chat(found["config"], s, s_):            # AD-FRESH-1/2: an ad link over an older chat from elsewhere starts a new one
+        if not s.get("lead_id"):
+            return ok({"restart": True})                           # nobody to carry over: the page starts a normal fresh chat
+        if wc.rate_limited(f"carry:{s['id']}", 3, 3600):
+            return ok(_snapshot(s, found["config"], wc.list_messages(db, s)))
+        ns, token = wc.carry_session(db, s, s_)                    # AD-FRESH-2: same person, new chat for this ad
+        wc.log_event(db, ns.get("org_id") or s.get("org_id"), ns.get("id"), "visit", s_)
+        snap = _snapshot(ns, found["config"], _first_messages(db, s["org_id"], found["config"], ns))
+        snap["token"] = token
+        return ok(snap)
     return ok(_snapshot(s, found["config"], wc.list_messages(db, s)))
 
 

@@ -328,6 +328,7 @@ export default function WebChatPage({ chatKey }) {
           try {
             token.current = stored; snap = await resumeChat(chatKey, stored, parentSite(), params.get('s') || undefined)
             if (snap && snap.restart) snap = await fresh()          // AD-FRESH-1: an ad link opened over an older chat from elsewhere starts a new chat
+            else if (snap && snap.token) { token.current = snap.token; writeStore(tokenKey, snap.token) }          // AD-FRESH-2: a new chat that kept the visitor's details
           }
           catch (e) { if (e?.response?.status === 401) snap = await fresh(); else throw e }
         } else {

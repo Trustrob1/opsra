@@ -407,13 +407,33 @@ def campaign_for(cfg: dict, source) -> Optional[dict]:
 
 
 def wants_fresh_chat(cfg: dict, session: dict, link_source) -> bool:
-    """AD-FRESH-1: the visitor opened a link of one of the owner's ads (a known tag) but their saved chat began somewhere else and has no
-    contact details yet: start a new chat so they see that ad's greeting, picture and buttons. A chat with details is never replaced,
-    and a link with no tag, an unknown tag or the same tag as the chat changes nothing."""
-    if not link_source or session.get("lead_id"):
+    """AD-FRESH-1/2: the visitor opened a link of one of the owner's ads (a known tag) but their saved chat began somewhere else: they
+    get a new chat with that ad's greeting, picture and buttons (carrying their details over if they gave any). Left alone: a link with
+    no tag, an unknown tag or the chat's own tag; a chat a team member is looking after; an order still waiting on payment."""
+    if not link_source:
         return False
     tag = clean_source(link_source)
-    return bool(campaign_for(cfg, tag)) and tag != (session.get("source") or "")
+    if not campaign_for(cfg, tag) or tag == (session.get("source") or ""):
+        return False
+    st = session.get("state") or {}
+    po = st.get("pending_order")
+    if po and po.get("status") != "paid":
+        return False
+    return not is_human(session, cfg)
+
+
+def carry_session(db, old: dict, source) -> tuple[dict, str]:
+    """AD-FRESH-2: a new chat for the ad that keeps who the visitor already is (same lead, name, number, email, consent). The old chat stays as it was."""
+    new, token = create_session(db, old["org_id"], source=source, ip_hash=old.get("ip_hash"), lead_id=old.get("lead_id"), phone=old.get("contact_phone"),
+                                name=old.get("contact_name"), phone_verified=bool(old.get("phone_verified")))
+    extra = {k: old.get(k) for k in ("contact_email", "consent_at", "consent_version") if old.get(k)}
+    if extra and new.get("id"):
+        try:
+            db.table("webchat_sessions").update(extra).eq("id", new["id"]).execute()
+            new = {**new, **extra}
+        except Exception as exc:
+            logger.warning("webchat carry details failed: %s", exc)
+    return new, token
 
 
 def greeting_for(cfg: dict, source=None) -> str:
