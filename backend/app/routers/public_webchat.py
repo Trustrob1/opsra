@@ -160,7 +160,7 @@ def _chioma_flags(cfg: dict) -> dict:
 
 
 @router.get("/public/webchat/{key}/widget")
-def widget_info(key: str, request: Request, db=Depends(get_supabase)):
+def widget_info(key: str, request: Request, s: Optional[str] = Query(default=None, max_length=60), db=Depends(get_supabase)):
     """WEBCHAT-EMBED-1: what widget.js needs to draw the bubble, on any website. Open to every origin on purpose;
     `allowed` says whether THIS website (the Origin header the browser sent) may show it."""
     from fastapi.responses import JSONResponse
@@ -171,7 +171,7 @@ def widget_info(key: str, request: Request, db=Depends(get_supabase)):
         from app.services import chat_pause_service as pause
         out = {"allowed": embed.origin_allowed(cfg.get("allowed_domains"), request.headers.get("origin")) and not pause.is_paused(db, found["org_id"]),
                "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "side": cfg.get("widget_side", "right"),
-               "bar": wc.ask_bar_view(cfg), "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in wc.CHAT_THEMES else "classic", **_chioma_flags(cfg)}
+               "bar": wc.ask_bar_view(cfg, s), "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in wc.CHAT_THEMES else "classic", **_chioma_flags(cfg)}
     if out.get("allowed") and found:
         from urllib.parse import urlparse
         own = tuple(h for h in ((urlparse(wc.public_base()).hostname or ""),) if h)

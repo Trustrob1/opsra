@@ -156,3 +156,41 @@ def test_whatsapp_reply_visitor_is_not_asked_for_a_number_again():
     assert flow._has_contact({"lead_id": "L1", "contact_phone": "+2348000000000"}) is True
     assert flow._has_contact({}) is False
     assert svc.create_handoff                                              # exists; the link carries ?h=
+
+
+# ── the website ask bar leads with the ad's button ──────────────────────────
+
+def _bar(**kw):
+    return _cfg(ask_bar=True, **kw)
+
+
+def test_ask_bar_normal_visitor_unchanged():
+    b = wc.ask_bar_view(_bar())
+    assert [c["id"] for c in b["chips"]][0] == "inspect" and b["chips"][0]["primary"] is True      # Book still first without an ad
+    assert wc.ask_bar_view(_bar(), "unknown") == b and wc.ask_bar_view(_bar(), "instagram") == b
+
+
+def test_ask_bar_ad_main_button_leads_and_is_solid():
+    b = wc.ask_bar_view(_bar(), "promo")
+    assert b["chips"][0] == {"id": "buy", "label": "Buy now", "primary": True}                      # the ad's own words
+    assert [c["primary"] for c in b["chips"]].count(True) == 1 and len({c["id"] for c in b["chips"]}) == len(b["chips"])
+
+
+def test_ask_bar_ad_button_shows_even_if_not_featured_and_never_the_human_button():
+    cfg = _bar(menu=[{**m, "featured": m["id"] == "faq"} for m in MENU])
+    assert wc.ask_bar_view(cfg, "lekki-3bed")["chips"][0]["id"] == "inspect"
+    cfg2 = _bar(campaigns=[{"tag": "t", "main": "talk"}])
+    assert wc.ask_bar_view(cfg2, "t")["chips"][0]["id"] != "talk"
+    assert wc.ask_bar_view(_bar(campaigns=[{"tag": "s", "main": "shop"}], shop_enabled=True), "s")["chips"][0]["id"] == "inspect"
+    assert wc.ask_bar_view(_bar(), "gone")["chips"][0]["id"] == "inspect"                           # deleted button: ordinary bar
+
+
+def test_ask_bar_off_stays_off_for_ads():
+    assert wc.ask_bar_view(_cfg(), "promo") is None
+
+
+def test_widget_sends_the_ad_tag_to_the_bar_and_endpoint_accepts_it():
+    js = (ROOT / "frontend" / "public" / "widget.js").read_text(encoding="utf-8")
+    assert "'?s=' + encodeURIComponent(source)" in js and "'/widget'" in js
+    src = (ROOT / "backend" / "app" / "routers" / "public_webchat.py").read_text(encoding="utf-8")
+    assert "wc.ask_bar_view(cfg, s)" in src and "def widget_info(key: str, request: Request, s:" in src

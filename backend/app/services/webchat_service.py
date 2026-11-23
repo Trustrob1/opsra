@@ -488,7 +488,7 @@ def public_view(cfg: dict, source: Optional[str] = None) -> dict:
     }
 
 
-def ask_bar_view(cfg: dict) -> Optional[dict]:
+def ask_bar_view(cfg: dict, source: Optional[str] = None) -> Optional[dict]:
     """ASKBAR-1: what widget.js needs to draw the ask bar, or None when the business has not switched it on.
     Chips are the first three chat buttons, a Book a call button first. Labels only; the answers stay on the server."""
     if not cfg.get("ask_bar"):
@@ -497,9 +497,17 @@ def ask_bar_view(cfg: dict) -> Optional[dict]:
     featured = [m for m in items if m.get("featured") and m.get("action") != "human"]
     pool = featured or items                       # MENU-MORE: the owner's featured buttons lead (a campaign can feature just one or two)
     pool = sorted(pool, key=lambda m: 0 if m.get("action") == "booking" else 1)          # stable: the rest keep their order
+    lead_id, lead_label = None, ""
+    camp = campaign_for(cfg, source)                                  # OPENING-CTA-2: a visitor from an ad sees that ad's main button first and solid
+    if camp and camp.get("main") and camp["main"] != "shop":
+        hit = next((m for m in items if m.get("id") == camp["main"] and m.get("action") != "human"), None)
+        if hit:
+            lead_id, lead_label = hit["id"], camp.get("main_label") or ""
+            pool = [hit] + [m for m in pool if m.get("id") != hit["id"]]
     chips = pool[:3]
     return {"text": _clean_text(cfg.get("ask_bar_text"), 60) or DEFAULT_CONFIG["ask_bar_text"],
-            "chips": [{"id": m["id"], "label": str(m["label"])[:60], "primary": m.get("action") == "booking"} for m in chips],
+            "chips": [{"id": m["id"], "label": str((lead_label if m["id"] == lead_id and lead_label else m["label"]))[:60],
+                       "primary": (m["id"] == lead_id) if lead_id else m.get("action") == "booking"} for m in chips],
             "more": len(items) > len(chips)}                                              # a More button opens the chat's full button list
 
 

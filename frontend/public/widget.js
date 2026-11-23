@@ -35,7 +35,7 @@
   } catch (e) { /* the chat still opens with the default tag */ }
 
   function start() {
-    fetch(api + '/public/webchat/' + key + '/widget', { credentials: 'omit' })
+    fetch(api + '/public/webchat/' + key + '/widget' + (source !== 'website' ? '?s=' + encodeURIComponent(source) : ''), { credentials: 'omit' })
       .then(function (r) { return r.json() })
       .then(function (j) { var d = j && j.data; if (d && d.allowed) build(d) })
       .catch(function () { /* the website keeps working without the launcher */ })
