@@ -229,6 +229,18 @@ export async function getWebchatAnalytics(days = 30) {
   return r.data.data
 }
 
+// ── Chats tab (WEBCHAT-CHATS-1) ───────────────────────────────────────────────
+
+export async function getWebchatChats(params = {}) {
+  const r = await api.get('/api/v1/webchat/chats', { params })
+  return r.data.data
+}
+
+export async function getWebchatChat(id) {
+  const r = await api.get(`/api/v1/webchat/chats/${encodeURIComponent(id)}`)
+  return r.data.data
+}
+
 /** QR code as SVG text. Fetched with the login header, so it cannot be a plain <img src>. */
 export async function getWebchatQr(source, download = false) {
   const r = await api.get('/api/v1/webchat/qr.svg', { params: { s: source, download: download ? 1 : undefined }, responseType: 'text', transformResponse: (d) => d })

@@ -146,6 +146,7 @@ def _record_gap(db, s: dict, text: str) -> None:
     """SMART-1: a typed question nobody could answer goes on the owner's 'not answered' list (never raises, numbers and emails hidden)."""
     try:
         kgap.record(db, s["org_id"], text, s.get("lead_id"))
+        wc.set_state(db, s, gap_at=datetime.now(timezone.utc).isoformat())      # WEBCHAT-CHATS-1: the Chats tab can filter on chats Chioma could not answer
     except Exception as exc:
         logger.warning("webchat gap record failed: %s", exc)
 

@@ -9,6 +9,8 @@ WEBCHAT-1/2 — staff routes (login required). Prefix: /api/v1
   POST /webchat/settings/template    fill the menu from a starter template (salon) — answers are placeholders to edit
   GET  /webchat/stats                visits → started → contact → booked, last 30 days
   GET  /webchat/analytics?days=30    WEBCHAT-5: funnel, by source, by day, chat facts, cost per chat, AI budget
+  GET  /webchat/chats?days&filter&source&limit&offset   WEBCHAT-CHATS-1: every web chat, incl. visitors with no contact
+  GET  /webchat/chats/{id}           WEBCHAT-CHATS-1: one chat's messages, cart and what was viewed
   GET  /webchat/qr.svg?s=tag&download=1   WEBCHAT-5: QR code for the chat link tagged with a source
 """
 from __future__ import annotations
@@ -423,6 +425,28 @@ def analytics(days: int = Query(default=30, ge=1, le=90), db=Depends(get_supabas
     _require_plan(db, org, "webchat_insights")
     from app.services import webchat_analytics_service as an
     return ok(an.analytics(db, org["org_id"], days))
+
+
+@router.get("/webchat/chats")
+def chats(days: int = Query(default=30, ge=1, le=90), filter: str = Query(default="all", max_length=20),
+          source: Optional[str] = Query(default=None, max_length=30), limit: int = Query(default=50, ge=1, le=100),
+          offset: int = Query(default=0, ge=0, le=100000), db=Depends(get_supabase), org=Depends(get_current_org)):
+    """WEBCHAT-CHATS-1: every web chat in the period, newest first. Managers only; contacts are not returned here."""
+    _require_manager(org)
+    _require_plan(db, org, "webchat_insights")
+    from app.services import webchat_chats_service as cs
+    return ok(cs.list_chats(db, org["org_id"], days, filter, source, limit, offset))
+
+
+@router.get("/webchat/chats/{session_id}")
+def chat_one(session_id: str, db=Depends(get_supabase), org=Depends(get_current_org)):
+    _require_manager(org)
+    _require_plan(db, org, "webchat_insights")
+    from app.services import webchat_chats_service as cs
+    got = cs.get_chat(db, org["org_id"], session_id)
+    if not got:
+        raise HTTPException(status_code=404, detail="That chat was not found.")
+    return ok(got)
 
 
 @router.get("/webchat/qr.svg")

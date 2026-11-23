@@ -914,7 +914,7 @@ function AppShell() {
   const openSetup = () => { setMoreOpen(false); window.dispatchEvent(new Event('opsra:open-setup')) }
   const goTo = (id) => { setMoreOpen(false); setActiveNav(id); setView(id); setSelectedLeadId(null) }
   useEffect(() => {          // WEBCHAT-RESULTS-1: other screens (Admin > Web chat) open a menu page without knowing about this component
-    const go = (e) => { const id = e?.detail; if (id === 'webchat') goTo(id) }
+    const go = (e) => { const id = e?.detail; if (id === 'webchat' || id === 'conversations') goTo(id) }
     window.addEventListener('opsra:goto', go)
     return () => window.removeEventListener('opsra:goto', go)
   }, [])
