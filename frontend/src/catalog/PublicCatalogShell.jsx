@@ -25,6 +25,7 @@ import { canShowChat } from './storefront/storefrontChat'
 import useStorefrontCart from './storefront/useStorefrontCart'
 import { listUrl, resolveAccent } from './storefront/storefrontLogic'
 import { cleanSource, canUseCart, decorateLines, catalogPathFromShort } from './storefront/storefrontCart'
+import { SLOW_AFTER_MS } from './fetchRetry'
 
 const C = {
   bg:   '#FAFAF8',
@@ -62,6 +63,7 @@ export default function PublicCatalogShell() {
   const [compareItems, setCompareItems] = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
+  const [slow, setSlow]                 = useState(false)     // LOAD-RETRY-1: the first load is taking a while
   const [cartOpen, setCartOpen]         = useState(false)
   const [source]                        = useState(() => cleanSource(window.location.search))
 
@@ -74,8 +76,10 @@ export default function PublicCatalogShell() {
   useEffect(() => {
     if (!orgSlug) { setError('not_found'); setLoading(false); return }
 
+    const slowTimer = setTimeout(() => setSlow(true), SLOW_AFTER_MS)
     getCatalogList(orgSlug)
         .then(data => {
+          clearTimeout(slowTimer)
           setCatalogData({
             orgName:         data.org_name,
             waNumber:        data.wa_number,
@@ -94,9 +98,11 @@ export default function PublicCatalogShell() {
         trackVisitOnce({ orgSlug, tag: source, storage, send: postCatalogVisit })
       })
       .catch(err => {
+        clearTimeout(slowTimer)
         setError(err.status === 404 ? 'not_found' : 'error')
         setLoading(false)
       })
+    return () => clearTimeout(slowTimer)
   }, [orgSlug, source])
 
   // Load individual item when itemSlug is set
@@ -191,6 +197,12 @@ export default function PublicCatalogShell() {
           }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           <p style={{ fontSize: 14 }}>Loading catalog…</p>
+          {slow && (
+            <div role="status" style={{ marginTop: 14 }}>
+              <p style={{ fontSize: 14, margin: '0 0 12px' }}>Taking longer than usual. Your connection may be slow.</p>
+              <button onClick={() => window.location.reload()} style={{ background: C.teal, color: 'white', border: 'none', borderRadius: 8, padding: '10px 22px', fontSize: 14, fontFamily: "'Jost', sans-serif", cursor: 'pointer' }}>Tap to retry</button>
+            </div>
+          )}
         </div>
       </div>
     )

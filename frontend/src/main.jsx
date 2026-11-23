@@ -162,15 +162,23 @@ if ('serviceWorker' in navigator) {
 // Covers the case where push is not set up or the tab regains focus after being idle.
 let _lastUnreadCount = null
 
+// POLL-401-1: staff notifications are not for the public pages (catalog, chat, pay links ...), and a token the server has refused
+// is not sent again until it changes (a stale token left in the browser made every visit end in a 401 error).
+let _badToken = null
+const _PUBLIC_PATH = /^\/(catalog|shop|c|p|g|pay|b|w|f|log|owner-dashboard)\//
+
 async function _pollUnread() {
   try {
+    if (_PUBLIC_PATH.test(window.location.pathname)) return
     const { default: useAuthStore } = await import('./store/authStore.js')
     const token = useAuthStore.getState()?.token
     if (!token) { _lastUnreadCount = null; return }
+    if (token === _badToken) return
 
     const res = await fetch(`${BASE}/api/v1/notifications?page=1&page_size=1`, {
       headers: { Authorization: `Bearer ${token}` },
     })
+    if (res.status === 401) { _badToken = token; _lastUnreadCount = null; return }
     if (!res.ok) return
     const json = await res.json()
     const current = json?.data?.unread_count ?? 0

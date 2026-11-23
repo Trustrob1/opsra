@@ -5,16 +5,21 @@
  * Uses plain fetch — NOT the api.js axios instance (which injects auth headers).
  */
 
+import { fetchWithTimeout, withRetry } from './fetchRetry'
+
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
+// LOAD-RETRY-1: each try gives up after 12 s and a dropped connection is retried twice, so a visitor never waits on a stalled request.
 async function _get(path) {
-  const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) {
-    const err = new Error(`Catalog API error: ${res.status}`)
-    err.status = res.status
-    throw err
-  }
-  return res.json()
+  return withRetry(async () => {
+    const res = await fetchWithTimeout(`${BASE}${path}`)
+    if (!res.ok) {
+      const err = new Error(`Catalog API error: ${res.status}`)
+      err.status = res.status
+      throw err
+    }
+    return res.json()
+  })
 }
 
 export const getCatalogList = (orgSlug, tagFilters = {}) => {
