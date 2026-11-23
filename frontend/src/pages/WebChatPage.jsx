@@ -247,6 +247,7 @@ export default function WebChatPage({ chatKey }) {
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
   const [picked, setPicked] = useState({})                 // product id -> chosen variant id
+  const [added, setAdded] = useState(null)                 // SHOP-A: {name, size, price, at} right after Add to cart in the chat
   const [rec, setRec] = useState(null)                    // null | { seconds } while recording a voice note
   const recRef = useRef({ mr: null, stream: null, chunks: [], timer: null, cancelled: false, mime: '' })
   const uploadRef = useRef(null)
@@ -673,6 +674,8 @@ export default function WebChatPage({ chatKey }) {
     const vid = picked[p.id] || (p.variants.length === 1 ? p.variants[0].id : undefined)
     if (p.variants.length && !vid) { setError('Please choose an option first.'); return }
     setCart(await changeChatCart(chatKey, token.current, { action: 'add', product_id: p.id, variant_id: vid, qty: 1 }))
+    const v = vid ? p.variants.find((x) => x.id === vid) : null
+    setAdded(panel ? null : { name: p.title, size: v ? v.label : '', price: v ? v.price : p.price, at: messages.length })
   })
   const removeLine = (line) => act(async () => {
     setCart(await changeChatCart(chatKey, token.current, { action: 'remove', product_id: line.pid, variant_id: line.vid || undefined }))
@@ -827,7 +830,7 @@ export default function WebChatPage({ chatKey }) {
   const shown = withoutHeld(hiddenIds ? messages.filter((m) => !hiddenIds.has(m.id)) : messages, held)
   const visitorSpoke = shown.some((m) => m.role === 'visitor')
   const pairOpening = cfg.opening && cfg.opening.style === 'pair' && cfg.opening.main ? cfg.opening : null          // OPENING-CTA-1: one main action + Speak to Chioma
-  const stepHint = contactStep === 'name' ? 'Your first name' : contactStep === 'phone' ? 'Your WhatsApp number' : contactStep === 'email' ? 'Your email (optional)' : contactStep === 'consent' ? 'Reply Yes or No' : 'Type your message'
+  const stepHint = contactStep === 'name' ? 'Your first name' : contactStep === 'phone' ? 'Your WhatsApp number' : contactStep === 'email' ? 'Your email (optional)' : contactStep === 'consent' ? 'Reply Yes or No' : human ? 'Type your message' : 'Type to ask Chioma'
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
   // WEBCHAT-BUBBLE-2: Chioma is the face; once a team member takes over, the header shows them instead (and swaps back when the bot resumes).
   const chioma = cfg.chioma || {}
@@ -862,7 +865,14 @@ export default function WebChatPage({ chatKey }) {
               {withTeam ? (teamWho ? `${cfg.business_name} team` : 'Replying to you here') : waitingLine}
             </div>
           </div>
-          {call && (
+          {cfg.shop_enabled && cart.count > 0 && (
+            <button type="button" aria-label={`Open your cart, ${cart.count} ${cart.count === 1 ? 'item' : 'items'}`} onClick={() => setPanel('cart')}
+              style={{ position: 'relative', width: 48, height: 48, flex: 'none', margin: '-6px 0', border: 0, borderRadius: 999, background: panel === 'cart' ? brand : 'transparent', color: panel === 'cart' ? '#fff' : INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="cart" size={22} />
+              <span aria-hidden="true" style={{ position: 'absolute', top: 2, right: 0, minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 999, background: brand, color: '#fff', fontSize: 12, fontWeight: 700, lineHeight: '18px', textAlign: 'center' }}>{cart.count}</span>
+            </button>
+          )}
+          {call && !cfg.shop_enabled && (
             <button type="button" aria-label="Call us" aria-haspopup="dialog" onClick={openCall}
               style={{ width: 48, height: 48, flex: 'none', margin: '-6px 0', border: 0, borderRadius: 999, background: panel === 'call' ? brand : 'transparent', color: panel === 'call' ? '#fff' : INK, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="phone" size={22} />
@@ -996,6 +1006,16 @@ export default function WebChatPage({ chatKey }) {
             </div>
           )}
 
+          {added && !panel && added.at === messages.length && (
+            <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={S.bubble('bot')}>Added: {added.name}{added.size ? `, ${added.size}` : ''}, {naira(added.price)}. Ready to check out, or keep looking?</div>
+              <div style={S.chips}>
+                <button type="button" style={S.chipPrimary} onClick={() => { setAdded(null); setPanel('cart') }}>View cart</button>
+                <button type="button" style={S.chip} onClick={() => setAdded(null)}>Keep shopping</button>
+              </div>
+            </div>
+          )}
+
           {pairOpening && cfg.menu.length > 0 && !visitorSpoke && !panel && !contactStep && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button type="button" style={{ ...S.chipPrimary, width: '100%', minHeight: 52, fontSize: 16 }} disabled={busy}
@@ -1015,6 +1035,7 @@ export default function WebChatPage({ chatKey }) {
 
           {!pairOpening && cfg.menu.length > 0 && !visitorSpoke && !panel && !contactStep && (
             <div style={S.chips}>
+              {cfg.shop_enabled && <button type="button" style={S.chip} disabled={busy} onClick={openShop}>All products</button>}
               {cfg.menu.map((m) => <button key={m.id} type="button" style={m.primary ? S.chipPrimary : S.chip} disabled={busy} onClick={() => sendMenu(m.id)}>{m.label}</button>)}
             </div>
           )}
@@ -1049,13 +1070,6 @@ export default function WebChatPage({ chatKey }) {
         {error && !sheetOpen && !panel && <div style={S.err} role="alert">{error}</div>}
 
         <div style={S.dock}>
-          {cfg.shop_enabled && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" style={S.action} disabled={busy} onClick={openShop}><Icon name="bag" />Shop</button>
-              <button type="button" style={{ ...S.action, flex: 1.6, background: brand, borderColor: brand, color: '#fff' }} disabled={busy}
-                onClick={() => setPanel('cart')}><Icon name="cart" />Cart ({cart.count}){cart.count > 0 ? ` · ${naira(cart.total)}` : ''}</button>
-            </div>
-          )}
           {rec ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button type="button" aria-label="Cancel and delete recording" onClick={cancelRec}
@@ -1246,6 +1260,17 @@ export default function WebChatPage({ chatKey }) {
                       style={{ flex: 1, minHeight: 96, border: 0, background: 'transparent', color: INK, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                       <span aria-hidden="true" style={{ width: 60, height: 60, borderRadius: 999, background: bg, color: fg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={icon} size={26} /></span>
                       {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {panel === 'menu' && cfg.shop_enabled && (
+                <div role="list" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
+                  {[['All products', openShop, 'bag'], ...(call ? [['Call us', openCall, 'phone']] : [])].map(([label, fn, icon], n) => (
+                    <button key={label} type="button" role="listitem" disabled={busy} onClick={fn}
+                      style={{ minHeight: 52, padding: '0 16px', border: 0, borderTop: n ? `1px solid ${LINE}` : 'none', background: SURF, color: INK, fontSize: 16, fontWeight: 500, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <Icon name={icon} size={20} /><span style={{ flex: 1 }}>{label}</span><span style={{ color: MUTED }}><Icon name="chev" size={18} /></span>
                     </button>
                   ))}
                 </div>
