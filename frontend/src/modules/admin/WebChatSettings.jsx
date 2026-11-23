@@ -272,6 +272,24 @@ export default function WebChatSettings() {
       </div>
 
       <div style={card}>
+        <strong style={{ fontSize: 14, color: ds.dark }}>When Chioma asks for contact details</strong>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, marginTop: 8 }}>
+          <input type="radio" name="wc-askorder" checked={!!cfg.answer_first} onChange={() => set('answer_first', true)} />
+          <span>Answer right away, ask for contact details only when they book or buy</span>
+        </label>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, marginTop: 6 }}>
+          <input type="radio" name="wc-askorder" checked={!cfg.answer_first} onChange={() => set('answer_first', false)} />
+          <span>Ask for contact details before answering the first typed question</span>
+        </label>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, marginTop: 10 }}>
+          <input type="checkbox" checked={cfg.ask_email !== false} onChange={(e) => set('ask_email', e.target.checked)} /> Also offer an optional email (the visitor can skip it)
+        </label>
+        <p style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0' }}>
+          Contact details are a name and a WhatsApp number, plus an email if you leave this on. Chioma never asks after a plain answer.
+        </p>
+      </div>
+
+      <div style={card}>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
           <input type="checkbox" checked={!!cfg.ai_enabled} onChange={(e) => set('ai_enabled', e.target.checked)} /> AI answers typed questions
         </label>

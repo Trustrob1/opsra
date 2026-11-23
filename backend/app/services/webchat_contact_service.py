@@ -29,6 +29,8 @@ _NO = {"no", "n", "nope", "nah", "no thanks", "no thank you", "dont", "do not", 
 
 NAME_Q = "So the team knows who they are replying to, may I have your first name?"
 PHONE_Q = "What is your WhatsApp number?"
+EMAIL_Q = "Would you like to add your email too? It is optional, you can skip."
+SKIP = {"id": "say", "label": "Skip"}
 
 # why the visitor needs to give details (a button they tapped) -> (what Chioma says first, what she says once they are done)
 INTROS = {
@@ -63,7 +65,7 @@ def enabled(cfg: dict) -> bool:
 
 def step_of(s: dict) -> Optional[str]:
     v = (s.get("state") or {}).get("contact_step")
-    return v if v in ("name", "phone", "consent") else None
+    return v if v in ("name", "phone", "email", "consent") else None
 
 
 def _clear(db, s: dict) -> None:
@@ -165,6 +167,8 @@ def can_deflect(s: dict, text: str) -> bool:
         return _clean_name(text) is None and looks_like_question(text)
     if cur == "phone":
         return wc.normalise_phone((text or "").strip()) is None and looks_like_question(text)
+    if cur == "email":
+        return _email_ok(text) is None and not is_skip(text) and looks_like_question(text)
     return not is_yes(text) and not is_no(text) and looks_like_question(text)
 
 
@@ -178,6 +182,8 @@ def reask(db, s: dict, cfg: dict) -> Optional[dict]:
         q = "Now, " + NAME_Q[0].lower() + NAME_Q[1:]
     elif cur == "phone":
         q = "Now, " + PHONE_Q[0].lower() + PHONE_Q[1:]
+    elif cur == "email":
+        q = "Back to your details: " + EMAIL_Q[0].lower() + EMAIL_Q[1:]
     else:
         tmp = (s.get("state") or {}).get("contact_tmp") or {}
         ph = tmp.get("phone") or ""
@@ -187,11 +193,30 @@ def reask(db, s: dict, cfg: dict) -> Optional[dict]:
 
 def shown_text(s: dict, text: str) -> str:
     """What is stored in the transcript for the visitor's reply: the number or email is never kept in the chat text."""
+    if step_of(s) == "email":
+        return "My email address"
     if step_of(s) != "phone":
         return text
     t = (text or "").strip()
     d = re.sub(r"\D", "", t)
     return f"My WhatsApp number (ends {d[-3:]})" if len(d) >= 3 else text
+
+
+def is_skip(text: str) -> bool:
+    """EMAIL-STEP-1: the visitor does not want to give an email."""
+    low = re.sub(r"[^a-z ]", " ", (text or "").lower()).split()
+    return 0 < len(low) <= 4 and (low[0] in ("skip", "no", "nope", "nah", "later", "none") or " ".join(low) in ("not now", "no thanks", "no thank you", "i dont have one", "i do not have one"))
+
+
+def _email_ok(text: str) -> Optional[str]:
+    e = (text or "").strip().lower()
+    return e if wc._EMAIL_RE.match(e) and len(e) <= 200 else None
+
+
+def _ask_consent(db, s, cfg, say, tmp):
+    wc.set_state(db, s, contact_step="consent", contact_tmp=tmp, contact_tries=0)
+    shown = f"the number ending {tmp['phone'][-3:]}" + (" and by email" if tmp.get("email") else "")
+    say(f"Thank you. Is it okay for {cfg.get('business_name') or 'the team'} to contact you on {shown} about your enquiry?")
 
 
 def _first(name: str) -> str:
@@ -238,9 +263,28 @@ def step(db, s: dict, cfg: dict, text: str, finish: Callable[..., dict]) -> dict
         phone = wc.normalise_phone(t)
         if not phone:
             return fail("That number does not look right. Please send your WhatsApp number, like 0803 123 4567.")
-        tmp["phone"], tmp["email"], shown = phone, None, f"the number ending {phone[-3:]}"
-        wc.set_state(db, s, contact_step="consent", contact_tmp=tmp, contact_tries=0)
-        say(f"Thank you. Is it okay for {cfg.get('business_name') or 'the team'} to contact you on {shown} about your enquiry?")
+        tmp["phone"], tmp["email"] = phone, None
+        if cfg.get("ask_email", True):
+            wc.set_state(db, s, contact_step="email", contact_tmp=tmp, contact_tries=0)
+            say(f"Thank you. {EMAIL_Q}")
+            return reply(choices=[SKIP])
+        _ask_consent(db, s, cfg, say, tmp)
+        return reply(choices=[{"id": "say", "label": "Yes"}, {"id": "say", "label": "No"}])
+
+    if cur == "email":
+        if is_skip(t):
+            _ask_consent(db, s, cfg, say, tmp)
+            return reply(choices=[{"id": "say", "label": "Yes"}, {"id": "say", "label": "No"}])
+        em = _email_ok(t)
+        if not em:
+            if tries + 1 >= MAX_TRIES:       # an optional step never sends the visitor to a form: carry on without an email
+                _ask_consent(db, s, cfg, say, tmp)
+                return reply(choices=[{"id": "say", "label": "Yes"}, {"id": "say", "label": "No"}])
+            wc.set_state(db, s, contact_tries=tries + 1)
+            say("That email does not look right. Send it like name@example.com, or tap Skip.")
+            return reply(choices=[SKIP])
+        tmp["email"] = em
+        _ask_consent(db, s, cfg, say, tmp)
         return reply(choices=[{"id": "say", "label": "Yes"}, {"id": "say", "label": "No"}])
 
     if cur == "consent":

@@ -42,7 +42,7 @@ def test_details_then_the_booking_offer_comes_back_with_the_button():
     r = f.handle_message(db, s, cfg, kind="menu", menu_id="whitening")
     assert not r.get("contact_step")                       # NAME-AT-ACTION-1: no name question after a plain answer
     c.start(db, s, cfg, "Happy to help.", optional=True)        # the visitor took an action that needs details
-    for typed in ("Sandra", "08031234567", "yeah sure"):
+    for typed in ("Sandra", "08031234567", "skip", "yeah sure"):
         with patch.object(wc, "notify_managers"):
             r = f.handle_message(db, s, cfg, kind="text", text=typed)
     last = _texts(r)[-1]
@@ -92,7 +92,7 @@ def test_the_consent_step_accepts_yeah_sure():
     s, cfg = _session(db, contact=False), _cfg(db)
     f.handle_message(db, s, cfg, kind="menu", menu_id="hours")
     c.start(db, s, cfg, "Happy to help.", optional=True)        # the visitor took an action that needs details
-    for typed in ("Ada", "08031234567", "yeah sure"):
+    for typed in ("Ada", "08031234567", "skip", "yeah sure"):
         with patch.object(wc, "notify_managers"):
             r = f.handle_message(db, s, cfg, kind="text", text=typed)
     assert any("Thank you" in t for t in _texts(r)) and not r.get("contact_step")
@@ -105,6 +105,8 @@ def test_consent_comes_with_yes_and_no_buttons_and_no_instruction_to_type():
     c.start(db, s, cfg, "Happy to help.", optional=True)        # the visitor took an action that needs details
     f.handle_message(db, s, cfg, kind="text", text="Ada")
     r = f.handle_message(db, s, cfg, kind="text", text="08031234567")
+    assert [ch["label"] for ch in r["choices"]] == ["Skip"]                 # EMAIL-STEP-1: the email is optional
+    r = f.handle_message(db, s, cfg, kind="text", text="skip")
     assert [ch["label"] for ch in r["choices"]] == ["Yes", "No"] and all(ch["id"] == "say" for ch in r["choices"])
     assert "Reply Yes or No" not in _texts(r)[-1]
 

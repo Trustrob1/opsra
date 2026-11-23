@@ -68,6 +68,7 @@ DEFAULT_CONFIG: dict = {
     "wa_template_name": "",
     "wa_template_lang": "en",
     "wa_monthly_cap": 100,
+    "ask_email": True,            # EMAIL-STEP-1: after the number, the in-chat details script offers an optional email (the visitor can skip)
     "contact_in_chat": True,      # WEBCHAT-CONTACT-1: ask for name / number / consent in the chat itself (False = the pop-up form)
     "fresh_after_hours": 24,      # WEBCHAT-CONTACT-1: a visitor back after this many idle hours gets a fresh view (0 = always show the full history)
     "email_followups": True,      # WEBCHAT-4: email replies / confirmations to visitors who gave an email and consent
@@ -193,6 +194,8 @@ def sanitise_config(raw: dict) -> dict:
             out["wa_monthly_cap"] = 100
     if "contact_in_chat" in raw:
         out["contact_in_chat"] = bool(raw["contact_in_chat"])
+    if "ask_email" in raw:
+        out["ask_email"] = bool(raw["ask_email"])
     if "fresh_after_hours" in raw:
         try:
             out["fresh_after_hours"] = max(0, min(int(raw["fresh_after_hours"]), 720))

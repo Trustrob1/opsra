@@ -405,9 +405,10 @@ class TestContactInChat:
         r = self._go(db, s, cfg, "my name is Ada Obi")
         assert r["contact_step"] == "phone" and "Nice to meet you, Ada" in r["messages"][-1]["text"]
         r = self._go(db, s, cfg, "0803 123 4567")
-        assert r["contact_step"] == "consent" and "ending 567" in r["messages"][-1]["text"]
         assert r["messages"][0]["text"] == "My WhatsApp number (ends 567)"          # the number is not kept in the chat text
-        assert "0803" not in str(s.get("state"))[:0] + r["messages"][0]["text"]
+        assert r["contact_step"] == "email" and "optional" in r["messages"][-1]["text"]
+        r = self._go(db, s, cfg, "Skip")
+        assert r["contact_step"] == "consent" and "ending 567" in r["messages"][-1]["text"]
         r = self._go(db, s, cfg, "Yes")
         texts = [m["text"] for m in r["messages"]]
         assert r["contact_step"] is None and "Thank you. We have your details." in texts and "Yes we do braids." in texts
@@ -435,6 +436,8 @@ class TestContactInChat:
         r = self._go(db, s, cfg, "ada@example.com")
         assert r["contact_step"] == "phone" and "email" not in r["messages"][-1]["text"].lower()     # an email is not accepted, and never offered
         r = self._go(db, s, cfg, "08031234567")
+        assert r["contact_step"] == "email"
+        r = self._go(db, s, cfg, "skip")
         assert r["contact_step"] == "consent"
         r = self._go(db, s, cfg, "no thanks")
         assert r["contact_step"] is None and "I will not keep your details" in r["messages"][-1]["text"] and not s.get("lead_id")
@@ -507,6 +510,7 @@ class TestContactStartFromButtons:
              patch("app.services.lead_service.create_lead", return_value={"id": "L9"}), _claude("x"):
             f.handle_message(db, s, cfg, kind="text", text="Ada")
             f.handle_message(db, s, cfg, kind="text", text="08031234567")
+            f.handle_message(db, s, cfg, kind="text", text="skip")
             r = f.handle_message(db, s, cfg, kind="text", text="yes")
         assert "Tap Cart to check out." in [m["text"] for m in r["messages"]]
 

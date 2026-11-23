@@ -827,7 +827,7 @@ export default function WebChatPage({ chatKey }) {
   const shown = withoutHeld(hiddenIds ? messages.filter((m) => !hiddenIds.has(m.id)) : messages, held)
   const visitorSpoke = shown.some((m) => m.role === 'visitor')
   const pairOpening = cfg.opening && cfg.opening.style === 'pair' && cfg.opening.main ? cfg.opening : null          // OPENING-CTA-1: one main action + Speak to Chioma
-  const stepHint = contactStep === 'name' ? 'Your first name' : contactStep === 'phone' ? 'Your WhatsApp number' : contactStep === 'consent' ? 'Reply Yes or No' : 'Type your message'
+  const stepHint = contactStep === 'name' ? 'Your first name' : contactStep === 'phone' ? 'Your WhatsApp number' : contactStep === 'email' ? 'Your email (optional)' : contactStep === 'consent' ? 'Reply Yes or No' : 'Type your message'
   const lastRepIdx = messages.reduce((a, m, i) => (m.role === 'rep' ? i : a), -1)
   // WEBCHAT-BUBBLE-2: Chioma is the face; once a team member takes over, the header shows them instead (and swaps back when the bot resumes).
   const chioma = cfg.chioma || {}
@@ -1081,7 +1081,7 @@ export default function WebChatPage({ chatKey }) {
             <form onSubmit={sendText} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <button type="button" aria-label="Attach a file" onClick={onAttach} disabled={!!editing} style={{ ...S.iconBtn, color: MUTED, opacity: editing ? 0.4 : 1 }}><Icon name="clip" size={22} /></button>
               <label htmlFor="wc-text" style={{ position: 'absolute', left: '-9999px' }}>Type your message</label>
-              <input id="wc-text" ref={inputRef} style={S.input} value={text} maxLength={1000} placeholder={stepHint} autoComplete="off" inputMode={contactStep === 'phone' ? 'tel' : undefined}
+              <input id="wc-text" ref={inputRef} style={S.input} value={text} maxLength={1000} placeholder={stepHint} autoComplete="off" inputMode={contactStep === 'phone' ? 'tel' : contactStep === 'email' ? 'email' : undefined}
                 onChange={(e) => {
                   setText(e.target.value)
                   if (e.target.value.trim() && token.current && Date.now() - typingPing.current > 3000) { typingPing.current = Date.now(); pingTyping(chatKey, token.current) }   // the team's inbox shows "typing"
