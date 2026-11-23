@@ -28,7 +28,7 @@ def test_default_has_no_campaigns():
 
 def test_clean_keeps_good_entries_and_defaults_the_label():
     out = wc.sanitise_config({"campaigns": [{"tag": "Lekki-3-Bed", "label": "  Lekki  ", "main": "Inspect", "greeting": " Hello "}, {"tag": "x1"}]})["campaigns"]
-    assert out[0] == {"tag": "lekki-3-bed", "label": "Lekki", "main": "inspect", "main_label": "", "greeting": "Hello", "shortcuts": [], "image": "", "video": ""}
+    assert out[0] == {"tag": "lekki-3-bed", "label": "Lekki", "main": "inspect", "main_label": "", "greeting": "Hello", "shortcuts": [], "product": "", "image": "", "video": ""}
     assert out[1]["label"] == "x1" and out[1]["main"] == "" and out[1]["greeting"] == ""
 
 

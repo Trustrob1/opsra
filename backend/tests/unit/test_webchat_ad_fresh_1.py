@@ -58,7 +58,7 @@ def test_resume_route_restarts_carries_details_or_resumes():
     anon = {"id": "s1", "source": "catalog", "lead_id": None, "org_id": "o1"}
     known = {"id": "s2", "source": "catalog", "lead_id": "lead-1", "org_id": "o1", "contact_name": "Jake"}
     newsess = {"id": "s3", "org_id": "o1", "source": "elite-cool-sales", "lead_id": "lead-1"}
-    with patch.object(pw, "_chat", return_value=found), patch.object(pw, "_embed_guard"), patch.object(pw, "_snapshot", side_effect=lambda s, c, m: {"sid": s["id"]}), \
+    with patch.object(pw, "_chat", return_value=found), patch.object(pw, "_embed_guard"), patch.object(pw, "_snapshot", side_effect=lambda s, c, m, ad=None: {"sid": s["id"]}), \
          patch.object(wc, "list_messages", return_value=[]), patch.object(wc, "rate_limited", return_value=False), patch.object(wc, "log_event"), \
          patch.object(pw, "_first_messages", return_value=[]), patch.object(wc, "carry_session", return_value=(newsess, "tok-new")):
         with patch.object(pw, "_session", return_value=anon):

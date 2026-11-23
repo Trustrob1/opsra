@@ -212,6 +212,7 @@ function ProductCard({ p, S, brand, busy, picked, setPicked, onAdd }) {
 export default function WebChatPage({ chatKey }) {
   const [state, setState] = useState('loading')           // loading | ready | closed | blocked | error
   const [cfg, setCfg] = useState(null)
+  const [adProduct, setAdProduct] = useState(null)          // AD-PRODUCT-1: the card of the product this ad is about
   const [messages, setMessages] = useState([])
   const [hasContact, setHasContact] = useState(false)
   const [verified, setVerified] = useState(false)
@@ -286,6 +287,7 @@ export default function WebChatPage({ chatKey }) {
 
   const apply = useCallback((snap) => {
     setCfg(snap.config)
+    setAdProduct(snap.ad_product || null)
     setMessages(snap.messages || [])
     const fold = !!snap.returning && (snap.messages || []).length > 0
     setHiddenIds(fold ? new Set(snap.messages.map((m) => m.id)) : null)
@@ -948,7 +950,7 @@ export default function WebChatPage({ chatKey }) {
                 // ONLY-1c-DOWN: the server's buttons win (they fit the clock: Leave a message after hours, Call us inside hours).
                 const mine = visibleChoices(choices, m, i === shown.length - 1, { hasHumanItem: !!humanItem, humanActive: human, callOn: !!call })
                 if (mine.length) {
-                  const onTap = { menu: openMenu, human: () => sendMenu(humanItem.id), call: openCall }
+                  const onTap = { menu: openMenu, human: () => sendMenu(humanItem.id), call: openCall, shop: openShop }
                   const tapChoice = (c) => (c.id === 'item' ? () => sendMenu(c.menu_id) : c.id === 'say' ? () => sendOptimistic(c.label, { kind: 'text', text: c.label }) : onTap[c.id])
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
@@ -1016,6 +1018,10 @@ export default function WebChatPage({ chatKey }) {
             </div>
           )}
 
+          {adProduct && !visitorSpoke && !panel && !contactStep && (
+            <ProductCard p={adProduct} S={S} brand={brand} busy={busy} picked={picked} setPicked={setPicked} onAdd={addToCart} />
+          )}
+
           {pairOpening && cfg.menu.length > 0 && !visitorSpoke && !panel && !contactStep && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button type="button" style={{ ...S.chipPrimary, width: '100%', minHeight: 52, fontSize: 16 }} disabled={busy}
@@ -1023,6 +1029,7 @@ export default function WebChatPage({ chatKey }) {
               {pairOpening.shortcuts && pairOpening.shortcuts.length > 0 ? (
                 <div style={S.chips}>
                   {pairOpening.shortcuts.map((c) => <button key={c.id} type="button" style={S.chip} disabled={busy} onClick={() => sendMenu(c.id)}>{c.label}</button>)}
+                  {adProduct && cfg.shop_enabled && pairOpening.main.kind !== 'shop' && <button type="button" style={S.chip} disabled={busy} onClick={openShop}>See other products</button>}
                   <button type="button" style={{ ...S.chip, background: 'transparent', color: brand, borderColor: brand, fontWeight: 600 }} disabled={busy} onClick={() => openMenu(true)}>{pairOpening.more_label || 'More options'}</button>
                 </div>
               ) : !speakOpen ? (

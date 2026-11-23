@@ -320,6 +320,7 @@ RESERVED_TAGS = ("instagram", "qr", "site", "facebook", "google", "whatsapp_stat
 
 
 SHORTCUTS_MAX = 4
+SHORTCUT_ANSWER_MAX = 600        # AD-PRODUCT-1: the owner's own wording for one shortcut of one ad
 
 
 def clean_shortcuts(raw) -> list:
@@ -331,7 +332,8 @@ def clean_shortcuts(raw) -> list:
         if not sid or sid in seen:
             continue
         seen.add(sid)
-        out.append({"id": sid, "label": _clean_text(it.get("label"), 30) if isinstance(it, dict) else ""})
+        out.append({"id": sid, "label": _clean_text(it.get("label"), 30) if isinstance(it, dict) else "",
+                    "answer": _clean_text(it.get("answer"), SHORTCUT_ANSWER_MAX) if isinstance(it, dict) else ""})
         if len(out) >= SHORTCUTS_MAX:
             break
     return out
@@ -353,11 +355,13 @@ def clean_campaigns(raw) -> list:
                     "main_label": _clean_text(it.get("main_label"), 40),
                     "greeting": _clean_text(it.get("greeting"), 400),
                     "shortcuts": clean_shortcuts(it.get("shortcuts")),
+                    "product": (str(it.get("product")).strip() if isinstance(it.get("product"), str) and AD_PRODUCT_ID.match(it["product"].strip()) else ""),
                     "image": (str(it.get("image")) if isinstance(it.get("image"), str) and AD_IMAGE_KEY.match(it["image"]) else ""),
                     "video": (str(it.get("video")) if isinstance(it.get("video"), str) and AD_VIDEO_KEY.match(it["video"]) else "")})
     return out
 
 
+AD_PRODUCT_ID = re.compile(r"^[A-Za-z0-9_-]{1,60}$")          # AD-PRODUCT-1: a catalogue product id (checked against the business's own catalogue before use)
 AD_IMAGE_KEY = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp)$")      # OPENING-CTA-5: the picture is a file the owner uploaded through Opsra, named by a random key
 AD_VIDEO_KEY = re.compile(r"^[0-9a-f]{32}\.(mp4|webm)$")          # OPENING-CTA-6: a video the owner uploaded, same idea as the picture
 AD_VIDEO_MAX_BYTES = 25 * 1024 * 1024
@@ -434,6 +438,21 @@ def carry_session(db, old: dict, source) -> tuple[dict, str]:
         except Exception as exc:
             logger.warning("webchat carry details failed: %s", exc)
     return new, token
+
+
+def ad_shortcuts(cfg: dict, source=None) -> list:
+    """AD-PRODUCT-1: the shortcut buttons of the ad this chat came from that still exist in the menu (same rules as the opening screen), each with
+    its label, the menu item and the owner's own answer for this ad (may be empty)."""
+    camp = campaign_for(cfg, source)
+    if not camp:
+        return []
+    items = {m.get("id"): m for m in (cfg.get("menu") or []) if m.get("id") and m.get("action") != "human"}
+    out = []
+    for sc in camp.get("shortcuts") or []:
+        m = items.get(sc.get("id"))
+        if m and m.get("id") != camp.get("main"):
+            out.append({"id": m["id"], "label": sc.get("label") or str(m.get("label") or ""), "answer": sc.get("answer") or "", "item": m})
+    return out[:SHORTCUTS_MAX]
 
 
 def greeting_for(cfg: dict, source=None) -> str:

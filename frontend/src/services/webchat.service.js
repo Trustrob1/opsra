@@ -111,6 +111,10 @@ export async function getWebchatSettings() {
   return r.data.data
 }
 
+// AD-PRODUCT-1: the catalogue products an ad can be about (id, title, price); [] when there is nothing to pick
+export const getWebchatProducts = () =>
+  api.get('/api/v1/webchat/products').then((r) => r?.data?.data?.products || []).catch(() => [])
+
 // OPENING-CTA-5: the picture for one ad. Returns { image: key to save on the ad, url: where it shows }.
 export async function uploadWebchatAdImage(file) {
   const fd = new FormData()

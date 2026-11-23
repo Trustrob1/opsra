@@ -7,9 +7,9 @@
  *   3. An ad that goes to a website  -> the website address with ?chioma=<tag>, plus a button that opens the chat on that action
  * The ad's words live on the server (cfg.campaigns); the link only carries the tag. Results per ad show in Chat insights, by source.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ds } from '../../utils/ds'
-import { uploadWebchatAdImage, uploadWebchatAdVideo, chatErrorMessage } from '../../services/webchat.service'
+import { uploadWebchatAdImage, uploadWebchatAdVideo, getWebchatProducts, chatErrorMessage } from '../../services/webchat.service'
 import { shrinkImage } from './imageShrink'
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
@@ -54,16 +54,19 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
   const [busy, setBusy] = useState(-1)
   const [vbusy, setVbusy] = useState(-1)
   const [vurls, setVurls] = useState({})
+  const [products, setProducts] = useState([])          // AD-PRODUCT-1: catalogue products an ad can be about
+  useEffect(() => { let on = true; getWebchatProducts().then((r) => { if (on) setProducts(r) }); return () => { on = false } }, [])
   const camps = Array.isArray(cfg.campaigns) ? cfg.campaigns : []
   const items = (cfg.menu || []).filter((m) => m.action !== 'human')
   const copy = (t) => { try { navigator.clipboard.writeText(t); setMsg('Copied.') } catch { setMsg(t) } }
   const upd = (i, patch) => set('campaigns', camps.map((c, j) => (j === i ? { ...c, ...patch } : c)))
   const defaultMain = cfg.shop_enabled ? 'shop' : (items[0] && items[0].id) || ''
-  const add = () => { set('campaigns', [...camps, { tag: '', label: '', main: defaultMain, main_label: '', greeting: '', shortcuts: items.filter((m) => m.id !== defaultMain).slice(0, 4).map((m) => ({ id: m.id, label: '' })) }]); setOpen(camps.length) }
+  const add = () => { set('campaigns', [...camps, { tag: '', label: '', main: defaultMain, main_label: '', greeting: '', shortcuts: items.filter((m) => m.id !== defaultMain).slice(0, 4).map((m) => ({ id: m.id, label: '', answer: '' })), product: '' }]); setOpen(camps.length) }
   const toggleShortcut = (i, c, id, on) => {                               // AD-SHORTCUTS-1: up to four of your chat buttons shown under the main button
     const cur = Array.isArray(c.shortcuts) ? c.shortcuts : []
-    upd(i, { shortcuts: on ? (cur.length >= 4 ? cur : [...cur, { id, label: '' }]) : cur.filter((s) => s.id !== id) })
+    upd(i, { shortcuts: on ? (cur.length >= 4 ? cur : [...cur, { id, label: '', answer: '' }]) : cur.filter((s) => s.id !== id) })
   }
+  const answerShortcut = (i, c, id, text) => upd(i, { shortcuts: (c.shortcuts || []).map((s) => (s.id === id ? { ...s, answer: text } : s)) })      // AD-PRODUCT-1: this ad's own answer for one button
   const renameShortcut = (i, c, id, text) => upd(i, { shortcuts: (c.shortcuts || []).map((s) => (s.id === id ? { ...s, label: text } : s)) })
   const remove = (i) => { if (window.confirm('Remove this ad? Its links will show your normal chat.')) { set('campaigns', camps.filter((_, j) => j !== i)); setOpen(0) } }
   const pick = async (i, file) => {
@@ -130,6 +133,13 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
                 </select>
                 <label style={label} htmlFor={`ad-ml-${i}`}>Words on that button (optional)</label>
                 <input id={`ad-ml-${i}`} style={{ ...input, maxWidth: 320 }} maxLength={40} value={c.main_label || ''} onChange={(e) => upd(i, { main_label: e.target.value })} placeholder="Book inspection" />
+                <label style={label} htmlFor={`ad-prod-${i}`}>Product this ad is about (optional)</label>
+                <select id={`ad-prod-${i}`} style={{ ...input, maxWidth: 320 }} value={c.product || ''} onChange={(e) => upd(i, { product: e.target.value })}>
+                  <option value="">No one product (a general ad)</option>
+                  {c.product && !products.some((p) => p.id === c.product) && <option value={c.product}>Chosen product (not in the list)</option>}
+                  {products.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+                <p style={small}>People from this ad see that product first, with its price and an Add to cart button. Chioma knows which product they mean when they ask a question, and a “See other products” button shows the rest.</p>
                 {c.main && (
                   <>
                     <p style={{ ...label, marginBottom: 4 }}>Quick questions under the main button (up to 4)</p>
@@ -143,6 +153,9 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
                             <input type="checkbox" checked={!!sc} disabled={full} onChange={(e) => toggleShortcut(i, c, m.id, e.target.checked)} /> {m.label}
                           </label>
                           {sc && <input aria-label={`Words on the ${m.label} button for this ad`} style={{ ...input, maxWidth: 220 }} maxLength={30} value={sc.label || ''} placeholder={m.label} onChange={(e) => renameShortcut(i, c, m.id, e.target.value)} />}
+                          {sc && <textarea aria-label={`Answer to ${m.label} for this ad`} rows={2} style={{ ...input, flex: '1 1 100%', resize: 'vertical' }} maxLength={600} value={sc.answer || ''}
+                            placeholder={c.product ? 'Answer for this product (optional). Left empty: the general answer, then a line about the product from your catalogue.' : 'Answer for this ad (optional). Left empty: the general answer.'}
+                            onChange={(e) => answerShortcut(i, c, m.id, e.target.value)} />}
                         </div>
                       )
                     })}

@@ -128,8 +128,9 @@ def _returning(s: dict, cfg: dict, messages: list) -> bool:
     return bool(hours > 0 and messages and float(s.get("_idle_s") or 0) >= hours * 3600)
 
 
-def _snapshot(s: dict, cfg: dict, messages: list) -> dict:
+def _snapshot(s: dict, cfg: dict, messages: list, ad_product=None) -> dict:
     return {
+        "ad_product": ad_product,          # AD-PRODUCT-1: the card of the product the ad is about (None when the ad has none)
         "messages": messages, "has_contact": bool(s.get("lead_id")), "name": s.get("contact_name"),
         "verified_phone": bool(s.get("phone_verified")), "needs_email": bool(s.get("phone_verified") and not s.get("contact_email")),
         "human": wc.is_human(s, cfg), "config": wc.public_view(cfg, s.get("source"), s.get("org_id")),
@@ -222,7 +223,7 @@ def start_session(key: str, body: StartBody, request: Request, response: Respons
         if iph and wc.rate_limited(f"sessburst:{key}:{iph}", 5, 600):          # SAFE: five new chats from one address in ten minutes: the first message gets a check
             wc.set_state(db, s, check_first=True)
     msgs = _first_messages(db, org_id, cfg, s)
-    snap = _snapshot(s, cfg, msgs)
+    snap = _snapshot(s, cfg, msgs, shop.ad_product(db, s, cfg))
     snap["token"] = token
     return ok(snap)
 
@@ -239,13 +240,13 @@ def resume_session(key: str, response: Response, authorization: Optional[str] = 
         if not s.get("lead_id"):
             return ok({"restart": True})                           # nobody to carry over: the page starts a normal fresh chat
         if wc.rate_limited(f"carry:{s['id']}", 3, 3600):
-            return ok(_snapshot(s, found["config"], wc.list_messages(db, s)))
+            return ok(_snapshot(s, found["config"], wc.list_messages(db, s), shop.ad_product(db, s, found["config"])))
         ns, token = wc.carry_session(db, s, s_)                    # AD-FRESH-2: same person, new chat for this ad
         wc.log_event(db, ns.get("org_id") or s.get("org_id"), ns.get("id"), "visit", s_)
-        snap = _snapshot(ns, found["config"], _first_messages(db, s["org_id"], found["config"], ns))
+        snap = _snapshot(ns, found["config"], _first_messages(db, s["org_id"], found["config"], ns), shop.ad_product(db, ns, found["config"]))
         snap["token"] = token
         return ok(snap)
-    return ok(_snapshot(s, found["config"], wc.list_messages(db, s)))
+    return ok(_snapshot(s, found["config"], wc.list_messages(db, s), shop.ad_product(db, s, found["config"])))
 
 
 @router.get("/public/webchat/{key}/messages")

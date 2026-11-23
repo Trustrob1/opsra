@@ -31,7 +31,7 @@ def test_clean_shortcuts_caps_at_four_dedupes_and_cleans():
 
 def test_campaign_keeps_its_shortcuts():
     cfg = _cfg(shortcuts=[{"id": "prices", "label": "Prices"}, {"id": "choose"}])
-    assert cfg["campaigns"][0]["shortcuts"] == [{"id": "prices", "label": "Prices"}, {"id": "choose", "label": ""}]
+    assert cfg["campaigns"][0]["shortcuts"] == [{"id": "prices", "label": "Prices", "answer": ""}, {"id": "choose", "label": "", "answer": ""}]
     assert wc.sanitise_config({"campaigns": [{"tag": "t", "main": "shop", "shortcuts": [{"id": "prices"}]}]})["campaigns"][0]["shortcuts"][0]["id"] == "prices"
 
 
@@ -65,5 +65,5 @@ def test_frontend_wiring():
     assert "onClick={() => openMenu(true)}>{pairOpening.more_label || 'More options'}</button>" in p
     a = (FE / "modules" / "admin" / "WebChatAdLinks.jsx").read_text(encoding="utf-8")
     assert "Quick questions under the main button (up to 4)" in a
-    assert "slice(0, 4).map((m) => ({ id: m.id, label: '' }))" in a
+    assert "slice(0, 4).map((m) => ({ id: m.id, label: '', answer: '' }))" in a
     assert "cur.length >= 4 ? cur" in a

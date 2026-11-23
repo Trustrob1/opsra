@@ -184,6 +184,30 @@ def _guide_answer(db, s: dict, cfg: dict, out: list, g: dict, text: str) -> Opti
     return _to_team(db, s, cfg, out, "New request: " + summary, reply_text=done)
 
 
+def _ad_shortcut_tap(cfg: dict, s: dict, item: dict):
+    """AD-PRODUCT-1: the visitor tapped one of the shortcut buttons of the ad their chat came from; its entry, or None."""
+    return next((sc for sc in wc.ad_shortcuts(cfg, s.get("source")) if sc["id"] == item.get("id")), None)
+
+
+def _ad_shortcut_text(db, s: dict, cfg: dict, item: dict, sc: dict) -> str:
+    """The owner's wording for this shortcut on this ad when they wrote one. Otherwise the menu item's general answer, followed (when the ad is
+    about a catalogue product) by one line from the catalogue about that product. Nothing is invented."""
+    if sc.get("answer"):
+        return sc["answer"]
+    base = _answer_text(item)
+    line = webchat_shop_service.product_line(db, s, cfg)
+    return f"{base}\n\n{line}" if line else base
+
+
+def _ad_followups(cfg: dict, s: dict, item: dict) -> list:
+    """AD-PRODUCT-1: the buttons under a shortcut's answer: the ad's other shortcuts, then See other products (when the shop is on) and More options."""
+    out = [smart._item_choice({"id": sc["id"], "label": sc["label"]}) for sc in wc.ad_shortcuts(cfg, s.get("source")) if sc["id"] != item.get("id")]
+    if cfg.get("shop_enabled"):
+        out.append({"id": "shop", "label": "See other products"})
+    out.append({"id": "menu", "label": "More options"})
+    return out
+
+
 def _answer_text(item: dict) -> str:
     text = item.get("answer") or ""
     link = item.get("link")
@@ -378,11 +402,13 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             out.append(wc.append_message(db, s, "bot", "Great. Fill in the details below and we will confirm."))
             form = "booking"
     elif item:
-        out.append(wc.append_message(db, s, "bot", _answer_text(item)))
-        bk_offer = _booking_offer(cfg, _answer_text(item)) if item.get("action") != "booking" else None
+        ad_sc = _ad_shortcut_tap(cfg, s, item) if kind == "menu" else None
+        reply_text = _ad_shortcut_text(db, s, cfg, item, ad_sc) if ad_sc else _answer_text(item)          # AD-PRODUCT-1: this ad's own wording, or the general answer plus a catalogue line
+        out.append(wc.append_message(db, s, "bot", reply_text))
+        bk_offer = _booking_offer(cfg, reply_text) if item.get("action") != "booking" else None
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1, open_offer=(bk_offer or {}).get("id"))
         just_answered = True
-        choices = smart.related(cfg, item)                # SMART-1: where to go next, so the visitor is never at a dead end
+        choices = _ad_followups(cfg, s, item) if ad_sc else smart.related(cfg, item)                # SMART-1: where to go next, so the visitor is never at a dead end
     elif kind == "text" and (info := smart.info_answer(cfg, visitor_text)):
         out.append(wc.append_message(db, s, "bot", info))           # SMART-1: hours, phone, address from the business's own details, free
         wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)

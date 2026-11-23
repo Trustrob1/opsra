@@ -177,7 +177,7 @@ def test_router_flags_a_new_chat_after_a_burst_of_new_chats():
         wc, resolve_key=lambda db, k: {"org_id": ORG, "config": {"greeting": "Hi"}}, create_session=lambda db, org, **kw: (sess, "tok"),
         log_event=lambda *a, **k: None, list_messages=lambda db, s: [{"id": "m"}], rate_limited=lambda b, *a, **k: b.startswith("sessburst:"),
         set_state=lambda db, s, **kv: flagged.update(kv))
-    with monkey, patch.object(r, "_embed_guard"), patch.object(r, "_pause_guard"), patch.object(r, "_snapshot", lambda s, cfg, msgs: {}):
+    with monkey, patch.object(r, "_embed_guard"), patch.object(r, "_pause_guard"), patch.object(r, "_snapshot", lambda s, cfg, msgs, ad=None: {}):
         class Resp:
             headers = {}
 

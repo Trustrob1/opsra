@@ -238,6 +238,16 @@ def get_settings(db=Depends(get_supabase), org=Depends(get_current_org)):
                "embed": {"tag": embed.script_tag(wc.public_base(), key), "seen": embed.seen_list(db, org["org_id"])}})
 
 
+@router.get("/webchat/products")
+def ad_products(db=Depends(get_supabase), org=Depends(get_current_org)):
+    """AD-PRODUCT-1: the business's catalogue products (id, title, price) for the 'Product this ad is about' picker in the ad settings."""
+    _require_manager(org)
+    from app.services import webchat_shop_service as shop
+    rows = shop._fetch_all(db, org["org_id"])
+    rows = sorted(rows, key=lambda r: str(r.get("title") or "").lower())[:300]
+    return ok({"products": [{"id": str(r["id"]), "title": str(r.get("title") or "")[:80], "price": shop._num(r.get("price"))} for r in rows]})
+
+
 @router.get("/webchat/embed-seen")
 def embed_seen(db=Depends(get_supabase), org=Depends(get_current_org)):
     """WEBCHAT-EMBED-2: websites that have loaded the bubble, newest first (powers 'Check installation')."""

@@ -249,6 +249,67 @@ def _cut_at_sentence(text: str, n: int) -> str:
     return head.rsplit(" ", 1)[0].rstrip(",;:- ") + "..."
 
 
+LINE_DESC_CHARS = 200
+
+
+def _ad_product_row(db, s: dict, cfg: dict) -> Optional[dict]:
+    """AD-PRODUCT-1: the catalogue product the ad this chat came from is about, checked against THIS business's catalogue (unknown, other-business
+    or untitled ids give None). Never raises."""
+    try:
+        camp = wc.campaign_for(cfg, s.get("source")) or {}
+        pid = str(camp.get("product") or "").strip()
+        if not pid:
+            return None
+        p = _fetch_one(db, s["org_id"], pid)
+        return p if p and (p.get("title") or "").strip() else None
+    except Exception as exc:
+        logger.warning("webchat ad product failed org=%s: %s", s.get("org_id"), exc)
+        return None
+
+
+def ad_product(db, s: dict, cfg: dict) -> Optional[dict]:
+    """AD-PRODUCT-1: the visitor came from an ad about one product. The chat remembers it (state.viewing, the same as opening the chat from a
+    product page, so typed questions are about it) and returns its card for the opening screen. The card is None when the shop is off or the
+    product is out of stock (the chat still knows the product). Never raises."""
+    p = _ad_product_row(db, s, cfg)
+    if not p:
+        return None
+    try:
+        card = _card(p)
+        if (s.get("state") or {}).get("viewing") != card["id"]:
+            wc.set_state(db, s, viewing=card["id"], viewing_title=card["title"])
+        if not cfg.get("shop_enabled") or p.get("available") is False:
+            return None
+        return card
+    except Exception as exc:
+        logger.warning("webchat ad product card failed org=%s: %s", s.get("org_id"), exc)
+        return None
+
+
+def product_line(db, s: dict, cfg: dict) -> str:
+    """AD-PRODUCT-1: one short line from the catalogue about the ad's product (name, the start of its description, price, stock), added under a
+    shortcut's general answer when the owner wrote no answer of their own for this ad. Only what the catalogue holds. '' when there is nothing."""
+    p = _ad_product_row(db, s, cfg)
+    if not p:
+        return ""
+    try:
+        title = str(p.get("title") or "")[:80]
+        desc = " ".join(str(p.get("catalog_description") or p.get("description") or "").split())
+        price = _num(p.get("price"))
+        facts = []
+        if price > 0:
+            facts.append(f"From {_money(price)}" if len(p.get("variants") or []) > 1 else _money(price))
+        facts.append("In stock" if _stock_state(p, None) is None else "Out of stock right now")
+        parts = [f"About the {title}:"]
+        if desc:
+            parts.append(_cut_at_sentence(desc, LINE_DESC_CHARS))
+        parts.append(". ".join(facts) + ".")
+        return " ".join(parts)
+    except Exception as exc:
+        logger.warning("webchat product line failed org=%s: %s", s.get("org_id"), exc)
+        return ""
+
+
 def product_answer(db, s: dict, cfg: dict, question: str) -> Optional[str]:
     """WEBCHAT-CATALOG-1b: no AI answer was possible (AI off, no credit, ...) but the visitor is looking at a product
     (state.viewing, set from the Storefront). Reply from THIS business's own catalogue text instead of 'I did not catch that':
