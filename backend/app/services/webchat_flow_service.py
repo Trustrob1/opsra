@@ -184,6 +184,28 @@ def _guide_answer(db, s: dict, cfg: dict, out: list, g: dict, text: str) -> Opti
     return _to_team(db, s, cfg, out, "New request: " + summary, reply_text=done)
 
 
+def _product_focus(db, s: dict, cfg: dict, text: str, out: list):
+    """PRODUCT-ASK-1: a chat with a product in focus (an ad, a product page) or in the cart. (1) The visitor answers 'Which one do you mean?': that
+    product becomes the focus and the question they first asked is answered about it. (2) A typed product name moves the focus to that product.
+    (3) A product-specific question that names none, with two or more products in play, gets 'Which one do you mean?' with a button for each.
+    Returns a finished reply, or None to carry on as normal."""
+    pend = (s.get("state") or {}).get("ask_which")
+    if pend:
+        wc.set_state(db, s, ask_which=None)                              # asked once: whatever they do next, the question is settled
+        pick = webchat_shop_service.pick_from(db, s, pend, text)
+        if pick:
+            fb = webchat_shop_service.product_answer(db, s, cfg, pend.get("q") or "") or cfg.get("_fallback_base") or cfg.get("fallback")
+            res = handle_message(db, s, {**cfg, "fallback": fb}, kind="text", text=pend.get("q") or "", _replay=True)
+            res["messages"] = out + list(res.get("messages") or [])
+            return res
+    r = webchat_shop_service.focus_check(db, s, cfg, text)
+    if r.get("ask"):
+        out.append(wc.append_message(db, s, "bot", "Which one do you mean?"))
+        return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False,
+                "choices": [{"id": "say", "label": c["title"]} for c in r["ask"]]}
+    return None
+
+
 def _ad_shortcut_tap(cfg: dict, s: dict, item: dict):
     """AD-PRODUCT-1: the visitor tapped one of the shortcut buttons of the ad their chat came from; its entry, or None."""
     return next((sc for sc in wc.ad_shortcuts(cfg, s.get("source")) if sc["id"] == item.get("id")), None)
@@ -333,6 +355,8 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             return res
         state = s.get("state") or {}
 
+    if kind == "menu" and state.get("ask_which"):
+        wc.set_state(db, s, ask_which=None)                  # PRODUCT-ASK-1: they tapped a button instead of answering which product: the question is dropped
     if kind == "menu" and state.get("guide"):
         wc.set_state(db, s, guide=None)                    # they tapped something else: the guided questions are dropped
     if kind == "text" and state.get("guide") and not _replay:
@@ -353,6 +377,11 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
             if sc.get("blocked"):
                 _notify_human(db, s, cfg, "The assistant was switched off for this chat after repeated attempts to override it.")
             return {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False}
+
+    if kind == "text" and not _replay:
+        asked = _product_focus(db, s, cfg, visitor_text, out)          # PRODUCT-ASK-1: which product does the visitor mean
+        if asked is not None:
+            return asked
 
     loose_item = None
     if item is None:

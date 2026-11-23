@@ -293,7 +293,7 @@ def post_message(key: str, body: MessageBody, response: Response, authorization:
         # that" line is replaced by the product's own catalogue text (the flow uses cfg["fallback"] only when nothing else answered).
         scripted = shop.product_answer(db, s, cfg, body.text or "")
         if scripted:
-            cfg = {**cfg, "fallback": scripted}
+            cfg = {**cfg, "fallback": scripted, "_fallback_base": cfg["fallback"]}
     return ok(flow.handle_message(db, s, cfg, kind=body.kind, menu_id=body.menu_id, text=body.text, reply_to=body.reply_to))
 
 

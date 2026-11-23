@@ -310,6 +310,83 @@ def product_line(db, s: dict, cfg: dict) -> str:
         return ""
 
 
+# ── PRODUCT-ASK-1: which product does the visitor mean ────────────────────────
+
+PRODUCT_Q = re.compile(r"\b(how much|price|prices|cost|costs|available|in stock|still have|firm|firmer|soft|softer|hard|harder|size|sizes|dimension|dimensions|"
+                       r"thick|thickness|material|made of|colou?rs?|weight|how big|how heavy)\b", re.I)
+PRODUCT_Q_WORDS = 14
+WHICH_MAX = 4
+
+
+def is_product_question(text: str) -> bool:
+    """A short question whose answer depends on WHICH product (price, stock, firmness, size, material, colour), not delivery, payment or hours."""
+    words = re.findall(r"[A-Za-z0-9']+", text or "")
+    return 0 < len(words) <= PRODUCT_Q_WORDS and bool(PRODUCT_Q.search(text or ""))
+
+
+def _candidate_ids(s: dict) -> list:
+    """The products in play: the one the chat is focused on, then those in the cart (distinct, in that order)."""
+    st = s.get("state") or {}
+    ids = []
+    for pid in [st.get("viewing")] + [str(l.get("pid")) for l in _cart(s)]:
+        pid = str(pid or "").strip()
+        if pid and pid not in ids:
+            ids.append(pid)
+    return ids[:WHICH_MAX]
+
+
+def _focus_on(db, s: dict, p: dict, seen: list) -> None:
+    wc.set_state(db, s, viewing=str(p["id"]), viewing_title=str(p.get("title") or "")[:80], which_seen=list(seen), ask_which=None)
+
+
+def focus_check(db, s: dict, cfg: dict, text: str) -> dict:
+    """PRODUCT-ASK-1: only for a chat that already has a product in focus or in its cart.
+    - the visitor typed ONE product's name: the focus moves to it ({'switched': id}); naming a product settles which one they mean;
+    - several products fit the words, or the question is not product-specific: {} (normal flow);
+    - a product-specific question that names none while two or more products are in play and the visitor has not been asked about them yet:
+      {'ask': [{'id','title'}...]} and the question is kept (state.ask_which) so it can be answered once they pick.
+    Never raises ({} on any problem)."""
+    try:
+        cands = _candidate_ids(s)
+        if not cands:
+            return {}
+        named = text_matches(db, s["org_id"], text)
+        if len(named) == 1:
+            p = named[0]
+            if str((s.get("state") or {}).get("viewing") or "") != str(p["id"]):
+                _focus_on(db, s, p, cands + [str(p["id"])])
+                return {"switched": str(p["id"])}
+            return {}
+        if named or not is_product_question(text) or len(cands) < 2:
+            return {}
+        seen = set((s.get("state") or {}).get("which_seen") or [])
+        if seen and not (set(cands) - seen):
+            return {}
+        rows = [r for r in (_fetch_one(db, s["org_id"], pid) for pid in cands) if r and (r.get("title") or "").strip()]
+        if len(rows) < 2:
+            return {}
+        wc.set_state(db, s, ask_which={"q": (text or "")[:200], "ids": [str(r["id"]) for r in rows]})
+        return {"ask": [{"id": str(r["id"]), "title": str(r["title"])[:40]} for r in rows]}
+    except Exception as exc:
+        logger.warning("webchat focus check failed org=%s: %s", s.get("org_id"), exc)
+        return {}
+
+
+def pick_from(db, s: dict, pending: dict, text: str) -> Optional[dict]:
+    """The visitor tapped (or typed) one of the products they were asked about: that product becomes the focus. None when the text is not one of them."""
+    try:
+        want = " ".join(str(text or "").lower().split())
+        for pid in pending.get("ids") or []:
+            p = _fetch_one(db, s["org_id"], str(pid))
+            title = " ".join(str((p or {}).get("title") or "").lower().split())
+            if p and title and want in (title, title[:40]):
+                _focus_on(db, s, p, list(pending.get("ids") or []))
+                return p
+    except Exception as exc:
+        logger.warning("webchat pick failed org=%s: %s", s.get("org_id"), exc)
+    return None
+
+
 def product_answer(db, s: dict, cfg: dict, question: str) -> Optional[str]:
     """WEBCHAT-CATALOG-1b: no AI answer was possible (AI off, no credit, ...) but the visitor is looking at a product
     (state.viewing, set from the Storefront). Reply from THIS business's own catalogue text instead of 'I did not catch that':
