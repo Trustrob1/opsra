@@ -94,6 +94,13 @@ export const pingWebchatTyping = (leadId) =>
 export const getWebchatVisitorTyping = (leadId) =>
   api.get('/api/v1/conversations/webchat/typing', { params: { lead_id: leadId } }).then(r => !!r?.data?.data?.typing).catch(() => false)
 
+// ORDER-PAID-1 — the order a customer placed in this web chat, and marking it paid
+export const getWebchatOrder = (leadId) =>
+  api.get('/api/v1/conversations/webchat/order', { params: { lead_id: leadId } }).then(r => r?.data?.data?.order || null).catch(() => null)
+
+export const markWebchatOrderPaid = (leadId) =>
+  api.post('/api/v1/conversations/webchat/order/mark-paid', { lead_id: leadId }).then(r => r?.data?.data?.order || null)
+
 // WEBCHAT-STAFF-1 — photo / document / voice note (multipart: lead_id, kind, file, reply_to?), and edit / delete of your own message
 export const uploadWebchatFile = (formData) =>
   api.post('/api/v1/conversations/webchat/upload', formData)

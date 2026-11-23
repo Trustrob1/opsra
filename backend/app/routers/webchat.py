@@ -120,6 +120,38 @@ def webchat_visitor_typing(lead_id: str = Query(..., min_length=1, max_length=64
     return ok(data={"typing": bool(s and s.get("status") == "active" and wc.visitor_is_typing(s))})
 
 
+# ── ORDER-PAID-1: the order a customer placed in this chat, and marking it paid ────────────────────────────
+
+class OrderLead(BaseModel):
+    lead_id: str = Field(..., min_length=1, max_length=64)
+
+
+def _lead_of_org(db, org: dict, lead_id: str) -> None:
+    lead = (db.table("leads").select("id").eq("id", lead_id).eq("org_id", org["org_id"]).is_("deleted_at", "null").limit(1).execute().data)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+
+@router.get("/conversations/webchat/order")
+def webchat_order(lead_id: str = Query(..., min_length=1, max_length=64), db=Depends(get_supabase), org=Depends(get_current_org)):
+    from app.services import webchat_order_service as orders
+    _lead_of_org(db, org, lead_id)
+    return ok(data={"order": orders.order_view(db, org["org_id"], lead_id)})
+
+
+@router.post("/conversations/webchat/order/mark-paid")
+def webchat_order_mark_paid(payload: OrderLead, db=Depends(get_supabase), org=Depends(get_current_org)):
+    from app.services import webchat_order_service as orders
+    _lead_of_org(db, org, payload.lead_id)
+    try:
+        view = orders.mark_paid(db, org["org_id"], payload.lead_id, org["id"], org.get("full_name") or org.get("name") or "")
+    except LookupError:
+        raise HTTPException(status_code=422, detail="There is no order waiting in this chat.")
+    except ValueError:
+        raise HTTPException(status_code=409, detail="This order is already marked as paid.")
+    return ok(data={"order": view}, message="Marked as paid")
+
+
 # ── WEBCHAT-STAFF-1: staff send files, edit and delete their own web chat messages ─────────────────────────────
 
 def _session_of_message(db, org_id: str, mid: str) -> Optional[dict]:

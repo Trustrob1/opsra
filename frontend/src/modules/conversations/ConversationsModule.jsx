@@ -41,6 +41,7 @@ import {
   Sparkles, Reply, Mic, Pencil, Trash2, Copy, ChevronDown, ChevronLeft, Square,
 } from 'lucide-react'
 import { ds } from '../../utils/ds'
+import WebchatOrderBar from './WebchatOrderBar'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import {
   getConversations,
@@ -892,6 +893,8 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
           </div>
         )}
       </div>
+
+      {isWebchat && isLead && active.contact_id && <WebchatOrderBar leadId={active.contact_id} refreshKey={messages.length} onChanged={onRefresh} />}
 
       {/* ── Inactivity nudge ────────────────────────────────────────────── */}
       {showNudge && aiPaused && (
