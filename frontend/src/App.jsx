@@ -73,6 +73,8 @@ import EventFunnelsModule from './modules/funnels/EventFunnelsModule'   // FUNNE
 import WaSignupPage from './pages/WaSignupPage'                      // WA-AUTO-5
 import ChatSignupPage from './pages/ChatSignupPage'                  // WEB-ONLY-1b
 import SitesModule from './modules/sites/SitesModule'                   // SITE-1A
+import WebChatModule from './modules/webchat/WebChatModule'             // WEBCHAT-RESULTS-1
+import { getWebchatSettings } from './services/webchat.service'          // WEBCHAT-RESULTS-1: is the chat switched on (the Web chat menu item)
 import BillingModule from './modules/billing/BillingModule'             // ACCOUNT-PLANS AP-3
 import BillingBanner from './modules/billing/BillingBanner'             // ACCOUNT-PLANS AP-3
 import PlanNotice from './modules/billing/PlanNotice'                   // ACCOUNT-PLANS AP-6
@@ -81,7 +83,7 @@ import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard, BookOpen,
+  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard, BookOpen, MessagesSquare,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 import SiteLandingPage from './pages/SiteLandingPage'   // SITE-LANDING
@@ -110,6 +112,7 @@ const SIDEBAR_W_CLOSED = 72
 const NAV = [
   { id: 'leads',    label: 'Lead Center', icon: 'leads', module: '01', active: true, group: 'sales_marketing' },
   { id: 'conversations', label: 'Conversations',      icon: 'conversations', module: '02',  active: true, group: 'sales_marketing' },
+  { id: 'webchat', label: 'Web chat', icon: 'webchat', module: '16', active: true, group: 'sales_marketing' },   // WEBCHAT-RESULTS-1: right under Conversations
   { id: 'knowledge', label: 'Knowledge', icon: 'knowledge', module: '15', active: true, group: 'sales_marketing' },   // WA-AUTO-4a (WhatsApp-only businesses)
   { id: 'whatsapp', label: 'WhatsApp Engine',      icon: 'whatsapp', module: '03', active: true, group: 'sales_marketing' },
   { id: 'event-funnels', label: 'Event Funnels', icon: 'event-funnels', module: '13', active: true, group: 'sales_marketing' },   // FUNNEL-1B
@@ -137,6 +140,7 @@ const NAV_GROUPS = [
 const NAV_ICONS = {
   leads:         Target,
   conversations: MessageSquare,
+  webchat:       MessagesSquare,   // WEBCHAT-RESULTS-1
   knowledge:     BookOpen,
   whatsapp:      MessageCircle,
   support:       Ticket,
@@ -601,7 +605,7 @@ function LoginScreen({ onAuth }) {
             <div style={{ display:'flex',justifyContent:'center',marginBottom: 16 }}><Mail size={40} color={ds.teal} strokeWidth={1.5} /></div>
             <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 12px', textAlign: 'center' }}>Check your email</h1>
             <p style={{ fontSize: 13, color: '#5B6270', marginBottom: 24, lineHeight: 1.6, textAlign: 'center' }}>
-              If an account exists for <strong style={{ color: '#A0BDC8' }}>{forgotEmail}</strong>, a reset link has been sent.<br />
+              If an account exists for <strong style={{ color: '#5B6270' }}>{forgotEmail}</strong>, a reset link has been sent.<br />
               The link expires in 1 hour.
             </p>
             <p style={{ fontSize: 12, color: '#5B6270', background: '#F6F7FA', borderRadius: 8, padding: '10px 14px', lineHeight: 1.6, marginBottom: 20 }}>
@@ -737,6 +741,15 @@ function AppShell() {
   const isWaOnly = productMode === 'wa_automation'
   const isChatOnly = productMode === 'web_chat'
   const isNoCrm = isWaOnly || isChatOnly
+  // WEBCHAT-RESULTS-1: show the Web chat menu item only when the website chat is switched on. Only the owner, operations manager and admin can read the settings
+  // (everyone else gets a 403 and never sees the item); the page checks the role again on the server.
+  const [webchatOn, setWebchatOn] = useState(false)
+  useEffect(() => {
+    if (!user?.id || !['owner', 'ops_manager', 'admin'].includes(user?.roles?.template ?? '')) { setWebchatOn(false); return undefined }
+    let live = true
+    getWebchatSettings().then((d) => { if (live) setWebchatOn(!!d?.config?.enabled) }).catch(() => { if (live) setWebchatOn(false) })
+    return () => { live = false }
+  }, [user])
   // WA-AUTO-3: the owner of a WhatsApp-only business sees the set-up wizard until it is finished (or put off for now).
   const [waWizard, setWaWizard] = useState('unknown')   // unknown | show | hide
   useEffect(() => {
@@ -763,6 +776,8 @@ function AppShell() {
   // and actual page access never disagree.
   const _departmentId = user?.roles?.department_id ?? null
   const visibleNav = NAV.filter(item => {
+    // WEBCHAT-RESULTS-1: Web chat results for the owner, operations manager and admin of a business whose website chat is switched on
+    if (item.id === 'webchat') return webchatOn && ['owner', 'ops_manager', 'admin'].includes(_userTemplate) && !isWaOnly
     if (isNoCrm) return item.id === 'conversations' || item.id === 'knowledge'
     if (item.id === 'knowledge') return false
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
@@ -786,7 +801,7 @@ function AppShell() {
   // WA-AUTO-1: keep wa_automation orgs on screens they own (WEB-ONLY-1b: and web_chat orgs).
   useEffect(() => {
     if (!isNoCrm) return
-    if (!['conversations', 'knowledge', 'billing', 'admin'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
+    if (!['conversations', 'knowledge', 'billing', 'admin', 'webchat'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
   }, [isNoCrm, view])
   const [selectedLeadId, setSelectedLeadId] = useState(null)
   const [showNotif, setShowNotif]           = useState(false)
@@ -898,6 +913,11 @@ function AppShell() {
   const canBilling = ['owner', 'ops_manager', 'admin'].includes(_userTemplate)
   const openSetup = () => { setMoreOpen(false); window.dispatchEvent(new Event('opsra:open-setup')) }
   const goTo = (id) => { setMoreOpen(false); setActiveNav(id); setView(id); setSelectedLeadId(null) }
+  useEffect(() => {          // WEBCHAT-RESULTS-1: other screens (Admin > Web chat) open a menu page without knowing about this component
+    const go = (e) => { const id = e?.detail; if (id === 'webchat') goTo(id) }
+    window.addEventListener('opsra:goto', go)
+    return () => window.removeEventListener('opsra:goto', go)
+  }, [])
   const NAV_INK = '#3C4352'
 
   const navRow = (key, label, Icon, isActive, onClick, disabled) => (
@@ -1191,6 +1211,9 @@ function AppShell() {
               : <ConversationsModule user={user} simple={isNoCrm} onOpenBilling={() => { setActiveNav('billing'); setView('billing') }} onOpenAria={() => setAriaOpen(true)} />}
           </div>
         )}
+        {view === 'webchat' && webchatOn && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><WebChatModule /></div>
+        )}
         {view === 'commissions' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><CommissionsModule user={user} /></div>
         )}
@@ -1206,7 +1229,7 @@ function AppShell() {
         {(view === 'superadmin' || view === 'superadmin_health' || view === 'superadmin_create_org') && isPlatformOrg && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><SuperadminShell initial={view === 'superadmin_create_org' ? 'create' : 'health'} /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing', 'knowledge'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing', 'knowledge', 'webchat'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

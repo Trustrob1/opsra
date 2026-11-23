@@ -139,12 +139,13 @@ def test_reserved_tags_match_the_built_in_share_links():
 
 # ── the per-ad report and the WhatsApp reply link ───────────────────────────
 
-def test_insights_shows_ads_by_name_even_with_no_visits_yet():
-    admin = ROOT / "frontend" / "src" / "modules" / "admin"
-    ins = (admin / "WebChatInsights.jsx").read_text(encoding="utf-8")
-    assert "ads = []" in ins and "adByTag" in ins and "Ad · " in ins
-    assert "rows.map(" in ins and "f.sources.map(" not in ins            # the table is drawn from sources plus the ads with no visits
-    assert "ads={cfg.campaigns}" in (admin / "WebChatSettings.jsx").read_text(encoding="utf-8")
+def test_results_page_shows_ads_by_name_even_with_no_visits_yet():
+    # WEBCHAT-RESULTS-1: the per-ad table moved from Admin to the Web chat page; unvisited ads are still listed by name
+    wc = ROOT / "frontend" / "src" / "modules" / "webchat"
+    view = (wc / "resultsView.js").read_text(encoding="utf-8")
+    page = (wc / "WebChatResults.jsx").read_text(encoding="utf-8")
+    assert "`Ad${prod" in view and "sourceRows" in view and "!have.has(t)" in view
+    assert "sourceRows(" in page and "campaigns" in page
 
 
 def test_whatsapp_reply_visitor_is_not_asked_for_a_number_again():
