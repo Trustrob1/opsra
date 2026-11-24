@@ -137,3 +137,62 @@ def test_turn_remembers_what_the_customer_was_looking_at():
                             session_data={"seen": True})
     assert out["action"] == "respond"
     assert session["session_data"]["price_anchor"] == 1100000
+
+
+# ── web chat (Chioma) ──
+WEB_CAT = [{"id": "p-elite", "title": "Premium Organic Mattress - Elite Cool", "price": 1100000, "in_stock": True, "blurb": "pocket coils"},
+           {"id": "p-cloud", "title": "Cloud Mattress", "price": 485000, "in_stock": True, "blurb": ""}]
+
+
+def test_chat_check_blocks_a_cheaper_card_for_the_viewed_product():
+    assert pg.check_chat("this is too expensive", "Have a look at this one", ["p-cloud"], "p-elite", "", WEB_CAT)
+
+
+def test_chat_check_blocks_a_cheaper_product_named_in_the_reply():
+    assert pg.check_chat("too expensive for me", "The Cloud Mattress is more budget-friendly", [], "p-elite", "", WEB_CAT)
+
+
+def test_chat_check_allows_value_talk_and_dearer_items():
+    assert not pg.check_chat("too expensive", "The Elite Cool has pocket coils for lasting support.", ["p-elite"], "p-elite", "", WEB_CAT)
+    assert not pg.check_chat("what else do you have", "The Cloud Mattress is another option", ["p-cloud"], "p-elite", "", WEB_CAT)
+
+
+def test_chat_check_without_an_anchor_does_not_block():
+    assert not pg.check_chat("too expensive", "Try the Cloud Mattress", [], None, "", WEB_CAT)
+
+
+def test_chat_check_uses_earlier_conversation_when_nothing_is_being_viewed():
+    assert pg.check_chat("it is too expensive", "Try the Cloud Mattress", [], None, "visitor: tell me about the Elite Cool", WEB_CAT)
+
+
+def test_chioma_prompt_carries_the_rule():
+    import inspect
+    from app.services import webchat_ai_service as ai
+    src = inspect.getsource(ai.build_system_prompt)
+    assert "NEVER suggest a smaller size" in src and "offer_team" in src
+
+
+def _chioma(visitor, raw_reply, viewing="p-elite"):
+    from app.services import webchat_ai_service as ai
+    from app.services import ai_service, credit_service, webchat_service as wc
+    s = {"id": "s1", "org_id": ORG, "state": {"viewing": viewing}}
+
+    def _prompt(db, sess, cfg, text):
+        sess["_price_catalog"] = WEB_CAT
+        return "stable" + ai_service.CACHE_SPLIT + "Elite Cool N1,100,000 Cloud Mattress N485,000"
+
+    with patch.object(ai, "can_use_ai", return_value=(True, "")), patch.object(ai, "build_system_prompt", side_effect=_prompt), \
+         patch.object(ai, "_history", return_value=""), patch.object(ai_service, "call_claude", return_value=json.dumps(raw_reply)), \
+         patch.object(credit_service, "get_ai_level", return_value="ok"), patch("app.services.webchat_plan_service.use_ai_allowance", return_value=True), \
+         patch.object(wc, "set_state"):
+        return ai.answer(MagicMock(), s, {"ai_enabled": True, "shop_enabled": True, "business_name": "Royal Rest"}, visitor)
+
+
+def test_chioma_downgrade_becomes_an_offer_to_pass_to_the_team():
+    out = _chioma("this is too expensive", {"reply": "The Cloud Mattress is more budget-friendly", "handoff": False, "offer_team": False, "products": ["p-cloud"]})
+    assert out["offer_team"] is True and out["handoff"] is False and "Cloud" not in out["reply"] and not out.get("products")
+
+
+def test_chioma_normal_answer_is_untouched():
+    out = _chioma("how much is it", {"reply": "The Elite Cool is N1,100,000.", "handoff": False, "offer_team": False})
+    assert "1,100,000" in out["reply"]

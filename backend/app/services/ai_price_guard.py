@@ -128,3 +128,23 @@ def next_anchor(inbound: str, action: dict, saved_anchor: Any, catalog: list) ->
             if p is not None:
                 return p
     return saved_anchor
+
+
+# ── web chat (Chioma): products have one price each, and the product the visitor is viewing is the anchor ──
+CHAT_HANDOVER_REPLY = "I understand the price matters. I can pass you to our team to help with that."
+
+
+def check_chat(inbound: str, reply: str, product_ids: Optional[list], viewing_id: Any, history_text: str, catalog: list) -> bool:
+    """True when a visitor's price complaint is being answered with something cheaper (named in the reply or shown as a card).
+    Anchor: the dearest catalogue item the visitor named now, else the product they are viewing, else the dearest one named earlier."""
+    if not is_price_complaint(inbound):
+        return False
+    here = mentioned_prices(inbound, catalog)
+    anchor = max(here) if here else (price_of(catalog, viewing_id) if viewing_id else None)
+    if anchor is None:
+        older = mentioned_prices(history_text or "", catalog)
+        anchor = max(older) if older else None
+    if anchor is None:
+        return False
+    offered = mentioned_prices(reply or "", catalog) + [p for p in (price_of(catalog, i) for i in (product_ids or [])) if p is not None]
+    return any(p < anchor for p in offered)
