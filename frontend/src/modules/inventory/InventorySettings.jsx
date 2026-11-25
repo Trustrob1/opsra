@@ -138,12 +138,18 @@ export default function InventorySettings({ onChanged }) {
         <section style={card}>
           <h3 style={{ ...h, display: 'flex', alignItems: 'center', gap: 8 }}><Globe size={17} color={ds.teal} />Website orders</h3>
           <div style={{ maxWidth: 320 }}><label style={lab} htmlFor="st-online">Website orders come from</label>
-            <select id="st-online" style={inp} disabled={!!busy} value={settings.online_location_id || ''}
-              onChange={(e) => save({ online_location_id: e.target.value || null }, 'Saved. Your website now shows this location\'s stock.')}>
-              <option value="">Main location ({locs.locations.find((l) => l.is_default)?.name || 'not set'})</option>
+            <select id="st-online" style={inp} disabled={!!busy}
+              value={settings.online_all !== false ? 'all' : (settings.online_location_id || '')}
+              onChange={(e) => (e.target.value === 'all'   // ONLINE-ALL
+                ? save({ online_all: true }, 'Saved. Your website now shows the stock across all your locations.')
+                : save({ online_all: false, online_location_id: e.target.value || null }, 'Saved. Your website now shows this location\'s stock.'))}>
+              <option value="all">All locations (recommended)</option>
+              <option value="">Main location only ({locs.locations.find((l) => l.is_default)?.name || 'not set'})</option>
               {locs.locations.filter((l) => l.is_active && !l.is_default).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select></div>
-          <p style={{ color: ds.gray, fontSize: 12.5, margin: '8px 0 0' }}>Your website, web chat shop and AI replies show what's available here. A website checkout holds the stock for 2 hours; when the customer pays, Opsra makes a paid invoice for it.</p>
+          <p style={{ color: ds.gray, fontSize: 12.5, margin: '8px 0 0' }}>{settings.online_all !== false
+            ? 'Your website, web chat shop and AI replies show the total available across all your locations. A website checkout holds the stock where it is (one location if it has everything, otherwise each item from a location that has it) for 2 hours; when the customer pays, Opsra makes a paid invoice that says where each item comes from.'
+            : 'Your website, web chat shop and AI replies show what\'s available here. A website checkout holds the stock for 2 hours; when the customer pays, Opsra makes a paid invoice for it.'}</p>
         </section>
       )}
 

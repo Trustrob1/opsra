@@ -26,6 +26,9 @@ available, products.available), but while stock is on Opsra writes them: what is
 (settings.online_location_id, else the main location). refresh_product() runs after every stock change; refresh_all()
 after the switch or the online location changes. So every channel follows Opsra without its own stock rule.
 
+ONLINE-ALL - settings.online_all (default on): the website sells from every active location. Channels see the total
+across locations, and a website order holds each line wherever the stock is (web_order_stock_service.plan_sources).
+
 S1/S2: org_id always comes from the caller's token; every id is checked against the org (in here and in stock_apply).
 """
 from __future__ import annotations
@@ -106,7 +109,8 @@ def _money(value: Any, field: str) -> Optional[Decimal]:
 # ───────────────────────────── settings ─────────────────────────────
 
 DEFAULTS = {"enabled": False, "enabled_at": None, "imported_at": None, "default_reorder_level": 5,
-            "online_location_id": None, "low_stock_alerts": True, "low_stock_alerted_at": None}   # STOCK-3
+            "online_location_id": None, "low_stock_alerts": True, "low_stock_alerted_at": None,   # STOCK-3
+            "online_all": True}   # ONLINE-ALL: the website sells from every location
 
 
 def get_settings(db, org_id: str) -> dict:
@@ -114,6 +118,7 @@ def get_settings(db, org_id: str) -> dict:
     s = {**DEFAULTS, **{k: v for k, v in (rows[0] if rows else {}).items() if k in DEFAULTS}}
     s["enabled"] = bool(s["enabled"])
     s["low_stock_alerts"] = s["low_stock_alerts"] is not False
+    s["online_all"] = s["online_all"] is not False
     return s
 
 
@@ -143,6 +148,8 @@ def save_settings(db, org_id: str, user_id: Optional[str], body: dict) -> dict:
                 raise StockError("VALIDATION_ERROR", "Choose a location that is turned on.", 422, "online_location_id")
             loc_id = loc["id"]
         patch["online_location_id"] = loc_id or None
+    if "online_all" in body and body["online_all"] is not None:   # ONLINE-ALL
+        patch["online_all"] = bool(body["online_all"])
     if "low_stock_alerts" in body and body["low_stock_alerts"] is not None:
         patch["low_stock_alerts"] = bool(body["low_stock_alerts"])
     if "enabled" in body and body["enabled"] is not None:
@@ -161,8 +168,7 @@ def save_settings(db, org_id: str, user_id: Optional[str], body: dict) -> dict:
         out["import"] = import_initial(db, org_id, user_id, loc["id"])
         db.table("stock_settings").update({"imported_at": _now()}).eq("org_id", org_id).execute()
         out["imported_at"] = get_settings(db, org_id)["imported_at"]
-    if out["enabled"] and (turning_on or ("online_location_id" in patch
-                                          and patch["online_location_id"] != current.get("online_location_id"))):
+    if out["enabled"] and (turning_on or "online_location_id" in patch or "online_all" in patch):
         out["refreshed"] = refresh_all(db, org_id)   # STOCK-3: the website now shows Opsra's numbers
     return out
 
@@ -180,23 +186,47 @@ def online_location(db, org_id: str, settings: Optional[dict] = None) -> Optiona
     return next((l for l in locs if l.get("is_default")), None) or (locs[0] if locs else None)
 
 
-def _online_available(db, org_id: str, location_id: Optional[str], product_ids: list) -> dict:
-    """{(product_id, variant): available} at one location."""
-    if not location_id or not product_ids:
+def available_by_location(db, org_id: str, location_ids: list, product_ids: list) -> dict:
+    """ONLINE-ALL: {(product_id, variant): {location_id: available}} for the given locations."""
+    location_ids = [str(l) for l in location_ids if l]
+    if not location_ids or not product_ids:
         return {}
     items = _rows(db.table("stock_items").select("id, product_id, variant").eq("org_id", org_id)
                   .in_("product_id", [str(p) for p in product_ids]).execute())
     if not items:
         return {}
-    levels = {lv["item_id"]: lv for lv in _rows(db.table("stock_levels").select("item_id, on_hand, held, sold_pending")
-                                               .eq("org_id", org_id).eq("location_id", str(location_id))
-                                               .in_("item_id", [i["id"] for i in items]).execute())}
-    out = {}
-    for i in items:
-        lv = levels.get(i["id"]) or {}
-        out[(i["product_id"], i["variant"] or "")] = max(_num(lv.get("on_hand")) - _num(lv.get("held"))
-                                                         - _num(lv.get("sold_pending")), 0)
-    return out
+    levels = _rows(db.table("stock_levels").select("item_id, location_id, on_hand, held, sold_pending")
+                   .eq("org_id", org_id).in_("location_id", location_ids)
+                   .in_("item_id", [i["id"] for i in items]).execute())
+    by_item: dict = {}
+    for lv in levels:
+        by_item.setdefault(lv["item_id"], {})[str(lv["location_id"])] = max(
+            _num(lv.get("on_hand")) - _num(lv.get("held")) - _num(lv.get("sold_pending")), 0)
+    return {(i["product_id"], i["variant"] or ""): {l: by_item.get(i["id"], {}).get(l, 0) for l in location_ids}
+            for i in items}
+
+
+def _online_available(db, org_id: str, location_id: Optional[str], product_ids: list) -> dict:
+    """{(product_id, variant): available} at one location."""
+    if not location_id:
+        return {}
+    return {k: v.get(str(location_id), 0) for k, v in available_by_location(db, org_id, [location_id], product_ids).items()}
+
+
+def online_locations(db, org_id: str, settings: Optional[dict] = None) -> list:
+    """ONLINE-ALL: the locations the website sells from: every active one, or just the chosen/main one."""
+    settings = settings or get_settings(db, org_id)
+    if settings.get("online_all", True):
+        return [l for l in list_locations(db, org_id) if l.get("is_active")]
+    loc = online_location(db, org_id, settings)
+    return [loc] if loc else []
+
+
+def online_available(db, org_id: str, product_ids: list, settings: Optional[dict] = None) -> dict:
+    """{(product_id, variant): available} that the website can sell: the total over its locations."""
+    locs = online_locations(db, org_id, settings)
+    by_loc = available_by_location(db, org_id, [l["id"] for l in locs], product_ids)
+    return {k: sum(v.values()) for k, v in by_loc.items()}
 
 
 def stock_fields(prod: dict, avail: dict) -> dict:
@@ -233,8 +263,11 @@ def refresh_product(db, org_id: str, product_id: str, settings: Optional[dict] =
                      .eq("id", str(product_id)).limit(1).execute())
         if not rows:
             return False
-        loc = location or online_location(db, org_id, settings)
-        fields = stock_fields(rows[0], _online_available(db, org_id, loc["id"] if loc else None, [rows[0]["id"]]))
+        if location:
+            avail = _online_available(db, org_id, location["id"], [rows[0]["id"]])
+        else:
+            avail = online_available(db, org_id, [rows[0]["id"]], settings)   # ONLINE-ALL
+        fields = stock_fields(rows[0], avail)
         db.table("products").update(fields).eq("id", rows[0]["id"]).eq("org_id", org_id).execute()
         return True
     except Exception as exc:
@@ -247,9 +280,8 @@ def refresh_all(db, org_id: str) -> int:
     settings = get_settings(db, org_id)
     if not settings["enabled"]:
         return 0
-    loc = online_location(db, org_id, settings)
     prods = _rows(db.table("products").select("id, title, variants, is_active, status").eq("org_id", org_id).execute())
-    avail = _online_available(db, org_id, loc["id"] if loc else None, [p["id"] for p in prods])
+    avail = online_available(db, org_id, [p["id"] for p in prods], settings)   # ONLINE-ALL
     done = 0
     for p in prods:
         try:

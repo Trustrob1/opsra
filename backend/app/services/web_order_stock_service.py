@@ -10,12 +10,17 @@ STOCK-3 - website (web chat shop) orders and stock.
   expired    the worker releases holds older than 2 hours (web_state 'released'). If the customer pays later the
              stock is held again; if it has gone meanwhile the invoice is still made, untracked, and managers are told.
 
+ONLINE-ALL: when the website sells from every location (stock settings online_all), plan_sources() picks the location
+that can fill the whole cart (main location first), else holds each line wherever it is (invoice_items.stock_location_id),
+so the invoice says where each item comes from.
+
 web_state: holding -> paid | holding -> releasing -> released -> paid. Each step is a conditional update, so the
 worker and the webhook can't both act on the same order. Team-mode shops (order_mode 'team') don't hold stock here.
 """
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -77,15 +82,68 @@ def _items(db, org_id: str, cart: list) -> list:
     return out
 
 
+def _short_text(message: str) -> str:
+    """'Only 2 of X left at Lekki Showroom.' -> 'Only 2 of X left right now.' (visitors don't see our locations)."""
+    return re.sub(r" at [^.]+\.$", " right now.", message or "")
+
+
+def plan_sources(db, org_id: str, lines: list, settings: Optional[dict] = None) -> tuple[Optional[dict], dict]:
+    """ONLINE-ALL: (main location, {item_id: other location}) for a website order's product lines.
+    One location fills everything if it can (the business's main location first, then the one with most of the cart);
+    otherwise each line is taken from a location that has enough of it. A line no single location can fill stays on
+    the main location, so holding it reports it as short."""
+    settings = settings or stock.get_settings(db, org_id)
+    locs = stock.online_locations(db, org_id, settings)
+    if not locs:
+        return None, {}
+    lines = [l for l in lines if l.get("product_id")]
+    if len(locs) == 1 or not lines:
+        return locs[0], {}
+    by = stock.available_by_location(db, org_id, [l["id"] for l in locs], list({l["product_id"] for l in lines}))
+    key = lambda l: (l["product_id"], l.get("variant") or "")   # noqa: E731
+    need: dict = {}
+    for l in lines:
+        need[key(l)] = need.get(key(l), 0) + int(float(l.get("quantity") or 0))
+
+    def covered(loc_id: str) -> int:
+        return sum(min(q, (by.get(k) or {}).get(loc_id, 0)) for k, q in need.items())
+
+    total = sum(need.values())
+    order = sorted(locs, key=lambda l: (not l.get("is_default"),))   # main location first, rest keep their order
+    main = next((l for l in order if covered(l["id"]) >= total), None) \
+        or max(order, key=lambda l: (covered(l["id"]), bool(l.get("is_default"))))
+    left = {k: dict(v) for k, v in by.items()}
+    sources: dict = {}
+    for l in lines:
+        k, q = key(l), int(float(l.get("quantity") or 0))
+        here = left.get(k) or {}
+        if here.get(main["id"], 0) >= q:
+            here[main["id"]] -= q
+            continue
+        other = max((x for x in locs if x["id"] != main["id"] and here.get(x["id"], 0) >= q),
+                    key=lambda x: here.get(x["id"], 0), default=None)
+        if other:
+            here[other["id"]] -= q
+            sources[l["id"]] = other["id"]
+    return main, sources
+
+
+def _web_lines(db, org_id: str, doc_id: str) -> list:
+    return _rows(db.table("invoice_items").select("id, product_id, variant, quantity").eq("org_id", org_id)
+                 .eq("invoice_id", doc_id).execute())
+
+
 def hold(db, org_id: str, lead_id: str, cart: list) -> Optional[dict]:
     """Hold the cart's stock for 2 hours. Returns the hidden draft, or None when stock isn't tracked for this shop.
     Raises WebShort with a visitor-friendly message when something is short."""
     if not stock.stock_on(db, org_id):
         return None
-    loc = stock.online_location(db, org_id)
+    settings = stock.get_settings(db, org_id)
+    locs = stock.online_locations(db, org_id, settings)   # ONLINE-ALL
     items = _items(db, org_id, cart)
-    if not loc or not items:
+    if not locs or not items:
         return None
+    loc = locs[0]
     try:
         doc = inv.create_draft(db, org_id, None, {"doc_type": "invoice", "lead_id": lead_id, "items": items,
                                                   "apply_vat": False, "location_id": loc["id"],
@@ -95,13 +153,16 @@ def hold(db, org_id: str, lead_id: str, cart: list) -> Optional[dict]:
         return None
     web = {"origin": "web", "web_state": "holding", "web_hidden": True,
            "web_hold_until": _iso(_now() + timedelta(hours=HOLD_HOURS))}
+    loc, sources = plan_sources(db, org_id, _web_lines(db, org_id, doc["id"]), settings)   # ONLINE-ALL
+    web["location_id"] = loc["id"]
     db.table("invoices").update(web).eq("id", doc["id"]).eq("org_id", org_id).execute()
     try:
-        inv_stock.prepare_issue(db, org_id, None, {**doc, **web, "location_id": loc["id"]}, number="website order")
+        inv_stock.prepare_issue(db, org_id, None, {**doc, **web}, number="website order",
+                                sources=sources or None, allow_other=bool(sources))
     except inv.InvoiceError as e:
         _drop_draft(db, org_id, doc["id"])
         if e.code == "STOCK_SHORT":
-            raise WebShort(e.message.replace(f" at {loc['name']}.", " right now."))
+            raise WebShort(_short_text(e.message))
         logger.warning("web_order: hold failed org=%s: %s", org_id, e.message)
         return None
     return {**doc, **web}
@@ -179,7 +240,12 @@ def _hold_again(db, org_id: str, doc: dict) -> None:
     """Paid after the 2-hour hold ran out: take the stock again, or make the sale untracked and tell managers."""
     fresh = inv._one(db, "invoices", org_id, doc["id"]) or doc
     try:
-        inv_stock.prepare_issue(db, org_id, None, fresh, number="website order")
+        loc, sources = plan_sources(db, org_id, _web_lines(db, org_id, doc["id"]))   # ONLINE-ALL: wherever it is now
+        if loc and loc["id"] != fresh.get("location_id"):
+            db.table("invoices").update({"location_id": loc["id"]}).eq("id", doc["id"]).eq("org_id", org_id).execute()
+            fresh = {**fresh, "location_id": loc["id"]}
+        inv_stock.prepare_issue(db, org_id, None, fresh, number="website order",
+                                sources=sources or None, allow_other=bool(sources))
     except inv.InvoiceError as e:
         db.table("invoices").update({"stock_tracked": False}).eq("id", doc["id"]).eq("org_id", org_id).execute()
         inv_stock._notify(db, org_id, inv_stock._manager_ids(db, org_id), "Website order paid, stock short",

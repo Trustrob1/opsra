@@ -54,6 +54,7 @@ def _bed_variant(db, title="Queen"):
 
 def test_website_numbers_follow_the_online_location():
     db, main, lagos = _setup()
+    stock.save_settings(db, ORG, USER, {"online_all": False})   # ONLINE-ALL off: one location
     q = _bed_variant(db)
     assert (q["inventory_quantity"], q["available"], q["inventory_management"]) == (5, True, "opsra")
     assert _bed_variant(db, "King")["available"] is False
@@ -199,6 +200,7 @@ def _no_receipt_send():
 
 def test_checkout_holds_hidden_then_payment_makes_a_paid_invoice():
     db, main, lagos = _setup()
+    stock.save_settings(db, ORG, USER, {"online_all": False})   # ONLINE-ALL off: one location
     d = _hold(db)
     assert d["total"] == 815000 and d["web_state"] == "holding"
     assert _lv(db, BED, "Queen", main)["held"] == 2 and _lv(db, PILLOW, "", main)["held"] == 1
@@ -258,6 +260,7 @@ def test_hold_runs_out_then_late_payment_holds_again():
 
 def test_late_payment_when_stock_has_gone_tells_managers():
     db, main, lagos = _setup()
+    stock.save_settings(db, ORG, USER, {"online_all": False})   # ONLINE-ALL off: one location
     d = _hold(db)
     web.expire_holds(db, datetime.now(timezone.utc) + timedelta(hours=3))
     stock.adjust(db, ORG, USER, {"location_id": main["id"], "product_id": BED, "variant": "Queen",
@@ -335,3 +338,59 @@ def test_low_stock_alert_notifies_emails_then_only_new_changes():
         assert r["low"] == 1 and "Hybrid Bed - Queen: 3 left" in sent[-1]["text"]
         stock.save_settings(db, ORG, USER, {"low_stock_alerts": False})
         assert alerts.alert_all(db) == {"orgs": 0, "low": 0}
+
+
+# ───────────────────────────── ONLINE-ALL: the website sells from every location ─────────────────────────────
+
+def test_all_locations_is_the_default_and_shows_the_total():
+    db, main, lagos = _setup()
+    assert stock.get_settings(db, ORG)["online_all"] is True
+    assert _bed_variant(db)["inventory_quantity"] == 7                     # 5 at Main store + 2 at Lagos Store
+    out = stock.save_settings(db, ORG, USER, {"online_all": False})
+    assert out["refreshed"] == 3 and _bed_variant(db)["inventory_quantity"] == 5
+    out = stock.save_settings(db, ORG, USER, {"online_all": True})
+    assert out["refreshed"] == 3 and _bed_variant(db)["inventory_quantity"] == 7
+
+
+def test_all_locations_checkout_uses_one_location_when_it_has_everything():
+    db, main, lagos = _setup()
+    d = _hold(db)
+    assert d["location_id"] == main["id"]
+    assert _lv(db, BED, "Queen", main)["held"] == 2 and _lv(db, BED, "Queen", lagos)["held"] == 0
+    assert _bed_variant(db)["inventory_quantity"] == 5                     # 7 - 2 held
+
+
+def test_all_locations_checkout_takes_each_item_from_where_it_is():
+    db, main, lagos = _setup()
+    stock.adjust(db, ORG, USER, {"location_id": main["id"], "product_id": BED, "variant": "Queen",
+                                 "mode": "set", "quantity": 0, "reason": "recount"})
+    d = _hold(db)                                                          # Queen x2 only at Lagos, pillow only at Main
+    assert _lv(db, BED, "Queen", lagos)["held"] == 2 and _lv(db, PILLOW, "", main)["held"] == 1
+    lines = {i["product_id"]: i for i in db.rows("invoice_items") if i["invoice_id"] == d["id"]}
+    doc_loc = next(x for x in db.rows("invoices") if x["id"] == d["id"])["location_id"]
+    assert (lines[BED].get("stock_location_id") or doc_loc) == lagos["id"]
+    assert (lines[PILLOW].get("stock_location_id") or doc_loc) == main["id"]
+    _paid_link(db, "ps_ref_1")
+    assert web.on_web_payment(db, ORG, "ps_ref_1")["fully_paid"]
+    assert _lv(db, BED, "Queen", lagos)["sold_pending"] == 2 and _lv(db, PILLOW, "", main)["sold_pending"] == 1
+
+
+def test_all_locations_short_when_no_location_has_enough_of_a_line():
+    db, main, lagos = _setup()
+    with pytest.raises(web.WebShort) as e:                                 # 7 in total, but no single place has 6
+        web.hold(db, ORG, LEAD, [{**CART[0], "qty": 6}])
+    assert "right now." in e.value.message and "Main store" not in e.value.message and "Lagos" not in e.value.message
+    assert db.rows("invoices") == [] and _lv(db, BED, "Queen", main)["held"] == 0
+
+
+def test_all_locations_late_payment_takes_stock_from_another_location():
+    db, main, lagos = _setup()
+    d = _hold(db)
+    web.expire_holds(db, datetime.now(timezone.utc) + timedelta(hours=3))
+    stock.adjust(db, ORG, USER, {"location_id": main["id"], "product_id": BED, "variant": "Queen",
+                                 "mode": "set", "quantity": 0, "reason": "recount"})
+    _paid_link(db, "ps_ref_1")
+    out = web.on_web_payment(db, ORG, "ps_ref_1")
+    doc = inv.get_doc(db, ORG, d["id"])
+    assert out["fully_paid"] and doc["stock_tracked"]
+    assert _lv(db, BED, "Queen", lagos)["sold_pending"] == 2 and _lv(db, PILLOW, "", main)["sold_pending"] == 1

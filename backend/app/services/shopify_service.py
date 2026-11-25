@@ -287,8 +287,7 @@ def sync_product(db, org_id: str, shopify_product: dict, tag_dimensions: list = 
                 # STOCK-3: sizes and "available" show Opsra's online-location numbers, not Shopify's
                 from app.services import inventory_service as _inv
                 pid = (existing or {}).get("id")
-                loc = _inv.online_location(db, org_id) if pid else None
-                avail = _inv._online_available(db, org_id, loc["id"] if loc else None, [pid]) if pid else {}
+                avail = _inv.online_available(db, org_id, [pid]) if pid else {}   # ONLINE-ALL
                 row.update(_inv.stock_fields({**row, "id": pid or "new"}, avail))
         except Exception as exc:
             logger.warning("shopify sync: stock check failed org=%s: %s", org_id, exc)

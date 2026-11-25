@@ -55,6 +55,7 @@ class SettingsIn(_Strict):
     enabled: Optional[bool] = None
     default_reorder_level: Optional[int] = Field(None, ge=0, le=1_000_000)
     online_location_id: Optional[UUID] = None     # STOCK-3: where website orders take stock from
+    online_all: Optional[bool] = None             # ONLINE-ALL: the website sells from every location
     low_stock_alerts: Optional[bool] = None
 
 
