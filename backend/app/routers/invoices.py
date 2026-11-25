@@ -18,6 +18,12 @@ Plan feature: `invoices` (whole router, plan_gate.require).
   POST   /invoices/{id}/accept | /decline   staff records the customer's answer to a quote
   POST   /invoices/{id}/convert             quote -> new draft invoice
   GET    /invoices/{id}/pdf                 the PDF (drafts carry a DRAFT mark)
+  INV-2:
+  POST   /invoices/settings/logo            upload the logo (admin; PNG/JPG/WebP <= 2 MB, re-drawn as PNG)
+  DELETE /invoices/settings/logo            remove it (admin)
+  GET    /invoices/summary                  money owed, overdue, open quotes, drafts
+  GET    /invoices/products?q=              catalogue items for the line picker
+  GET    /invoices/contacts?q=              leads to bill (open to every product mode)
 
 S1/S2: org_id comes only from get_current_org (the JWT). Ids in bodies are checked against the org in the service.
 S3/S4: every body field has a length or range limit; notes/terms max 5,000 characters.
@@ -30,7 +36,7 @@ from decimal import Decimal
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -148,6 +154,42 @@ async def put_settings(body: SettingsIn, org: dict = Depends(require_admin), db=
     data = inv.save_settings(db, org_id, body.model_dump(exclude_unset=True, mode="json"))
     inv._audit(db, org_id, user_id, "invoice_settings.updated", None, {"fields": sorted(body.model_fields_set)})
     return ok(data)
+
+
+@router.post("/invoices/settings/logo")
+async def upload_logo(file: UploadFile = File(...), org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    org_id, user_id = _ids(org)
+    data = await file.read(inv.LOGO_MAX_BYTES + 1)
+    try:
+        out = inv.save_logo(db, org_id, data)
+    except inv.InvoiceError as e:
+        return _fail(e)
+    inv._audit(db, org_id, user_id, "invoice_settings.logo_uploaded", None)
+    return ok(out)
+
+
+@router.delete("/invoices/settings/logo")
+async def delete_logo(org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    return ok(inv.remove_logo(db, org["org_id"]))
+
+
+# ── INV-2 pickers + summary (static paths, before /invoices/{id}) ──
+
+@router.get("/invoices/summary")
+async def get_summary(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    return ok(inv.summary(db, org["org_id"]))
+
+
+@router.get("/invoices/products")
+async def pick_products(q: Optional[str] = Query(None, max_length=100), org: dict = Depends(get_current_org),
+                        db=Depends(get_supabase)):
+    return ok(inv.search_products(db, org["org_id"], q))
+
+
+@router.get("/invoices/contacts")
+async def pick_contacts(q: Optional[str] = Query(None, max_length=100), org: dict = Depends(get_current_org),
+                        db=Depends(get_supabase)):
+    return ok(inv.search_contacts(db, org["org_id"], q))
 
 
 # ── documents ──

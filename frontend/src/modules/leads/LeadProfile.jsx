@@ -46,6 +46,7 @@ import MarkLostModal   from './MarkLostModal'
 import DemoScheduler   from './DemoScheduler'
 import LogInteractionPanel from '../../shared/LogInteractionPanel'
 import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
+import LeadInvoices from '../invoices/LeadInvoices'   // INV-2
 
 const _DEFAULT_MOVABLE = ['new', 'contacted', 'meeting_done', 'proposal_sent']
 
@@ -507,6 +508,7 @@ export default function LeadProfile({ leadId, onBack }) {
     { key: 'tasks',           label: '✅', fullLabel: 'Tasks',     badge: attention.pending_tasks,   badgeColor: '#D97706' },
     ...(demoEnabled ? [{ key: 'demos', label: '📅', fullLabel: meetingLabel, badge: attention.pending_demos, badgeColor: '#D97706' }] : []),
     ...(isManager ? [{ key: 'client-payments', label: '💰', fullLabel: 'Payments' }] : []),
+    ...(roleTemplate !== 'affiliate_partner' ? [{ key: 'invoices', label: '🧾', fullLabel: 'Invoices' }] : []),   // INV-2
     { key: 'log-interaction', label: '📞', fullLabel: 'Log'              },
     { key: 'create-ticket',   label: '🎫', fullLabel: 'Tickets',   badge: attention.open_tickets,    badgeColor: '#E53E3E' },
   ]
@@ -733,6 +735,7 @@ function TabContent({ tab, lead, leadId, pipelineStages, meetingLabel = 'Demo' }
       {tab === 'tasks'           && <LeadTasks    leadId={leadId} />}
       {tab === 'demos'           && <DemoScheduler leadId={leadId} leadName={lead.full_name} meetingLabel={meetingLabel} />}
       {tab === 'client-payments' && <ClientPayments leadId={leadId} />}
+      {tab === 'invoices'        && <LeadInvoices leadId={leadId} />}
       {tab === 'log-interaction' && <LogInteractionPanel linkedTo={{ type: 'lead', id: leadId }} contextName={lead.full_name} />}
       {tab === 'create-ticket'   && <LinkedTicketsPanel  linkedTo={{ type: 'lead', id: leadId }} contextName={lead.full_name} />}
     </>

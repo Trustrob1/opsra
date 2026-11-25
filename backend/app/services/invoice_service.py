@@ -307,7 +307,7 @@ def list_docs(db, org_id: str, doc_type: Optional[str] = None, status: Optional[
     elif status == "expired":
         query = query.eq("doc_type", "quote").eq("status", "issued")
     if q:
-        needle = q.replace("%", "").replace(",", " ").strip()[:100]
+        needle = _needle(q)
         if needle:
             query = query.or_(f"customer_name.ilike.%{needle}%,number.ilike.%{needle}%")
     query = query.order("created_at", desc=True)
@@ -504,3 +504,103 @@ def convert_quote(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
             .eq("id", quote["id"]).eq("org_id", org_id).execute()
     _audit(db, org_id, user_id, "quote.converted", quote["id"], {"invoice_id": inv["id"]})
     return get_doc(db, org_id, inv["id"])
+
+
+# ───────────────────────────── INV-2: pickers, summary, logo ─────────────────────────────
+
+def _needle(q: Optional[str]) -> str:
+    """Search text safe to put inside a PostgREST or_() filter (no commas, brackets, wildcards or quotes)."""
+    import re as _re
+    return _re.sub(r"[%,()*\"'\\:]", " ", (q or "")).strip()[:60]
+
+
+def search_products(db, org_id: str, q: Optional[str] = None, limit: int = 20) -> list:
+    query = db.table("products").select("id, title, price, image_url, available, is_active").eq("org_id", org_id)
+    needle = _needle(q)
+    if needle:
+        query = query.ilike("title", f"%{needle}%")
+    res = query.order("title").limit(200).execute()
+    rows = [r for r in ((res.data or []) if res else []) if r.get("is_active") is not False]
+    return [{"id": r["id"], "title": r.get("title"), "price": r.get("price"), "image_url": r.get("image_url"),
+             "available": r.get("available")} for r in rows[:limit]]
+
+
+def search_contacts(db, org_id: str, q: Optional[str] = None, limit: int = 10) -> list:
+    """Leads to bill (works for every product mode; /leads itself is closed to WhatsApp-only and web-chat-only orgs)."""
+    needle = _needle(q)
+    query = db.table("leads").select("id, full_name, phone, whatsapp, email, location") \
+        .eq("org_id", org_id).is_("deleted_at", "null")
+    if needle:
+        query = query.or_(f"full_name.ilike.%{needle}%,phone.ilike.%{needle}%,whatsapp.ilike.%{needle}%,email.ilike.%{needle}%")
+    res = query.order("last_activity_at", desc=True).limit(limit).execute()
+    return (res.data or []) if res else []
+
+
+def summary(db, org_id: str) -> dict:
+    """Money owed (issued + part paid invoices), how much of it is overdue, open quotes and drafts."""
+    res = db.table("invoices").select("doc_type, status, total, amount_paid, due_date").eq("org_id", org_id) \
+        .in_("status", ["draft", "issued", "part_paid"]).limit(5000).execute()
+    out = {"drafts": 0, "open_quotes": 0, "open_quotes_amount": 0.0, "outstanding_count": 0,
+           "outstanding_amount": 0.0, "overdue_count": 0, "overdue_amount": 0.0}
+    owed_total = overdue_total = quotes_total = Decimal("0")
+    for r in ((res.data or []) if res else []):
+        if r.get("status") == "draft":
+            out["drafts"] += 1
+            continue
+        if r.get("doc_type") == "quote":
+            if display_status(r) == "issued":
+                out["open_quotes"] += 1
+                quotes_total += _money(r.get("total"))
+            continue
+        bal = _money(r.get("total")) - _money(r.get("amount_paid"))
+        out["outstanding_count"] += 1
+        owed_total += bal
+        if display_status(r) == "overdue":
+            out["overdue_count"] += 1
+            overdue_total += bal
+    out.update(outstanding_amount=_f(owed_total), overdue_amount=_f(overdue_total), open_quotes_amount=_f(quotes_total))
+    return out
+
+
+LOGO_MAX_BYTES = 2 * 1024 * 1024
+LOGO_MAX_SIDE = 600
+
+
+def save_logo(db, org_id: str, data: bytes) -> dict:
+    """Checks the bytes really are a PNG/JPEG/WebP image, re-draws it as a PNG at most 600 px (drops anything hidden in the
+    file), stores it in the public catalog bucket under <org>/invoice-logo/ and saves the URL in the settings."""
+    import io
+    if not data or len(data) > LOGO_MAX_BYTES:
+        raise InvoiceError("VALIDATION_ERROR", "The logo must be an image under 2 MB.", 422, "file")
+    head = data[:12]
+    if not (head.startswith(b"\x89PNG\r\n\x1a\n") or head.startswith(b"\xff\xd8\xff")
+            or (head[:4] == b"RIFF" and head[8:12] == b"WEBP")):
+        raise InvoiceError("VALIDATION_ERROR", "Use a PNG, JPG or WebP image.", 422, "file")
+    try:
+        from PIL import Image
+        Image.MAX_IMAGE_PIXELS = 40_000_000
+        img = Image.open(io.BytesIO(data))
+        img.load()
+        img = img.convert("RGBA")
+        img.thumbnail((LOGO_MAX_SIDE, LOGO_MAX_SIDE))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        png = buf.getvalue()
+    except Exception as exc:
+        logger.info("invoice_service.save_logo: unreadable image org=%s: %s", org_id, exc)
+        raise InvoiceError("VALIDATION_ERROR", "That image could not be read. Try another file.", 422, "file")
+    path = f"{org_id}/invoice-logo/logo-{secrets.token_hex(6)}.png"
+    try:
+        db.storage.from_("catalog").upload(path=path, file=png,
+                                           file_options={"content-type": "image/png", "upsert": "true"})
+        url = db.storage.from_("catalog").get_public_url(path)
+    except Exception as exc:
+        logger.error("invoice_service.save_logo: upload failed org=%s: %s", org_id, exc)
+        raise InvoiceError("INTEGRATION_ERROR", "Could not save the logo. Please try again.", 503)
+    url = (url or "").split("?")[0]
+    return save_settings(db, org_id, {"logo_url": url})
+
+
+def remove_logo(db, org_id: str) -> dict:
+    db.table("invoice_settings").update({"logo_url": None, "updated_at": _now_iso()}).eq("org_id", org_id).execute()
+    return get_settings(db, org_id)

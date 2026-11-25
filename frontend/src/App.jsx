@@ -74,6 +74,7 @@ import WaSignupPage from './pages/WaSignupPage'                      // WA-AUTO-
 import ChatSignupPage from './pages/ChatSignupPage'                  // WEB-ONLY-1b
 import SitesModule from './modules/sites/SitesModule'                   // SITE-1A
 import WebChatModule from './modules/webchat/WebChatModule'             // WEBCHAT-RESULTS-1
+import InvoicesModule from './modules/invoices/InvoicesModule'          // INV-2
 import { getWebchatSettings } from './services/webchat.service'          // WEBCHAT-RESULTS-1: is the chat switched on (the Web chat menu item)
 import BillingModule from './modules/billing/BillingModule'             // ACCOUNT-PLANS AP-3
 import BillingBanner from './modules/billing/BillingBanner'             // ACCOUNT-PLANS AP-3
@@ -83,7 +84,7 @@ import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard, BookOpen, MessagesSquare,
+  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard, BookOpen, MessagesSquare, Receipt,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 import SiteLandingPage from './pages/SiteLandingPage'   // SITE-LANDING
@@ -121,6 +122,7 @@ const NAV = [
   { id: 'support',  label: 'Support Tickets',      icon: 'support', module: '04', active: true, group: 'operations' },
   { id: 'renewal',  label: 'Client Subscription',     icon: 'renewal', module: '05', active: true, group: 'operations' },
   { id: 'ops',      label: 'Operations Hub',     icon: 'ops', module: '06', active: true, group: 'operations' },
+  { id: 'invoices', label: 'Invoices', icon: 'invoices', module: '17', active: true, group: 'operations' },   // INV-2
   { id: 'tasks',    label: 'Tasks Board',            icon: 'tasks', module: '08', active: true, group: 'operations' },
   { id: 'commissions', label: 'Commissions',        icon: 'commissions', module: '09',  active: true, group: 'operations' },
   { id: 'performance', label: 'Performance Hub',    icon: 'performance', module: '07',  active: true, group: 'insights' },
@@ -154,6 +156,7 @@ const NAV_ICONS = {
   'business-activities': Layers,
   'event-funnels': CalendarClock,   // FUNNEL-1B
   sites: Globe,   // SITE-1A
+  invoices: Receipt,   // INV-2
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -778,6 +781,8 @@ function AppShell() {
   const visibleNav = NAV.filter(item => {
     // WEBCHAT-RESULTS-1: Web chat results for the owner, operations manager and admin of a business whose website chat is switched on
     if (item.id === 'webchat') return webchatOn && ['owner', 'ops_manager', 'admin'].includes(_userTemplate) && !isWaOnly
+    // INV-2: Invoices for every product mode, but not for affiliate partners
+    if (item.id === 'invoices') return _userTemplate !== 'affiliate_partner'
     if (isNoCrm) return item.id === 'conversations' || item.id === 'knowledge'
     if (item.id === 'knowledge') return false
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
@@ -801,7 +806,7 @@ function AppShell() {
   // WA-AUTO-1: keep wa_automation orgs on screens they own (WEB-ONLY-1b: and web_chat orgs).
   useEffect(() => {
     if (!isNoCrm) return
-    if (!['conversations', 'knowledge', 'billing', 'admin', 'webchat'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
+    if (!['conversations', 'knowledge', 'billing', 'admin', 'webchat', 'invoices'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
   }, [isNoCrm, view])
   const [selectedLeadId, setSelectedLeadId] = useState(null)
   const [showNotif, setShowNotif]           = useState(false)
@@ -1193,6 +1198,9 @@ function AppShell() {
         )}
         {view === 'sites' && isPlatformOrg && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><SitesModule user={user} /></div>
+        )}
+        {view === 'invoices' && _userTemplate !== 'affiliate_partner' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><InvoicesModule /></div>
         )}
         {view === 'tasks' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} onOpenLead={(leadId) =>openLeadProfile(leadId)} /></div>

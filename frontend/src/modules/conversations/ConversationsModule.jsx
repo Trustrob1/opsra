@@ -63,6 +63,7 @@ import {
 import { getCreditSummary, naira } from '../../services/credits.service'
 import { getLeadMessages, markLeadMessagesRead } from '../../services/leads.service'
 import { getCustomerMessages, sendMessage } from '../../services/whatsapp.service'
+import InvoiceQuickButton from '../invoices/InvoiceQuickButton'   // INV-2
 
 // ─── Channel config ───────────────────────────────────────────────────────────
 
@@ -820,6 +821,8 @@ function ThreadPanel({ active, messages, loading, templates, threadStatus, statu
               {ch.label}{active.phone ? ` · ${active.phone}` : ''}
             </div>
           </div>
+          {/* INV-2: start an invoice or quote for the person in this chat */}
+          {isLead && active.contact_id && <InvoiceQuickButton leadId={active.contact_id} compact={!!onBack} />}
           {/* Ask Aria — opens the Aria panel without leaving Conversations */}
           {onOpenAria && (
             <button
