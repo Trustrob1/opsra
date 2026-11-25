@@ -43,6 +43,8 @@ SETTINGS_FIELDS = (
     "reminders_enabled",   # INV-5
     "sales_record_enabled", "sales_record_since",   # INV-SALES-1 (since is set by save_settings, never sent in)
     "payments_need_approval",   # SALE-1
+    "payment_confirm_reps", "payment_confirmers",   # REPORT-1: these reps' payments wait; these people may confirm
+    "report_emails", "daily_sales_report", "weekly_reports",   # REPORT-1: emailed reports
 )
 DEFAULT_SETTINGS = {
     "business_name": None, "address": None, "phone": None, "email": None, "rc_number": None, "tin": None,
@@ -53,6 +55,8 @@ DEFAULT_SETTINGS = {
     "reminders_enabled": False,
     "sales_record_enabled": False, "sales_record_since": None,
     "payments_need_approval": False,   # SALE-1
+    "payment_confirm_reps": [], "payment_confirmers": [],   # REPORT-1
+    "report_emails": [], "daily_sales_report": False, "weekly_reports": False,
 }
 # What an issued document keeps of the settings (printed on it forever).
 ISSUER_FIELDS = ("business_name", "address", "phone", "email", "rc_number", "tin", "logo_url",
@@ -180,6 +184,15 @@ def save_settings(db, org_id: str, data: dict) -> dict:
         row["sales_record_since"] = _now_iso()   # INV-SALES-1: only invoices paid from now on go to Sales Record
     if "vat_rate" in row and row["vat_rate"] is not None:
         row["vat_rate"] = _f(_d(row["vat_rate"]))
+    for k in ("payment_confirm_reps", "payment_confirmers"):   # REPORT-1: only this business's people
+        if k in row:
+            want = sorted({str(x) for x in (row[k] or []) if x})
+            found = {u["id"] for u in ((db.table("users").select("id").eq("org_id", org_id).in_("id", want).execute()
+                                        .data or []) if want else [])}
+            row[k] = [x for x in want if x in found]
+    if "report_emails" in row:
+        from app.services import report_email_service
+        row["report_emails"] = report_email_service.clean_emails(row["report_emails"])
     row["org_id"] = org_id
     row["updated_at"] = _now_iso()
     existing = db.table("invoice_settings").select("org_id").eq("org_id", org_id).limit(1).execute()

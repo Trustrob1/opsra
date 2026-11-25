@@ -197,6 +197,7 @@ celery_app = Celery(
         "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
         "app.workers.invoice_worker",                    # ← INV-5 (overdue reminders, quote expiry)
         "app.workers.stock_worker",                      # ← STOCK-3 (website holds, low-stock alert)
+        "app.workers.report_worker",                     # ← REPORT-1 (daily + weekly owner reports)
         "app.workers.account_plan_worker",               # ← ACCOUNT-PLANS AP-2 (plan lapse + reminders)
         "app.workers.knowledge_refresh_worker",          # ← WA-AUTO-4c (re-read website / Google Doc sources)
         "app.workers.notification_retention_worker",     # ← NOTIF-CLEANUP (old notifications)
@@ -799,6 +800,21 @@ celery_app.conf.beat_schedule = {
     "stock-low-alert": {
         "task": "app.workers.stock_worker.low_stock_alert",
         "schedule": crontab(hour=7, minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # REPORT-1: owner report emails, 07:00 WAT (06:00 UTC).              #
+    # Daily: yesterday's sales. Weekly (Mondays): last week's sales +    #
+    # inventory. Each business is claimed first, so a retry never        #
+    # sends twice.                                                       #
+    # ------------------------------------------------------------------ #
+    "report-daily-sales": {
+        "task": "app.workers.report_worker.daily_sales_report",
+        "schedule": crontab(hour=6, minute=0),
+    },
+    "report-weekly": {
+        "task": "app.workers.report_worker.weekly_reports",
+        "schedule": crontab(hour=6, minute=5, day_of_week=1),  # 1 = Monday
     },
 }
 

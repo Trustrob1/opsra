@@ -2,12 +2,14 @@
  * frontend/src/modules/invoices/InvoiceSettings.jsx
  * INV-2 — what prints on the business's quotes, invoices and receipts (admin only; the server checks again).
  * Changes apply to documents issued from now on; issued ones keep the details they were issued with.
+ * REPORT-1 — which reps' payments wait, who else may confirm them, and the emailed reports (daily sales, weekly).
  */
 import { useEffect, useRef, useState } from 'react'
 import { Upload, Trash2 } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { getInvoiceSettings, saveInvoiceSettings, uploadInvoiceLogo, removeInvoiceLogo, apiError } from '../../services/invoices.service'
+import { getInvoiceSettings, saveInvoiceSettings, uploadInvoiceLogo, removeInvoiceLogo, apiError, getSettingsPeople,
+  sendTestReport } from '../../services/invoices.service'
 import { card, lab, inp, btnP, btnG, disabled } from './invoiceUi'
 
 const TEXT = ['business_name', 'address', 'phone', 'email', 'rc_number', 'tin', 'bank_name', 'account_name', 'account_number',
@@ -20,6 +22,7 @@ export default function InvoiceSettings() {
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState(null)   // { ok: bool, text }
   const fileRef = useRef(null)
+  const [people, setPeople] = useState([])   // REPORT-1
 
   const adopt = (d) => {
     setS(d)
@@ -28,12 +31,25 @@ export default function InvoiceSettings() {
     setForm({ ...f, vat_enabled: !!d.vat_enabled, vat_rate: String(d.vat_rate ?? 7.5), default_due_days: String(d.default_due_days ?? 7),
       default_quote_valid_days: String(d.default_quote_valid_days ?? 14), brand_colour: d.brand_colour || '#0d9488',
       reminders_enabled: !!d.reminders_enabled, sales_record_enabled: !!d.sales_record_enabled,
-      payments_need_approval: !!d.payments_need_approval })   // SALE-1
+      payments_need_approval: !!d.payments_need_approval,   // SALE-1
+      payment_confirm_reps: d.payment_confirm_reps || [], payment_confirmers: d.payment_confirmers || [],   // REPORT-1
+      report_emails: (d.report_emails || []).join(', '), daily_sales_report: !!d.daily_sales_report, weekly_reports: !!d.weekly_reports })
   }
   useEffect(() => { getInvoiceSettings().then(adopt).catch((e) => setMsg({ ok: false, text: apiError(e) })) }, [])
+  useEffect(() => { getSettingsPeople().then((p) => setPeople(p || [])).catch(() => setPeople([])) }, [])
 
   if (!form) return <p style={{ color: msg ? ds.red : ds.gray }}>{msg?.text || 'Loading…'}</p>
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
+  const toggleIn = (k, id) => setForm((f) => ({ ...f, [k]: f[k].includes(id) ? f[k].filter((x) => x !== id) : [...f[k], id] }))
+  const reps = people.filter((p) => !p.manager)
+  const sendTest = async (kind) => {
+    setBusy(kind); setMsg(null)
+    try {
+      const r = await sendTestReport(kind)
+      setMsg({ ok: true, text: `Sent to ${r.sent_to.join(', ')}.` })
+    } catch (e) { setMsg({ ok: false, text: apiError(e, 'The email did not go out. Please try again.') }) }
+    finally { setBusy('') }
+  }
 
   const save = async () => {
     setBusy('save'); setMsg(null)
@@ -48,6 +64,11 @@ export default function InvoiceSettings() {
     body.reminders_enabled = !!form.reminders_enabled
     body.sales_record_enabled = !!form.sales_record_enabled
     body.payments_need_approval = !!form.payments_need_approval   // SALE-1
+    body.payment_confirm_reps = form.payment_confirm_reps   // REPORT-1
+    body.payment_confirmers = form.payment_confirmers
+    body.report_emails = form.report_emails.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean)
+    body.daily_sales_report = !!form.daily_sales_report
+    body.weekly_reports = !!form.weekly_reports
     try { adopt(await saveInvoiceSettings(body)); setMsg({ ok: true, text: 'Saved. New documents will use these details.' }) }
     catch (e) { setMsg({ ok: false, text: apiError(e, 'Could not save. Check the details and try again.') }) }
     finally { setBusy('') }
@@ -173,6 +194,37 @@ export default function InvoiceSettings() {
             </small>
           </span>
         </label>
+        {reps.length > 0 && <>
+          <PeopleChecks title="Only some reps' payments wait"
+            help={form.payments_need_approval ? 'Every rep\'s payments wait while the box above is ticked.'
+              : 'Tick reps whose payments should wait, for example remote reps without a POS. Everyone else is accepted at once.'}
+            people={reps} chosen={form.payment_confirm_reps} off={form.payments_need_approval}
+            onToggle={(id) => toggleIn('payment_confirm_reps', id)} />
+          <PeopleChecks title="Can also confirm payments"
+            help="Owners, operations managers and admins can always confirm. Tick anyone else who may, such as the person who checks the bank for remote reps. Their own payments are never held, and nobody can confirm a payment they recorded."
+            people={reps} chosen={form.payment_confirmers} onToggle={(id) => toggleIn('payment_confirmers', id)} />
+        </>}
+      </section>
+
+      <section style={card}>
+        <h3 style={h}>Emailed reports</h3>
+        <label style={{ display: 'block', marginBottom: 12 }}><span style={lab}>Send reports to</span>
+          <input style={inp} value={form.report_emails} onChange={set('report_emails')} placeholder="owner@business.com" />
+          <small style={{ display: 'block', color: ds.gray, marginTop: 4 }}>Separate addresses with commas (up to 10). Leave empty to use the owner's login email.</small>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', color: ds.dark, marginBottom: 10 }}>
+          <input type="checkbox" checked={!!form.daily_sales_report} onChange={set('daily_sales_report')} style={{ width: 18, height: 18, marginTop: 2 }} />
+          <span>Daily sales report<small style={{ display: 'block', color: ds.gray, marginTop: 4 }}>Every morning at 7am, yesterday's sales report as a PDF and a CSV.</small></span>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', color: ds.dark }}>
+          <input type="checkbox" checked={!!form.weekly_reports} onChange={set('weekly_reports')} style={{ width: 18, height: 18, marginTop: 2 }} />
+          <span>Weekly reports<small style={{ display: 'block', color: ds.gray, marginTop: 4 }}>Every Monday at 7am, last week's sales report, plus the inventory report when stock is on.</small></span>
+        </label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
+          <button type="button" style={disabled(btnG, !!busy)} disabled={!!busy} onClick={() => sendTest('daily')}>{busy === 'daily' ? 'Sending…' : 'Send yesterday\'s report now'}</button>
+          <button type="button" style={disabled(btnG, !!busy)} disabled={!!busy} onClick={() => sendTest('weekly')}>{busy === 'weekly' ? 'Sending…' : 'Send last week\'s report now'}</button>
+          <small style={{ color: ds.gray }}>Uses the saved addresses. Save first if you changed them.</small>
+        </div>
       </section>
 
       <section style={card}>
@@ -195,5 +247,22 @@ export default function InvoiceSettings() {
         {msg && <span role="status" style={{ color: msg.ok ? ds.green : ds.red, fontSize: 14 }}>{msg.text}</span>}
       </div>
     </div>
+  )
+}
+
+function PeopleChecks({ title, help, people, chosen, onToggle, off = false }) {
+  return (
+    <fieldset style={{ border: `1px solid ${ds.border}`, borderRadius: 10, padding: '10px 14px', marginTop: 14, opacity: off ? 0.55 : 1 }} disabled={off}>
+      <legend style={{ fontSize: 14, fontWeight: 600, color: ds.dark, padding: '0 6px' }}>{title}</legend>
+      <small style={{ display: 'block', color: ds.gray, marginBottom: 8 }}>{help}</small>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6 }}>
+        {people.map((p) => (
+          <label key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 36, cursor: off ? 'default' : 'pointer', color: ds.dark, fontSize: 14 }}>
+            <input type="checkbox" checked={chosen.includes(p.id)} onChange={() => onToggle(p.id)} style={{ width: 18, height: 18 }} />
+            {p.name}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   )
 }

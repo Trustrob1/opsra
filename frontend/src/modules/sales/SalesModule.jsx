@@ -3,6 +3,7 @@
  * SALE-1 — the Sales page: Make a sale, the sales this person made (owners, ops managers and admins see everyone's),
  * and the payments waiting for an admin's OK (admins confirm; reps see theirs and can take one back).
  * The records themselves are ordinary invoices and receipts, so they also show in Invoices.
+ * REPORT-1 — Report tab (owners and admins); people the business named as payment confirmers see Payments to confirm.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
@@ -14,6 +15,7 @@ import StatusPill from '../invoices/StatusPill'
 import InvoiceEditor from '../invoices/InvoiceEditor'
 import { PendingPaymentRow } from '../invoices/PendingPayments'
 import SaleForm from './SaleForm'
+import SalesReport from './SalesReport'
 
 const PAGE = 50
 
@@ -21,6 +23,8 @@ export default function SalesModule() {
   const user = useAuthStore((s) => s.user)
   const isAdmin = useAuthStore((s) => s.hasPermission)('is_admin')
   const manager = ['owner', 'ops_manager'].includes(user?.roles?.template) || isAdmin
+  const reports = isAdmin   // owners count as admins
+  const [canConfirm, setCanConfirm] = useState(manager)
   const [tab, setTab] = useState('new')
   const [openId, setOpenId] = useState(null)
   const [waiting, setWaiting] = useState(0)
@@ -29,13 +33,14 @@ export default function SalesModule() {
   const refresh = () => setTick((t) => t + 1)
 
   useEffect(() => {
-    getInvoiceSummary().then((s) => setWaiting(s?.payments_waiting || 0)).catch((e) => { if (isPlanBlocked(e)) setBlocked(true) })
+    getInvoiceSummary().then((s) => { setWaiting(s?.payments_waiting || 0); setCanConfirm(!!s?.can_confirm_payments) }).catch((e) => { if (isPlanBlocked(e)) setBlocked(true) })
   }, [tick])
 
   if (blocked) return <div style={{ padding: 24 }}><div style={{ ...card, color: ds.gray }}>Make a sale uses Invoices, which is not included in your plan. Open Billing to see the plans.</div></div>
 
   const tabs = [['new', 'Make a sale'], ['mine', manager ? 'All sales' : 'My sales'],
-    ['waiting', `${manager ? 'Payments to confirm' : 'Waiting for an admin'}${waiting ? ` (${waiting})` : ''}`]]
+    ['waiting', `${canConfirm ? 'Payments to confirm' : 'Waiting for an admin'}${waiting ? ` (${waiting})` : ''}`],
+    ...(reports ? [['report', 'Report']] : [])]
   return (
     <div style={{ padding: 'clamp(14px, 3vw, 28px)', maxWidth: 1000, margin: '0 auto', display: 'grid', gap: 16, fontFamily: ds.fontDm }}>
       <h1 style={{ margin: 0, fontSize: 24, color: ds.dark }}>Sales</h1>
@@ -50,7 +55,8 @@ export default function SalesModule() {
       </div>
       {tab === 'new' && <SaleForm onOpenInvoice={setOpenId} onSaved={refresh} />}
       {tab === 'mine' && <SalesList key={tick} onOpen={setOpenId} />}
-      {tab === 'waiting' && <Approvals key={tick} manager={manager} onChanged={refresh} />}
+      {tab === 'waiting' && <Approvals key={tick} manager={canConfirm} onChanged={refresh} />}
+      {tab === 'report' && reports && <SalesReport />}
       {openId && <InvoiceEditor docId={openId} onClose={() => setOpenId(null)} onChanged={refresh} />}
     </div>
   )

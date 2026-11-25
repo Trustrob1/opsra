@@ -4,11 +4,13 @@
  * Adjust (managers), each product's panel, the full history, and (managers) the settings and locations.
  * Shown to every product mode, like Invoices.
  * STOCK-3 — Moves tab and Move stock (managers): stock sent between locations, received when it arrives.
+ * REPORT-1 — Report tab (owners and admins): the inventory report with PDF / CSV downloads.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Boxes, PackagePlus, Search, SlidersHorizontal, Truck } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import useAuthStore from '../../store/authStore'
 import { getStock, stockError, isPlanBlocked } from '../../services/inventory.service'
 import { card, inp, btnP, btnG, units, nairaShort, sizeText, th, td } from './stockUi'
 import { ReceiveStock, AdjustStock } from './StockForms'
@@ -18,9 +20,11 @@ import InventorySettings from './InventorySettings'
 import InvoiceStockList from './InvoiceStockList'   // STOCK-2
 import StockApprovals from './StockApprovals'       // STOCK-2b
 import StockTransfers, { MoveStock } from './StockTransfers'   // STOCK-3
+import InventoryReport from './InventoryReport'                 // REPORT-1
 
 export default function InventoryModule() {
   const isMobile = useIsMobile()
+  const isAdmin = useAuthStore((st) => st.hasPermission)('is_admin')   // owners count as admins
   const [tab, setTab] = useState('stock')
   const [q, setQ] = useState('')
   const [dq, setDq] = useState('')
@@ -92,6 +96,7 @@ export default function InventoryModule() {
         {enabled && canManage && chip(tab === 'approvals', 'Approvals', () => setTab('approvals'))}
         {enabled && locations.length > 1 && chip(tab === 'moves', 'Moves', () => setTab('moves'))}
         {enabled && chip(tab === 'history', 'History', () => setTab('history'))}
+        {enabled && isAdmin && chip(tab === 'report', 'Report', () => setTab('report'))}
         {canManage && chip(tab === 'settings', 'Settings', () => setTab('settings'))}
       </div>
       {note && <div role="status" style={{ background: '#EEF9F1', border: '1px solid #BFE5CB', color: '#1A7A40', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14, display: 'flex', gap: 10 }}>
@@ -99,6 +104,7 @@ export default function InventoryModule() {
 
       {tab === 'settings' && canManage ? <InventorySettings onChanged={load} />
         : tab === 'history' && enabled ? <StockHistory locations={locations} />
+        : tab === 'report' && enabled && isAdmin ? <InventoryReport locations={locations} />
         : tab === 'approvals' && enabled && canManage ? <StockApprovals onChanged={load} />
         : tab === 'moves' && enabled ? <StockTransfers canManage={canManage} onChanged={load} reloadKey={moved} />
         : (tab === 'deliver' || tab === 'held') && enabled ? <InvoiceStockList key={tab} kind={tab} locations={locations} onChanged={load} />

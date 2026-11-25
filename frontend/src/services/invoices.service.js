@@ -84,6 +84,14 @@ export const approvePayment    = (id) => api.post(`/api/v1/payments/approvals/${
 export const rejectPayment     = (id, reason) => api.post(`/api/v1/payments/approvals/${id}/reject`, { reason }).then(d)
 export const cancelPayment     = (id) => api.post(`/api/v1/payments/approvals/${id}/cancel`).then(d)
 
+// REPORT-1: the sales report (admins), PDF / CSV downloads, report emails, people for the payment pickers
+const clean = (p) => Object.fromEntries(Object.entries(p || {}).filter(([, v]) => v !== '' && v != null))
+export const getSalesReport      = (params) => api.get('/api/v1/reports/sales', { params: clean(params) }).then(d)
+export const downloadSalesReport = (params, format) =>
+  savePdf(`/api/v1/reports/sales?${new URLSearchParams({ ...clean(params), format })}`)
+export const sendTestReport      = (kind) => api.post('/api/v1/reports/send-test', { kind }).then(d)
+export const getSettingsPeople   = () => api.get('/api/v1/invoices/settings/people').then(d)
+
 /** Fetch the PDF with the login token and save it (a plain link can't carry the token). */
 export const downloadDocPdf = (id, filename) => savePdf(`/api/v1/invoices/${id}/pdf`, filename)
 

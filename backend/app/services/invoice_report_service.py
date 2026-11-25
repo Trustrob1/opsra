@@ -197,20 +197,29 @@ def _cell(v) -> str:
 def receipts_csv(db, org_id: str, start: Optional[date] = None, end: Optional[date] = None,
                  mine: Optional[str] = None) -> str:
     start, end = check_period(start, end)
-    res = _mine(db.table("receipts").select("number, invoice_id, customer_name, amount, method, reference, paid_at, voided_at")
+    res = _mine(db.table("receipts").select("number, invoice_id, customer_name, amount, method, reference, paid_at, "
+                                            "voided_at, owner_id")
                 .eq("org_id", org_id), "owner_id", mine).gte("paid_at", _iso_start(start)).lt("paid_at", _iso_start(end + timedelta(days=1))) \
         .order("paid_at").limit(MAX_ROWS).execute()
     rows = _rows(res)
-    numbers = {}
+    invoices = {}
     ids = sorted({r["invoice_id"] for r in rows if r.get("invoice_id")})
     for i in range(0, len(ids), 200):
-        for x in _rows(db.table("invoices").select("id, number").eq("org_id", org_id).in_("id", ids[i:i + 200]).execute()):
-            numbers[x["id"]] = x.get("number")
+        for x in _rows(db.table("invoices").select("id, number, region").eq("org_id", org_id).in_("id", ids[i:i + 200]).execute()):
+            invoices[x["id"]] = x
+    names = {}   # REPORT-1: who recorded each payment
+    uids = sorted({r["owner_id"] for r in rows if r.get("owner_id")})
+    for i in range(0, len(uids), 200):
+        for u in _rows(db.table("users").select("id, full_name, email").eq("org_id", org_id).in_("id", uids[i:i + 200]).execute()):
+            names[u["id"]] = u.get("full_name") or u.get("email")
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Receipt", "Date paid", "Customer", "Invoice", "Method", "Reference", "Amount (NGN)", "Void"])
+    w.writerow(["Receipt", "Date paid", "Customer", "Invoice", "Method", "Reference", "Amount (NGN)", "Void",
+                "Recorded by", "Region"])
     for r in rows:
+        doc = invoices.get(r.get("invoice_id")) or {}
         w.writerow([_cell(r.get("number")), str(_lagos_day(r.get("paid_at")) or ""), _cell(r.get("customer_name")),
-                    _cell(numbers.get(r.get("invoice_id")) or ""), _cell(r.get("method")), _cell(r.get("reference")),
-                    f"{inv._money(r.get('amount')):.2f}", "yes" if r.get("voided_at") else ""])
+                    _cell(doc.get("number") or ""), _cell(r.get("method")), _cell(r.get("reference")),
+                    f"{inv._money(r.get('amount')):.2f}", "yes" if r.get("voided_at") else "",
+                    _cell(names.get(r.get("owner_id")) or ""), _cell(doc.get("region") or "")])
     return buf.getvalue()

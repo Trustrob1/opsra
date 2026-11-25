@@ -24,6 +24,7 @@ import logging
 from decimal import Decimal
 from typing import Optional
 
+from app.services import inventory_service as stock
 from app.services import invoice_payment_service as pay
 from app.services import invoice_service as inv
 from app.services import payment_approval_service as approvals
@@ -100,7 +101,7 @@ def finish(db, org_ctx: dict, doc_id: str, payment: Optional[dict], delivered: b
     doc = inv.get_doc(db, org_id, doc_id)
     if doc.get("doc_type") != "invoice":
         raise inv._err_nf("Invoice")
-    if not approvals.can_confirm(org_ctx) and doc.get("created_by") != user_id:
+    if not stock.is_manager(org_ctx) and doc.get("created_by") != user_id:
         raise inv._err_nf("Invoice")
     if delivered and p["status"] != "paid":
         raise inv.InvoiceError("VALIDATION_ERROR", "Goods can be handed over once the sale is fully paid.", 422,
@@ -129,7 +130,7 @@ def finish(db, org_ctx: dict, doc_id: str, payment: Optional[dict], delivered: b
 
 def my_sales(db, org_ctx: dict, q: Optional[str] = None, limit: int = 50, offset: int = 0) -> dict:
     """The invoices this user made (admins: everyone's), newest first, with what is waiting for an admin."""
-    mine = None if approvals.can_confirm(org_ctx) else org_ctx.get("id")
+    mine = None if stock.is_manager(org_ctx) else org_ctx.get("id")
     out = inv.list_docs(db, org_ctx["org_id"], "invoice", None, None, None, q, limit, offset, mine=mine)
     ids = [d["id"] for d in out.get("items", [])]
     waiting: dict = {}

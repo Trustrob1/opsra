@@ -29,12 +29,14 @@ from decimal import Decimal
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.database import get_supabase
-from app.dependencies import get_current_org
+from app.dependencies import get_current_org, require_admin
 from app.models.common import ok
 from app.services import inventory_service as stock
 from app.services import invoice_sales_service as sales
@@ -155,6 +157,30 @@ async def get_inventory(q: Optional[str] = Query(None, max_length=100), location
         return _fail(e)
     data["can_manage"] = stock.is_manager(org)
     return ok(data=data)
+
+
+@router.get("/inventory/report")
+async def get_inventory_report(start: Optional[date] = None, end: Optional[date] = None,
+                               location_id: Optional[UUID] = None, format: Literal["json", "pdf", "csv"] = "json",
+                               org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    """REPORT-1: stock now + moves in the period, as JSON, PDF or CSV (admins)."""
+    from app.services import business_report_service as biz
+    from app.services import invoice_service as inv
+    try:
+        data = biz.inventory_data(db, _org_id(org), start, end, str(location_id) if location_id else None)
+    except stock.StockError as e:
+        return _fail(e)
+    if format == "json":
+        return ok(data=data)
+    if format == "csv":
+        body, name, media = biz.inventory_csv(data).encode("utf-8-sig"), biz.filename("inventory", data, "csv"), "text/csv"
+    else:
+        body, name = biz.inventory_pdf(data, inv.get_settings(db, _org_id(org)))
+        media = "application/pdf"
+        if not body:
+            return _fail(stock.StockError("INTEGRATION_ERROR", "The PDF could not be made. Please try again.", 503))
+    return Response(content=body, media_type=media, headers={
+        "Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
 @router.get("/inventory/settings")

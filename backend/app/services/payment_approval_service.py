@@ -34,15 +34,35 @@ def _rows(res) -> list:
     return data if isinstance(data, list) else []
 
 
-def can_confirm(org_ctx: Optional[dict]) -> bool:
-    """Owner, ops manager or admin."""
-    return stock.is_manager(org_ctx)
+def _ids(values) -> set:
+    return {str(v) for v in (values or []) if v}
+
+
+def can_confirm(org_ctx: Optional[dict], db=None) -> bool:
+    """Owner, ops manager or admin - or (REPORT-1) someone the business named in payment_confirmers."""
+    if stock.is_manager(org_ctx):
+        return True
+    if db is None or not (org_ctx or {}).get("id"):
+        return False
+    return str(org_ctx["id"]) in _ids(inv.get_settings(db, org_ctx["org_id"]).get("payment_confirmers"))
 
 
 def needs_approval(db, org_ctx: dict) -> bool:
-    if can_confirm(org_ctx):
+    """Held when the business holds every rep's payments, or (REPORT-1) this rep is one of payment_confirm_reps.
+    Managers and named confirmers are never held."""
+    if stock.is_manager(org_ctx):
         return False
-    return bool(inv.get_settings(db, org_ctx["org_id"]).get("payments_need_approval"))
+    st = inv.get_settings(db, org_ctx["org_id"])
+    me = str(org_ctx.get("id") or "")
+    if me in _ids(st.get("payment_confirmers")):
+        return False
+    return bool(st.get("payments_need_approval")) or me in _ids(st.get("payment_confirm_reps"))
+
+
+def confirmer_ids(db, org_id: str) -> list:
+    """Everyone who may confirm: managers plus the named confirmers."""
+    from app.services import invoice_stock_service as inv_stock
+    return sorted(set(inv_stock._manager_ids(db, org_id)) | _ids(inv.get_settings(db, org_id).get("payment_confirmers")))
 
 
 def waiting_total(db, org_id: str, invoice_id: str) -> Decimal:
@@ -125,8 +145,7 @@ def request_invoice_payment(db, org_ctx: dict, invoice_id: str, data: dict, deli
     out = saved[0] if saved else row
     inv._audit(db, org_id, user_id, "payment.requested", doc["id"], {"amount": checked["amount"],
                                                                      "method": payload.get("method")})
-    from app.services import invoice_stock_service as inv_stock
-    _notify(db, org_id, [m for m in inv_stock._manager_ids(db, org_id) if m != user_id], "Payment to confirm",
+    _notify(db, org_id, [m for m in confirmer_ids(db, org_id) if m != user_id], "Payment to confirm",
             f"{org_ctx.get('full_name') or 'A rep'} recorded {_money_text(checked['amount'])} on invoice "
             f"{doc.get('number') or ''} ({doc.get('customer_name') or 'customer'}). Please confirm it.")
     return _decorate(db, org_id, [out])[0]
@@ -145,8 +164,7 @@ def request_standalone(db, org_ctx: dict, data: dict) -> dict:
     saved = _rows(db.table("payment_approvals").insert(row).execute())
     out = saved[0] if saved else row
     inv._audit(db, org_id, user_id, "payment.requested", None, {"amount": row_checked["amount"], "standalone": True})
-    from app.services import invoice_stock_service as inv_stock
-    _notify(db, org_id, [m for m in inv_stock._manager_ids(db, org_id) if m != user_id], "Payment to confirm",
+    _notify(db, org_id, [m for m in confirmer_ids(db, org_id) if m != user_id], "Payment to confirm",
             f"{org_ctx.get('full_name') or 'A rep'} recorded {_money_text(row_checked['amount'])} from "
             f"{row_checked.get('customer_name') or 'a customer'}. Please confirm it.")
     return _decorate(db, org_id, [out])[0]
@@ -160,15 +178,16 @@ def list_approvals(db, org_ctx: dict, status: str = "pending", limit: int = 100)
     if status not in STATUSES:
         raise inv.InvoiceError("VALIDATION_ERROR", "Unknown status.", 422, "status")
     q = db.table("payment_approvals").select(COLS).eq("org_id", org_id).eq("status", status)
-    if not can_confirm(org_ctx):
+    allowed = can_confirm(org_ctx, db)
+    if not allowed:
         q = q.eq("requested_by", org_ctx.get("id"))
     res = q.order("requested_at", desc=status != "pending").limit(max(1, min(limit, 200))).execute()
-    return {"items": _decorate(db, org_id, _rows(res)), "can_confirm": can_confirm(org_ctx)}
+    return {"items": _decorate(db, org_id, _rows(res)), "can_confirm": allowed}
 
 
 def count_pending(db, org_ctx: dict) -> int:
     q = db.table("payment_approvals").select("id").eq("org_id", org_ctx["org_id"]).eq("status", "pending")
-    if not can_confirm(org_ctx):
+    if not can_confirm(org_ctx, db):
         q = q.eq("requested_by", org_ctx.get("id"))
     return len(_rows(q.limit(500).execute()))
 
@@ -189,9 +208,11 @@ def _claim(db, org_id: str, approval_id: str, status: str, user_id: Optional[str
 
 def approve(db, org_ctx: dict, approval_id: str) -> dict:
     org_id, user_id = org_ctx["org_id"], org_ctx.get("id")
-    if not can_confirm(org_ctx):
-        raise inv.InvoiceError("FORBIDDEN", "Only an owner, ops manager or admin can confirm payments.", 403)
+    if not can_confirm(org_ctx, db):
+        raise inv.InvoiceError("FORBIDDEN", "You can't confirm payments. Ask an admin.", 403)
     a = _get(db, org_id, approval_id)
+    if a.get("requested_by") and a.get("requested_by") == user_id:   # REPORT-1: never your own
+        raise inv.InvoiceError("FORBIDDEN", "Someone else must confirm a payment you recorded.", 403)
     if a.get("status") != "pending":
         raise inv.InvoiceError("INVALID_TRANSITION", "This payment has already been dealt with.", 409)
     a = _claim(db, org_id, a["id"], "approved", user_id, None)
@@ -209,8 +230,9 @@ def approve(db, org_ctx: dict, approval_id: str) -> dict:
         raise
     db.table("payment_approvals").update({"receipt_id": receipt["id"]}).eq("org_id", org_id).eq("id", a["id"]).execute()
     delivered = False
-    if a.get("deliver") and out.get("fully_paid"):
-        delivered = deliver_all(db, org_ctx, a["invoice_id"])
+    if a.get("deliver") and out.get("fully_paid"):   # a named confirmer isn't a manager: deliver as the rep who sold
+        ctx = org_ctx if stock.is_manager(org_ctx) else {"org_id": org_id, "id": a.get("requested_by"), "roles": {}}
+        delivered = deliver_all(db, ctx, a["invoice_id"])
     inv._audit(db, org_id, user_id, "payment.approved", a.get("invoice_id"),
                {"approval": a["id"], "receipt": receipt.get("number"), "amount": a.get("amount")})
     _notify(db, org_id, [a.get("requested_by")] if a.get("requested_by") != user_id else [], "Payment confirmed",
@@ -224,8 +246,8 @@ def approve(db, org_ctx: dict, approval_id: str) -> dict:
 
 def reject(db, org_ctx: dict, approval_id: str, reason: str) -> dict:
     org_id, user_id = org_ctx["org_id"], org_ctx.get("id")
-    if not can_confirm(org_ctx):
-        raise inv.InvoiceError("FORBIDDEN", "Only an owner, ops manager or admin can reject payments.", 403)
+    if not can_confirm(org_ctx, db):
+        raise inv.InvoiceError("FORBIDDEN", "You can't reject payments. Ask an admin.", 403)
     reason = (reason or "").strip()
     if len(reason) < 3:
         raise inv.InvoiceError("VALIDATION_ERROR", "Say why the payment is rejected.", 422, "reason")
@@ -240,7 +262,7 @@ def cancel(db, org_ctx: dict, approval_id: str) -> dict:
     """The rep who recorded it (or an admin) takes it back while it waits."""
     org_id, user_id = org_ctx["org_id"], org_ctx.get("id")
     a = _get(db, org_id, approval_id)
-    if not can_confirm(org_ctx) and a.get("requested_by") != user_id:
+    if not can_confirm(org_ctx, db) and a.get("requested_by") != user_id:
         raise inv._err_nf("Payment")
     a = _claim(db, org_id, a["id"], "cancelled", user_id, None)
     inv._audit(db, org_id, user_id, "payment.cancelled", a.get("invoice_id"), {"approval": a["id"]})

@@ -211,6 +211,11 @@ class SettingsIn(_Strict):
     reminders_enabled: Optional[bool] = None   # INV-5
     sales_record_enabled: Optional[bool] = None   # INV-SALES-1
     payments_need_approval: Optional[bool] = None   # SALE-1
+    payment_confirm_reps: Optional[List[UUID]] = Field(None, max_length=200)   # REPORT-1
+    payment_confirmers: Optional[List[UUID]] = Field(None, max_length=50)
+    report_emails: Optional[List[str]] = Field(None, max_length=10)
+    daily_sales_report: Optional[bool] = None
+    weekly_reports: Optional[bool] = None
 
     _money = field_validator("vat_rate")(_two_places)
 
@@ -220,6 +225,15 @@ class SettingsIn(_Strict):
         if v and ("@" not in v or " " in v.strip()):
             raise ValueError("Not a valid email address")
         return v.strip() if v else v
+
+    @field_validator("report_emails")
+    @classmethod
+    def _emails(cls, v):
+        from app.services.report_email_service import EMAIL_RE
+        for x in v or []:
+            if not EMAIL_RE.match(str(x).strip()) or len(str(x)) > 254:
+                raise ValueError(f"Not a valid email address: {x}")
+        return v
 
 
 def _body(model: BaseModel) -> dict:
@@ -291,6 +305,25 @@ async def put_settings(body: SettingsIn, org: dict = Depends(require_admin), db=
     return ok(data)
 
 
+@router.get("/invoices/settings/people")
+async def settings_people(org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    """REPORT-1: active staff for the payment pickers (who waits, who may confirm). Managers never wait."""
+    rows = db.table("users").select("id, full_name, email, is_active, roles(template, permissions)") \
+        .eq("org_id", org["org_id"]).execute().data or []
+    out = []
+    for u in rows:
+        if u.get("is_active") is False:
+            continue
+        role = u.get("roles") or {}
+        role = role[0] if isinstance(role, list) and role else role
+        perms = (role or {}).get("permissions") or {}
+        manager = (role or {}).get("template") in ("owner", "ops_manager") or perms.get("is_admin") is True
+        out.append({"id": u["id"], "name": u.get("full_name") or u.get("email"), "email": u.get("email"),
+                    "manager": manager})
+    out.sort(key=lambda x: str(x["name"] or "").lower())
+    return ok(out)
+
+
 @router.post("/invoices/settings/logo")
 async def upload_logo(file: UploadFile = File(...), org: dict = Depends(require_admin), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
@@ -317,7 +350,7 @@ async def get_summary(org: dict = Depends(get_current_org), db=Depends(get_supab
     out["paid_this_month"] = pay.paid_this_month(db, org["org_id"], mine=_mine(org))
     from app.services import payment_approval_service as approvals   # SALE-1
     out["payments_waiting"] = approvals.count_pending(db, org)
-    out["can_confirm_payments"] = approvals.can_confirm(org)
+    out["can_confirm_payments"] = approvals.can_confirm(org, db)
     return ok(out)
 
 
@@ -329,6 +362,64 @@ async def get_report(start: Optional[date] = None, end: Optional[date] = None,
         return ok(rep.report(db, org["org_id"], start, end, mine=_mine(org)))
     except inv.InvoiceError as e:
         return _fail(e)
+
+
+# ── REPORT-1: the sales report as JSON, PDF or CSV (admins), and "send me one now" ──
+
+def _report_file(data: bytes, name: str, media: str) -> Response:
+    return Response(content=data, media_type=media, headers={
+        "Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+
+@router.get("/reports/sales")
+async def get_sales_report(start: Optional[date] = None, end: Optional[date] = None,
+                           region: Optional[str] = Query(None, max_length=100), location_id: Optional[UUID] = None,
+                           rep_id: Optional[UUID] = None, format: Literal["json", "pdf", "csv"] = "json",
+                           org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    from app.services import business_report_service as biz
+    from app.services import invoice_sales_service as sales_svc
+    try:
+        data = biz.sales_data(db, org["org_id"], start, end, region=region,
+                              location_id=str(location_id) if location_id else None,
+                              rep_id=str(rep_id) if rep_id else None)
+    except inv.InvoiceError as e:
+        return _fail(e)
+    if format == "csv":
+        return _report_file(biz.sales_csv(data).encode("utf-8-sig"), biz.filename("sales", data, "csv"), "text/csv")
+    if format == "pdf":
+        body, name = biz.sales_pdf(data, inv.get_settings(db, org["org_id"]))
+        if not body:
+            return _fail(inv.InvoiceError("INTEGRATION_ERROR", "The PDF could not be made. Please try again.", 503))
+        return _report_file(body, name, "application/pdf")
+    data["regions"] = sales_svc.regions(db, org["org_id"])
+    data["reps"] = [{"id": u["id"], "name": u.get("full_name") or u.get("email")} for u in
+                    (db.table("users").select("id, full_name, email, is_active").eq("org_id", org["org_id"]).execute().data or [])
+                    if u.get("is_active") is not False]
+    data["reps"].sort(key=lambda u: str(u["name"] or "").lower())
+    data["locations"] = [{"id": l["id"], "name": l["name"]} for l in biz._locations(db, org["org_id"]).values()]
+    return ok(data)
+
+
+class ReportTestIn(_Strict):
+    kind: Literal["daily", "weekly"] = "daily"
+
+
+@router.post("/reports/send-test")
+async def send_test_report(body: ReportTestIn, org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    """Send the report now to the report emails (does not change the schedule)."""
+    from datetime import timedelta
+    from app.services import report_email_service as mail
+    org_id = org["org_id"]
+    to = mail.recipients(db, org_id)
+    if not to:
+        return _fail(inv.InvoiceError("VALIDATION_ERROR", "Add an email address to send reports to first.", 422,
+                                      "report_emails"))
+    today = mail.lagos_today()
+    sent = mail.send_daily(db, org_id, today - timedelta(days=1)) if body.kind == "daily" \
+        else mail.send_weekly(db, org_id, today - timedelta(days=today.isoweekday() % 7 or 7))
+    if not sent:
+        return _fail(inv.InvoiceError("INTEGRATION_ERROR", "The email did not go out. Please try again.", 503))
+    return ok({"sent_to": to})
 
 
 @router.get("/invoices/report/receipts.csv")
@@ -424,7 +515,7 @@ async def get_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
         from app.services import payment_approval_service as approvals
         doc["receipts"] = pay.receipts_for_invoice(db, org["org_id"], doc["id"])
         doc["pending_payments"] = approvals.pending_for_invoice(db, org["org_id"], doc["id"])   # SALE-1
-        doc["can_confirm_payments"] = approvals.can_confirm(org)
+        doc["can_confirm_payments"] = approvals.can_confirm(org, db)
         doc["payments_need_approval"] = approvals.needs_approval(db, org)
         for r in doc["receipts"]:
             r.pop("public_token", None)
