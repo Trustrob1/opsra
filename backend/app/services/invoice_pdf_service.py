@@ -79,6 +79,28 @@ def _safe_fetcher(url: str, *args, **kwargs):
     return default_url_fetcher(url, *args, timeout=5, **kwargs)
 
 
+def pdf_url_fetcher():
+    """PDF-FIX-1: the url_fetcher to hand to weasyprint.HTML.
+
+    WeasyPrint 68+ wants a URLFetcher object (it reads url_fetcher._fail_on_errors) and no longer has
+    default_url_fetcher, so a plain function crashes every PDF with "'function' object has no attribute
+    '_fail_on_errors'". Older versions still take the plain function. Same rule either way: only our own
+    Supabase storage URLs (the logo) are fetched; anything else is refused, and redirects are not followed.
+    """
+    try:
+        from weasyprint.urls import URLFetcher
+    except ImportError:
+        return _safe_fetcher
+
+    class _SafeFetcher(URLFetcher):
+        def fetch(self, url, headers=None):
+            if not _logo_allowed(url):
+                raise ValueError("blocked url")
+            return super().fetch(url, headers)
+
+    return _SafeFetcher(timeout=5, allow_redirects=False)
+
+
 def _issuer(doc: dict, settings: dict) -> dict:
     return doc.get("issuer") or settings or {}
 
@@ -215,7 +237,7 @@ def render(doc: dict, settings: dict, kind: str) -> tuple[Optional[bytes], str]:
     name = filename(doc, kind)
     try:
         from weasyprint import HTML
-        return HTML(string=build_html(doc, settings, kind), url_fetcher=_safe_fetcher).write_pdf(), name
+        return HTML(string=build_html(doc, settings, kind), url_fetcher=pdf_url_fetcher()).write_pdf(), name
     except Exception as exc:  # S14
         logger.error("invoice_pdf_service.render failed kind=%s doc=%s: %s", kind, doc.get("id"), exc)
         return None, name

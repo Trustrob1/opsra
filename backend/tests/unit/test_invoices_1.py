@@ -330,6 +330,23 @@ def test_pdf_blocks_logo_from_outside_storage(monkeypatch):
         pdf._safe_fetcher("http://169.254.169.254/latest/meta-data")
 
 
+def test_pdf_fetcher_works_on_new_weasyprint_and_still_blocks(monkeypatch):
+    """PDF-FIX-1: WeasyPrint 68+ needs a URLFetcher object, not a function (production 503 on Preview PDF)."""
+    monkeypatch.setenv("SUPABASE_URL", "https://proj.supabase.co")
+    f = pdf.pdf_url_fetcher()
+    try:
+        from weasyprint.urls import URLFetcher
+        assert isinstance(f, URLFetcher) and f._fail_on_errors is False
+        with pytest.raises(ValueError):
+            f.fetch("http://169.254.169.254/latest/meta-data")
+    except ImportError:
+        assert f is pdf._safe_fetcher
+    import pathlib
+    for name in ("invoice_pdf_service.py", "business_report_service.py"):
+        src = (pathlib.Path(__file__).resolve().parents[2] / "app" / "services" / name).read_text(encoding="utf-8")
+        assert "url_fetcher=pdf_url_fetcher()" in src or "url_fetcher=pdf.pdf_url_fetcher()" in src
+
+
 def test_draft_pdf_is_marked_draft_and_brand_colour_is_checked():
     db = _db()
     doc = inv.get_doc(db, ORG, _draft(db)["id"])

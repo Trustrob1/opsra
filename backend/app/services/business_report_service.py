@@ -327,7 +327,7 @@ def inventory_html(data: dict, settings: dict) -> str:
 def _render(html_text: str, name: str) -> tuple[Optional[bytes], str]:
     try:
         from weasyprint import HTML
-        return HTML(string=html_text, url_fetcher=pdf._safe_fetcher).write_pdf(), name
+        return HTML(string=html_text, url_fetcher=pdf.pdf_url_fetcher()).write_pdf(), name
     except Exception as exc:  # S14
         logger.error("business_report: PDF failed %s: %s", name, exc)
         return None, name
