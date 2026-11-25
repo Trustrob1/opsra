@@ -36,7 +36,7 @@ export const getDoc     = (id) => api.get(`/api/v1/invoices/${id}`).then(d)
 export const createDoc  = (body) => api.post('/api/v1/invoices', body).then(d)
 export const updateDoc  = (id, body) => api.patch(`/api/v1/invoices/${id}`, body).then(d)
 export const deleteDoc  = (id) => api.delete(`/api/v1/invoices/${id}`).then(d)
-export const issueDoc   = (id) => api.post(`/api/v1/invoices/${id}/issue`).then(d)
+export const issueDoc   = (id, sources) => api.post(`/api/v1/invoices/${id}/issue`, sources ? { sources } : undefined).then(d)
 export const voidDoc    = (id, reason) => api.post(`/api/v1/invoices/${id}/void`, { reason }).then(d)
 export const acceptQuote  = (id) => api.post(`/api/v1/invoices/${id}/accept`).then(d)
 export const declineQuote = (id) => api.post(`/api/v1/invoices/${id}/decline`).then(d)
@@ -65,6 +65,14 @@ export const aiDraftLines = (leadId) => api.post('/api/v1/invoices/ai-draft', { 
 
 // STOCK-2: mark goods on a paid invoice as delivered (lines: [{ item_id, quantity }])
 export const deliverInvoice = (id, lines, note) => api.post(`/api/v1/invoices/${id}/deliver`, { lines, ...(note ? { note } : {}) }).then(d)
+
+// STOCK-2b: take lines from another location (managers at once; others ask for approval)
+export const errorCode = (e) => e?.response?.data?.error?.code || null
+export const getStockCheck      = (id) => api.get(`/api/v1/invoices/${id}/stock-check`).then(d)
+export const requestStock       = (id, sources, note) => api.post(`/api/v1/invoices/${id}/stock-request`, { sources, ...(note ? { note } : {}) }).then(d)
+export const approveStock       = (id) => api.post(`/api/v1/invoices/${id}/stock-approve`).then(d)
+export const rejectStock        = (id, note) => api.post(`/api/v1/invoices/${id}/stock-reject`, note ? { note } : {}).then(d)
+export const cancelStockRequest = (id) => api.post(`/api/v1/invoices/${id}/stock-cancel`).then(d)
 
 /** Fetch the PDF with the login token and save it (a plain link can't carry the token). */
 export const downloadDocPdf = (id, filename) => savePdf(`/api/v1/invoices/${id}/pdf`, filename)

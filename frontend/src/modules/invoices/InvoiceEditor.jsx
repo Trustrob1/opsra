@@ -19,6 +19,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import {
   getInvoiceSettings, getDoc, createDoc, updateDoc, deleteDoc, issueDoc, voidDoc, acceptQuote, declineQuote,
   convertQuote, pickContacts, pickProducts, downloadDocPdf, apiError, aiDraftLines,
+  errorCode, getStockCheck, requestStock,   // STOCK-2b
 } from '../../services/invoices.service'
 import { naira, niceDate, todayYmd, TYPE_LABEL, lab, inp, btnP, btnG, btnDanger, disabled } from './invoiceUi'
 import StatusPill from './StatusPill'
@@ -28,6 +29,8 @@ import RegionSelect from './RegionSelect'   // INV-SALES-2
 import { useRegions, lastRegion } from './useRegions'
 import StockPanel from './StockPanel'   // STOCK-2
 import { useStock, startLocation, rememberLocation, useAvailability } from './useStock'
+import ShortStockDialog from './ShortStockDialog'   // STOCK-2b
+import PendingStock from './PendingStock'
 
 let _key = 0
 const newKey = () => `l${++_key}`
@@ -84,6 +87,7 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
   const [err, setErr] = useState('')
   const [voiding, setVoiding] = useState(false)
   const [voidReason, setVoidReason] = useState('')
+  const [short, setShort] = useState(null)   // STOCK-2b: stock check when the location is short
   const autoMade = useRef(false)
   const dirty = useRef(false)
   const regions = useRegions()   // INV-SALES-2
@@ -189,13 +193,32 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
       setErr('Choose where the stock comes from first.'); return
     }
     if (form.location_id) rememberLocation(form.location_id)
-    run('issue', async () => {
-      const d = await saveDraft()
-      const issued = await issueDoc(d.id)
-      autoMade.current = false; dirty.current = false
-      setDoc(issued); setForm(fromDoc(issued)); onChanged?.()
-    })
+    ;(async () => {
+      setBusy('issue'); setErr('')
+      let saved = null
+      try {
+        saved = await saveDraft()
+        const issued = await issueDoc(saved.id)
+        autoMade.current = false; dirty.current = false
+        setDoc(issued); setForm(fromDoc(issued)); onChanged?.()
+      } catch (e) {
+        // STOCK-2b: not enough at this location -> show where else has it
+        if (errorCode(e) === 'STOCK_SHORT' && saved) {
+          try {
+            const chk = await getStockCheck(saved.id)
+            if (chk?.short) setShort(chk); else setErr(apiError(e))
+          } catch { setErr(apiError(e)) }
+        } else setErr(apiError(e))
+      } finally { setBusy('') }
+    })()
   }
+  const afterStock = async (d) => {
+    autoMade.current = false; dirty.current = false; setShort(null)
+    try { await load(d.id) } catch { setDoc(d); setForm(fromDoc(d)) }
+    onChanged?.()
+  }
+  const issueFrom = (sources) => run('issue', async () => { await afterStock(await issueDoc(docId, sources)) })
+  const requestFrom = (sources, note) => run('issue', async () => { await afterStock(await requestStock(docId, sources, note || null)) })
   const onDelete = () => run('delete', async () => {
     if (!window.confirm(`Delete this draft ${TYPE_LABEL[form.doc_type].toLowerCase()}? This can't be undone.`)) return
     if (docId) await deleteDoc(docId)
@@ -222,7 +245,8 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
     background: '#fff', width: '100%', maxWidth: 860, maxHeight: isMobile ? '100%' : '92vh', height: isMobile ? '100%' : 'auto',
     borderRadius: isMobile ? 0 : ds.radius.xxl, boxShadow: ds.modalShadow, display: 'flex', flexDirection: 'column', fontFamily: ds.fontDm,
   }
-  const editable = !doc || doc.status === 'draft'
+  const pending = doc?.status === 'draft' && doc?.stock_approval === 'pending'   // STOCK-2b
+  const editable = (!doc || doc.status === 'draft') && !pending
   const kind = form?.doc_type || initial?.doc_type || 'invoice'
   const title = doc?.number ? `${TYPE_LABEL[kind]} ${doc.number}` : `New ${TYPE_LABEL[kind].toLowerCase()}`
 
@@ -241,8 +265,14 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
         <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 16 : 22 }}>
           {err && <div role="alert" style={{ background: '#FFF5F5', border: '1px solid #F5C2C2', color: '#9B2C2C', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>{err}</div>}
           {!form && !err && <p style={{ color: ds.gray }}>Loading…</p>}
+          {form && editable && doc?.stock_approval === 'rejected' && (
+            <div role="status" style={{ background: '#FFF5F5', border: '1px solid #F5C2C2', color: '#9B2C2C', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
+              Taking stock from another location was not approved{doc.stock_decision_note ? `: ${doc.stock_decision_note}` : '.'} Change the invoice and issue it again.
+            </div>
+          )}
+          {form && pending && <PendingStock doc={doc} onChanged={afterStock} />}
           {form && editable && <DraftForm form={form} set={set} settings={settings} preview={preview} isNew={!doc} isMobile={isMobile} regions={regions} stock={stock} />}
-          {form && !editable && <IssuedView doc={doc} isAdmin={isAdmin} onPaid={() => { load(doc.id).catch(() => {}); onChanged?.() }} />}
+          {form && !editable && !pending && <IssuedView doc={doc} isAdmin={isAdmin} onPaid={() => { load(doc.id).catch(() => {}); onChanged?.() }} />}
         </div>
 
         {form && (
@@ -277,6 +307,8 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
           </div>
         )}
       </div>
+      {short && <ShortStockDialog check={short} busy={busy === 'issue'} error={err} onIssue={issueFrom} onRequest={requestFrom}
+        onClose={() => { setShort(null); setErr(`Not enough stock at ${short.location?.name || 'this location'}. Lower the quantity or choose another location.`) }} />}
     </div>
   )
 }

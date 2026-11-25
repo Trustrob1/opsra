@@ -324,9 +324,15 @@ def get_doc(db, org_id: str, doc_id: str) -> dict:
         .order("position").execute()
     doc = _decorate(doc)
     doc["items"] = (items.data or []) if items else []
-    if doc.get("location_id"):   # STOCK-2
-        loc = db.table("stock_locations").select("name").eq("id", doc["location_id"]).eq("org_id", org_id).limit(1).execute()
-        doc["location_name"] = ((loc.data or [{}])[0] if loc else {}).get("name")
+    loc_ids = {doc.get("location_id")} | {i.get("stock_location_id") for i in doc["items"]}
+    loc_ids.discard(None)
+    if loc_ids:   # STOCK-2 / STOCK-2b: the invoice's location, and where each line's stock is held
+        locs = db.table("stock_locations").select("id, name").eq("org_id", org_id).in_("id", sorted(loc_ids)).execute()
+        names = {l["id"]: l["name"] for l in ((locs.data or []) if locs else [])}
+        doc["location_name"] = names.get(doc.get("location_id"))
+        for i in doc["items"]:
+            if i.get("stock_location_id"):
+                i["stock_location_name"] = names.get(i["stock_location_id"])
     if doc.get("status") == "draft":   # INV-SALES-2: the editor offers each product line's sizes
         pids = sorted({i["product_id"] for i in doc["items"] if i.get("product_id")})
         if pids:
@@ -410,6 +416,9 @@ def _draft_or_raise(db, org_id: str, doc_id: str) -> dict:
     if doc.get("status") != "draft":
         raise InvoiceError("INVALID_TRANSITION",
                            "This document has been issued and can't be changed. Void it and make a new one.", 400)
+    if doc.get("stock_approval") == "pending":   # STOCK-2b: goods are held while an admin decides
+        raise InvoiceError("INVALID_TRANSITION",
+                           "This invoice is waiting for stock approval. Cancel the request to change it.", 400)
     return doc
 
 
@@ -491,7 +500,23 @@ def _sizes_picked(db, org_id: str, doc_id: str) -> None:
                                422, "variant")
 
 
-def issue(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
+def issue(db, org_id: str, user_id: Optional[str], doc_id: str, sources: Optional[dict] = None,
+          allow_other: bool = False) -> dict:
+    """sources / allow_other (STOCK-2b): managers may take lines from another location while issuing."""
+    doc = issue_checks(db, org_id, doc_id)
+    # STOCK-2: hold the product lines' stock first; not enough anywhere -> refused before a number is used.
+    from app.services import invoice_stock_service as inv_stock
+    tracked = inv_stock.prepare_issue(db, org_id, user_id, doc, sources=sources, allow_other=allow_other)
+    try:
+        return _issue_numbered(db, org_id, user_id, doc)
+    except Exception:
+        if tracked:
+            inv_stock.undo_issue(db, org_id, user_id, doc["id"])
+        raise
+
+
+def issue_checks(db, org_id: str, doc_id: str) -> dict:
+    """Everything a draft needs before it can be issued (also used before asking for stock approval)."""
     doc = _draft_or_raise(db, org_id, doc_id)
     items = db.table("invoice_items").select("id").eq("invoice_id", doc["id"]).eq("org_id", org_id).execute()
     if not (items and items.data):
@@ -504,15 +529,7 @@ def issue(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
     if not doc.get("region") and sales.region_required(db, org_id):
         raise InvoiceError("VALIDATION_ERROR", "Choose the region before issuing.", 422, "region")
     _sizes_picked(db, org_id, doc["id"])   # INV-SALES-2
-    # STOCK-2: hold the product lines' stock first; not enough anywhere -> refused before a number is used.
-    from app.services import invoice_stock_service as inv_stock
-    tracked = inv_stock.prepare_issue(db, org_id, user_id, doc)
-    try:
-        return _issue_numbered(db, org_id, user_id, doc)
-    except Exception:
-        if tracked:
-            inv_stock.undo_issue(db, org_id, user_id, doc["id"])
-        raise
+    return doc
 
 
 def _issue_numbered(db, org_id: str, user_id: Optional[str], doc: dict) -> dict:

@@ -160,6 +160,13 @@ async def get_to_deliver(location_id: Optional[UUID] = None, org: dict = Depends
     return ok(data={"items": inv_stock.to_deliver_list(db, _org_id(org), str(location_id) if location_id else None)})
 
 
+@router.get("/inventory/approvals")
+async def get_approvals(org: dict = Depends(_manager), db=Depends(get_supabase)):
+    """STOCK-2b: drafts waiting for an admin to approve taking stock from another location."""
+    from app.services import invoice_stock_service as inv_stock
+    return ok(data={"items": inv_stock.approvals_list(db, _org_id(org))})
+
+
 @router.get("/inventory/availability")
 async def get_availability(location_id: UUID, product_ids: str = Query(..., max_length=4000),
                            org: dict = Depends(get_current_org), db=Depends(get_supabase)):

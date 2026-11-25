@@ -15,6 +15,7 @@ import StockItemPanel from './StockItemPanel'
 import StockHistory from './StockHistory'
 import InventorySettings from './InventorySettings'
 import InvoiceStockList from './InvoiceStockList'   // STOCK-2
+import StockApprovals from './StockApprovals'       // STOCK-2b
 
 export default function InventoryModule() {
   const isMobile = useIsMobile()
@@ -84,6 +85,7 @@ export default function InventoryModule() {
         {chip(tab === 'stock', 'Stock', () => setTab('stock'))}
         {enabled && chip(tab === 'deliver', 'To deliver', () => setTab('deliver'))}
         {enabled && chip(tab === 'held', 'Held', () => setTab('held'))}
+        {enabled && canManage && chip(tab === 'approvals', 'Approvals', () => setTab('approvals'))}
         {enabled && chip(tab === 'history', 'History', () => setTab('history'))}
         {canManage && chip(tab === 'settings', 'Settings', () => setTab('settings'))}
       </div>
@@ -92,6 +94,7 @@ export default function InventoryModule() {
 
       {tab === 'settings' && canManage ? <InventorySettings onChanged={load} />
         : tab === 'history' && enabled ? <StockHistory locations={locations} />
+        : tab === 'approvals' && enabled && canManage ? <StockApprovals onChanged={load} />
         : (tab === 'deliver' || tab === 'held') && enabled ? <InvoiceStockList key={tab} kind={tab} locations={locations} onChanged={load} />
         : data && !enabled ? (
           <div style={{ ...card, maxWidth: 620 }}>

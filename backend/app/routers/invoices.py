@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 from decimal import Decimal
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
@@ -120,6 +120,23 @@ class DeliverLine(_Strict):   # STOCK-2
 class DeliverIn(_Strict):
     lines: List[DeliverLine] = Field(..., min_length=1, max_length=inv.MAX_ITEMS)
     note: Optional[str] = Field(None, max_length=300)
+
+
+class IssueIn(_Strict):   # STOCK-2b: managers may take lines from another location
+    sources: Optional[Dict[UUID, UUID]] = Field(None, max_length=inv.MAX_ITEMS)
+
+
+class StockRequestIn(_Strict):   # STOCK-2b
+    sources: Dict[UUID, UUID] = Field(..., min_length=1, max_length=inv.MAX_ITEMS)
+    note: Optional[str] = Field(None, max_length=300)
+
+
+class StockRejectIn(_Strict):
+    note: Optional[str] = Field(None, max_length=300)
+
+
+def _src(sources) -> Optional[dict]:
+    return {str(k): str(v) for k, v in sources.items()} if sources else None
 
 
 class SendIn(_Strict):
@@ -362,6 +379,9 @@ async def get_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
         if doc.get("stock_tracked"):   # STOCK-2
             from app.services import invoice_stock_service as inv_stock
             doc["can_deliver"] = inv_stock.can_deliver(org, doc)
+            if doc.get("stock_approval") == "pending":   # STOCK-2b
+                doc["can_approve_stock"] = inv_stock.can_approve(org)
+                doc["can_cancel_stock"] = doc["can_approve_stock"] or doc.get("stock_requested_by") == org.get("id")
     return ok(doc)
 
 
@@ -385,10 +405,60 @@ async def delete_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depe
 
 
 @router.post("/invoices/{doc_id}/issue")
-async def issue_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+async def issue_doc(doc_id: UUID, body: Optional[IssueIn] = None, org: dict = Depends(get_current_org),
+                    db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
+    from app.services import invoice_stock_service as inv_stock
     try:
-        return ok(inv.issue(db, org_id, user_id, str(doc_id)))
+        return ok(inv.issue(db, org_id, user_id, str(doc_id), sources=_src(body.sources if body else None),
+                            allow_other=inv_stock.can_approve(org)))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.get("/invoices/{doc_id}/stock-check")
+async def stock_check(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    """STOCK-2b: per product line, what is needed, what the invoice's location has, and other locations with stock."""
+    from app.services import invoice_stock_service as inv_stock
+    try:
+        return ok(inv_stock.stock_check(db, org, str(doc_id)))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/invoices/{doc_id}/stock-request")
+async def stock_request(doc_id: UUID, body: StockRequestIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    """STOCK-2b: ask an admin to approve taking lines from another location (goods are held meanwhile)."""
+    from app.services import invoice_stock_service as inv_stock
+    try:
+        return ok(inv_stock.request_approval(db, org, str(doc_id), _src(body.sources), body.note))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/invoices/{doc_id}/stock-approve")
+async def stock_approve(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_stock_service as inv_stock
+    try:
+        return ok(inv_stock.approve(db, org, str(doc_id)))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/invoices/{doc_id}/stock-reject")
+async def stock_reject(doc_id: UUID, body: StockRejectIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_stock_service as inv_stock
+    try:
+        return ok(inv_stock.reject(db, org, str(doc_id), body.note))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/invoices/{doc_id}/stock-cancel")
+async def stock_cancel(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_stock_service as inv_stock
+    try:
+        return ok(inv_stock.cancel_request(db, org, str(doc_id)))
     except inv.InvoiceError as e:
         return _fail(e)
 

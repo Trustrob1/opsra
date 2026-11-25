@@ -29,6 +29,7 @@ export const updateStockItem   = (body) => api.patch('/api/v1/inventory/items', 
 
 // STOCK-2: invoices holding stock, paid invoices still to deliver, and what is left per size at one location
 export const getHeld         = (params = {}) => api.get('/api/v1/inventory/held', { params }).then(d)
+export const getApprovals     = () => api.get('/api/v1/inventory/approvals').then(d)   // STOCK-2b
 export const getToDeliver    = (params = {}) => api.get('/api/v1/inventory/to-deliver', { params }).then(d)
 export const getAvailability = (locationId, productIds) =>
   api.get('/api/v1/inventory/availability', { params: { location_id: locationId, product_ids: productIds.join(',') } }).then(d)

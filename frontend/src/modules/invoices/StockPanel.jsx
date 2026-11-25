@@ -43,6 +43,7 @@ export default function StockPanel({ doc, onChanged }) {
   }
 
   const cell = { padding: 6, textAlign: 'right' }
+  const elsewhere = lines.some((it) => it.stock_location_name)   // STOCK-2b: some lines held at another location
   return (
     <section style={{ border: `1px solid ${ds.border}`, borderRadius: 12, padding: 14, display: 'grid', gap: 10 }} aria-label="Stock">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -52,12 +53,13 @@ export default function StockPanel({ doc, onChanged }) {
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
         <thead><tr style={{ textAlign: 'left', ...lab }}>
-          <th style={{ padding: 6 }}>Item</th><th style={cell}>Held</th><th style={cell}>To deliver</th><th style={cell}>Delivered</th>
+          <th style={{ padding: 6 }}>Item</th>{elsewhere && <th style={{ padding: 6 }}>From</th>}<th style={cell}>Held</th><th style={cell}>To deliver</th><th style={cell}>Delivered</th>
         </tr></thead>
         <tbody>
           {lines.map((it) => (
             <tr key={it.id} style={{ borderTop: `1px solid ${ds.border}` }}>
               <td style={{ padding: 6 }}>{it.description}</td>
+              {elsewhere && <td style={{ padding: 6 }}>{it.stock_location_name || doc.location_name}</td>}
               <td style={cell}>{n(it.stock_held)}</td>
               <td style={cell}>{n(it.stock_sold)}</td>
               <td style={cell}>{n(it.stock_delivered)}</td>
