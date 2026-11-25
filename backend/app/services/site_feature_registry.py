@@ -51,6 +51,7 @@ _F = {
     "qualification": ("Qualification questions, scoring and hot-lead alerts", "convert", None, True),
     "followups": ("Follow-up and re-contact sequences", "convert", None, True),
     "payment_links": ("Paystack payment links in chat", "convert", None, True),
+    "invoices": ("Quotes, invoices and receipts", "convert", None, True),   # INV-1
     "fb_ig_leads": ("Facebook and Instagram lead ads tagged by ad", "convert", None, True),
     "own_wa_number": ("Own WhatsApp number", "convert", None, True),
     # PLANS-1: plan-page features. built=False until the phase that gates them flips it (listing a key does nothing yet).
