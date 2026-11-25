@@ -321,7 +321,8 @@ def test_routes_deliver_flag_lists_availability():
     assert r.status_code == 200 and r.json()["data"]["items"][0]["stock_delivered"] == 1
     assert c.post(f"/api/v1/invoices/{d['id']}/deliver", json={"lines": []}).status_code == 422
     staff = _client(db, {"id": "99999999-0000-0000-0000-000000000003", "org_id": ORG, "roles": {"template": "sales_agent"}})
-    assert staff.get(f"/api/v1/invoices/{d['id']}").json()["data"]["can_deliver"] is False
+    # SALE-1: a rep can't even open another rep's invoice
+    assert staff.get(f"/api/v1/invoices/{d['id']}").status_code == 404
     assert c.get("/api/v1/inventory/locations").json()["data"]["enabled"] is True
     assert c.get("/api/v1/inventory/held").json()["data"]["items"] == []
     av = c.get(f"/api/v1/inventory/availability?location_id={main['id']}&product_ids={BED},nonsense").json()["data"]

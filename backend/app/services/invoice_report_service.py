@@ -81,25 +81,31 @@ def _iso_start(d: date) -> str:
     return datetime(d.year, d.month, d.day, tzinfo=inv.LAGOS).isoformat()
 
 
-def _receipts(db, org_id: str, start: date, end: date) -> list:
-    res = db.table("receipts").select("number, invoice_id, customer_name, amount, method, reference, paid_at, voided_at") \
-        .eq("org_id", org_id).gte("paid_at", _iso_start(start)).lt("paid_at", _iso_start(end + timedelta(days=1))) \
+def _mine(q, column: str, mine: Optional[str]):
+    """SALE-1: a rep's report covers only their own invoices / receipts."""
+    return q.eq(column, mine) if mine else q
+
+
+def _receipts(db, org_id: str, start: date, end: date, mine: Optional[str] = None) -> list:
+    res = _mine(db.table("receipts").select("number, invoice_id, customer_name, amount, method, reference, paid_at, voided_at")
+                .eq("org_id", org_id), "owner_id", mine) \
+        .gte("paid_at", _iso_start(start)).lt("paid_at", _iso_start(end + timedelta(days=1))) \
         .order("paid_at").limit(MAX_ROWS).execute()
     return [r for r in _rows(res) if not r.get("voided_at")]
 
 
-def report(db, org_id: str, start: Optional[date] = None, end: Optional[date] = None) -> dict:
+def report(db, org_id: str, start: Optional[date] = None, end: Optional[date] = None, mine: Optional[str] = None) -> dict:
     start, end = check_period(start, end)
     today = inv.today()
     months = _months_back(end, 12)
     m_start = date(int(months[0][:4]), int(months[0][5:]), 1)
     wide_start = min(start, m_start)
 
-    docs = _rows(db.table("invoices").select("doc_type, status, total, amount_paid, issue_date, due_date, accepted_at, "
-                                             "declined_at, customer_name")
-                 .eq("org_id", org_id).neq("status", "draft").gte("issue_date", str(wide_start))
+    docs = _rows(_mine(db.table("invoices").select("doc_type, status, total, amount_paid, issue_date, due_date, accepted_at, "
+                                                   "declined_at, customer_name")
+                       .eq("org_id", org_id), "created_by", mine).neq("status", "draft").gte("issue_date", str(wide_start))
                  .lte("issue_date", str(end)).limit(MAX_ROWS).execute())
-    receipts = _receipts(db, org_id, wide_start, end)
+    receipts = _receipts(db, org_id, wide_start, end, mine)
 
     per_month = {k: {"month": k, "invoiced": Decimal("0"), "collected": Decimal("0")} for k in months}
     invoiced = Decimal("0")
@@ -150,7 +156,8 @@ def report(db, org_id: str, start: Optional[date] = None, end: Optional[date] = 
             by_customer[name] = by_customer.get(name, Decimal("0")) + amt
 
     # owed now: every open invoice, whatever its date
-    open_docs = _rows(db.table("invoices").select("total, amount_paid, due_date").eq("org_id", org_id)
+    open_docs = _rows(_mine(db.table("invoices").select("total, amount_paid, due_date").eq("org_id", org_id),
+                            "created_by", mine)
                       .eq("doc_type", "invoice").in_("status", ["issued", "part_paid"]).limit(MAX_ROWS).execute())
     aging = {k: Decimal("0") for k, _ in BUCKETS}
     aging_count = {k: 0 for k, _ in BUCKETS}
@@ -187,10 +194,11 @@ def _cell(v) -> str:
     return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
 
 
-def receipts_csv(db, org_id: str, start: Optional[date] = None, end: Optional[date] = None) -> str:
+def receipts_csv(db, org_id: str, start: Optional[date] = None, end: Optional[date] = None,
+                 mine: Optional[str] = None) -> str:
     start, end = check_period(start, end)
-    res = db.table("receipts").select("number, invoice_id, customer_name, amount, method, reference, paid_at, voided_at") \
-        .eq("org_id", org_id).gte("paid_at", _iso_start(start)).lt("paid_at", _iso_start(end + timedelta(days=1))) \
+    res = _mine(db.table("receipts").select("number, invoice_id, customer_name, amount, method, reference, paid_at, voided_at")
+                .eq("org_id", org_id), "owner_id", mine).gte("paid_at", _iso_start(start)).lt("paid_at", _iso_start(end + timedelta(days=1))) \
         .order("paid_at").limit(MAX_ROWS).execute()
     rows = _rows(res)
     numbers = {}

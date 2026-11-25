@@ -42,6 +42,7 @@ SETTINGS_FIELDS = (
     "default_terms", "footer", "brand_colour", "email_reply_to",
     "reminders_enabled",   # INV-5
     "sales_record_enabled", "sales_record_since",   # INV-SALES-1 (since is set by save_settings, never sent in)
+    "payments_need_approval",   # SALE-1
 )
 DEFAULT_SETTINGS = {
     "business_name": None, "address": None, "phone": None, "email": None, "rc_number": None, "tin": None,
@@ -51,6 +52,7 @@ DEFAULT_SETTINGS = {
     "default_terms": None, "footer": None, "brand_colour": "#0d9488", "email_reply_to": None,
     "reminders_enabled": False,
     "sales_record_enabled": False, "sales_record_since": None,
+    "payments_need_approval": False,   # SALE-1
 }
 # What an issued document keeps of the settings (printed on it forever).
 ISSUER_FIELDS = ("business_name", "address", "phone", "email", "rc_number", "tin", "logo_url",
@@ -346,11 +348,13 @@ def get_doc(db, org_id: str, doc_id: str) -> dict:
 
 def list_docs(db, org_id: str, doc_type: Optional[str] = None, status: Optional[str] = None,
               lead_id: Optional[str] = None, customer_id: Optional[str] = None, q: Optional[str] = None,
-              limit: int = 50, offset: int = 0) -> dict:
+              limit: int = 50, offset: int = 0, mine: Optional[str] = None) -> dict:
     query = db.table("invoices").select(
         "id, doc_type, number, status, lead_id, customer_id, customer_name, customer_phone, currency, total, "
         "amount_paid, issue_date, due_date, created_at, issued_at, converted_from_id"
     ).eq("org_id", org_id).neq("web_hidden", True)   # STOCK-3: an unpaid website checkout isn't an invoice yet
+    if mine:   # SALE-1: a rep sees only the documents they made
+        query = query.eq("created_by", mine)
     if doc_type:
         query = query.eq("doc_type", doc_type)
     if lead_id:
@@ -573,6 +577,9 @@ def void(db, org_id: str, user_id: Optional[str], doc_id: str, reason: str) -> d
     if doc.get("stock_tracked"):   # STOCK-2: held stock goes back to available
         from app.services import invoice_stock_service as inv_stock
         inv_stock.sync(db, org_id, doc["id"], user_id)
+    if doc.get("doc_type") == "invoice":   # SALE-1: payments still waiting for an admin go with it
+        from app.services import payment_approval_service as approvals
+        approvals.drop_for_invoice(db, org_id, user_id, doc["id"], "Invoice voided")
     _audit(db, org_id, user_id, f"{doc['doc_type']}.voided", doc["id"], {"reason": reason},
            {"status": doc.get("status")})
     return get_doc(db, org_id, doc["id"])
@@ -656,9 +663,10 @@ def search_contacts(db, org_id: str, q: Optional[str] = None, limit: int = 10) -
     return (res.data or []) if res else []
 
 
-def summary(db, org_id: str) -> dict:
+def summary(db, org_id: str, mine: Optional[str] = None) -> dict:
     """Money owed (issued + part paid invoices), how much of it is overdue, open quotes and drafts."""
-    res = db.table("invoices").select("doc_type, status, total, amount_paid, due_date").eq("org_id", org_id) \
+    q = db.table("invoices").select("doc_type, status, total, amount_paid, due_date").eq("org_id", org_id)
+    res = (q.eq("created_by", mine) if mine else q) \
         .in_("status", ["draft", "issued", "part_paid"]).neq("web_hidden", True).limit(5000).execute()
     out = {"drafts": 0, "open_quotes": 0, "open_quotes_amount": 0.0, "outstanding_count": 0,
            "outstanding_amount": 0.0, "overdue_count": 0, "overdue_amount": 0.0}

@@ -27,6 +27,13 @@ Plan feature: `invoices` (whole router, plan_gate.require).
   INV-3:
   GET    /invoices/{id}/send-options        the customer's link and which channels can be used now
   POST   /invoices/{id}/send                {channel: whatsapp|webchat|email, email?} send the PDF + link
+  SALE-1:
+  Reps (not owner / ops manager / admin) see and act on only the invoices they made and their receipts (404 else).
+  GET    /payments/approvals?status=        payments waiting for an admin (admins: all; reps: their own)
+  POST   /payments/approvals/{id}/approve | /reject {reason} | /cancel
+  GET    /sales                             my sales (invoices I made) with any amount waiting
+  POST   /sales                             make a sale: invoice + issue + payment (+ delivered)
+  POST   /sales/{id}/finish                 payment + delivery after the invoice was issued another way
 
 S1/S2: org_id comes only from get_current_org (the JWT). Ids in bodies are checked against the org in the service.
 S3/S4: every body field has a length or range limit; notes/terms max 5,000 characters.
@@ -39,7 +46,7 @@ from decimal import Decimal
 from typing import Dict, List, Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -203,6 +210,7 @@ class SettingsIn(_Strict):
     email_reply_to: Optional[str] = Field(None, max_length=254)
     reminders_enabled: Optional[bool] = None   # INV-5
     sales_record_enabled: Optional[bool] = None   # INV-SALES-1
+    payments_need_approval: Optional[bool] = None   # SALE-1
 
     _money = field_validator("vat_rate")(_two_places)
 
@@ -229,6 +237,43 @@ def _fail(e: inv.InvoiceError) -> JSONResponse:
 
 def _ids(org: dict) -> tuple[str, Optional[str]]:
     return org["org_id"], org.get("id")
+
+
+# ── SALE-1: reps see only what they made; owners, ops managers and admins see everything ──
+
+def _mine(org: dict) -> Optional[str]:
+    """None = sees everything; else the user id whose documents / receipts they may see."""
+    from app.services import inventory_service as stock
+    return None if stock.is_manager(org) else (org.get("id") or "-")
+
+
+def _not_found(what: str) -> HTTPException:
+    return HTTPException(status_code=404, detail={"success": False, "data": None, "error": {
+        "code": "NOT_FOUND", "message": f"{what} not found.", "field": None}})
+
+
+async def _own_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)) -> None:
+    mine = _mine(org)
+    if mine is None:
+        return
+    res = db.table("invoices").select("created_by").eq("org_id", org["org_id"]).eq("id", str(doc_id)).limit(1).execute()
+    rows = getattr(res, "data", None) or []
+    if rows and rows[0].get("created_by") != mine:
+        raise _not_found("Document")
+
+
+async def _own_receipt(receipt_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)) -> None:
+    mine = _mine(org)
+    if mine is None:
+        return
+    res = db.table("receipts").select("owner_id").eq("org_id", org["org_id"]).eq("id", str(receipt_id)).limit(1).execute()
+    rows = getattr(res, "data", None) or []
+    if rows and rows[0].get("owner_id") != mine:
+        raise _not_found("Receipt")
+
+
+_OWN_DOC = [Depends(_own_doc)]
+_OWN_RECEIPT = [Depends(_own_receipt)]
 
 
 # ── settings (declared before /invoices/{id} so "settings" is never read as an id) ──
@@ -268,8 +313,11 @@ async def delete_logo(org: dict = Depends(require_admin), db=Depends(get_supabas
 @router.get("/invoices/summary")
 async def get_summary(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_payment_service as pay
-    out = inv.summary(db, org["org_id"])
-    out["paid_this_month"] = pay.paid_this_month(db, org["org_id"])
+    out = inv.summary(db, org["org_id"], mine=_mine(org))
+    out["paid_this_month"] = pay.paid_this_month(db, org["org_id"], mine=_mine(org))
+    from app.services import payment_approval_service as approvals   # SALE-1
+    out["payments_waiting"] = approvals.count_pending(db, org)
+    out["can_confirm_payments"] = approvals.can_confirm(org)
     return ok(out)
 
 
@@ -278,7 +326,7 @@ async def get_report(start: Optional[date] = None, end: Optional[date] = None,
                      org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_report_service as rep
     try:
-        return ok(rep.report(db, org["org_id"], start, end))
+        return ok(rep.report(db, org["org_id"], start, end, mine=_mine(org)))
     except inv.InvoiceError as e:
         return _fail(e)
 
@@ -288,7 +336,7 @@ async def get_report_csv(start: Optional[date] = None, end: Optional[date] = Non
                          org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_report_service as rep
     try:
-        text = rep.receipts_csv(db, org["org_id"], start, end)
+        text = rep.receipts_csv(db, org["org_id"], start, end, mine=_mine(org))
         s, e = rep.check_period(start, end)
     except inv.InvoiceError as e:
         return _fail(e)
@@ -325,7 +373,7 @@ async def get_part_paid(start: Optional[date] = None, end: Optional[date] = None
     org_id, _ = _ids(org)
     if start and end and start > end:
         return _fail(inv.InvoiceError("VALIDATION_ERROR", "The start date is after the end date.", 422, "start"))
-    return ok(sales.part_paid_summary(db, org_id, start, end, rep, region))
+    return ok(sales.part_paid_summary(db, org_id, start, end, rep, region, mine=_mine(org)))
 
 
 @router.get("/invoices/products")
@@ -353,7 +401,7 @@ async def list_docs(
     offset: int = Query(0, ge=0, le=100_000),
     org: dict = Depends(get_current_org), db=Depends(get_supabase),
 ):
-    return ok(inv.list_docs(db, org["org_id"], doc_type, status, lead_id, customer_id, q, limit, offset))
+    return ok(inv.list_docs(db, org["org_id"], doc_type, status, lead_id, customer_id, q, limit, offset, mine=_mine(org)))
 
 
 @router.post("/invoices", status_code=201)
@@ -365,7 +413,7 @@ async def create_doc(body: DocCreate, org: dict = Depends(get_current_org), db=D
         return _fail(e)
 
 
-@router.get("/invoices/{doc_id}")
+@router.get("/invoices/{doc_id}", dependencies=_OWN_DOC)
 async def get_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     try:
         doc = inv.get_doc(db, org["org_id"], str(doc_id))
@@ -373,7 +421,11 @@ async def get_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
         return _fail(e)
     if doc.get("doc_type") == "invoice":   # INV-4
         from app.services import invoice_payment_service as pay
+        from app.services import payment_approval_service as approvals
         doc["receipts"] = pay.receipts_for_invoice(db, org["org_id"], doc["id"])
+        doc["pending_payments"] = approvals.pending_for_invoice(db, org["org_id"], doc["id"])   # SALE-1
+        doc["can_confirm_payments"] = approvals.can_confirm(org)
+        doc["payments_need_approval"] = approvals.needs_approval(db, org)
         for r in doc["receipts"]:
             r.pop("public_token", None)
         if doc.get("stock_tracked"):   # STOCK-2
@@ -385,7 +437,7 @@ async def get_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
     return ok(doc)
 
 
-@router.patch("/invoices/{doc_id}")
+@router.patch("/invoices/{doc_id}", dependencies=_OWN_DOC)
 async def patch_doc(doc_id: UUID, body: DocPatch, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
     try:
@@ -394,7 +446,7 @@ async def patch_doc(doc_id: UUID, body: DocPatch, org: dict = Depends(get_curren
         return _fail(e)
 
 
-@router.delete("/invoices/{doc_id}")
+@router.delete("/invoices/{doc_id}", dependencies=_OWN_DOC)
 async def delete_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
     try:
@@ -404,7 +456,7 @@ async def delete_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depe
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/issue")
+@router.post("/invoices/{doc_id}/issue", dependencies=_OWN_DOC)
 async def issue_doc(doc_id: UUID, body: Optional[IssueIn] = None, org: dict = Depends(get_current_org),
                     db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
@@ -416,7 +468,7 @@ async def issue_doc(doc_id: UUID, body: Optional[IssueIn] = None, org: dict = De
         return _fail(e)
 
 
-@router.get("/invoices/{doc_id}/stock-check")
+@router.get("/invoices/{doc_id}/stock-check", dependencies=_OWN_DOC)
 async def stock_check(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     """STOCK-2b: per product line, what is needed, what the invoice's location has, and other locations with stock."""
     from app.services import invoice_stock_service as inv_stock
@@ -426,7 +478,7 @@ async def stock_check(doc_id: UUID, org: dict = Depends(get_current_org), db=Dep
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/stock-request")
+@router.post("/invoices/{doc_id}/stock-request", dependencies=_OWN_DOC)
 async def stock_request(doc_id: UUID, body: StockRequestIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     """STOCK-2b: ask an admin to approve taking lines from another location (goods are held meanwhile)."""
     from app.services import invoice_stock_service as inv_stock
@@ -436,7 +488,7 @@ async def stock_request(doc_id: UUID, body: StockRequestIn, org: dict = Depends(
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/stock-approve")
+@router.post("/invoices/{doc_id}/stock-approve", dependencies=_OWN_DOC)
 async def stock_approve(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_stock_service as inv_stock
     try:
@@ -445,7 +497,7 @@ async def stock_approve(doc_id: UUID, org: dict = Depends(get_current_org), db=D
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/stock-reject")
+@router.post("/invoices/{doc_id}/stock-reject", dependencies=_OWN_DOC)
 async def stock_reject(doc_id: UUID, body: StockRejectIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_stock_service as inv_stock
     try:
@@ -454,7 +506,7 @@ async def stock_reject(doc_id: UUID, body: StockRejectIn, org: dict = Depends(ge
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/stock-cancel")
+@router.post("/invoices/{doc_id}/stock-cancel", dependencies=_OWN_DOC)
 async def stock_cancel(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_stock_service as inv_stock
     try:
@@ -463,7 +515,7 @@ async def stock_cancel(doc_id: UUID, org: dict = Depends(get_current_org), db=De
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/deliver")
+@router.post("/invoices/{doc_id}/deliver", dependencies=_OWN_DOC)
 async def deliver_doc(doc_id: UUID, body: DeliverIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     """STOCK-2: mark goods delivered (paid invoices; managers or the rep who made it). Part delivery per line."""
     from app.services import invoice_stock_service as inv_stock
@@ -473,7 +525,7 @@ async def deliver_doc(doc_id: UUID, body: DeliverIn, org: dict = Depends(get_cur
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/void")
+@router.post("/invoices/{doc_id}/void", dependencies=_OWN_DOC)
 async def void_doc(doc_id: UUID, body: VoidIn, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
     try:
@@ -482,7 +534,7 @@ async def void_doc(doc_id: UUID, body: VoidIn, org: dict = Depends(require_admin
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/accept")
+@router.post("/invoices/{doc_id}/accept", dependencies=_OWN_DOC)
 async def accept_quote(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
     try:
@@ -491,7 +543,7 @@ async def accept_quote(doc_id: UUID, org: dict = Depends(get_current_org), db=De
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/decline")
+@router.post("/invoices/{doc_id}/decline", dependencies=_OWN_DOC)
 async def decline_quote(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
     try:
@@ -500,7 +552,7 @@ async def decline_quote(doc_id: UUID, org: dict = Depends(get_current_org), db=D
         return _fail(e)
 
 
-@router.post("/invoices/{doc_id}/convert", status_code=201)
+@router.post("/invoices/{doc_id}/convert", status_code=201, dependencies=_OWN_DOC)
 async def convert_quote(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
     try:
@@ -509,7 +561,7 @@ async def convert_quote(doc_id: UUID, org: dict = Depends(get_current_org), db=D
         return _fail(e)
 
 
-@router.get("/invoices/{doc_id}/pdf")
+@router.get("/invoices/{doc_id}/pdf", dependencies=_OWN_DOC)
 async def doc_pdf(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     org_id = org["org_id"]
     try:
@@ -526,7 +578,7 @@ async def doc_pdf(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
 
 # ── INV-3: sending ──
 
-@router.get("/invoices/{doc_id}/send-options")
+@router.get("/invoices/{doc_id}/send-options", dependencies=_OWN_DOC)
 async def send_options(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_delivery_service as delivery
     try:
@@ -536,7 +588,7 @@ async def send_options(doc_id: UUID, org: dict = Depends(get_current_org), db=De
     return ok(delivery.options(db, org["org_id"], doc))
 
 
-@router.post("/invoices/{doc_id}/send")
+@router.post("/invoices/{doc_id}/send", dependencies=_OWN_DOC)
 async def send_doc(doc_id: UUID, body: SendIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_delivery_service as delivery
     from app.services import webchat_service as wc
@@ -551,11 +603,16 @@ async def send_doc(doc_id: UUID, body: SendIn, org: dict = Depends(get_current_o
 
 # ── INV-4: payments and receipts ──
 
-@router.post("/invoices/{doc_id}/payments", status_code=201)
+@router.post("/invoices/{doc_id}/payments", status_code=201, dependencies=_OWN_DOC)
 async def record_payment(doc_id: UUID, body: PaymentIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_payment_service as pay
+    from app.services import payment_approval_service as approvals
     org_id, user_id = _ids(org)
     try:
+        if approvals.needs_approval(db, org):   # SALE-1: waits for an admin
+            pending = approvals.request_invoice_payment(db, org, str(doc_id), _body(body))
+            return ok({"receipt": None, "pending_payment": pending, "invoice": inv.get_doc(db, org_id, str(doc_id)),
+                       "fully_paid": False})
         out = pay.record_payment(db, org_id, user_id, str(doc_id), _body(body))
     except inv.InvoiceError as e:
         return _fail(e)
@@ -574,14 +631,17 @@ async def list_receipts(
 ):
     from app.services import invoice_payment_service as pay
     return ok(pay.list_receipts(db, org["org_id"], str(invoice_id) if invoice_id else None,
-                                str(lead_id) if lead_id else None, q, limit, offset))
+                                str(lead_id) if lead_id else None, q, limit, offset, mine=_mine(org)))
 
 
 @router.post("/receipts", status_code=201)
 async def new_receipt(body: ReceiptIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_payment_service as pay
+    from app.services import payment_approval_service as approvals
     org_id, user_id = _ids(org)
     try:
+        if approvals.needs_approval(db, org):   # SALE-1: waits for an admin
+            return ok({"pending_payment": approvals.request_standalone(db, org, _body(body))})
         r = pay.standalone_receipt(db, org_id, user_id, _body(body))
     except inv.InvoiceError as e:
         return _fail(e)
@@ -590,7 +650,7 @@ async def new_receipt(body: ReceiptIn, org: dict = Depends(get_current_org), db=
     return ok(r)
 
 
-@router.post("/receipts/{receipt_id}/void")
+@router.post("/receipts/{receipt_id}/void", dependencies=_OWN_RECEIPT)
 async def void_receipt(receipt_id: UUID, body: VoidIn, org: dict = Depends(require_admin), db=Depends(get_supabase)):
     from app.services import invoice_payment_service as pay
     org_id, user_id = _ids(org)
@@ -602,7 +662,7 @@ async def void_receipt(receipt_id: UUID, body: VoidIn, org: dict = Depends(requi
     return ok(r)
 
 
-@router.get("/receipts/{receipt_id}/pdf")
+@router.get("/receipts/{receipt_id}/pdf", dependencies=_OWN_RECEIPT)
 async def receipt_pdf(receipt_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_payment_service as pay
     org_id = org["org_id"]
@@ -614,7 +674,7 @@ async def receipt_pdf(receipt_id: UUID, org: dict = Depends(get_current_org), db
         "Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "no-store"})
 
 
-@router.get("/receipts/{receipt_id}/send-options")
+@router.get("/receipts/{receipt_id}/send-options", dependencies=_OWN_RECEIPT)
 async def receipt_send_options(receipt_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     from app.services import invoice_delivery_service as delivery
     from app.services import invoice_payment_service as pay
@@ -626,7 +686,7 @@ async def receipt_send_options(receipt_id: UUID, org: dict = Depends(get_current
     return ok(delivery.receipt_options(db, org_id, r))
 
 
-@router.post("/receipts/{receipt_id}/send")
+@router.post("/receipts/{receipt_id}/send", dependencies=_OWN_RECEIPT)
 async def send_receipt(receipt_id: UUID, body: ReceiptSendIn, org: dict = Depends(get_current_org),
                        db=Depends(get_supabase)):
     from app.services import invoice_delivery_service as delivery
@@ -636,5 +696,121 @@ async def send_receipt(receipt_id: UUID, body: ReceiptSendIn, org: dict = Depend
         return _fail(inv.InvoiceError("RATE_LIMITED", "That is a lot of sending. Please wait a few minutes.", 429))
     try:
         return ok(delivery.send_receipt(db, org_id, user_id, str(receipt_id), body.channel, body.email))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+# ── SALE-1: payments waiting for an admin ──
+
+class RejectIn(_Strict):
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+@router.get("/payments/approvals")
+async def list_payment_approvals(status: Literal["pending", "approved", "rejected", "cancelled"] = "pending",
+                                 org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import payment_approval_service as approvals
+    try:
+        return ok(approvals.list_approvals(db, org, status))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/payments/approvals/{approval_id}/approve")
+async def approve_payment(approval_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import payment_approval_service as approvals
+    try:
+        return ok(approvals.approve(db, org, str(approval_id)))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/payments/approvals/{approval_id}/reject")
+async def reject_payment(approval_id: UUID, body: RejectIn, org: dict = Depends(get_current_org),
+                         db=Depends(get_supabase)):
+    from app.services import payment_approval_service as approvals
+    try:
+        return ok(approvals.reject(db, org, str(approval_id), body.reason))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/payments/approvals/{approval_id}/cancel")
+async def cancel_payment(approval_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import payment_approval_service as approvals
+    try:
+        return ok(approvals.cancel(db, org, str(approval_id)))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+# ── SALE-1: Make a sale ──
+
+class SalePaymentIn(_Strict):
+    status: Literal["paid", "part", "unpaid"]
+    amount: Optional[Decimal] = Field(None, gt=0, le=Decimal("1000000000"))
+    method: Optional[Method] = None
+    reference: Optional[str] = Field(None, max_length=200)
+    paid_at: Optional[date] = None
+
+    _money = field_validator("amount")(_two_places)
+
+
+class SaleIn(_Strict):
+    lead_id: Optional[UUID] = None
+    customer_id: Optional[UUID] = None
+    customer_name: Optional[str] = Field(None, max_length=200)
+    customer_phone: Optional[str] = Field(None, max_length=30)
+    customer_email: Optional[str] = Field(None, max_length=254)
+    customer_address: Optional[str] = Field(None, max_length=500)
+    location_id: UUID
+    region: Optional[str] = Field(None, max_length=255)
+    discount: Optional[Decimal] = Field(None, ge=0, le=100_000_000_000)
+    notes: Optional[str] = Field(None, max_length=5000)
+    items: List[ItemIn] = Field(..., min_length=1, max_length=inv.MAX_ITEMS)
+    payment: SalePaymentIn
+    delivered: bool = False
+
+    _money = field_validator("discount")(_two_places)
+
+
+class SaleFinishIn(_Strict):
+    payment: SalePaymentIn
+    delivered: bool = False
+
+
+def _sale_out(out: dict) -> dict:
+    if out.get("receipt"):
+        out["receipt"].pop("public_token", None)
+    return out
+
+
+@router.get("/sales")
+async def list_sales(q: Optional[str] = Query(None, max_length=100), limit: int = Query(50, ge=1, le=100),
+                     offset: int = Query(0, ge=0, le=100_000), org: dict = Depends(get_current_org),
+                     db=Depends(get_supabase)):
+    from app.services import sale_service as sale
+    return ok(sale.my_sales(db, org, q, limit, offset))
+
+
+@router.post("/sales", status_code=201)
+async def make_sale(body: SaleIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import sale_service as sale
+    try:
+        return ok(_sale_out(sale.create(db, org, _body(body))))
+    except sale.SaleShort as e:   # the draft is kept: the screen offers another location / asks a manager
+        return JSONResponse(status_code=e.status, content={
+            "success": False, "data": {"doc_id": e.doc_id},
+            "error": {"code": e.code, "message": e.message, "field": e.field}})
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/sales/{doc_id}/finish", dependencies=_OWN_DOC)
+async def finish_sale(doc_id: UUID, body: SaleFinishIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import sale_service as sale
+    d = _body(body)
+    try:
+        return ok(_sale_out(sale.finish(db, org, str(doc_id), d["payment"], d["delivered"])))
     except inv.InvoiceError as e:
         return _fail(e)

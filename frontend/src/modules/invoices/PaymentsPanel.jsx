@@ -10,12 +10,15 @@ import { ds } from '../../utils/ds'
 import { recordPayment, apiError } from '../../services/invoices.service'
 import { naira, niceDate, todayYmd, METHOD_LABEL, lab, inp, btnP, btnG, disabled } from './invoiceUi'
 import ReceiptActions from './ReceiptActions'
+import { PendingPaymentRow } from './PendingPayments'   // SALE-1
 
 
 const MANUAL = ['bank_transfer', 'cash', 'pos', 'ussd', 'other']
 
 export default function PaymentsPanel({ doc, isAdmin, onChanged }) {
   const receipts = doc.receipts || []
+  const pending = doc.pending_payments || []   // SALE-1: waiting for an admin; they count against the balance
+  const left = Math.max(0, Number(doc.balance_due || 0) - pending.reduce((s, p) => s + Number(p.amount || 0), 0))
   const open = ['issued', 'part_paid'].includes(doc.status)
   const [adding, setAdding] = useState(false)
   const [f, setF] = useState({ amount: '', method: 'bank_transfer', paid_at: todayYmd(), reference: '', note: '' })
@@ -23,9 +26,9 @@ export default function PaymentsPanel({ doc, isAdmin, onChanged }) {
   const [msg, setMsg] = useState(null)
   const set = (patch) => setF((x) => ({ ...x, ...patch }))
 
-  const startAdd = () => { setAdding(true); setMsg(null); set({ amount: String(Number(doc.balance_due || 0)), paid_at: todayYmd() }) }
+  const startAdd = () => { setAdding(true); setMsg(null); set({ amount: String(left), paid_at: todayYmd() }) }
   const amount = parseFloat(String(f.amount).replace(/,/g, ''))
-  const amountOk = Number.isFinite(amount) && amount > 0 && amount <= Number(doc.balance_due || 0) && /^\d+(\.\d{1,2})?$/.test(String(f.amount).replace(/,/g, '').trim())
+  const amountOk = Number.isFinite(amount) && amount > 0 && amount <= left && /^\d+(\.\d{1,2})?$/.test(String(f.amount).replace(/,/g, '').trim())
 
   const save = async () => {
     setBusy(true); setMsg(null)
@@ -35,21 +38,24 @@ export default function PaymentsPanel({ doc, isAdmin, onChanged }) {
         reference: f.reference.trim() || null, note: f.note.trim() || null,
       })
       setAdding(false); setF({ amount: '', method: 'bank_transfer', paid_at: todayYmd(), reference: '', note: '' })
-      setMsg({ ok: true, text: r?.fully_paid ? `Receipt ${r.receipt?.number} made. The invoice is now fully paid.` : `Receipt ${r?.receipt?.number} made.` })
+      setMsg({ ok: true, text: r?.pending_payment ? 'Saved. It is waiting for an admin to confirm it. The receipt is made once they approve.'
+        : r?.fully_paid ? `Receipt ${r.receipt?.number} made. The invoice is now fully paid.` : `Receipt ${r?.receipt?.number} made.` })
       onChanged?.()
     } catch (e) { setMsg({ ok: false, text: apiError(e, 'Could not record the payment. Please try again.') }) } finally { setBusy(false) }
   }
 
-  if (!open && receipts.length === 0) return null
+  if (!open && receipts.length === 0 && pending.length === 0) return null
   return (
     <section style={{ border: `1px solid ${ds.border}`, borderRadius: 12, padding: 14, display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <Wallet size={16} color={ds.tealDark} />
         <b style={{ color: ds.dark, flex: 1 }}>Payments</b>
-        {open && !adding && <button type="button" style={btnG} onClick={startAdd}><Plus size={16} />Record payment</button>}
+        {open && !adding && left > 0 && <button type="button" style={btnG} onClick={startAdd}><Plus size={16} />Record payment</button>}
       </div>
 
-      {receipts.length === 0 && !adding && <div style={{ color: ds.gray, fontSize: 13.5 }}>No payments yet. When the customer pays, record it here and a receipt is made for them.</div>}
+      {pending.map((p) => <PendingPaymentRow key={p.id} p={p} canConfirm={!!doc.can_confirm_payments} onChanged={onChanged} />)}
+
+      {receipts.length === 0 && pending.length === 0 && !adding && <div style={{ color: ds.gray, fontSize: 13.5 }}>No payments yet. When the customer pays, record it here and a receipt is made for them.</div>}
 
       {receipts.map((r) => (
         <div key={r.id} style={{ borderTop: `1px solid ${ds.border}`, paddingTop: 10, display: 'grid', gap: 6, opacity: r.voided_at ? 0.7 : 1 }}>
@@ -68,7 +74,7 @@ export default function PaymentsPanel({ doc, isAdmin, onChanged }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
             <div><label style={lab} htmlFor="pay-amt">Amount (₦)</label>
               <input id="pay-amt" style={inp} inputMode="decimal" value={f.amount} onChange={(e) => set({ amount: e.target.value })} />
-              <small style={{ color: amountOk || !f.amount ? ds.gray : ds.red }}>Balance due: {naira(doc.balance_due)}</small></div>
+              <small style={{ color: amountOk || !f.amount ? ds.gray : ds.red }}>Balance due: {naira(left)}{pending.length ? ' (after payments waiting for an admin)' : ''}</small></div>
             <div><label style={lab} htmlFor="pay-method">How they paid</label>
               <select id="pay-method" style={inp} value={f.method} onChange={(e) => set({ method: e.target.value })}>
                 {MANUAL.map((m) => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
@@ -82,7 +88,7 @@ export default function PaymentsPanel({ doc, isAdmin, onChanged }) {
             <input id="pay-note" style={inp} maxLength={500} placeholder={`Payment for invoice ${doc.number}`} value={f.note} onChange={(e) => set({ note: e.target.value })} /></div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button type="button" style={btnG} onClick={() => setAdding(false)}>Cancel</button>
-            <button type="button" style={disabled(btnP, !amountOk || busy)} disabled={!amountOk || busy} onClick={save}>{busy ? 'Saving…' : 'Save and make receipt'}</button>
+            <button type="button" style={disabled(btnP, !amountOk || busy)} disabled={!amountOk || busy} onClick={save}>{busy ? 'Saving…' : doc.payments_need_approval ? 'Send for confirmation' : 'Save and make receipt'}</button>
           </div>
         </div>
       )}

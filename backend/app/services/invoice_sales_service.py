@@ -309,11 +309,14 @@ def retry_missing(db, dry_run: bool = False) -> dict:
 # ───────────────────────────── part-paid card ─────────────────────────────
 
 def part_paid_summary(db, org_id: str, start: Optional[date] = None, end: Optional[date] = None,
-                      rep: Optional[str] = None, region: Optional[str] = None, limit: int = 200) -> dict:
+                      rep: Optional[str] = None, region: Optional[str] = None, limit: int = 200,
+                      mine: Optional[str] = None) -> dict:
     """Invoices part-paid now, issued in the period, for the Sales Record card. rep matches the maker's name."""
     q = db.table("invoices").select("id, number, customer_name, region, total, amount_paid, issue_date, due_date, "
                                     "created_by, issued_by") \
         .eq("org_id", org_id).eq("doc_type", "invoice").eq("status", "part_paid")
+    if mine:   # SALE-1: a rep sees only their own
+        q = q.eq("created_by", mine)
     if start:
         q = q.gte("issue_date", str(start))
     if end:

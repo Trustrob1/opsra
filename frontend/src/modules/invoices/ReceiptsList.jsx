@@ -25,6 +25,7 @@ export default function ReceiptsList({ isAdmin, onChanged }) {
   const [err, setErr] = useState('')
   const [adding, setAdding] = useState(false)
   const [openId, setOpenId] = useState(null)
+  const [note, setNote] = useState('')   // SALE-1
 
   useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 300); return () => clearTimeout(t) }, [q])
   const load = useCallback((offset = 0) => listReceipts({ limit: PAGE, offset, ...(dq ? { q: dq } : {}) }).then((r) => {
@@ -41,10 +42,11 @@ export default function ReceiptsList({ isAdmin, onChanged }) {
           <Search size={16} color={ds.gray} style={{ position: 'absolute', left: 12, top: 13 }} />
           <input style={{ ...inp, paddingLeft: 34 }} placeholder="Search by customer, number or reference" aria-label="Search receipts" value={q} onChange={(e) => setQ(e.target.value)} maxLength={100} />
         </div>
-        {!adding && <button type="button" style={btnP} onClick={() => setAdding(true)}><Plus size={16} />New receipt</button>}
+        {!adding && <button type="button" style={btnP} onClick={() => { setAdding(true); setNote('') }}><Plus size={16} />New receipt</button>}
       </div>
 
-      {adding && <NewReceipt onCancel={() => setAdding(false)} onDone={() => { setAdding(false); changed() }} />}
+      {adding && <NewReceipt onCancel={() => setAdding(false)} onDone={(m) => { setAdding(false); setNote(m || ''); changed() }} />}
+      {note && <p role="status" style={{ color: ds.tealDark, margin: 0 }}>{note}</p>}
 
       {err && <p role="alert" style={{ color: ds.red, margin: 0 }}>{err}</p>}
       {rows === null && <p style={{ color: ds.gray }}>Loading…</p>}
@@ -107,12 +109,13 @@ function NewReceipt({ onCancel, onDone }) {
   const save = async () => {
     setBusy(true); setErr('')
     try {
-      await createReceipt({
+      const out = await createReceipt({
         ...(f.lead_id ? { lead_id: f.lead_id } : {}), customer_name: f.customer_name.trim(), amount, method: f.method,
         paid_at: f.paid_at || null, reference: f.reference.trim() || null, description: f.description.trim(),
         ...(f.region ? { region: f.region } : {}),
       })
-      onDone()
+      onDone(out?.pending_payment   // SALE-1
+        ? 'Saved. It is waiting for an admin to confirm it. The receipt is made once they approve.' : '')
     } catch (e) { setErr(apiError(e, 'Could not make the receipt. Please try again.')) } finally { setBusy(false) }
   }
 

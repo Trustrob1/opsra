@@ -76,6 +76,7 @@ import SitesModule from './modules/sites/SitesModule'                   // SITE-
 import WebChatModule from './modules/webchat/WebChatModule'             // WEBCHAT-RESULTS-1
 import InvoicesModule from './modules/invoices/InvoicesModule'          // INV-2
 import InventoryModule from './modules/inventory/InventoryModule'       // STOCK-1
+import SalesModule from './modules/sales/SalesModule'                   // SALE-1
 import { getWebchatSettings } from './services/webchat.service'          // WEBCHAT-RESULTS-1: is the chat switched on (the Web chat menu item)
 import BillingModule from './modules/billing/BillingModule'             // ACCOUNT-PLANS AP-3
 import BillingBanner from './modules/billing/BillingBanner'             // ACCOUNT-PLANS AP-3
@@ -85,7 +86,7 @@ import {
   Target, MessageSquare, MessageCircle, Ticket, RefreshCw, BarChart2,
   CheckSquare, Briefcase, ClipboardList, Settings, Bell, Circle,
   Menu, X, Eye, EyeOff, Lock, Mail, Lightbulb, Zap, AlertTriangle,
-  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard, BookOpen, MessagesSquare, Receipt, Boxes,
+  ChevronRight, ChevronLeft, FolderKanban, Layers, CalendarClock, Globe, CreditCard, BookOpen, MessagesSquare, Receipt, Boxes, ShoppingCart,
 } from 'lucide-react'
 import OwnerDashboardPage from './pages/OwnerDashboardPage'
 import SiteLandingPage from './pages/SiteLandingPage'   // SITE-LANDING
@@ -123,6 +124,7 @@ const NAV = [
   { id: 'support',  label: 'Support Tickets',      icon: 'support', module: '04', active: true, group: 'operations' },
   { id: 'renewal',  label: 'Client Subscription',     icon: 'renewal', module: '05', active: true, group: 'operations' },
   { id: 'ops',      label: 'Operations Hub',     icon: 'ops', module: '06', active: true, group: 'operations' },
+  { id: 'sales', label: 'Sales', icon: 'sales', module: '19', active: true, group: 'operations' },   // SALE-1
   { id: 'invoices', label: 'Invoices', icon: 'invoices', module: '17', active: true, group: 'operations' },   // INV-2
   { id: 'inventory', label: 'Inventory', icon: 'inventory', module: '18', active: true, group: 'operations' },   // STOCK-1
   { id: 'tasks',    label: 'Tasks Board',            icon: 'tasks', module: '08', active: true, group: 'operations' },
@@ -160,6 +162,7 @@ const NAV_ICONS = {
   sites: Globe,   // SITE-1A
   invoices: Receipt,   // INV-2
   inventory: Boxes,   // STOCK-1
+  sales: ShoppingCart,   // SALE-1
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
@@ -794,6 +797,8 @@ function AppShell() {
     if (item.id === 'invoices') return _userTemplate !== 'affiliate_partner'
     // STOCK-1: Inventory for every product mode too (plan feature inventory; the page explains when it's not in the plan)
     if (item.id === 'inventory') return _userTemplate !== 'affiliate_partner'
+    // SALE-1: Make a sale goes with Inventory (the page explains when stock is off)
+    if (item.id === 'sales') return _userTemplate !== 'affiliate_partner'
     if (isNoCrm) return item.id === 'conversations' || item.id === 'knowledge'
     if (item.id === 'knowledge') return false
     if (item.id === 'ops'     && ['sales_agent', 'affiliate_partner'].includes(_userTemplate)) return false
@@ -817,7 +822,7 @@ function AppShell() {
   // WA-AUTO-1: keep wa_automation orgs on screens they own (WEB-ONLY-1b: and web_chat orgs).
   useEffect(() => {
     if (!isNoCrm) return
-    if (!['conversations', 'knowledge', 'billing', 'admin', 'webchat', 'invoices', 'inventory'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
+    if (!['conversations', 'knowledge', 'billing', 'admin', 'webchat', 'invoices', 'inventory', 'sales'].includes(view)) { setView('conversations'); setActiveNav('conversations') }
   }, [isNoCrm, view])
   const [selectedLeadId, setSelectedLeadId] = useState(null)
   const [showNotif, setShowNotif]           = useState(false)
@@ -1216,6 +1221,9 @@ function AppShell() {
         {view === 'inventory' && _userTemplate !== 'affiliate_partner' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><InventoryModule /></div>
         )}
+        {view === 'sales' && _userTemplate !== 'affiliate_partner' && (
+          <div style={{ animation: 'fadeIn 0.25s ease' }}><SalesModule /></div>
+        )}
         {view === 'tasks' && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><TaskBoard user={user} onOpenLead={(leadId) =>openLeadProfile(leadId)} /></div>
         )}
@@ -1251,7 +1259,7 @@ function AppShell() {
         {(view === 'superadmin' || view === 'superadmin_health' || view === 'superadmin_create_org') && isPlatformOrg && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><SuperadminShell initial={view === 'superadmin_create_org' ? 'create' : 'health'} /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing', 'knowledge', 'webchat', 'invoices', 'inventory'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing', 'knowledge', 'webchat', 'invoices', 'inventory', 'sales'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>

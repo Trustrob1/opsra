@@ -27,7 +27,8 @@ export default function InvoiceSettings() {
     TEXT.forEach((k) => { f[k] = d[k] ?? '' })
     setForm({ ...f, vat_enabled: !!d.vat_enabled, vat_rate: String(d.vat_rate ?? 7.5), default_due_days: String(d.default_due_days ?? 7),
       default_quote_valid_days: String(d.default_quote_valid_days ?? 14), brand_colour: d.brand_colour || '#0d9488',
-      reminders_enabled: !!d.reminders_enabled, sales_record_enabled: !!d.sales_record_enabled })
+      reminders_enabled: !!d.reminders_enabled, sales_record_enabled: !!d.sales_record_enabled,
+      payments_need_approval: !!d.payments_need_approval })   // SALE-1
   }
   useEffect(() => { getInvoiceSettings().then(adopt).catch((e) => setMsg({ ok: false, text: apiError(e) })) }, [])
 
@@ -46,6 +47,7 @@ export default function InvoiceSettings() {
     body.brand_colour = form.brand_colour
     body.reminders_enabled = !!form.reminders_enabled
     body.sales_record_enabled = !!form.sales_record_enabled
+    body.payments_need_approval = !!form.payments_need_approval   // SALE-1
     try { adopt(await saveInvoiceSettings(body)); setMsg({ ok: true, text: 'Saved. New documents will use these details.' }) }
     catch (e) { setMsg({ ok: false, text: apiError(e, 'Could not save. Check the details and try again.') }) }
     finally { setBusy('') }
@@ -152,6 +154,22 @@ export default function InvoiceSettings() {
               as one sale. Part-paid invoices show in their own card there and count once they are fully paid. Only invoices
               paid after you turn this on are added. If you also type sales into the Google Sheet, leave invoiced sales out
               of it, or they will be counted twice.
+            </small>
+          </span>
+        </label>
+      </section>
+
+      <section style={card}>
+        <h3 style={h}>Payments</h3>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', color: ds.dark }}>
+          <input type="checkbox" checked={!!form.payments_need_approval} onChange={set('payments_need_approval')} style={{ width: 18, height: 18, marginTop: 2 }} />
+          <span>An admin confirms payments recorded by reps
+            <small style={{ display: 'block', color: ds.gray, marginTop: 4 }}>
+              When a rep marks an invoice paid or part paid, or makes a receipt, it waits as "Waiting for an admin". It
+              doesn't count as paid, no receipt is made and nothing goes to the customer until an owner, operations
+              manager or admin approves it in Sales &gt; Payments to confirm. Rejecting needs a reason and the rep is told.
+              Payments recorded by owners, operations managers and admins, and online Paystack payments, are always
+              accepted at once. Turn this off and every payment is accepted at once.
             </small>
           </span>
         </label>

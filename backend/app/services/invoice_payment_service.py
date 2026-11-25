@@ -86,8 +86,10 @@ def get_receipt(db, org_id: str, receipt_id: str) -> dict:
 
 
 def list_receipts(db, org_id: str, invoice_id: Optional[str] = None, lead_id: Optional[str] = None,
-                  q: Optional[str] = None, limit: int = 50, offset: int = 0) -> dict:
+                  q: Optional[str] = None, limit: int = 50, offset: int = 0, mine: Optional[str] = None) -> dict:
     query = db.table("receipts").select(RECEIPT_LIST_COLS).eq("org_id", org_id)
+    if mine:   # SALE-1: a rep sees only their own
+        query = query.eq("owner_id", mine)
     if invoice_id:
         query = query.eq("invoice_id", invoice_id)
     if lead_id:
@@ -169,8 +171,11 @@ def _insert_receipt(db, org_id: str, row: dict) -> dict:
 
 
 def record_payment(db, org_id: str, user_id: Optional[str], invoice_id: str, data: dict,
-                   payment_link_id: Optional[str] = None, allow_over: bool = False) -> dict:
-    """data: amount, method, reference?, paid_at?, note?. Returns {"receipt", "invoice", "fully_paid"}."""
+                   payment_link_id: Optional[str] = None, allow_over: bool = False, check_only: bool = False,
+                   waiting: Decimal = Decimal("0")) -> dict:
+    """data: amount, method, reference?, paid_at?, note?. Returns {"receipt", "invoice", "fully_paid"}.
+    SALE-1: check_only runs every check and saves nothing (a payment waiting for an admin); waiting = amounts
+    already waiting on this invoice, which count against the balance."""
     doc = inv.get_doc(db, org_id, invoice_id)
     if doc["doc_type"] != "invoice":
         raise inv.InvoiceError("INVALID_TRANSITION", "Payments are recorded against invoices, not quotes.", 400)
@@ -184,10 +189,13 @@ def record_payment(db, org_id: str, user_id: Optional[str], invoice_id: str, dat
     amount = inv._money(data.get("amount") or 0)
     if amount <= 0:
         raise inv.InvoiceError("VALIDATION_ERROR", "The amount must be more than 0.", 422, "amount")
-    balance = inv._money(doc.get("total") or 0) - inv._money(doc.get("amount_paid") or 0)
+    balance = inv._money(doc.get("total") or 0) - inv._money(doc.get("amount_paid") or 0) - waiting
     if amount > balance and not allow_over:
-        raise inv.InvoiceError("VALIDATION_ERROR", f"That is more than the balance due ({inv._f(balance):,.2f}).", 422,
-                               "amount")
+        msg = f"That is more than the balance due ({inv._f(balance):,.2f})" + (
+            ", counting payments waiting for an admin's OK." if waiting else ".")
+        raise inv.InvoiceError("VALIDATION_ERROR", msg, 422, "amount")
+    if check_only:
+        return {"invoice": doc, "amount": inv._f(amount)}
     note = (data.get("note") or "").strip()
     row = {
         "invoice_id": doc["id"], "lead_id": doc.get("lead_id"), "customer_id": doc.get("customer_id"),
@@ -195,8 +203,10 @@ def record_payment(db, org_id: str, user_id: Optional[str], invoice_id: str, dat
         "method": method, "reference": (data.get("reference") or "").strip()[:200] or None,
         "description": (note or f"Payment for invoice {doc.get('number')}")[:500],
         "paid_at": _paid_at(data.get("paid_at")), "recorded_by": user_id, "payment_link_id": payment_link_id,
-        "issuer": doc.get("issuer"),
+        "issuer": doc.get("issuer"), "owner_id": doc.get("created_by") or user_id,   # SALE-1
     }
+    if data.get("approved_by"):   # SALE-1: recorded by a rep, confirmed by an admin
+        row["approved_by"] = data["approved_by"]
     receipt = _insert_receipt(db, org_id, row)
     invoice, fully = _recompute(db, org_id, doc["id"])
     inv._audit(db, org_id, user_id, "receipt.recorded", doc["id"],
@@ -206,7 +216,7 @@ def record_payment(db, org_id: str, user_id: Optional[str], invoice_id: str, dat
     return {"receipt": receipt, "invoice": invoice, "fully_paid": invoice.get("status") == "paid"}
 
 
-def standalone_receipt(db, org_id: str, user_id: Optional[str], data: dict) -> dict:
+def standalone_receipt(db, org_id: str, user_id: Optional[str], data: dict, check_only: bool = False) -> dict:
     """A receipt for a sale with no invoice. Customer from lead_id / customer_id (checked against the org) or typed."""
     method = data.get("method")
     if method not in MANUAL_METHODS:
@@ -229,7 +239,10 @@ def standalone_receipt(db, org_id: str, user_id: Optional[str], data: dict) -> d
         "customer_name": snap.get("customer_name"), "amount": inv._f(amount), "currency": "NGN", "method": method,
         "reference": (data.get("reference") or "").strip()[:200] or None, "description": description[:500],
         "paid_at": _paid_at(data.get("paid_at")), "recorded_by": user_id, "region": region,
+        "owner_id": user_id, **({"approved_by": data["approved_by"]} if data.get("approved_by") else {}),   # SALE-1
     }
+    if check_only:   # SALE-1: waiting for an admin; nothing saved yet
+        return row
     receipt = _insert_receipt(db, org_id, row)
     receipt["_contact"] = {k: snap.get(k) for k in ("customer_phone", "customer_email", "customer_address")}
     sales.sync_receipt(db, org_id, receipt)
@@ -417,10 +430,11 @@ def verify_return(db, doc: dict, reference: str) -> bool:
 
 # ───────────────────────────── summary ─────────────────────────────
 
-def paid_this_month(db, org_id: str) -> float:
+def paid_this_month(db, org_id: str, mine: Optional[str] = None) -> float:
     start = datetime.now(inv.LAGOS).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     try:
-        res = db.table("receipts").select("amount, voided_at").eq("org_id", org_id) \
+        q = db.table("receipts").select("amount, voided_at").eq("org_id", org_id)
+        res = (q.eq("owner_id", mine) if mine else q) \
             .gte("paid_at", start.isoformat()).limit(10000).execute()
         return inv._f(sum((inv._money(r.get("amount")) for r in _rows(res) if not r.get("voided_at")), Decimal("0")))
     except Exception as exc:  # S14 - the summary still shows the rest

@@ -74,6 +74,16 @@ export const approveStock       = (id) => api.post(`/api/v1/invoices/${id}/stock
 export const rejectStock        = (id, note) => api.post(`/api/v1/invoices/${id}/stock-reject`, note ? { note } : {}).then(d)
 export const cancelStockRequest = (id) => api.post(`/api/v1/invoices/${id}/stock-cancel`).then(d)
 
+// SALE-1: Make a sale, my sales, payments waiting for an admin's OK
+export const makeSale          = (body) => api.post('/api/v1/sales', body).then(d)
+export const finishSale        = (id, body) => api.post(`/api/v1/sales/${id}/finish`, body).then(d)
+export const listSales         = (params = {}) => api.get('/api/v1/sales', { params }).then(d)
+export const errorData         = (e) => e?.response?.data?.data || null
+export const listPaymentApprovals = (status = 'pending') => api.get('/api/v1/payments/approvals', { params: { status } }).then(d)
+export const approvePayment    = (id) => api.post(`/api/v1/payments/approvals/${id}/approve`).then(d)
+export const rejectPayment     = (id, reason) => api.post(`/api/v1/payments/approvals/${id}/reject`, { reason }).then(d)
+export const cancelPayment     = (id) => api.post(`/api/v1/payments/approvals/${id}/cancel`).then(d)
+
 /** Fetch the PDF with the login token and save it (a plain link can't carry the token). */
 export const downloadDocPdf = (id, filename) => savePdf(`/api/v1/invoices/${id}/pdf`, filename)
 

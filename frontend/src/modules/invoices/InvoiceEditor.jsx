@@ -461,7 +461,7 @@ function useDebounced(value, ms = 300) {
   return v
 }
 
-function ContactSearch({ onPick }) {
+export function ContactSearch({ onPick }) {   // SALE-1: also used by Make a sale
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState([])
@@ -494,7 +494,7 @@ function ContactSearch({ onPick }) {
   )
 }
 
-function ProductPicker({ onPick }) {
+export function ProductPicker({ onPick }) {   // SALE-1: also used by Make a sale
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [rows, setRows] = useState(null)
