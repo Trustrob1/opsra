@@ -5,17 +5,19 @@
  * STOREFRONT-2: banner (owner's words/photo, else product photos), trust strip, "Shop by category" tiles and lifted cards.
  * The "Help me choose" question finder was removed: Chioma (or WhatsApp) does that job.
  * Buying is by WhatsApp from the product page; cart and checkout arrive in STORE-4.
+ * STOREFRONT-3: a real menu, search behind an icon, trust cards with pictures, "Shop by need" buttons, and a second
+ * button on every card (Ask Chioma, or a WhatsApp question when Chioma is off).
  */
 import { useMemo, useRef, useState } from 'react'
 import {
   resolveAccent, readableOn, categoryChips, otherFilterDims, filterItems, cardView, readUrlState, listUrl, quickAddState,
-  tint, heroView, categoryTiles, trustPoints,
+  tint, heroView, categoryTiles, trustPoints, needDim, menuLinks, whatsappAskLink,
 } from './storefrontLogic'
 import { cartVariantId } from './storefrontCart'
 import { askChioma } from './storefrontChat'
 import { INK, MUTED, LINE, FONT, placeholder, useManrope } from './storefrontTheme'
 import {
-  Icon, WhatsAppIcon, ChromeStyles, Announcement, StorefrontHeader, StorefrontFooter,
+  Icon, WhatsAppIcon, ChromeStyles, Announcement, StorefrontHeader, StorefrontFooter, TrustCards,
 } from './StorefrontChrome'
 
 function Chip({ on, onClick, children }) {
@@ -59,6 +61,7 @@ export default function StorefrontListPage({
   const [filters, setFilters] = useState(() => readUrlState(window.location.search, catalogConfig))
   const [search, setSearch] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const chips = useMemo(() => categoryChips(items, catalogConfig, style), [items, catalogConfig, style])
   const dims = useMemo(() => otherFilterDims(catalogConfig), [catalogConfig])
@@ -89,6 +92,20 @@ export default function StorefrontListPage({
     try { window.history.replaceState({}, '', listUrl(orgSlug, null, window.location.search)) } catch { /* address bar only */ }
   }
 
+  function pickCategory(name) {
+    setFilters({ category: name })
+    setSearch('')
+    try { window.history.replaceState({}, '', listUrl(orgSlug, name, window.location.search)) } catch { /* address bar only */ }
+    scrollToProducts()
+  }
+
+  function scrollTo(id) {
+    setTimeout(() => {
+      const el = document.getElementById(id)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 0)
+  }
+
   const waHelp = waNumber
     ? `https://wa.me/${String(waNumber).replace('+', '')}?text=${encodeURIComponent(`I need help choosing a ${singular.toLowerCase()}`)}`
     : null
@@ -100,10 +117,23 @@ export default function StorefrontListPage({
   const points = trustPoints(style)
   const home = !anyActive
   const waPlain = waNumber ? `https://wa.me/${String(waNumber).replace('+', '')}` : null
-  function scrollToProducts() {
-    const el = document.getElementById('sf-products')
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  function scrollToProducts() { scrollTo('sf-products') }
+  const need = useMemo(() => needDim(items, catalogConfig), [items, catalogConfig])
+  const links = menuLinks({ plural, chips, need, chioma, whatsapp: !!waPlain }).map((l) => ({
+    ...l,
+    active: l.kind === 'all' ? !anyActive : l.kind === 'category' ? activeCategory === l.value : false,
+    onClick: () => {
+      if (l.kind === 'all') { clearAll(); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+      else if (l.kind === 'category') pickCategory(l.value)
+      else if (l.kind === 'need') { clearAll(); scrollTo('sf-need') }
+      else if (l.kind === 'chioma') askChioma({ action: 'open' })
+      else if (l.kind === 'whatsapp') window.open(waPlain, '_blank', 'noopener')
+    },
+  }))
+  const help = [
+    ...(chioma ? [{ id: 'chioma', label: 'Ask Chioma', onClick: () => askChioma({ action: 'open' }) }] : []),
+    ...(waPlain ? [{ id: 'wa', label: 'Chat on WhatsApp', onClick: () => window.open(waPlain, '_blank', 'noopener') }] : []),
+  ]
 
   return (
     <div className="sf-root" style={{ minHeight: '100vh', background: '#fff', fontFamily: FONT, color: INK }}>
@@ -135,19 +165,21 @@ export default function StorefrontListPage({
         }
       `}</style>
 
-      <Announcement style={style} />
-      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={clearAll} cart={headerCart}>
-        <div className="sf-search-slot">
+      <Announcement style={style} accent={accent} />
+      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={clearAll} cart={headerCart}
+        links={links} searchOpen={searchOpen || !!search} onSearch={() => { if (searchOpen && search) setSearch(''); setSearchOpen((o) => !(o || search)) }}>
+        {(searchOpen || !!search) && (
           <label style={{
-            height: 44, border: '1px solid #C9C6BF', borderRadius: 22, display: 'flex', alignItems: 'center', gap: 10, padding: '0 18px', boxSizing: 'border-box', color: MUTED,
+            height: 48, border: '1px solid #C9C6BF', borderRadius: 24, display: 'flex', alignItems: 'center', gap: 10, padding: '0 18px', boxSizing: 'border-box', color: MUTED, maxWidth: 640, margin: '0 auto',
           }}>
             <Icon size={18} stroke={MUTED}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></Icon>
             <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Search {plural.toLowerCase()}</span>
-            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+            <input type="search" autoFocus value={search} onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') scrollToProducts(); if (e.key === 'Escape') { setSearch(''); setSearchOpen(false) } }}
               placeholder={`Search ${plural.toLowerCase()}`}
-              style={{ border: 0, outline: 'none', flexGrow: 1, minWidth: 0, fontSize: 14, background: 'transparent', color: INK }} />
+              style={{ border: 0, outline: 'none', flexGrow: 1, minWidth: 0, fontSize: 16, background: 'transparent', color: INK }} />
           </label>
-        </div>
+        )}
       </StorefrontHeader>
 
       <main className="sf-wrap">
@@ -191,16 +223,7 @@ export default function StorefrontListPage({
         )}
 
         {home && points.length > 0 && (
-          <ul className="sf-trust" aria-label="Why shop with us" style={{ listStyle: 'none', margin: '20px 0 0', padding: '16px 20px', borderRadius: 16, border: `1px solid ${LINE}` }}>
-            {points.map((t) => (
-              <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700 }}>
-                <span style={{ width: 26, height: 26, borderRadius: 13, background: tint(accent, 0.12), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Icon size={15} stroke={accent} width={2.4}><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>
-                </span>
-                {t}
-              </li>
-            ))}
-          </ul>
+          <div style={{ marginTop: 20 }}><TrustCards style={style} accent={accent} /></div>
         )}
 
         {home && tiles.length >= 2 && (
@@ -218,6 +241,20 @@ export default function StorefrontListPage({
                     <span style={{ display: 'block', marginTop: 2, fontSize: 13, fontWeight: 600, color: t.cover ? 'rgba(255,255,255,0.85)' : MUTED }}>{t.count} {t.count === 1 ? singular.toLowerCase() : plural.toLowerCase()}</span>
                   </span>
                 </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {home && need && (
+          <section id="sf-need" aria-labelledby="sf-need-h" style={{ marginTop: 56, scrollMarginTop: 96 }}>
+            <h2 id="sf-need-h" style={{ margin: 0, fontSize: 'clamp(22px, 3vw, 28px)', fontWeight: 800, letterSpacing: '-0.02em' }}>Shop by need</h2>
+            <div className="sf-chips" style={{ marginTop: 18 }}>
+              {need.options.map((o) => (
+                <button key={o} type="button" onClick={() => { setFilters({ [need.key]: o }); scrollToProducts() }} style={{
+                  minHeight: 48, padding: '0 20px', borderRadius: 24, border: `1.5px solid ${tint(accent, 0.3)}`, background: tint(accent, 0.06), color: INK,
+                  fontSize: 15, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                }}>{o}</button>
               ))}
             </div>
           </section>
@@ -326,7 +363,9 @@ export default function StorefrontListPage({
                       </button>
                     )}
                     <button type="button" aria-label={`Ask Chioma about ${v.title}`} onClick={() => askChioma({ action: 'open', product: it.id })}
-                      style={{ width: '100%', minHeight: 40, borderRadius: 12, border: 0, background: 'transparent', color: INK, fontSize: 14, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      style={{ width: '100%', minHeight: 44, borderRadius: 12, border: `1.5px solid ${tint(accent, 0.25)}`, background: '#fff', color: INK, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: 11, background: tint(accent, 0.14), color: accent, fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>C</span>
                       Ask Chioma
                     </button>
                   </div>
@@ -344,6 +383,12 @@ export default function StorefrontListPage({
                     }}>
                     {quick === 'choose' ? 'Choose size' : mine === 'adding' ? 'Adding…' : mine === 'added' ? 'Added \u2713' : 'Add to cart'}
                   </button>
+                )}
+                {!chioma && waNumber && (
+                  <a href={whatsappAskLink(waNumber, v.title)} target="_blank" rel="noopener noreferrer" aria-label={`Ask about ${v.title} on WhatsApp`} style={{
+                    marginTop: 8, width: '100%', minHeight: 44, borderRadius: 12, border: `1.5px solid ${LINE}`, background: '#fff', color: INK, fontSize: 14, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxSizing: 'border-box',
+                  }}><WhatsAppIcon stroke={INK} />Ask on WhatsApp</a>
                 )}
                 {mine === 'failed' && cart && cart.error && <p role="alert" style={{ margin: '6px 0 0', fontSize: 12, color: '#B3261E' }}>{cart.error}</p>}
                 </div>
@@ -378,7 +423,7 @@ export default function StorefrontListPage({
           </section>
         )}
 
-        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} style={style} waLink={waPlain} />
+        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} style={style} waLink={waPlain} links={links} help={help} />
       </main>
     </div>
   )

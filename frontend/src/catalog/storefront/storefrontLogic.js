@@ -313,3 +313,54 @@ export function categoryTiles(items, chips) {
     return { name: c.name, count: c.count, cover: withPhoto ? coverUrl(withPhoto) : '' }
   })
 }
+
+// ---------------------------------------------------------------------------
+// STOREFRONT-3: menu, trust icons, "Shop by need"
+// ---------------------------------------------------------------------------
+
+const NEED_WORDS = ['health', 'purpose', 'need', 'concern', 'use']
+
+/** The tag group shown as "Shop by need" (for example health_purpose), or null. Only options a product really has. */
+export function needDim(items, config) {
+  const dim = otherFilterDims(config).find((d) => {
+    const s = `${d.key} ${d.label || ''}`.toLowerCase()
+    return NEED_WORDS.some((w) => s.includes(w))
+  })
+  if (!dim) return null
+  const counts = {}
+  for (const it of items || []) for (const v of tagValues(it, dim.key)) counts[v] = (counts[v] || 0) + 1
+  const options = dim.options.map(String).filter((o) => counts[o] > 0)
+  return options.length ? { key: dim.key, label: dim.label || 'Shop by need', options } : null
+}
+
+/**
+ * The shop menu: everything, up to five categories, "Shop by need" when there is one, then a help link.
+ * Each entry is { id, label, kind } and the page decides what a click does.
+ */
+export function menuLinks({ plural = 'Products', chips = [], need = null, chioma = false, whatsapp = false } = {}) {
+  const out = [{ id: 'all', label: `All ${plural.toLowerCase()}`, kind: 'all' }]
+  for (const c of (chips || []).slice(0, 5)) out.push({ id: `cat:${c.name}`, label: c.name, kind: 'category', value: c.name })
+  if (need) out.push({ id: 'need', label: 'Shop by need', kind: 'need' })
+  if (chioma) out.push({ id: 'chioma', label: 'Ask Chioma', kind: 'chioma' })
+  else if (whatsapp) out.push({ id: 'whatsapp', label: 'Chat with us', kind: 'whatsapp' })
+  return out
+}
+
+/** Which small picture fits a trust point, read from its words. Unknown wording gets a tick. */
+export function trustIcon(text) {
+  const s = String(text || '').toLowerCase()
+  if (/secur|pay|safe|protect/.test(s)) return 'shield'
+  if (/deliver|ship|dispatch|nationwide|across/.test(s)) return 'truck'
+  if (/talk|person|chat|call|support|whatsapp|help/.test(s)) return 'chat'
+  if (/showroom|visit|store|shop in|location/.test(s)) return 'pin'
+  if (/return|refund|exchange/.test(s)) return 'return'
+  if (/warrant|guarantee|year/.test(s)) return 'badge'
+  return 'check'
+}
+
+/** WhatsApp link asking about one product (used as the second card button when Chioma is off). */
+export function whatsappAskLink(waNumber, title) {
+  const n = String(waNumber || '').replace(/[^0-9]/g, '')
+  if (!n) return ''
+  return `https://wa.me/${n}?text=${encodeURIComponent(`Hello, I have a question about ${title || 'a product'}`)}`
+}

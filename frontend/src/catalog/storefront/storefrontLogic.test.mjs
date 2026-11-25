@@ -333,3 +333,42 @@ test('categoryTiles picks the first product photo in each category', () => {
   const t = categoryTiles(items, [{ name: 'Pillows', count: 2 }, { name: 'Beds', count: 1 }])
   assert.deepEqual(t, [{ name: 'Pillows', count: 2, cover: 'https://x/p.jpg' }, { name: 'Beds', count: 1, cover: '' }])
 })
+
+import { needDim, menuLinks, trustIcon, whatsappAskLink } from './storefrontLogic.js'
+
+const NEED_CFG = { tag_dimensions: [
+  { key: 'sizes', label: 'Size', filterable: true, options: ['Queen', 'King'] },
+  { key: 'health_purpose', label: 'Health purpose', filterable: true, options: ['Back Pain', 'Waist Pain', 'Post Operation'] },
+] }
+
+test('needDim: picks the health/purpose group and keeps only options in use', () => {
+  const items = [{ tags: { health_purpose: ['Back Pain'] } }, { tags: { health_purpose: 'Waist Pain' } }]
+  assert.deepEqual(needDim(items, NEED_CFG), { key: 'health_purpose', label: 'Health purpose', options: ['Back Pain', 'Waist Pain'] })
+  assert.equal(needDim([], NEED_CFG), null)
+  assert.equal(needDim(items, { tag_dimensions: [NEED_CFG.tag_dimensions[0]] }), null)
+  assert.equal(needDim(items, null), null)
+})
+
+test('menuLinks: all, categories (max 5), need, then Chioma or WhatsApp', () => {
+  const chips = ['A', 'B', 'C', 'D', 'E', 'F'].map((name) => ({ name, count: 1 }))
+  const m = menuLinks({ plural: 'Mattresses', chips, need: { key: 'x' }, chioma: true, whatsapp: true })
+  assert.deepEqual(m.map((x) => x.label), ['All mattresses', 'A', 'B', 'C', 'D', 'E', 'Shop by need', 'Ask Chioma'])
+  assert.deepEqual(menuLinks({ whatsapp: true }).map((x) => x.kind), ['all', 'whatsapp'])
+  assert.deepEqual(menuLinks().map((x) => x.kind), ['all'])
+})
+
+test('trustIcon reads the wording', () => {
+  assert.equal(trustIcon('Secure Payment'), 'shield')
+  assert.equal(trustIcon('Delivery Across Nigeria'), 'truck')
+  assert.equal(trustIcon('Talk to a Person'), 'chat')
+  assert.equal(trustIcon('Visit our showroom'), 'pin')
+  assert.equal(trustIcon('Easy returns'), 'return')
+  assert.equal(trustIcon('10 year warranty'), 'badge')
+  assert.equal(trustIcon('Made with love'), 'check')
+  assert.equal(trustIcon(null), 'check')
+})
+
+test('whatsappAskLink: digits only, product named, empty without a number', () => {
+  assert.equal(whatsappAskLink('+234 801', 'Cloud Mattress'), 'https://wa.me/234801?text=Hello%2C%20I%20have%20a%20question%20about%20Cloud%20Mattress')
+  assert.equal(whatsappAskLink('', 'x'), '')
+})

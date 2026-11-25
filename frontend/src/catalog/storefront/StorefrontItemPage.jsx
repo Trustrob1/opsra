@@ -54,7 +54,19 @@ export default function StorefrontItemPage({
   const related = relatedItems(items, item, 4)
   const crumbCategory = style?.show_categories === false ? '' : tagValues(item, 'category').find((c) => categoryNames(catalogConfig).includes(c)) || ''
   const menu = categoryChips(items, catalogConfig, style).slice(0, 5)
-  const navBtn = { border: 0, background: 'transparent', cursor: 'pointer', fontSize: 14, fontWeight: 600, minHeight: 44, padding: '0 12px', whiteSpace: 'nowrap', color: INK }
+  // STOREFRONT-3: same menu as the list page (all, categories, then Chioma or WhatsApp).
+  const waPlain = waNumber ? `https://wa.me/${String(waNumber).replace('+', '')}` : null
+  const hasChioma = !!(chiomaChat && chiomaChat.key)
+  const links = [
+    { id: 'all', label: `All ${pluralLabel.toLowerCase()}`, onClick: () => onBack() },
+    ...menu.map((c) => ({ id: `cat:${c.name}`, label: c.name, onClick: () => (onPickCategory ? onPickCategory(c.name) : onBack()) })),
+    ...(hasChioma ? [{ id: 'chioma', label: 'Ask Chioma', onClick: () => askChioma({ action: 'open', product: item.id }) }]
+      : waPlain ? [{ id: 'wa', label: 'Chat with us', onClick: () => window.open(waPlain, '_blank', 'noopener') }] : []),
+  ]
+  const help = [
+    ...(hasChioma ? [{ id: 'chioma', label: 'Ask Chioma', onClick: () => askChioma({ action: 'open', product: item.id }) }] : []),
+    ...(waPlain ? [{ id: 'wa', label: 'Chat on WhatsApp', onClick: () => window.open(waPlain, '_blank', 'noopener') }] : []),
+  ]
 
   const description = sanitizeHtml(item.description)
   const intro = item.catalog_description || ''
@@ -124,15 +136,8 @@ export default function StorefrontItemPage({
         }
       `}</style>
 
-      <Announcement style={style} />
-      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={() => onBack()} cart={headerCart}>
-        <nav className="sf-nav" aria-label="Shop menu">
-          <button onClick={() => onBack()} style={navBtn}>All {pluralLabel.toLowerCase()}</button>
-          {menu.map((c) => (
-            <button key={c.name} onClick={() => (onPickCategory ? onPickCategory(c.name) : onBack())} style={navBtn}>{c.name}</button>
-          ))}
-        </nav>
-      </StorefrontHeader>
+      <Announcement style={style} accent={accent} />
+      <StorefrontHeader orgName={orgName} style={style} accent={accent} onHome={() => onBack()} cart={headerCart} links={links} />
 
       <main className="sf-wrap">
         <nav aria-label="Breadcrumb" style={{ padding: '22px 0 20px', fontSize: 13, color: MUTED, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -378,8 +383,7 @@ export default function StorefrontItemPage({
           </section>
         )}
 
-        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} style={style}
-          waLink={waNumber ? `https://wa.me/${String(waNumber).replace('+', '')}` : null} />
+        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} style={style} waLink={waPlain} links={links} help={help} />
       </main>
     </div>
   )
