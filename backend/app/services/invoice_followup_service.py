@@ -107,6 +107,11 @@ def run(db, dry_run: bool = False, on: Optional[date] = None) -> dict:
     r = sales.retry_missing(db, dry_run=dry_run)
     out["sales_missing"], out["sales_added"] = r["checked"], r["added"]
     out["failed"] += r["failed"]
+    # STOCK-2: tracked invoices whose stock did not follow a status change (e.g. a failed call) are put right
+    from app.services import invoice_stock_service as inv_stock
+    s = inv_stock.retry(db, dry_run=dry_run)
+    out["stock_checked"], out["stock_fixed"] = s["checked"], s["fixed"]
+    out["failed"] += s["failed"]
     return out
 
 

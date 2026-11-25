@@ -14,6 +14,7 @@ import { ReceiveStock, AdjustStock } from './StockForms'
 import StockItemPanel from './StockItemPanel'
 import StockHistory from './StockHistory'
 import InventorySettings from './InventorySettings'
+import InvoiceStockList from './InvoiceStockList'   // STOCK-2
 
 export default function InventoryModule() {
   const isMobile = useIsMobile()
@@ -79,8 +80,10 @@ export default function InventoryModule() {
         </>}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' }}>
         {chip(tab === 'stock', 'Stock', () => setTab('stock'))}
+        {enabled && chip(tab === 'deliver', 'To deliver', () => setTab('deliver'))}
+        {enabled && chip(tab === 'held', 'Held', () => setTab('held'))}
         {enabled && chip(tab === 'history', 'History', () => setTab('history'))}
         {canManage && chip(tab === 'settings', 'Settings', () => setTab('settings'))}
       </div>
@@ -89,6 +92,7 @@ export default function InventoryModule() {
 
       {tab === 'settings' && canManage ? <InventorySettings onChanged={load} />
         : tab === 'history' && enabled ? <StockHistory locations={locations} />
+        : (tab === 'deliver' || tab === 'held') && enabled ? <InvoiceStockList key={tab} kind={tab} locations={locations} onChanged={load} />
         : data && !enabled ? (
           <div style={{ ...card, maxWidth: 620 }}>
             <Boxes size={30} color={ds.teal} />

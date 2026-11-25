@@ -63,6 +63,9 @@ export const getInvoiceReport = (start, end) => api.get('/api/v1/invoices/report
 export const downloadReceiptsCsv = (start, end) => savePdf(`/api/v1/invoices/report/receipts.csv?start=${start}&end=${end}`)
 export const aiDraftLines = (leadId) => api.post('/api/v1/invoices/ai-draft', { lead_id: leadId }).then(d)
 
+// STOCK-2: mark goods on a paid invoice as delivered (lines: [{ item_id, quantity }])
+export const deliverInvoice = (id, lines, note) => api.post(`/api/v1/invoices/${id}/deliver`, { lines, ...(note ? { note } : {}) }).then(d)
+
 /** Fetch the PDF with the login token and save it (a plain link can't carry the token). */
 export const downloadDocPdf = (id, filename) => savePdf(`/api/v1/invoices/${id}/pdf`, filename)
 

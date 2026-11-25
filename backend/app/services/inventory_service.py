@@ -556,6 +556,9 @@ def history(db, org_id: str, product_id: Optional[str] = None, variant: Optional
     uids = list({m["created_by"] for m in moves if m.get("created_by")})
     users = {u["id"]: (u.get("full_name") or u.get("email")) for u in
              _rows(db.table("users").select("id, full_name, email").eq("org_id", org_id).in_("id", uids).execute())} if uids else {}
+    inv_ids = list({m["invoice_id"] for m in moves if m.get("invoice_id")})   # STOCK-2
+    numbers = {d["id"]: d.get("number") for d in
+               _rows(db.table("invoices").select("id, number").eq("org_id", org_id).in_("id", inv_ids).execute())} if inv_ids else {}
     out = []
     for m in moves:
         it = items.get(m["item_id"]) or {}
@@ -567,5 +570,6 @@ def history(db, org_id: str, product_id: Optional[str] = None, variant: Optional
                     "held_change": _num(m.get("d_held")), "on_hand_after": _num(m.get("on_hand_after")),
                     "available_after": _num(m.get("on_hand_after")) - _num(m.get("held_after")) - _num(m.get("sold_after")),
                     "reason": m.get("reason"), "ref": m.get("ref"), "invoice_id": m.get("invoice_id"),
+                    "invoice_number": numbers.get(m.get("invoice_id")),
                     "by": users.get(m.get("created_by"))})
     return {"items": out, "more": more}

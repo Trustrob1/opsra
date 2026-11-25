@@ -324,6 +324,9 @@ def get_doc(db, org_id: str, doc_id: str) -> dict:
         .order("position").execute()
     doc = _decorate(doc)
     doc["items"] = (items.data or []) if items else []
+    if doc.get("location_id"):   # STOCK-2
+        loc = db.table("stock_locations").select("name").eq("id", doc["location_id"]).eq("org_id", org_id).limit(1).execute()
+        doc["location_name"] = ((loc.data or [{}])[0] if loc else {}).get("name")
     if doc.get("status") == "draft":   # INV-SALES-2: the editor offers each product line's sizes
         pids = sorted({i["product_id"] for i in doc["items"] if i.get("product_id")})
         if pids:
@@ -390,6 +393,9 @@ def create_draft(db, org_id: str, user_id: Optional[str], data: dict) -> dict:
     if data.get("region") is not None:   # INV-SALES-1
         from app.services import invoice_sales_service as sales
         row["region"] = sales.clean_region(db, org_id, data.get("region"))
+    if data.get("location_id") is not None:   # STOCK-2
+        from app.services import invoice_stock_service as inv_stock
+        row["location_id"] = inv_stock.clean_location(db, org_id, data.get("location_id"))
     res = db.table("invoices").insert(row).execute()
     doc = res.data[0]
     _write_items(db, org_id, doc["id"], totals["lines"])
@@ -426,6 +432,9 @@ def update_draft(db, org_id: str, user_id: Optional[str], doc_id: str, data: dic
     if "region" in data:   # INV-SALES-1
         from app.services import invoice_sales_service as sales
         patch["region"] = sales.clean_region(db, org_id, data.get("region"))
+    if "location_id" in data:   # STOCK-2
+        from app.services import invoice_stock_service as inv_stock
+        patch["location_id"] = inv_stock.clean_location(db, org_id, data.get("location_id"))
     if "items" in data:
         lines = _resolve_items(db, org_id, data.get("items") or [])
     else:
@@ -495,6 +504,18 @@ def issue(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
     if not doc.get("region") and sales.region_required(db, org_id):
         raise InvoiceError("VALIDATION_ERROR", "Choose the region before issuing.", 422, "region")
     _sizes_picked(db, org_id, doc["id"])   # INV-SALES-2
+    # STOCK-2: hold the product lines' stock first; not enough anywhere -> refused before a number is used.
+    from app.services import invoice_stock_service as inv_stock
+    tracked = inv_stock.prepare_issue(db, org_id, user_id, doc)
+    try:
+        return _issue_numbered(db, org_id, user_id, doc)
+    except Exception:
+        if tracked:
+            inv_stock.undo_issue(db, org_id, user_id, doc["id"])
+        raise
+
+
+def _issue_numbered(db, org_id: str, user_id: Optional[str], doc: dict) -> dict:
     settings = get_settings(db, org_id)
     kind = doc["doc_type"]
     number = next_number(db, org_id, kind, settings.get(f"{kind}_prefix"))
@@ -529,6 +550,9 @@ def void(db, org_id: str, user_id: Optional[str], doc_id: str, reason: str) -> d
     patch = {"status": "void", "voided_at": _now_iso(), "voided_by": user_id, "void_reason": reason,
              "updated_at": _now_iso()}
     db.table("invoices").update(patch).eq("id", doc["id"]).eq("org_id", org_id).execute()
+    if doc.get("stock_tracked"):   # STOCK-2: held stock goes back to available
+        from app.services import invoice_stock_service as inv_stock
+        inv_stock.sync(db, org_id, doc["id"], user_id)
     _audit(db, org_id, user_id, f"{doc['doc_type']}.voided", doc["id"], {"reason": reason},
            {"status": doc.get("status")})
     return get_doc(db, org_id, doc["id"])
@@ -568,7 +592,8 @@ def convert_quote(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
     row = {
         "org_id": org_id, "doc_type": "invoice", "status": "draft",
         **{k: quote.get(k) for k in ("lead_id", "customer_id", "customer_name", "customer_phone",
-                                     "customer_email", "customer_address", "currency", "notes", "terms", "region")},
+                                     "customer_email", "customer_address", "currency", "notes", "terms", "region",
+                                     "location_id")},
         **_totals_row(totals), "converted_from_id": quote["id"], "created_by": user_id,
     }
     res = db.table("invoices").insert(row).execute()

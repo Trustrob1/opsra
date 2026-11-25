@@ -26,6 +26,8 @@ import SendPanel from './SendPanel'   // INV-3
 import PaymentsPanel from './PaymentsPanel'   // INV-4
 import RegionSelect from './RegionSelect'   // INV-SALES-2
 import { useRegions, lastRegion } from './useRegions'
+import StockPanel from './StockPanel'   // STOCK-2
+import { useStock, startLocation, rememberLocation, useAvailability } from './useStock'
 
 let _key = 0
 const newKey = () => `l${++_key}`
@@ -45,6 +47,7 @@ function fromDoc(doc) {
     issue_date: doc.issue_date || '', due_date: doc.due_date || '',
     notes: doc.notes || '', terms: doc.terms || '',
     region: doc.region || '',
+    location_id: doc.location_id || '', loc_picked: !!doc.location_id,   // STOCK-2
   }
 }
 
@@ -66,6 +69,7 @@ function payload(f) {
     issue_date: f.issue_date || null, due_date: f.due_date || null,
     notes: opt(f.notes), terms: opt(f.terms),
     region: f.region || null,
+    ...(f.doc_type === 'invoice' ? { location_id: f.location_id || null } : {}),   // STOCK-2
   }
 }
 
@@ -83,12 +87,23 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
   const autoMade = useRef(false)
   const dirty = useRef(false)
   const regions = useRegions()   // INV-SALES-2
+  const stock = useStock()         // STOCK-2
 
   // A draft with no region starts on the region this person used last (not counted as a change).
   useEffect(() => {
     if (!regions.length) return
     setForm((f) => (f && !f.region && (!doc || doc.status === 'draft') ? { ...f, region: lastRegion(regions) } : f))
   }, [regions, doc])
+
+  // STOCK-2: until the person picks a location, a draft invoice follows the region's location (else last used, else main).
+  useEffect(() => {
+    if (!stock.enabled || !stock.locations.length) return
+    setForm((f) => {
+      if (!f || f.doc_type !== 'invoice' || f.loc_picked || (doc && doc.status !== 'draft')) return f
+      const want = startLocation(stock.locations, f.region)
+      return want === f.location_id ? f : { ...f, location_id: want }
+    })
+  }, [stock, doc, form?.region, form?.doc_type])
 
   const set = (patch) => { dirty.current = true; setForm((f) => ({ ...f, ...patch })) }
 
@@ -115,7 +130,7 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
         } else {
           setForm({ doc_type: type, lead_id: null, customer_name: '', customer_phone: '', customer_email: '', customer_address: '',
             items: [toLine({ quantity: 1 })], discount: '', apply_vat: !!s.vat_enabled, issue_date: '', due_date: '',
-            notes: '', terms: s.default_terms || '', region: '' })
+            notes: '', terms: s.default_terms || '', region: '', location_id: '', loc_picked: false })
         }
       } catch (e) { if (live) setErr(apiError(e, 'Could not open this document. Please try again.')) }
     })()
@@ -170,6 +185,10 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
     if (regions.length && !form.region) { setErr('Choose the region first.'); return }
     const noSize = form.items.find((l) => l.sizes?.length && !l.variant)
     if (noSize) { setErr(`Choose the size for ${noSize.description || 'each product'}.`); return }
+    if (kind === 'invoice' && stock.enabled && form.items.some((l) => l.product_id) && !form.location_id) {
+      setErr('Choose where the stock comes from first.'); return
+    }
+    if (form.location_id) rememberLocation(form.location_id)
     run('issue', async () => {
       const d = await saveDraft()
       const issued = await issueDoc(d.id)
@@ -222,7 +241,7 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
         <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 16 : 22 }}>
           {err && <div role="alert" style={{ background: '#FFF5F5', border: '1px solid #F5C2C2', color: '#9B2C2C', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>{err}</div>}
           {!form && !err && <p style={{ color: ds.gray }}>Loading…</p>}
-          {form && editable && <DraftForm form={form} set={set} settings={settings} preview={preview} isNew={!doc} isMobile={isMobile} regions={regions} />}
+          {form && editable && <DraftForm form={form} set={set} settings={settings} preview={preview} isNew={!doc} isMobile={isMobile} regions={regions} stock={stock} />}
           {form && !editable && <IssuedView doc={doc} isAdmin={isAdmin} onPaid={() => { load(doc.id).catch(() => {}); onChanged?.() }} />}
         </div>
 
@@ -264,7 +283,13 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
 
 // ───────────────────────────── draft form ─────────────────────────────
 
-function DraftForm({ form, set, settings, preview, isNew, isMobile, regions }) {
+function DraftForm({ form, set, settings, preview, isNew, isMobile, regions, stock }) {
+  // STOCK-2: what is left at the chosen location, per size, for the products on this invoice
+  const kind0 = form.doc_type
+  const stockOn = kind0 === 'invoice' && !!stock?.enabled && stock.locations.length > 0
+  const avail = useAvailability(stockOn, form.location_id, form.items.filter((l) => l.product_id).map((l) => l.product_id))
+  const leftFor = (l, size) => (avail ? Number(avail[l.product_id]?.[size ?? ''] ?? 0) : null)
+  const locName = stock?.locations.find((x) => x.id === form.location_id)?.name || 'this location'
   const grid2 = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }
   const setLine = (key, patch) => set({ items: form.items.map((l) => (l.key === key ? { ...l, ...patch } : l)) })
   const removeLine = (key) => set({ items: form.items.filter((l) => l.key !== key) })
@@ -292,7 +317,21 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile, regions }) {
       <section>
         <h3 style={{ fontSize: 15, margin: '0 0 10px', color: ds.dark }}>Customer</h3>
         <ContactSearch onPick={(c) => set({ lead_id: c.id, customer_name: c.full_name || '', customer_phone: c.whatsapp || c.phone || '', customer_email: c.email || '', customer_address: c.location || '' })} />
-        {regions?.length > 0 && <div style={{ ...grid2, marginTop: 10 }}><RegionSelect regions={regions} value={form.region} onChange={(v) => set({ region: v })} /></div>}
+        {(regions?.length > 0 || stockOn) && (
+          <div style={{ ...grid2, marginTop: 10 }}>
+            {regions?.length > 0 && <RegionSelect regions={regions} value={form.region} onChange={(v) => set({ region: v })} />}
+            {stockOn && (
+              <div><label style={lab} htmlFor="inv-loc">Stock comes from</label>
+                <select id="inv-loc" style={{ ...inp, borderColor: form.location_id ? ds.border : ds.accent }} value={form.location_id}
+                  onChange={(e) => set({ location_id: e.target.value, loc_picked: true })}>
+                  <option value="">Choose a location</option>
+                  {stock.locations.map((x) => <option key={x.id} value={x.id}>{x.name}{x.region ? ` (${x.region})` : ''}</option>)}
+                </select>
+                <small style={{ color: ds.gray }}>Issuing holds the goods here until the invoice is paid or voided.</small>
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ ...grid2, marginTop: 10 }}>
           <div><label style={lab} htmlFor="inv-cn">Name</label><input id="inv-cn" style={inp} maxLength={200} value={form.customer_name} onChange={(e) => set({ customer_name: e.target.value })} /></div>
           <div><label style={lab} htmlFor="inv-cp">Phone</label><input id="inv-cp" style={inp} maxLength={30} inputMode="tel" value={form.customer_phone} onChange={(e) => set({ customer_phone: e.target.value })} /></div>
@@ -317,9 +356,21 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile, regions }) {
                 <select style={{ ...inp, borderColor: l.variant ? ds.border : ds.accent }} aria-label={`Line ${i + 1} size`}
                   value={l.variant} onChange={(e) => pickSize(l, e.target.value)}>
                   <option value="">Choose the size</option>
-                  {l.sizes.map((s) => <option key={s.title} value={s.title}>{s.title}{s.price != null ? ` · ${naira(s.price)}` : ''}</option>)}
+                  {l.sizes.map((s) => {
+                    const left = stockOn ? leftFor(l, s.title) : null
+                    return <option key={s.title} value={s.title} disabled={left !== null && left <= 0 && s.title !== l.variant}>
+                      {s.title}{s.price != null ? ` · ${naira(s.price)}` : ''}{left === null ? '' : left > 0 ? ` · ${left} left` : ' · sold out'}
+                    </option>
+                  })}
                 </select>
               )}
+              {stockOn && l.product_id && (!l.sizes?.length || l.variant) && leftFor(l, l.sizes?.length ? l.variant : '') !== null && (() => {
+                const left = leftFor(l, l.sizes?.length ? l.variant : '')
+                const short = num(l.quantity) > left
+                return <small style={{ color: short ? ds.red : ds.gray }}>
+                  {left <= 0 ? `None left at ${locName}` : short ? `Only ${left} left at ${locName}` : `${left} left at ${locName}`}
+                </small>
+              })()}
             </div>
             <input style={inp} inputMode="decimal" aria-label={`Line ${i + 1} quantity`} value={l.quantity} onChange={(e) => setLine(l.key, { quantity: e.target.value })} />
             <input style={inp} inputMode="decimal" placeholder="0.00" aria-label={`Line ${i + 1} unit price`} value={l.unit_price} onChange={(e) => setLine(l.key, { unit_price: e.target.value })} />
@@ -485,6 +536,7 @@ function IssuedView({ doc, isAdmin, onPaid }) {
       {doc.status === 'void' && <div style={{ background: '#F3F4F6', borderRadius: 10, padding: 12, color: ds.gray }}>Voided {niceDate(doc.voided_at)}{doc.void_reason ? `: ${doc.void_reason}` : ''}</div>}
       {doc.converted_from_id && <div style={{ color: ds.gray, fontSize: 13 }}>Made from a quote.</div>}
       {kind === 'invoice' && <PaymentsPanel doc={doc} isAdmin={isAdmin} onChanged={onPaid} />}
+      {kind === 'invoice' && doc.stock_tracked && <StockPanel doc={doc} onChanged={onPaid} />}
       {doc.status !== 'void' && <SendPanel doc={doc} />}
       <p style={{ color: ds.gray, fontSize: 13, margin: 0 }}>Issued documents can't be changed. To fix a mistake, void it and make a new one.</p>
     </div>

@@ -94,6 +94,7 @@ class _DocFields(_Strict):
     notes: Optional[str] = Field(None, max_length=5000)
     terms: Optional[str] = Field(None, max_length=5000)
     region: Optional[str] = Field(None, max_length=255)   # INV-SALES-1 (checked against the business's regions)
+    location_id: Optional[UUID] = None   # STOCK-2: where the stock comes from (checked against the business's locations)
     items: Optional[List[ItemIn]] = Field(None, max_length=inv.MAX_ITEMS)
 
     _money = field_validator("discount")(_two_places)
@@ -109,6 +110,16 @@ class DocPatch(_DocFields):
 
 class VoidIn(_Strict):
     reason: str = Field(..., min_length=3, max_length=500)
+
+
+class DeliverLine(_Strict):   # STOCK-2
+    item_id: UUID
+    quantity: int = Field(..., ge=1, le=1_000_000)
+
+
+class DeliverIn(_Strict):
+    lines: List[DeliverLine] = Field(..., min_length=1, max_length=inv.MAX_ITEMS)
+    note: Optional[str] = Field(None, max_length=300)
 
 
 class SendIn(_Strict):
@@ -348,6 +359,9 @@ async def get_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
         doc["receipts"] = pay.receipts_for_invoice(db, org["org_id"], doc["id"])
         for r in doc["receipts"]:
             r.pop("public_token", None)
+        if doc.get("stock_tracked"):   # STOCK-2
+            from app.services import invoice_stock_service as inv_stock
+            doc["can_deliver"] = inv_stock.can_deliver(org, doc)
     return ok(doc)
 
 
@@ -375,6 +389,16 @@ async def issue_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depen
     org_id, user_id = _ids(org)
     try:
         return ok(inv.issue(db, org_id, user_id, str(doc_id)))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/invoices/{doc_id}/deliver")
+async def deliver_doc(doc_id: UUID, body: DeliverIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    """STOCK-2: mark goods delivered (paid invoices; managers or the rep who made it). Part delivery per line."""
+    from app.services import invoice_stock_service as inv_stock
+    try:
+        return ok(inv_stock.deliver(db, org, str(doc_id), body.model_dump(mode="json")["lines"], body.note))
     except inv.InvoiceError as e:
         return _fail(e)
 

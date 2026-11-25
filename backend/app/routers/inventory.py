@@ -142,7 +142,37 @@ async def put_settings(body: SettingsIn, org: dict = Depends(_manager), db=Depen
 
 @router.get("/inventory/locations")
 async def get_locations(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
-    return ok(data={"locations": stock.list_locations(db, _org_id(org)), "regions": sales.regions(db, _org_id(org))})
+    return ok(data={"locations": stock.list_locations(db, _org_id(org)), "regions": sales.regions(db, _org_id(org)),
+                    "enabled": stock.stock_on(db, _org_id(org))})   # STOCK-2: the invoice editor reads enabled
+
+
+@router.get("/inventory/held")
+async def get_held(location_id: Optional[UUID] = None, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    """STOCK-2: unpaid issued invoices holding stock, oldest first."""
+    from app.services import invoice_stock_service as inv_stock
+    return ok(data={"items": inv_stock.held_list(db, _org_id(org), str(location_id) if location_id else None)})
+
+
+@router.get("/inventory/to-deliver")
+async def get_to_deliver(location_id: Optional[UUID] = None, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    """STOCK-2: paid invoices with goods still to deliver, oldest first."""
+    from app.services import invoice_stock_service as inv_stock
+    return ok(data={"items": inv_stock.to_deliver_list(db, _org_id(org), str(location_id) if location_id else None)})
+
+
+@router.get("/inventory/availability")
+async def get_availability(location_id: UUID, product_ids: str = Query(..., max_length=4000),
+                           org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    """STOCK-2: what is available per size at one location, for the invoice editor's size picker."""
+    from app.services import invoice_stock_service as inv_stock
+    ids = []
+    for raw in product_ids.split(",")[:100]:
+        try:
+            ids.append(str(UUID(raw.strip())))
+        except ValueError:
+            continue
+    return ok(data={"location_id": str(location_id),
+                    "products": inv_stock.availability(db, _org_id(org), str(location_id), ids)})
 
 
 @router.post("/inventory/locations")

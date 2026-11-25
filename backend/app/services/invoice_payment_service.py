@@ -133,6 +133,9 @@ def _recompute(db, org_id: str, invoice_id: str) -> tuple[dict, bool]:
     if new == "paid" or old == "paid":   # INV-SALES-1: add to / take out of Sales Record (never raises)
         from app.services import invoice_sales_service as sales
         sales.sync_invoice(db, org_id, invoice_id)
+    if doc.get("stock_tracked") and new != old:   # STOCK-2: held <-> to deliver (never raises)
+        from app.services import invoice_stock_service as inv_stock
+        inv_stock.sync(db, org_id, invoice_id)
     return inv.get_doc(db, org_id, invoice_id), (new == "paid" and old != "paid")
 
 

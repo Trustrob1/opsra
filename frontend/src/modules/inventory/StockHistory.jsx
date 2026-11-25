@@ -54,7 +54,7 @@ export default function StockHistory({ locations }) {
                 <b style={{ color: tone(m.change) }}>{m.change ? signed(m.change) : '—'}</b>
               </div>
               <div style={{ color: ds.gray, fontSize: 13.5 }}>{m.kind_label} · {m.location} · {dateTime(m.created_at)}</div>
-              {(m.reason || m.ref) && <div style={{ color: ds.gray, fontSize: 13.5 }}>{[m.reason, m.ref].filter(Boolean).join(' · ')}</div>}
+              {(m.reason || m.ref || m.invoice_number) && <div style={{ color: ds.gray, fontSize: 13.5 }}>{[m.invoice_number, m.reason, m.ref].filter(Boolean).join(' · ')}</div>}
               <div style={{ color: ds.gray, fontSize: 13.5 }}>{units(m.on_hand_after)} on hand after{m.by ? ` · ${m.by}` : ''}</div>
             </div>
           ))}
@@ -72,7 +72,7 @@ export default function StockHistory({ locations }) {
                   <td style={{ ...td, whiteSpace: 'nowrap', color: ds.gray }}>{dateTime(m.created_at)}</td>
                   <td style={td}>{m.title}{m.variant ? <span style={{ color: ds.gray }}> · {m.variant}</span> : ''}</td>
                   <td style={td}>{m.location}</td>
-                  <td style={td}>{m.kind_label}{m.reason ? <span style={{ color: ds.gray }}> · {m.reason}</span> : ''}{m.ref ? <span style={{ color: ds.gray }}> · {m.ref}</span> : ''}</td>
+                  <td style={td}>{m.kind_label}{m.invoice_number ? <span style={{ color: ds.gray }}> · {m.invoice_number}</span> : ''}{m.reason ? <span style={{ color: ds.gray }}> · {m.reason}</span> : ''}{m.ref ? <span style={{ color: ds.gray }}> · {m.ref}</span> : ''}</td>
                   <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: tone(m.change) }}>{m.change ? signed(m.change) : '—'}</td>
                   <td style={{ ...td, textAlign: 'right' }}>{units(m.on_hand_after)}</td>
                   <td style={{ ...td, color: ds.gray }}>{m.by || '—'}</td>

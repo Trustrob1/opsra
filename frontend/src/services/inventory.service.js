@@ -26,3 +26,9 @@ export const getStockHistory   = (params = {}) => api.get('/api/v1/inventory/his
 export const receiveStock      = (body) => api.post('/api/v1/inventory/receive', body).then(d)
 export const adjustStock       = (body) => api.post('/api/v1/inventory/adjust', body).then(d)
 export const updateStockItem   = (body) => api.patch('/api/v1/inventory/items', body).then(d)
+
+// STOCK-2: invoices holding stock, paid invoices still to deliver, and what is left per size at one location
+export const getHeld         = (params = {}) => api.get('/api/v1/inventory/held', { params }).then(d)
+export const getToDeliver    = (params = {}) => api.get('/api/v1/inventory/to-deliver', { params }).then(d)
+export const getAvailability = (locationId, productIds) =>
+  api.get('/api/v1/inventory/availability', { params: { location_id: locationId, product_ids: productIds.join(',') } }).then(d)
