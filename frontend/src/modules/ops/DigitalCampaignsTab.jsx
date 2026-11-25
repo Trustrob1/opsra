@@ -40,7 +40,7 @@ import {
 } from '../../services/digital_campaigns.service'
 
 const CARD = {
-  background: 'white', border: '1px solid #E4EEF2', borderRadius: 12,
+  background: 'white', border: '1px solid #E1E5EC', borderRadius: 12,
   padding: '16px 18px',
 }
 
@@ -121,41 +121,41 @@ function EntryForm({ initial, onSaved, onCancel }) {
 
   return (
     <div style={{ ...CARD, marginBottom: 20 }}>
-      <p style={{ fontSize: 13, fontWeight: 700, color: '#0a1a24', margin: '0 0 12px' }}>
+      <p style={{ fontSize: 13, fontWeight: 700, color: '#1B1F28', margin: '0 0 12px' }}>
         {form.id ? 'Edit weekly entry' : 'Log this week\u2019s numbers'}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
         <div>
-          <label style={{ fontSize: 11.5, color: '#7A9BAD', display: 'block', marginBottom: 4 }}>Campaign name</label>
+          <label style={{ fontSize: 11.5, color: '#5B6270', display: 'block', marginBottom: 4 }}>Campaign name</label>
           <input style={{ ...INP, width: '100%' }} value={form.campaign_name} onChange={e => upd('campaign_name', e.target.value)} placeholder="e.g. Direct Sales 23/06" />
         </div>
         <div>
-          <label style={{ fontSize: 11.5, color: '#7A9BAD', display: 'block', marginBottom: 4 }}>Any date in the week</label>
+          <label style={{ fontSize: 11.5, color: '#5B6270', display: 'block', marginBottom: 4 }}>Any date in the week</label>
           <input type="date" style={{ ...INP, width: '100%' }} value={form.week_start} onChange={e => upd('week_start', e.target.value)} />
         </div>
         <div>
-          <label style={{ fontSize: 11.5, color: '#7A9BAD', display: 'block', marginBottom: 4 }}>Daily budget (₦)</label>
+          <label style={{ fontSize: 11.5, color: '#5B6270', display: 'block', marginBottom: 4 }}>Daily budget (₦)</label>
           <input type="number" min="0" style={{ ...INP, width: '100%' }} value={form.daily_budget} onChange={e => upd('daily_budget', e.target.value)} />
         </div>
         <div>
-          <label style={{ fontSize: 11.5, color: '#7A9BAD', display: 'block', marginBottom: 4 }}>Spend this week (₦)</label>
+          <label style={{ fontSize: 11.5, color: '#5B6270', display: 'block', marginBottom: 4 }}>Spend this week (₦)</label>
           <input type="number" min="0" style={{ ...INP, width: '100%' }} value={form.spend} onChange={e => upd('spend', e.target.value)} />
         </div>
         <div>
-          <label style={{ fontSize: 11.5, color: '#7A9BAD', display: 'block', marginBottom: 4 }}>Conversations</label>
+          <label style={{ fontSize: 11.5, color: '#5B6270', display: 'block', marginBottom: 4 }}>Conversations</label>
           <input type="number" min="0" style={{ ...INP, width: '100%' }} value={form.conversations} onChange={e => upd('conversations', e.target.value)} />
         </div>
         <div>
-          <label style={{ fontSize: 11.5, color: '#7A9BAD', display: 'block', marginBottom: 4 }}>CTR (%)</label>
+          <label style={{ fontSize: 11.5, color: '#5B6270', display: 'block', marginBottom: 4 }}>CTR (%)</label>
           <input type="number" min="0" step="0.01" style={{ ...INP, width: '100%' }} value={form.ctr_pct} onChange={e => upd('ctr_pct', e.target.value)} placeholder="e.g. 1.91" />
         </div>
         <div>
-          <label style={{ fontSize: 11.5, color: '#7A9BAD', display: 'block', marginBottom: 4 }}>Impressions</label>
+          <label style={{ fontSize: 11.5, color: '#5B6270', display: 'block', marginBottom: 4 }}>Impressions</label>
           <input type="number" min="0" style={{ ...INP, width: '100%' }} value={form.impressions} onChange={e => upd('impressions', e.target.value)} />
         </div>
       </div>
       <div style={{ marginBottom: 12 }}>
-        <label style={{ fontSize: 11.5, color: '#7A9BAD', display: 'block', marginBottom: 4 }}>Notes (optional)</label>
+        <label style={{ fontSize: 11.5, color: '#5B6270', display: 'block', marginBottom: 4 }}>Notes (optional)</label>
         <input style={{ ...INP, width: '100%' }} value={form.notes} onChange={e => upd('notes', e.target.value)} placeholder="Anything worth remembering about this week" />
       </div>
       {error && <p style={{ color: '#DC2626', fontSize: 13, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {error}</p>}
@@ -181,7 +181,7 @@ function MonthNav({ monthDate, onChange }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <button onClick={() => go(-1)} style={{ ...BTN_OUTLINE, padding: '6px 10px' }}><ChevronLeft size={15} /></button>
-      <span style={{ fontSize: 14, fontWeight: 600, color: '#0a1a24', minWidth: 140, textAlign: 'center' }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: '#1B1F28', minWidth: 140, textAlign: 'center' }}>{label}</span>
       <button onClick={() => go(1)} style={{ ...BTN_OUTLINE, padding: '6px 10px' }}><ChevronRight size={15} /></button>
     </div>
   )
@@ -192,8 +192,8 @@ function MonthNav({ monthDate, onChange }) {
 function Kpi({ label, value }) {
   return (
     <div style={{ ...CARD, flex: 1 }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
-      <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#0a1a24', margin: 0 }}>{value}</p>
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
+      <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#1B1F28', margin: 0 }}>{value}</p>
     </div>
   )
 }
@@ -341,8 +341,8 @@ export default function DigitalCampaignsTab({ isActive }) {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Digital Campaigns</h2>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>Monthly view — logged weekly, rolled up automatically.</p>
+          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>Digital Campaigns</h2>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>Monthly view — logged weekly, rolled up automatically.</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MonthNav monthDate={monthDate} onChange={setMonthDate} />
@@ -366,7 +366,7 @@ export default function DigitalCampaignsTab({ isActive }) {
       )}
 
       {loading ? (
-        <p style={{ color: '#7A9BAD', fontSize: 14 }}>Loading…</p>
+        <p style={{ color: '#5B6270', fontSize: 14 }}>Loading…</p>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -378,7 +378,7 @@ export default function DigitalCampaignsTab({ isActive }) {
           </div>
 
           <div style={{ ...CARD, marginBottom: 20 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: '#0a1a24', margin: '0 0 12px' }}>Per-Campaign Breakdown</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1B1F28', margin: '0 0 12px' }}>Per-Campaign Breakdown</p>
             {byCampaign.length === 0 ? (
               <p style={{ fontSize: 13, color: '#9CA3AF', margin: 0 }}>No campaigns logged for this month yet.</p>
             ) : (
@@ -387,30 +387,30 @@ export default function DigitalCampaignsTab({ isActive }) {
                   <thead>
                     <tr style={{ background: '#F8FBFC' }}>
                       {['Campaign', 'Daily Budget', 'Spent', 'Conversations', 'Cost/Conv', 'CTR (est.)', 'Impressions'].map((h, i) => (
-                        <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
+                        <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {byCampaign.map(c => (
                       <tr key={c.name} style={{ borderTop: '1px solid #F0F7FA' }}>
-                        <td style={{ padding: '8px 10px', color: '#0a1a24', fontWeight: 500 }}>{c.name}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{fmtNaira(c.daily_budget)}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{fmtNaira(c.spend)}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{c.conversations.toLocaleString()}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{c.costPerConv != null ? fmtNaira(c.costPerConv) : '—'}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{c.ctrPct.toFixed(2)}%</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{c.impressions.toLocaleString()}</td>
+                        <td style={{ padding: '8px 10px', color: '#1B1F28', fontWeight: 500 }}>{c.name}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{fmtNaira(c.daily_budget)}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{fmtNaira(c.spend)}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{c.conversations.toLocaleString()}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{c.costPerConv != null ? fmtNaira(c.costPerConv) : '—'}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{c.ctrPct.toFixed(2)}%</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{c.impressions.toLocaleString()}</td>
                       </tr>
                     ))}
-                    <tr style={{ borderTop: '2px solid #E4EEF2', fontWeight: 700 }}>
-                      <td style={{ padding: '8px 10px', color: '#0a1a24' }}>Total</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>—</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{fmtNaira(totals.spend)}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{totals.conversations.toLocaleString()}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{fmtNaira(totals.costPerConv)}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{totals.ctrPct.toFixed(2)}%</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0a1a24' }}>{totals.impressions.toLocaleString()}</td>
+                    <tr style={{ borderTop: '2px solid #E1E5EC', fontWeight: 700 }}>
+                      <td style={{ padding: '8px 10px', color: '#1B1F28' }}>Total</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>—</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{fmtNaira(totals.spend)}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{totals.conversations.toLocaleString()}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{fmtNaira(totals.costPerConv)}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{totals.ctrPct.toFixed(2)}%</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1B1F28' }}>{totals.impressions.toLocaleString()}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -420,17 +420,17 @@ export default function DigitalCampaignsTab({ isActive }) {
 
           {insights.length > 0 && (
             <div style={{ ...CARD, marginBottom: 20 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#0a1a24', margin: '0 0 10px' }}>Insights</p>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#1B1F28', margin: '0 0 10px' }}>Insights</p>
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {insights.map((line, i) => (
-                  <li key={i} style={{ fontSize: 12.5, color: '#4a7a8a', marginBottom: 6 }}>{line}</li>
+                  <li key={i} style={{ fontSize: 12.5, color: '#5B6270', marginBottom: 6 }}>{line}</li>
                 ))}
               </ul>
             </div>
           )}
 
           <div style={CARD}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: '#0a1a24', margin: '0 0 12px' }}>Weekly Entries This Month</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1B1F28', margin: '0 0 12px' }}>Weekly Entries This Month</p>
             {entries.length === 0 ? (
               <p style={{ fontSize: 13, color: '#9CA3AF', margin: 0 }}>No weekly entries logged for this month yet.</p>
             ) : (
@@ -439,19 +439,19 @@ export default function DigitalCampaignsTab({ isActive }) {
                   <thead>
                     <tr style={{ background: '#F8FBFC' }}>
                       {['Week of', 'Campaign', 'Spend', 'Conversations', 'CTR', 'Impressions', ''].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
+                        <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {entries.map((e, i) => (
                       <tr key={e.id} style={{ borderTop: i > 0 ? '1px solid #F0F7FA' : 'none' }}>
-                        <td style={{ padding: '8px 10px', color: '#0a1a24' }}>{e.week_start}</td>
-                        <td style={{ padding: '8px 10px', color: '#0a1a24' }}>{e.campaign_name}</td>
-                        <td style={{ padding: '8px 10px', color: '#0a1a24' }}>{fmtNaira(e.spend)}</td>
-                        <td style={{ padding: '8px 10px', color: '#0a1a24' }}>{e.conversations}</td>
-                        <td style={{ padding: '8px 10px', color: '#0a1a24' }}>{Number(e.ctr_pct).toFixed(2)}%</td>
-                        <td style={{ padding: '8px 10px', color: '#0a1a24' }}>{Number(e.impressions).toLocaleString()}</td>
+                        <td style={{ padding: '8px 10px', color: '#1B1F28' }}>{e.week_start}</td>
+                        <td style={{ padding: '8px 10px', color: '#1B1F28' }}>{e.campaign_name}</td>
+                        <td style={{ padding: '8px 10px', color: '#1B1F28' }}>{fmtNaira(e.spend)}</td>
+                        <td style={{ padding: '8px 10px', color: '#1B1F28' }}>{e.conversations}</td>
+                        <td style={{ padding: '8px 10px', color: '#1B1F28' }}>{Number(e.ctr_pct).toFixed(2)}%</td>
+                        <td style={{ padding: '8px 10px', color: '#1B1F28' }}>{Number(e.impressions).toLocaleString()}</td>
                         <td style={{ padding: '8px 10px', display: 'flex', gap: 6 }}>
                           <button onClick={() => handleEdit(e)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }} aria-label="Edit">
                             <Pencil size={14} color={ds.teal} />

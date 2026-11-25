@@ -19,7 +19,7 @@ import { Target, ClipboardList, Users, Ticket, AlertOctagon, RefreshCw, AlertTri
 const CARD_GAP  = 16
 const CARD_BASE = {
   background:   ds.dark2,
-  border:       '1px solid #1a2f3f',
+  border:       '1px solid #E1E5EC',
   borderRadius: 12,
   padding:      '20px 22px',
   flex:         1,
@@ -32,22 +32,22 @@ function StatCard({ label, value, sub, accent, icon, loading }) {
   return (
     <div style={{
       ...CARD_BASE,
-      borderLeft: accent ? `3px solid ${accent}` : '1px solid #1a2f3f',
+      borderLeft: accent ? `3px solid ${accent}` : '1px solid #E1E5EC',
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#4a7a8a', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 8px' }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 8px' }}>
             {label}
           </p>
           {loading ? (
-            <div style={{ width: 48, height: 28, background: '#1a2f3f', borderRadius: 6, animation: 'pulse 1.5s infinite' }} />
+            <div style={{ width: 48, height: 28, background: '#F1F3F8', borderRadius: 6, animation: 'pulse 1.5s infinite' }} />
           ) : (
             <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 28, color: accent ?? 'white', margin: 0, lineHeight: 1 }}>
               {value ?? '—'}
             </p>
           )}
           {sub && !loading && (
-            <p style={{ fontSize: 12, color: '#4a7a8a', margin: '6px 0 0', lineHeight: 1.4 }}>
+            <p style={{ fontSize: 12, color: '#5B6270', margin: '6px 0 0', lineHeight: 1.4 }}>
               {sub}
             </p>
           )}
@@ -71,7 +71,7 @@ function Row({ children }) {
 function SectionLabel({ children }) {
   return (
     <p style={{
-      fontSize: 10, fontWeight: 600, color: '#3a5a6a',
+      fontSize: 10, fontWeight: 600, color: '#3C4352',
       textTransform: 'uppercase', letterSpacing: '1.2px',
       margin: `${CARD_GAP * 1.5}px 0 ${CARD_GAP}px`,
     }}>

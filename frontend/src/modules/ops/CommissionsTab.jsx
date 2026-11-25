@@ -71,8 +71,8 @@ function commissionFor(rates, sale) {
 
 function Kpi({ label, value, accent }) {
   return (
-    <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '16px 18px', flex: 1 }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
+    <div style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 12, padding: '16px 18px', flex: 1 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
       <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: accent ?? '#0a1a24', margin: 0 }}>{value}</p>
     </div>
   )
@@ -83,13 +83,13 @@ function RateConfig({ rates, canEdit, onAdd, onUpdate, onDelete }) {
   const [newRate, setNewRate] = useState('')
 
   return (
-    <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: 18, marginBottom: 20 }}>
-      <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', margin: '0 0 4px' }}>Product commission rates</p>
-      <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 12px' }}>
+    <div style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 12, padding: 18, marginBottom: 20 }}>
+      <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', margin: '0 0 4px' }}>Product commission rates</p>
+      <p style={{ fontSize: 12, color: '#5B6270', margin: '0 0 12px' }}>
         Matched against the Model on each sale — e.g. a rate named "Elite Cool" matches any variant of Elite Cool.
       </p>
       {rates.length === 0 ? (
-        <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 12 }}>No rates set yet — commissions will show ₦0 until at least one is added.</p>
+        <p style={{ fontSize: 13, color: '#5B6270', marginBottom: 12 }}>No rates set yet — commissions will show ₦0 until at least one is added.</p>
       ) : (
         <div style={{ marginBottom: 12 }}>
           {rates.map(r => (
@@ -112,7 +112,7 @@ function RateConfig({ rates, canEdit, onAdd, onUpdate, onDelete }) {
               ) : (
                 <>
                   <span style={{ flex: 1, fontSize: 13.5 }}>{r.product_name}</span>
-                  <span style={{ fontSize: 13.5, color: '#0a1a24', fontWeight: 500 }}>₦{Number(r.rate_per_unit).toLocaleString()}/unit</span>
+                  <span style={{ fontSize: 13.5, color: '#1B1F28', fontWeight: 500 }}>₦{Number(r.rate_per_unit).toLocaleString()}/unit</span>
                 </>
               )}
             </div>
@@ -220,8 +220,8 @@ export default function CommissionsTab({ user, isActive }) {
   return (
     <div style={{ padding: 28 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Commissions</h2>
-        <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>Visible to every rep — full leaderboard, no filtering by who's viewing.</p>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>Commissions</h2>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>Visible to every rep — full leaderboard, no filtering by who's viewing.</p>
       </div>
 
       {error && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 14 }}>{error}</p>}
@@ -233,7 +233,7 @@ export default function CommissionsTab({ user, isActive }) {
       </div>
 
       {loading ? (
-        <p style={{ color: '#7A9BAD', fontSize: 14 }}>Loading…</p>
+        <p style={{ color: '#5B6270', fontSize: 14 }}>Loading…</p>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
@@ -244,7 +244,7 @@ export default function CommissionsTab({ user, isActive }) {
           </div>
 
           {leaderboard.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '64px 32px', color: '#7A9BAD' }}>
+            <div style={{ textAlign: 'center', padding: '64px 32px', color: '#5B6270' }}>
               <p style={{ fontSize: 14 }}>No commission-eligible sales yet — import a transaction sales sheet to see the leaderboard.</p>
             </div>
           ) : (
@@ -252,7 +252,7 @@ export default function CommissionsTab({ user, isActive }) {
               {leaderboard.map((r, idx) => {
                 const isOpen = expandedRep === r.rep
                 return (
-                  <div key={r.rep} style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, overflow: 'hidden' }}>
+                  <div key={r.rep} style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 12, overflow: 'hidden' }}>
                     <div
                       onClick={() => setExpandedRep(isOpen ? null : r.rep)}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', cursor: 'pointer' }}
@@ -266,7 +266,7 @@ export default function CommissionsTab({ user, isActive }) {
                       }}>
                         {idx === 0 ? <Trophy size={13} /> : idx + 1}
                       </div>
-                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#0a1a24' }}>{r.rep}</span>
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#1B1F28' }}>{r.rep}</span>
                       <span style={{ fontSize: 12, color: '#059669' }}>{r.reconciled} reconciled</span>
                       <span style={{ fontSize: 12, color: '#92601A' }}>{r.pending} pending</span>
                       <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: ds.teal, minWidth: 110, textAlign: 'right' }}>
@@ -279,7 +279,7 @@ export default function CommissionsTab({ user, isActive }) {
                         <thead>
                           <tr style={{ background: '#F8FBFC' }}>
                             {['Date', 'Model', 'Variant', 'Units', 'Commission', 'Status'].map(h => (
-                              <th key={h} style={{ textAlign: 'left', padding: '8px 18px', fontSize: 10.5, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase' }}>{h}</th>
+                              <th key={h} style={{ textAlign: 'left', padding: '8px 18px', fontSize: 10.5, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>

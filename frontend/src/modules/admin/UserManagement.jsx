@@ -34,7 +34,7 @@ const LABEL = {
   display:        'block',
   fontSize:       11,
   fontWeight:     600,
-  color:          '#4a7a8a',
+  color:          '#5B6270',
   textTransform:  'uppercase',
   letterSpacing:  '0.7px',
   marginTop:      16,
@@ -47,7 +47,7 @@ const INPUT = {
   borderRadius: 8,
   fontSize:     13.5,
   fontFamily:   'inherit',
-  color:        '#0a1a24',
+  color:        '#1B1F28',
   background:   'white',
   boxSizing:    'border-box',
 }
@@ -58,7 +58,7 @@ const GHOST_BTN = {
   padding:      '5px 10px',
   fontSize:     12,
   fontWeight:   500,
-  color:        '#4a7a8a',
+  color:        '#5B6270',
   cursor:       'pointer',
   fontFamily:   'inherit',
 }
@@ -109,7 +109,7 @@ export default function UserManagement() {
     setConfirmLogout(null)
   }
 
-  if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading users…</div>
+  if (loading) return <div style={{ padding: 32, color: '#5B6270', fontSize: 14 }}>Loading users…</div>
   if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}>⚠ {error} <button onClick={load} style={{ ...GHOST_BTN, marginLeft: 10 }}>Retry</button></div>
 
   return (
@@ -117,10 +117,10 @@ export default function UserManagement() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
         <div>
-          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>
+          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>
             Team Members
           </h2>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>
             {users.length} user{users.length !== 1 ? 's' : ''} in this organisation
           </p>
         </div>
@@ -137,12 +137,12 @@ export default function UserManagement() {
       </div>
 
       {/* Table */}
-      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E4EEF2', overflow: 'hidden' }}>
+      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#F5F9FA' }}>
               {['Name', 'Role', 'Last Login', 'Status', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '11px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                <th key={h} style={{ padding: '11px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                   {h}
                 </th>
               ))}
@@ -151,7 +151,7 @@ export default function UserManagement() {
           <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+                <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
                   No users found.
                 </td>
               </tr>
@@ -162,17 +162,17 @@ export default function UserManagement() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{
                       width: 32, height: 32, borderRadius: '50%',
-                      background: '#01606D', display: 'flex', alignItems: 'center',
+                      background: '#1F54B8', display: 'flex', alignItems: 'center',
                       justifyContent: 'center', fontFamily: ds.fontSyne,
                       fontWeight: 700, fontSize: 13, color: 'white', flexShrink: 0,
                     }}>
                       {(u.full_name?.[0] ?? u.email?.[0] ?? '?').toUpperCase()}
                     </div>
                     <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0a1a24' }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1B1F28' }}>
                         {u.full_name}
                       </div>
-                      <div style={{ fontSize: 12, color: '#7A9BAD' }}>{u.email}</div>
+                      <div style={{ fontSize: 12, color: '#5B6270' }}>{u.email}</div>
                       {u.is_out_of_office && (
                         <span style={{ fontSize: 10, background: '#FEF9C3', color: '#854D0E', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
                           OUT OF OFFICE
@@ -188,12 +188,12 @@ export default function UserManagement() {
                     {u.roles?.name ?? '—'}
                   </span>
                   {u.roles?.template && (
-                    <div style={{ fontSize: 11, color: '#7A9BAD', marginTop: 3 }}>{u.roles.template}</div>
+                    <div style={{ fontSize: 11, color: '#5B6270', marginTop: 3 }}>{u.roles.template}</div>
                   )}
                 </td>
 
                 {/* Last login */}
-                <td style={{ padding: '13px 16px', fontSize: 12, color: '#7A9BAD' }}>
+                <td style={{ padding: '13px 16px', fontSize: 12, color: '#5B6270' }}>
                   {u.last_login_at
                     ? new Date(u.last_login_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
                     : 'Never'}
@@ -345,19 +345,19 @@ function ResetPasswordModal({ user, onClose }) {
     <div style={OVERLAY} onClick={onClose}>
       <div style={MODAL} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>
             🔑 Reset Password
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270', lineHeight: 1 }}>×</button>
         </div>
 
         {!result ? (
           <>
-            <p style={{ fontSize: 13.5, color: '#4a7a8a', lineHeight: 1.6, margin: '0 0 20px' }}>
+            <p style={{ fontSize: 13.5, color: '#5B6270', lineHeight: 1.6, margin: '0 0 20px' }}>
               A password reset link will be sent to <strong>{user.email}</strong>.<br />
               The link expires after 1 hour.
             </p>
-            <p style={{ fontSize: 12.5, color: '#7A9BAD', lineHeight: 1.6, margin: '0 0 20px', background: '#F8FAFC', borderRadius: 8, padding: '10px 14px' }}>
+            <p style={{ fontSize: 12.5, color: '#5B6270', lineHeight: 1.6, margin: '0 0 20px', background: '#F8FAFC', borderRadius: 8, padding: '10px 14px' }}>
               💡 If the email doesn't arrive, you can copy the reset link from the next screen and share it directly via WhatsApp or any other channel.
             </p>
             {err && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}>⚠ {err}</p>}
@@ -379,10 +379,10 @@ function ResetPasswordModal({ user, onClose }) {
             </div>
             {result.reset_link && (
               <>
-                <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 8px' }}>
+                <p style={{ fontSize: 13, color: '#5B6270', margin: '0 0 8px' }}>
                   If the email doesn't arrive, copy this link and share it directly:
                 </p>
-                <div style={{ background: '#F8FAFC', border: '1px solid #E2EFF4', borderRadius: 8, padding: '10px 14px', wordBreak: 'break-all', fontSize: 11.5, color: '#4a7a8a', marginBottom: 12 }}>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E1E5EC', borderRadius: 8, padding: '10px 14px', wordBreak: 'break-all', fontSize: 11.5, color: '#5B6270', marginBottom: 12 }}>
                   {result.reset_link}
                 </div>
                 <button
@@ -429,13 +429,13 @@ function UpdateEmailModal({ user, onSave, onClose }) {
     <div style={OVERLAY} onClick={onClose}>
       <div style={MODAL} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>
             ✉ Update Email Address
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270', lineHeight: 1 }}>×</button>
         </div>
 
-        <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 16px', lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: '0 0 16px', lineHeight: 1.6 }}>
           Current email: <strong>{user.email}</strong><br />
           The new email takes effect immediately — no confirmation required.
         </p>
@@ -514,10 +514,10 @@ function UserModal({ mode, user, roles, teams = [], onSave, onClose }) {
     <div style={OVERLAY} onClick={onClose}>
       <div style={MODAL} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>
             {isCreate ? 'New User' : 'Edit User'}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270', lineHeight: 1 }}>×</button>
         </div>
 
         {isCreate && (
@@ -549,11 +549,11 @@ function UserModal({ mode, user, roles, teams = [], onSave, onClose }) {
 
         {!isCreate && (
           <div style={{ display: 'flex', gap: 20, marginTop: 16 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#4a7a8a', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#5B6270', cursor: 'pointer' }}>
               <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} />
               Active account
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#4a7a8a', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#5B6270', cursor: 'pointer' }}>
               <input type="checkbox" checked={form.is_out_of_office} onChange={e => set('is_out_of_office', e.target.checked)} />
               Out of office
             </label>

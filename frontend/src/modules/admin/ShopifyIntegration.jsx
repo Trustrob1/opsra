@@ -174,7 +174,7 @@ export default function ShopifyIntegration() {
 
   if (!status) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 13 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 13 }}>
         Loading…
       </div>
     )
@@ -186,10 +186,10 @@ export default function ShopifyIntegration() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 6px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: '0 0 6px' }}>
           Shopify Integration
         </h2>
-        <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           Connect your Shopify store to enable abandoned cart recovery, order confirmations,
           and dispatch notifications via WhatsApp.
         </p>
@@ -207,7 +207,7 @@ export default function ShopifyIntegration() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={S.connectedBadge}>● Connected</div>
-                <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24' }}>
+                <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28' }}>
                   {status.shop_domain}
                 </div>
               </div>
@@ -236,7 +236,7 @@ export default function ShopifyIntegration() {
               >
                 {syncing ? 'Syncing…' : '🔄 Sync Products Now'}
               </button>
-              <span style={{ fontSize: 12, color: '#7A9BAD' }}>
+              <span style={{ fontSize: 12, color: '#5B6270' }}>
                 Products sync automatically every night and on each Shopify event.
               </span>
             </div>
@@ -244,10 +244,10 @@ export default function ShopifyIntegration() {
 
           {/* SHOP-3: Meta Commerce Catalog */}
           <div style={S.card}>
-            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', marginBottom: 6 }}>
+            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', marginBottom: 6 }}>
               Meta Commerce Catalog
             </div>
-            <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 16px', lineHeight: 1.6 }}>
+            <p style={{ fontSize: 13, color: '#5B6270', margin: '0 0 16px', lineHeight: 1.6 }}>
               Link your Meta Commerce Catalog to enable rich WhatsApp product messages — customers
               will see product images, prices, and descriptions directly in chat instead of a plain text list.
             </p>
@@ -309,10 +309,10 @@ export default function ShopifyIntegration() {
 
           {/* Webhook instructions */}
           <div style={S.card}>
-            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', marginBottom: 6 }}>
+            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', marginBottom: 6 }}>
               Shopify Webhook Setup
             </div>
-            <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 16px', lineHeight: 1.6 }}>
+            <p style={{ fontSize: 13, color: '#5B6270', margin: '0 0 16px', lineHeight: 1.6 }}>
               In your Shopify admin go to <strong>Settings → Notifications → Webhooks</strong> and
               add the URL below for each event listed.
             </p>
@@ -337,10 +337,10 @@ export default function ShopifyIntegration() {
           {confirming && (
             <div style={S.overlay}>
               <div style={S.modal}>
-                <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', marginBottom: 10 }}>
+                <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', marginBottom: 10 }}>
                   Disconnect Shopify?
                 </div>
-                <p style={{ fontSize: 13, color: '#4a7a8a', marginBottom: 24, lineHeight: 1.6 }}>
+                <p style={{ fontSize: 13, color: '#5B6270', marginBottom: 24, lineHeight: 1.6 }}>
                   This will remove all Shopify credentials. Product sync and commerce features
                   will stop working until you reconnect.
                 </p>
@@ -379,7 +379,7 @@ export default function ShopifyIntegration() {
 
           {/* Connection form */}
           <div style={S.card}>
-            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', marginBottom: 18 }}>
+            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', marginBottom: 18 }}>
               Connect your Shopify store
             </div>
 
@@ -469,18 +469,18 @@ export default function ShopifyIntegration() {
 function StatCard({ icon, label, value, small }) {
   return (
     <div style={{
-      background: '#F8FCFD', border: '1px solid #E2EFF4',
+      background: '#F8FCFD', border: '1px solid #E1E5EC',
       borderRadius: 10, padding: '14px 16px',
     }}>
       <div style={{ fontSize: 18, marginBottom: 6 }}>{icon}</div>
       <div style={{
         fontFamily: ds.fontSyne, fontWeight: 700,
-        fontSize: small ? 12 : 20, color: '#0a1a24',
+        fontSize: small ? 12 : 20, color: '#1B1F28',
         marginBottom: 2, wordBreak: 'break-all',
       }}>
         {value}
       </div>
-      <div style={{ fontSize: 11.5, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+      <div style={{ fontSize: 11.5, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
         {label}
       </div>
     </div>
@@ -503,11 +503,11 @@ function _formatDate(iso) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const S = {
   card: {
-    background: 'white', border: '1px solid #E2EFF4',
+    background: 'white', border: '1px solid #E1E5EC',
     borderRadius: 12, padding: '22px 24px', marginBottom: 20,
   },
   label: {
-    display: 'block', fontSize: 11, color: '#7A9BAD',
+    display: 'block', fontSize: 11, color: '#5B6270',
     textTransform: 'uppercase', letterSpacing: '0.4px',
     fontWeight: 500, marginBottom: 5,
   },
@@ -527,7 +527,7 @@ const S = {
     fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
   },
   cancelBtn: {
-    padding: '9px 20px', background: '#F0F6F8', color: '#4a7a8a',
+    padding: '9px 20px', background: '#F0F6F8', color: '#5B6270',
     border: 'none', borderRadius: 8, fontSize: 13.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer',
   },
@@ -544,17 +544,17 @@ const S = {
   codeBox: {
     flex: 1, background: '#F6F7FA', border: '1.5px solid #E1E5EC',
     borderRadius: 8, padding: '8px 12px', fontSize: 12.5,
-    color: '#1a7a8a', fontFamily: 'monospace', wordBreak: 'break-all',
+    color: '#2467E3', fontFamily: 'monospace', wordBreak: 'break-all',
   },
   copyBtn: {
-    padding: '8px 14px', background: '#E4EDFD', color: '#1a7a8a',
+    padding: '8px 14px', background: '#E4EDFD', color: '#2467E3',
     border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0,
   },
   eventChip: {
     background: '#F0F6F8', border: '1px solid #E1E5EC',
     borderRadius: 6, padding: '4px 10px', fontSize: 12,
-    color: '#1a7a8a', fontFamily: 'monospace',
+    color: '#2467E3', fontFamily: 'monospace',
   },
   flashSuccess: {
     background: '#DCFCE7', border: '1px solid #BBF7D0',

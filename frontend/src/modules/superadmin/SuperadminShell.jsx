@@ -22,7 +22,7 @@ const SECTIONS = [
 
 const STYLES = `
 .sa-wrap{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:calc(100vh - 120px);background:${ds.dark}}
-.sa-nav{background:${ds.dark2};border-right:1px solid #1e3a4f;padding:16px 10px;display:flex;flex-direction:column;gap:4px}
+.sa-nav{background:${ds.dark2};border-right:1px solid #E1E5EC;padding:16px 10px;display:flex;flex-direction:column;gap:4px}
 .sa-item{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 10px;border-radius:9px;border:0;background:none;color:#9FB6C4;cursor:pointer;text-align:left;font-family:inherit;width:100%}
 .sa-item:hover{background:rgba(255,255,255,.06);color:#fff}
 .sa-item[aria-current="page"]{background:${ds.teal};color:#fff}
@@ -31,7 +31,7 @@ const STYLES = `
 .sa-main{padding:24px 28px;min-width:0}
 @media (max-width: 900px){
   .sa-wrap{grid-template-columns:1fr}
-  .sa-nav{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid #1e3a4f;padding:8px}
+  .sa-nav{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid #E1E5EC;padding:8px}
   .sa-item{width:auto;white-space:nowrap}
   .sa-item small{display:none}
   .sa-main{padding:16px}
@@ -53,7 +53,7 @@ function Gate({ onAuthed }) {
   };
   return (
     <div style={{ background: ds.dark, minHeight: "calc(100vh - 120px)", padding: 32, fontFamily: ds.fontDm }}>
-      <div style={{ maxWidth: 380, background: ds.dark2, border: "1px solid #1e3a4f", borderRadius: 14, padding: 24 }}>
+      <div style={{ maxWidth: 380, background: ds.dark2, border: "1px solid #E1E5EC", borderRadius: 14, padding: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#fff", marginBottom: 6 }}>
           <Lock size={18} aria-hidden="true" />
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, margin: 0 }}>Superadmin</h1>
@@ -62,7 +62,7 @@ function Gate({ onAuthed }) {
         <label htmlFor="sa-secret" style={{ fontSize: 12, color: "#9FB6C4" }}>Superadmin secret</label>
         <input id="sa-secret" type="password" value={secret} onChange={(e) => setSecret(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && go()} autoComplete="off"
-          style={{ width: "100%", boxSizing: "border-box", margin: "6px 0 12px", minHeight: 44, background: ds.dark, border: "1.5px solid #1e3a4f", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "#fff", fontFamily: ds.fontDm }} />
+          style={{ width: "100%", boxSizing: "border-box", margin: "6px 0 12px", minHeight: 44, background: ds.dark, border: "1.5px solid #E1E5EC", borderRadius: 10, padding: "0 14px", fontSize: 14, color: "#fff", fontFamily: ds.fontDm }} />
         <button type="button" onClick={go} disabled={busy}
           style={{ width: "100%", minHeight: 44, background: ds.teal, color: "#fff", border: 0, borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: busy ? "not-allowed" : "pointer", fontFamily: ds.fontDm }}>
           {busy ? "Checking…" : "Unlock"}

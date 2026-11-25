@@ -37,7 +37,7 @@ export default function AriaButton({ onClick, hasBadge, panelOpen, view, minimis
             width:          36,
             height:         36,
             borderRadius:   '50%',
-            background:     '#0e2030',
+            background:     '#F1F3F8',
             border:         '1px solid #2a4a5a',
             cursor:         'pointer',
             display:        'flex',
@@ -49,7 +49,7 @@ export default function AriaButton({ onClick, hasBadge, panelOpen, view, minimis
           onMouseEnter={e => e.currentTarget.style.borderColor = ds.teal}
           onMouseLeave={e => e.currentTarget.style.borderColor = '#2a4a5a'}
         >
-          <span style={{ fontSize: 15, color: '#7A9BAD', lineHeight: 1 }}>✦</span>
+          <span style={{ fontSize: 15, color: '#5B6270', lineHeight: 1 }}>✦</span>
 
           {hasBadge && (
             <span style={{
@@ -68,10 +68,10 @@ export default function AriaButton({ onClick, hasBadge, panelOpen, view, minimis
           style={{
             position: 'absolute', top: -6, right: -6,
             width: 16, height: 16, borderRadius: '50%',
-            background: '#1a3040', border: '1px solid #2a4a5a',
+            background: '#F1F3F8', border: '1px solid #2a4a5a',
             cursor: 'pointer', display: 'flex',
             alignItems: 'center', justifyContent: 'center',
-            fontSize: 10, color: '#7A9BAD', lineHeight: 1, padding: 0,
+            fontSize: 10, color: '#5B6270', lineHeight: 1, padding: 0,
           }}
           onMouseEnter={e => { e.currentTarget.style.background = ds.teal; e.currentTarget.style.color = 'white' }}
           onMouseLeave={e => { e.currentTarget.style.background = '#1a3040'; e.currentTarget.style.color = '#7A9BAD' }}
@@ -118,10 +118,10 @@ export default function AriaButton({ onClick, hasBadge, panelOpen, view, minimis
         style={{
           position: 'absolute', top: -4, right: -4,
           width: 18, height: 18, borderRadius: '50%',
-          background: '#1a3040', border: '1px solid #2a4a5a',
+          background: '#F1F3F8', border: '1px solid #2a4a5a',
           cursor: 'pointer', display: 'flex',
           alignItems: 'center', justifyContent: 'center',
-          fontSize: 11, color: '#7A9BAD', lineHeight: 1, padding: 0,
+          fontSize: 11, color: '#5B6270', lineHeight: 1, padding: 0,
         }}
         onMouseEnter={e => { e.currentTarget.style.background = '#2a4a5a'; e.currentTarget.style.color = 'white' }}
         onMouseLeave={e => { e.currentTarget.style.background = '#1a3040'; e.currentTarget.style.color = '#7A9BAD' }}

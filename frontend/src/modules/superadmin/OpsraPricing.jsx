@@ -41,7 +41,7 @@ export default function OpsraPricing() {
   return (
     <div style={{ fontFamily: ds.fontDm }}>
       <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: "white", margin: "0 0 4px" }}>Opsra Pricing</h1>
-      <p style={{ fontSize: 13, color: "#7A9BAD", margin: "0 0 18px", maxWidth: 680 }}>
+      <p style={{ fontSize: 13, color: "#5B6270", margin: "0 0 18px", maxWidth: 680 }}>
         The plans, prices and discount codes every business on Opsra is sold. Only you can change these.
         {ctx?.org_name ? ` Stored with ${ctx.org_name}.` : ""}
       </p>

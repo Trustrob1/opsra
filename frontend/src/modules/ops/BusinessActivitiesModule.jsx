@@ -110,7 +110,7 @@ function TabBar({ active, onChange, tabs }) {
     <div style={{
       display:      'flex',
       gap:          4,
-      borderBottom: '1px solid #dde4e8',
+      borderBottom: '1px solid #E1E5EC',
       padding:      '0 28px',
       background:   'white',
       position:     'sticky',
@@ -187,16 +187,16 @@ function BusinessActivitiesReportModal({ onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,27,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }} onClick={onClose}>
       <div style={{ background: 'white', borderRadius: 16, padding: 28, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,0.18)' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>Download Business Activities Report</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>Download Business Activities Report</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270' }}>×</button>
         </div>
-        <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 16px' }}>
+        <p style={{ fontSize: 12.5, color: '#5B6270', margin: '0 0 16px' }}>
           A single cross-department summary — activity logs, issues, team metrics, and Sales Record figures, segmented by department. Defaults to today.
         </p>
         <DateRangePresets defaultPreset="Today" onChange={({ dateFrom: f, dateTo: t }) => { setDateFrom(f); setDateTo(t) }} />
         {error && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{error}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-          <button onClick={onClose} style={{ background: '#fff', color: '#0a1a24', border: '1.5px solid #D4E6EC', borderRadius: 9, padding: '10px 18px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={onClose} style={{ background: '#fff', color: '#1B1F28', border: '1.5px solid #D4E6EC', borderRadius: 9, padding: '10px 18px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
           <button
             onClick={handleDownload}
             disabled={downloading}
@@ -219,7 +219,7 @@ function ModuleHeader({ departmentLabel, onDownloadReport }) {
       alignItems:   'center',
       justifyContent: 'space-between',
       gap:          16,
-      borderBottom: '1px solid #1a2f3f',
+      borderBottom: '1px solid #E1E5EC',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{
@@ -235,7 +235,7 @@ function ModuleHeader({ departmentLabel, onDownloadReport }) {
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>
             Business Activities
           </h1>
-          <p style={{ fontSize: 12, color: '#6B8FA0', margin: '2px 0 0' }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: '2px 0 0' }}>
             Activity log &middot; Issues &middot; Contractors &middot; Data sources
             {departmentLabel ? ` \u2014 ${departmentLabel}` : ''}
           </p>

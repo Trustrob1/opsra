@@ -32,7 +32,7 @@ const PRESET_COLORS = [
 const CARD_STYLE = {
   background: 'white',
   borderRadius: 12,
-  border: '1px solid #E2EFF4',
+  border: '1px solid #E1E5EC',
   marginBottom: 24,
   overflow: 'hidden',
 }
@@ -42,7 +42,7 @@ const CARD_HEADER = {
   alignItems: 'center',
   justifyContent: 'space-between',
   padding: '18px 24px',
-  borderBottom: '1px solid #E2EFF4',
+  borderBottom: '1px solid #E1E5EC',
   background: '#F7FBFC',
 }
 
@@ -50,7 +50,7 @@ const CARD_TITLE = {
   fontFamily: ds.fontSyne,
   fontWeight: 700,
   fontSize: 15,
-  color: '#0a1a24',
+  color: '#1B1F28',
   margin: 0,
 }
 
@@ -73,7 +73,7 @@ const BTN_GHOST = {
   padding: '7px 14px',
   fontFamily: ds.fontDm,
   fontSize: 13,
-  color: '#4a7a8a',
+  color: '#5B6270',
   cursor: 'pointer',
 }
 
@@ -82,9 +82,9 @@ const TH = {
   fontFamily: ds.fontDm,
   fontSize: 12,
   fontWeight: 600,
-  color: '#7A9BAD',
+  color: '#5B6270',
   textAlign: 'left',
-  borderBottom: '1px solid #E2EFF4',
+  borderBottom: '1px solid #E1E5EC',
   whiteSpace: 'nowrap',
 }
 
@@ -99,7 +99,7 @@ const TD = {
 
 function EmptyState({ message }) {
   return (
-    <div style={{ padding: '40px 24px', textAlign: 'center', color: '#7A9BAD', fontSize: 13.5 }}>
+    <div style={{ padding: '40px 24px', textAlign: 'center', color: '#5B6270', fontSize: 13.5 }}>
       {message}
     </div>
   )
@@ -118,13 +118,13 @@ function Modal({ title, onClose, children }) {
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '18px 24px', borderBottom: '1px solid #E2EFF4',
+          padding: '18px 24px', borderBottom: '1px solid #E1E5EC',
           background: '#F7FBFC',
         }}>
-          <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24' }}>
+          <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28' }}>
             {title}
           </span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#7A9BAD', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#5B6270', lineHeight: 1 }}>×</button>
         </div>
         <div style={{ padding: 24 }}>
           {children}
@@ -137,7 +137,7 @@ function Modal({ title, onClose, children }) {
 function Field({ label, children }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <label style={{ display: 'block', fontFamily: ds.fontDm, fontSize: 12, fontWeight: 600, color: '#5a8a9f', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <label style={{ display: 'block', fontFamily: ds.fontDm, fontSize: 12, fontWeight: 600, color: '#5B6270', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </label>
       {children}
@@ -226,7 +226,7 @@ function GrowthTeams({ teams, loading, onRefresh }) {
       </div>
 
       {loading ? (
-        <div style={{ padding: 24, color: '#7A9BAD', fontSize: 13 }}>Loading…</div>
+        <div style={{ padding: 24, color: '#5B6270', fontSize: 13 }}>Loading…</div>
       ) : teams.length === 0 ? (
         <EmptyState message='No teams configured yet. Add your first team to start tracking attribution across campaigns.' />
       ) : (
@@ -243,7 +243,7 @@ function GrowthTeams({ teams, loading, onRefresh }) {
             {teams.map(team => (
               <tr key={team.id}>
                 <td style={TD}>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: team.color || '#607D8B', border: '2px solid #E2EFF4' }} />
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: team.color || '#607D8B', border: '2px solid #E1E5EC' }} />
                 </td>
                 <td style={TD}>
                   {editId === team.id ? (
@@ -332,7 +332,7 @@ function GrowthTeams({ teams, loading, onRefresh }) {
               style={INPUT}
               autoFocus
             />
-            <div style={{ fontSize: 11, color: '#7A9BAD', marginTop: 4 }}>{newName.length}/50</div>
+            <div style={{ fontSize: 11, color: '#5B6270', marginTop: 4 }}>{newName.length}/50</div>
           </Field>
           <Field label='Colour'>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -367,7 +367,7 @@ function GrowthTeams({ teams, loading, onRefresh }) {
           <p style={{ fontFamily: ds.fontDm, fontSize: 14, color: '#1a3a4a', marginBottom: 16 }}>
             Are you sure you want to delete <strong>{confirmDelete.team.name}</strong>?
           </p>
-          <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', marginBottom: 20 }}>
+          <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', marginBottom: 20 }}>
             Deleting will not remove attribution — historical data is preserved.
           </p>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -482,7 +482,7 @@ function CampaignSpend({ teams, onRefresh }) {
       </div>
 
       {loading ? (
-        <div style={{ padding: 24, color: '#7A9BAD', fontSize: 13 }}>Loading…</div>
+        <div style={{ padding: 24, color: '#5B6270', fontSize: 13 }}>Loading…</div>
       ) : entries.length === 0 ? (
         <EmptyState message='No spend logged yet. Log campaign spend to calculate CAC and cost per lead.' />
       ) : (
@@ -504,7 +504,7 @@ function CampaignSpend({ teams, onRefresh }) {
                 <td style={TD}><span style={{ textTransform: 'capitalize', fontSize: 12, background: '#E8F5F9', color: '#1a6a8a', borderRadius: 4, padding: '2px 8px' }}>{e.spend_type}</span></td>
                 <td style={TD}>{resolveTeamName(e)}</td>
                 <td style={TD}><strong>{Number(e.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></td>
-                <td style={{ ...TD, color: '#7A9BAD', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.notes || '—'}</td>
+                <td style={{ ...TD, color: '#5B6270', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.notes || '—'}</td>
                 <td style={{ ...TD, textAlign: 'right' }}>
                   <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e57373', fontSize: 15, padding: '2px 6px' }}>🗑</button>
                 </td>
@@ -618,10 +618,10 @@ export default function GrowthConfig() {
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: '0 0 4px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: '0 0 4px' }}>
           Growth Config
         </h2>
-        <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#5a8a9f', margin: 0 }}>
+        <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#5B6270', margin: 0 }}>
           Configure teams and log campaign spend to power the Growth Dashboard.
         </p>
       </div>

@@ -61,7 +61,7 @@ export default function IntegrationStatus() {
 
   useEffect(() => { load() }, [load])
 
-  if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading integrations…</div>
+  if (loading) return <div style={{ padding: 32, color: '#5B6270', fontSize: 14 }}>Loading integrations…</div>
   if (error)   return (
     <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}>
       ⚠ {error}
@@ -79,10 +79,10 @@ export default function IntegrationStatus() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>
           Integration Status
         </h2>
-        <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>
           {connected} of {total} integration{total !== 1 ? 's' : ''} connected
         </p>
       </div>
@@ -108,7 +108,7 @@ export default function IntegrationStatus() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 22 }}>{meta.icon}</span>
                   <div>
-                    <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24' }}>
+                    <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28' }}>
                       {meta.title}
                     </div>
                   </div>
@@ -123,7 +123,7 @@ export default function IntegrationStatus() {
               </div>
 
               {/* Description */}
-              <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: 0, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 12.5, color: '#5B6270', margin: 0, lineHeight: 1.5 }}>
                 {meta.desc}
               </p>
             </div>

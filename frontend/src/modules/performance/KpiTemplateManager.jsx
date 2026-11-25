@@ -160,7 +160,7 @@ export default function KpiTemplateManager() {
         </p>
       </div>
 
-      {loading && <div style={{ textAlign: 'center', padding: 40, color: '#7A9BAD', fontSize: 13 }}>Loading templates…</div>}
+      {loading && <div style={{ textAlign: 'center', padding: 40, color: '#5B6270', fontSize: 13 }}>Loading templates…</div>}
       {error   && <div style={{ background: '#fee2e2', borderRadius: 8, padding: '10px 14px', color: '#991b1b', fontSize: 13, marginBottom: 16 }}>⚠ {error}</div>}
 
       {!loading && ROLE_TEMPLATES.map(role => {

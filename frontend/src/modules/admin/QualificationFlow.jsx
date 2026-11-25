@@ -467,7 +467,7 @@ export default function QualificationFlow() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         Loading qualification flow…
       </div>
     )

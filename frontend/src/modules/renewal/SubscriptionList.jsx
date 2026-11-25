@@ -380,7 +380,7 @@ export default function SubscriptionList({ user, onSelect, externalTick = 0 }) {
 
 const filterLabel = {
   display: 'block', fontSize: 11, fontWeight: 600,
-  color: '#7a9bad', textTransform: 'uppercase',
+  color: '#5B6270', textTransform: 'uppercase',
   letterSpacing: '0.7px', marginBottom: 6,
 }
 
@@ -412,7 +412,7 @@ const tableHeader = {
   background: '#f7fbfc',
   borderBottom: '1px solid #e2ecf0',
   fontSize: 11, fontWeight: 700,
-  color: '#7a9bad', textTransform: 'uppercase',
+  color: '#5B6270', textTransform: 'uppercase',
   letterSpacing: '0.8px',
 }
 

@@ -53,7 +53,7 @@ function Bubble({ role, content, isError }) {
       <div style={{
         maxWidth:     '72%',
         background:   isUser ? ds.teal : (isError ? '#fff1f0' : ds.dark2),
-        border:       isError ? '1px solid #fca5a5' : (isUser ? 'none' : '1px solid #1a2f3f'),
+        border:       isError ? '1px solid #fca5a5' : (isUser ? 'none' : '1px solid #E1E5EC'),
         borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
         padding:      '12px 16px',
         fontSize:     14,
@@ -79,7 +79,7 @@ function TypingIndicator() {
       }}>
         📊
       </div>
-      <div style={{ display: 'flex', gap: 4, padding: '10px 14px', background: ds.dark2, border: '1px solid #1a2f3f', borderRadius: '16px 16px 16px 4px' }}>
+      <div style={{ display: 'flex', gap: 4, padding: '10px 14px', background: ds.dark2, border: '1px solid #E1E5EC', borderRadius: '16px 16px 16px 4px' }}>
         {[0, 1, 2].map(i => (
           <div key={i} style={{
             width: 7, height: 7, borderRadius: '50%', background: ds.teal,
@@ -175,7 +175,7 @@ export default function AskDataView({ onAsk }) {
           <button
             onClick={handleClear}
             style={{
-              background: 'none', border: '1px solid #dde4e8',
+              background: 'none', border: '1px solid #E1E5EC',
               borderRadius: 7, padding: '6px 12px', fontSize: 12,
               color: ds.gray, cursor: 'pointer', fontFamily: ds.fontDm,
             }}
@@ -188,7 +188,7 @@ export default function AskDataView({ onAsk }) {
       {/* ── Example questions (shown when no messages yet) ── */}
       {messages.length === 0 && (
         <div style={{ marginBottom: 20 }}>
-          <p style={{ fontSize: 12, fontWeight: 600, color: '#4a7a8a', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px' }}>
+          <p style={{ fontSize: 12, fontWeight: 600, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px' }}>
             Try asking…
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -197,9 +197,9 @@ export default function AskDataView({ onAsk }) {
                 key={q}
                 onClick={() => handleExample(q)}
                 style={{
-                  background: ds.dark2, border: '1px solid #1a2f3f',
+                  background: ds.dark2, border: '1px solid #E1E5EC',
                   borderRadius: 20, padding: '7px 14px',
-                  fontSize: 12.5, color: '#7A9BAD',
+                  fontSize: 12.5, color: '#5B6270',
                   cursor: 'pointer', fontFamily: ds.fontDm,
                   transition: 'all 0.15s',
                   whiteSpace: 'nowrap',
@@ -225,12 +225,12 @@ export default function AskDataView({ onAsk }) {
         }}
       >
         {messages.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: '#3a5a6a' }}>
+          <div style={{ textAlign: 'center', padding: '48px 0', color: '#3C4352' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📊</div>
-            <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 16, color: '#4a7a8a', margin: '0 0 8px' }}>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 16, color: '#5B6270', margin: '0 0 8px' }}>
               Your operations data, answered instantly
             </p>
-            <p style={{ fontSize: 13, color: '#3a5a6a', lineHeight: 1.6, maxWidth: 360, margin: '0 auto' }}>
+            <p style={{ fontSize: 13, color: '#3C4352', lineHeight: 1.6, maxWidth: 360, margin: '0 auto' }}>
               Ask anything about your leads, customers, tickets, renewals, or business health.
               Answers are scoped to your role.
             </p>
@@ -244,7 +244,7 @@ export default function AskDataView({ onAsk }) {
 
       {/* ── Input bar ── */}
       <div style={{
-        borderTop:  '1px solid #dde4e8',
+        borderTop:  '1px solid #E1E5EC',
         paddingTop: 14,
         paddingBottom: 16,
       }}>
@@ -307,7 +307,7 @@ export default function AskDataView({ onAsk }) {
             </button>
           </div>
         </div>
-        <p style={{ fontSize: 11, color: '#3a5a6a', margin: '6px 0 0', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 11, color: '#3C4352', margin: '6px 0 0', lineHeight: 1.5 }}>
           Enter to send · Shift+Enter for new line · Answers are scoped to your role · 30 queries/hour
         </p>
       </div>

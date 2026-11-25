@@ -197,7 +197,7 @@ function LazyTab({ active, visited, children }) {
 // ── Sub-tab bar ───────────────────────────────────────────────────────────────
 function SubTabBar({ tabs, active, onChange }) {
   return (
-    <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    <div style={{ display: 'flex', borderBottom: '2px solid #E1E5EC', marginBottom: 24, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       {tabs.map(st => (
         <button
           key={st.id}
@@ -306,7 +306,7 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
 
   if (checking) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         <div style={{ fontSize: 24, marginBottom: 8 }}>⚙️</div>
         Checking access…
       </div>
@@ -317,10 +317,10 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
     return (
       <div style={{ padding: 64, textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 20, color: '#0a1a24', margin: '0 0 10px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 20, color: '#1B1F28', margin: '0 0 10px' }}>
           Access Restricted
         </h2>
-        <p style={{ fontSize: 14, color: '#7A9BAD', maxWidth: 360, margin: '0 auto', lineHeight: 1.6 }}>
+        <p style={{ fontSize: 14, color: '#5B6270', maxWidth: 360, margin: '0 auto', lineHeight: 1.6 }}>
           You need Owner or Admin access to view this section.
           Contact your organisation administrator.
         </p>
@@ -343,8 +343,8 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
       <div style={{
         width: sidebarW,
         minWidth: sidebarW,
-        background: '#0a1a24',
-        borderRight: '1px solid #1a2f3f',
+        background: '#FFFFFF',
+        borderRight: '1px solid #E1E5EC',
         display: 'flex',
         flexDirection: 'column',
         transition: 'width 0.2s ease, min-width 0.2s ease',
@@ -355,7 +355,7 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
         {/* Sidebar header */}
         <div style={{
           padding: sidebarOpen ? '16px 14px 13px' : '16px 0 13px',
-          borderBottom: '1px solid #1a2f3f',
+          borderBottom: '1px solid #E1E5EC',
           display: 'flex',
           alignItems: 'center',
           justifyContent: sidebarOpen ? 'space-between' : 'center',
@@ -373,7 +373,7 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
               </div>
               <span style={{
                 fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14,
-                color: 'white', whiteSpace: 'nowrap',
+                color: '#1B1F28', whiteSpace: 'nowrap',
               }}>
                 Admin
               </span>
@@ -384,7 +384,7 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
             title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              color: '#5a8a9f', padding: 4, borderRadius: 6,
+              color: '#5B6270', padding: 4, borderRadius: 6,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}
@@ -411,7 +411,7 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
                 </div>
               ) : (
                 <div style={{
-                  height: 1, background: '#1a2f3f',
+                  height: 1, background: '#E1E5EC',
                   margin: '10px 10px 6px',
                 }} />
               )}
@@ -470,9 +470,9 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
 
         {/* Content header */}
         <div style={{
-          background: '#0a1a24',
+          background: '#FFFFFF',
           padding: '16px 28px 14px',
-          borderBottom: '1px solid #1a2f3f',
+          borderBottom: '1px solid #E1E5EC',
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
@@ -482,11 +482,11 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
           <div>
             <h1 style={{
               fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18,
-              color: 'white', margin: 0,
+              color: '#1B1F28', margin: 0,
             }}>
               {activeTabMeta?.label ?? 'Admin Dashboard'}
             </h1>
-            <p style={{ fontSize: 11, color: '#5a8a9f', margin: '2px 0 0' }}>
+            <p style={{ fontSize: 11, color: '#5B6270', margin: '2px 0 0' }}>
               Admin · {TAB_GROUPS.find(g => g.tabs.some(t => t.id === tab))?.section ?? 'Settings'}
             </p>
           </div>
@@ -531,7 +531,7 @@ export default function AdminModule({ user, waOnly = false, chatOnly = false }) 
                 onOpenSettings={() => changeCatalogTab('catalog-config')}
               />
             ) : (
-              <div style={{ padding: 32, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>Loading…</div>
+              <div style={{ padding: 32, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>Loading…</div>
             ))}
             <div style={{ display: activeCatalogTab === 'catalog-config' ? 'block' : 'none' }}><CatalogConfig /></div>
             <div style={{ display: activeCatalogTab === 'catalog-items'  ? 'block' : 'none' }}><CatalogItems key={catalogItemsKey} intent={itemsIntent} onManageCategories={() => changeCatalogTab('catalog-categories')} /></div>
@@ -581,9 +581,9 @@ function LinkMessage({ icon, title, body, hint }) {
   return (
     <div style={{ textAlign: 'center', padding: '48px 32px' }}>
       <div style={{ fontSize: 40, marginBottom: 14 }}>{icon}</div>
-      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 10px' }}>{title}</h3>
-      <p style={{ fontSize: 14, color: '#4a7a8a', margin: '0 0 6px' }}>{body}</p>
-      <p style={{ fontSize: 13, color: '#7A9BAD' }}>{hint}</p>
+      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: '0 0 10px' }}>{title}</h3>
+      <p style={{ fontSize: 14, color: '#5B6270', margin: '0 0 6px' }}>{body}</p>
+      <p style={{ fontSize: 13, color: '#5B6270' }}>{hint}</p>
     </div>
   )
 }

@@ -117,7 +117,7 @@ export default function CreateOrg() {
           style={{
             maxWidth: 400,
             background: ds.dark2,
-            border: "1px solid #1e3a4f",
+            border: "1px solid #E1E5EC",
             borderRadius: 14,
             padding: "28px 28px 32px",
             boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
@@ -128,13 +128,13 @@ export default function CreateOrg() {
               fontFamily: ds.fontSyne,
               fontWeight: 700,
               fontSize: 20,
-              color: "white",
+              color: '#1B1F28',
               margin: "0 0 6px",
             }}
           >
             Superadmin Access
           </h2>
-          <p style={{ fontSize: 13, color: "#7A9BAD", marginBottom: 20 }}>
+          <p style={{ fontSize: 13, color: "#5B6270", marginBottom: 20 }}>
             Enter your superadmin secret to continue.
           </p>
 
@@ -147,11 +147,11 @@ export default function CreateOrg() {
             style={{
               width: "100%",
               background: ds.dark,
-              border: "1.5px solid #1e3a4f",
+              border: "1.5px solid #E1E5EC",
               borderRadius: 10,
               padding: "12px 14px",
               fontSize: 13,
-              color: "white",
+              color: '#1B1F28',
               fontFamily: ds.fontDm,
               outline: "none",
               marginBottom: 12,
@@ -165,7 +165,7 @@ export default function CreateOrg() {
             style={{
               width: "100%",
               background: loginLoading ? "#1F54B8" : ds.teal,
-              color: "white",
+              color: '#1B1F28',
               border: "none",
               borderRadius: 10,
               padding: "13px",
@@ -195,7 +195,7 @@ export default function CreateOrg() {
         style={{
           maxWidth: 560,
           background: ds.dark2,
-          border: "1px solid #1e3a4f",
+          border: "1px solid #E1E5EC",
           borderRadius: 14,
           padding: "28px 28px 32px",
           boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
@@ -215,7 +215,7 @@ export default function CreateOrg() {
               fontFamily: ds.fontSyne,
               fontWeight: 700,
               fontSize: 22,
-              color: "white",
+              color: '#1B1F28',
               margin: 0,
             }}
           >
@@ -225,11 +225,11 @@ export default function CreateOrg() {
             onClick={handleLogout}
             style={{
               background: "transparent",
-              border: "1px solid #1e3a4f",
+              border: "1px solid #E1E5EC",
               borderRadius: 8,
               padding: "5px 12px",
               fontSize: 12,
-              color: "#7A9BAD",
+              color: "#5B6270",
               cursor: "pointer",
               fontFamily: ds.fontDm,
             }}
@@ -238,7 +238,7 @@ export default function CreateOrg() {
           </button>
         </div>
 
-        <p style={{ fontSize: 13, color: "#7A9BAD", marginBottom: 22 }}>
+        <p style={{ fontSize: 13, color: "#5B6270", marginBottom: 22 }}>
           Provision a new client workspace and owner account.
         </p>
 
@@ -248,20 +248,20 @@ export default function CreateOrg() {
         <FormInput name="slug" placeholder="Slug" value={form.slug} onChange={handleChange} disabled />
         <FormInput name="industry" placeholder="Industry" value={form.industry} onChange={handleChange} />
         <FormInput name="ticket_prefix" placeholder="Ticket Prefix" value={form.ticket_prefix} onChange={handleChange} disabled />
-        <label style={{ display: "block", fontSize: 12, color: "#7A9BAD", margin: "10px 0 4px" }} htmlFor="product_mode">Product</label>
+        <label style={{ display: "block", fontSize: 12, color: "#5B6270", margin: "10px 0 4px" }} htmlFor="product_mode">Product</label>
         <select
           id="product_mode"
           name="product_mode"
           value={form.product_mode}
           onChange={handleChange}
-          style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #1e3a4f", background: ds.dark2, color: "white", fontSize: 14 }}
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #E1E5EC", background: ds.dark2, color: '#1B1F28', fontSize: 14 }}
         >
           <option value="full">Full Opsra (CRM and automation)</option>
           <option value="wa_automation">WhatsApp automation only</option>
           <option value="web_chat">Web chat only (Chioma on the website)</option>
         </select>
 
-        <div style={{ height: 1, background: "#1e3a4f", margin: "18px 0" }} />
+        <div style={{ height: 1, background: "#E1E5EC", margin: "18px 0" }} />
 
         {/* Owner Fields */}
         <SectionLabel text="Owner Account" />
@@ -277,7 +277,7 @@ export default function CreateOrg() {
             width: "100%",
             marginTop: 18,
             background: loading ? "#1F54B8" : ds.teal,
-            color: "white",
+            color: '#1B1F28',
             border: "none",
             borderRadius: 10,
             padding: "14px",
@@ -321,7 +321,7 @@ function SectionLabel({ text }) {
       style={{
         fontSize: 11,
         fontWeight: 600,
-        color: "#3a5a6a",
+        color: "#3C4352",
         textTransform: "uppercase",
         letterSpacing: "1px",
         marginBottom: 8,
@@ -344,11 +344,11 @@ function FormInput({ name, value, onChange, placeholder, type = "text", disabled
       style={{
         width: "100%",
         background: ds.dark,
-        border: "1.5px solid #1e3a4f",
+        border: "1.5px solid #E1E5EC",
         borderRadius: 10,
         padding: "12px 14px",
         fontSize: 13,
-        color: "white",
+        color: '#1B1F28',
         fontFamily: ds.fontDm,
         outline: "none",
         marginBottom: 12,

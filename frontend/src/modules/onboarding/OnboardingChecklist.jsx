@@ -221,7 +221,7 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
             <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 20, color: 'white', margin: 0, textAlign: 'center' }}>
               You're live!
             </p>
-            <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0, textAlign: 'center', lineHeight: 1.6 }}>
+            <p style={{ fontSize: 13, color: '#5B6270', margin: 0, textAlign: 'center', lineHeight: 1.6 }}>
               Your organisation is now fully activated. Welcome to Opsra.
             </p>
           </div>
@@ -238,13 +238,13 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
             <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: 'white', margin: 0 }}>
               Setup Checklist
             </p>
-            <p style={{ fontSize: 12, color: '#7A9BAD', margin: '2px 0 0' }}>
+            <p style={{ fontSize: 12, color: '#5B6270', margin: '2px 0 0' }}>
               {doneCount} of {totalItems} complete
             </p>
           </div>
           <button
             onClick={() => setExpanded(false)}
-            style={{ background: 'none', border: 'none', color: '#7A9BAD', fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 4 }}
+            style={{ background: 'none', border: 'none', color: '#5B6270', fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 4 }}
           >
             ×
           </button>
@@ -260,7 +260,7 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
               transition: 'width 0.5s ease',
             }} />
           </div>
-          <p style={{ fontSize: 11, color: '#3a5a6a', margin: '6px 0 0', textAlign: 'right' }}>
+          <p style={{ fontSize: 11, color: '#3C4352', margin: '6px 0 0', textAlign: 'right' }}>
             {percent}%
           </p>
         </div>
@@ -290,7 +290,7 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
                 {/* Group header */}
                 <div style={{
                   padding: '12px 20px 4px',
-                  fontSize: 10, fontWeight: 600, color: '#3a5a6a',
+                  fontSize: 10, fontWeight: 600, color: '#3C4352',
                   textTransform: 'uppercase', letterSpacing: '1px',
                 }}>
                   {group}
@@ -376,7 +376,7 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
           flexShrink:   0,
         }}>
           {!goLiveReady && checklist && (
-            <p style={{ fontSize: 11, color: '#7A9BAD', margin: '0 0 10px', textAlign: 'center', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 11, color: '#5B6270', margin: '0 0 10px', textAlign: 'center', lineHeight: 1.5 }}>
               Complete all required (⛔) items to activate
             </p>
           )}
@@ -414,7 +414,7 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
         }}>
           <div style={{
             background:   ds.dark2,
-            border:       '1px solid #1e3a4f',
+            border:       '1px solid #E1E5EC',
             borderRadius: 16,
             padding:      '32px 28px',
             width:        380,
@@ -425,7 +425,7 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
             <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: '0 0 10px', textAlign: 'center' }}>
               Ready to go live?
             </h3>
-            <p style={{ fontSize: 13, color: '#7A9BAD', lineHeight: 1.65, margin: '0 0 24px', textAlign: 'center' }}>
+            <p style={{ fontSize: 13, color: '#5B6270', lineHeight: 1.65, margin: '0 0 24px', textAlign: 'center' }}>
               This will activate your organisation on Opsra. Your WhatsApp integration, lead pipeline, and support system will all go live immediately.
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -434,7 +434,7 @@ export default function OnboardingChecklist({ setView, setActiveNav }) {
                 style={{
                   flex: 1, background: 'none', border: '1px solid #2a4a5a',
                   borderRadius: 9, padding: '11px 0', fontSize: 13,
-                  color: '#7A9BAD', cursor: 'pointer', fontFamily: ds.fontDm,
+                  color: '#5B6270', cursor: 'pointer', fontFamily: ds.fontDm,
                 }}
               >
                 Cancel

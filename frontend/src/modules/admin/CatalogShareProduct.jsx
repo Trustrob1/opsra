@@ -12,11 +12,11 @@ import {
   SHARE_PRESETS, SHARE_TAG_MAX, cleanTag, productWarnings, whatsappShareLink, productQrFileName,
 } from './catalogStorefrontLogic'
 
-const H = { fontFamily: ds.fontDm, fontSize: 14, fontWeight: 800, color: '#0a1a24', margin: 0 }
+const H = { fontFamily: ds.fontDm, fontSize: 14, fontWeight: 800, color: '#1B1F28', margin: 0 }
 const SUB = { fontFamily: ds.fontDm, fontSize: 12, lineHeight: 1.5, color: '#5C6166', margin: '4px 0 0' }
 const INPUT = {
   width: '100%', minHeight: 48, padding: '0 14px', borderRadius: 12, border: '1px solid #C9C6BF', fontFamily: ds.fontDm,
-  fontSize: 14, color: '#0a1a24', background: 'white', boxSizing: 'border-box', outline: 'none',
+  fontSize: 14, color: '#1B1F28', background: 'white', boxSizing: 'border-box', outline: 'none',
 }
 const BTN = { minHeight: 48, padding: '0 18px', border: 'none', borderRadius: 12, background: ds.teal, color: 'white', fontFamily: ds.fontDm, fontSize: 14, fontWeight: 700, cursor: 'pointer', minWidth: 108 }
 const OUTLINE = { minHeight: 44, padding: '0 16px', border: '1px solid #14181B', borderRadius: 12, background: 'white', color: '#14181B', fontFamily: ds.fontDm, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none', boxSizing: 'border-box' }
@@ -123,15 +123,15 @@ export default function CatalogShareProduct({ item, onClose, onItemChanged }) {
         outline: 'none', boxShadow: '-4px 0 32px rgba(0,0,0,0.15)',
       }}>
         <div style={{ height: 68, padding: '0 12px 0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E6E4DF', flexShrink: 0 }}>
-          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24' }}>Share this product</div>
-          <button onClick={onClose} aria-label="Close" style={{ width: 44, height: 44, border: 0, background: 'transparent', fontSize: 20, cursor: 'pointer', color: '#7A9BAD' }}>✕</button>
+          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28' }}>Share this product</div>
+          <button onClick={onClose} aria-label="Close" style={{ width: 44, height: 44, border: 0, background: 'transparent', fontSize: 20, cursor: 'pointer', color: '#5B6270' }}>✕</button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '22px 24px 8px' }}>
           <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
             <div style={{ width: 64, height: 72, borderRadius: 10, flexShrink: 0, background: it.image ? `#F4F2EE url(${it.image}) center/cover` : 'repeating-linear-gradient(135deg, #E4E9E7 0 8px, #F4F2EE 8px 16px)' }} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: ds.fontDm, fontSize: 17, fontWeight: 800, color: '#0a1a24' }}>{it.title}</div>
+              <div style={{ fontFamily: ds.fontDm, fontSize: 17, fontWeight: 800, color: '#1B1F28' }}>{it.title}</div>
               {price && <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 13, color: '#3A3F44' }}>{price}</div>}
             </div>
           </div>
@@ -185,7 +185,7 @@ export default function CatalogShareProduct({ item, onClose, onItemChanged }) {
               <input id="sp-own" value={custom} placeholder="radio-ad" maxLength={SHARE_TAG_MAX + 10} style={{ ...INPUT, marginTop: 6 }}
                 onChange={(e) => { setCustom(e.target.value); setTag(cleanTag(e.target.value)) }} />
               {custom && cleanTag(custom) !== custom.trim().toLowerCase() && (
-                <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }}>We will use: {cleanTag(custom) || 'no tag'}</div>
+                <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>We will use: {cleanTag(custom) || 'no tag'}</div>
               )}
             </div>
           </div>
@@ -194,7 +194,7 @@ export default function CatalogShareProduct({ item, onClose, onItemChanged }) {
             <div style={{ width: 128, height: 128, border: '1px solid #E6E4DF', borderRadius: 12, padding: 6, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               {qr
                 ? <img alt={`QR code for ${it.title}`} width={114} height={114} src={`data:image/svg+xml;utf8,${encodeURIComponent(qr)}`} />
-                : <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD', textAlign: 'center' }}>{qrError || 'Making QR…'}</span>}
+                : <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270', textAlign: 'center' }}>{qrError || 'Making QR…'}</span>}
             </div>
             <div style={{ flex: '1 1 180px' }}>
               <p style={{ fontFamily: ds.fontDm, fontSize: 13, lineHeight: 1.5, color: '#3A3F44', margin: '0 0 10px' }}>Print it on the product's box, tag or shelf label. A scan opens this product.</p>

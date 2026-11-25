@@ -24,13 +24,13 @@ const ALL_TEMPLATES = [
 ]
 
 const LABEL = {
-  display: 'block', fontSize: 11, fontWeight: 600, color: '#4a7a8a',
+  display: 'block', fontSize: 11, fontWeight: 600, color: '#5B6270',
   textTransform: 'uppercase', letterSpacing: '0.7px', marginTop: 20, marginBottom: 6,
 }
 const INPUT = {
   width: '100%', padding: '9px 12px', border: '1px solid #D4E6EC',
   borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit',
-  color: '#0a1a24', background: 'white', boxSizing: 'border-box',
+  color: '#1B1F28', background: 'white', boxSizing: 'border-box',
 }
 const TOGGLE_ROW = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -85,27 +85,27 @@ export default function CommissionSettings() {
     }
   }
 
-  if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading settings…</div>
+  if (loading) return <div style={{ padding: 32, color: '#5B6270', fontSize: 14 }}>Loading settings…</div>
   if (!settings) return null
 
   return (
     <div style={{ maxWidth: 620 }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>
           Commission Settings
         </h2>
-        <p style={{ fontSize: 13, color: '#7A9BAD', margin: '6px 0 0', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: '6px 0 0', lineHeight: 1.5 }}>
           Configure how commissions are tracked and paid out to your team and affiliates.
         </p>
       </div>
 
-      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E4EEF2', padding: '4px 24px 24px' }}>
+      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', padding: '4px 24px 24px' }}>
 
         {/* Master switch */}
         <div style={TOGGLE_ROW}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#0a1a24' }}>Enable Commission Tracking</div>
-            <div style={{ fontSize: 12, color: '#7A9BAD', marginTop: 2 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#1B1F28' }}>Enable Commission Tracking</div>
+            <div style={{ fontSize: 12, color: '#5B6270', marginTop: 2 }}>
               When disabled, commission rows are still created but with ₦0 amount for manual review
             </div>
           </div>
@@ -124,7 +124,7 @@ export default function CommissionSettings() {
 
         {/* Eligible roles */}
         <label style={LABEL}>Who earns commission</label>
-        <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 10px' }}>
+        <p style={{ fontSize: 12, color: '#5B6270', margin: '0 0 10px' }}>
           Select which role templates are eligible. Only users with these roles will have commission rows created automatically.
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
@@ -173,7 +173,7 @@ export default function CommissionSettings() {
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: selected ? ds.teal : '#0a1a24', marginBottom: 3 }}>
                   {opt.label}
                 </div>
-                <div style={{ fontSize: 11.5, color: '#7A9BAD' }}>{opt.hint}</div>
+                <div style={{ fontSize: 11.5, color: '#5B6270' }}>{opt.hint}</div>
               </div>
             )
           })}
@@ -192,7 +192,7 @@ export default function CommissionSettings() {
           style={INPUT}
           placeholder={settings.commission_rate_type === 'flat' ? 'e.g. 10000' : 'e.g. 5'}
         />
-        <p style={{ fontSize: 12, color: '#7A9BAD', margin: '4px 0 0' }}>
+        <p style={{ fontSize: 12, color: '#5B6270', margin: '4px 0 0' }}>
           {settings.commission_rate_type === 'flat'
             ? 'Leave at 0 to disable automatic amount calculation (manager sets amount manually)'
             : 'Percentage of the payment or deal amount. Leave at 0 to disable automatic calculation.'}
@@ -208,15 +208,15 @@ export default function CommissionSettings() {
           <option value="every_payment">Every confirmed payment (recurring commissions)</option>
           <option value="first_payment">First payment only (acquisition commission only)</option>
         </select>
-        <p style={{ fontSize: 12, color: '#7A9BAD', margin: '4px 0 0' }}>
+        <p style={{ fontSize: 12, color: '#5B6270', margin: '4px 0 0' }}>
           This only affects payment_confirmed events. Lead conversion commissions always trigger once.
         </p>
 
         {/* WhatsApp notification */}
         <div style={{ ...TOGGLE_ROW, marginTop: 20, borderBottom: 'none' }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#0a1a24' }}>WhatsApp notification on approval/payment</div>
-            <div style={{ fontSize: 12, color: '#7A9BAD', marginTop: 2 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#1B1F28' }}>WhatsApp notification on approval/payment</div>
+            <div style={{ fontSize: 12, color: '#5B6270', marginTop: 2 }}>
               Send a WhatsApp message to the affiliate when their commission is approved or marked as paid.
               Requires the user to have a WhatsApp number set on their profile.
             </div>

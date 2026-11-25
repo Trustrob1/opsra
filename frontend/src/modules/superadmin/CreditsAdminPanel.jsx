@@ -8,18 +8,18 @@ import {
 } from "../../services/superadmin.service";
 import { ds } from "../../utils/ds";
 
-const card = { background: ds.dark2, border: "1px solid #1e3a4f", borderRadius: 12, padding: "18px 20px", marginBottom: 16 };
-const th = { textAlign: "left", fontSize: 11, fontWeight: 600, color: "#3a5a6a", textTransform: "uppercase", letterSpacing: "1px", padding: "6px 8px" };
-const td = { fontSize: 13, color: "#A0BDC8", padding: "8px", borderTop: "1px solid #1a2f3f", verticalAlign: "middle" };
+const card = { background: ds.dark2, border: "1px solid #E1E5EC", borderRadius: 12, padding: "18px 20px", marginBottom: 16 };
+const th = { textAlign: "left", fontSize: 11, fontWeight: 600, color: "#3C4352", textTransform: "uppercase", letterSpacing: "1px", padding: "6px 8px" };
+const td = { fontSize: 13, color: "#5B6270", padding: "8px", borderTop: "1px solid #E1E5EC", verticalAlign: "middle" };
 const btn = (on) => ({
   background: on ? ds.teal : "transparent", color: on ? "white" : "#7A9BAD", border: `1px solid ${on ? ds.teal : "#1e3a4f"}`,
   borderRadius: 7, padding: "6px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: ds.fontDm, minHeight: 32,
 });
 const field = {
-  width: "100%", minHeight: 36, padding: "6px 10px", background: "#0b1a24", color: "white", border: "1px solid #1e3a4f",
+  width: "100%", minHeight: 36, padding: "6px 10px", background: "#FFFFFF", color: "#1B1F28", border: "1px solid #E1E5EC",
   borderRadius: 7, fontSize: 13, fontFamily: ds.fontDm, boxSizing: "border-box",
 };
-const lab = { display: "block", fontSize: 11, color: "#7A9BAD", margin: "8px 0 4px" };
+const lab = { display: "block", fontSize: 11, color: "#5B6270", margin: "8px 0 4px" };
 
 const naira = (kobo) => `₦${(Number(kobo || 0) / 100).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
 const errText = (e) => {
@@ -31,10 +31,10 @@ const errText = (e) => {
 
 function Stat({ label, value, sub }) {
   return (
-    <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid #1a2f3f", borderRadius: 10, padding: "12px 14px" }}>
-      <div style={{ fontSize: 11, color: "#3a5a6a", textTransform: "uppercase", letterSpacing: "1px" }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: "white", marginTop: 4 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "#7A9BAD", marginTop: 2 }}>{sub}</div>}
+    <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid #E1E5EC", borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "#3C4352", textTransform: "uppercase", letterSpacing: "1px" }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: '#1B1F28', marginTop: 4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: "#5B6270", marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
@@ -61,9 +61,9 @@ function AdjustForm({ org, onDone, onCancel }) {
   };
 
   return (
-    <form onSubmit={submit} style={{ ...card, marginTop: 8, background: "#0e2230" }}>
-      <div style={{ color: "white", fontWeight: 600, fontSize: 14 }}>Adjust or refund: {org.name}</div>
-      <div style={{ fontSize: 12, color: "#7A9BAD", margin: "2px 0 6px" }}>Balance now {naira(org.balance_kobo)}. Every change is written to the ledger with your reason and cannot be edited later.</div>
+    <form onSubmit={submit} style={{ ...card, marginTop: 8, background: "#FFFFFF" }}>
+      <div style={{ color: '#1B1F28', fontWeight: 600, fontSize: 14 }}>Adjust or refund: {org.name}</div>
+      <div style={{ fontSize: 12, color: "#5B6270", margin: "2px 0 6px" }}>Balance now {naira(org.balance_kobo)}. Every change is written to the ledger with your reason and cannot be edited later.</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
         <div>
           <label style={lab} htmlFor="ca-kind">Type</label>
@@ -116,7 +116,7 @@ function Businesses() {
     try { await setCreditMetering(o.org_id, next); await load(); } catch (e) { setError(errText(e)); } finally { setBusyId(""); }
   };
 
-  if (!orgs && !error) return <div style={{ color: "#7A9BAD", fontSize: 13 }}>Loading…</div>;
+  if (!orgs && !error) return <div style={{ color: "#5B6270", fontSize: 13 }}>Loading…</div>;
   return (
     <div style={card}>
       {error && <div role="alert" style={{ color: "#ef4444", fontSize: 12, marginBottom: 8 }}>{error}</div>}
@@ -129,7 +129,7 @@ function Businesses() {
           <tbody>
             {(orgs || []).map((o) => (
               <tr key={o.org_id}>
-                <td style={{ ...td, color: "white" }}>{o.name}</td>
+                <td style={{ ...td, color: '#1B1F28' }}>{o.name}</td>
                 <td style={td}>{naira(o.balance_kobo)}</td>
                 <td style={td}>
                   <button type="button" style={btn(o.metering_enabled)} disabled={busyId === o.org_id} onClick={() => toggle(o)}
@@ -167,7 +167,7 @@ function Margin() {
         {[7, 30, 90, 365].map((d) => <button key={d} type="button" style={btn(days === d)} onClick={() => setDays(d)}>{d === 365 ? "1 year" : `${d} days`}</button>)}
       </div>
       {error && <div role="alert" style={{ color: "#ef4444", fontSize: 12 }}>{error}</div>}
-      {!data && !error && <div style={{ color: "#7A9BAD", fontSize: 13 }}>Loading…</div>}
+      {!data && !error && <div style={{ color: "#5B6270", fontSize: 13 }}>Loading…</div>}
       {data && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginBottom: 14 }}>
@@ -191,16 +191,16 @@ function Margin() {
                   {data.orgs.length === 0 && <tr><td style={td} colSpan={7}>No credit activity in this period.</td></tr>}
                   {data.orgs.map((o) => (
                     <tr key={o.org_id}>
-                      <td style={{ ...td, color: "white" }}>{o.name || o.org_id.slice(0, 8)}</td>
+                      <td style={{ ...td, color: '#1B1F28' }}>{o.name || o.org_id.slice(0, 8)}</td>
                       <td style={td}>{naira(o.cash_in_kobo)}</td><td style={td}>{naira(o.ai_charged_kobo)}</td>
                       <td style={td}>{naira(o.ai_cost_kobo)}</td><td style={td}>{naira(o.fee_charged_kobo)}</td>
-                      <td style={td}>{naira(o.expired_kobo)}</td><td style={{ ...td, color: "white" }}>{naira(o.margin_kobo)}</td>
+                      <td style={td}>{naira(o.expired_kobo)}</td><td style={{ ...td, color: '#1B1F28' }}>{naira(o.margin_kobo)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <ul style={{ margin: "12px 0 0", paddingLeft: 18, fontSize: 12, color: "#7A9BAD" }}>
+            <ul style={{ margin: "12px 0 0", paddingLeft: 18, fontSize: 12, color: "#5B6270" }}>
               {data.notes.map((n) => <li key={n}>{n}</li>)}
             </ul>
           </div>
@@ -220,8 +220,8 @@ function Checks() {
   };
   return (
     <div style={card}>
-      <div style={{ color: "white", fontWeight: 600, fontSize: 14 }}>Balance check</div>
-      <p style={{ fontSize: 12, color: "#7A9BAD", margin: "4px 0 10px" }}>Compares every wallet's balance with the sum of its ledger and its credit lots. This also runs nightly.</p>
+      <div style={{ color: '#1B1F28', fontWeight: 600, fontSize: 14 }}>Balance check</div>
+      <p style={{ fontSize: 12, color: "#5B6270", margin: "4px 0 10px" }}>Compares every wallet's balance with the sum of its ledger and its credit lots. This also runs nightly.</p>
       <button type="button" style={btn(true)} disabled={busy} onClick={run}>{busy ? "Checking…" : "Run check"}</button>
       {error && <div role="alert" style={{ color: "#ef4444", fontSize: 12, marginTop: 8 }}>{error}</div>}
       {res && (res.mismatches.length === 0
@@ -229,7 +229,7 @@ function Checks() {
         : <div style={{ marginTop: 10 }}>
             <div style={{ color: "#ef4444", fontSize: 13 }}>{res.mismatches.length} wallet(s) do not match:</div>
             {res.mismatches.map((m) => (
-              <div key={m.org_id} style={{ fontSize: 12, color: "#A0BDC8", marginTop: 4 }}>
+              <div key={m.org_id} style={{ fontSize: 12, color: "#5B6270", marginTop: 4 }}>
                 {m.org_id}: balance {naira(m.balance)}, ledger {naira(m.ledger_sum)}, lots {naira(m.lots_sum)}
               </div>
             ))}

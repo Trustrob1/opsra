@@ -68,14 +68,14 @@ function ChannelCard({ icon: Icon, title, description, connected, disabled, disa
             <Icon size={17} color={connected ? 'white' : '#7a9bad'} strokeWidth={2} />
           </div>
           <div>
-            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: 0 }}>
+            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: 0 }}>
               {title}
             </h3>
           </div>
         </div>
         <StatusPill connected={connected} />
       </div>
-      <p style={{ fontSize: 13, color: '#5a8a9f', lineHeight: 1.5, margin: '0 0 14px' }}>
+      <p style={{ fontSize: 13, color: '#5B6270', lineHeight: 1.5, margin: '0 0 14px' }}>
         {description}
       </p>
       {disabled && disabledReason && (
@@ -175,7 +175,7 @@ export default function DirectSalesQuerySource() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         Loading data source status…
       </div>
     )
@@ -185,10 +185,10 @@ export default function DirectSalesQuerySource() {
 
   return (
     <div style={{ maxWidth: 720 }}>
-      <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: '0 0 6px' }}>
+      <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: '0 0 6px' }}>
         Sales Data Source
       </h2>
-      <p style={{ fontSize: 13.5, color: '#5a8a9f', lineHeight: 1.6, margin: '0 0 22px', maxWidth: 560 }}>
+      <p style={{ fontSize: 13.5, color: '#5B6270', lineHeight: 1.6, margin: '0 0 22px', maxWidth: 560 }}>
         Choose which sales channel powers your WhatsApp owner-query answers and PDF reports.
         Only one can be active at a time — having both connected would risk double-counting
         revenue in your reports.
@@ -281,10 +281,10 @@ export default function DirectSalesQuerySource() {
           <div style={{
             background: 'white', borderRadius: 14, padding: 26, width: '100%', maxWidth: 420,
           }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: '#0a1a24', margin: '0 0 10px' }}>
+            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: '#1B1F28', margin: '0 0 10px' }}>
               Switch to Direct Sales?
             </h3>
-            <p style={{ fontSize: 13, color: '#5a8a9f', lineHeight: 1.6, margin: '0 0 10px' }}>
+            <p style={{ fontSize: 13, color: '#5B6270', lineHeight: 1.6, margin: '0 0 10px' }}>
               This will disconnect Shopify — its shop domain and API credentials will
               be cleared. If you switch back to Shopify later, you'll need to
               re-enter your shop domain and API keys.
@@ -296,7 +296,7 @@ export default function DirectSalesQuerySource() {
               <button
                 onClick={() => setShowSwitchConfirm(false)}
                 disabled={switching}
-                style={{ background: 'white', color: '#0a1a24', border: '1.5px solid #D4E6EC', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}
+                style={{ background: 'white', color: '#1B1F28', border: '1.5px solid #D4E6EC', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}
               >
                 Cancel
               </button>

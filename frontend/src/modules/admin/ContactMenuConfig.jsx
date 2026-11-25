@@ -171,7 +171,7 @@ function ItemEditor({ items, setItems, sectionKey, actionOptions = ACTION_OPTION
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
                   <label style={S.label}>What happens</label>
-                  <div style={{ ...S.input, background: '#F6F7FA', color: '#7A9BAD', cursor: 'default', fontSize: 12 }}>
+                  <div style={{ ...S.input, background: '#F6F7FA', color: '#5B6270', cursor: 'default', fontSize: 12 }}>
                     {actionOptions.find(a => a.value === item.action)?.label || '—'}
                   </div>
                 </div>
@@ -225,14 +225,14 @@ function ItemEditor({ items, setItems, sectionKey, actionOptions = ACTION_OPTION
 function WhatsAppPreview({ greeting, sectionTitle, items }) {
   return (
     <div style={{ width: 230, flexShrink: 0 }}>
-      <div style={{ fontSize: 11, color: '#7A9BAD', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+      <div style={{ fontSize: 11, color: '#5B6270', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
         Preview
       </div>
       <div style={{ background: '#ECE5DD', borderRadius: 12, padding: 12, minHeight: 160 }}>
         {/* Greeting bubble */}
         <div style={{
           background: 'white', borderRadius: '0 10px 10px 10px',
-          padding: '8px 11px', fontSize: 12.5, color: '#0a1a24',
+          padding: '8px 11px', fontSize: 12.5, color: '#1B1F28',
           marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.07)', maxWidth: '85%',
         }}>
           {greeting || 'Hi! How can we help you today?'}
@@ -240,7 +240,7 @@ function WhatsAppPreview({ greeting, sectionTitle, items }) {
         {/* List trigger */}
         <div style={{
           background: 'white', borderRadius: '0 10px 10px 10px',
-          padding: '8px 11px', fontSize: 12, color: '#1a7a8a',
+          padding: '8px 11px', fontSize: 12, color: '#2467E3',
           fontWeight: 600, marginBottom: 6, maxWidth: '60%',
           boxShadow: '0 1px 3px rgba(0,0,0,0.07)', textAlign: 'center',
           border: `1px solid ${ds.teal}40`,
@@ -344,7 +344,7 @@ export default function ContactMenuConfig() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 13 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 13 }}>
         Loading…
       </div>
     )
@@ -354,22 +354,22 @@ export default function ContactMenuConfig() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 6px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: '0 0 6px' }}>
           Contact Menus
         </h2>
-        <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           The menus shown to people who already messaged you (leads and customers) when they say hello, ask for the menu,
           or send a question we can't answer straight away. If a menu here has no items, they see your main WhatsApp menu instead.
         </p>
         <label style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, fontSize: 13.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
           <span><b>Show the menu again to people who already messaged us</b><br />
-            <span style={{ fontSize: 12, color: '#7A9BAD' }}>Never shown while a team member is chatting with them (replied in the last 24 hours).</span></span>
+            <span style={{ fontSize: 12, color: '#5B6270' }}>Never shown while a team member is chatting with them (replied in the last 24 hours).</span></span>
         </label>
       </div>
 
       {/* Section tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid #E2EFF4', marginBottom: 24 }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid #E1E5EC', marginBottom: 24 }}>
         {[
           { key: 'returning', label: '🔁 Returning Contact Menu' },
           { key: 'known',     label: '⭐ Known Customer Menu' },
@@ -393,7 +393,7 @@ export default function ContactMenuConfig() {
       {/* ── Returning Contact Menu ────────────────────────────────────────── */}
       <div style={{ display: activeTab === 'returning' ? 'block' : 'none' }}>
         <div style={{ ...S.card, background: '#F0FAFA', border: `1px solid ${ds.teal}30`, marginBottom: 20 }}>
-          <p style={{ fontSize: 13, color: '#1a7a8a', margin: 0, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 13, color: '#2467E3', margin: 0, lineHeight: 1.6 }}>
             Shown to contacts who are already in your leads pipeline (returning leads) and to
             contacts who previously started a commerce session but chose "Speak to Sales".
           </p>
@@ -436,7 +436,7 @@ export default function ContactMenuConfig() {
       {/* ── Known Customer Menu ───────────────────────────────────────────── */}
       <div style={{ display: activeTab === 'known' ? 'block' : 'none' }}>
         <div style={{ ...S.card, background: '#F0FAFA', border: `1px solid ${ds.teal}30`, marginBottom: 20 }}>
-          <p style={{ fontSize: 13, color: '#1a7a8a', margin: 0, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 13, color: '#2467E3', margin: 0, lineHeight: 1.6 }}>
             Shown to contacts who already have a completed purchase record (known customers),
             across all sales modes. Leave empty to fall through to automatic intent detection.
           </p>
@@ -500,15 +500,15 @@ export default function ContactMenuConfig() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const S = {
   card: {
-    background: 'white', border: '1px solid #E2EFF4', borderRadius: 12,
+    background: 'white', border: '1px solid #E1E5EC', borderRadius: 12,
     padding: '20px 22px', marginBottom: 20,
   },
   cardTitle: {
     fontFamily: 'var(--font-syne, sans-serif)', fontWeight: 700, fontSize: 14,
-    color: '#0a1a24', marginBottom: 14,
+    color: '#1B1F28', marginBottom: 14,
   },
   label: {
-    display: 'block', fontSize: 11, color: '#7A9BAD',
+    display: 'block', fontSize: 11, color: '#5B6270',
     textTransform: 'uppercase', letterSpacing: '0.4px',
     fontWeight: 500, marginBottom: 4,
   },
@@ -523,11 +523,11 @@ const S = {
   },
   arrowBtn: {
     background: 'none', border: '1px solid #E1E5EC', borderRadius: 5,
-    cursor: 'pointer', padding: '2px 5px', fontSize: 10, color: '#7A9BAD',
+    cursor: 'pointer', padding: '2px 5px', fontSize: 10, color: '#5B6270',
     lineHeight: 1.4,
   },
   addBtn: {
-    padding: '6px 14px', background: '#E4EDFD', color: '#1a7a8a',
+    padding: '6px 14px', background: '#E4EDFD', color: '#2467E3',
     border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer',
   },

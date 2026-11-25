@@ -8,11 +8,11 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { catalogErrorText } from './catalogErrors'
 import { downloadImportTemplate } from './catalogTemplateDownload'
 
-const CARD = { background: 'white', borderRadius: 14, border: '1px solid #E2EFF4', padding: 24, display: 'flex', flexDirection: 'column' }
+const CARD = { background: 'white', borderRadius: 14, border: '1px solid #E1E5EC', padding: 24, display: 'flex', flexDirection: 'column' }
 const PRIMARY = { background: ds.teal, color: 'white', border: 'none', borderRadius: 10, padding: '0 20px', minHeight: 46, fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }
-const OUTLINE = { background: 'white', border: '1.5px solid #0a1a24', borderRadius: 10, padding: '0 18px', minHeight: 46, fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, color: '#0a1a24', cursor: 'pointer' }
-const H3 = { margin: '14px 0 0', fontFamily: ds.fontSyne, fontSize: 17, fontWeight: 700, color: '#0a1a24' }
-const P = { margin: '6px 0 0', fontFamily: ds.fontDm, fontSize: 13.5, lineHeight: 1.5, color: '#3a5a6a' }
+const OUTLINE = { background: 'white', border: '1.5px solid #0a1a24', borderRadius: 10, padding: '0 18px', minHeight: 46, fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, color: '#1B1F28', cursor: 'pointer' }
+const H3 = { margin: '14px 0 0', fontFamily: ds.fontSyne, fontSize: 17, fontWeight: 700, color: '#1B1F28' }
+const P = { margin: '6px 0 0', fontFamily: ds.fontDm, fontSize: 13.5, lineHeight: 1.5, color: '#3C4352' }
 
 const HOW = [
   ['Download the template', 'It already has the right columns, with two example rows to show you how.'],
@@ -41,8 +41,8 @@ export default function CatalogFirstProduct({ itemWord, creating, onAdd, onImpor
   return (
     <div style={{ paddingBottom: 40 }}>
       <div style={{ textAlign: 'center', marginTop: 8 }}>
-        <h2 style={{ margin: 0, fontFamily: ds.fontSyne, fontSize: 22, fontWeight: 700, color: '#0a1a24' }}>Add your first {word}</h2>
-        <p style={{ margin: '8px auto 0', maxWidth: 520, fontFamily: ds.fontDm, fontSize: 13.5, lineHeight: 1.5, color: '#3a5a6a' }}>Choose the way that suits you. You can use the other one any time later.</p>
+        <h2 style={{ margin: 0, fontFamily: ds.fontSyne, fontSize: 22, fontWeight: 700, color: '#1B1F28' }}>Add your first {word}</h2>
+        <p style={{ margin: '8px auto 0', maxWidth: 520, fontFamily: ds.fontDm, fontSize: 13.5, lineHeight: 1.5, color: '#3C4352' }}>Choose the way that suits you. You can use the other one any time later.</p>
       </div>
 
       {error && (
@@ -71,13 +71,13 @@ export default function CatalogFirstProduct({ itemWord, creating, onAdd, onImpor
       </div>
 
       <div style={{ ...CARD, marginTop: 20, maxWidth: 900, marginLeft: 'auto', marginRight: 'auto', boxSizing: 'border-box' }}>
-        <div style={{ fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4a7a8a' }}>How the spreadsheet works</div>
+        <div style={{ fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5B6270' }}>How the spreadsheet works</div>
         <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: 20 }}>
           {HOW.map(([title, text], i) => (
             <div key={title} style={{ display: 'flex', gap: 12 }}>
-              <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #C9D9E0', flexShrink: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontDm, fontSize: 13, fontWeight: 700, color: '#0a1a24' }}>{i + 1}</span>
-              <div style={{ fontFamily: ds.fontDm, fontSize: 13, lineHeight: 1.5, color: '#3a5a6a' }}>
-                <b style={{ display: 'block', fontSize: 14, color: '#0a1a24' }}>{title}</b>{text}
+              <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #C9D9E0', flexShrink: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ds.fontDm, fontSize: 13, fontWeight: 700, color: '#1B1F28' }}>{i + 1}</span>
+              <div style={{ fontFamily: ds.fontDm, fontSize: 13, lineHeight: 1.5, color: '#3C4352' }}>
+                <b style={{ display: 'block', fontSize: 14, color: '#1B1F28' }}>{title}</b>{text}
               </div>
             </div>
           ))}

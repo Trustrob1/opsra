@@ -107,7 +107,7 @@ export default function TicketCategoriesConfig() {
 
   if (!categories) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         <div style={{ fontSize: 22, marginBottom: 8 }}>🏷️</div>
         Loading categories…
       </div>
@@ -123,11 +123,11 @@ export default function TicketCategoriesConfig() {
       <div style={{ marginBottom: 24 }}>
         <h2 style={{
           fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18,
-          color: '#0a1a24', margin: '0 0 6px',
+          color: '#1B1F28', margin: '0 0 6px',
         }}>
           🏷️ Ticket &amp; KB Categories
         </h2>
-        <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0 }}>
           These categories appear in the ticket creation form. Knowledge Base articles
           use their own separate categories — see the KB Categories tab.
           Disable defaults that don't apply to your business, or add custom ones.
@@ -194,7 +194,7 @@ export default function TicketCategoriesConfig() {
               <div style={{ paddingRight: 16 }}>
                 <span style={{
                   fontFamily: 'monospace', fontSize: 11,
-                  background: '#edf3f7', color: '#4a7a8a',
+                  background: '#edf3f7', color: '#5B6270',
                   padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap',
                 }}>
                   {cat.key}
@@ -250,7 +250,7 @@ export default function TicketCategoriesConfig() {
         background: '#f0f6f9', border: '1px dashed #c8d8e4',
         borderRadius: 10, padding: '14px 16px', marginBottom: 24,
       }}>
-        <p style={{ fontSize: 12, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>
           Add Custom Category
         </p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -264,12 +264,12 @@ export default function TicketCategoriesConfig() {
               style={{
                 width: '100%', border: '1px solid #d4e5ee', borderRadius: 6,
                 padding: '7px 11px', fontSize: 13, fontFamily: ds.fontDm,
-                color: '#0a1a24', background: 'white', outline: 'none',
+                color: '#1B1F28', background: 'white', outline: 'none',
                 boxSizing: 'border-box',
               }}
             />
             {newLabel && (
-              <p style={{ fontSize: 11, color: '#7A9BAD', margin: '4px 0 0' }}>
+              <p style={{ fontSize: 11, color: '#5B6270', margin: '4px 0 0' }}>
                 Key: <code style={{ fontFamily: 'monospace' }}>{labelToKey(newLabel) || '—'}</code>
               </p>
             )}
@@ -327,7 +327,7 @@ export default function TicketCategoriesConfig() {
           onClick={() => { setCategories([...DEFAULT_CATEGORIES]); setSuccess(false); setError(null) }}
           disabled={saving}
           style={{
-            background: 'none', color: '#4a7a8a',
+            background: 'none', color: '#5B6270',
             border: '1px solid #d4e5ee', borderRadius: 8,
             padding: '8px 18px', fontSize: 13, fontFamily: ds.fontDm,
             cursor: saving ? 'not-allowed' : 'pointer',
@@ -341,6 +341,6 @@ export default function TicketCategoriesConfig() {
 }
 
 const hdr = {
-  fontSize: 11, fontWeight: 700, color: '#7A9BAD',
+  fontSize: 11, fontWeight: 700, color: '#5B6270',
   textTransform: 'uppercase', letterSpacing: '0.06em',
 }

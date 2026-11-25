@@ -124,7 +124,7 @@ export default function SLABusinessHoursConfig() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#5a8a9f', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         Loading business hours…
       </div>
     )
@@ -139,11 +139,11 @@ export default function SLABusinessHoursConfig() {
       <div style={{ marginBottom: 24 }}>
         <h2 style={{
           fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17,
-          color: 'white', margin: '0 0 6px',
+          color: '#1B1F28', margin: '0 0 6px',
         }}>
           🕐 SLA Business Hours
         </h2>
-        <p style={{ fontSize: 13, color: '#5a8a9f', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           The SLA clock only ticks during your configured business hours.
           Leads that arrive outside these windows won't trigger breach alerts
           until the next working period begins.
@@ -152,12 +152,12 @@ export default function SLABusinessHoursConfig() {
 
       {/* Info callout */}
       <div style={{
-        background: '#0a1e2b', border: '1px solid #1a3545',
+        background: '#F1F3F8', border: '1px solid #1a3545',
         borderRadius: 8, padding: '14px 16px', marginBottom: 24,
         display: 'flex', gap: 12, alignItems: 'flex-start',
       }}>
         <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
-        <div style={{ fontSize: 12, color: '#4a7a8a', lineHeight: 1.7, fontFamily: ds.fontDm }}>
+        <div style={{ fontSize: 12, color: '#5B6270', lineHeight: 1.7, fontFamily: ds.fontDm }}>
           <strong style={{ color: '#6a9aaa' }}>How it works:</strong> When checking SLA
           targets, the system counts only hours that fall within your enabled windows.
           A lead created at 5pm Friday won't appear overdue until enough business hours
@@ -168,7 +168,7 @@ export default function SLABusinessHoursConfig() {
 
       {/* Timezone */}
       <div style={{
-        background: '#0d2231', border: '1px solid #1a3545',
+        background: '#F1F3F8', border: '1px solid #1a3545',
         borderRadius: 10, padding: '16px 20px', marginBottom: 20,
       }}>
         <label style={{
@@ -184,20 +184,20 @@ export default function SLABusinessHoursConfig() {
           placeholder="e.g. Africa/Lagos"
           style={{
             width: '100%', boxSizing: 'border-box',
-            padding: '9px 12px', background: '#091620',
+            padding: '9px 12px', background: '#F6F7FA',
             border: '1px solid #1a3545', borderRadius: 6,
-            color: 'white', fontFamily: ds.fontDm, fontSize: 13,
+            color: '#1B1F28', fontFamily: ds.fontDm, fontSize: 13,
             outline: 'none',
           }}
         />
-        <p style={{ fontSize: 11, color: '#3a5a6a', margin: '6px 0 0', fontFamily: ds.fontDm }}>
+        <p style={{ fontSize: 11, color: '#3C4352', margin: '6px 0 0', fontFamily: ds.fontDm }}>
           Use IANA timezone format. Examples: Africa/Lagos · Europe/London · America/New_York
         </p>
       </div>
 
       {/* Day schedule */}
       <div style={{
-        background: '#0d2231', border: '1px solid #1a3545',
+        background: '#F1F3F8', border: '1px solid #1a3545',
         borderRadius: 10, overflow: 'hidden', marginBottom: 20,
       }}>
         {/* Header */}
@@ -205,7 +205,7 @@ export default function SLABusinessHoursConfig() {
           display: 'grid',
           gridTemplateColumns: '110px 64px 1fr 16px 1fr',
           gap: 10, padding: '10px 16px',
-          background: '#091620', alignItems: 'center',
+          background: '#F6F7FA', alignItems: 'center',
         }}>
           {['Day', 'Active', 'Opens', '', 'Closes'].map((h, i) => (
             <div key={i} style={{
@@ -272,7 +272,7 @@ export default function SLABusinessHoursConfig() {
                 disabled={!isOn}
                 onChange={e => updateTime(key, 'open', e.target.value)}
                 style={{
-                  padding: '7px 10px', background: '#091620',
+                  padding: '7px 10px', background: '#F6F7FA',
                   border: '1px solid #1a3545', borderRadius: 6,
                   color: isOn ? 'white' : '#3a5a6a',
                   fontFamily: ds.fontDm, fontSize: 13,
@@ -285,7 +285,7 @@ export default function SLABusinessHoursConfig() {
               {/* Separator */}
               <div style={{
                 textAlign: 'center', fontSize: 12,
-                color: '#3a5a6a', fontFamily: ds.fontDm,
+                color: '#3C4352', fontFamily: ds.fontDm,
               }}>→</div>
 
               {/* Close time */}
@@ -295,7 +295,7 @@ export default function SLABusinessHoursConfig() {
                 disabled={!isOn}
                 onChange={e => updateTime(key, 'close', e.target.value)}
                 style={{
-                  padding: '7px 10px', background: '#091620',
+                  padding: '7px 10px', background: '#F6F7FA',
                   border: '1px solid #1a3545', borderRadius: 6,
                   color: isOn ? 'white' : '#3a5a6a',
                   fontFamily: ds.fontDm, fontSize: 13,
@@ -311,9 +311,9 @@ export default function SLABusinessHoursConfig() {
 
       {/* Summary */}
       <div style={{
-        background: '#0a1e2b', border: '1px solid #1a3545',
+        background: '#F1F3F8', border: '1px solid #1a3545',
         borderRadius: 8, padding: '12px 16px', marginBottom: 24,
-        fontSize: 12, color: '#4a7a8a', fontFamily: ds.fontDm,
+        fontSize: 12, color: '#5B6270', fontFamily: ds.fontDm,
       }}>
         <strong style={{ color: '#6a9aaa' }}>Active schedule:</strong>
         {' '}{enabledCount} working day{enabledCount !== 1 ? 's' : ''} configured.
@@ -327,7 +327,7 @@ export default function SLABusinessHoursConfig() {
       {/* Feedback */}
       {error && (
         <div style={{
-          background: '#2a0a0a', border: '1px solid #6a2020',
+          background: '#FDECEC', border: '1px solid #6a2020',
           borderRadius: 6, padding: '10px 14px',
           color: '#e05252', fontSize: 13, marginBottom: 16, fontFamily: ds.fontDm,
         }}>
@@ -336,7 +336,7 @@ export default function SLABusinessHoursConfig() {
       )}
       {success && (
         <div style={{
-          background: '#0a2a1a', border: '1px solid #206a40',
+          background: '#E3F4EA', border: '1px solid #206a40',
           borderRadius: 6, padding: '10px 14px',
           color: '#3dc47a', fontSize: 13, marginBottom: 16, fontFamily: ds.fontDm,
         }}>

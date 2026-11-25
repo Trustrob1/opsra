@@ -46,7 +46,7 @@ export default function BriefingCard({ content, onAccept, onDismiss }) {
         }}>
           Morning Briefing
         </span>
-        <span style={{ fontSize: 10, color: '#3a5a6a', marginLeft: 'auto' }}>
+        <span style={{ fontSize: 10, color: '#3C4352', marginLeft: 'auto' }}>
           Today
         </span>
       </div>
@@ -108,7 +108,7 @@ export default function BriefingCard({ content, onAccept, onDismiss }) {
             borderRadius: 8,
             padding:      '9px 16px',
             fontSize:     13,
-            color:        '#7A9BAD',
+            color:        '#5B6270',
             fontFamily:   ds.fontDm,
             cursor:       'pointer',
             transition:   'border-color 0.15s',

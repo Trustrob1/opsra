@@ -100,7 +100,7 @@ const th = {
   fontFamily:    ds.fontDm,
   fontWeight:    600,
   fontSize:      11.5,
-  color:         '#6b8fa0',
+  color:         '#5B6270',
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
   borderBottom:  '2px solid #edf2f6',
@@ -301,7 +301,7 @@ function InsightPanel({ open, onClose, dateFrom, dateTo }) {
             <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: ds.dark, display: 'flex', alignItems: 'center', gap: 6 }}>
               <Sparkles size={12} color={ds.teal} /> AI Growth Insights
             </div>
-            <div style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#6b8fa0', marginTop: 2 }}>Full dashboard narrative</div>
+            <div style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270', marginTop: 2 }}>Full dashboard narrative</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8' }}>×</button>
         </div>
@@ -415,10 +415,10 @@ function DateRangeBar({ dateFrom, dateTo, onApply, loading, onRefresh }) {
       {showCustom && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #dde4e8', fontSize: 12, fontFamily: ds.fontDm }} />
+            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #E1E5EC', fontSize: 12, fontFamily: ds.fontDm }} />
           <span style={{ color: ds.gray, fontSize: 12 }}>→</span>
           <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
-            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #dde4e8', fontSize: 12, fontFamily: ds.fontDm }} />
+            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #E1E5EC', fontSize: 12, fontFamily: ds.fontDm }} />
           <button onClick={applyCustom} style={{
             padding: '5px 12px', borderRadius: 6, background: ds.teal, color: 'white',
             border: 'none', fontFamily: ds.fontDm, fontWeight: 600, fontSize: 12, cursor: 'pointer',
@@ -428,7 +428,7 @@ function DateRangeBar({ dateFrom, dateTo, onApply, loading, onRefresh }) {
 
       <button onClick={onRefresh} disabled={loading} style={{
         marginLeft: 'auto', padding: '6px 14px', borderRadius: 20,
-        border: '1.5px solid #dde4e8', background: 'white', color: ds.gray,
+        border: '1.5px solid #E1E5EC', background: 'white', color: ds.gray,
         fontFamily: ds.fontDm, fontWeight: 600, fontSize: 12.5,
         cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
         display: 'flex', alignItems: 'center', gap: 5,
@@ -446,7 +446,7 @@ function KPICard({ label, value, sub, trendVal, color }) {
   const t = trend(trendVal)
   return (
     <div style={{ ...card, flex: '1 1 160px', minWidth: 150, borderTop: `3px solid ${color || ds.teal}` }}>
-      <div style={{ fontSize: 11, color: '#6b8fa0', fontFamily: ds.fontDm, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: '#5B6270', fontFamily: ds.fontDm, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
         {label}
       </div>
       <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark }}>
@@ -455,7 +455,7 @@ function KPICard({ label, value, sub, trendVal, color }) {
       {(sub || t) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
           {t && <span style={{ fontSize: 12, fontWeight: 700, color: t.color, fontFamily: ds.fontDm }}>{t.arrow} {Math.abs(trendVal)}%</span>}
-          {sub && <span style={{ fontSize: 11.5, color: '#6b8fa0', fontFamily: ds.fontDm }}>{sub}</span>}
+          {sub && <span style={{ fontSize: 11.5, color: '#5B6270', fontFamily: ds.fontDm }}>{sub}</span>}
         </div>
       )}
     </div>
@@ -496,7 +496,7 @@ function bestInCol(rows, key) {
 
 function TeamSection({ data, loading }) {
   if (loading) return <Skeleton height={140} />
-  if (!data || !data.length) return <div style={{ color: '#6b8fa0', fontSize: 13, fontFamily: ds.fontDm }}>No team data for this period.</div>
+  if (!data || !data.length) return <div style={{ color: '#5B6270', fontSize: 13, fontFamily: ds.fontDm }}>No team data for this period.</div>
 
   const metrics = ['leads_generated', 'conversion_rate', 'revenue_generated', 'avg_lead_score']
   const bestMap  = Object.fromEntries(metrics.map(m => [m, bestInCol(data, m)]))
@@ -550,7 +550,7 @@ function FunnelBar({ stage, count, pctFromTop, pctFromPrev, color, isLast, stage
   return (
     <div style={{ marginBottom: isLast ? 0 : 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 3 }}>
-        <div style={{ width: 100, fontSize: 12, color: '#6b8fa0', fontFamily: ds.fontDm, fontWeight: 600 }}>
+        <div style={{ width: 100, fontSize: 12, color: '#5B6270', fontFamily: ds.fontDm, fontWeight: 600 }}>
           {stageLabels[stage] || stage}
         </div>
         <div style={{ flex: 1, background: '#f1f5f8', borderRadius: 4, height: 28, overflow: 'hidden' }}>
@@ -561,7 +561,7 @@ function FunnelBar({ stage, count, pctFromTop, pctFromPrev, color, isLast, stage
             <span style={{ fontSize: 12, fontWeight: 700, color: 'white', fontFamily: ds.fontDm }}>{count}</span>
           </div>
         </div>
-        <div style={{ width: 60, textAlign: 'right', fontSize: 12, fontFamily: ds.fontDm, color: '#6b8fa0' }}>{pct(pctFromTop)}</div>
+        <div style={{ width: 60, textAlign: 'right', fontSize: 12, fontFamily: ds.fontDm, color: '#5B6270' }}>{pct(pctFromTop)}</div>
         {!isLast && (
           <div style={{ width: 70, textAlign: 'right', fontSize: 11, fontFamily: ds.fontDm, color: pctFromPrev < 50 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
             → {pct(pctFromPrev)}
@@ -596,8 +596,8 @@ function FunnelSection({ data, loading, teams, params, onParamsChange }) {
       </div>
       <div style={{ ...card, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: '#6b8fa0', fontFamily: ds.fontDm }}>Total leads: <strong>{data.total_leads}</strong></div>
-          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#6b8fa0', fontFamily: ds.fontDm }}>
+          <div style={{ fontSize: 12, color: '#5B6270', fontFamily: ds.fontDm }}>Total leads: <strong>{data.total_leads}</strong></div>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#5B6270', fontFamily: ds.fontDm }}>
             Overall close rate: <strong style={{ color: ds.teal }}>{pct(data.overall_close_rate)}</strong>
           </div>
         </div>
@@ -634,7 +634,7 @@ function FunnelSection({ data, loading, teams, params, onParamsChange }) {
 function VelocitySection({ data, loading }) {
   if (loading) return <Skeleton height={140} />
   if (!data || !data.length) return (
-    <div style={{ color: '#6b8fa0', fontSize: 13, fontFamily: ds.fontDm }}>No velocity data for this period.</div>
+    <div style={{ color: '#5B6270', fontSize: 13, fontFamily: ds.fontDm }}>No velocity data for this period.</div>
   )
 
   const max  = Math.max(...data.map(d => d.lead_count), 1)
@@ -741,7 +741,7 @@ function RepSection({ data, loading }) {
 
   if (loading) return <Skeleton height={140} />
   if (!data || !data.length) return (
-    <div style={{ color: '#6b8fa0', fontSize: 13, fontFamily: ds.fontDm }}>No rep data for this period.</div>
+    <div style={{ color: '#5B6270', fontSize: 13, fontFamily: ds.fontDm }}>No rep data for this period.</div>
   )
 
   function toggleSort(key) {
@@ -787,7 +787,7 @@ function RepSection({ data, loading }) {
 function ChannelSection({ data, loading }) {
   if (loading) return <Skeleton height={140} />
   if (!data || !data.length) return (
-    <div style={{ color: '#6b8fa0', fontSize: 13, fontFamily: ds.fontDm }}>No channel data for this period.</div>
+    <div style={{ color: '#5B6270', fontSize: 13, fontFamily: ds.fontDm }}>No channel data for this period.</div>
   )
 
   const channelIcon = (source) => {
@@ -824,7 +824,7 @@ function ChannelSection({ data, loading }) {
               <td style={td}>{row.cost_per_lead != null ? fmt(row.cost_per_lead) : '—'}</td>
               <td style={td}>
                 {row.top_ads && row.top_ads.length > 0 ? (
-                  <span title={row.top_ads.join(', ')} style={{ cursor: 'default', fontSize: 12, color: '#5a8a9f' }}>
+                  <span title={row.top_ads.join(', ')} style={{ cursor: 'default', fontSize: 12, color: '#5B6270' }}>
                     {row.top_ads.map(ad => ad.length > 20 ? ad.slice(0, 20) + '…' : ad).join(', ')}
                   </span>
                 ) : (
@@ -852,15 +852,15 @@ function WinLossSection({ data, loading }) {
       <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
         <div style={{ ...card, flex: 1, borderTop: '3px solid #16a34a', textAlign: 'center' }}>
           <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 28, color: '#16a34a' }}>{data.won}</div>
-          <div style={{ fontSize: 11.5, color: '#6b8fa0', fontFamily: ds.fontDm, fontWeight: 600, textTransform: 'uppercase' }}>Won</div>
+          <div style={{ fontSize: 11.5, color: '#5B6270', fontFamily: ds.fontDm, fontWeight: 600, textTransform: 'uppercase' }}>Won</div>
         </div>
         <div style={{ ...card, flex: 1, borderTop: '3px solid #dc2626', textAlign: 'center' }}>
           <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 28, color: '#dc2626' }}>{data.lost}</div>
-          <div style={{ fontSize: 11.5, color: '#6b8fa0', fontFamily: ds.fontDm, fontWeight: 600, textTransform: 'uppercase' }}>Lost</div>
+          <div style={{ fontSize: 11.5, color: '#5B6270', fontFamily: ds.fontDm, fontWeight: 600, textTransform: 'uppercase' }}>Lost</div>
         </div>
         <div style={{ ...card, flex: 1, borderTop: `3px solid ${ds.teal}`, textAlign: 'center' }}>
           <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 28, color: ds.teal }}>{pct(data.win_rate)}</div>
-          <div style={{ fontSize: 11.5, color: '#6b8fa0', fontFamily: ds.fontDm, fontWeight: 600, textTransform: 'uppercase' }}>Win Rate</div>
+          <div style={{ fontSize: 11.5, color: '#5B6270', fontFamily: ds.fontDm, fontWeight: 600, textTransform: 'uppercase' }}>Win Rate</div>
         </div>
       </div>
       {data.lost_reasons?.length > 0 && (
@@ -870,7 +870,7 @@ function WinLossSection({ data, loading }) {
             <div key={r.reason} style={{ marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                 <span style={{ fontSize: 12.5, color: ds.dark, fontFamily: ds.fontDm }}>{r.reason}</span>
-                <span style={{ fontSize: 12, color: '#6b8fa0', fontFamily: ds.fontDm }}>{r.count} · {pct(r.pct)}</span>
+                <span style={{ fontSize: 12, color: '#5B6270', fontFamily: ds.fontDm }}>{r.count} · {pct(r.pct)}</span>
               </div>
               <div style={{ background: '#f1f5f8', borderRadius: 4, height: 8 }}>
                 <div style={{ width: `${(r.count / maxCount) * 100}%`, height: '100%', background: '#dc2626', borderRadius: 4, transition: 'width 0.4s ease' }} />
@@ -890,7 +890,7 @@ function CampaignSection({ data, loading }) {
 
   if (loading) return <Skeleton height={140} />
   if (!data || !data.length) return (
-    <div style={{ color: '#6b8fa0', fontSize: 13, fontFamily: ds.fontDm }}>
+    <div style={{ color: '#5B6270', fontSize: 13, fontFamily: ds.fontDm }}>
       No campaign data for this period. Tag your WhatsApp links with [ref:source·campaign] to start tracking.
     </div>
   )
@@ -971,7 +971,7 @@ function CampaignSection({ data, loading }) {
               {(selected.leads || []).map(l => (
                 <tr key={l.id}>
                   <td style={{ ...td, fontWeight: 500 }}>{l.full_name}</td>
-                  <td style={{ ...td, color: '#6b8fa0', fontFamily: 'monospace', fontSize: 12 }}>{l.phone}</td>
+                  <td style={{ ...td, color: '#5B6270', fontFamily: 'monospace', fontSize: 12 }}>{l.phone}</td>
                   <td style={td}>
                     <span style={{ ...stageColour(l.stage), padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600 }}>
                       {l.stage}
@@ -1189,7 +1189,7 @@ export default function GrowthDashboard({ user, setView }) {
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
               padding: '7px 14px', borderRadius: 20,
-              border: '1.5px solid #dde4e8', background: 'white',
+              border: '1.5px solid #E1E5EC', background: 'white',
               color: ds.gray, fontFamily: ds.fontDm, fontWeight: 600,
               fontSize: 12.5, flexShrink: 0,
               cursor: (insightRefreshing || insightsLoading) ? 'not-allowed' : 'pointer',

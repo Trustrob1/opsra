@@ -82,9 +82,9 @@ function FieldError({ message }) {
 
 const inputStyle = (hasError) => ({
   width: '100%', boxSizing: 'border-box',
-  padding: '9px 12px', background: '#091620',
+  padding: '9px 12px', background: '#F6F7FA',
   border: `1px solid ${hasError ? '#c0392b' : '#1a3545'}`,
-  borderRadius: 6, color: 'white',
+  borderRadius: 6, color: '#1B1F28',
   fontSize: 13, outline: 'none',
   fontFamily: 'inherit',
   transition: 'border-color 0.15s',
@@ -239,7 +239,7 @@ export default function MessagingLimitsConfig() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#5a8a9f', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         Loading messaging limits…
       </div>
     )
@@ -253,12 +253,12 @@ export default function MessagingLimitsConfig() {
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h2 style={{
-          fontWeight: 700, fontSize: 17, color: 'white',
+          fontWeight: 700, fontSize: 17, color: '#1B1F28',
           margin: '0 0 6px',
         }}>
           💬 Messaging Limits
         </h2>
-        <p style={{ fontSize: 13, color: '#5a8a9f', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           Control how many automated messages a customer can receive per day,
           and set quiet hours to pause outbound messaging overnight.
         </p>
@@ -266,14 +266,14 @@ export default function MessagingLimitsConfig() {
 
       {/* ── Daily limit card ─────────────────────────────────────────────── */}
       <div style={{
-        background: '#0d2231', border: '1px solid #1a3545',
+        background: '#F1F3F8', border: '1px solid #1a3545',
         borderRadius: 10, padding: '20px 24px', marginBottom: 16,
       }}>
         <div style={{ marginBottom: 16 }}>
-          <p style={{ fontWeight: 600, fontSize: 14, color: 'white', margin: '0 0 4px' }}>
+          <p style={{ fontWeight: 600, fontSize: 14, color: '#1B1F28', margin: '0 0 4px' }}>
             Daily message limit per customer
           </p>
-          <p style={{ fontSize: 12, color: '#5a8a9f', margin: 0, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
             Maximum automated messages any single customer can receive in one day,
             across all workers (broadcasts, drip, renewals, NPS, cart reminders).
             System maximum is {ceiling}.
@@ -292,7 +292,7 @@ export default function MessagingLimitsConfig() {
             }}
             style={{ ...inputStyle(!!fieldErrors.daily_customer_message_limit), width: 100 }}
           />
-          <span style={{ fontSize: 12, color: '#5a8a9f' }}>
+          <span style={{ fontSize: 12, color: '#5B6270' }}>
             messages / customer / day
           </span>
         </div>
@@ -300,12 +300,12 @@ export default function MessagingLimitsConfig() {
 
         {/* Info callout */}
         <div style={{
-          marginTop: 14, background: '#0a1e2b', border: '1px solid #1a3545',
+          marginTop: 14, background: '#F1F3F8', border: '1px solid #1a3545',
           borderRadius: 8, padding: '12px 14px',
           display: 'flex', gap: 10, alignItems: 'flex-start',
         }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
-          <p style={{ fontSize: 12, color: '#4a7a8a', margin: 0, lineHeight: 1.7 }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: 0, lineHeight: 1.7 }}>
             <strong style={{ color: '#6a9aaa' }}>Default is 3.</strong> If a customer
             hits this limit, remaining messages are silently skipped for that day —
             they are not queued or retried. Keep this low to avoid overwhelming customers
@@ -316,7 +316,7 @@ export default function MessagingLimitsConfig() {
 
       {/* ── Quiet hours card ─────────────────────────────────────────────── */}
       <div style={{
-        background: '#0d2231', border: '1px solid #1a3545',
+        background: '#F1F3F8', border: '1px solid #1a3545',
         borderRadius: 10, padding: '20px 24px', marginBottom: 24,
       }}>
         {/* Toggle header */}
@@ -325,10 +325,10 @@ export default function MessagingLimitsConfig() {
           justifyContent: 'space-between', gap: 16, marginBottom: quietEnabled ? 20 : 0,
         }}>
           <div>
-            <p style={{ fontWeight: 600, fontSize: 14, color: 'white', margin: '0 0 4px' }}>
+            <p style={{ fontWeight: 600, fontSize: 14, color: '#1B1F28', margin: '0 0 4px' }}>
               Quiet hours
             </p>
-            <p style={{ fontSize: 12, color: '#5a8a9f', margin: 0, lineHeight: 1.6 }}>
+            <p style={{ fontSize: 12, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
               Messages triggered outside this window are held and sent when quiet
               hours end — they are never dropped.
             </p>
@@ -363,7 +363,7 @@ export default function MessagingLimitsConfig() {
               gap: 10, alignItems: 'center', marginBottom: 16,
             }}>
               <div>
-                <label style={{ fontSize: 11, color: '#5a8a9f', display: 'block', marginBottom: 5 }}>
+                <label style={{ fontSize: 11, color: '#5B6270', display: 'block', marginBottom: 5 }}>
                   START TIME
                 </label>
                 <input
@@ -378,12 +378,12 @@ export default function MessagingLimitsConfig() {
                 <FieldError message={fieldErrors.quiet_hours_start} />
               </div>
 
-              <div style={{ textAlign: 'center', color: '#3a5a6a', fontSize: 14, paddingTop: 20 }}>
+              <div style={{ textAlign: 'center', color: '#3C4352', fontSize: 14, paddingTop: 20 }}>
                 →
               </div>
 
               <div>
-                <label style={{ fontSize: 11, color: '#5a8a9f', display: 'block', marginBottom: 5 }}>
+                <label style={{ fontSize: 11, color: '#5B6270', display: 'block', marginBottom: 5 }}>
                   END TIME
                 </label>
                 <input
@@ -403,7 +403,7 @@ export default function MessagingLimitsConfig() {
             {quietStart && quietEnd && quietStart > quietEnd && (
               <div style={{
                 marginBottom: 16, padding: '10px 12px',
-                background: '#0a1e2b', borderRadius: 6,
+                background: '#F1F3F8', borderRadius: 6,
                 fontSize: 12, color: '#6a9aaa',
                 border: '1px solid #1a3545',
               }}>
@@ -413,7 +413,7 @@ export default function MessagingLimitsConfig() {
 
             {/* Timezone */}
             <div>
-              <label style={{ fontSize: 11, color: '#5a8a9f', display: 'block', marginBottom: 5 }}>
+              <label style={{ fontSize: 11, color: '#5B6270', display: 'block', marginBottom: 5 }}>
                 TIMEZONE
               </label>
               <input
@@ -426,7 +426,7 @@ export default function MessagingLimitsConfig() {
                 placeholder="e.g. Africa/Lagos"
                 style={inputStyle(!!fieldErrors.timezone)}
               />
-              <p style={{ fontSize: 11, color: '#3a5a6a', margin: '5px 0 0' }}>
+              <p style={{ fontSize: 11, color: '#3C4352', margin: '5px 0 0' }}>
                 Use IANA format. Examples: Africa/Lagos · Europe/London · America/New_York
               </p>
               <FieldError message={fieldErrors.timezone} />
@@ -441,10 +441,10 @@ export default function MessagingLimitsConfig() {
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: 16, padding: '14px 24px',
-          background: 'white', borderTop: '1px solid #e2eff4',
+          background: 'white', borderTop: '1px solid #E1E5EC',
           boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
         }}>
-          <p style={{ fontSize: 13, color: '#5a8a9f', margin: 0 }}>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: 0 }}>
             You have unsaved changes
           </p>
           <div style={{ display: 'flex', gap: 12 }}>
@@ -454,7 +454,7 @@ export default function MessagingLimitsConfig() {
               style={{
                 padding: '8px 16px', borderRadius: 8, border: 'none',
                 background: 'transparent', cursor: saving ? 'not-allowed' : 'pointer',
-                fontSize: 13, fontWeight: 500, color: '#4a7a8a',
+                fontSize: 13, fontWeight: 500, color: '#5B6270',
                 opacity: saving ? 0.5 : 1,
               }}
             >

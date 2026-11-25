@@ -52,7 +52,7 @@ export default function AutomationConfig() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 13 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 13 }}>
         Loading…
       </div>
     )
@@ -62,10 +62,10 @@ export default function AutomationConfig() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 6px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: '0 0 6px' }}>
           Automation Config
         </h2>
-        <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           Configure automated actions that fire on key events across your pipeline.
         </p>
       </div>
@@ -78,10 +78,10 @@ export default function AutomationConfig() {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16 }}>
           <div style={{ fontSize: 24, flexShrink: 0 }}>✅</div>
           <div>
-            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', marginBottom: 4 }}>
+            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', marginBottom: 4 }}>
               Payment Confirmation Template
             </div>
-            <div style={{ fontSize: 12.5, color: '#4a7a8a', lineHeight: 1.55 }}>
+            <div style={{ fontSize: 12.5, color: '#5B6270', lineHeight: 1.55 }}>
               Auto-sent via WhatsApp the moment a rep converts a lead to customer.
               Enter the template name exactly as it appears in Meta Business Manager.
               Leave blank to disable.
@@ -99,7 +99,7 @@ export default function AutomationConfig() {
               flex: 1, padding: '9px 13px', fontSize: 13.5,
               border: `1.5px solid ${isDirty ? ds.teal : '#E1E5EC'}`,
               borderRadius: 8, outline: 'none',
-              fontFamily: ds.fontDm, color: '#0a1a24',
+              fontFamily: ds.fontDm, color: '#1B1F28',
               background: 'white', transition: 'border-color 0.15s',
             }}
           />
@@ -109,7 +109,7 @@ export default function AutomationConfig() {
               style={{
                 padding: '9px 14px', background: 'white',
                 border: '1.5px solid #E1E5EC', borderRadius: 8,
-                fontSize: 13, color: '#7A9BAD', cursor: 'pointer',
+                fontSize: 13, color: '#5B6270', cursor: 'pointer',
                 fontFamily: ds.fontDm,
               }}
             >

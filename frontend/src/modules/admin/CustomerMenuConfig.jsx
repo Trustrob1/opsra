@@ -222,7 +222,7 @@ function ItemEditor({ items, setItems, actionOptions, contactTypeMap, sectionKey
               ) : (
                 <>
                   <label style={S.label}>Contact type (auto)</label>
-                  <div style={{ ...S.input, background: '#F6F7FA', color: '#7A9BAD', cursor: 'default' }}>
+                  <div style={{ ...S.input, background: '#F6F7FA', color: '#5B6270', cursor: 'default' }}>
                     {item.contact_type || contactTypeMap[item.action] || 'other'}
                   </div>
                 </>
@@ -303,14 +303,14 @@ function WhatsAppPreview({ greeting, sectionTitle, items }) {
             </div>
             {open && (
               <div style={{ background: 'white', borderRadius: 8, marginTop: 8, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
-                <div style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#5a8a9f', textTransform: 'uppercase', borderBottom: '1px solid #F0F0F0' }}>
+                <div style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', borderBottom: '1px solid #F0F0F0' }}>
                   {sectionTitle || 'Choose an option'}
                 </div>
                 {items.slice(0, 10).map((item, i) => (
                   <div key={i} style={{ padding: '8px 10px', borderBottom: i < items.length - 1 ? '1px solid #F0F0F0' : 'none' }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0a1a24' }}>{item.label || '(empty)'}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1B1F28' }}>{item.label || '(empty)'}</div>
                     {item.description && (
-                      <div style={{ fontSize: 10.5, color: '#7A9BAD', marginTop: 1 }}>{item.description}</div>
+                      <div style={{ fontSize: 10.5, color: '#5B6270', marginTop: 1 }}>{item.description}</div>
                     )}
                   </div>
                 ))}
@@ -426,16 +426,16 @@ export default function CustomerMenuConfig() {
   }
 
   if (loading) {
-    return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 13 }}>Loading triage config…</div>
+    return <div style={{ padding: 32, color: '#5B6270', fontSize: 13 }}>Loading triage config…</div>
   }
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 4px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: '0 0 4px' }}>
           WhatsApp Triage Menu
         </h2>
-        <p style={{ fontSize: 13, color: '#5a8a9f', margin: 0 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0 }}>
           Configure how Opsra handles inbound WhatsApp messages from unknown contacts and existing customers.
         </p>
       </div>
@@ -471,10 +471,10 @@ export default function CustomerMenuConfig() {
                 style={{ marginTop: 2, accentColor: ds.teal, flexShrink: 0 }}
               />
               <div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0a1a24', marginBottom: 2 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1B1F28', marginBottom: 2 }}>
                   {opt.label}
                 </div>
-                <div style={{ fontSize: 12.5, color: '#5a8a9f', lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12.5, color: '#5B6270', lineHeight: 1.5 }}>
                   {opt.desc}
                 </div>
               </div>
@@ -484,7 +484,7 @@ export default function CustomerMenuConfig() {
       </div>
 
       {/* ── Section tabs ──────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid #E2EFF4' }}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid #E1E5EC' }}>
         {[
           { key: 'unknown',  label: 'Unknown Contacts' },
           { key: 'customer', label: 'Existing Customers' },
@@ -590,7 +590,7 @@ export default function CustomerMenuConfig() {
       {/* ── Existing customers section ────────────────────────────────────── */}
       <div style={{ display: activeTab === 'customer' ? 'block' : 'none' }}>
         <div style={{ ...S.card, background: '#F0FAFA', border: `1px solid ${ds.teal}30`, marginBottom: 20 }}>
-          <p style={{ fontSize: 13, color: '#1a7a8a', margin: 0, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 13, color: '#2467E3', margin: 0, lineHeight: 1.6 }}>
             When a known customer messages in and this menu is configured, they will receive this
             interactive menu instead of going straight to the AI intent classifier.
             Leave items empty to skip the menu and use automatic intent detection.
@@ -649,7 +649,7 @@ export default function CustomerMenuConfig() {
       {/* ── Lead post-handoff messages section ───────────────────────────── */}
       <div style={{ display: activeTab === 'lead' ? 'block' : 'none' }}>
         <div style={{ ...S.card, background: '#F0FAFA', border: `1px solid ${ds.teal}30`, marginBottom: 20 }}>
-          <p style={{ fontSize: 13, color: '#1a7a8a', margin: 0, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 13, color: '#2467E3', margin: 0, lineHeight: 1.6 }}>
             These messages are sent automatically to leads who message in while waiting for a rep.
             Use <strong>{'{{name}}'}</strong> to personalise with the lead's name.
             Changes take effect immediately — no deployment needed.
@@ -686,7 +686,7 @@ export default function CustomerMenuConfig() {
         {/* Forwarding message */}
         <div style={S.card}>
           <div style={S.cardTitle}>Fallback Message (no KB answer found)</div>
-          <p style={{ fontSize: 12.5, color: '#5a8a9f', margin: '0 0 12px', lineHeight: 1.5 }}>
+          <p style={{ fontSize: 12.5, color: '#5B6270', margin: '0 0 12px', lineHeight: 1.5 }}>
             Sent when a lead asks a question the knowledge base can't answer.
             The rep is also notified with the lead's question.
           </p>
@@ -727,15 +727,15 @@ export default function CustomerMenuConfig() {
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const S = {
   card: {
-    background: 'white', border: '1px solid #E2EFF4', borderRadius: 12,
+    background: 'white', border: '1px solid #E1E5EC', borderRadius: 12,
     padding: '20px 22px', marginBottom: 20,
   },
   cardTitle: {
     fontFamily: 'var(--font-syne, sans-serif)', fontWeight: 700, fontSize: 14,
-    color: '#0a1a24', marginBottom: 14,
+    color: '#1B1F28', marginBottom: 14,
   },
   label: {
-    display: 'block', fontSize: 11, color: '#7A9BAD',
+    display: 'block', fontSize: 11, color: '#5B6270',
     textTransform: 'uppercase', letterSpacing: '0.4px',
     fontWeight: 500, marginBottom: 4,
   },
@@ -750,16 +750,16 @@ const S = {
   },
   arrowBtn: {
     background: 'none', border: '1px solid #E1E5EC', borderRadius: 5,
-    cursor: 'pointer', padding: '2px 5px', fontSize: 10, color: '#7A9BAD',
+    cursor: 'pointer', padding: '2px 5px', fontSize: 10, color: '#5B6270',
     lineHeight: 1.4,
   },
   addBtn: {
-    padding: '6px 14px', background: '#E4EDFD', color: '#1a7a8a',
+    padding: '6px 14px', background: '#E4EDFD', color: '#2467E3',
     border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer',
   },
   phoneFrame: {
-    border: '1.5px solid #E2EFF4', borderRadius: 12, overflow: 'hidden',
+    border: '1.5px solid #E1E5EC', borderRadius: 12, overflow: 'hidden',
   },
   waBubble: {
     background: 'white', borderRadius: '0 10px 10px 10px',

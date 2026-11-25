@@ -41,17 +41,17 @@ const MODAL = {
   boxShadow: '0 24px 60px rgba(0,0,0,0.25)',
 }
 const LABEL = {
-  display: 'block', fontSize: 11, fontWeight: 600, color: '#4a7a8a',
+  display: 'block', fontSize: 11, fontWeight: 600, color: '#5B6270',
   textTransform: 'uppercase', letterSpacing: '0.7px', marginTop: 16, marginBottom: 6,
 }
 const INPUT = {
   width: '100%', padding: '9px 12px', border: '1px solid #D4E6EC',
   borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit',
-  color: '#0a1a24', background: 'white', boxSizing: 'border-box',
+  color: '#1B1F28', background: 'white', boxSizing: 'border-box',
 }
 const GHOST = {
   background: 'white', border: '1px solid #CBD5E1', borderRadius: 6,
-  padding: '5px 10px', fontSize: 12, fontWeight: 500, color: '#4a7a8a',
+  padding: '5px 10px', fontSize: 12, fontWeight: 500, color: '#5B6270',
   cursor: 'pointer', fontFamily: 'inherit',
 }
 
@@ -92,7 +92,7 @@ export default function RoutingRules() {
 
   const roleName = (id) => roles.find(r => r.id === id)?.name ?? id ?? '—'
 
-  if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading routing rules…</div>
+  if (loading) return <div style={{ padding: 32, color: '#5B6270', fontSize: 14 }}>Loading routing rules…</div>
   if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}>⚠ {error}</div>
 
   return (
@@ -100,8 +100,8 @@ export default function RoutingRules() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
         <div>
-          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Routing Rules</h2>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>
+          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>Routing Rules</h2>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>
             Controls which role or user is notified for each system event
           </p>
         </div>
@@ -114,12 +114,12 @@ export default function RoutingRules() {
       </div>
 
       {/* Table */}
-      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E4EEF2', overflow: 'hidden' }}>
+      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#F5F9FA' }}>
               {['Event Type', 'Route To', 'Channel', 'Also Notify', 'Escalation', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                   {h}
                 </th>
               ))}
@@ -128,33 +128,33 @@ export default function RoutingRules() {
           <tbody>
             {rules.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: 32, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+                <td colSpan={6} style={{ padding: 32, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
                   No routing rules configured. Add one to control event notifications.
                 </td>
               </tr>
             ) : rules.map((rule, i) => (
               <tr key={rule.id} style={{ borderTop: i > 0 ? '1px solid #F0F7FA' : 'none' }}>
                 <td style={{ padding: '12px 14px' }}>
-                  <code style={{ fontSize: 12, background: '#F1F5F9', borderRadius: 5, padding: '2px 7px', color: '#0a1a24' }}>
+                  <code style={{ fontSize: 12, background: '#F1F5F9', borderRadius: 5, padding: '2px 7px', color: '#1B1F28' }}>
                     {rule.event_type}
                   </code>
                 </td>
-                <td style={{ padding: '12px 14px', fontSize: 13, color: '#0a1a24' }}>
+                <td style={{ padding: '12px 14px', fontSize: 13, color: '#1B1F28' }}>
                   {rule.route_to_role_id
                     ? <span>Role: <strong>{roleName(rule.route_to_role_id)}</strong></span>
                     : rule.route_to_user_id
                     ? <span>User: <em>{rule.route_to_user_id.slice(0, 8)}…</em></span>
-                    : <span style={{ color: '#7A9BAD' }}>—</span>}
+                    : <span style={{ color: '#5B6270' }}>—</span>}
                 </td>
                 <td style={{ padding: '12px 14px' }}>
                   <span style={{ fontSize: 11, fontWeight: 600, background: '#EEF8FA', color: ds.teal, borderRadius: 6, padding: '3px 8px' }}>
                     {rule.channel ?? 'whatsapp_inapp'}
                   </span>
                 </td>
-                <td style={{ padding: '12px 14px', fontSize: 12, color: '#7A9BAD' }}>
+                <td style={{ padding: '12px 14px', fontSize: 12, color: '#5B6270' }}>
                   {rule.also_notify_role_id ? roleName(rule.also_notify_role_id) : '—'}
                 </td>
-                <td style={{ padding: '12px 14px', fontSize: 12, color: '#7A9BAD' }}>
+                <td style={{ padding: '12px 14px', fontSize: 12, color: '#5B6270' }}>
                   {rule.escalate_after_minutes
                     ? `${rule.escalate_after_minutes} min → ${roleName(rule.escalate_to_role_id)}`
                     : '—'}
@@ -250,10 +250,10 @@ function RuleModal({ mode, rule, roles, onSave, onClose }) {
     <div style={OVERLAY} onClick={onClose}>
       <div style={MODAL} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>
             {isCreate ? 'New Routing Rule' : 'Edit Rule'}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270', lineHeight: 1 }}>×</button>
         </div>
 
         <label style={LABEL}>Event type *</label>
@@ -279,7 +279,7 @@ function RuleModal({ mode, rule, roles, onSave, onClose }) {
         </select>
 
         <div style={{ marginTop: 16 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, color: '#0a1a24', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, color: '#1B1F28', cursor: 'pointer' }}>
             <input type="checkbox" checked={form.within_hours_only} onChange={e => set('within_hours_only', e.target.checked)} />
             Only notify during business hours
           </label>

@@ -90,7 +90,7 @@ export default function SalesModeConfig() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 13 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 13 }}>
         Loading…
       </div>
     )
@@ -100,10 +100,10 @@ export default function SalesModeConfig() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 6px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: '0 0 6px' }}>
           Sales Mode
         </h2>
-        <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           Controls how new WhatsApp contacts enter your system. This setting affects all
           inbound WhatsApp routing for your organisation.
         </p>
@@ -141,20 +141,20 @@ export default function SalesModeConfig() {
               )}
 
               <div style={{ fontSize: 26, marginBottom: 10 }}>{m.icon}</div>
-              <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', marginBottom: 2 }}>
+              <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', marginBottom: 2 }}>
                 {m.label}
               </div>
               <div style={{ fontSize: 11.5, color: ds.teal, fontWeight: 600, marginBottom: 10 }}>
                 {m.tagline}
               </div>
-              <div style={{ fontSize: 12.5, color: '#4a7a8a', lineHeight: 1.55, marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, color: '#5B6270', lineHeight: 1.55, marginBottom: 12 }}>
                 {m.description}
               </div>
 
               {/* Use cases */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: m.requiresShopify ? 12 : 0 }}>
                 {m.useCases.map(uc => (
-                  <div key={uc} style={{ fontSize: 11.5, color: '#7A9BAD', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div key={uc} style={{ fontSize: 11.5, color: '#5B6270', display: 'flex', alignItems: 'center', gap: 5 }}>
                     <span style={{ color: ds.teal }}>✓</span> {uc}
                   </div>
                 ))}
@@ -199,13 +199,13 @@ export default function SalesModeConfig() {
           background: '#F0FAFA', border: `1px solid ${ds.teal}30`,
           borderRadius: 12, padding: '18px 22px', marginBottom: 24,
         }}>
-          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: '#0a1a24', marginBottom: 12 }}>
+          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: '#1B1F28', marginBottom: 12 }}>
             New contacts will first see:
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <div style={{
               background: '#DCF8C6', borderRadius: '0 10px 10px 10px',
-              padding: '10px 14px', fontSize: 13, color: '#0a1a24',
+              padding: '10px 14px', fontSize: 13, color: '#1B1F28',
               maxWidth: 280, boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
             }}>
               Hi! How can we help you today?
@@ -215,7 +215,7 @@ export default function SalesModeConfig() {
               <div style={hybridBtn}>💬 Speak to Sales</div>
             </div>
           </div>
-          <p style={{ fontSize: 12, color: '#4a7a8a', margin: '14px 0 0', lineHeight: 1.5 }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: '14px 0 0', lineHeight: 1.5 }}>
             <strong>Buy Now</strong> routes to your Shopify store (requires Shopify integration).{' '}
             <strong>Speak to Sales</strong> fires the qualification bot — available now.
             Returning leads will see the <strong>Returning Contact Menu</strong> and known customers

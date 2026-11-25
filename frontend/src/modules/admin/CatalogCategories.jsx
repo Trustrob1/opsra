@@ -14,18 +14,18 @@ import {
   toggleAssignment, assignmentCalls, categoriesChanged,
 } from './catalogStorefrontLogic'
 
-const CARD = { background: 'white', borderRadius: 12, border: '1px solid #E2EFF4', padding: 20 }
+const CARD = { background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', padding: 20 }
 const INPUT = {
-  width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #D0E8F0', fontFamily: ds.fontDm,
-  fontSize: 13.5, color: '#0a1a24', background: 'white', boxSizing: 'border-box', outline: 'none', minHeight: 44,
+  width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #E1E5EC', fontFamily: ds.fontDm,
+  fontSize: 13.5, color: '#1B1F28', background: 'white', boxSizing: 'border-box', outline: 'none', minHeight: 44,
 }
 const BTN = {
   background: ds.teal, color: 'white', border: 'none', borderRadius: 8, padding: '0 20px', minHeight: 44,
   fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
 }
 const BTN_GHOST = {
-  background: 'white', border: '1px solid #D0E8F0', borderRadius: 8, padding: '0 14px', minHeight: 44,
-  fontFamily: ds.fontDm, fontSize: 13, fontWeight: 600, color: '#0a1a24', cursor: 'pointer',
+  background: 'white', border: '1px solid #E1E5EC', borderRadius: 8, padding: '0 14px', minHeight: 44,
+  fontFamily: ds.fontDm, fontSize: 13, fontWeight: 600, color: '#1B1F28', cursor: 'pointer',
 }
 const SQUARE = { ...BTN_GHOST, width: 44, padding: 0 }
 
@@ -104,11 +104,11 @@ export default function CatalogCategories({ onSaved }) {
     }
   }
 
-  if (!loaded) return <div style={{ padding: 32, fontFamily: ds.fontDm, color: '#7A9BAD' }}>Loading…</div>
+  if (!loaded) return <div style={{ padding: 32, fontFamily: ds.fontDm, color: '#5B6270' }}>Loading…</div>
 
   return (
     <div style={{ padding: '4px 0 40px' }}>
-      <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', margin: '0 0 16px', maxWidth: 640 }}>
+      <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', margin: '0 0 16px', maxWidth: 640 }}>
         Categories become the menu at the top of your Storefront, the filter buttons on the grid, and the path on each product.
         Removing a category never deletes products.
       </p>
@@ -121,10 +121,10 @@ export default function CatalogCategories({ onSaved }) {
               onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
             <button type="button" style={BTN} onClick={add} disabled={draft.length >= CATEGORY_MAX}>Add</button>
           </div>
-          <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }}>{draft.length} of {CATEGORY_MAX} categories</div>
+          <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>{draft.length} of {CATEGORY_MAX} categories</div>
 
           {draft.length === 0 ? (
-            <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#4a7a8a', margin: '18px 0 0' }}>
+            <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#5B6270', margin: '18px 0 0' }}>
               No categories yet. Add your first one above, then choose its products.
             </p>
           ) : (
@@ -134,11 +134,11 @@ export default function CatalogCategories({ onSaved }) {
                   <button type="button" onClick={() => setSelected(c.id)} aria-pressed={c.id === selected}
                     style={{
                       flex: 1, minHeight: 44, textAlign: 'left', padding: '0 12px', borderRadius: 8, cursor: 'pointer',
-                      fontFamily: ds.fontDm, fontSize: 14, fontWeight: 600, color: '#0a1a24',
+                      fontFamily: ds.fontDm, fontSize: 14, fontWeight: 600, color: '#1B1F28',
                       background: c.id === selected ? '#E8F5F7' : 'white',
-                      border: c.id === selected ? `2px solid ${ds.teal}` : '1px solid #D0E8F0',
+                      border: c.id === selected ? `2px solid ${ds.teal}` : '1px solid #E1E5EC',
                     }}>
-                    {c.name} <span style={{ fontWeight: 400, color: '#7A9BAD' }}>({countOf(c.id)})</span>
+                    {c.name} <span style={{ fontWeight: 400, color: '#5B6270' }}>({countOf(c.id)})</span>
                   </button>
                   <button type="button" style={SQUARE} aria-label={`Move ${c.name} up`} disabled={i === 0}
                     onClick={() => setDraft((d) => moveDraftCategory(d, c.id, -1))}>↑</button>
@@ -149,7 +149,7 @@ export default function CatalogCategories({ onSaved }) {
             </ul>
           )}
 
-          <label style={{ marginTop: 18, display: 'flex', gap: 10, alignItems: 'center', fontFamily: ds.fontDm, fontSize: 13.5, color: '#0a1a24', minHeight: 44, cursor: 'pointer' }}>
+          <label style={{ marginTop: 18, display: 'flex', gap: 10, alignItems: 'center', fontFamily: ds.fontDm, fontSize: 13.5, color: '#1B1F28', minHeight: 44, cursor: 'pointer' }}>
             <input type="checkbox" checked={showInMenu} onChange={(e) => setShowInMenu(e.target.checked)} style={{ width: 20, height: 20 }} />
             Show categories in the store menu
           </label>
@@ -157,7 +157,7 @@ export default function CatalogCategories({ onSaved }) {
 
         <div style={CARD}>
           {!current ? (
-            <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#4a7a8a', margin: 0 }}>Pick a category to choose its products.</p>
+            <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#5B6270', margin: 0 }}>Pick a category to choose its products.</p>
           ) : (
             <>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -174,23 +174,23 @@ export default function CatalogCategories({ onSaved }) {
                 )}
               </div>
 
-              <div style={{ margin: '16px 0 8px', fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600, color: '#4a7a8a' }}>
+              <div style={{ margin: '16px 0 8px', fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600, color: '#5B6270' }}>
                 Products in {current.name} ({countOf(current.id)})
               </div>
               <input aria-label="Search products" style={INPUT} value={search} placeholder="Search products" onChange={(e) => setSearch(e.target.value)} />
               <div style={{ marginTop: 10, maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 2 }}>
                 {items.length === 0 && (
-                  <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#4a7a8a' }}>You have no products yet. Add some in the Items tab.</p>
+                  <p style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#5B6270' }}>You have no products yet. Add some in the Items tab.</p>
                 )}
                 {visibleItems.map((it) => {
                   const id = String(it.id)
                   const on = (assign[current.id] || []).includes(id)
                   return (
-                    <label key={id} style={{ display: 'flex', gap: 10, alignItems: 'center', minHeight: 44, padding: '0 6px', cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13.5, color: '#0a1a24' }}>
+                    <label key={id} style={{ display: 'flex', gap: 10, alignItems: 'center', minHeight: 44, padding: '0 6px', cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13.5, color: '#1B1F28' }}>
                       <input type="checkbox" checked={on} style={{ width: 20, height: 20 }}
                         onChange={() => setAssign((a) => toggleAssignment(a, current.id, id))} />
                       <span style={{ flex: 1 }}>{it.title}</span>
-                      {it.catalog_visible === false && <span style={{ fontSize: 11.5, color: '#7A9BAD' }}>Hidden</span>}
+                      {it.catalog_visible === false && <span style={{ fontSize: 11.5, color: '#5B6270' }}>Hidden</span>}
                     </label>
                   )
                 })}

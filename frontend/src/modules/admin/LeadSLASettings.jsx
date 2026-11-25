@@ -19,7 +19,7 @@ import { getSlaConfig, updateSlaConfig } from '../../services/admin.service'
 function SlaField({ label, emoji, color, value, onChange, min, max, hint }) {
   return (
     <div style={{
-      background:   '#0d2231',
+      background:   '#F1F3F8',
       border:       `1px solid ${color}33`,
       borderRadius: 10,
       padding:      '18px 20px',
@@ -45,10 +45,10 @@ function SlaField({ label, emoji, color, value, onChange, min, max, hint }) {
           style={{
             width:        72,
             padding:      '8px 10px',
-            background:   '#091620',
+            background:   '#F6F7FA',
             border:       `1px solid ${color}55`,
             borderRadius: 6,
-            color:        'white',
+            color:        '#1B1F28',
             fontFamily:   ds.fontDm,
             fontSize:     18,
             fontWeight:   700,
@@ -56,7 +56,7 @@ function SlaField({ label, emoji, color, value, onChange, min, max, hint }) {
             outline:      'none',
           }}
         />
-        <span style={{ color: '#5a8a9f', fontSize: 13, fontFamily: ds.fontDm }}>hours</span>
+        <span style={{ color: '#5B6270', fontSize: 13, fontFamily: ds.fontDm }}>hours</span>
       </div>
       <p style={{ fontSize: 11, color: '#4a6a7a', margin: '8px 0 0', fontFamily: ds.fontDm }}>
         {hint}
@@ -108,7 +108,7 @@ export default function LeadSLASettings() {
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#5a8a9f', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         Loading SLA settings…
       </div>
     )
@@ -121,11 +121,11 @@ export default function LeadSLASettings() {
       <div style={{ marginBottom: 24 }}>
         <h2 style={{
           fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17,
-          color: 'white', margin: '0 0 6px',
+          color: '#1B1F28', margin: '0 0 6px',
         }}>
           ⏱️ Lead Response SLA Targets
         </h2>
-        <p style={{ fontSize: 13, color: '#5a8a9f', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           Set how long reps have to make first contact with each lead tier before
           a breach alert is sent. At <strong style={{ color: '#7aafc0' }}>2× the target</strong>,
           the alert escalates to a manager automatically.
@@ -134,7 +134,7 @@ export default function LeadSLASettings() {
 
       {/* How it works callout */}
       <div style={{
-        background:   '#0a1e2b',
+        background:   '#F1F3F8',
         border:       '1px solid #1a3545',
         borderRadius: 8,
         padding:      '14px 16px',
@@ -144,7 +144,7 @@ export default function LeadSLASettings() {
         alignItems:   'flex-start',
       }}>
         <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
-        <div style={{ fontSize: 12, color: '#4a7a8a', lineHeight: 1.7, fontFamily: ds.fontDm }}>
+        <div style={{ fontSize: 12, color: '#5B6270', lineHeight: 1.7, fontFamily: ds.fontDm }}>
           <strong style={{ color: '#6a9aaa' }}>How it works:</strong> A background check
           runs every 15 minutes. If a scored, assigned lead hasn't been contacted within the
           target window, the rep receives a breach alert. At double the window, the manager
@@ -189,13 +189,13 @@ export default function LeadSLASettings() {
 
       {/* Escalation reminder */}
       <div style={{
-        background:   '#0a1e2b',
+        background:   '#F1F3F8',
         border:       '1px solid #1a3545',
         borderRadius: 8,
         padding:      '12px 16px',
         marginBottom: 24,
         fontSize:     12,
-        color:        '#4a7a8a',
+        color:        '#5B6270',
         fontFamily:   ds.fontDm,
         lineHeight:   1.6,
       }}>
@@ -211,7 +211,7 @@ export default function LeadSLASettings() {
       {/* Feedback */}
       {error && (
         <div style={{
-          background: '#2a0a0a', border: '1px solid #6a2020',
+          background: '#FDECEC', border: '1px solid #6a2020',
           borderRadius: 6, padding: '10px 14px',
           color: '#e05252', fontSize: 13, marginBottom: 16, fontFamily: ds.fontDm,
         }}>
@@ -220,7 +220,7 @@ export default function LeadSLASettings() {
       )}
       {success && (
         <div style={{
-          background: '#0a2a1a', border: '1px solid #206a40',
+          background: '#E3F4EA', border: '1px solid #206a40',
           borderRadius: 6, padding: '10px 14px',
           color: '#3dc47a', fontSize: 13, marginBottom: 16, fontFamily: ds.fontDm,
         }}>

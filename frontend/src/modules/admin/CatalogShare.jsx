@@ -9,16 +9,16 @@ import * as adminSvc from '../../services/admin.service'
 import { catalogErrorText } from './catalogErrors'
 import { SHARE_PRESETS, SHARE_TAG_MAX, cleanTag, taggedLink, isPresetTag } from './catalogStorefrontLogic'
 
-const CARD = { background: 'white', borderRadius: 12, border: '1px solid #E2EFF4', padding: 24, marginBottom: 20 }
-const H = { fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: '0 0 6px' }
-const P = { fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', lineHeight: 1.5, margin: '0 0 16px' }
-const LABEL = { fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600, color: '#4a7a8a', marginBottom: 6, display: 'block' }
+const CARD = { background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', padding: 24, marginBottom: 20 }
+const H = { fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: '0 0 6px' }
+const P = { fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', lineHeight: 1.5, margin: '0 0 16px' }
+const LABEL = { fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600, color: '#5B6270', marginBottom: 6, display: 'block' }
 const INPUT = {
-  width: '100%', padding: '11px 12px', borderRadius: 8, border: '1px solid #D0E8F0', fontFamily: ds.fontDm,
-  fontSize: 13.5, color: '#0a1a24', background: 'white', boxSizing: 'border-box', outline: 'none', minHeight: 44,
+  width: '100%', padding: '11px 12px', borderRadius: 8, border: '1px solid #E1E5EC', fontFamily: ds.fontDm,
+  fontSize: 13.5, color: '#1B1F28', background: 'white', boxSizing: 'border-box', outline: 'none', minHeight: 44,
 }
 const BTN = { background: ds.teal, color: 'white', border: 'none', borderRadius: 8, padding: '0 20px', minHeight: 44, fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }
-const GHOST = { background: 'white', border: '1px solid #D0E8F0', borderRadius: 8, padding: '0 16px', minHeight: 44, fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, color: '#0a1a24', cursor: 'pointer' }
+const GHOST = { background: 'white', border: '1px solid #E1E5EC', borderRadius: 8, padding: '0 16px', minHeight: 44, fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, color: '#1B1F28', cursor: 'pointer' }
 
 export default function CatalogShare({ fallbackUrl }) {
   const [info, setInfo] = useState(null)
@@ -115,7 +115,7 @@ export default function CatalogShare({ fallbackUrl }) {
         <input id="share-tag" style={INPUT} value={custom} placeholder="radio-ad" maxLength={SHARE_TAG_MAX + 10}
           onChange={(e) => { setCustom(e.target.value); setTag(cleanTag(e.target.value)) }} />
         {custom && customTag !== custom.trim().toLowerCase() && (
-          <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }}>We will use: {customTag || 'no tag'}</div>
+          <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>We will use: {customTag || 'no tag'}</div>
         )}
       </div>
 
@@ -129,10 +129,10 @@ export default function CatalogShare({ fallbackUrl }) {
       </div>
 
       <div style={{ marginTop: 20, display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ width: 168, height: 168, border: '1px solid #E2EFF4', borderRadius: 12, padding: 8, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white' }}>
+        <div style={{ width: 168, height: 168, border: '1px solid #E1E5EC', borderRadius: 12, padding: 8, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white' }}>
           {qr
             ? <img alt={`QR code for ${link}`} width={150} height={150} src={`data:image/svg+xml;utf8,${encodeURIComponent(qr)}`} />
-            : <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD', textAlign: 'center' }}>{qrError || 'Making QR…'}</span>}
+            : <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270', textAlign: 'center' }}>{qrError || 'Making QR…'}</span>}
         </div>
         <div style={{ flex: '1 1 220px' }}>
           <button type="button" style={GHOST} onClick={downloadQr} disabled={!qr}>Download QR code</button>

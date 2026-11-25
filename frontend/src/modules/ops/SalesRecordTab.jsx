@@ -77,7 +77,7 @@ const INP = {
 }
 
 const CARD = {
-  background: 'white', border: '1px solid #E4EEF2', borderRadius: 12,
+  background: 'white', border: '1px solid #E1E5EC', borderRadius: 12,
   padding: '16px 18px',
 }
 
@@ -152,7 +152,7 @@ function computeDelta(curr, prev) {
 function Kpi({ label, value, accent, delta }) {
   return (
     <div style={{ ...CARD, flex: 1 }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{label}</p>
       <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 24, color: accent ?? '#0a1a24', margin: delta ? '0 0 8px' : 0 }}>{value}</p>
       {delta && <DeltaChip deltaPct={delta.deltaPct} direction={delta.direction} />}
     </div>
@@ -163,7 +163,7 @@ function BreakdownCard({ title, rows, formatValue }) {
   const max = Math.max(...rows.map(r => r.value), 1)
   return (
     <div style={{ ...CARD, flex: 1 }}>
-      <p style={{ fontSize: 12.5, fontWeight: 700, color: '#0a1a24', margin: '0 0 12px' }}>{title}</p>
+      <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1B1F28', margin: '0 0 12px' }}>{title}</p>
       {rows.length === 0 ? (
         <p style={{ fontSize: 12.5, color: '#9CA3AF', margin: 0 }}>No data yet.</p>
       ) : (
@@ -171,9 +171,9 @@ function BreakdownCard({ title, rows, formatValue }) {
           {rows.map(r => (
             <div key={r.label}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
-                <span style={{ color: '#0a1a24', fontWeight: 500 }}>{r.label}</span>
+                <span style={{ color: '#1B1F28', fontWeight: 500 }}>{r.label}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ color: '#7A9BAD' }}>{formatValue(r.value)}</span>
+                  <span style={{ color: '#5B6270' }}>{formatValue(r.value)}</span>
                   {r.delta && <DeltaChip deltaPct={r.delta.deltaPct} direction={r.delta.direction} />}
                 </span>
               </div>
@@ -197,23 +197,23 @@ function RevenueTooltip({ active, payload, label, fmtCurrency }) {
   const averageEntry   = payload.find(p => p.dataKey === AVERAGE_KEY)
   const total = regionEntries.reduce((s, p) => s + (Number(p.value) || 0), 0)
   return (
-    <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 8, padding: '10px 12px', fontSize: 12, boxShadow: '0 2px 10px rgba(10,26,36,0.12)', minWidth: 190 }}>
-      <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#0a1a24' }}>{label}</p>
+    <div style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 8, padding: '10px 12px', fontSize: 12, boxShadow: '0 2px 10px rgba(10,26,36,0.12)', minWidth: 190 }}>
+      <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#1B1F28' }}>{label}</p>
       {regionEntries.slice().reverse().map(p => (
-        <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, color: '#4a7a8a', padding: '2px 0' }}>
+        <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, color: '#5B6270', padding: '2px 0' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color, display: 'inline-block', flexShrink: 0 }} />
             {p.dataKey}
           </span>
-          <span style={{ color: '#0a1a24', fontWeight: 500 }}>{fmtCurrency(p.value)}</span>
+          <span style={{ color: '#1B1F28', fontWeight: 500 }}>{fmtCurrency(p.value)}</span>
         </div>
       ))}
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 6, paddingTop: 6, borderTop: '1px solid #F0F7FA', fontWeight: 700, color: '#0a1a24' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 6, paddingTop: 6, borderTop: '1px solid #F0F7FA', fontWeight: 700, color: '#1B1F28' }}>
         <span>Total</span>
         <span>{fmtCurrency(total)}</span>
       </div>
       {averageEntry && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 4, color: '#7A9BAD' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 4, color: '#5B6270' }}>
           <span>Average (per region)</span>
           <span>{fmtCurrency(averageEntry.value)}</span>
         </div>
@@ -244,17 +244,17 @@ function RevenueChart({ rows, regions, byWeek, fmtCurrency }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-        <p style={{ fontSize: 11.5, color: '#7A9BAD', margin: 0 }}>
+        <p style={{ fontSize: 11.5, color: '#5B6270', margin: 0 }}>
           Revenue in Naira (₦), {byWeek ? 'grouped by week' : 'grouped by day'}, one line per region. Dashed line = average across regions. Hover a point for exact figures.
         </p>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           {regions.map((region, i) => (
-            <span key={region} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#4a7a8a' }}>
+            <span key={region} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#5B6270' }}>
               <span style={{ width: 9, height: 9, borderRadius: 2, background: REGION_COLORS[i % REGION_COLORS.length], display: 'inline-block' }} />
               {region}
             </span>
           ))}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#4a7a8a' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#5B6270' }}>
             <DashSwatch />
             Average
           </span>
@@ -553,8 +553,8 @@ export default function SalesRecordTab({ isActive }) {
   return (
     <div style={{ padding: 28 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Sales Record</h2>
-        <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>{total} sale{total !== 1 ? 's' : ''}</p>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>Sales Record</h2>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>{total} sale{total !== 1 ? 's' : ''}</p>
       </div>
 
       {/* Filters */}
@@ -576,7 +576,7 @@ export default function SalesRecordTab({ isActive }) {
 
       {/* Compare mode toggle — mirrors ReportsModule.jsx's COMPARE_MODES */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
-        <span style={{ fontSize: 12, color: '#7A9BAD', fontWeight: 600 }}>Compare:</span>
+        <span style={{ fontSize: 12, color: '#5B6270', fontWeight: 600 }}>Compare:</span>
         {COMPARE_MODES.map(m => (
           <button
             key={m.value}
@@ -597,8 +597,8 @@ export default function SalesRecordTab({ isActive }) {
       {/* Comparison legend — mirrors ReportsModule.jsx's "Current: X · Compare: Y" line */}
       {compareMode !== 'none' && comparisonRange && (
         <div style={{ display: 'flex', gap: 16, marginBottom: 16, fontSize: 11.5, color: '#9CA3AF', flexWrap: 'wrap' }}>
-          <span>Current: <strong style={{ color: '#0a1a24' }}>{dateFrom} – {dateTo}</strong></span>
-          <span>Compare: <strong style={{ color: '#0a1a24' }}>{comparisonRange.from} – {comparisonRange.to}</strong></span>
+          <span>Current: <strong style={{ color: '#1B1F28' }}>{dateFrom} – {dateTo}</strong></span>
+          <span>Compare: <strong style={{ color: '#1B1F28' }}>{comparisonRange.from} – {comparisonRange.to}</strong></span>
         </div>
       )}
       {compareMode !== 'none' && !comparisonRange && (
@@ -610,7 +610,7 @@ export default function SalesRecordTab({ isActive }) {
       {error && <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 14 }}>{error}</p>}
 
       {loading && summary.length === 0 ? (
-        <p style={{ color: '#7A9BAD', fontSize: 14 }}>Loading…</p>
+        <p style={{ color: '#5B6270', fontSize: 14 }}>Loading…</p>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
@@ -627,7 +627,7 @@ export default function SalesRecordTab({ isActive }) {
           </div>
 
           <div style={{ ...CARD, marginBottom: 24 }}>
-            <p style={{ fontSize: 12.5, fontWeight: 700, color: '#0a1a24', margin: '0 0 4px' }}>Revenue Over Time</p>
+            <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1B1F28', margin: '0 0 4px' }}>Revenue Over Time</p>
             <RevenueChart
               rows={chartData.rows}
               regions={chartData.regions}
@@ -637,30 +637,30 @@ export default function SalesRecordTab({ isActive }) {
           </div>
 
           {sales.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 32px', color: '#7A9BAD' }}>
+            <div style={{ textAlign: 'center', padding: '48px 32px', color: '#5B6270' }}>
               <p style={{ fontSize: 14 }}>No sales match these filters.</p>
             </div>
           ) : (
-            <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E4EEF2', overflow: 'hidden' }}>
+            <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#F8FBFC' }}>
                     {['Date', 'Rep', 'Customer', 'Region', 'Model', 'Variant', 'Units', 'Amount', 'Status'].map(h => (
-                      <th key={h} style={{ textAlign: 'left', padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px' }}>{h}</th>
+                      <th key={h} style={{ textAlign: 'left', padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {sales.map((s, i) => (
                     <tr key={s.id} style={{ borderTop: i > 0 ? '1px solid #F0F7FA' : 'none' }}>
-                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#0a1a24' }}>{s.sale_date}</td>
-                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#0a1a24' }}>{s.rep_name ?? 'Not recorded'}</td>
-                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#0a1a24' }}>{s.customer_name ?? '—'}</td>
-                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#7A9BAD' }}>{s.region ?? '—'}</td>
-                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#0a1a24' }}>{s.model ?? '—'}</td>
-                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#0a1a24' }}>{s.variant ?? '—'}</td>
-                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#0a1a24' }}>{s.units ?? '—'}</td>
-                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#0a1a24', fontWeight: 500 }}>
+                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#1B1F28' }}>{s.sale_date}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#1B1F28' }}>{s.rep_name ?? 'Not recorded'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#1B1F28' }}>{s.customer_name ?? '—'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#5B6270' }}>{s.region ?? '—'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#1B1F28' }}>{s.model ?? '—'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#1B1F28' }}>{s.variant ?? '—'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#1B1F28' }}>{s.units ?? '—'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 13, color: '#1B1F28', fontWeight: 500 }}>
                         {s.amount != null ? fmtCurrency(s.amount) : '—'}
                       </td>
                       <td style={{ padding: '10px 14px' }}>
@@ -677,7 +677,7 @@ export default function SalesRecordTab({ isActive }) {
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 16 }}>
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ ...INP, cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}>Previous</button>
-            <span style={{ fontSize: 13, color: '#7A9BAD' }}>Page {page}</span>
+            <span style={{ fontSize: 13, color: '#5B6270' }}>Page {page}</span>
             <button onClick={() => setPage(p => p + 1)} disabled={!hasMore} style={{ ...INP, cursor: !hasMore ? 'not-allowed' : 'pointer', opacity: !hasMore ? 0.5 : 1 }}>Next</button>
           </div>
         </>

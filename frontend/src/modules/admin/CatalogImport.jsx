@@ -118,7 +118,7 @@ export default function CatalogImport({ onClose, onDone, onAddPhotos }) {
 
       {step === 'review' && plan && (
         <div>
-          <p style={{ ...P, fontWeight: 700, color: '#0a1a24', fontSize: 15 }}>{previewSummary(plan.counts)}</p>
+          <p style={{ ...P, fontWeight: 700, color: '#1B1F28', fontSize: 15 }}>{previewSummary(plan.counts)}</p>
           {plan.categories.length > 0 && <p style={P}>Categories used: {plan.categories.join(', ')}. Any that you do not have yet will be created.</p>}
           {plan.photo_links > 0 && <p style={P}>{plan.photo_links} photo {plan.photo_links === 1 ? 'link' : 'links'} will be downloaded after the products are added.</p>}
           {plan.unknown.length > 0 && <p style={{ ...P, color: '#5C6166' }}>Columns we did not use: {plan.unknown.join(', ')}.</p>}
@@ -152,7 +152,7 @@ export default function CatalogImport({ onClose, onDone, onAddPhotos }) {
 
       {step === 'done' && result && (
         <div>
-          {finishedSummary(result).map((l) => <p key={l} style={{ ...P, fontSize: 15, fontWeight: 600, color: '#0a1a24' }}>{l}</p>)}
+          {finishedSummary(result).map((l) => <p key={l} style={{ ...P, fontSize: 15, fontWeight: 600, color: '#1B1F28' }}>{l}</p>)}
           {result.failed.length > 0 && (
             <div><p style={{ ...P, fontWeight: 700 }}>Not added:</p>
               {result.failed.map((f) => <p key={f.row} style={{ ...P, color: '#B3261E', margin: '0 0 4px' }}>Row {f.row}, {f.title}: {f.message}</p>)}</div>

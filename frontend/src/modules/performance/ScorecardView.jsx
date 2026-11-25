@@ -116,7 +116,7 @@ export default function ScorecardView({ onOpenProfile }) {
       </div>
 
       {loading && (
-        <div style={{ textAlign: 'center', padding: 40, color: '#7A9BAD', fontSize: 13 }}>Loading scorecard…</div>
+        <div style={{ textAlign: 'center', padding: 40, color: '#5B6270', fontSize: 13 }}>Loading scorecard…</div>
       )}
       {error && (
         <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', color: '#991b1b', fontSize: 13, marginBottom: 16 }}>

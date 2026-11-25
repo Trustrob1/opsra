@@ -44,19 +44,19 @@ export default function CatalogCategoryField({ names, tags, onChange, onManage }
         ))}
         {rest.map((n) => (
           <button key={n} type="button" aria-label={`Add ${n}`} onClick={() => onChange(withCategory(chosen, n))}
-            style={{ ...CHIP, background: 'white', color: '#0a1a24', border: '1px solid #D0E8F0' }}>{n} <span aria-hidden="true">+</span></button>
+            style={{ ...CHIP, background: 'white', color: '#1B1F28', border: '1px solid #E1E5EC' }}>{n} <span aria-hidden="true">+</span></button>
         ))}
         {chosen.length === 0 && rest.length === 0 && (
-          <span style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD' }}>No categories yet. Add the first one below.</span>
+          <span style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270' }}>No categories yet. Add the first one below.</span>
         )}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <input aria-label="Add new category" value={newName} maxLength={CATEGORY_NAME_MAX + 20} placeholder="Add new category"
           onChange={(e) => { setNewName(e.target.value); setError('') }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          style={{ flex: 1, minHeight: 44, padding: '0 12px', borderRadius: 8, border: '1px solid #D0E8F0', fontFamily: ds.fontDm, fontSize: 13.5, boxSizing: 'border-box' }} />
+          style={{ flex: 1, minHeight: 44, padding: '0 12px', borderRadius: 8, border: '1px solid #E1E5EC', fontFamily: ds.fontDm, fontSize: 13.5, boxSizing: 'border-box' }} />
         <button type="button" onClick={add} disabled={busy || !newName.trim()}
-          style={{ minHeight: 44, padding: '0 16px', borderRadius: 8, border: '1px solid #D0E8F0', background: 'white', fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
+          style={{ minHeight: 44, padding: '0 16px', borderRadius: 8, border: '1px solid #E1E5EC', background: 'white', fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
           {busy ? 'Adding…' : 'Add'}
         </button>
       </div>

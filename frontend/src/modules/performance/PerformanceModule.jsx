@@ -335,7 +335,7 @@ export default function PerformanceModule({ user }) {
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: ds.dark, margin: '0 0 4px' }}>
             <span style={{display:"inline-flex",alignItems:"center",gap:10}}><BarChart2 size={22} />Performance Hub</span>
           </h1>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0 }}>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: 0 }}>
             {isManager ? 'Org-wide performance tracking and KPI management' : 'Your personal performance and daily log'}
           </p>
         </div>

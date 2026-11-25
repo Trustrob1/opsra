@@ -131,7 +131,7 @@ export default function PipelineConfig() {
 
   if (!stages) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         <div style={{ fontSize: 22, marginBottom: 8 }}>🗂️</div>
         Loading pipeline config…
       </div>
@@ -151,11 +151,11 @@ export default function PipelineConfig() {
       <div style={{ marginBottom: 24 }}>
         <h2 style={{
           fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18,
-          color: '#0a1a24', margin: '0 0 6px',
+          color: '#1B1F28', margin: '0 0 6px',
         }}>
           🗂️ Pipeline Stage Configuration
         </h2>
-        <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0 }}>
           Customise stage labels and visibility for your organisation's lead pipeline.
           The order here determines the Kanban column order.
         </p>
@@ -181,16 +181,16 @@ export default function PipelineConfig() {
           alignItems: 'center',
         }}>
           <span />
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Stage Label
           </span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             System Key
           </span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}>
             Enabled
           </span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}>
             Order
           </span>
         </div>
@@ -246,7 +246,7 @@ export default function PipelineConfig() {
                   fontFamily: 'monospace',
                   fontSize: 11,
                   background: '#edf3f7',
-                  color: '#4a7a8a',
+                  color: '#5B6270',
                   padding: '3px 8px',
                   borderRadius: 4,
                   whiteSpace: 'nowrap',
@@ -314,7 +314,7 @@ export default function PipelineConfig() {
 
       {/* Live preview */}
       <div style={{ marginBottom: 24 }}>
-        <p style={{ fontSize: 12, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
           Kanban Preview
         </p>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -324,7 +324,7 @@ export default function PipelineConfig() {
                 display: 'flex', alignItems: 'center', gap: 6,
                 background: 'white', border: '1px solid #d4e5ee',
                 borderRadius: 8, padding: '6px 12px',
-                fontSize: 12, fontFamily: ds.fontDm, color: '#0a1a24', fontWeight: 600,
+                fontSize: 12, fontFamily: ds.fontDm, color: '#1B1F28', fontWeight: 600,
               }}>
                 <span style={{
                   width: 7, height: 7, borderRadius: '50%',
@@ -344,7 +344,7 @@ export default function PipelineConfig() {
               display: 'flex', alignItems: 'center', gap: 6,
               background: '#f9fbfc', border: '1px solid #e4edf2',
               borderRadius: 8, padding: '6px 12px',
-              fontSize: 12, fontFamily: ds.fontDm, color: '#7A9BAD', fontStyle: 'italic',
+              fontSize: 12, fontFamily: ds.fontDm, color: '#5B6270', fontStyle: 'italic',
             }}>
               <span style={{
                 width: 7, height: 7, borderRadius: '50%',
@@ -403,7 +403,7 @@ export default function PipelineConfig() {
           disabled={saving}
           style={{
             background: 'none',
-            color: '#4a7a8a',
+            color: '#5B6270',
             border: '1px solid #d4e5ee',
             borderRadius: 8,
             padding: '8px 18px',

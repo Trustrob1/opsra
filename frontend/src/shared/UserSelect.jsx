@@ -54,7 +54,7 @@ export default function UserSelect({
     padding:      '9px 12px',
     fontSize:     13.5,
     fontFamily:   'inherit',
-    color:        '#0a1a24',
+    color:        '#1B1F28',
     background:   disabled ? '#F8FAFC' : 'white',
     boxSizing:    'border-box',
     cursor:       disabled ? 'not-allowed' : 'pointer',

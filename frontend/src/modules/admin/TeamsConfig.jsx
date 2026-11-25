@@ -34,7 +34,7 @@ const LABEL = {
   display:       'block',
   fontSize:      11,
   fontWeight:    600,
-  color:         '#4a7a8a',
+  color:         '#5B6270',
   textTransform: 'uppercase',
   letterSpacing: '0.7px',
   marginBottom:  8,
@@ -46,7 +46,7 @@ const INPUT = {
   borderRadius: 8,
   fontSize:     13.5,
   fontFamily:   'inherit',
-  color:        '#0a1a24',
+  color:        '#1B1F28',
   background:   'white',
   outline:      'none',
 }
@@ -55,7 +55,7 @@ const ICON_BTN = {
   background:   'none',
   border:       'none',
   cursor:       'pointer',
-  color:        '#7A9BAD',
+  color:        '#5B6270',
   fontSize:     15,
   lineHeight:   1,
   padding:      '4px 6px',
@@ -82,11 +82,11 @@ function TeamMetricsEditor({ teamId, metrics, onAdd, onUpdate, onDelete }) {
 
   return (
     <div style={{ background: '#F8FBFC', border: '1px solid #E3EEF2', borderRadius: 8, padding: '10px 12px', marginTop: 6 }}>
-      <p style={{ fontSize: 11, color: '#7A9BAD', margin: '0 0 8px' }}>
+      <p style={{ fontSize: 11, color: '#5B6270', margin: '0 0 8px' }}>
         Daily fields this team sees when logging their day — e.g. "Leads Received" (Number) or "Ad Spend" (Number, unit ₦).
       </p>
       {metrics.length === 0 ? (
-        <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 8px' }}>No metrics configured for this team yet.</p>
+        <p style={{ fontSize: 12, color: '#5B6270', margin: '0 0 8px' }}>No metrics configured for this team yet.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
           {metrics.map(m => (
@@ -211,7 +211,7 @@ function DepartmentCard({
         ) : (
           <span
             onClick={() => setEditingName(true)}
-            style={{ flex: 1, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', cursor: 'text' }}
+            style={{ flex: 1, fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', cursor: 'text' }}
             title="Click to rename"
           >
             {dept.name}
@@ -229,7 +229,7 @@ function DepartmentCard({
 
       {/* Teams within this department */}
       {teamsInDept.length === 0 ? (
-        <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 10px' }}>
+        <p style={{ fontSize: 12.5, color: '#5B6270', margin: '0 0 10px' }}>
           No teams assigned yet.
         </p>
       ) : (
@@ -321,7 +321,7 @@ function TeamRow({ team, allDepartments, onRename, onMoveDept, onToggleActive, o
         ) : (
           <span
             onClick={() => setEditingName(true)}
-            style={{ flex: 1, fontSize: 13.5, color: '#0a1a24', cursor: 'text' }}
+            style={{ flex: 1, fontSize: 13.5, color: '#1B1F28', cursor: 'text' }}
             title="Click to rename"
           >
             {team.name}
@@ -558,7 +558,7 @@ export default function TeamsConfig() {
   }
 
   if (loading) {
-    return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading departments and teams…</div>
+    return <div style={{ padding: 32, color: '#5B6270', fontSize: 14 }}>Loading departments and teams…</div>
   }
 
   const activeDepartments = departments.filter(d => d.is_active)
@@ -566,10 +566,10 @@ export default function TeamsConfig() {
 
   return (
     <div style={{ maxWidth: 680 }}>
-      <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: '0 0 6px' }}>
+      <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: '0 0 6px' }}>
         Departments &amp; Teams
       </h2>
-      <p style={{ fontSize: 13, color: '#7A9BAD', margin: '0 0 24px', lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: '#5B6270', margin: '0 0 24px', lineHeight: 1.6 }}>
         Group your teams under departments, and configure each team's daily metrics — e.g. Sales tracks
         "Leads Received," Digital Marketing tracks "Ad Spend." These show up automatically on that team's
         daily log form. Departments and metrics save immediately; team changes save when you click
@@ -586,7 +586,7 @@ export default function TeamsConfig() {
         <div style={{
           padding: '16px 18px', background: '#F8FAFC',
           border: '1px dashed #CBD5E1', borderRadius: 8,
-          fontSize: 13, color: '#7A9BAD', marginBottom: 16,
+          fontSize: 13, color: '#5B6270', marginBottom: 16,
         }}>
           No departments yet. Add your first one below — teams can be sorted
           into it right away.
@@ -647,7 +647,7 @@ export default function TeamsConfig() {
 
       {/* Unassigned teams */}
       <label style={LABEL}>Unassigned teams</label>
-      <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '-4px 0 10px' }}>
+      <p style={{ fontSize: 12.5, color: '#5B6270', margin: '-4px 0 10px' }}>
         Not yet sorted into a department — set one using the dropdown on
         each row above, or here.
       </p>
@@ -655,7 +655,7 @@ export default function TeamsConfig() {
         <div style={{
           padding: '14px 16px', background: '#F8FAFC',
           border: '1px dashed #CBD5E1', borderRadius: 8,
-          fontSize: 13, color: '#7A9BAD', marginBottom: 20,
+          fontSize: 13, color: '#5B6270', marginBottom: 20,
         }}>
           Every team is sorted into a department.
         </div>

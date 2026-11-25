@@ -15,7 +15,7 @@ import { shrinkImage } from './imageShrink'
 const BTN = { minHeight: 48, padding: '0 20px', border: 'none', borderRadius: 12, background: ds.teal, color: 'white', fontFamily: ds.fontDm, fontSize: 14, fontWeight: 700, cursor: 'pointer' }
 const GHOST = { minHeight: 48, padding: '0 18px', border: '1px solid #14181B', borderRadius: 12, background: 'white', color: '#14181B', fontFamily: ds.fontDm, fontSize: 14, fontWeight: 700, cursor: 'pointer' }
 const P = { fontFamily: ds.fontDm, fontSize: 13.5, lineHeight: 1.55, color: '#3A3F44', margin: '0 0 10px' }
-const H = { fontFamily: ds.fontDm, fontSize: 14, fontWeight: 800, color: '#0a1a24', margin: '18px 0 8px' }
+const H = { fontFamily: ds.fontDm, fontSize: 14, fontWeight: 800, color: '#1B1F28', margin: '18px 0 8px' }
 const SELECT = { minHeight: 44, padding: '0 10px', borderRadius: 10, border: '1px solid #C9C6BF', fontFamily: ds.fontDm, fontSize: 13.5, background: 'white', maxWidth: '100%' }
 
 export default function CatalogPhotoDrop({ items, onClose, onDone }) {
@@ -107,7 +107,7 @@ export default function CatalogPhotoDrop({ items, onClose, onDone }) {
 
       {step === 'review' && (
         <div>
-          <p style={{ ...P, fontWeight: 700, color: '#0a1a24', fontSize: 15 }}>
+          <p style={{ ...P, fontWeight: 700, color: '#1B1F28', fontSize: 15 }}>
             {total} of {files.length} {files.length === 1 ? 'picture' : 'pictures'} matched to {matched.matched.length} {matched.matched.length === 1 ? 'product' : 'products'}.
           </p>
           {matched.matched.length > 0 && (
@@ -152,7 +152,7 @@ export default function CatalogPhotoDrop({ items, onClose, onDone }) {
 
       {step === 'done' && result && (
         <div>
-          <p style={{ ...P, fontSize: 15, fontWeight: 600, color: '#0a1a24' }}>
+          <p style={{ ...P, fontSize: 15, fontWeight: 600, color: '#1B1F28' }}>
             {result.ok} {result.ok === 1 ? 'photo was' : 'photos were'} added to {result.products} {result.products === 1 ? 'product' : 'products'}.
           </p>
           {result.failed.length > 0 && (

@@ -59,12 +59,12 @@ const MODAL = {
   maxHeight: '90vh', overflowY: 'auto',
 }
 const LBL = {
-  display: 'block', fontSize: 11, fontWeight: 600, color: '#4a7a8a',
+  display: 'block', fontSize: 11, fontWeight: 600, color: '#5B6270',
   textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6, marginTop: 14,
 }
 const INP = {
   width: '100%', border: '1.5px solid #D4E6EC', borderRadius: 9,
-  padding: '10px 13px', fontSize: 13.5, color: '#0a1a24',
+  padding: '10px 13px', fontSize: 13.5, color: '#1B1F28',
   fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
   background: '#fff',
 }
@@ -74,7 +74,7 @@ const BTN_PRIMARY = {
   fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
 }
 const BTN_OUTLINE = {
-  background: '#fff', color: '#0a1a24', border: '1.5px solid #D4E6EC',
+  background: '#fff', color: '#1B1F28', border: '1.5px solid #D4E6EC',
   borderRadius: 9, padding: '10px 18px', fontSize: 13,
   fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
 }
@@ -142,12 +142,12 @@ function IssueDrawer({ issue, teamMembers, onUpdate, onDelete, isManager, onClos
       <div style={{ ...MODAL, maxWidth: 600 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <div>
-            <span style={{ fontSize: 12, color: '#7A9BAD', fontWeight: 600 }}>{issue.reference}</span>
-            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '4px 0 0' }}>
+            <span style={{ fontSize: 12, color: '#5B6270', fontWeight: 600 }}>{issue.reference}</span>
+            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: '4px 0 0' }}>
               {issue.title}
             </h3>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270' }}>×</button>
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0 16px' }}>
@@ -158,18 +158,18 @@ function IssueDrawer({ issue, teamMembers, onUpdate, onDelete, isManager, onClos
         </div>
 
         {issue.description && (
-          <p style={{ fontSize: 13.5, color: '#4a7a8a', lineHeight: 1.6, margin: '0 0 16px' }}>
+          <p style={{ fontSize: 13.5, color: '#5B6270', lineHeight: 1.6, margin: '0 0 16px' }}>
             {issue.description}
           </p>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 12, color: '#7A9BAD', marginBottom: 20 }}>
-          <div>Reported by: <strong style={{ color: '#0a1a24' }}>{issue.reporter?.full_name || '—'}</strong></div>
-          <div>Reported: <strong style={{ color: '#0a1a24' }}>{fmtDate(issue.created_at)}</strong></div>
-          {issue.resolved_at && <div>Resolved: <strong style={{ color: '#0a1a24' }}>{fmtDate(issue.resolved_at)}</strong></div>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 12, color: '#5B6270', marginBottom: 20 }}>
+          <div>Reported by: <strong style={{ color: '#1B1F28' }}>{issue.reporter?.full_name || '—'}</strong></div>
+          <div>Reported: <strong style={{ color: '#1B1F28' }}>{fmtDate(issue.created_at)}</strong></div>
+          {issue.resolved_at && <div>Resolved: <strong style={{ color: '#1B1F28' }}>{fmtDate(issue.resolved_at)}</strong></div>}
         </div>
 
-        <div style={{ borderTop: '1px solid #E4EEF2', paddingTop: 18 }}>
+        <div style={{ borderTop: '1px solid #E1E5EC', paddingTop: 18 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div>
               <label style={LBL}>Status</label>
@@ -266,10 +266,10 @@ function NewIssueModal({ teams, categories, teamMembers, onCreate, onClose }) {
     <div style={OVERLAY} onClick={onClose}>
       <div style={MODAL} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>
             New Issue
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270' }}>×</button>
         </div>
 
         <label style={LBL}>Title *</label>
@@ -511,8 +511,8 @@ function LogActivityModal({ logType, existingLog, allLogs, currentUserId, userTe
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>{title}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270' }}>×</button>
         </div>
 
         {/* Date picker — allows logging for any past date */}
@@ -523,7 +523,7 @@ function LogActivityModal({ logType, existingLog, allLogs, currentUserId, userTe
             value={logDate}
             max={today}
             onChange={e => setLogDate(e.target.value || today)}
-            style={{ fontSize: 13, border: '1.5px solid #b8d0dc', borderRadius: 6, padding: '4px 8px', color: '#0a1a24', background: '#fff', cursor: 'pointer', flex: 1 }}
+            style={{ fontSize: 13, border: '1.5px solid #b8d0dc', borderRadius: 6, padding: '4px 8px', color: '#1B1F28', background: '#fff', cursor: 'pointer', flex: 1 }}
           />
           {logDate !== today && (
             <span style={{ fontSize: 11, color: '#e67e22', fontWeight: 600, whiteSpace: 'nowrap' }}>Logging for past date</span>
@@ -607,7 +607,7 @@ function LogActivityModal({ logType, existingLog, allLogs, currentUserId, userTe
 
         {/* Entry count indicator */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0 }}>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: 0 }}>
             {validEntries.length > 0
               ? `${validEntries.length} activit${validEntries.length > 1 ? 'ies' : 'y'} to log`
               : 'Add your activities for today'}
@@ -624,7 +624,7 @@ function LogActivityModal({ logType, existingLog, allLogs, currentUserId, userTe
         {entries.map((entry, i) => (
           <div key={i} style={{ background: '#f8fafc', border: '1.5px solid #D4E6EC', borderRadius: 10, padding: '14px 16px', marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#4a7a8a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Activity {i + 1}
               </span>
               {entries.length > 1 && (
@@ -796,8 +796,8 @@ export function IssuesTab({ user, isActive }) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Issues</h2>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>{visibleIssues.length} issue{visibleIssues.length !== 1 ? 's' : ''}</p>
+          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>Issues</h2>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>{visibleIssues.length} issue{visibleIssues.length !== 1 ? 's' : ''}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {isManager && (
@@ -816,12 +816,12 @@ export function IssuesTab({ user, isActive }) {
             <div style={{ display: 'flex', justifyContent: 'space-between',
               alignItems: 'center', marginBottom: 20 }}>
               <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700,
-                fontSize: 17, color: '#0a1a24', margin: 0 }}>
+                fontSize: 17, color: '#1B1F28', margin: 0 }}>
                 Download Issues Report
               </h3>
               <button onClick={() => { setShowDownload(false); setDlPreset('this_month') }}
                 style={{ background: 'none', border: 'none',
-                  fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+                  fontSize: 22, cursor: 'pointer', color: '#5B6270' }}>×</button>
             </div>
 
             {/* Period presets */}
@@ -998,8 +998,8 @@ export function IssuesTab({ user, isActive }) {
           { label: 'Total Pending',       value: visibleIssues.filter(i => i.status !== 'resolved').length, accent: '#92601A' },
           { label: 'Total Resolved',      value: visibleIssues.filter(i => i.status === 'resolved').length, accent: '#059669' },
         ].map(k => (
-          <div key={k.label} style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{k.label}</p>
+          <div key={k.label} style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>{k.label}</p>
             <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: k.accent ?? '#0a1a24', margin: 0 }}>{k.value}</p>
           </div>
         ))}
@@ -1038,19 +1038,19 @@ export function IssuesTab({ user, isActive }) {
 
       {/* Table */}
       {loading ? (
-        <p style={{ color: '#7A9BAD', fontSize: 14, padding: '32px 0' }}>Loading issues…</p>
+        <p style={{ color: '#5B6270', fontSize: 14, padding: '32px 0' }}>Loading issues…</p>
       ) : issues.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '64px 32px', color: '#7A9BAD' }}>
+        <div style={{ textAlign: 'center', padding: '64px 32px', color: '#5B6270' }}>
           <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}><Construction size={40} color={ds.teal} strokeWidth={1.5} /></div>
           <p style={{ fontSize: 14 }}>No issues found. Create one to get started.</p>
         </div>
       ) : (
-        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E4EEF2', overflow: 'hidden' }}>
+        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#F5F9FA' }}>
                 {['Ref', 'Title', 'Department', 'Team', 'Priority', 'Status', 'Assigned To', 'Reported', ''].map(h => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.7px', whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.7px', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -1063,8 +1063,8 @@ export function IssuesTab({ user, isActive }) {
                   onMouseEnter={e => e.currentTarget.style.background = '#F8FCFD'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}
                 >
-                  <td style={{ padding: '12px 14px', fontSize: 12, color: '#7A9BAD', fontWeight: 600 }}>{iss.reference}</td>
-                  <td style={{ padding: '12px 14px', fontSize: 13.5, color: '#0a1a24', fontWeight: 500, maxWidth: 260 }}>
+                  <td style={{ padding: '12px 14px', fontSize: 12, color: '#5B6270', fontWeight: 600 }}>{iss.reference}</td>
+                  <td style={{ padding: '12px 14px', fontSize: 13.5, color: '#1B1F28', fontWeight: 500, maxWidth: 260 }}>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{iss.title}</div>
                   </td>
                   <td style={{ padding: '12px 14px' }}>
@@ -1075,8 +1075,8 @@ export function IssuesTab({ user, isActive }) {
                   <td style={{ padding: '12px 14px' }}><Badge text={iss.team} colours={{ bg: '#F0F9FF', text: '#0369A1' }} /></td>
                   <td style={{ padding: '12px 14px' }}><Badge text={iss.priority} colours={PRIORITY_COLOURS[iss.priority]} /></td>
                   <td style={{ padding: '12px 14px' }}><Badge text={iss.status} colours={STATUS_COLOURS[iss.status]} /></td>
-                  <td style={{ padding: '12px 14px', fontSize: 13, color: '#4a7a8a' }}>{iss.assignee?.full_name || '—'}</td>
-                  <td style={{ padding: '12px 14px', fontSize: 12, color: '#7A9BAD' }}>{fmtDate(iss.created_at)}</td>
+                  <td style={{ padding: '12px 14px', fontSize: 13, color: '#5B6270' }}>{iss.assignee?.full_name || '—'}</td>
+                  <td style={{ padding: '12px 14px', fontSize: 12, color: '#5B6270' }}>{fmtDate(iss.created_at)}</td>
                   <td style={{ padding: '12px 14px' }} onClick={e => e.stopPropagation()}>
                     {isManager && (
                       <button
@@ -1316,8 +1316,8 @@ export function ActivityLogTab({ user, isActive }) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Activity Log</h2>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>Record what you worked on each day or week</p>
+          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>Activity Log</h2>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>Record what you worked on each day or week</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {isManager && (
@@ -1342,11 +1342,11 @@ export function ActivityLogTab({ user, isActive }) {
         <div style={OVERLAY} onClick={() => { setShowDlModal(false); setDlPreset('this_month') }}>
           <div style={{ ...MODAL, maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>
                 Download Activity Log Report
               </h3>
               <button onClick={() => { setShowDlModal(false); setDlPreset('this_month') }}
-                style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD' }}>×</button>
+                style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270' }}>×</button>
             </div>
 
             {/* Period presets */}
@@ -1412,7 +1412,7 @@ export function ActivityLogTab({ user, isActive }) {
               ))}
             </select>
             {dlFilters.user_id_filter && (
-              <p style={{ fontSize: 11, color: '#7A9BAD', marginTop: 4 }}>
+              <p style={{ fontSize: 11, color: '#5B6270', marginTop: 4 }}>
                 Team filter disabled when a specific staff member is selected.
               </p>
             )}
@@ -1464,25 +1464,25 @@ export function ActivityLogTab({ user, isActive }) {
           the metric wouldn't mean anything from that view. */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
         {isManager && (
-          <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Staff Logged Today</p>
-            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#0a1a24', margin: 0 }}>
+          <div style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Staff Logged Today</p>
+            <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#1B1F28', margin: 0 }}>
               {new Set(visibleLogs.filter(l => l.log_type === 'daily' && l.log_date === today).map(l => l.user_id)).size} / {users.length}
             </p>
           </div>
         )}
-        <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Total Logs</p>
-          <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#0a1a24', margin: 0 }}>{visibleLogs.length}</p>
+        <div style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Total Logs</p>
+          <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#1B1F28', margin: 0 }}>{visibleLogs.length}</p>
         </div>
-        <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Open Blockers</p>
+        <div style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Open Blockers</p>
           <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#92601A', margin: 0 }}>
             {visibleLogs.reduce((sum, l) => sum + (l.entries || []).filter(e => e.has_blocker && e.blocker_issue_status !== 'resolved').length, 0)}
           </p>
         </div>
-        <div style={{ background: 'white', border: '1px solid #E4EEF2', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Blockers Resolved</p>
+        <div style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 12, padding: '14px 16px', flex: 1 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 6px' }}>Blockers Resolved</p>
           <p style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#059669', margin: 0 }}>
             {visibleLogs.reduce((sum, l) => sum + (l.entries || []).filter(e => e.has_blocker && e.blocker_issue_status === 'resolved').length, 0)}
           </p>
@@ -1525,14 +1525,14 @@ export function ActivityLogTab({ user, isActive }) {
 
       {/* Log list */}
       {loading ? (
-        <p style={{ color: '#7A9BAD', fontSize: 14, padding: '32px 0' }}>Loading activity logs…</p>
+        <p style={{ color: '#5B6270', fontSize: 14, padding: '32px 0' }}>Loading activity logs…</p>
       ) : visibleLogs.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '64px 32px', color: '#7A9BAD' }}>
+        <div style={{ textAlign: 'center', padding: '64px 32px', color: '#5B6270' }}>
           <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}><CalendarDays size={40} color={ds.teal} strokeWidth={1.5} /></div>
           <p style={{ fontSize: 14 }}>No activity logs yet. Start by logging today's activities.</p>
         </div>
       ) : (
-        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E4EEF2', overflow: 'hidden' }}>
+        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', overflow: 'hidden' }}>
           {visibleLogs.map((log, i) => {
             const isOpen   = expanded === log.id
             const isOwnLog = log.user_id === user?.id
@@ -1547,7 +1547,7 @@ export function ActivityLogTab({ user, isActive }) {
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#0a1a24' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#1B1F28' }}>
                         {log.user?.full_name || 'You'}
                       </span>
                       {teamDeptName[log.team] && (
@@ -1573,7 +1573,7 @@ export function ActivityLogTab({ user, isActive }) {
                           : <span style={{ fontSize: 11, background: '#FEE2E2', color: '#991B1B', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>Blocker</span>
                       )}
                     </div>
-                    <div style={{ fontSize: 12, color: '#7A9BAD', marginTop: 3 }}>
+                    <div style={{ fontSize: 12, color: '#5B6270', marginTop: 3 }}>
                       {fmtDate(log.log_date)} · {log.activities?.substring(0, 80)}{log.activities?.length > 80 ? '…' : ''}
                     </div>
                   </div>
@@ -1591,7 +1591,7 @@ export function ActivityLogTab({ user, isActive }) {
                     </div>
                   )}
 
-                  <span style={{ color: '#7A9BAD', fontSize: 16, flexShrink: 0 }}>{isOpen ? '▲' : '▼'}</span>
+                  <span style={{ color: '#5B6270', fontSize: 16, flexShrink: 0 }}>{isOpen ? '▲' : '▼'}</span>
                 </div>
 
                 {isOpen && (
@@ -1611,8 +1611,8 @@ export function ActivityLogTab({ user, isActive }) {
                             if (!meta || val === '' || val == null) return null
                             return (
                               <div key={metricId} style={{ fontSize: 13 }}>
-                                <span style={{ color: '#4a7a8a' }}>{meta.label}: </span>
-                                <span style={{ color: '#0a1a24', fontWeight: 600 }}>{val}{meta.unit ? ` ${meta.unit}` : ''}</span>
+                                <span style={{ color: '#5B6270' }}>{meta.label}: </span>
+                                <span style={{ color: '#1B1F28', fontWeight: 600 }}>{val}{meta.unit ? ` ${meta.unit}` : ''}</span>
                               </div>
                             )
                           })}
@@ -1625,7 +1625,7 @@ export function ActivityLogTab({ user, isActive }) {
                       <div style={{ marginTop: 14 }}>
                         {log.entries.map((entry, ei) => (
                           <div key={ei} style={{
-                            background: '#fff', border: '1.5px solid #E4EEF2',
+                            background: '#fff', border: '1.5px solid #E1E5EC',
                             borderRadius: 10, padding: '12px 16px', marginBottom: 10,
                           }}>
                             {/* Type badge + hours */}
@@ -1638,14 +1638,14 @@ export function ActivityLogTab({ user, isActive }) {
                                 {entry.activity_type || 'General'}
                               </span>
                               {entry.duration_minutes && (
-                                <span style={{ fontSize: 12, color: '#7A9BAD', fontWeight: 600 }}>
+                                <span style={{ fontSize: 12, color: '#5B6270', fontWeight: 600 }}>
                                   ⏱ {entry.duration_minutes}h
                                 </span>
                               )}
                             </div>
 
                             {/* Description */}
-                            <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>
+                            <p style={{ fontSize: 13.5, color: '#1B1F28', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>
                               {entry.activity_description}
                             </p>
 
@@ -1689,7 +1689,7 @@ export function ActivityLogTab({ user, isActive }) {
                                 <div style={{ ...LBL, marginTop: 0 }}>
                                   {log.log_type === 'weekly' ? 'Plan for next week' : 'Plan for tomorrow'}
                                 </div>
-                                <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0, lineHeight: 1.5 }}>
+                                <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.5 }}>
                                   {entry.plan}
                                 </p>
                               </div>
@@ -1702,18 +1702,18 @@ export function ActivityLogTab({ user, isActive }) {
                       <div>
                         <div style={{ marginBottom: 12 }}>
                           <div style={{ ...LBL, marginTop: 12 }}>Activities</div>
-                          <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.activities}</p>
+                          <p style={{ fontSize: 13.5, color: '#1B1F28', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.activities}</p>
                         </div>
                         {log.blockers && (
                           <div style={{ marginBottom: 12 }}>
                             <div style={LBL}>Blockers</div>
-                            <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.blockers}</p>
+                            <p style={{ fontSize: 13.5, color: '#1B1F28', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.blockers}</p>
                           </div>
                         )}
                         {log.plan && (
                           <div>
                             <div style={LBL}>Plan</div>
-                            <p style={{ fontSize: 13.5, color: '#0a1a24', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.plan}</p>
+                            <p style={{ fontSize: 13.5, color: '#1B1F28', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{log.plan}</p>
                           </div>
                         )}
                       </div>
@@ -1764,7 +1764,7 @@ export default function InternalOpsModule({ user }) {
       {/* Tab bar */}
       <div style={{
         display: 'flex', gap: 4,
-        borderBottom: '1px solid #E4EEF2',
+        borderBottom: '1px solid #E1E5EC',
         padding: '0 28px',
         background: 'white',
       }}>

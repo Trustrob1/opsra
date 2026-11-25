@@ -960,7 +960,7 @@ export default function CustomerProfile({ customerId, onBack }) {
           <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 14, color: ds.dark, marginBottom: 14 }}>
             Linked Contacts
           </div>
-          <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 14px', lineHeight: 1.6 }}>
+          <p style={{ fontSize: 12.5, color: '#5B6270', margin: '0 0 14px', lineHeight: 1.6 }}>
             B2B employees who have identified themselves as contacts for this customer via WhatsApp.
             Approve a contact to allow their phone number to be recognised as this customer&apos;s account.
           </p>
@@ -978,7 +978,7 @@ export default function CustomerProfile({ customerId, onBack }) {
               <thead>
                 <tr style={{ background: '#F6F7FA' }}>
                   {['Name', 'Phone', 'Role', 'Status', 'Actions'].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#7A9BAD', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid #E2EFF4' }}>
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#5B6270', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid #E1E5EC' }}>
                       {h}
                     </th>
                   ))}
@@ -1032,7 +1032,7 @@ export default function CustomerProfile({ customerId, onBack }) {
           )}
 
           {/* Add contact form */}
-          <div style={{ borderTop: '1px solid #E2EFF4', paddingTop: 16 }}>
+          <div style={{ borderTop: '1px solid #E1E5EC', paddingTop: 16 }}>
             <div style={{ fontFamily: ds.fontHead, fontWeight: 600, fontSize: 13, color: ds.dark, marginBottom: 12 }}>
               Add Contact Manually
             </div>
@@ -1043,7 +1043,7 @@ export default function CustomerProfile({ customerId, onBack }) {
                 ['contact_role', 'Role'],
               ].map(([field, label]) => (
                 <div key={field}>
-                  <label style={{ display: 'block', fontSize: 11, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 500, marginBottom: 4 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 500, marginBottom: 4 }}>
                     {label}
                   </label>
                   <input

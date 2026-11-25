@@ -230,7 +230,7 @@ export default function LeadAssignmentConfig() {
 
   if (loading) {
     return (
-      <div style={{ padding: 32, color: '#7A9BAD', fontSize: 13 }}>
+      <div style={{ padding: 32, color: '#5B6270', fontSize: 13 }}>
         Loading assignment config…
       </div>
     )
@@ -264,10 +264,10 @@ export default function LeadAssignmentConfig() {
 
       {/* ── Section 1: Mode Toggle ──────────────────────────────────────── */}
       <div style={{
-        background: '#0a1a24', border: '1px solid #1e3a4f',
+        background: '#FFFFFF', border: '1px solid #E1E5EC',
         borderRadius: 12, padding: '20px 22px', marginBottom: 20,
       }}>
-        <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: 'white', margin: '0 0 14px' }}>
+        <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', margin: '0 0 14px' }}>
           Assignment Mode
         </h3>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -291,7 +291,7 @@ export default function LeadAssignmentConfig() {
           ))}
         </div>
         {mode === 'manual' && (
-          <p style={{ fontSize: 12, color: '#3a5a6a', marginTop: 10, marginBottom: 0 }}>
+          <p style={{ fontSize: 12, color: '#3C4352', marginTop: 10, marginBottom: 0 }}>
             Leads are assigned manually by admins and managers. No shift config is applied.
           </p>
         )}
@@ -305,15 +305,15 @@ export default function LeadAssignmentConfig() {
       {/* ── ORDER-GATE-1: only assign leads that are ready to buy ───────── */}
       {mode === 'auto' && (
         <div style={{
-          background: '#0a1a24', border: '1px solid #1e3a4f',
+          background: '#FFFFFF', border: '1px solid #E1E5EC',
           borderRadius: 12, padding: '20px 22px', marginBottom: 20,
         }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
             <div>
-              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: 'white', margin: '0 0 6px' }}>
+              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', margin: '0 0 6px' }}>
                 Only assign leads that are ready to buy
               </h3>
-              <p style={{ fontSize: 12, color: '#7A9BAD', margin: 0, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 12, color: '#5B6270', margin: 0, lineHeight: 1.5 }}>
                 {orderGate
                   ? 'New WhatsApp enquiries stay unassigned. A rep gets the lead when the customer picks a product in your catalog and taps Order via WhatsApp, and is asked to confirm it is available within 10 minutes. "I know what I want" now sends the catalog instead of connecting the customer to a rep.'
                   : 'Every new WhatsApp enquiry is assigned to the rep on shift straight away. Turn this on to assign only customers who pick a product and tap Order via WhatsApp.'}
@@ -346,13 +346,13 @@ export default function LeadAssignmentConfig() {
           {/* Coverage preview */}
           {activeShifts.length > 0 && (
             <div style={{
-              background: '#0a1a24', border: '1px solid #1e3a4f',
+              background: '#FFFFFF', border: '1px solid #E1E5EC',
               borderRadius: 12, padding: '18px 22px', marginBottom: 20,
             }}>
-              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: 'white', margin: '0 0 12px' }}>
+              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: '#1B1F28', margin: '0 0 12px' }}>
                 Coverage Preview
               </h3>
-              <div style={{ position: 'relative', height: 32, background: '#ef444420', borderRadius: 6, overflow: 'hidden', border: '1px solid #1e3a4f' }}>
+              <div style={{ position: 'relative', height: 32, background: '#ef444420', borderRadius: 6, overflow: 'hidden', border: '1px solid #E1E5EC' }}>
                 {activeShifts.map((s, i) => {
                   const start = _timeToFrac(s.shift_start)
                   const end   = _timeToFrac(s.shift_end)
@@ -381,12 +381,12 @@ export default function LeadAssignmentConfig() {
               {/* Time axis */}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
                 {['00:00', '06:00', '12:00', '18:00', '24:00'].map(t => (
-                  <span key={t} style={{ fontSize: 10, color: '#3a5a6a' }}>{t}</span>
+                  <span key={t} style={{ fontSize: 10, color: '#3C4352' }}>{t}</span>
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
                 {activeShifts.map((s, i) => (
-                  <span key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#A0BDC8' }}>
+                  <span key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5B6270' }}>
                     <span style={{ width: 10, height: 10, borderRadius: 2, background: COLORS[i % COLORS.length], display: 'inline-block' }} />
                     {s.shift_name}
                   </span>
@@ -397,11 +397,11 @@ export default function LeadAssignmentConfig() {
 
           {/* Shift list */}
           <div style={{
-            background: '#0a1a24', border: '1px solid #1e3a4f',
+            background: '#FFFFFF', border: '1px solid #E1E5EC',
             borderRadius: 12, padding: '18px 22px', marginBottom: 20,
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: 'white', margin: 0 }}>
+              <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', margin: 0 }}>
                 Shift Configuration
               </h3>
               <button
@@ -417,7 +417,7 @@ export default function LeadAssignmentConfig() {
             </div>
 
             {shifts.filter(s => s.is_active).length === 0 && editingId !== 'new' && (
-              <div style={{ textAlign: 'center', padding: '24px 0', fontSize: 13, color: '#3a5a6a' }}>
+              <div style={{ textAlign: 'center', padding: '24px 0', fontSize: 13, color: '#3C4352' }}>
                 No shifts configured yet. Add a shift to enable auto-assignment.
               </div>
             )}
@@ -434,9 +434,9 @@ export default function LeadAssignmentConfig() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontWeight: 600, color: 'white', fontSize: 13 }}>{shift.shift_name}</span>
+                        <span style={{ fontWeight: 600, color: '#1B1F28', fontSize: 13 }}>{shift.shift_name}</span>
                         {!shift.is_active && (
-                          <span style={{ fontSize: 10, color: '#3a5a6a', border: '1px solid #1e3a4f', borderRadius: 4, padding: '1px 6px' }}>Inactive</span>
+                          <span style={{ fontSize: 10, color: '#3C4352', border: '1px solid #E1E5EC', borderRadius: 4, padding: '1px 6px' }}>Inactive</span>
                         )}
                         <span style={{
                           fontSize: 11, color: ds.teal,
@@ -450,21 +450,21 @@ export default function LeadAssignmentConfig() {
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                         {(shift.days_active || []).map(d => (
                           <span key={d} style={{
-                            fontSize: 10, color: '#A0BDC8',
-                            background: '#1e3a4f', borderRadius: 4, padding: '2px 7px',
+                            fontSize: 10, color: '#5B6270',
+                            background: '#F1F3F8', borderRadius: 4, padding: '2px 7px',
                           }}>{DAY_LABELS[d]}</span>
                         ))}
-                        <span style={{ fontSize: 11, color: '#7A9BAD', marginLeft: 4 }}>
+                        <span style={{ fontSize: 11, color: '#5B6270', marginLeft: 4 }}>
                           {(shift.assignee_ids || []).length} rep{(shift.assignee_ids || []).length !== 1 ? 's' : ''}
                         </span>
-                        <span style={{ fontSize: 11, color: '#3a5a6a' }}>
+                        <span style={{ fontSize: 11, color: '#3C4352' }}>
                           · {STRATEGY_LABELS[shift.strategy] || shift.strategy}
                         </span>
                       </div>
                     </div>
                     <button
                       onClick={() => openEdit(shift)}
-                      style={{ background: 'transparent', border: '1px solid #1e3a4f', borderRadius: 7, padding: '5px 10px', fontSize: 12, color: '#7A9BAD', cursor: 'pointer' }}
+                      style={{ background: 'transparent', border: '1px solid #E1E5EC', borderRadius: 7, padding: '5px 10px', fontSize: 12, color: '#5B6270', cursor: 'pointer' }}
                     >
                       Edit
                     </button>
@@ -524,10 +524,10 @@ function ShiftEditor({ form, setForm, formErr, users, saving, onSave, onCancel, 
 
   return (
     <div style={{
-      background: '#0e1f2a', border: '1px solid #1e3a4f',
+      background: '#F1F3F8', border: '1px solid #E1E5EC',
       borderRadius: 10, padding: '18px 20px', marginBottom: 12, marginTop: 4,
     }}>
-      <h4 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: 'white', margin: '0 0 16px' }}>
+      <h4 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: '#1B1F28', margin: '0 0 16px' }}>
         {isNew ? 'New Shift' : 'Edit Shift'}
       </h4>
 
@@ -585,11 +585,11 @@ function ShiftEditor({ form, setForm, formErr, users, saving, onSave, onCancel, 
       {/* Reps */}
       <FieldLabel>Reps on this shift</FieldLabel>
       {users.length === 0 ? (
-        <p style={{ fontSize: 12, color: '#3a5a6a', marginBottom: 14 }}>No eligible reps found.</p>
+        <p style={{ fontSize: 12, color: '#3C4352', marginBottom: 14 }}>No eligible reps found.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
           {users.map(u => (
-            <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#A0BDC8' }}>
+            <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#5B6270' }}>
               <input
                 type="checkbox"
                 checked={form.assignee_ids.includes(u.id)}
@@ -597,7 +597,7 @@ function ShiftEditor({ form, setForm, formErr, users, saving, onSave, onCancel, 
                 style={{ accentColor: ds.teal }}
               />
               {u.full_name || u.email}
-              <span style={{ fontSize: 11, color: '#3a5a6a' }}>{u.roles?.template}</span>
+              <span style={{ fontSize: 11, color: '#3C4352' }}>{u.roles?.template}</span>
             </label>
           ))}
         </div>
@@ -660,9 +660,9 @@ function ShiftEditor({ form, setForm, formErr, users, saving, onSave, onCancel, 
         <button
           onClick={onCancel}
           style={{
-            background: 'transparent', border: '1px solid #1e3a4f',
+            background: 'transparent', border: '1px solid #E1E5EC',
             borderRadius: 9, padding: '10px 18px', fontSize: 13,
-            color: '#7A9BAD', cursor: 'pointer', fontFamily: ds.fontDm,
+            color: '#5B6270', cursor: 'pointer', fontFamily: ds.fontDm,
           }}
         >
           Cancel
@@ -675,7 +675,7 @@ function ShiftEditor({ form, setForm, formErr, users, saving, onSave, onCancel, 
 function FieldLabel({ children }) {
   return (
     <p style={{
-      fontSize: 11, fontWeight: 600, color: '#3a5a6a',
+      fontSize: 11, fontWeight: 600, color: '#3C4352',
       textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 7px',
     }}>
       {children}
@@ -684,9 +684,9 @@ function FieldLabel({ children }) {
 }
 
 const inputStyle = {
-  width: '100%', background: '#0a1a24',
-  border: '1.5px solid #1e3a4f', borderRadius: 9,
-  padding: '10px 13px', fontSize: 13, color: 'white',
+  width: '100%', background: '#FFFFFF',
+  border: '1.5px solid #E1E5EC', borderRadius: 9,
+  padding: '10px 13px', fontSize: 13, color: '#1B1F28',
   fontFamily: 'DM Sans, sans-serif', outline: 'none',
   marginBottom: 14, boxSizing: 'border-box',
 }

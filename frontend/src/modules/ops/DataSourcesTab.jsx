@@ -62,7 +62,7 @@ import {
 
 const CARD = {
   background:   'white',
-  border:       '1px solid #E4EEF2',
+  border:       '1px solid #E1E5EC',
   borderRadius: 12,
   padding:      '20px 22px',
   maxWidth:     640,
@@ -99,7 +99,7 @@ const BTN_OUTLINE = {
 const INPUT = {
   fontSize:     13,
   padding:      '8px 10px',
-  border:       '1px solid #E4EEF2',
+  border:       '1px solid #E1E5EC',
   borderRadius: 6,
   fontFamily:   'inherit',
 }
@@ -198,10 +198,10 @@ function SalesTransactionsCard() {
 
   return (
     <div style={CARD}>
-      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
         <Table2 size={16} color={ds.teal} /> Sales transactions
       </h3>
-      <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 16px' }}>
+      <p style={{ fontSize: 12.5, color: '#5B6270', margin: '0 0 16px' }}>
         Individual sales — one workbook, one tab per region (e.g. Lagos, Abuja). Expected columns: Date, Sales Rep,
         Customer Name, Model, Units, Amount, Status. Feeds Sales Record and Commissions. Region names must be
         configured in the "Region tabs" card below first — an upload only reads tabs matching a saved region name.
@@ -209,10 +209,10 @@ function SalesTransactionsCard() {
 
       <div style={{ marginBottom: 14 }}>
         <input type="file" accept=".xlsx,.xls" onChange={e => { setFile(e.target.files?.[0] ?? null); reset() }} style={{ fontSize: 13 }} />
-        {file && <p style={{ fontSize: 12, color: '#7A9BAD', margin: '6px 0 0' }}>{file.name}</p>}
+        {file && <p style={{ fontSize: 12, color: '#5B6270', margin: '6px 0 0' }}>{file.name}</p>}
       </div>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#4a7a8a', marginBottom: 16, cursor: 'pointer' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#5B6270', marginBottom: 16, cursor: 'pointer' }}>
         <input type="checkbox" checked={fromBeginning} onChange={e => { setFromBeginning(e.target.checked); reset() }} />
         Start from the beginning (ignore what's already been synced)
       </label>
@@ -241,7 +241,7 @@ function SalesTransactionsCard() {
               {loading ? 'Importing…' : `Confirm — import ${preview.total_valid} row${preview.total_valid !== 1 ? 's' : ''}`}
             </button>
           ) : (
-            <p style={{ fontSize: 13, color: '#7A9BAD' }}>Nothing new to import from this source.</p>
+            <p style={{ fontSize: 13, color: '#5B6270' }}>Nothing new to import from this source.</p>
           )}
         </div>
       )}
@@ -252,9 +252,9 @@ function SalesTransactionsCard() {
             <CheckCircle2 size={16} /> {result.inserted} sale{result.inserted !== 1 ? 's' : ''} imported
           </p>
           {result.regions?.length > 0 && (
-            <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 4px' }}>Regions found: {result.regions.join(', ')}</p>
+            <p style={{ fontSize: 12, color: '#5B6270', margin: '0 0 4px' }}>Regions found: {result.regions.join(', ')}</p>
           )}
-          <p style={{ fontSize: 12, color: '#7A9BAD', margin: 0 }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: 0 }}>
             Synced through {result.watermark_date ?? 'today'}. Re-run this import any time — already-synced rows are skipped automatically.
           </p>
         </div>
@@ -399,7 +399,7 @@ function SheetsSyncCard() {
   if (loadingConfig) {
     return (
       <div style={CARD}>
-        <p style={{ fontSize: 13, color: '#7A9BAD' }}>Loading region config…</p>
+        <p style={{ fontSize: 13, color: '#5B6270' }}>Loading region config…</p>
       </div>
     )
   }
@@ -410,10 +410,10 @@ function SheetsSyncCard() {
 
   return (
     <div style={CARD}>
-      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
         <Link2 size={16} color={ds.teal} /> Region tabs &amp; Live Google Sheet sync
       </h3>
-      <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 16px' }}>
+      <p style={{ fontSize: 12.5, color: '#5B6270', margin: '0 0 16px' }}>
         Region names saved here are used by BOTH the Excel upload above and live Sheets sync — an uploaded workbook
         only reads tabs matching one of these names. Sheet URL and each region's tab GID (the number after
         <code> gid=</code> in the browser URL when that tab is open) are optional — leave them blank if you only
@@ -422,7 +422,7 @@ function SheetsSyncCard() {
       </p>
 
       <div style={{ marginBottom: 14 }}>
-        <label style={{ display: 'block', fontSize: 12.5, color: '#4a7a8a', marginBottom: 6, fontWeight: 600 }}>
+        <label style={{ display: 'block', fontSize: 12.5, color: '#5B6270', marginBottom: 6, fontWeight: 600 }}>
           Google Sheet URL <span style={{ fontWeight: 400, color: '#9BB4C0' }}>(optional — required only for live sync)</span>
         </label>
         <input
@@ -435,7 +435,7 @@ function SheetsSyncCard() {
       </div>
 
       <div style={{ marginBottom: 14 }}>
-        <label style={{ display: 'block', fontSize: 12.5, color: '#4a7a8a', marginBottom: 6, fontWeight: 600 }}>
+        <label style={{ display: 'block', fontSize: 12.5, color: '#5B6270', marginBottom: 6, fontWeight: 600 }}>
           Region tabs
         </label>
         {regions.map((r, idx) => (
@@ -478,7 +478,7 @@ function SheetsSyncCard() {
       </button>
 
       <div style={{ paddingTop: 14, borderTop: '1px solid #F0F7FA' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#4a7a8a', marginBottom: 14, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#5B6270', marginBottom: 14, cursor: 'pointer' }}>
           <input type="checkbox" checked={fromBeginning} onChange={e => { setFromBeginning(e.target.checked); resetSyncState() }} />
           Start from the beginning (ignore what's already been synced)
         </label>
@@ -492,7 +492,7 @@ function SheetsSyncCard() {
           </button>
         )}
         {!canSync && (
-          <p style={{ fontSize: 12, color: '#7A9BAD', margin: '6px 0 0' }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: '6px 0 0' }}>
             {savedSource
               ? 'Add a Sheet URL and at least one region\'s tab GID above to enable live sync.'
               : 'Save a region config above before syncing.'}
@@ -514,7 +514,7 @@ function SheetsSyncCard() {
                 {loading ? 'Syncing…' : `Confirm — sync ${preview.total_valid} row${preview.total_valid !== 1 ? 's' : ''}`}
               </button>
             ) : (
-              <p style={{ fontSize: 13, color: '#7A9BAD' }}>Nothing new to sync from this sheet.</p>
+              <p style={{ fontSize: 13, color: '#5B6270' }}>Nothing new to sync from this sheet.</p>
             )}
           </div>
         )}
@@ -525,9 +525,9 @@ function SheetsSyncCard() {
               <CheckCircle2 size={16} /> {result.inserted} sale{result.inserted !== 1 ? 's' : ''} synced
             </p>
             {result.regions?.length > 0 && (
-              <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 4px' }}>Regions found: {result.regions.join(', ')}</p>
+              <p style={{ fontSize: 12, color: '#5B6270', margin: '0 0 4px' }}>Regions found: {result.regions.join(', ')}</p>
             )}
-            <p style={{ fontSize: 12, color: '#7A9BAD', margin: 0 }}>
+            <p style={{ fontSize: 12, color: '#5B6270', margin: 0 }}>
               Synced through {result.watermark_date ?? 'today'}. Click "Sync now" any time — already-synced rows are skipped automatically.
             </p>
           </div>
@@ -552,10 +552,10 @@ export default function DataSourcesTab() {
   return (
     <div style={{ padding: 28 }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: '0 0 6px' }}>
+      <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: '0 0 6px' }}>
         Data Sources
       </h2>
-      <p style={{ fontSize: 13, color: '#7A9BAD', margin: '0 0 24px', maxWidth: 640, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: '#5B6270', margin: '0 0 24px', maxWidth: 640, lineHeight: 1.6 }}>
         Connect external sheets for metrics Opsra doesn't track natively. Rep and team attribution is matched
         automatically — no need to say which department this is for.
       </p>

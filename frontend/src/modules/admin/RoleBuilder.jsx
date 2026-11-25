@@ -45,17 +45,17 @@ const MODAL = {
   boxShadow: '0 24px 60px rgba(0,0,0,0.25)',
 }
 const LABEL = {
-  display: 'block', fontSize: 11, fontWeight: 600, color: '#4a7a8a',
+  display: 'block', fontSize: 11, fontWeight: 600, color: '#5B6270',
   textTransform: 'uppercase', letterSpacing: '0.7px', marginTop: 16, marginBottom: 6,
 }
 const INPUT = {
   width: '100%', padding: '9px 12px', border: '1px solid #D4E6EC',
   borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit',
-  color: '#0a1a24', background: 'white', boxSizing: 'border-box',
+  color: '#1B1F28', background: 'white', boxSizing: 'border-box',
 }
 const GHOST = {
   background: 'white', border: '1px solid #CBD5E1', borderRadius: 6,
-  padding: '5px 10px', fontSize: 12, fontWeight: 500, color: '#4a7a8a',
+  padding: '5px 10px', fontSize: 12, fontWeight: 500, color: '#5B6270',
   cursor: 'pointer', fontFamily: 'inherit',
 }
 const TMPL_COLOR = {
@@ -90,7 +90,7 @@ export default function RoleBuilder() {
 
   useEffect(() => { load() }, [load])
 
-  if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading roles…</div>
+  if (loading) return <div style={{ padding: 32, color: '#5B6270', fontSize: 14 }}>Loading roles…</div>
   if (error)   return <div style={{ padding: 32, color: '#DC2626', fontSize: 14 }}>⚠ {error}</div>
 
   return (
@@ -98,8 +98,8 @@ export default function RoleBuilder() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
         <div>
-          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: 0 }}>Roles</h2>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '4px 0 0' }}>
+          <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: 0 }}>Roles</h2>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '4px 0 0' }}>
             {roles.length} role{roles.length !== 1 ? 's' : ''} · Click a card to manage permissions and overrides
           </p>
         </div>
@@ -124,7 +124,7 @@ export default function RoleBuilder() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24' }}>{role.name}</span>
+                    <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28' }}>{role.name}</span>
                     {isOwner && <span style={{ fontSize: 10, background: '#FEF3C7', color: '#92400E', borderRadius: 4, padding: '2px 7px', fontWeight: 700 }}>OWNER · LOCKED</span>}
                   </div>
                   <span style={{ display: 'inline-block', marginTop: 4, fontSize: 11, fontWeight: 600, borderRadius: 5, padding: '2px 8px', background: tc.bg, color: tc.color }}>
@@ -152,7 +152,7 @@ export default function RoleBuilder() {
           )
         })}
         {roles.length === 0 && (
-          <div style={{ padding: 32, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>No roles found.</div>
+          <div style={{ padding: 32, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>No roles found.</div>
         )}
       </div>
 
@@ -230,13 +230,13 @@ function OverridesPanel({ role }) {
     } catch { /* silent */ }
   }
 
-  if (loading) return <p style={{ fontSize: 13, color: '#7A9BAD' }}>Loading overrides…</p>
+  if (loading) return <p style={{ fontSize: 13, color: '#5B6270' }}>Loading overrides…</p>
 
   return (
     <div>
-      <p style={{ fontSize: 13, fontWeight: 600, color: '#4a7a8a', margin: '0 0 12px' }}>
+      <p style={{ fontSize: 13, fontWeight: 600, color: '#5B6270', margin: '0 0 12px' }}>
         Individual Permission Overrides
-        <span style={{ fontWeight: 400, color: '#7A9BAD', marginLeft: 8, fontSize: 12 }}>
+        <span style={{ fontWeight: 400, color: '#5B6270', marginLeft: 8, fontSize: 12 }}>
           Grant or deny a specific permission for one user in this role
         </span>
       </p>
@@ -246,9 +246,9 @@ function OverridesPanel({ role }) {
         <div style={{ marginBottom: 16 }}>
           {overrides.map(ov => (
             <div key={ov.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid #F0F7FA' }}>
-              <span style={{ fontSize: 13, color: '#0a1a24', flex: 1 }}>
+              <span style={{ fontSize: 13, color: '#1B1F28', flex: 1 }}>
                 <strong>{ov.user?.full_name ?? ov.user_id}</strong>
-                <span style={{ color: '#7A9BAD', margin: '0 8px' }}>·</span>
+                <span style={{ color: '#5B6270', margin: '0 8px' }}>·</span>
                 {ov.permission_key}
               </span>
               <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 5, padding: '2px 8px', background: ov.granted ? '#ECFDF5' : '#FEF2F2', color: ov.granted ? '#059669' : '#DC2626' }}>
@@ -260,7 +260,7 @@ function OverridesPanel({ role }) {
         </div>
       )}
       {overrides.length === 0 && (
-        <p style={{ fontSize: 13, color: '#7A9BAD', marginBottom: 12 }}>No overrides set.</p>
+        <p style={{ fontSize: 13, color: '#5B6270', marginBottom: 12 }}>No overrides set.</p>
       )}
 
       {/* Add override form */}
@@ -298,7 +298,7 @@ function OverridesPanel({ role }) {
       </div>
       {err && <p style={{ color: '#DC2626', fontSize: 12, marginTop: 8 }}>⚠ {err}</p>}
       {users.length === 0 && (
-        <p style={{ fontSize: 12, color: '#7A9BAD', marginTop: 6 }}>No users assigned to this role yet.</p>
+        <p style={{ fontSize: 12, color: '#5B6270', marginTop: 6 }}>No users assigned to this role yet.</p>
       )}
     </div>
   )
@@ -352,10 +352,10 @@ function RoleModal({ mode, role, onSave, onClose }) {
     <div style={OVERLAY} onClick={onClose}>
       <div style={MODAL} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>
             {isCreate ? 'New Role' : `Edit: ${role.name}`}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#5B6270', lineHeight: 1 }}>×</button>
         </div>
 
         <label style={LABEL}>Role name *</label>
@@ -375,14 +375,14 @@ function RoleModal({ mode, role, onSave, onClose }) {
         {/* Permissions */}
         {!isOwner ? (
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#4a7a8a', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>
               Permission Overrides
             </div>
             {groups.map(group => (
               <div key={group} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: '#7A9BAD', fontWeight: 600, marginBottom: 6 }}>{group}</div>
+                <div style={{ fontSize: 11, color: '#5B6270', fontWeight: 600, marginBottom: 6 }}>{group}</div>
                 {PERMISSION_KEYS.filter(p => p.group === group).map(p => (
-                  <label key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, color: '#0a1a24', cursor: 'pointer', marginBottom: 6 }}>
+                  <label key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, color: '#1B1F28', cursor: 'pointer', marginBottom: 6 }}>
                     <input
                       type="checkbox"
                       checked={!!perms[p.key]}
@@ -395,7 +395,7 @@ function RoleModal({ mode, role, onSave, onClose }) {
             ))}
           </div>
         ) : (
-          <p style={{ fontSize: 13, color: '#7A9BAD', marginTop: 16, padding: '10px 14px', background: '#FEF9C3', borderRadius: 8 }}>
+          <p style={{ fontSize: 13, color: '#5B6270', marginTop: 16, padding: '10px 14px', background: '#FEF9C3', borderRadius: 8 }}>
             🔒 Owner role permissions are locked and cannot be modified.
           </p>
         )}

@@ -200,7 +200,7 @@ export default function SubscriptionDetail({ subscriptionId, user, onBack, onUpd
           <InfoRow label="Created"        value={fmtDate(sub?.created_at)} />
           {sub?.notes && (
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f5f8' }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#7a9bad', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>Notes</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>Notes</p>
               <p style={{ fontSize: 13, color: ds.dark, lineHeight: 1.6, margin: 0 }}>{sub.notes}</p>
             </div>
           )}
@@ -208,7 +208,7 @@ export default function SubscriptionDetail({ subscriptionId, user, onBack, onUpd
           {/* Customer info */}
           {sub?.customer && (
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f5f8' }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#7a9bad', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Customer</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Customer</p>
               {sub.customer.full_name && <InfoRow label="Name"  value={sub.customer.full_name} />}
               {sub.customer.phone     && <InfoRow label="Phone" value={sub.customer.phone} />}
               {sub.customer.email     && <InfoRow label="Email" value={sub.customer.email} />}
@@ -463,7 +463,7 @@ function CancelModal({ subscriptionId, onClose, onCancelled }) {
 function InfoRow({ label, value }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-      <span style={{ fontSize: 12, color: '#7a9bad', fontWeight: 500, minWidth: 110, textAlign: 'right', paddingTop: 1 }}>
+      <span style={{ fontSize: 12, color: '#5B6270', fontWeight: 500, minWidth: 110, textAlign: 'right', paddingTop: 1 }}>
         {label}
       </span>
       <span style={{ fontSize: 13, color: ds.dark, flex: 1 }}>{value}</span>
@@ -543,7 +543,7 @@ const payHistHeader = {
   display: 'flex', alignItems: 'center',
   padding: '10px 16px',
   background: '#f7fbfc', borderBottom: '1px solid #e2ecf0',
-  fontSize: 10, fontWeight: 700, color: '#7a9bad',
+  fontSize: 10, fontWeight: 700, color: '#5B6270',
   textTransform: 'uppercase', letterSpacing: '0.8px',
   borderRadius: '4px 4px 0 0',
 }

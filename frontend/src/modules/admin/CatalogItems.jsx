@@ -21,9 +21,9 @@ const BTN_PRIMARY = {
 }
 
 const BTN_GHOST = {
-  background: 'none', border: '1px solid #D0E8F0', borderRadius: 8,
+  background: 'none', border: '1px solid #E1E5EC', borderRadius: 8,
   padding: '7px 14px', fontFamily: ds.fontDm, fontSize: 13,
-  color: '#4a7a8a', cursor: 'pointer',
+  color: '#5B6270', cursor: 'pointer',
 }
 
 const BADGE = ({ children, color = '#E2EFF4', textColor = '#4a7a8a' }) => (
@@ -37,7 +37,7 @@ const BADGE = ({ children, color = '#E2EFF4', textColor = '#4a7a8a' }) => (
 )
 
 function TagSummary({ tags, config }) {
-  if (!tags || !config?.tag_dimensions) return <span style={{ color: '#7A9BAD', fontSize: 12 }}>—</span>
+  if (!tags || !config?.tag_dimensions) return <span style={{ color: '#5B6270', fontSize: 12 }}>—</span>
   const parts = []
   for (const dim of config.tag_dimensions) {
     const val = tags[dim.key]
@@ -45,10 +45,10 @@ function TagSummary({ tags, config }) {
     const label = Array.isArray(val) ? val.join(', ') : val
     parts.push(label)
   }
-  if (parts.length === 0) return <span style={{ color: '#7A9BAD', fontSize: 12 }}>—</span>
+  if (parts.length === 0) return <span style={{ color: '#5B6270', fontSize: 12 }}>—</span>
   const preview = parts.join(' · ')
   return (
-    <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#4a7a8a' }} title={preview}>
+    <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }} title={preview}>
       {preview.length > 40 ? preview.slice(0, 40) + '…' : preview}
     </span>
   )
@@ -136,7 +136,7 @@ export default function CatalogItems({ onManageCategories, intent }) {
   }
 
   if (loading) return (
-    <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>Loading catalog items…</div>
+    <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>Loading catalog items…</div>
   )
 
   return (
@@ -158,20 +158,20 @@ export default function CatalogItems({ onManageCategories, intent }) {
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <input
-          style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #D0E8F0', fontFamily: ds.fontDm, fontSize: 13.5, color: '#0a1a24', outline: 'none', flex: 1, minWidth: 220 }}
+          style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #E1E5EC', fontFamily: ds.fontDm, fontSize: 13.5, color: '#1B1F28', outline: 'none', flex: 1, minWidth: 220 }}
           placeholder={`Search ${config?.catalog_item_label_plural || 'items'}…`}
           value={search} onChange={e => setSearch(e.target.value)}
         />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', whiteSpace: 'nowrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)} />
           Show hidden
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', whiteSpace: 'nowrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showOOS} onChange={e => setShowOOS(e.target.checked)} />
           Show out of stock
         </label>
         {(noPhotoCount > 0 || needsPhoto) && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', whiteSpace: 'nowrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={needsPhoto} onChange={e => setNeedsPhoto(e.target.checked)} />
             Needs a photo ({noPhotoCount})
           </label>
@@ -191,14 +191,14 @@ export default function CatalogItems({ onManageCategories, intent }) {
       </div>
 
       {/* Count */}
-      <p style={{ fontFamily: ds.fontDm, fontSize: 12.5, color: '#7A9BAD', margin: '0 0 14px' }}>
+      <p style={{ fontFamily: ds.fontDm, fontSize: 12.5, color: '#5B6270', margin: '0 0 14px' }}>
         Showing {filtered.length} of {items.length} {config?.catalog_item_label_plural || 'items'}
         {isShopify && ' · Synced from Shopify'}
       </p>
 
       {/* Table */}
       {filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#7A9BAD', fontFamily: ds.fontDm, fontSize: 13.5 }}>
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#5B6270', fontFamily: ds.fontDm, fontSize: 13.5 }}>
           {items.length === 0 ? 'No catalog items yet.' : needsPhoto && noPhotoCount === 0 ? 'Every product has a photo.' : 'No items match your filters.'}
           {items.length === 0 && !isShopify && (
             <div style={{ marginTop: 12 }}>Add one with the button above, or <button style={{ ...BTN_GHOST, display: 'inline-block' }} onClick={() => setShowImport(true)}>import many from a spreadsheet</button></div>
@@ -208,9 +208,9 @@ export default function CatalogItems({ onManageCategories, intent }) {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #E2EFF4' }}>
+              <tr style={{ borderBottom: '2px solid #E1E5EC' }}>
                 {['Cover', 'Title', 'Tags', 'Price', 'Status', 'Views', 'Actions'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, color: '#4a7a8a', whiteSpace: 'nowrap' }}>
+                  <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, color: '#5B6270', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
                 ))}
@@ -220,22 +220,22 @@ export default function CatalogItems({ onManageCategories, intent }) {
               {filtered.map(item => {
                 const coverUrl = (item.catalog_images || [])[0]
                 return (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #E2EFF4', opacity: item.catalog_visible ? 1 : 0.55 }}>
+                  <tr key={item.id} style={{ borderBottom: '1px solid #E1E5EC', opacity: item.catalog_visible ? 1 : 0.55 }}>
                     {/* Cover */}
                     <td style={{ padding: '10px 12px', width: 56 }}>
                       {coverUrl ? (
-                        <img src={coverUrl} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid #E2EFF4' }} />
+                        <img src={coverUrl} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid #E1E5EC' }} />
                       ) : (
-                        <div style={{ width: 44, height: 44, borderRadius: 6, background: '#f5fbfd', border: '1px solid #E2EFF4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📦</div>
+                        <div style={{ width: 44, height: 44, borderRadius: 6, background: '#f5fbfd', border: '1px solid #E1E5EC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📦</div>
                       )}
                     </td>
                     {/* Title */}
                     <td style={{ padding: '10px 12px', maxWidth: 220 }}>
-                      <div style={{ fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, color: '#0a1a24', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, color: '#1B1F28', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.title}
                       </div>
                       {item.slug && (
-                        <div style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#7A9BAD', marginTop: 2 }}>/{item.slug}</div>
+                        <div style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#5B6270', marginTop: 2 }}>/{item.slug}</div>
                       )}
                       {!hasPhoto(item) && (
                         <div style={{ fontFamily: ds.fontDm, fontSize: 11.5, fontWeight: 600, color: '#8a6a00', marginTop: 2 }}>No photo yet</div>
@@ -246,7 +246,7 @@ export default function CatalogItems({ onManageCategories, intent }) {
                       <TagSummary tags={item.tags} config={config} />
                     </td>
                     {/* Price */}
-                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontFamily: ds.fontDm, fontSize: 13, color: '#0a1a24' }}>
+                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontFamily: ds.fontDm, fontSize: 13, color: '#1B1F28' }}>
                       {config?.price_on_request ? 'On Request' : formatPrice(item.price)}
                     </td>
                     {/* Status */}
@@ -263,7 +263,7 @@ export default function CatalogItems({ onManageCategories, intent }) {
                       </div>
                     </td>
                     {/* Views */}
-                    <td style={{ padding: '10px 12px', fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', textAlign: 'center' }}>
+                    <td style={{ padding: '10px 12px', fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', textAlign: 'center' }}>
                       {item.catalog_views ?? 0}
                     </td>
                     {/* Actions */}

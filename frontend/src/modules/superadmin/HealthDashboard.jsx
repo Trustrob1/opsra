@@ -57,7 +57,7 @@ function sinceFromRange(range) {
 
 const card = {
   background: ds.dark2,
-  border: "1px solid #1e3a4f",
+  border: "1px solid #E1E5EC",
   borderRadius: 12,
   padding: "20px 22px",
   marginBottom: 16,
@@ -75,7 +75,7 @@ const sectionTitle = {
 const labelStyle = {
   fontSize: 11,
   fontWeight: 600,
-  color: "#3a5a6a",
+  color: "#3C4352",
   textTransform: "uppercase",
   letterSpacing: "1px",
 };
@@ -96,9 +96,9 @@ const rowStyle = {
   borderRadius: 8,
   marginBottom: 6,
   background: "rgba(255,255,255,0.03)",
-  border: "1px solid #1a2f3f",
+  border: "1px solid #E1E5EC",
   fontSize: 12,
-  color: "#A0BDC8",
+  color: "#5B6270",
 };
 
 const badge = (color) => ({
@@ -151,7 +151,7 @@ function LoginGate({ onAuthed }) {
         <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: "white", margin: "0 0 6px" }}>
           Superadmin Access
         </h2>
-        <p style={{ fontSize: 13, color: "#7A9BAD", marginBottom: 18 }}>
+        <p style={{ fontSize: 13, color: "#5B6270", marginBottom: 18 }}>
           Enter your superadmin secret to access the health dashboard.
         </p>
         <input
@@ -161,7 +161,7 @@ function LoginGate({ onAuthed }) {
           onChange={(e) => setSecret(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleLogin()}
           style={{
-            width: "100%", background: ds.dark, border: "1.5px solid #1e3a4f",
+            width: "100%", background: ds.dark, border: "1.5px solid #E1E5EC",
             borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "white",
             fontFamily: ds.fontDm, outline: "none", marginBottom: 12, boxSizing: "border-box",
           }}
@@ -320,16 +320,16 @@ export default function HealthDashboard({ embedded = false }) {
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: "white", margin: "0 0 4px" }}>
             System Health
           </h1>
-          <p style={{ fontSize: 13, color: "#7A9BAD", margin: 0 }}>
+          <p style={{ fontSize: 13, color: "#5B6270", margin: 0 }}>
             Platform monitoring across all organisations
           </p>
         </div>
         {!embedded && <button
           onClick={() => { clearSuperadminToken(); setAuthed(false); }}
           style={{
-            background: "transparent", border: "1px solid #1e3a4f",
+            background: "transparent", border: "1px solid #E1E5EC",
             borderRadius: 8, padding: "6px 14px", fontSize: 12,
-            color: "#7A9BAD", cursor: "pointer", fontFamily: ds.fontDm,
+            color: "#5B6270", cursor: "pointer", fontFamily: ds.fontDm,
           }}
         >
           Log out
@@ -366,7 +366,7 @@ export default function HealthDashboard({ embedded = false }) {
           value={filterOrgId}
           onChange={(e) => setFilterOrgId(e.target.value)}
           style={{
-            background: ds.dark2, border: "1px solid #1e3a4f", borderRadius: 7,
+            background: ds.dark2, border: "1px solid #E1E5EC", borderRadius: 7,
             padding: "5px 12px", fontSize: 12, color: filterOrgId ? "white" : "#7A9BAD",
             cursor: "pointer", fontFamily: ds.fontDm, outline: "none",
           }}
@@ -381,9 +381,9 @@ export default function HealthDashboard({ embedded = false }) {
           <button
             onClick={() => setFilterOrgId("")}
             style={{
-              background: "transparent", border: "1px solid #1e3a4f",
+              background: "transparent", border: "1px solid #E1E5EC",
               borderRadius: 7, padding: "5px 10px", fontSize: 12,
-              color: "#7A9BAD", cursor: "pointer",
+              color: "#5B6270", cursor: "pointer",
             }}
           >
             ✕ Clear filter
@@ -393,9 +393,9 @@ export default function HealthDashboard({ embedded = false }) {
         <button
           onClick={fetchAll}
           style={{
-            marginLeft: "auto", background: "transparent", border: "1px solid #1e3a4f",
+            marginLeft: "auto", background: "transparent", border: "1px solid #E1E5EC",
             borderRadius: 7, padding: "5px 14px", fontSize: 12,
-            color: "#7A9BAD", cursor: "pointer", fontFamily: ds.fontDm,
+            color: "#5B6270", cursor: "pointer", fontFamily: ds.fontDm,
           }}
         >
           ↻ Refresh
@@ -461,7 +461,7 @@ export default function HealthDashboard({ embedded = false }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
               {integrations && Object.entries(integrations).map(([name, info]) => (
                 <div key={name} style={{
-                  background: "rgba(255,255,255,0.03)", border: "1px solid #1a2f3f",
+                  background: "rgba(255,255,255,0.03)", border: "1px solid #E1E5EC",
                   borderRadius: 10, padding: "14px 16px",
                   borderLeft: `3px solid ${STATUS_COLORS[info.status] ?? "#6b7280"}`,
                 }}>
@@ -469,7 +469,7 @@ export default function HealthDashboard({ embedded = false }) {
                     <span style={{ fontSize: 13, fontWeight: 600, color: "white", textTransform: "capitalize" }}>{name}</span>
                     <span style={badge(STATUS_COLORS[info.status] ?? "#6b7280")}>{info.status}</span>
                   </div>
-                  {info.detail && <div style={{ fontSize: 11, color: "#7A9BAD" }}>{info.detail}</div>}
+                  {info.detail && <div style={{ fontSize: 11, color: "#5B6270" }}>{info.detail}</div>}
                   {name === "whatsapp" && info.status === "error" && (
                     <div style={{
                       marginTop: 8, fontSize: 11, color: "#fb923c",
@@ -498,10 +498,10 @@ export default function HealthDashboard({ embedded = false }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
                     <span style={badge("#ef4444")}>{e.error_type}</span>
                     {e.http_status && <span style={badge("#f59e0b")}>{e.http_status}</span>}
-                    {e.org_slug && <span style={{ fontSize: 11, color: "#7A9BAD" }}>org: {e.org_slug}</span>}
-                    <span style={{ marginLeft: "auto", fontSize: 11, color: "#3a5a6a" }}>{fmtTime(e.occurred_at)}</span>
+                    {e.org_slug && <span style={{ fontSize: 11, color: "#5B6270" }}>org: {e.org_slug}</span>}
+                    <span style={{ marginLeft: "auto", fontSize: 11, color: "#3C4352" }}>{fmtTime(e.occurred_at)}</span>
                   </div>
-                  <div style={{ fontSize: 12, color: "#A0BDC8" }}>{e.error_message}</div>
+                  <div style={{ fontSize: 12, color: "#5B6270" }}>{e.error_message}</div>
                   {e.file_path && (
                     <div style={{ fontSize: 11, color: "#3a6a7a", fontFamily: "monospace" }}>
                       {e.file_path}{e.function_name ? ` → ${e.function_name}` : ""}{e.line_number ? `:${e.line_number}` : ""}
@@ -532,9 +532,9 @@ export default function HealthDashboard({ embedded = false }) {
               : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
-                    <tr style={{ color: "#3a5a6a", textAlign: "left" }}>
+                    <tr style={{ color: "#3C4352", textAlign: "left" }}>
                       {["Worker", "Status", "Processed", "Failed", "Skipped", "Duration", "Started"].map(h => (
-                        <th key={h} style={{ padding: "6px 10px", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.8px", borderBottom: "1px solid #1a2f3f" }}>{h}</th>
+                        <th key={h} style={{ padding: "6px 10px", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.8px", borderBottom: "1px solid #E1E5EC" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -543,11 +543,11 @@ export default function HealthDashboard({ embedded = false }) {
                       <tr key={i} style={{ borderBottom: "1px solid #0e1f2a" }}>
                         <td style={{ padding: "9px 10px", color: "white", fontWeight: 500 }}>{j.worker_name}</td>
                         <td style={{ padding: "9px 10px" }}><span style={badge(STATUS_COLORS[j.status] ?? "#6b7280")}>{j.status}</span></td>
-                        <td style={{ padding: "9px 10px", color: "#A0BDC8" }}>{j.items_processed}</td>
+                        <td style={{ padding: "9px 10px", color: "#5B6270" }}>{j.items_processed}</td>
                         <td style={{ padding: "9px 10px", color: j.items_failed > 0 ? "#ef4444" : "#A0BDC8" }}>{j.items_failed}</td>
-                        <td style={{ padding: "9px 10px", color: "#A0BDC8" }}>{j.items_skipped}</td>
-                        <td style={{ padding: "9px 10px", color: "#A0BDC8" }}>{j.run_duration_ms ? `${j.run_duration_ms}ms` : "—"}</td>
-                        <td style={{ padding: "9px 10px", color: "#3a5a6a" }}>{fmtTime(j.started_at)}</td>
+                        <td style={{ padding: "9px 10px", color: "#5B6270" }}>{j.items_skipped}</td>
+                        <td style={{ padding: "9px 10px", color: "#5B6270" }}>{j.run_duration_ms ? `${j.run_duration_ms}ms` : "—"}</td>
+                        <td style={{ padding: "9px 10px", color: "#3C4352" }}>{fmtTime(j.started_at)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -581,9 +581,9 @@ export default function HealthDashboard({ embedded = false }) {
               : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
-                    <tr style={{ color: "#3a5a6a", textAlign: "left" }}>
+                    <tr style={{ color: "#3C4352", textAlign: "left" }}>
                       {["Function", "Calls", "Tokens", "Est. Cost"].map(h => (
-                        <th key={h} style={{ padding: "6px 10px", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.8px", borderBottom: "1px solid #1a2f3f" }}>{h}</th>
+                        <th key={h} style={{ padding: "6px 10px", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.8px", borderBottom: "1px solid #E1E5EC" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -591,8 +591,8 @@ export default function HealthDashboard({ embedded = false }) {
                     {claudeUsage?.by_function?.sort((a, b) => b.total_cost - a.total_cost).map((f, i) => (
                       <tr key={i} style={{ borderBottom: "1px solid #0e1f2a" }}>
                         <td style={{ padding: "9px 10px", color: "white", fontFamily: "monospace", fontSize: 12 }}>{f.function_name}</td>
-                        <td style={{ padding: "9px 10px", color: "#A0BDC8" }}>{f.calls}</td>
-                        <td style={{ padding: "9px 10px", color: "#A0BDC8" }}>{fmtNum(f.total_tokens)}</td>
+                        <td style={{ padding: "9px 10px", color: "#5B6270" }}>{f.calls}</td>
+                        <td style={{ padding: "9px 10px", color: "#5B6270" }}>{fmtNum(f.total_tokens)}</td>
                         <td style={{ padding: "9px 10px", color: ds.teal, fontWeight: 600 }}>${f.total_cost.toFixed(4)}</td>
                       </tr>
                     ))}
@@ -613,9 +613,9 @@ export default function HealthDashboard({ embedded = false }) {
               : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
-                    <tr style={{ color: "#3a5a6a", textAlign: "left" }}>
+                    <tr style={{ color: "#3C4352", textAlign: "left" }}>
                       {["Route", "Topic", "Org", "Status", "Duration", "Time"].map(h => (
-                        <th key={h} style={{ padding: "6px 10px", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.8px", borderBottom: "1px solid #1a2f3f" }}>{h}</th>
+                        <th key={h} style={{ padding: "6px 10px", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.8px", borderBottom: "1px solid #E1E5EC" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -623,13 +623,13 @@ export default function HealthDashboard({ embedded = false }) {
                     {webhooks?.items?.map((w, i) => (
                       <tr key={i} style={{ borderBottom: "1px solid #0e1f2a" }}>
                         <td style={{ padding: "9px 10px", color: "white", fontFamily: "monospace", fontSize: 11 }}>{w.route}</td>
-                        <td style={{ padding: "9px 10px", color: "#7A9BAD" }}>{w.topic || "—"}</td>
-                        <td style={{ padding: "9px 10px", color: "#7A9BAD", fontSize: 11, fontFamily: "monospace" }}>{w.org_id ? w.org_id.slice(0, 8) + "…" : "—"}</td>
+                        <td style={{ padding: "9px 10px", color: "#5B6270" }}>{w.topic || "—"}</td>
+                        <td style={{ padding: "9px 10px", color: "#5B6270", fontSize: 11, fontFamily: "monospace" }}>{w.org_id ? w.org_id.slice(0, 8) + "…" : "—"}</td>
                         <td style={{ padding: "9px 10px" }}>
                           <span style={badge(w.response_status >= 400 ? "#ef4444" : "#22d3a5")}>{w.response_status}</span>
                         </td>
-                        <td style={{ padding: "9px 10px", color: "#A0BDC8" }}>{w.processing_ms != null ? `${w.processing_ms}ms` : "—"}</td>
-                        <td style={{ padding: "9px 10px", color: "#3a5a6a" }}>{fmtTime(w.received_at)}</td>
+                        <td style={{ padding: "9px 10px", color: "#5B6270" }}>{w.processing_ms != null ? `${w.processing_ms}ms` : "—"}</td>
+                        <td style={{ padding: "9px 10px", color: "#3C4352" }}>{fmtTime(w.received_at)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -653,14 +653,14 @@ export default function HealthDashboard({ embedded = false }) {
                   style={{
                     ...rowStyle,
                     cursor: "pointer",
-                    borderLeft: o.needs_attention ? "3px solid #ef4444" : "3px solid #1a2f3f",
+                    borderLeft: o.needs_attention ? "3px solid #ef4444" : "3px solid #E1E5EC",
                     background: filterOrgId === o.id ? "rgba(0,187,150,0.08)" : "rgba(255,255,255,0.03)",
                     transition: "all 0.15s",
                   }}
                 >
                   <div style={{ flex: 1 }}>
                     <span style={{ color: "white", fontWeight: 600, fontSize: 13 }}>{o.name}</span>
-                    <span style={{ marginLeft: 10, fontSize: 11, color: "#3a5a6a" }}>{o.slug}</span>
+                    <span style={{ marginLeft: 10, fontSize: 11, color: "#3C4352" }}>{o.slug}</span>
                   </div>
                   <span style={badge(o.subscription_status === "active" || o.subscription_status === "trial" ? "#22d3a5" : "#ef4444")}>
                     {o.subscription_status}
@@ -689,9 +689,9 @@ export default function HealthDashboard({ embedded = false }) {
                   <div key={i} style={{ ...rowStyle, flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={badge("#ef4444")}>{e.error_type}</span>
-                      <span style={{ fontSize: 11, color: "#3a5a6a" }}>{fmtTime(e.occurred_at)}</span>
+                      <span style={{ fontSize: 11, color: "#3C4352" }}>{fmtTime(e.occurred_at)}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#A0BDC8" }}>{e.error_message?.slice(0, 120)}</div>
+                    <div style={{ fontSize: 12, color: "#5B6270" }}>{e.error_message?.slice(0, 120)}</div>
                   </div>
                 ))
             )}
@@ -705,7 +705,7 @@ export default function HealthDashboard({ embedded = false }) {
                   <div key={i} style={rowStyle}>
                     <span style={{ flex: 1, color: "white", fontSize: 12 }}>{j.worker_name}</span>
                     <span style={badge(STATUS_COLORS[j.status] ?? "#6b7280")}>{j.status}</span>
-                    <span style={{ fontSize: 11, color: "#3a5a6a" }}>{fmtTime(j.started_at)}</span>
+                    <span style={{ fontSize: 11, color: "#3C4352" }}>{fmtTime(j.started_at)}</span>
                   </div>
                 ))
             )}
@@ -766,7 +766,7 @@ function PanelLoader() {
 
 function Empty({ text }) {
   return (
-    <div style={{ textAlign: "center", padding: "28px 0", fontSize: 13, color: "#3a5a6a" }}>
+    <div style={{ textAlign: "center", padding: "28px 0", fontSize: 13, color: "#3C4352" }}>
       {text}
     </div>
   );

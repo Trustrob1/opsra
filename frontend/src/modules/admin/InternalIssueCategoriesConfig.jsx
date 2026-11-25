@@ -16,7 +16,7 @@ const LABEL = {
   display:       'block',
   fontSize:      11,
   fontWeight:    600,
-  color:         '#4a7a8a',
+  color:         '#5B6270',
   textTransform: 'uppercase',
   letterSpacing: '0.7px',
   marginBottom:  8,
@@ -28,7 +28,7 @@ const INPUT = {
   borderRadius: 8,
   fontSize:     13.5,
   fontFamily:   'inherit',
-  color:        '#0a1a24',
+  color:        '#1B1F28',
   background:   'white',
   outline:      'none',
 }
@@ -104,15 +104,15 @@ export default function InternalIssueCategoriesConfig() {
   }
 
   if (loading) {
-    return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 14 }}>Loading categories…</div>
+    return <div style={{ padding: 32, color: '#5B6270', fontSize: 14 }}>Loading categories…</div>
   }
 
   return (
     <div style={{ maxWidth: 600 }}>
-      <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: '0 0 6px' }}>
+      <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: '0 0 6px' }}>
         Internal Issue Categories
       </h2>
-      <p style={{ fontSize: 13, color: '#7A9BAD', margin: '0 0 28px', lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: '#5B6270', margin: '0 0 28px', lineHeight: 1.6 }}>
         Define the categories used when logging internal team issues. These are separate
         from customer support ticket categories. Toggle any off to hide it without deleting it.
       </p>
@@ -123,7 +123,7 @@ export default function InternalIssueCategoriesConfig() {
         <div style={{
           padding: '16px 18px', background: '#F8FAFC',
           border: '1px dashed #CBD5E1', borderRadius: 8,
-          fontSize: 13, color: '#7A9BAD', marginBottom: 20,
+          fontSize: 13, color: '#5B6270', marginBottom: 20,
         }}>
           No categories configured yet. Add your first one below.
         </div>

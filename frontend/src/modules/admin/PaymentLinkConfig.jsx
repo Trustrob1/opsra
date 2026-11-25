@@ -137,7 +137,7 @@ export default function PaymentLinkConfig() {
 
   if (!status || !config || !stages) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 13 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 13 }}>
         Loading…
       </div>
     )
@@ -149,10 +149,10 @@ export default function PaymentLinkConfig() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: '0 0 6px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: '0 0 6px' }}>
           Payment Links
         </h2>
-        <p style={{ fontSize: 13, color: '#4a7a8a', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           Connect your own Paystack account so Opsra can send payment links to your
           customers — automatically prompted when a lead reaches a stage you choose.
         </p>
@@ -166,7 +166,7 @@ export default function PaymentLinkConfig() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={S.connectedBadge}>● Connected</div>
-              <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24' }}>
+              <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28' }}>
                 Paystack Storefront
               </div>
             </div>
@@ -193,10 +193,10 @@ export default function PaymentLinkConfig() {
         </div>
       ) : (
         <form onSubmit={handleConnect} style={S.card}>
-          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', marginBottom: 6 }}>
+          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', marginBottom: 6 }}>
             Connect your Paystack account
           </div>
-          <p style={{ fontSize: 13, color: '#4a7a8a', margin: '0 0 16px', lineHeight: 1.6 }}>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '0 0 16px', lineHeight: 1.6 }}>
             Charges go straight to your own Paystack account — Opsra never touches your funds.
           </p>
           <div style={{ marginBottom: 14 }}>
@@ -224,10 +224,10 @@ export default function PaymentLinkConfig() {
       {/* Trigger configuration — only meaningful once connected */}
       <div style={{ ...S.card, opacity: connected ? 1 : 0.5, pointerEvents: connected ? 'auto' : 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24' }}>
+          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28' }}>
             Stage Trigger
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a7a8a' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#5B6270' }}>
             <input
               type="checkbox" checked={!!config.enabled}
               onChange={e => updateField('enabled', e.target.checked)}
@@ -259,7 +259,7 @@ export default function PaymentLinkConfig() {
           </div>
         </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a7a8a', marginBottom: 16 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#5B6270', marginBottom: 16 }}>
           <input
             type="checkbox" checked={!!config.allow_partial}
             onChange={e => updateField('allow_partial', e.target.checked)}
@@ -277,7 +277,7 @@ export default function PaymentLinkConfig() {
               <option value="">— Select stage —</option>
               {stages.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
-            <p style={{ fontSize: 12, color: '#7A9BAD', margin: '6px 0 0' }}>
+            <p style={{ fontSize: 12, color: '#5B6270', margin: '6px 0 0' }}>
               e.g. "In Production" — the lead moves here on deposit, then to the
               full-payment stage above once the balance is paid.
             </p>
@@ -291,7 +291,7 @@ export default function PaymentLinkConfig() {
             value={config.message_template}
             onChange={e => updateField('message_template', e.target.value)}
           />
-          <p style={{ fontSize: 12, color: '#7A9BAD', margin: '6px 0 0' }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: '6px 0 0' }}>
             Tokens: <code>{'{customer_name}'}</code> <code>{'{amount}'}</code>{' '}
             <code>{'{currency}'}</code> <code>{'{link}'}</code>
           </p>
@@ -307,11 +307,11 @@ export default function PaymentLinkConfig() {
 
 const S = {
   card: {
-    background: 'white', border: '1px solid #E2EFF4',
+    background: 'white', border: '1px solid #E1E5EC',
     borderRadius: 12, padding: '22px 24px', marginBottom: 20,
   },
   label: {
-    display: 'block', fontSize: 11, color: '#7A9BAD',
+    display: 'block', fontSize: 11, color: '#5B6270',
     textTransform: 'uppercase', letterSpacing: '0.4px',
     fontWeight: 500, marginBottom: 5,
   },
@@ -331,7 +331,7 @@ const S = {
     fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
   },
   cancelBtn: {
-    padding: '9px 20px', background: '#F0F6F8', color: '#4a7a8a',
+    padding: '9px 20px', background: '#F0F6F8', color: '#5B6270',
     border: 'none', borderRadius: 8, fontSize: 13.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer',
   },
@@ -348,10 +348,10 @@ const S = {
   codeBox: {
     flex: 1, background: '#F6F7FA', border: '1.5px solid #E1E5EC',
     borderRadius: 8, padding: '8px 12px', fontSize: 12.5,
-    color: '#1a7a8a', fontFamily: 'monospace', wordBreak: 'break-all',
+    color: '#2467E3', fontFamily: 'monospace', wordBreak: 'break-all',
   },
   copyBtn: {
-    padding: '8px 14px', background: '#E4EDFD', color: '#1a7a8a',
+    padding: '8px 14px', background: '#E4EDFD', color: '#2467E3',
     border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
     fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0,
   },

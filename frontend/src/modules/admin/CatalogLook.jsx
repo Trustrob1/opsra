@@ -14,21 +14,21 @@ import {
   lookFromConfig, lookPayload, lookChanged, effectiveAccent, storefrontLocked,
 } from './catalogStorefrontLogic'
 
-const CARD = { background: 'white', borderRadius: 12, border: '1px solid #E2EFF4', padding: 24, marginBottom: 20 }
-const H = { fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: '0 0 6px' }
-const P = { fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a', lineHeight: 1.5, margin: '0 0 16px' }
-const LABEL = { fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600, color: '#4a7a8a', marginBottom: 6, display: 'block' }
+const CARD = { background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', padding: 24, marginBottom: 20 }
+const H = { fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: '0 0 6px' }
+const P = { fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', lineHeight: 1.5, margin: '0 0 16px' }
+const LABEL = { fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600, color: '#5B6270', marginBottom: 6, display: 'block' }
 const INPUT = {
-  width: '100%', padding: '11px 12px', borderRadius: 8, border: '1px solid #D0E8F0', fontFamily: ds.fontDm,
-  fontSize: 13.5, color: '#0a1a24', background: 'white', boxSizing: 'border-box', outline: 'none', minHeight: 44,
+  width: '100%', padding: '11px 12px', borderRadius: 8, border: '1px solid #E1E5EC', fontFamily: ds.fontDm,
+  fontSize: 13.5, color: '#1B1F28', background: 'white', boxSizing: 'border-box', outline: 'none', minHeight: 44,
 }
 const BTN = {
   background: ds.teal, color: 'white', border: 'none', borderRadius: 8, padding: '0 22px', minHeight: 44,
   fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
 }
 const BTN_GHOST = {
-  background: 'white', border: '1px solid #D0E8F0', borderRadius: 8, padding: '0 16px', minHeight: 44,
-  fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, color: '#0a1a24', cursor: 'pointer',
+  background: 'white', border: '1px solid #E1E5EC', borderRadius: 8, padding: '0 16px', minHeight: 44,
+  fontFamily: ds.fontDm, fontSize: 13.5, fontWeight: 600, color: '#1B1F28', cursor: 'pointer',
 }
 
 function LookCard({ selected, locked, onPick, title, text, children }) {
@@ -38,12 +38,12 @@ function LookCard({ selected, locked, onPick, title, text, children }) {
       style={{
         textAlign: 'left', padding: 14, borderRadius: 14, background: locked ? '#F4F8FA' : 'white',
         cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.75 : 1,
-        border: selected ? `2px solid ${ds.teal}` : '1px solid #D0E8F0',
+        border: selected ? `2px solid ${ds.teal}` : '1px solid #E1E5EC',
       }}
     >
       {children}
-      <div style={{ marginTop: 10, fontFamily: ds.fontDm, fontSize: 14, fontWeight: 700, color: '#0a1a24' }}>{title}</div>
-      <div style={{ marginTop: 2, fontFamily: ds.fontDm, fontSize: 12, color: '#4a7a8a' }}>{text}</div>
+      <div style={{ marginTop: 10, fontFamily: ds.fontDm, fontSize: 14, fontWeight: 700, color: '#1B1F28' }}>{title}</div>
+      <div style={{ marginTop: 2, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>{text}</div>
     </button>
   )
 }
@@ -92,7 +92,7 @@ export default function CatalogLook() {
     }
   }
 
-  if (!loaded) return <div style={{ padding: 32, fontFamily: ds.fontDm, color: '#7A9BAD' }}>Loading…</div>
+  if (!loaded) return <div style={{ padding: 32, fontFamily: ds.fontDm, color: '#5B6270' }}>Loading…</div>
 
   const isStore = look.template === 'storefront'
 
@@ -170,7 +170,7 @@ export default function CatalogLook() {
                     onChange={(e) => setPoint(i, e.target.value)} />
                 ))}
               </div>
-              <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }}>
+              <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>
                 Shown under the order button. Up to {TRUST_POINT_CHARS} characters each. Only say what is true for your business.
               </div>
             </div>
@@ -181,7 +181,7 @@ export default function CatalogLook() {
                   style={{ width: 22, height: 22, marginTop: 1, flex: 'none' }} />
                 <span>
                   <span style={{ ...LABEL, display: 'block', marginBottom: 2 }}>Show the "Chat with Chioma" button</span>
-                  <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }}>
+                  <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>
                     A chat button in the corner of your Storefront. Chioma answers questions about the item the customer is looking at. It shows only while your web chat is on.
                   </span>
                 </span>
@@ -192,7 +192,7 @@ export default function CatalogLook() {
               <label htmlFor="sf-logo" style={LABEL}>Logo link <span style={{ fontWeight: 400 }}>(optional)</span></label>
               <input id="sf-logo" style={INPUT} value={look.logo_url} placeholder="https://..."
                 onChange={(e) => set('logo_url', e.target.value)} />
-              <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }}>
+              <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>
                 Without a logo, your shop name shows as initials in the accent colour.
               </div>
             </div>

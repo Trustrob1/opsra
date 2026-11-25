@@ -81,7 +81,7 @@ function ModuleHeader({ onNewTask }) {
       background: ds.dark, padding: '20px 28px',
       display: 'flex', alignItems: 'center',
       justifyContent: 'space-between',
-      borderBottom: '1px solid #1a2f3f',
+      borderBottom: '1px solid #E1E5EC',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{
@@ -96,7 +96,7 @@ function ModuleHeader({ onNewTask }) {
           <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>
             Task Board
           </h1>
-          <p style={{ fontSize: 12, color: '#6B8FA0', margin: '2px 0 0' }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: '2px 0 0' }}>
             All tasks across all modules · Personal and team view
           </p>
         </div>

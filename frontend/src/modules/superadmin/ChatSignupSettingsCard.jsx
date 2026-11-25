@@ -5,9 +5,9 @@ import { useEffect, useState } from "react";
 import { getChatSignupSettings, saveChatSignupSettings } from "../../services/superadmin.service";
 import { ds } from "../../utils/ds";
 
-const card = { background: ds.dark2, border: "1px solid #1e3a4f", borderRadius: 12, padding: "18px 20px", marginBottom: 16 };
-const field = { minHeight: 36, padding: "6px 10px", background: "#0b1a24", color: "white", border: "1px solid #1e3a4f", borderRadius: 7, fontSize: 13, fontFamily: ds.fontDm, boxSizing: "border-box", width: 120 };
-const lab = { display: "block", fontSize: 12, color: "#7A9BAD", marginBottom: 4 };
+const card = { background: ds.dark2, border: "1px solid #E1E5EC", borderRadius: 12, padding: "18px 20px", marginBottom: 16 };
+const field = { minHeight: 36, padding: "6px 10px", background: "#FFFFFF", color: '#1B1F28', border: "1px solid #E1E5EC", borderRadius: 7, fontSize: 13, fontFamily: ds.fontDm, boxSizing: "border-box", width: 120 };
+const lab = { display: "block", fontSize: 12, color: "#5B6270", marginBottom: 4 };
 const errText = (e) => {
   const d = e?.response?.data?.detail;
   if (typeof d === "string") return d;
@@ -20,7 +20,7 @@ export default function ChatSignupSettingsCard() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => { getChatSignupSettings().then(setS).catch((e) => setMsg(errText(e))); }, []);
-  if (!s) return <div style={{ ...card, color: "#7A9BAD", fontSize: 13 }}>{msg || "Loading…"}</div>;
+  if (!s) return <div style={{ ...card, color: "#5B6270", fontSize: 13 }}>{msg || "Loading…"}</div>;
   const num = (k) => (e) => setS({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) });
   const save = async () => {
     setBusy(true); setMsg("");
@@ -28,9 +28,9 @@ export default function ChatSignupSettingsCard() {
   };
   return (
     <div style={card}>
-      <div style={{ color: "white", fontWeight: 600, marginBottom: 4 }}>Chioma sign-up page (/start/chat)</div>
-      <p style={{ color: "#7A9BAD", fontSize: 12.5, margin: "0 0 12px" }}>New businesses get web chat only, on a free Chioma plan with no end date. They pay chats from the starter credit; there is no free monthly credit until they subscribe. This switch is separate from the WhatsApp sign-up.</p>
-      <label style={{ display: "flex", gap: 8, alignItems: "center", color: "white", fontSize: 13, marginBottom: 12 }}>
+      <div style={{ color: '#1B1F28', fontWeight: 600, marginBottom: 4 }}>Chioma sign-up page (/start/chat)</div>
+      <p style={{ color: "#5B6270", fontSize: 12.5, margin: "0 0 12px" }}>New businesses get web chat only, on a free Chioma plan with no end date. They pay chats from the starter credit; there is no free monthly credit until they subscribe. This switch is separate from the WhatsApp sign-up.</p>
+      <label style={{ display: "flex", gap: 8, alignItems: "center", color: '#1B1F28', fontSize: 13, marginBottom: 12 }}>
         <input type="checkbox" checked={!!s.is_open} onChange={(e) => setS({ ...s, is_open: e.target.checked })} /> Sign-up is open to the public
       </label>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>

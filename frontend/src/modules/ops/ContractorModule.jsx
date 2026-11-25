@@ -154,7 +154,7 @@ function Input({ label, value, onChange, type = 'text', placeholder, required, s
         type={type} value={value ?? ''} onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         style={{
-          border: '1px solid #dde4e8', borderRadius: 8, padding: '8px 12px',
+          border: '1px solid #E1E5EC', borderRadius: 8, padding: '8px 12px',
           fontSize: 13, fontFamily: ds.fontDm, outline: 'none',
           background: 'white', color: ds.dark,
         }}
@@ -170,7 +170,7 @@ function Select({ label, value, onChange, options, required, style: s }) {
       <select
         value={value ?? ''} onChange={e => onChange(e.target.value)}
         style={{
-          border: '1px solid #dde4e8', borderRadius: 8, padding: '8px 12px',
+          border: '1px solid #E1E5EC', borderRadius: 8, padding: '8px 12px',
           fontSize: 13, fontFamily: ds.fontDm, outline: 'none',
           background: 'white', color: ds.dark,
         }}
@@ -189,7 +189,7 @@ function Textarea({ label, value, onChange, placeholder, rows = 3, style: s }) {
         value={value ?? ''} onChange={e => onChange(e.target.value)}
         placeholder={placeholder} rows={rows}
         style={{
-          border: '1px solid #dde4e8', borderRadius: 8, padding: '8px 12px',
+          border: '1px solid #E1E5EC', borderRadius: 8, padding: '8px 12px',
           fontSize: 13, fontFamily: ds.fontDm, outline: 'none',
           background: 'white', color: ds.dark, resize: 'vertical',
         }}
@@ -203,7 +203,7 @@ function Textarea({ label, value, onChange, placeholder, rows = 3, style: s }) {
 function TabBar({ active, onChange, tabs }) {
   return (
     <div style={{
-      display: 'flex', gap: 4, borderBottom: '1px solid #dde4e8',
+      display: 'flex', gap: 4, borderBottom: '1px solid #E1E5EC',
       padding: '0 28px', background: 'white',
     }}>
       {tabs.map(tab => {
@@ -272,7 +272,7 @@ function ScorecardCard({ contractor: c, onSelect }) {
     <div
       onClick={onSelect}
       style={{
-        background: 'white', borderRadius: 12, border: '1px solid #dde4e8',
+        background: 'white', borderRadius: 12, border: '1px solid #E1E5EC',
         overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.15s',
       }}
       onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
@@ -390,7 +390,7 @@ function ContractorsTab({ user, onOpenCreate, refreshKey, isActive }) {
       {!contractors.length ? (
         <EmptyState icon={<Handshake size={36} color={ds.teal} strokeWidth={1.5} />} title="No contractors added yet" sub='Click "+ Add Contractor" to create your first contractor profile' />
       ) : (
-        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #dde4e8', overflow: 'hidden' }}>
+        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
@@ -484,7 +484,7 @@ function ContractorDetailPanel({ contractorId, user, onClose }) {
       zIndex: 200, display: 'flex', flexDirection: 'column',
     }}>
       {/* Header */}
-      <div style={{ padding: '20px 24px', borderBottom: '1px solid #dde4e8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+      <div style={{ padding: '20px 24px', borderBottom: '1px solid #E1E5EC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <div>
           <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: ds.dark }}>
             {loading ? 'Loading…' : contractor?.full_name}
@@ -497,7 +497,7 @@ function ContractorDetailPanel({ contractorId, user, onClose }) {
       </div>
 
       {/* Sub-tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #dde4e8', flexShrink: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid #E1E5EC', flexShrink: 0 }}>
         {detailTabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
             flex: 1, padding: '10px 0', background: 'none', border: 'none',
@@ -726,10 +726,10 @@ function KpiTrackerPanel({ contractor, onUpdate }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: ds.gray, borderBottom: '1px solid #dde4e8' }}>KPI</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: ds.gray, borderBottom: '1px solid #dde4e8' }}>Target</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: ds.gray, borderBottom: '1px solid #E1E5EC' }}>KPI</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: ds.gray, borderBottom: '1px solid #E1E5EC' }}>Target</th>
                 {monthLabels.map(ml => (
-                  <th key={ml} style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: ds.gray, borderBottom: '1px solid #dde4e8', whiteSpace: 'nowrap' }}>{ml}</th>
+                  <th key={ml} style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: ds.gray, borderBottom: '1px solid #E1E5EC', whiteSpace: 'nowrap' }}>{ml}</th>
                 ))}
               </tr>
             </thead>
@@ -904,7 +904,7 @@ function ExpandableTaskRow({ task, isOverdue, saving, onStatusChange, onSaveNote
             onClick={e => e.stopPropagation()}
             onChange={e => onStatusChange(e.target.value)}
             style={{
-              border: '1px solid #dde4e8', borderRadius: 6, padding: '4px 8px',
+              border: '1px solid #E1E5EC', borderRadius: 6, padding: '4px 8px',
               fontSize: 11, fontWeight: 600, color: sc.color,
               fontFamily: ds.fontDm, background: 'white', cursor: 'pointer',
             }}
@@ -1117,7 +1117,7 @@ function AllTasksTab({ refreshKey, isActive }) {
         <select
           value={filterContractor}
           onChange={e => setFilterContractor(e.target.value)}
-          style={{ border: '1px solid #dde4e8', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontFamily: ds.fontDm, background: 'white' }}
+          style={{ border: '1px solid #E1E5EC', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontFamily: ds.fontDm, background: 'white' }}
         >
           <option value="all">All Contractors</option>
           {contractors.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
@@ -1125,7 +1125,7 @@ function AllTasksTab({ refreshKey, isActive }) {
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          style={{ border: '1px solid #dde4e8', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontFamily: ds.fontDm, background: 'white' }}
+          style={{ border: '1px solid #E1E5EC', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontFamily: ds.fontDm, background: 'white' }}
         >
           <option value="all">All Statuses</option>
           {TASK_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -1463,7 +1463,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
         boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
       }}>
         {/* Modal header */}
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #dde4e8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid #E1E5EC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <div>
             <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: ds.dark }}>Add Contractor</div>
             <div style={{ fontSize: 12, color: ds.gray, marginTop: 2 }}>Step {step + 1} of {STEPS.length} — {STEPS[step]}</div>
@@ -1544,7 +1544,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
                   {showTemplates && (
                     <div style={{
                       position: 'absolute', top: '100%', left: 0, marginTop: 4,
-                      background: 'white', border: '1px solid #dde4e8', borderRadius: 8,
+                      background: 'white', border: '1px solid #E1E5EC', borderRadius: 8,
                       boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 10, minWidth: 220,
                     }}>
                       {KPI_TEMPLATES.map(t => (
@@ -1591,7 +1591,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {kpiTargets.map((kpi, i) => (
-                    <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #dde4e8' }}>
+                    <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #E1E5EC' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
                         <Input label="Label" value={kpi.label} onChange={v => updateKpi(i, 'label', v)} placeholder="e.g. Monthly Leads" />
                         <Select label="KPI Type" value={kpi.kpi_type} onChange={v => updateKpi(i, 'kpi_type', v)} options={KPI_TYPE_OPTIONS} />
@@ -1623,7 +1623,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
                 <Btn onClick={addClause} small>+ Add Clause</Btn>
               </div>
               {riskClauses.map((rc, i) => (
-                <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #dde4e8', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #E1E5EC', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <Input label="Clause Reference" value={rc.clause_ref} onChange={v => updateClause(i, 'clause_ref', v)} placeholder="e.g. Clause 7.2" />
                   <Textarea label="Trigger" value={rc.trigger_description} onChange={v => updateClause(i, 'trigger_description', v)} placeholder="What triggers this clause?" rows={2} />
                   <Textarea label="Consequence" value={rc.consequence} onChange={v => updateClause(i, 'consequence', v)} placeholder="What happens when triggered?" rows={2} />
@@ -1643,7 +1643,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
                 <Btn onClick={addTask} small>+ Add Task</Btn>
               </div>
               {taskTemplate.map((t, i) => (
-                <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #dde4e8', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #E1E5EC', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <Input label="Task Description" value={t.task_description} onChange={v => updateTask(i, 'task_description', v)} placeholder="e.g. Complete onboarding pack" />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
                     <Input label="Week #" type="number" value={t.week_number} onChange={v => updateTask(i, 'week_number', v)} placeholder="1" />
@@ -1679,7 +1679,7 @@ function ContractorCreateModal({ onClose, onCreated }) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #dde4e8', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #E1E5EC', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
           <Btn onClick={step === 0 ? onClose : () => setStep(p => p - 1)} variant="secondary">
             {step === 0 ? 'Cancel' : '← Back'}
           </Btn>
@@ -1757,7 +1757,7 @@ function LogLinkSetup({ contractor, onRefresh }) {
   }
 
   return (
-    <div style={{ marginTop: 24, padding: '16px 18px', background: '#f6fafb', borderRadius: 10, border: '1px solid #dde4e8' }}>
+    <div style={{ marginTop: 24, padding: '16px 18px', background: '#f6fafb', borderRadius: 10, border: '1px solid #E1E5EC' }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: '#4a6375', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
         Daily Log Link
       </div>
@@ -1774,7 +1774,7 @@ function LogLinkSetup({ contractor, onRefresh }) {
           </div>
         </>
       ) : (
-        <div style={{ fontSize: 12, color: '#6B8FA0', marginBottom: 12 }}>No log link yet. Generate one below.</div>
+        <div style={{ fontSize: 12, color: '#5B6270', marginBottom: 12 }}>No log link yet. Generate one below.</div>
       )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1785,17 +1785,17 @@ function LogLinkSetup({ contractor, onRefresh }) {
           value={pin}
           onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
           placeholder={logUrl ? 'New PIN to reset' : 'Set PIN (4–6 digits)'}
-          style={{ padding: '8px 10px', border: '1.5px solid #dde4e8', borderRadius: 7, fontSize: 13, width: 140, letterSpacing: 4 }}
+          style={{ padding: '8px 10px', border: '1.5px solid #E1E5EC', borderRadius: 7, fontSize: 13, width: 140, letterSpacing: 4 }}
         />
         <select
           value={retention}
           onChange={e => setRetention(Number(e.target.value))}
-          style={{ padding: '8px 10px', border: '1.5px solid #dde4e8', borderRadius: 7, fontSize: 13 }}
+          style={{ padding: '8px 10px', border: '1.5px solid #E1E5EC', borderRadius: 7, fontSize: 13 }}
         >
           {[1,2,3,6,12].map(m => <option key={m} value={m}>{m} month{m > 1 ? 's' : ''}</option>)}
         </select>
         {logUrl ? (
-          <button onClick={handleReset} disabled={generating} style={{ padding: '8px 14px', fontSize: 12, background: '#e8f0f4', color: '#0a1f2e', border: 'none', borderRadius: 7, cursor: 'pointer', fontWeight: 600 }}>
+          <button onClick={handleReset} disabled={generating} style={{ padding: '8px 14px', fontSize: 12, background: '#e8f0f4', color: '#1B1F28', border: 'none', borderRadius: 7, cursor: 'pointer', fontWeight: 600 }}>
             {generating ? '…' : 'Reset PIN & Link'}
           </button>
         ) : (
@@ -1961,11 +1961,11 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
 
       {expanded && (
         <div style={{ marginTop: 12 }}>
-          {loading && <div style={{ fontSize: 13, color: '#6B8FA0' }}>Loading…</div>}
+          {loading && <div style={{ fontSize: 13, color: '#5B6270' }}>Loading…</div>}
           {!loading && summary && summary.kpi_summaries.map(kpi => (
             <div key={kpi.kpi_key} style={{ marginBottom: 20, padding: '14px 16px', background: '#f6fafb', borderRadius: 10, border: '1px solid #e8edf1' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#0a1f2e' }}>{kpi.kpi_label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#1B1F28' }}>{kpi.kpi_label}</span>
                 <span style={{ fontSize: 12, color: paceColour[kpi.pace_status] }}>
                   {paceIcon[kpi.pace_status]} {kpi.pace_status.replace('_', ' ')}
                 </span>
@@ -1980,8 +1980,8 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                 const overdue  = tasks.filter(t => t.due_date && t.due_date < today && t.status !== 'done').length
                 if (total === 0) return null
                 return (
-                  <div style={{ fontSize: 11, color: '#6B8FA0', marginBottom: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{display:"inline-flex",alignItems:"center",gap:4}}><ClipboardList size={13} />Tasks: <strong style={{ color: '#0a1f2e' }}>{done}/{total} done</strong></span>
+                  <div style={{ fontSize: 11, color: '#5B6270', marginBottom: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{display:"inline-flex",alignItems:"center",gap:4}}><ClipboardList size={13} />Tasks: <strong style={{ color: '#1B1F28' }}>{done}/{total} done</strong></span>
                     {blocked > 0 && <span style={{ color: '#c5221f', fontWeight: 600, display:"inline-flex", alignItems:"center", gap:4 }}><AlertTriangle size={11} />{blocked} blocked</span>}
                     {overdue > 0 && <span style={{display:"inline-flex",alignItems:"center",gap:4,color:"#b45309",fontWeight:600}}><AlertTriangle size={11} />{overdue} overdue</span>}
                   </div>
@@ -2005,9 +2005,9 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
               {/* Weekly breakdown */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 {kpi.weekly_breakdown.map(w => (
-                  <div key={w.week} style={{ flex: 1, background: 'white', border: '1px solid #dde4e8', borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 10, color: '#6B8FA0' }}>Wk {w.week}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0a1f2e' }}>{w.total}</div>
+                  <div key={w.week} style={{ flex: 1, background: 'white', border: '1px solid #E1E5EC', borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: '#5B6270' }}>Wk {w.week}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1B1F28' }}>{w.total}</div>
                   </div>
                 ))}
               </div>
@@ -2020,7 +2020,7 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                     value={logValue}
                     onChange={e => setLogValue(e.target.value)}
                     placeholder="Today's value"
-                    style={{ flex: 1, padding: '7px 10px', border: '1.5px solid #dde4e8', borderRadius: 7, fontSize: 13 }}
+                    style={{ flex: 1, padding: '7px 10px', border: '1.5px solid #E1E5EC', borderRadius: 7, fontSize: 13 }}
                     autoFocus
                   />
                   <button
@@ -2044,7 +2044,7 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                     <button
                       onClick={() => handleUseAsActual(kpi)}
                       disabled={actualSaving === kpi.kpi_key}
-                      style={{ padding: '6px 12px', fontSize: 12, background: '#f1f3f4', color: '#0a1f2e', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600, opacity: actualSaving === kpi.kpi_key ? 0.5 : 1 }}
+                      style={{ padding: '6px 12px', fontSize: 12, background: '#f1f3f4', color: '#1B1F28', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600, opacity: actualSaving === kpi.kpi_key ? 0.5 : 1 }}
                     >
                       {actualSaving === kpi.kpi_key ? '…' : '→ Set as Month Actual'}
                     </button>
@@ -2062,23 +2062,23 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
               <div style={{ marginTop: 8 }}>
                 <button
                   onClick={() => handleOpenLogs(kpi.kpi_key)}
-                  style={{ fontSize: 11, color: '#6B8FA0', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                  style={{ fontSize: 11, color: '#5B6270', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
                 >
                   {logsOpen === kpi.kpi_key ? '▲ Hide log history' : `▼ View log history (${kpi.daily_entries?.length || 0})`}
                 </button>
 
                 {logsOpen === kpi.kpi_key && (
                   <div style={{ marginTop: 10 }}>
-                    {logHistoryLoading && <div style={{ fontSize: 12, color: '#6B8FA0' }}>Loading…</div>}
+                    {logHistoryLoading && <div style={{ fontSize: 12, color: '#5B6270' }}>Loading…</div>}
                     {!logHistoryLoading && logHistory.length === 0 && (
-                      <div style={{ fontSize: 12, color: '#6B8FA0', fontStyle: 'italic' }}>No entries yet.</div>
+                      <div style={{ fontSize: 12, color: '#5B6270', fontStyle: 'italic' }}>No entries yet.</div>
                     )}
                     {!logHistoryLoading && logHistory.map(log => (
-                      <div key={log.id} style={{ background: 'white', border: '1px solid #dde4e8', borderRadius: 7, padding: '8px 12px', marginBottom: 6 }}>
+                      <div key={log.id} style={{ background: 'white', border: '1px solid #E1E5EC', borderRadius: 7, padding: '8px 12px', marginBottom: 6 }}>
                         {editLog?.id === log.id ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <span style={{ fontSize: 11, color: '#6B8FA0', minWidth: 70 }}>{log.log_date}</span>
+                              <span style={{ fontSize: 11, color: '#5B6270', minWidth: 70 }}>{log.log_date}</span>
                               <input
                                 type="number"
                                 value={editLog.value}
@@ -2092,7 +2092,7 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                               value={editLog.notes || ''}
                               onChange={e => setEditLog(p => ({ ...p, notes: e.target.value }))}
                               placeholder="Notes (optional)"
-                              style={{ padding: '4px 8px', border: '1px solid #dde4e8', borderRadius: 6, fontSize: 12 }}
+                              style={{ padding: '4px 8px', border: '1px solid #E1E5EC', borderRadius: 6, fontSize: 12 }}
                             />
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button onClick={handleSaveEdit} disabled={editSaving} style={{ padding: '4px 10px', background: ds.teal, color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
@@ -2116,9 +2116,9 @@ function DailyProgressSection({ contractorId, kpiTargets }) {
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div>
-                              <span style={{ fontSize: 11, color: '#6B8FA0', marginRight: 10 }}>{log.log_date}</span>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: '#0a1f2e' }}>{log.value ?? log.label_value ?? '—'}</span>
-                              {log.notes && <span style={{ fontSize: 11, color: '#6B8FA0', marginLeft: 8, fontStyle: 'italic' }}>{log.notes}</span>}
+                              <span style={{ fontSize: 11, color: '#5B6270', marginRight: 10 }}>{log.log_date}</span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: '#1B1F28' }}>{log.value ?? log.label_value ?? '—'}</span>
+                              {log.notes && <span style={{ fontSize: 11, color: '#5B6270', marginLeft: 8, fontStyle: 'italic' }}>{log.notes}</span>}
                               {log.logged_via === 'public_link' && (
                                 <span style={{ fontSize: 10, background: '#e8f0fe', color: '#1a56db', borderRadius: 4, padding: '1px 5px', marginLeft: 6, fontWeight: 600 }}>via link</span>
                               )}

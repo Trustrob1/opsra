@@ -98,8 +98,8 @@ export default function WhatsAppIntegration() {
   // ── Styles ───────────────────────────────────────────────────────────────
 
   const card = {
-    background: '#0a1a24',
-    border: '1px solid #1a2f3f',
+    background: '#FFFFFF',
+    border: '1px solid #E1E5EC',
     borderRadius: 10,
     padding: '22px 26px',
     marginBottom: 18,
@@ -107,8 +107,8 @@ export default function WhatsAppIntegration() {
 
   const inputStyle = {
     width: '100%',
-    background: '#0a1a24',
-    border: '1px solid #1a2f3f',
+    background: '#FFFFFF',
+    border: '1px solid #E1E5EC',
     borderRadius: 7,
     padding: '9px 12px',
     color: '#e2e8f0',
@@ -120,7 +120,7 @@ export default function WhatsAppIntegration() {
 
   const labelStyle = {
     display: 'block',
-    color: '#5a8a9f',
+    color: '#5B6270',
     fontSize: 12,
     marginBottom: 5,
     fontFamily: ds.fontDm,
@@ -134,8 +134,8 @@ export default function WhatsAppIntegration() {
   }
 
   const modalCard = {
-    background: '#0a1a24',
-    border: '1px solid #1a2f3f',
+    background: '#FFFFFF',
+    border: '1px solid #E1E5EC',
     borderRadius: 12,
     padding: 32,
     width: '100%',
@@ -146,7 +146,7 @@ export default function WhatsAppIntegration() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#5a8a9f', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
         Loading WhatsApp status…
       </div>
     )
@@ -173,7 +173,7 @@ export default function WhatsAppIntegration() {
       {/* Status card */}
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: 'white', margin: 0 }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: 0 }}>
             📱 WhatsApp Business Connection
           </h3>
           <span style={{
@@ -191,7 +191,7 @@ export default function WhatsAppIntegration() {
             <div style={{ marginBottom: 14 }}>
               <div style={labelStyle}>Phone Number ID</div>
               <div style={{
-                background: '#061219', border: '1px solid #1a2f3f',
+                background: '#F6F7FA', border: '1px solid #E1E5EC',
                 borderRadius: 6, padding: '8px 12px',
                 color: '#e2e8f0', fontSize: 13, fontFamily: 'monospace',
               }}>
@@ -202,7 +202,7 @@ export default function WhatsAppIntegration() {
               <div style={{ marginBottom: 14 }}>
                 <div style={labelStyle}>WhatsApp Business Account ID (WABA)</div>
                 <div style={{
-                  background: '#061219', border: '1px solid #1a2f3f',
+                  background: '#F6F7FA', border: '1px solid #E1E5EC',
                   borderRadius: 6, padding: '8px 12px',
                   color: '#e2e8f0', fontSize: 13, fontFamily: 'monospace',
                 }}>
@@ -237,7 +237,7 @@ export default function WhatsAppIntegration() {
           </>
         ) : (
           <>
-            <p style={{ color: '#5a8a9f', fontSize: 13, margin: '0 0 16px', lineHeight: 1.6, fontFamily: ds.fontDm }}>
+            <p style={{ color: '#5B6270', fontSize: 13, margin: '0 0 16px', lineHeight: 1.6, fontFamily: ds.fontDm }}>
               Connect your WhatsApp Business number to enable all messaging features —
               drip sequences, broadcasts, two-way conversations, and template delivery.
             </p>
@@ -258,14 +258,14 @@ export default function WhatsAppIntegration() {
 
       {/* Setup instructions */}
       <div style={{ ...card, borderColor: 'rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.13)' }}>
-        <h4 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: 'white', margin: '0 0 10px' }}>
+        <h4 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13, color: '#1B1F28', margin: '0 0 10px' }}>
           📋 Where to find your credentials
         </h4>
         <ol style={{ color: '#c4cfe0', fontSize: 13, lineHeight: 1.9, paddingLeft: 18, margin: 0, fontFamily: ds.fontDm }}>
-          <li>Go to <strong style={{ color: 'white' }}>Meta for Developers</strong> → Your App → WhatsApp → API Setup</li>
-          <li>Copy the <strong style={{ color: 'white' }}>Phone Number ID</strong> (the numeric ID below the phone number, not the number itself)</li>
-          <li>In <strong style={{ color: 'white' }}>Meta Business Manager</strong> → System Users, generate a <strong style={{ color: 'white' }}>Permanent Access Token</strong> with <code style={{ fontSize: 12, color: '#a5b4fc' }}>whatsapp_business_messaging</code> permission</li>
-          <li>The <strong style={{ color: 'white' }}>WABA ID</strong> is optional but required for template submission — find it in Business Manager → WhatsApp Accounts</li>
+          <li>Go to <strong style={{ color: '#1B1F28' }}>Meta for Developers</strong> → Your App → WhatsApp → API Setup</li>
+          <li>Copy the <strong style={{ color: '#1B1F28' }}>Phone Number ID</strong> (the numeric ID below the phone number, not the number itself)</li>
+          <li>In <strong style={{ color: '#1B1F28' }}>Meta Business Manager</strong> → System Users, generate a <strong style={{ color: '#1B1F28' }}>Permanent Access Token</strong> with <code style={{ fontSize: 12, color: '#a5b4fc' }}>whatsapp_business_messaging</code> permission</li>
+          <li>The <strong style={{ color: '#1B1F28' }}>WABA ID</strong> is optional but required for template submission — find it in Business Manager → WhatsApp Accounts</li>
         </ol>
         <div style={{
           marginTop: 12, padding: '9px 12px',
@@ -281,7 +281,7 @@ export default function WhatsAppIntegration() {
       {showForm && (
         <div style={overlay}>
           <div style={modalCard}>
-            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: 'white', margin: '0 0 20px' }}>
+            <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: '0 0 20px' }}>
               {connected ? 'Update WhatsApp Credentials' : 'Connect WhatsApp Business'}
             </h3>
 
@@ -298,7 +298,7 @@ export default function WhatsAppIntegration() {
                   style={inputStyle}
                   required
                 />
-                <div style={{ color: '#5a8a9f', fontSize: 11, marginTop: 4, fontFamily: ds.fontDm }}>
+                <div style={{ color: '#5B6270', fontSize: 11, marginTop: 4, fontFamily: ds.fontDm }}>
                   Found in Meta for Developers → WhatsApp → API Setup
                 </div>
               </div>
@@ -315,14 +315,14 @@ export default function WhatsAppIntegration() {
                   style={inputStyle}
                   required
                 />
-                <div style={{ color: '#5a8a9f', fontSize: 11, marginTop: 4, fontFamily: ds.fontDm }}>
+                <div style={{ color: '#5B6270', fontSize: 11, marginTop: 4, fontFamily: ds.fontDm }}>
                   Must have whatsapp_business_messaging permission
                 </div>
               </div>
 
               <div style={{ marginBottom: 22 }}>
                 <label style={labelStyle}>
-                  WABA ID <span style={{ color: '#5a8a9f', fontWeight: 400 }}>(optional — required for template submission)</span>
+                  WABA ID <span style={{ color: '#5B6270', fontWeight: 400 }}>(optional — required for template submission)</span>
                 </label>
                 <input
                   type="text"
@@ -331,7 +331,7 @@ export default function WhatsAppIntegration() {
                   placeholder="e.g. 987654321098765"
                   style={inputStyle}
                 />
-                <div style={{ color: '#5a8a9f', fontSize: 11, marginTop: 4, fontFamily: ds.fontDm }}>
+                <div style={{ color: '#5B6270', fontSize: 11, marginTop: 4, fontFamily: ds.fontDm }}>
                   Found in Meta Business Manager → WhatsApp Accounts
                 </div>
               </div>
@@ -341,8 +341,8 @@ export default function WhatsAppIntegration() {
                   type="button"
                   onClick={() => { setShowForm(false); resetForm() }}
                   style={{
-                    background: 'transparent', color: '#5a8a9f',
-                    border: '1px solid #1a2f3f', borderRadius: 7,
+                    background: 'transparent', color: '#5B6270',
+                    border: '1px solid #E1E5EC', borderRadius: 7,
                     padding: '9px 18px', cursor: 'pointer',
                     fontSize: 13, fontFamily: ds.fontDm,
                   }}
@@ -376,7 +376,7 @@ export default function WhatsAppIntegration() {
             <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#ef4444', margin: '0 0 12px' }}>
               Disconnect WhatsApp?
             </h3>
-            <p style={{ color: '#5a8a9f', fontSize: 13, margin: '0 0 22px', lineHeight: 1.6, fontFamily: ds.fontDm }}>
+            <p style={{ color: '#5B6270', fontSize: 13, margin: '0 0 22px', lineHeight: 1.6, fontFamily: ds.fontDm }}>
               This will remove your WhatsApp credentials from Opsra. All automated
               messaging — drip sequences, broadcasts, and alerts — will stop
               immediately until you reconnect.
@@ -385,8 +385,8 @@ export default function WhatsAppIntegration() {
               <button
                 onClick={() => setShowDisconnectModal(false)}
                 style={{
-                  background: 'transparent', color: '#5a8a9f',
-                  border: '1px solid #1a2f3f', borderRadius: 7,
+                  background: 'transparent', color: '#5B6270',
+                  border: '1px solid #E1E5EC', borderRadius: 7,
                   padding: '9px 18px', cursor: 'pointer',
                   fontSize: 13, fontFamily: ds.fontDm,
                 }}

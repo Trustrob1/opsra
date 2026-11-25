@@ -149,8 +149,8 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
     <div style={{ display: open ? 'flex' : 'none', flexDirection: 'column',
       position: 'fixed', top: 0, right: 0, bottom: 0,
       width: 380,
-      background: '#0a1a24',
-      borderLeft: '1px solid #1a3040',
+      background: '#FFFFFF',
+      borderLeft: '1px solid #E1E5EC',
       zIndex: ds.z.modal ?? 1100,
       boxShadow: '-8px 0 32px rgba(0,0,0,0.5)',
       fontFamily: ds.fontDm,
@@ -160,7 +160,7 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '14px 18px',
-        borderBottom: '1px solid #1a3040',
+        borderBottom: '1px solid #E1E5EC',
         flexShrink: 0,
       }}>
         <div style={{
@@ -172,10 +172,10 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
           ✦
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: 'white' }}>
+          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28' }}>
             Aria
           </div>
-          <div style={{ fontSize: 11, color: '#3a5a6a' }}>AI Operations Assistant</div>
+          <div style={{ fontSize: 11, color: '#3C4352' }}>AI Operations Assistant</div>
         </div>
 
         {/* Clear chat */}
@@ -188,8 +188,8 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
             }}
             title="Clear chat"
             style={{
-              background: 'none', border: '1px solid #1e3a4f', cursor: 'pointer',
-              color: '#3a5a6a', fontSize: 11, padding: '4px 9px',
+              background: 'none', border: '1px solid #E1E5EC', cursor: 'pointer',
+              color: '#3C4352', fontSize: 11, padding: '4px 9px',
               borderRadius: 6, fontFamily: ds.fontDm, transition: 'all 0.15s',
               whiteSpace: 'nowrap',
             }}
@@ -206,7 +206,7 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
           title="Close Aria"
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: '#3a5a6a', fontSize: 18, padding: 4,
+            color: '#3C4352', fontSize: 18, padding: 4,
             borderRadius: 6, transition: 'color 0.15s',
           }}
           onMouseEnter={e => e.currentTarget.style.color = '#7A9BAD'}
@@ -233,9 +233,9 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
 
         {/* Empty state */}
         {!showBriefing && messages.length === 0 && !streaming && (
-          <div style={{ textAlign: 'center', marginTop: 48, color: '#3a5a6a' }}>
+          <div style={{ textAlign: 'center', marginTop: 48, color: '#3C4352' }}>
             <div style={{ fontSize: 28, marginBottom: 10 }}>✦</div>
-            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13.5, color: '#7A9BAD', marginBottom: 4 }}>
+            <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 13.5, color: '#5B6270', marginBottom: 4 }}>
               How can I help?
             </div>
             <div style={{ fontSize: 11 }}>
@@ -263,7 +263,7 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
       </div>
 
       {/* ── Suggestions tray — always available, collapsible ───────────── */}
-      <div style={{ borderTop: '1px solid #1a3040', flexShrink: 0 }}>
+      <div style={{ borderTop: '1px solid #E1E5EC', flexShrink: 0 }}>
 
         {/* Toggle button */}
         <button
@@ -321,7 +321,7 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
             ].map(group => (
               <div key={group.label} style={{ marginBottom: 12 }}>
                 <div style={{
-                  fontSize: 9.5, fontWeight: 700, color: '#3a5a6a',
+                  fontSize: 9.5, fontWeight: 700, color: '#3C4352',
                   textTransform: 'uppercase', letterSpacing: '1px',
                   marginBottom: 5,
                 }}>
@@ -372,13 +372,13 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
                         })()
                       }}
                       style={{
-                        background:   '#0a1a24',
-                        border:       '1px solid #1e3a4f',
+                        background:   '#FFFFFF',
+                        border:       '1px solid #E1E5EC',
                         borderRadius: 7,
                         padding:      '7px 11px',
                         textAlign:    'left',
                         fontSize:     12,
-                        color:        '#7A9BAD',
+                        color:        '#5B6270',
                         fontFamily:   ds.fontDm,
                         cursor:       'pointer',
                         transition:   'all 0.15s',
@@ -408,12 +408,12 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
       {/* ── Input area ──────────────────────────────────────────────────── */}
       <div style={{
         padding: '10px 14px 16px',
-        borderTop: '1px solid #1a3040',
+        borderTop: '1px solid #E1E5EC',
         flexShrink: 0,
       }}>
         <div style={{
           display: 'flex', gap: 8, alignItems: 'flex-end',
-          background: '#0e2030', border: '1.5px solid #1e3a4f',
+          background: '#F1F3F8', border: '1.5px solid #E1E5EC',
           borderRadius: 10, padding: '8px 10px',
           transition: 'border-color 0.15s',
         }}>
@@ -428,7 +428,7 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
             style={{
               flex: 1, background: 'none', border: 'none', outline: 'none',
               resize: 'none', overflow: 'hidden',
-              fontSize: 13.5, color: 'white', fontFamily: ds.fontDm,
+              fontSize: 13.5, color: '#1B1F28', fontFamily: ds.fontDm,
               lineHeight: 1.5,
               maxHeight: 120,
             }}
@@ -454,7 +454,7 @@ export default function AriaPanel({ open, onClose, briefing, onBadgeClear }) {
             {streaming ? (
               <span style={{ width: 14, height: 14, border: '2px solid #7A9BAD', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
             ) : (
-              <span style={{ color: 'white', fontSize: 14 }}>↑</span>
+              <span style={{ color: '#1B1F28', fontSize: 14 }}>↑</span>
             )}
           </button>
         </div>
@@ -492,7 +492,7 @@ function MessageBubble({ msg }) {
       <div style={{
         maxWidth:     '78%',
         background:   isUser ? ds.teal : '#0e2030',
-        border:       isUser ? 'none' : '1px solid #1a3040',
+        border:       isUser ? 'none' : '1px solid #E1E5EC',
         borderRadius: isUser ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
         padding:      '9px 13px',
         fontSize:     13.5,

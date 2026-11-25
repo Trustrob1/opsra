@@ -15,10 +15,10 @@ const ACTION_LABELS = {
 }
 const BLANK = { question: '', action: 'rep', reply: '' }
 
-const card  = { background: '#0a1a24', border: '1px solid #1e3a4f', borderRadius: 12, padding: '18px 20px', marginBottom: 14 }
-const label = { display: 'block', fontSize: 11, color: '#7A9BAD', margin: '0 0 5px', fontFamily: ds.fontDm }
+const card  = { background: '#FFFFFF', border: '1px solid #E1E5EC', borderRadius: 12, padding: '18px 20px', marginBottom: 14 }
+const label = { display: 'block', fontSize: 11, color: '#5B6270', margin: '0 0 5px', fontFamily: ds.fontDm }
 const input = {
-  width: '100%', boxSizing: 'border-box', background: '#06131b', color: 'white', border: '1px solid #1e3a4f',
+  width: '100%', boxSizing: 'border-box', background: '#F6F7FA', color: '#1B1F28', border: '1px solid #E1E5EC',
   borderRadius: 8, padding: '9px 11px', fontSize: 13, fontFamily: ds.fontDm,
 }
 
@@ -54,14 +54,14 @@ export default function AdQuestionsConfig() {
     setSaving(false)
   }
 
-  if (loading) return <div style={{ padding: 32, color: '#7A9BAD', fontSize: 13 }}>Loading…</div>
+  if (loading) return <div style={{ padding: 32, color: '#5B6270', fontSize: 13 }}>Loading…</div>
 
   return (
     <div style={{ maxWidth: 720, fontFamily: ds.fontDm }}>
-      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: 'white', margin: '0 0 6px' }}>
+      <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: '0 0 6px' }}>
         Ad questions
       </h3>
-      <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 16px', lineHeight: 1.5 }}>
+      <p style={{ fontSize: 12, color: '#5B6270', margin: '0 0 16px', lineHeight: 1.5 }}>
         When someone taps a question on your click-to-WhatsApp ad, that question arrives as their first message.
         Type each question exactly as it appears on the ad and choose what happens. Messages that don't match
         any question follow your normal WhatsApp menu.

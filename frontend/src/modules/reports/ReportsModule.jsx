@@ -1289,7 +1289,7 @@ export default function ReportsModule({ user }) {
 
       {/* ── Module Header ───────────────────────────────────────────────────── */}
       <div style={{ background: ds.dark, padding: '20px 28px',
-        borderBottom: '1px solid #1a2f3f', display: 'flex',
+        borderBottom: '1px solid #E1E5EC', display: 'flex',
         alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, background: ds.teal,
@@ -1299,7 +1299,7 @@ export default function ReportsModule({ user }) {
             <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>
               Management Reports
             </h1>
-            <p style={{ fontSize: 12, color: '#6B8FA0', margin: '2px 0 0' }}>
+            <p style={{ fontSize: 12, color: '#5B6270', margin: '2px 0 0' }}>
               {meta ? `${meta.period_label} · ${meta.compare_mode?.replace(/_/g,' ')}` : 'Filterable, downloadable business reports'}
             </p>
           </div>
@@ -1310,13 +1310,13 @@ export default function ReportsModule({ user }) {
           {isMobile && (
             <button onClick={() => setFiltersOpen(true)}
               style={{ padding: '8px 14px', background: 'none', border: '1px solid #2a4a5a',
-                borderRadius: 8, color: '#A0BDC8', cursor: 'pointer', fontSize: 13 }}>
+                borderRadius: 8, color: '#5B6270', cursor: 'pointer', fontSize: 13 }}>
               <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Filter size={13} />Filters</span>
             </button>
           )}
           <button onClick={() => setScheduleOpen(true)}
             style={{ padding: '8px 14px', background: 'none', border: '1px solid #2a4a5a',
-              borderRadius: 8, color: '#A0BDC8', cursor: 'pointer', fontSize: 13 }}>
+              borderRadius: 8, color: '#5B6270', cursor: 'pointer', fontSize: 13 }}>
             <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Calendar size={13} />Schedule</span>
           </button>
           <button onClick={handleApply} disabled={loading}

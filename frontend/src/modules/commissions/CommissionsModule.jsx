@@ -124,18 +124,18 @@ export default function CommissionsModule({ user }) {
           return (
             <div key={card.label} style={{
               background: 'white', borderRadius: 12,
-              border: '1px solid #E4EEF2', padding: '16px 18px',
+              border: '1px solid #E1E5EC', padding: '16px 18px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <CardIcon Icon={card.Icon} size={18} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.7px' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.7px' }}>
                   {card.label}
                 </span>
               </div>
-              <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 20, color: '#0a1a24' }}>
+              <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 20, color: '#1B1F28' }}>
                 {_fmt(amount)}
               </div>
-              <div style={{ fontSize: 12, color: '#7A9BAD', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: '#5B6270', marginTop: 2 }}>
                 {count} record{count !== 1 ? 's' : ''}
               </div>
             </div>
@@ -157,10 +157,10 @@ export default function CommissionsModule({ user }) {
           {isAffiliate ? <User size={20} color="white" strokeWidth={2} /> : <Briefcase size={20} color="white" strokeWidth={2} />}
         </div>
         <div>
-          <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#0a1a24', margin: 0 }}>
+          <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 22, color: '#1B1F28', margin: 0 }}>
             {isAffiliate ? 'My Commissions' : 'Commission Tracking'}
           </h1>
-          <p style={{ fontSize: 13, color: '#7A9BAD', margin: '3px 0 0' }}>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '3px 0 0' }}>
             {isAffiliate
               ? 'Your referral commissions — updated by your manager'
               : 'Manage affiliate and sales rep commissions across the organisation'}
@@ -168,7 +168,7 @@ export default function CommissionsModule({ user }) {
         </div>
         <button
           onClick={load}
-          style={{ marginLeft: 'auto', background: 'none', border: '1px solid #CBD5E1', borderRadius: 8, padding: '7px 14px', fontSize: 13, color: '#4a7a8a', cursor: 'pointer', fontFamily: ds.fontDm }}
+          style={{ marginLeft: 'auto', background: 'none', border: '1px solid #CBD5E1', borderRadius: 8, padding: '7px 14px', fontSize: 13, color: '#5B6270', cursor: 'pointer', fontFamily: ds.fontDm }}
         ><span style={{display:'inline-flex',alignItems:'center',gap:6}}><RefreshCw size={13} />Refresh</span></button>
       </div>
 
@@ -192,7 +192,7 @@ export default function CommissionsModule({ user }) {
           {(filterStatus) && (
             <button
               onClick={() => { setFilterStatus(''); setPage(1) }}
-              style={{ fontSize: 12, color: '#7A9BAD', background: 'none', border: 'none', cursor: 'pointer' }}
+              style={{ fontSize: 12, color: '#5B6270', background: 'none', border: 'none', cursor: 'pointer' }}
             ><span style={{display:'inline-flex',alignItems:'center',gap:4}}><X size={12} />Clear</span></button>
           )}
         </div>
@@ -206,7 +206,7 @@ export default function CommissionsModule({ user }) {
       )}
 
       {/* Table */}
-      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E4EEF2', overflow: 'hidden' }}>
+      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#F5F9FA' }}>
@@ -219,7 +219,7 @@ export default function CommissionsModule({ user }) {
                 'Date',
                 ...(isManager ? ['Actions'] : []),
               ].map(h => (
-                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7A9BAD', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                   {h}
                 </th>
               ))}
@@ -228,13 +228,13 @@ export default function CommissionsModule({ user }) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={isManager ? 7 : 5} style={{ padding: 32, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+                <td colSpan={isManager ? 7 : 5} style={{ padding: 32, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
                   Loading…
                 </td>
               </tr>
             ) : commissions.length === 0 ? (
               <tr>
-                <td colSpan={isManager ? 7 : 5} style={{ padding: 32, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+                <td colSpan={isManager ? 7 : 5} style={{ padding: 32, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
                   No commissions found.
                 </td>
               </tr>
@@ -252,13 +252,13 @@ export default function CommissionsModule({ user }) {
 
                   {/* Affiliate (managers only) */}
                   {isManager && (
-                    <td style={{ padding: '12px 14px', fontSize: 13, color: '#0a1a24' }}>
+                    <td style={{ padding: '12px 14px', fontSize: 13, color: '#1B1F28' }}>
                       {c.affiliate?.full_name ?? c.affiliate_user_id?.slice(0, 8) + '…'}
                     </td>
                   )}
 
                   {/* Lead / Customer */}
-                  <td style={{ padding: '12px 14px', fontSize: 12, color: '#7A9BAD' }}>
+                  <td style={{ padding: '12px 14px', fontSize: 12, color: '#5B6270' }}>
                     {c.customer_id ? `Customer: ${c.customer_id.slice(0, 8)}…` :
                      c.lead_id     ? `Lead: ${c.lead_id.slice(0, 8)}…` : '—'}
                   </td>
@@ -274,7 +274,7 @@ export default function CommissionsModule({ user }) {
                         style={{ width: 120, padding: '5px 8px', border: '1px solid #CBD5E1', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
                       />
                     ) : (
-                      <span style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 13, color: '#0a1a24' }}>
+                      <span style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 13, color: '#1B1F28' }}>
                         {_fmt(c.amount_ngn)}
                       </span>
                     )}
@@ -301,7 +301,7 @@ export default function CommissionsModule({ user }) {
                   </td>
 
                   {/* Date */}
-                  <td style={{ padding: '12px 14px', fontSize: 12, color: '#7A9BAD' }}>
+                  <td style={{ padding: '12px 14px', fontSize: 12, color: '#5B6270' }}>
                     {_fmt_date(c.created_at)}
                   </td>
 
@@ -319,7 +319,7 @@ export default function CommissionsModule({ user }) {
                           </button>
                           <button
                             onClick={() => { setEditingId(null); setEditForm({}) }}
-                            style={{ background: 'white', border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: '#4a7a8a', fontFamily: ds.fontDm }}
+                            style={{ background: 'white', border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: '#5B6270', fontFamily: ds.fontDm }}
                           >
                             Cancel
                           </button>
@@ -327,7 +327,7 @@ export default function CommissionsModule({ user }) {
                       ) : (
                         <button
                           onClick={() => { setEditingId(c.id); setEditForm({ amount_ngn: c.amount_ngn, status: c.status }) }}
-                          style={{ background: 'white', border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: '#4a7a8a', fontFamily: ds.fontDm }}
+                          style={{ background: 'white', border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: '#5B6270', fontFamily: ds.fontDm }}
                         ><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Edit size={11} />Edit</span></button>
                       )}
                     </td>
@@ -351,12 +351,12 @@ function _fmt_date(iso) {
 }
 
 const SELECT = {
-  border: '1.5px solid #E4EEF2', borderRadius: 8,
-  padding: '8px 12px', fontSize: 13, color: '#0a1a24',
+  border: '1.5px solid #E1E5EC', borderRadius: 8,
+  padding: '8px 12px', fontSize: 13, color: '#1B1F28',
   fontFamily: 'inherit', background: 'white', cursor: 'pointer',
 }
 
 const BTN = {
   background: 'white', border: '1px solid #CBD5E1', borderRadius: 8,
-  padding: '7px 16px', fontSize: 13, cursor: 'pointer', color: '#4a7a8a', fontFamily: 'inherit',
+  padding: '7px 16px', fontSize: 13, cursor: 'pointer', color: '#5B6270', fontFamily: 'inherit',
 }

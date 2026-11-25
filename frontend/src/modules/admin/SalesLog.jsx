@@ -46,7 +46,7 @@ function sourceLabel(src) {
 
 const inputStyle = {
   width: '100%', padding: '8px 10px', border: '1px solid #C8DDE6', borderRadius: 6,
-  fontSize: 13.5, fontFamily: ds.fontDm, color: '#0a1a24', background: 'white',
+  fontSize: 13.5, fontFamily: ds.fontDm, color: '#1B1F28', background: 'white',
   boxSizing: 'border-box', outline: 'none',
 }
 
@@ -55,9 +55,9 @@ const inputStyle = {
 // ---------------------------------------------------------------------------
 function SectionCard({ title, children, action }) {
   return (
-    <div style={{ background: 'white', borderRadius: 10, border: '1px solid #E2EFF4', marginBottom: 28, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #E2EFF4', background: '#F8FBFC' }}>
-        <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: 0 }}>{title}</h3>
+    <div style={{ background: 'white', borderRadius: 10, border: '1px solid #E1E5EC', marginBottom: 28, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #E1E5EC', background: '#F8FBFC' }}>
+        <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: 0 }}>{title}</h3>
         {action}
       </div>
       <div style={{ padding: 20 }}>{children}</div>
@@ -68,7 +68,7 @@ function SectionCard({ title, children, action }) {
 function Field({ label, required, children }) {
   return (
     <div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#4a7a8a', marginBottom: 4 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#5B6270', marginBottom: 4 }}>
         {label}{required && <span style={{ color: '#E53E3E' }}> *</span>}
       </label>
       {children}
@@ -133,7 +133,7 @@ function CheckboxPreviewTable({ validRows, errorRows, checkedSet, onToggle, onTo
               />
             </th>
             {['#', 'Customer', 'Phone', 'Amount', 'Date', 'Channel'].map(h => (
-              <th key={h} style={{ padding: '6px 8px', textAlign: 'left', color: '#4a7a8a', fontWeight: 600, borderBottom: '1px solid #C8DDE6' }}>{h}</th>
+              <th key={h} style={{ padding: '6px 8px', textAlign: 'left', color: '#5B6270', fontWeight: 600, borderBottom: '1px solid #C8DDE6' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -146,21 +146,21 @@ function CheckboxPreviewTable({ validRows, errorRows, checkedSet, onToggle, onTo
             if (isDup)     bg = '#FFFDE7'
             if (isAlready) bg = '#EFF6FF'
             return (
-              <tr key={i} style={{ background: bg, borderBottom: '1px solid #E2EFF4', opacity: isChecked ? 1 : 0.55 }}>
+              <tr key={i} style={{ background: bg, borderBottom: '1px solid #E1E5EC', opacity: isChecked ? 1 : 0.55 }}>
                 <td style={{ padding: '5px 8px', textAlign: 'center' }}>
                   <input type="checkbox" checked={isChecked} onChange={() => onToggle(i)} />
                 </td>
-                <td style={{ padding: '5px 8px', color: '#7A9BAD' }}>{r._row_num || i + 2}</td>
+                <td style={{ padding: '5px 8px', color: '#5B6270' }}>{r._row_num || i + 2}</td>
                 <td style={{ padding: '5px 8px' }}>{r.customer_name || '—'}</td>
-                <td style={{ padding: '5px 8px', color: '#7A9BAD' }}>{r.phone || '—'}</td>
+                <td style={{ padding: '5px 8px', color: '#5B6270' }}>{r.phone || '—'}</td>
                 <td style={{ padding: '5px 8px', fontWeight: 600 }}>{r.amount != null ? fmt(r.amount) : '—'}</td>
                 <td style={{ padding: '5px 8px' }}>{r.sale_date || '—'}</td>
-                <td style={{ padding: '5px 8px', color: '#7A9BAD' }}>{r.channel || '—'}</td>
+                <td style={{ padding: '5px 8px', color: '#5B6270' }}>{r.channel || '—'}</td>
               </tr>
             )
           })}
           {errorRows.map((e, i) => (
-            <tr key={`err-${i}`} style={{ background: '#FFF5F5', borderBottom: '1px solid #E2EFF4' }}>
+            <tr key={`err-${i}`} style={{ background: '#FFF5F5', borderBottom: '1px solid #E1E5EC' }}>
               <td style={{ padding: '5px 8px', textAlign: 'center' }}>
                 <input type="checkbox" disabled checked={false} />
               </td>
@@ -333,13 +333,13 @@ function ImportCard({ title, watermarkDate, onResetWatermark, children, state })
   const checkedCount = checkedSet.size
 
   return (
-    <div style={{ border: '1px solid #E2EFF4', borderRadius: 10, padding: 20, background: 'white', flex: 1, minWidth: 280 }}>
-      <h4 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#0a1a24', margin: '0 0 12px' }}>{title}</h4>
+    <div style={{ border: '1px solid #E1E5EC', borderRadius: 10, padding: 20, background: 'white', flex: 1, minWidth: 280 }}>
+      <h4 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14, color: '#1B1F28', margin: '0 0 12px' }}>{title}</h4>
 
       <WatermarkBadge date={watermarkDate} onReset={onResetWatermark} loading={loading} />
 
       {watermarkDate && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#4a7a8a', marginBottom: 10, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#5B6270', marginBottom: 10, cursor: 'pointer' }}>
           <input type="checkbox" checked={fromBeginning} onChange={e => setFromBeginning(e.target.checked)} />
           Import from beginning (override watermark)
         </label>
@@ -347,7 +347,7 @@ function ImportCard({ title, watermarkDate, onResetWatermark, children, state })
 
       {children}
 
-      {loading && <p style={{ fontSize: 13, color: '#7A9BAD', marginTop: 8 }}>Processing…</p>}
+      {loading && <p style={{ fontSize: 13, color: '#5B6270', marginTop: 8 }}>Processing…</p>}
       {error   && <p style={{ fontSize: 13, color: '#E53E3E', marginTop: 8 }}>{error}</p>}
 
       {result && (
@@ -359,7 +359,7 @@ function ImportCard({ title, watermarkDate, onResetWatermark, children, state })
       {preview && !result && (
         <>
           {/* Summary line */}
-          <p style={{ fontSize: 13, color: '#4a7a8a', margin: '10px 0 0' }}>
+          <p style={{ fontSize: 13, color: '#5B6270', margin: '10px 0 0' }}>
             <strong>{preview.total_valid}</strong> rows ready
             {preview.errors?.length > 0 && <span style={{ color: '#E53E3E' }}> · {preview.errors.length} errors</span>}
             {preview.duplicate_warnings?.length > 0 && <span style={{ color: '#D69E2E' }}> · {preview.duplicate_warnings.length} possible duplicates</span>}
@@ -588,11 +588,11 @@ function SheetsImportCard({ onImported }) {
       onResetWatermark={handleResetWatermark}
       state={{ ...state, onConfirm: handleConfirm }}
     >
-      <p style={{ fontSize: 12.5, color: '#7A9BAD', margin: '0 0 8px', lineHeight: 1.5 }}>
+      <p style={{ fontSize: 12.5, color: '#5B6270', margin: '0 0 8px', lineHeight: 1.5 }}>
         Set your sheet to <strong>"Anyone with link can view"</strong>, then paste the URL.
       </p>
       {lastUsed && (
-        <p style={{ fontSize: 12, color: '#7A9BAD', margin: '0 0 6px' }}>
+        <p style={{ fontSize: 12, color: '#5B6270', margin: '0 0 6px' }}>
           Last used: {lastUsed} — <button onClick={clearSaved} style={{ fontSize: 12, color: '#E53E3E', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>Clear</button>
         </p>
       )}
@@ -632,11 +632,11 @@ function Paginator({ page, totalPages, onPage }) {
     <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 16, flexWrap: 'wrap' }}>
       <button onClick={() => onPage(Math.max(1, page - 1))} disabled={page === 1} style={{ ...btn, color: page === 1 ? '#B0C8D4' : '#4a7a8a', background: 'white', cursor: page === 1 ? 'not-allowed' : 'pointer' }}>‹</button>
       {pages().map((p, i) =>
-        typeof p === 'string' ? <span key={i} style={{ fontSize: 13, color: '#7A9BAD', padding: '0 4px' }}>...</span>
+        typeof p === 'string' ? <span key={i} style={{ fontSize: 13, color: '#5B6270', padding: '0 4px' }}>...</span>
         : <button key={p} onClick={() => onPage(p)} style={{ ...btn, background: p === page ? ds.teal : 'white', color: p === page ? 'white' : '#4a7a8a', border: `1px solid ${p === page ? ds.teal : '#C8DDE6'}`, fontWeight: p === page ? 700 : 400, cursor: p === page ? 'default' : 'pointer' }}>{p}</button>
       )}
       <button onClick={() => onPage(Math.min(totalPages, page + 1))} disabled={page === totalPages} style={{ ...btn, color: page === totalPages ? '#B0C8D4' : '#4a7a8a', background: 'white', cursor: page === totalPages ? 'not-allowed' : 'pointer' }}>›</button>
-      <span style={{ fontSize: 12, color: '#7A9BAD', marginLeft: 8 }}>Page {page} of {totalPages}</span>
+      <span style={{ fontSize: 12, color: '#5B6270', marginLeft: 8 }}>Page {page} of {totalPages}</span>
     </div>
   )
 }
@@ -674,9 +674,9 @@ function SalesHistory({ refreshTick }) {
 
   return (
     <SectionCard title={`Sales History${total ? ` (${total})` : ''}`}>
-      {loading && <p style={{ fontSize: 13, color: '#7A9BAD' }}>Loading…</p>}
+      {loading && <p style={{ fontSize: 13, color: '#5B6270' }}>Loading…</p>}
       {!loading && items.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '32px 0', color: '#7A9BAD', fontSize: 14 }}>No sales logged yet.</div>
+        <div style={{ textAlign: 'center', padding: '32px 0', color: '#5B6270', fontSize: 14 }}>No sales logged yet.</div>
       )}
       {items.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
@@ -684,7 +684,7 @@ function SalesHistory({ refreshTick }) {
             <thead>
               <tr style={{ background: '#F0F7FA' }}>
                 {['Date', 'Customer', 'Phone', 'Region', 'Amount', 'Channel', 'Team', 'Via', ''].map((h, i) => (
-                  <th key={i} style={{ padding: '8px 12px', textAlign: 'left', color: '#4a7a8a', fontWeight: 600, borderBottom: '1px solid #C8DDE6', whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={i} style={{ padding: '8px 12px', textAlign: 'left', color: '#5B6270', fontWeight: 600, borderBottom: '1px solid #C8DDE6', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -692,14 +692,14 @@ function SalesHistory({ refreshTick }) {
               {items.map(row => {
                 const src = sourceLabel(row.import_source)
                 return (
-                  <tr key={row.id} style={{ borderBottom: '1px solid #E2EFF4' }}>
-                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#4a7a8a' }}>{row.sale_date}</td>
+                  <tr key={row.id} style={{ borderBottom: '1px solid #E1E5EC' }}>
+                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#5B6270' }}>{row.sale_date}</td>
                     <td style={{ padding: '8px 12px' }}>{row.customer_name || '—'}</td>
-                    <td style={{ padding: '8px 12px', color: '#7A9BAD' }}>{row.phone || '—'}</td>
-                    <td style={{ padding: '8px 12px', color: '#7A9BAD' }}>{row.region || '—'}</td>
+                    <td style={{ padding: '8px 12px', color: '#5B6270' }}>{row.phone || '—'}</td>
+                    <td style={{ padding: '8px 12px', color: '#5B6270' }}>{row.region || '—'}</td>
                     <td style={{ padding: '8px 12px', fontWeight: 600, whiteSpace: 'nowrap' }}>₦{fmt(row.amount)}</td>
-                    <td style={{ padding: '8px 12px', color: '#7A9BAD' }}>{row.channel || '—'}</td>
-                    <td style={{ padding: '8px 12px', color: '#7A9BAD' }}>{row.source_team || '—'}</td>
+                    <td style={{ padding: '8px 12px', color: '#5B6270' }}>{row.channel || '—'}</td>
+                    <td style={{ padding: '8px 12px', color: '#5B6270' }}>{row.source_team || '—'}</td>
                     <td style={{ padding: '8px 12px' }}>
                       <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 4, padding: '2px 7px', background: src.bg, color: src.color }}>{src.label}</span>
                     </td>
@@ -735,15 +735,15 @@ export default function SalesLog() {
   return (
     <div style={{ maxWidth: 1100 }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 18, color: '#0a1a24', margin: '0 0 4px' }}>💰 Sales Log</h2>
-        <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0 }}>Log offline revenue — phone sales, walk-ins, referrals — outside the lead pipeline.</p>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 800, fontSize: 18, color: '#1B1F28', margin: '0 0 4px' }}>💰 Sales Log</h2>
+        <p style={{ fontSize: 13, color: '#5B6270', margin: 0 }}>Log offline revenue — phone sales, walk-ins, referrals — outside the lead pipeline.</p>
       </div>
 
       <QuickSaleForm teams={teams} onSaleLogged={() => setRefreshTick(t => t + 1)} />
 
-      <div style={{ border: '1px solid #E2EFF4', borderRadius: 10, overflow: 'hidden', marginBottom: 28, background: '#F8FBFC' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #E2EFF4' }}>
-          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24', margin: 0 }}>Bulk Import</h3>
+      <div style={{ border: '1px solid #E1E5EC', borderRadius: 10, overflow: 'hidden', marginBottom: 28, background: '#F8FBFC' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #E1E5EC' }}>
+          <h3 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: 0 }}>Bulk Import</h3>
         </div>
         <div style={{ padding: 20, display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           <ExcelImportCard onImported={() => setRefreshTick(t => t + 1)} />

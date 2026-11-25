@@ -151,13 +151,13 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
           alignItems:    'center',
           justifyContent:'space-between',
           padding:       '18px 20px',
-          borderBottom:  '1px solid #E4EEF2',
+          borderBottom:  '1px solid #E1E5EC',
           background:    '#F5F9FA',
           flexShrink:    0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 18 }}>🔔</span>
-            <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: '#0a1a24' }}>
+            <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 16, color: '#1B1F28' }}>
               Notifications
             </span>
             {unread > 0 && (
@@ -178,7 +178,7 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
                 style={{
                   background: 'none', border: '1px solid #CBD5E1',
                   borderRadius: 6, padding: '5px 10px',
-                  fontSize: 12, color: '#4a7a8a', cursor: 'pointer',
+                  fontSize: 12, color: '#5B6270', cursor: 'pointer',
                   fontFamily: ds.fontDm,
                 }}
               >
@@ -204,7 +204,7 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
               style={{
                 background: 'none', border: 'none',
                 fontSize: 22, cursor: 'pointer',
-                color: '#7A9BAD', lineHeight: 1, padding: '0 4px',
+                color: '#5B6270', lineHeight: 1, padding: '0 4px',
               }}
             >
               ×
@@ -215,7 +215,7 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {loading && (
-            <div style={{ padding: 32, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+            <div style={{ padding: 32, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
               Loading…
             </div>
           )}
@@ -227,10 +227,10 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
           {!loading && !error && items.length === 0 && (
             <div style={{ padding: '48px 24px', textAlign: 'center' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>🎉</div>
-              <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 15, color: '#0a1a24', margin: '0 0 6px' }}>
+              <p style={{ fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 15, color: '#1B1F28', margin: '0 0 6px' }}>
                 All caught up
               </p>
-              <p style={{ fontSize: 13, color: '#7A9BAD', margin: 0 }}>
+              <p style={{ fontSize: 13, color: '#5B6270', margin: 0 }}>
                 No notifications yet.
               </p>
             </div>
@@ -263,14 +263,14 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
                   fontSize: 13.5, fontWeight: notif.is_read ? 400 : 600,
-                  color: '#0a1a24', marginBottom: 3,
+                  color: '#1B1F28', marginBottom: 3,
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
                   {notif.title}
                 </div>
                 {notif.body && (
                   <div style={{
-                    fontSize: 12.5, color: '#7A9BAD', lineHeight: 1.4,
+                    fontSize: 12.5, color: '#5B6270', lineHeight: 1.4,
                     display: '-webkit-box', WebkitLineClamp: 2,
                     WebkitBoxOrient: 'vertical', overflow: 'hidden',
                   }}>
@@ -301,7 +301,7 @@ export default function NotificationsDrawer({ onClose, onUnreadChange }) {
                 style={{
                   background: 'white', border: '1px solid #CBD5E1',
                   borderRadius: 8, padding: '8px 20px',
-                  fontSize: 13, color: '#4a7a8a', cursor: loadingMore ? 'not-allowed' : 'pointer',
+                  fontSize: 13, color: '#5B6270', cursor: loadingMore ? 'not-allowed' : 'pointer',
                   fontFamily: ds.fontDm,
                 }}
               >

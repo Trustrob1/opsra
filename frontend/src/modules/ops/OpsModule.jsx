@@ -68,7 +68,7 @@ function TabBar({ active, onChange, tabs }) {
     <div style={{
       display:      'flex',
       gap:          4,
-      borderBottom: '1px solid #dde4e8',
+      borderBottom: '1px solid #E1E5EC',
       padding:      '0 28px',
       background:   'white',
       position:     'sticky',
@@ -119,7 +119,7 @@ function ModuleHeader() {
       display:      'flex',
       alignItems:   'center',
       gap:          16,
-      borderBottom: '1px solid #1a2f3f',
+      borderBottom: '1px solid #E1E5EC',
     }}>
       <div style={{
         width: 40, height: 40, borderRadius: 10,
@@ -134,7 +134,7 @@ function ModuleHeader() {
         <h1 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: 'white', margin: 0 }}>
           Operations Intelligence
         </h1>
-        <p style={{ fontSize: 12, color: '#6B8FA0', margin: '2px 0 0' }}>
+        <p style={{ fontSize: 12, color: '#5B6270', margin: '2px 0 0' }}>
           Executive dashboard · Ask-your-data · Anomaly detection · Monday digest · Growth analytics
         </p>
       </div>

@@ -14,24 +14,24 @@ import { PRICE_STYLES, priceStyleOf, nextButtonId } from './catalogConfigLogic'
 
 const INPUT = {
   width: '100%', padding: '9px 12px', borderRadius: 8,
-  border: '1px solid #D0E8F0', fontFamily: ds.fontDm, fontSize: 13.5,
-  color: '#0a1a24', background: 'white', boxSizing: 'border-box',
+  border: '1px solid #E1E5EC', fontFamily: ds.fontDm, fontSize: 13.5,
+  color: '#1B1F28', background: 'white', boxSizing: 'border-box',
   outline: 'none',
 }
 
 const LABEL = {
   fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600,
-  color: '#4a7a8a', marginBottom: 6, display: 'block',
+  color: '#5B6270', marginBottom: 6, display: 'block',
 }
 
 const SECTION = {
-  background: 'white', borderRadius: 12, border: '1px solid #E2EFF4',
+  background: 'white', borderRadius: 12, border: '1px solid #E1E5EC',
   padding: 24, marginBottom: 20,
 }
 
 const SECTION_TITLE = {
   fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15,
-  color: '#0a1a24', margin: '0 0 18px',
+  color: '#1B1F28', margin: '0 0 18px',
 }
 
 const BTN_PRIMARY = {
@@ -41,9 +41,9 @@ const BTN_PRIMARY = {
 }
 
 const BTN_GHOST = {
-  background: 'none', border: '1px solid #D0E8F0', borderRadius: 8,
+  background: 'none', border: '1px solid #E1E5EC', borderRadius: 8,
   padding: '7px 14px', fontFamily: ds.fontDm, fontSize: 13,
-  color: '#4a7a8a', cursor: 'pointer',
+  color: '#5B6270', cursor: 'pointer',
 }
 
 const BTN_DANGER = {
@@ -68,7 +68,7 @@ const TOGGLE = ({ value, onChange, label }) => (
         transition: 'left 0.2s',
       }} />
     </div>
-    <span style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#0a1a24' }}>{label}</span>
+    <span style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#1B1F28' }}>{label}</span>
   </label>
 )
 
@@ -91,8 +91,8 @@ function Field({ label, htmlFor, children }) {
   )
 }
 
-const HINT = { marginTop: 6, fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }
-const SECTION_HELP = { fontFamily: ds.fontDm, fontSize: 13, lineHeight: 1.5, color: '#7A9BAD', margin: '0 0 16px' }
+const HINT = { marginTop: 6, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }
+const SECTION_HELP = { fontFamily: ds.fontDm, fontSize: 13, lineHeight: 1.5, color: '#5B6270', margin: '0 0 16px' }
 
 // STORE-13: a real switch button (keyboard and screen-reader friendly)
 const Switch = ({ value, onChange, label }) => (
@@ -253,7 +253,7 @@ export default function CatalogConfig() {
   }
 
   if (!config) return (
-    <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+    <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
       Loading catalog config…
     </div>
   )
@@ -274,8 +274,8 @@ export default function CatalogConfig() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
           <div>
-            <h2 style={{ margin: 0, fontFamily: ds.fontSyne, fontSize: 20, fontWeight: 700, color: '#0a1a24' }}>Wording and buttons</h2>
-            <p style={{ margin: '6px 0 0', fontFamily: ds.fontDm, fontSize: 13.5, lineHeight: 1.5, color: '#4a7a8a', maxWidth: 520 }}>
+            <h2 style={{ margin: 0, fontFamily: ds.fontSyne, fontSize: 20, fontWeight: 700, color: '#1B1F28' }}>Wording and buttons</h2>
+            <p style={{ margin: '6px 0 0', fontFamily: ds.fontDm, fontSize: 13.5, lineHeight: 1.5, color: '#5B6270', maxWidth: 520 }}>
               Optional. Your catalog already works with the defaults. Change these only if you want the words to match your business.
             </p>
           </div>
@@ -295,10 +295,10 @@ export default function CatalogConfig() {
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'white', borderRadius: 10, border: '1px solid #E2EFF4', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'white', borderRadius: 10, border: '1px solid #E1E5EC', marginBottom: 16 }}>
           <span aria-hidden="true" style={{ fontSize: 16 }}>🔗</span>
-          <span style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#4a7a8a' }}>
-            <b style={{ color: '#0a1a24' }}>Where products come from:</b>{' '}
+          <span style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270' }}>
+            <b style={{ color: '#1B1F28' }}>Where products come from:</b>{' '}
             {isShopify ? 'your Shopify store, synced automatically.' : 'you add them yourself in Opsra.'}
           </span>
         </div>
@@ -336,8 +336,8 @@ export default function CatalogConfig() {
             </select>
           </Field>
           <div style={{ marginTop: 16, padding: '14px 16px', borderRadius: 10, background: '#f5fbfd', display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center' }}>
-            <div style={{ fontFamily: ds.fontDm, fontSize: 13, lineHeight: 1.4, color: '#4a7a8a' }}>
-              <b style={{ display: 'block', color: '#0a1a24', fontSize: 13.5 }}>Ask customers to contact me for prices</b>
+            <div style={{ fontFamily: ds.fontDm, fontSize: 13, lineHeight: 1.4, color: '#5B6270' }}>
+              <b style={{ display: 'block', color: '#1B1F28', fontSize: 13.5 }}>Ask customers to contact me for prices</b>
               Hides prices. Good if you quote each customer.
             </div>
             <Switch value={config.price_on_request} label="Ask customers to contact me for prices"
@@ -389,7 +389,7 @@ export default function CatalogConfig() {
                     onChange={e => updateBtn(i, 'label', e.target.value)} />
                 </Field>
               </div>
-              <div style={{ width: 52, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontFamily: ds.fontDm, fontSize: 12, color: '#7A9BAD' }}>
+              <div style={{ width: 52, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>
                 {(btn.label || '').length}/24
               </div>
               <button aria-label={`Remove button ${i + 1}`} style={{ ...BTN_DANGER, minHeight: 44, minWidth: 44, opacity: buttons.length <= 2 ? 0.35 : 1 }}
@@ -407,10 +407,10 @@ export default function CatalogConfig() {
         <div style={{ ...sec, padding: phone ? '4px 16px' : '6px 24px' }}>
           <button aria-expanded={advOpen} onClick={() => setAdvOpen(o => !o)}
             style={{ width: '100%', minHeight: 56, border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>
-            <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#0a1a24' }}>
-              Advanced <span style={{ fontFamily: ds.fontDm, fontWeight: 400, fontSize: 13, color: '#7A9BAD' }}>&nbsp;For developers and power users</span>
+            <span style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28' }}>
+              Advanced <span style={{ fontFamily: ds.fontDm, fontWeight: 400, fontSize: 13, color: '#5B6270' }}>&nbsp;For developers and power users</span>
             </span>
-            <span aria-hidden="true" style={{ fontSize: 14, color: '#0a1a24', transform: advOpen ? 'rotate(180deg)' : 'none' }}>▾</span>
+            <span aria-hidden="true" style={{ fontSize: 14, color: '#1B1F28', transform: advOpen ? 'rotate(180deg)' : 'none' }}>▾</span>
           </button>
 
           {advOpen && (
@@ -437,15 +437,15 @@ export default function CatalogConfig() {
               <h4 style={{ ...SECTION_TITLE, fontSize: 14, margin: '22px 0 8px' }}>Tag dimensions</h4>
               <p style={SECTION_HELP}>Tags match qualification answers to products and filter the catalog. Up to 10.</p>
         {(config.tag_dimensions || []).length === 0 && (
-          <div style={{ textAlign: 'center', padding: '24px 0', color: '#7A9BAD', fontFamily: ds.fontDm, fontSize: 13.5 }}>
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#5B6270', fontFamily: ds.fontDm, fontSize: 13.5 }}>
             No tag dimensions yet. Add one to get started.
           </div>
         )}
 
         {(config.tag_dimensions || []).map((dim, i) => (
-          <div key={i} style={{ border: '1px solid #E2EFF4', borderRadius: 10, padding: 16, marginBottom: 12, background: '#fafeff' }}>
+          <div key={i} style={{ border: '1px solid #E1E5EC', borderRadius: 10, padding: 16, marginBottom: 12, background: '#fafeff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <span style={{ fontFamily: ds.fontDm, fontWeight: 600, fontSize: 13.5, color: '#0a1a24' }}>
+              <span style={{ fontFamily: ds.fontDm, fontWeight: 600, fontSize: 13.5, color: '#1B1F28' }}>
                 Dimension {i + 1}
               </span>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -481,8 +481,8 @@ export default function CatalogConfig() {
               <span style={LABEL}>Options ({(dim.options || []).length}/20)</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                 {(dim.options || []).map((opt, oi) => (
-                  <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'white', border: '1px solid #D0E8F0', borderRadius: 20, padding: '3px 8px 3px 12px' }}>
-                    <input style={{ border: 'none', outline: 'none', fontFamily: ds.fontDm, fontSize: 13, color: '#0a1a24', width: Math.max(60, opt.length * 8), background: 'transparent' }}
+                  <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'white', border: '1px solid #E1E5EC', borderRadius: 20, padding: '3px 8px 3px 12px' }}>
+                    <input style={{ border: 'none', outline: 'none', fontFamily: ds.fontDm, fontSize: 13, color: '#1B1F28', width: Math.max(60, opt.length * 8), background: 'transparent' }}
                       value={opt} maxLength={100}
                       onChange={e => updateOption(i, oi, e.target.value)} />
                     <button style={{ ...BTN_DANGER, padding: '0 4px', fontSize: 11 }}
@@ -509,13 +509,13 @@ export default function CatalogConfig() {
 
       {/* What customers will see */}
       <aside aria-label="Preview" style={{ flex: '1 1 min(300px, 100%)', maxWidth: phone ? 'none' : 320, minWidth: 0, position: phone ? 'static' : 'sticky', top: 16, ...sec, marginBottom: 0 }}>
-        <div style={{ fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4a7a8a' }}>What customers will see</div>
-        <div style={{ marginTop: 14, fontFamily: ds.fontDm, fontSize: 13, fontWeight: 700, color: '#3a5a6a' }}>Showing all {word2.toLowerCase()}</div>
-        <div style={{ marginTop: 10, border: '1px solid #E2EFF4', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#5B6270' }}>What customers will see</div>
+        <div style={{ marginTop: 14, fontFamily: ds.fontDm, fontSize: 13, fontWeight: 700, color: '#3C4352' }}>Showing all {word2.toLowerCase()}</div>
+        <div style={{ marginTop: 10, border: '1px solid #E1E5EC', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ height: 130, background: 'repeating-linear-gradient(135deg, #E4EEF0 0 10px, #F5F9FA 10px 20px)' }} />
           <div style={{ padding: 14 }}>
-            <div style={{ fontFamily: ds.fontDm, fontSize: 15, fontWeight: 700, color: '#0a1a24' }}>Sample {word1.toLowerCase()}</div>
-            <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 15, fontWeight: 600, color: '#0a1a24' }}>{pricePreview}</div>
+            <div style={{ fontFamily: ds.fontDm, fontSize: 15, fontWeight: 700, color: '#1B1F28' }}>Sample {word1.toLowerCase()}</div>
+            <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 15, fontWeight: 600, color: '#1B1F28' }}>{pricePreview}</div>
             <div style={{ marginTop: 8 }}>
               <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, background: '#eafaf2', fontFamily: ds.fontDm, fontSize: 12, fontWeight: 700, color: '#1a6640' }}>{availText}</span>
             </div>
@@ -523,14 +523,14 @@ export default function CatalogConfig() {
               {buttons.filter(b => b.label).map((b, i) => (
                 <div key={i} style={i === 0
                   ? { minHeight: 42, borderRadius: 10, background: ds.teal, color: 'white', fontFamily: ds.fontDm, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }
-                  : { minHeight: 42, borderRadius: 10, border: '1.5px solid #0a1a24', color: '#0a1a24', fontFamily: ds.fontDm, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  : { minHeight: 42, borderRadius: 10, border: '1.5px solid #0a1a24', color: '#1B1F28', fontFamily: ds.fontDm, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {b.label}
                 </div>
               ))}
             </div>
           </div>
         </div>
-        <p style={{ margin: '14px 0 0', fontFamily: ds.fontDm, fontSize: 12, lineHeight: 1.5, color: '#7A9BAD' }}>The preview changes as you type. Nothing goes live until you save.</p>
+        <p style={{ margin: '14px 0 0', fontFamily: ds.fontDm, fontSize: 12, lineHeight: 1.5, color: '#5B6270' }}>The preview changes as you type. Nothing goes live until you save.</p>
       </aside>
     </div>
   )

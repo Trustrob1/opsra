@@ -44,8 +44,8 @@ export default function CatalogDialog({ title, onClose, locked = false, children
         outline: 'none', boxShadow: '0 12px 48px rgba(0,0,0,0.25)',
       }}>
         <div style={{ minHeight: 64, padding: '0 8px 0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E6E4DF', flexShrink: 0 }}>
-          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24' }}>{title}</div>
-          <button onClick={onClose} disabled={locked} aria-label="Close" style={{ width: 44, height: 44, border: 0, background: 'transparent', fontSize: 20, cursor: locked ? 'default' : 'pointer', color: '#7A9BAD', opacity: locked ? 0.4 : 1 }}>✕</button>
+          <div style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28' }}>{title}</div>
+          <button onClick={onClose} disabled={locked} aria-label="Close" style={{ width: 44, height: 44, border: 0, background: 'transparent', fontSize: 20, cursor: locked ? 'default' : 'pointer', color: '#5B6270', opacity: locked ? 0.4 : 1 }}>✕</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>{children}</div>
         {footer && <div style={{ flexShrink: 0, padding: '14px 24px 18px', borderTop: '1px solid #E6E4DF', display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap', alignItems: 'center' }}>{footer}</div>}

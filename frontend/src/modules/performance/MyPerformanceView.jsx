@@ -134,7 +134,7 @@ export default function MyPerformanceView({ user }) {
     finally { setAckLoading(false) }
   }
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#7A9BAD', fontSize: 13 }}>Loading your performance data…</div>
+  if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#5B6270', fontSize: 13 }}>Loading your performance data…</div>
   if (error)   return <div style={{ background: '#fee2e2', borderRadius: 8, padding: '10px 14px', color: '#991b1b', fontSize: 13 }}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><AlertTriangle size={13} />{error}</span></div>
 
   return (

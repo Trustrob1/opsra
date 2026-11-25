@@ -12,19 +12,19 @@ import CatalogCategoryField from './CatalogCategoryField'
 
 const INPUT = {
   width: '100%', padding: '9px 12px', borderRadius: 8,
-  border: '1px solid #D0E8F0', fontFamily: ds.fontDm, fontSize: 13.5,
-  color: '#0a1a24', background: 'white', boxSizing: 'border-box', outline: 'none',
+  border: '1px solid #E1E5EC', fontFamily: ds.fontDm, fontSize: 13.5,
+  color: '#1B1F28', background: 'white', boxSizing: 'border-box', outline: 'none',
 }
 
 const LABEL = {
   fontFamily: ds.fontDm, fontSize: 12.5, fontWeight: 600,
-  color: '#4a7a8a', marginBottom: 6, display: 'block',
+  color: '#5B6270', marginBottom: 6, display: 'block',
 }
 
 const SECTION_TITLE = {
   fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 14,
-  color: '#0a1a24', margin: '0 0 16px', paddingBottom: 10,
-  borderBottom: '1px solid #E2EFF4',
+  color: '#1B1F28', margin: '0 0 16px', paddingBottom: 10,
+  borderBottom: '1px solid #E1E5EC',
 }
 
 const BTN_PRIMARY = {
@@ -34,9 +34,9 @@ const BTN_PRIMARY = {
 }
 
 const BTN_GHOST = {
-  background: 'none', border: '1px solid #D0E8F0', borderRadius: 8,
+  background: 'none', border: '1px solid #E1E5EC', borderRadius: 8,
   padding: '7px 14px', fontFamily: ds.fontDm, fontSize: 13,
-  color: '#4a7a8a', cursor: 'pointer',
+  color: '#5B6270', cursor: 'pointer',
 }
 
 const TOGGLE = ({ value, onChange, label }) => (
@@ -50,7 +50,7 @@ const TOGGLE = ({ value, onChange, label }) => (
         width: 16, height: 16, borderRadius: '50%', background: 'white', transition: 'left 0.2s',
       }} />
     </div>
-    <span style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#0a1a24' }}>{label}</span>
+    <span style={{ fontFamily: ds.fontDm, fontSize: 13.5, color: '#1B1F28' }}>{label}</span>
   </label>
 )
 
@@ -265,12 +265,12 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
         boxShadow: '-4px 0 32px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column',
       }}>
         {/* Header */}
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #E2EFF4', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid #E1E5EC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <div>
-            <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#0a1a24', margin: 0 }}>
+            <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 17, color: '#1B1F28', margin: 0 }}>
               Edit Item
             </h2>
-            <p style={{ fontFamily: ds.fontDm, fontSize: 12.5, color: '#7A9BAD', margin: '3px 0 0' }}>
+            <p style={{ fontFamily: ds.fontDm, fontSize: 12.5, color: '#5B6270', margin: '3px 0 0' }}>
               {item.title}
             </p>
           </div>
@@ -278,7 +278,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
             {onShare && (
               <button onClick={() => onShare(item)} style={{ minHeight: 40, padding: '0 14px', border: `1px solid ${ds.teal}`, borderRadius: 8, background: 'white', color: ds.teal, fontFamily: ds.fontDm, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Share</button>
             )}
-            <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#7A9BAD', lineHeight: 1, minWidth: 40, minHeight: 40 }}>✕</button>
+            <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#5B6270', lineHeight: 1, minWidth: 40, minHeight: 40 }}>✕</button>
           </div>
         </div>
 
@@ -295,7 +295,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
             <input style={{ ...INPUT, background: isShopify ? '#f5fbfd' : 'white' }}
               value={form.title || ''} readOnly={isShopify} maxLength={500}
               onChange={e => setField('title', e.target.value)} />
-            {isShopify && <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#7A9BAD', margin: '4px 0 0' }}>Managed via Shopify — edit in your Shopify store.</p>}
+            {isShopify && <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#5B6270', margin: '4px 0 0' }}>Managed via Shopify — edit in your Shopify store.</p>}
           </Field>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -304,7 +304,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
                 value={form.price ?? ''} type="number" readOnly={isShopify}
                 onChange={e => setField('price', e.target.value)} />
               {!isShopify && (
-                <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#7A9BAD', margin: '4px 0 0' }}>
+                <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#5B6270', margin: '4px 0 0' }}>
                   Shown when no variant is selected.
                 </p>
               )}
@@ -322,7 +322,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
               value={form.description || ''} maxLength={5000}
               readOnly={isShopify}
               onChange={e => setField('description', e.target.value)} />
-            {isShopify && <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#7A9BAD', margin: '4px 0 0' }}>Managed via Shopify — read only.</p>}
+            {isShopify && <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#5B6270', margin: '4px 0 0' }}>Managed via Shopify — read only.</p>}
           </Field>
 
           <Field label="Catalog Description (Opsra only — never overwritten by Shopify)">
@@ -337,11 +337,11 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
             <>
               <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>
                 Variants
-                <span style={{ fontSize: 12, fontWeight: 400, color: '#7A9BAD', marginLeft: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 400, color: '#5B6270', marginLeft: 8 }}>
                   Sizes &amp; Pricing
                 </span>
               </h3>
-              <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', margin: '-10px 0 14px' }}>
+              <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', margin: '-10px 0 14px' }}>
                 Define size options with individual prices. These appear as clickable size buttons on the catalog page.
                 Leave empty to show a single base price.
               </p>
@@ -393,7 +393,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
 
           {/* ── Section 3: Images ── */}
           <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>Images</h3>
-          <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', margin: '-10px 0 14px' }}>
+          <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', margin: '-10px 0 14px' }}>
             First image is the cover. Max 5 MB each. JPEG · PNG · WebP.
           </p>
 
@@ -417,7 +417,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
             <button onClick={() => fileRef.current?.click()}
               style={{ width: 90, height: 90, border: '2px dashed #D0E8F0', borderRadius: 8, background: '#f5fbfd', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
               <span style={{ fontSize: 20 }}>{uploading ? '⏳' : '+'}</span>
-              <span style={{ fontFamily: ds.fontDm, fontSize: 11, color: '#7A9BAD' }}>{uploading ? 'Uploading' : 'Add image'}</span>
+              <span style={{ fontFamily: ds.fontDm, fontSize: 11, color: '#5B6270' }}>{uploading ? 'Uploading' : 'Add image'}</span>
             </button>
           </div>
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
@@ -425,7 +425,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
 
           {/* ── Section 4: Extra Catalog Images ── */}
           <h3 style={{ ...SECTION_TITLE, marginTop: 20 }}>Extra Catalog Images</h3>
-          <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', margin: '-10px 0 14px' }}>
+          <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', margin: '-10px 0 14px' }}>
             These are managed in Opsra only and will never be overwritten by Shopify sync.
             They appear after the Shopify images on the public catalog page.
           </p>
@@ -434,7 +434,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
             {(form.extra_catalog_images || []).map((url, idx) => (
               <div key={idx} style={{ position: 'relative', width: 90, height: 90 }}>
                 <img src={url} alt={`extra-${idx}`}
-                  style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '2px solid #E2EFF4' }} />
+                  style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '2px solid #E1E5EC' }} />
                 <button onClick={() => removeExtraImage(idx)} style={{
                   position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.55)',
                   border: 'none', borderRadius: '50%', width: 20, height: 20,
@@ -445,7 +445,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
             <button onClick={() => extraFileRef.current?.click()}
               style={{ width: 90, height: 90, border: '2px dashed #D0E8F0', borderRadius: 8, background: '#f5fbfd', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
               <span style={{ fontSize: 20 }}>{uploading ? '⏳' : '+'}</span>
-              <span style={{ fontFamily: ds.fontDm, fontSize: 11, color: '#7A9BAD' }}>{uploading ? 'Uploading' : 'Add image'}</span>
+              <span style={{ fontFamily: ds.fontDm, fontSize: 11, color: '#5B6270' }}>{uploading ? 'Uploading' : 'Add image'}</span>
             </button>
           </div>
           <input ref={extraFileRef} type="file" accept="image/jpeg,image/png,image/webp"
@@ -483,7 +483,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
                         const current  = (form.tags || {})[dim.key] || []
                         const selected = Array.isArray(current) ? current.includes(opt) : false
                         return (
-                          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#0a1a24' }}>
+                          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: ds.fontDm, fontSize: 13, color: '#1B1F28' }}>
                             <input type="checkbox" checked={selected}
                               onChange={e => {
                                 const prev = Array.isArray(current) ? current : []
@@ -503,7 +503,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
           {/* ── Section 6: Custom Fields ── */}
           <h3 style={{ ...SECTION_TITLE, marginTop: 8 }}>Custom Fields</h3>
           {cfEntries.length === 0 && (
-            <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#7A9BAD', marginBottom: 12 }}>No custom fields yet.</p>
+            <p style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#5B6270', marginBottom: 12 }}>No custom fields yet.</p>
           )}
           {cfEntries.map(([key, val], i) => (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 10, marginBottom: 10, alignItems: 'center' }}>
@@ -524,7 +524,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
             <input style={INPUT} value={form.slug || ''} maxLength={200} placeholder="e.g. premium-mattress"
               onChange={e => setField('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} />
             {form.slug && (
-              <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#7A9BAD', margin: '4px 0 0' }}>
+              <p style={{ fontFamily: ds.fontDm, fontSize: 11.5, color: '#5B6270', margin: '4px 0 0' }}>
                 Public URL: /catalog/{orgSlug || '<org-slug>'}/{form.slug}
               </p>
             )}
@@ -543,7 +543,7 @@ export default function CatalogItemDrawer({ item, config, isOpen, onClose, onSav
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #E2EFF4', display: 'flex', justifyContent: 'flex-end', gap: 12, flexShrink: 0 }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #E1E5EC', display: 'flex', justifyContent: 'flex-end', gap: 12, flexShrink: 0 }}>
           <button style={BTN_GHOST} onClick={onClose}>Cancel</button>
           <button style={{ ...BTN_PRIMARY, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save Changes'}

@@ -106,7 +106,7 @@ export default function ScoringRubric() {
   }
 
   if (loading) return (
-    <div style={{ padding: 40, textAlign: 'center', color: '#7A9BAD', fontSize: 14 }}>
+    <div style={{ padding: 40, textAlign: 'center', color: '#5B6270', fontSize: 14 }}>
       Loading scoring rubric…
     </div>
   )
@@ -116,10 +116,10 @@ export default function ScoringRubric() {
 
       {/* Header */}
       <div style={{ marginBottom: 28 }}>
-        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#0a1a24', margin: '0 0 8px' }}>
+        <h2 style={{ fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 18, color: '#1B1F28', margin: '0 0 8px' }}>
           AI Lead Scoring Rubric
         </h2>
-        <p style={{ fontSize: 13.5, color: '#5a8a9f', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13.5, color: '#5B6270', margin: 0, lineHeight: 1.6 }}>
           Define how the AI should score leads for your organisation. When these fields are filled in, the AI
           scores against your specific criteria instead of its generic defaults.
           Leave blank to use the built-in scoring behaviour.
@@ -133,13 +133,13 @@ export default function ScoringRubric() {
             display:      'block',
             fontSize:     13,
             fontWeight:   600,
-            color:        '#0a1a24',
+            color:        '#1B1F28',
             marginBottom: 4,
             fontFamily:   ds.fontDm,
           }}>
             {f.label}
           </label>
-          <p style={{ fontSize: 12, color: '#5a8a9f', margin: '0 0 6px', lineHeight: 1.5 }}>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: '0 0 6px', lineHeight: 1.5 }}>
             {f.hint}
           </p>
           <textarea
@@ -153,7 +153,7 @@ export default function ScoringRubric() {
               borderRadius: 8,
               padding:      '10px 12px',
               fontSize:     13,
-              color:        '#0a1a24',
+              color:        '#1B1F28',
               fontFamily:   ds.fontDm,
               lineHeight:   1.6,
               resize:       'vertical',

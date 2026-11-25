@@ -8,15 +8,15 @@ import WaSignupSettingsCard from "./WaSignupSettingsCard.jsx";
 import ChatSignupSettingsCard from "./ChatSignupSettingsCard.jsx";   // WEB-ONLY-1b
 import WaSetupRequestsCard from "./WaSetupRequestsCard.jsx";
 
-const card = { background: ds.dark2, border: "1px solid #1e3a4f", borderRadius: 12, padding: "18px 20px", marginBottom: 16 };
-const th = { textAlign: "left", fontSize: 11, fontWeight: 600, color: "#3a5a6a", textTransform: "uppercase", letterSpacing: "1px", padding: "6px 8px" };
-const td = { fontSize: 13, color: "#A0BDC8", padding: "8px", borderTop: "1px solid #1a2f3f", verticalAlign: "middle" };
+const card = { background: ds.dark2, border: "1px solid #E1E5EC", borderRadius: 12, padding: "18px 20px", marginBottom: 16 };
+const th = { textAlign: "left", fontSize: 11, fontWeight: 600, color: "#3C4352", textTransform: "uppercase", letterSpacing: "1px", padding: "6px 8px" };
+const td = { fontSize: 13, color: "#5B6270", padding: "8px", borderTop: "1px solid #E1E5EC", verticalAlign: "middle" };
 const btn = (on) => ({
   background: on ? ds.teal : "transparent", color: on ? "white" : "#7A9BAD", border: `1px solid ${on ? ds.teal : "#1e3a4f"}`,
   borderRadius: 7, padding: "6px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: ds.fontDm, minHeight: 32,
 });
 const field = {
-  minHeight: 36, padding: "6px 10px", background: "#0b1a24", color: "white", border: "1px solid #1e3a4f",
+  minHeight: 36, padding: "6px 10px", background: "#FFFFFF", color: "white", border: "1px solid #E1E5EC",
   borderRadius: 7, fontSize: 13, fontFamily: ds.fontDm, boxSizing: "border-box",
 };
 const TIERS = [["chioma", "Chioma (web chat only)"], ["automate", "Chat Basic (WhatsApp only)"], ["convert", "Growth"], ["grow", "Essential"], ["scale", "Scale"], ["capture", "Capture (website entry plan)"]];
@@ -61,7 +61,7 @@ function Row({ o, onChanged, onError }) {
       </tr>
       {open && (
         <tr>
-          <td style={{ ...td, background: "#0b1a24" }} colSpan={6}>
+          <td style={{ ...td, background: "#FFFFFF" }} colSpan={6}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <select aria-label="Plan" style={field} value={tier} onChange={(e) => setTier(e.target.value)}>
                 {TIERS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
@@ -79,7 +79,7 @@ function Row({ o, onChanged, onError }) {
                 </>
               )}
             </div>
-            <div style={{ fontSize: 11, color: "#7A9BAD", marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: "#5B6270", marginTop: 8 }}>
               Leave the end date blank for no end date. Switching enforcement on makes the plan decide what this business can use; off puts it back exactly as before.
             </div>
           </td>
@@ -98,7 +98,7 @@ export default function PlansAdminPanel() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (!data) return <div style={{ color: "#7A9BAD", fontSize: 13 }}>{error || "Loading…"}</div>;
+  if (!data) return <div style={{ color: "#5B6270", fontSize: 13 }}>{error || "Loading…"}</div>;
   const rows = data.orgs.filter((o) => `${o.name || ""} ${o.slug || ""}`.toLowerCase().includes(q.trim().toLowerCase()));
   return (
     <div>
@@ -107,9 +107,9 @@ export default function PlansAdminPanel() {
       <WaSignupSettingsCard />
       <ChatSignupSettingsCard />
       <div style={{ ...card, display: "flex", gap: 24, flexWrap: "wrap" }}>
-        <div><div style={{ fontSize: 11, color: "#3a5a6a" }}>BUSINESSES</div><div style={{ fontSize: 20, color: "white", fontWeight: 700 }}>{data.totals.businesses}</div></div>
-        <div><div style={{ fontSize: 11, color: "#3a5a6a" }}>SWITCHED ON</div><div style={{ fontSize: 20, color: "white", fontWeight: 700 }}>{data.totals.enforced}</div></div>
-        <div><div style={{ fontSize: 11, color: "#3a5a6a" }}>MONTHLY VALUE (PAID)</div><div style={{ fontSize: 20, color: "white", fontWeight: 700 }}>₦{Number(data.totals.monthly_value_ngn || 0).toLocaleString("en-NG")}</div></div>
+        <div><div style={{ fontSize: 11, color: "#3C4352" }}>BUSINESSES</div><div style={{ fontSize: 20, color: '#1B1F28', fontWeight: 700 }}>{data.totals.businesses}</div></div>
+        <div><div style={{ fontSize: 11, color: "#3C4352" }}>SWITCHED ON</div><div style={{ fontSize: 20, color: '#1B1F28', fontWeight: 700 }}>{data.totals.enforced}</div></div>
+        <div><div style={{ fontSize: 11, color: "#3C4352" }}>MONTHLY VALUE (PAID)</div><div style={{ fontSize: 20, color: '#1B1F28', fontWeight: 700 }}>₦{Number(data.totals.monthly_value_ngn || 0).toLocaleString("en-NG")}</div></div>
       </div>
       <div style={card}>
         <input aria-label="Search businesses" placeholder="Search businesses" style={{ ...field, width: "100%", marginBottom: 10 }} value={q} onChange={(e) => setQ(e.target.value)} />
