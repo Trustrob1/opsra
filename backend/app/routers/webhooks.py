@@ -1352,6 +1352,7 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
             logger.exception("[ORDER-GATE-1] order request failed org=%s", number_row.get("org_id"))
 
     # ── WA-BUDGET-1: WhatsApp budget used up ─────────────────────────────
+    # WA-BUDGET-4: the same happens when the whole credit balance is used up (budget or not).
     # When the owner's monthly WhatsApp budget is spent (and they chose "switch to chat"), every
     # customer message gets the one-time web chat link and nothing else. The org is ALWAYS the
     # number's own org (XORG-safe). Never raises: any failure falls through to the normal flow.

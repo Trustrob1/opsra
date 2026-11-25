@@ -123,6 +123,7 @@ export default function CreditsPanel({ embedded = false }) {
   const waSpent = Number(sum.month_wa_spend_kobo || 0)
   const waPct = waBudgetKobo ? Math.min(100, Math.round((waSpent / waBudgetKobo) * 100)) : 0
   const waOver = waBudgetKobo > 0 && waSpent >= waBudgetKobo
+  const creditOut = Number(sum.balance_kobo || 0) <= 0   // WA-BUDGET-4: an empty balance also switches to web chat
   const bonus = (p) => (p.credit_kobo > p.price_kobo ? `Get ${naira(p.credit_kobo)}` : 'No bonus')
   return (
     <div style={{ maxWidth: embedded ? undefined : 1100, fontFamily: ds.fontDm }}>
@@ -184,7 +185,10 @@ export default function CreditsPanel({ embedded = false }) {
 
           <section style={card} aria-label="WhatsApp budget">
             <h3 style={h3}>WhatsApp budget</h3>
-            <p style={{ ...panelSub, marginBottom: 16 }}>Set how much you are happy to spend on WhatsApp messages each month. When it is used up, Opsra can send customers to your web chat instead.</p>
+            <p style={{ ...panelSub, marginBottom: 16 }}>Set how much you are happy to spend on WhatsApp messages each month. When it is used up, or your credit runs out, Opsra can send customers to your web chat instead.</p>
+            {creditOut && !waOver && waAction === 'chat' && (
+              <p style={{ fontSize: 13.5, color: '#8A2A1F', margin: '0 0 16px' }}>Your credit has run out. Customers who message you on WhatsApp now get a link to your web chat, and marketing messages are paused. Top up to switch back.</p>
+            )}
             {waBudgetKobo > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, color: ds.dark, marginBottom: 6 }}>
@@ -205,7 +209,7 @@ export default function CreditsPanel({ embedded = false }) {
                   style={{ minHeight: 40, boxSizing: 'border-box', padding: '0 14px', border: '1px solid #CFDCDA', borderRadius: 12, fontSize: 14, fontFamily: ds.fontDm, color: ds.dark }} />
               </div>
               <div style={{ flex: '1 1 240px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label htmlFor="wa-action" style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>When it is used up</label>
+                <label htmlFor="wa-action" style={{ fontSize: 13, fontWeight: 600, color: ds.dark }}>When the budget or credit is used up</label>
                 <select id="wa-action" value={waAction} onChange={(e) => { setWaAction(e.target.value); setWaSaved(false) }}
                   style={{ minHeight: 40, border: '1px solid #CFDCDA', borderRadius: 12, padding: '0 12px', fontFamily: ds.fontDm, fontSize: 14, background: '#fff', color: ds.dark }}>
                   <option value="chat">Switch customers to web chat</option>

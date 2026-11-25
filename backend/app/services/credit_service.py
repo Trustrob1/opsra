@@ -320,16 +320,29 @@ def month_wa_spend_kobo(db, org_id: str) -> int:
         return 0
 
 
+def out_of_credit(wallet: Optional[dict]) -> bool:
+    """WA-BUDGET-4: a metered business whose credit balance is used up (0 or below)."""
+    try:
+        return metering_on(wallet) and int(wallet.get("balance_kobo") or 0) <= 0
+    except Exception:
+        return False
+
+
 def wa_over_budget(db, org_id: Optional[str]) -> bool:
-    """True when the org set a monthly WhatsApp budget, chose 'chat' for when it runs out, and has spent it."""
+    """True when the org chose 'chat' for when WhatsApp money runs out, and it has: either the monthly WhatsApp
+    budget is spent, or (WA-BUDGET-4) the whole credit balance is used up, with or without a budget set."""
     try:
         if not org_id:
             return False
         wallet = get_wallet(db, org_id)
         if not metering_on(wallet):
             return False
+        if (wallet.get("wa_over_budget_action") or "chat") != "chat":
+            return False
+        if out_of_credit(wallet):
+            return True
         budget = int(wallet.get("wa_monthly_budget_kobo") or 0)
-        if budget <= 0 or (wallet.get("wa_over_budget_action") or "chat") != "chat":
+        if budget <= 0:
             return False
         return month_wa_spend_kobo(db, org_id) >= budget
     except Exception:
