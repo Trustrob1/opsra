@@ -33,3 +33,9 @@ export const getApprovals     = () => api.get('/api/v1/inventory/approvals').the
 export const getToDeliver    = (params = {}) => api.get('/api/v1/inventory/to-deliver', { params }).then(d)
 export const getAvailability = (locationId, productIds) =>
   api.get('/api/v1/inventory/availability', { params: { location_id: locationId, product_ids: productIds.join(',') } }).then(d)
+
+// STOCK-3: moving stock between locations
+export const getTransfers     = (status) => api.get('/api/v1/inventory/transfers', { params: status ? { status } : {} }).then(d)
+export const sendTransfer     = (body) => api.post('/api/v1/inventory/transfers', body).then(d)
+export const receiveTransfer  = (id, body) => api.post(`/api/v1/inventory/transfers/${id}/receive`, body).then(d)
+export const cancelTransfer   = (id) => api.post(`/api/v1/inventory/transfers/${id}/cancel`).then(d)

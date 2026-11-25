@@ -15,6 +15,10 @@ Plan feature: `inventory` (whole router, plan_gate.require).
   POST   /inventory/receive                  (manager) stock in, one or more lines, optional cost per unit
   POST   /inventory/adjust                   (manager) add / remove / set the count, with a reason
   PATCH  /inventory/items                    (manager) cost price, reorder level, SKU for one product + size
+  GET    /inventory/transfers?status=        (STOCK-3) stock moves between locations, newest first
+  POST   /inventory/transfers                (manager) send stock from one location to another
+  POST   /inventory/transfers/{id}/receive   (manager) all or part arrived; cancel_rest sends the rest back
+  POST   /inventory/transfers/{id}/cancel    (manager) everything not yet arrived goes back
 
 Managers = owner, ops_manager, or a role with is_admin. S1/S2: org_id only from get_current_org; ids checked in the service.
 """
@@ -34,6 +38,7 @@ from app.dependencies import get_current_org
 from app.models.common import ok
 from app.services import inventory_service as stock
 from app.services import invoice_sales_service as sales
+from app.services import stock_transfer_service as transfers
 from app.services import plan_gate_service as plan_gate
 
 logger = logging.getLogger(__name__)
@@ -47,6 +52,31 @@ class _Strict(BaseModel):
 class SettingsIn(_Strict):
     enabled: Optional[bool] = None
     default_reorder_level: Optional[int] = Field(None, ge=0, le=1_000_000)
+    online_location_id: Optional[UUID] = None     # STOCK-3: where website orders take stock from
+    low_stock_alerts: Optional[bool] = None
+
+
+class TransferLine(_Strict):
+    product_id: UUID
+    variant: Optional[str] = Field(None, max_length=100)
+    quantity: int = Field(..., ge=1, le=1_000_000)
+
+
+class TransferIn(_Strict):
+    from_location_id: UUID
+    to_location_id: UUID
+    lines: List[TransferLine] = Field(..., min_length=1, max_length=100)
+    note: Optional[str] = Field(None, max_length=300)
+
+
+class ReceiveTransferLine(_Strict):
+    line_id: UUID
+    quantity: int = Field(..., ge=0, le=1_000_000)
+
+
+class ReceiveTransferIn(_Strict):
+    lines: List[ReceiveTransferLine] = Field(default_factory=list, max_length=100)
+    cancel_rest: bool = False
 
 
 class LocationIn(_Strict):
@@ -233,5 +263,40 @@ async def post_adjust(body: AdjustIn, org: dict = Depends(_manager), db=Depends(
 async def patch_item(body: ItemPatch, org: dict = Depends(_manager), db=Depends(get_supabase)):
     try:
         return ok(data=stock.update_item(db, _org_id(org), body.model_dump(mode="json", exclude_unset=True)))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+# ───────────────────────────── STOCK-3: moving stock between locations ─────────────────────────────
+
+@router.get("/inventory/transfers")
+async def get_transfers(status_: Optional[Literal["in_transit", "done", "cancelled"]] = Query(None, alias="status"),
+                        org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    return ok(data={"transfers": transfers.list_transfers(db, _org_id(org), status_),
+                    "can_manage": stock.is_manager(org)})
+
+
+@router.post("/inventory/transfers")
+async def post_transfer(body: TransferIn, org: dict = Depends(_manager), db=Depends(get_supabase)):
+    try:
+        return ok(data=transfers.send(db, _org_id(org), _uid(org), body.model_dump(mode="json")))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+@router.post("/inventory/transfers/{transfer_id}/receive")
+async def post_transfer_receive(transfer_id: UUID, body: ReceiveTransferIn, org: dict = Depends(_manager),
+                                db=Depends(get_supabase)):
+    try:
+        data = body.model_dump(mode="json")
+        return ok(data=transfers.receive(db, _org_id(org), _uid(org), str(transfer_id), data["lines"], data["cancel_rest"]))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+@router.post("/inventory/transfers/{transfer_id}/cancel")
+async def post_transfer_cancel(transfer_id: UUID, org: dict = Depends(_manager), db=Depends(get_supabase)):
+    try:
+        return ok(data=transfers.cancel(db, _org_id(org), _uid(org), str(transfer_id)))
     except stock.StockError as e:
         return _fail(e)

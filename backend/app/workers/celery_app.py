@@ -196,6 +196,7 @@ celery_app = Celery(
         "app.workers.order_confirm_worker",               # ← ORDER-GATE-1 (10 minute order confirmation check)
         "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
         "app.workers.invoice_worker",                    # ← INV-5 (overdue reminders, quote expiry)
+        "app.workers.stock_worker",                      # ← STOCK-3 (website holds, low-stock alert)
         "app.workers.account_plan_worker",               # ← ACCOUNT-PLANS AP-2 (plan lapse + reminders)
         "app.workers.knowledge_refresh_worker",          # ← WA-AUTO-4c (re-read website / Google Doc sources)
         "app.workers.notification_retention_worker",     # ← NOTIF-CLEANUP (old notifications)
@@ -785,6 +786,19 @@ celery_app.conf.beat_schedule = {
     "invoice-followup": {
         "task": "app.workers.invoice_worker.run_invoice_followup",
         "schedule": crontab(hour=9, minute=0),
+    },
+
+    # ------------------------------------------------------------------ #
+    # STOCK-3: website checkouts hold stock for 2 hours; release unpaid    #
+    # holds every 15 minutes. Low-stock alert daily 08:00 WAT (07:00 UTC). #
+    # ------------------------------------------------------------------ #
+    "stock-web-holds": {
+        "task": "app.workers.stock_worker.release_web_holds",
+        "schedule": crontab(minute="*/15"),
+    },
+    "stock-low-alert": {
+        "task": "app.workers.stock_worker.low_stock_alert",
+        "schedule": crontab(hour=7, minute=0),
     },
 }
 

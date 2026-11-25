@@ -21,6 +21,11 @@ history row in one step), so two people can never take the same last unit. This 
   history                        stock_moves, newest first
   receive / adjust / update_item managers only (owner, ops_manager, or a role with is_admin)
 
+STOCK-3 - the website, web chat shop and AI keep reading each product's size fields (variants[].inventory_quantity /
+available, products.available), but while stock is on Opsra writes them: what is available at the ONLINE location
+(settings.online_location_id, else the main location). refresh_product() runs after every stock change; refresh_all()
+after the switch or the online location changes. So every channel follows Opsra without its own stock rule.
+
 S1/S2: org_id always comes from the caller's token; every id is checked against the org (in here and in stock_apply).
 """
 from __future__ import annotations
@@ -100,13 +105,15 @@ def _money(value: Any, field: str) -> Optional[Decimal]:
 
 # ───────────────────────────── settings ─────────────────────────────
 
-DEFAULTS = {"enabled": False, "enabled_at": None, "imported_at": None, "default_reorder_level": 5}
+DEFAULTS = {"enabled": False, "enabled_at": None, "imported_at": None, "default_reorder_level": 5,
+            "online_location_id": None, "low_stock_alerts": True, "low_stock_alerted_at": None}   # STOCK-3
 
 
 def get_settings(db, org_id: str) -> dict:
     rows = _rows(db.table("stock_settings").select("*").eq("org_id", org_id).limit(1).execute())
     s = {**DEFAULTS, **{k: v for k, v in (rows[0] if rows else {}).items() if k in DEFAULTS}}
     s["enabled"] = bool(s["enabled"])
+    s["low_stock_alerts"] = s["low_stock_alerts"] is not False
     return s
 
 
@@ -125,6 +132,19 @@ def save_settings(db, org_id: str, user_id: Optional[str], body: dict) -> dict:
     if "default_reorder_level" in body and body["default_reorder_level"] is not None:
         patch["default_reorder_level"] = _qty(body["default_reorder_level"], "default_reorder_level", allow_zero=True)
     turning_on = body.get("enabled") is True and not current["enabled"]
+    if "online_location_id" in body:   # STOCK-3: where website orders come from (None = the main location)
+        loc_id = body.get("online_location_id")
+        if loc_id:
+            try:
+                loc = _location(db, org_id, loc_id)
+            except StockError as e:
+                raise StockError(e.code, e.message, e.status, "online_location_id")
+            if not loc.get("is_active"):
+                raise StockError("VALIDATION_ERROR", "Choose a location that is turned on.", 422, "online_location_id")
+            loc_id = loc["id"]
+        patch["online_location_id"] = loc_id or None
+    if "low_stock_alerts" in body and body["low_stock_alerts"] is not None:
+        patch["low_stock_alerts"] = bool(body["low_stock_alerts"])
     if "enabled" in body and body["enabled"] is not None:
         patch["enabled"] = bool(body["enabled"])
         if turning_on:
@@ -141,7 +161,103 @@ def save_settings(db, org_id: str, user_id: Optional[str], body: dict) -> dict:
         out["import"] = import_initial(db, org_id, user_id, loc["id"])
         db.table("stock_settings").update({"imported_at": _now()}).eq("org_id", org_id).execute()
         out["imported_at"] = get_settings(db, org_id)["imported_at"]
+    if out["enabled"] and (turning_on or ("online_location_id" in patch
+                                          and patch["online_location_id"] != current.get("online_location_id"))):
+        out["refreshed"] = refresh_all(db, org_id)   # STOCK-3: the website now shows Opsra's numbers
     return out
+
+
+# ───────────────────────────── STOCK-3: what the website / web chat / AI see ─────────────────────────────
+
+def online_location(db, org_id: str, settings: Optional[dict] = None) -> Optional[dict]:
+    """The location website orders come from: the chosen one if still on, else the main one."""
+    settings = settings or get_settings(db, org_id)
+    locs = [l for l in list_locations(db, org_id) if l.get("is_active")]
+    if settings.get("online_location_id"):
+        hit = next((l for l in locs if l["id"] == settings["online_location_id"]), None)
+        if hit:
+            return hit
+    return next((l for l in locs if l.get("is_default")), None) or (locs[0] if locs else None)
+
+
+def _online_available(db, org_id: str, location_id: Optional[str], product_ids: list) -> dict:
+    """{(product_id, variant): available} at one location."""
+    if not location_id or not product_ids:
+        return {}
+    items = _rows(db.table("stock_items").select("id, product_id, variant").eq("org_id", org_id)
+                  .in_("product_id", [str(p) for p in product_ids]).execute())
+    if not items:
+        return {}
+    levels = {lv["item_id"]: lv for lv in _rows(db.table("stock_levels").select("item_id, on_hand, held, sold_pending")
+                                               .eq("org_id", org_id).eq("location_id", str(location_id))
+                                               .in_("item_id", [i["id"] for i in items]).execute())}
+    out = {}
+    for i in items:
+        lv = levels.get(i["id"]) or {}
+        out[(i["product_id"], i["variant"] or "")] = max(_num(lv.get("on_hand")) - _num(lv.get("held"))
+                                                         - _num(lv.get("sold_pending")), 0)
+    return out
+
+
+def stock_fields(prod: dict, avail: dict) -> dict:
+    """The product fields the channels read, filled from Opsra: each variant's inventory_quantity / available
+    (tracked, no overselling) and products.available (any size can be sold and the product isn't archived)."""
+    sizes = {s["title"].lower(): s["title"] for s in inv.product_sizes(prod)}
+    pid = prod["id"]
+    variants = []
+    for v in (prod.get("variants") or []) if isinstance(prod.get("variants"), list) else []:
+        if not isinstance(v, dict):
+            variants.append(v)
+            continue
+        title = str(v.get("title") or v.get("option1") or "").strip()
+        key = sizes.get(title.lower(), "") if sizes else ""
+        qty = avail.get((pid, key), 0) if (key or not sizes) else 0
+        variants.append({**v, "inventory_quantity": qty, "inventory_management": "opsra", "inventory_policy": "deny",
+                         "available": qty > 0})
+    if sizes:
+        total = sum(avail.get((pid, t), 0) for t in sizes.values())
+    else:
+        total = avail.get((pid, ""), 0)
+    archived = prod.get("is_active") is False or str(prod.get("status") or "active") == "archived"
+    return {"variants": variants, "available": total > 0 and not archived}
+
+
+def refresh_product(db, org_id: str, product_id: str, settings: Optional[dict] = None,
+                    location: Optional[dict] = None) -> bool:
+    """Write the online location's numbers onto one product. Never raises (a later change or refresh_all fixes it)."""
+    try:
+        settings = settings or get_settings(db, org_id)
+        if not settings["enabled"]:
+            return False
+        rows = _rows(db.table("products").select("id, title, variants, is_active, status").eq("org_id", org_id)
+                     .eq("id", str(product_id)).limit(1).execute())
+        if not rows:
+            return False
+        loc = location or online_location(db, org_id, settings)
+        fields = stock_fields(rows[0], _online_available(db, org_id, loc["id"] if loc else None, [rows[0]["id"]]))
+        db.table("products").update(fields).eq("id", rows[0]["id"]).eq("org_id", org_id).execute()
+        return True
+    except Exception as exc:
+        logger.warning("inventory: refresh_product failed org=%s product=%s: %s", org_id, product_id, exc)
+        return False
+
+
+def refresh_all(db, org_id: str) -> int:
+    """Every product of the business (after the switch / online location changes; also the daily worker)."""
+    settings = get_settings(db, org_id)
+    if not settings["enabled"]:
+        return 0
+    loc = online_location(db, org_id, settings)
+    prods = _rows(db.table("products").select("id, title, variants, is_active, status").eq("org_id", org_id).execute())
+    avail = _online_available(db, org_id, loc["id"] if loc else None, [p["id"] for p in prods])
+    done = 0
+    for p in prods:
+        try:
+            db.table("products").update(stock_fields(p, avail)).eq("id", p["id"]).eq("org_id", org_id).execute()
+            done += 1
+        except Exception as exc:
+            logger.warning("inventory: refresh_all failed org=%s product=%s: %s", org_id, p["id"], exc)
+    return done
 
 
 # ───────────────────────────── locations ─────────────────────────────
@@ -226,6 +342,8 @@ def update_location(db, org_id: str, location_id: Any, body: dict) -> dict:
         _unset_default(db, org_id)
         patch["is_default"] = True
     db.table("stock_locations").update(patch).eq("id", loc["id"]).eq("org_id", org_id).execute()
+    if ("is_default" in patch or "is_active" in patch) and stock_on(db, org_id):
+        refresh_all(db, org_id)   # STOCK-3: the online location may have changed
     return _location(db, org_id, loc["id"])
 
 
@@ -328,6 +446,8 @@ def apply(db, org_id: str, user_id: Optional[str], product_id: str, variant: str
     data = getattr(res, "data", None)
     if isinstance(data, list):
         data = data[0] if data else {}
+    if kw.get("refresh", True):   # STOCK-3: the website follows every change
+        refresh_product(db, org_id, product_id)
     return data or {}
 
 
@@ -364,7 +484,7 @@ def import_initial(db, org_id: str, user_id: Optional[str], location_id: str) ->
             qty = min(qty, MAX_QTY)
             try:
                 apply(db, org_id, user_id, p["id"], variant, location_id, "import", on_hand=qty,
-                      reason="Starting stock copied when stock was turned on", sku=sku)
+                      reason="Starting stock copied when stock was turned on", sku=sku, refresh=False)
             except StockError as e:
                 logger.warning("inventory: import skipped org=%s product=%s size=%s: %s", org_id, p["id"], variant, e.message)
                 continue

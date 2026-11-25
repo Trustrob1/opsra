@@ -19,7 +19,7 @@ const firstLocation = (locations, preferred) => {
 }
 
 /** Search box that lists products; picking one returns {id, title, sizes}. */
-function ProductSearch({ onPick, autoFocus }) {
+export function ProductSearch({ onPick, autoFocus }) {
   const [q, setQ] = useState('')
   const [list, setList] = useState([])
   const [open, setOpen] = useState(false)

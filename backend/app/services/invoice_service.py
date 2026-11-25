@@ -350,7 +350,7 @@ def list_docs(db, org_id: str, doc_type: Optional[str] = None, status: Optional[
     query = db.table("invoices").select(
         "id, doc_type, number, status, lead_id, customer_id, customer_name, customer_phone, currency, total, "
         "amount_paid, issue_date, due_date, created_at, issued_at, converted_from_id"
-    ).eq("org_id", org_id)
+    ).eq("org_id", org_id).neq("web_hidden", True)   # STOCK-3: an unpaid website checkout isn't an invoice yet
     if doc_type:
         query = query.eq("doc_type", doc_type)
     if lead_id:
@@ -419,6 +419,9 @@ def _draft_or_raise(db, org_id: str, doc_id: str) -> dict:
     if doc.get("stock_approval") == "pending":   # STOCK-2b: goods are held while an admin decides
         raise InvoiceError("INVALID_TRANSITION",
                            "This invoice is waiting for stock approval. Cancel the request to change it.", 400)
+    if doc.get("web_state"):   # STOCK-3: a website checkout becomes an invoice only when the customer pays
+        raise InvoiceError("INVALID_TRANSITION",
+                           "This is a website order waiting for the customer's payment. It can't be changed here.", 400)
     return doc
 
 
@@ -656,7 +659,7 @@ def search_contacts(db, org_id: str, q: Optional[str] = None, limit: int = 10) -
 def summary(db, org_id: str) -> dict:
     """Money owed (issued + part paid invoices), how much of it is overdue, open quotes and drafts."""
     res = db.table("invoices").select("doc_type, status, total, amount_paid, due_date").eq("org_id", org_id) \
-        .in_("status", ["draft", "issued", "part_paid"]).limit(5000).execute()
+        .in_("status", ["draft", "issued", "part_paid"]).neq("web_hidden", True).limit(5000).execute()
     out = {"drafts": 0, "open_quotes": 0, "open_quotes_amount": 0.0, "outstanding_count": 0,
            "outstanding_amount": 0.0, "overdue_count": 0, "overdue_amount": 0.0}
     owed_total = overdue_total = quotes_total = Decimal("0")

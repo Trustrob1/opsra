@@ -80,6 +80,8 @@ def _status_for_stock(doc: dict) -> str:
     """A draft waiting for stock approval holds like an issued invoice."""
     if doc.get("status") == "draft" and doc.get("stock_approval") == "pending":
         return "issued"
+    if doc.get("status") == "draft" and doc.get("web_state") in ("holding", "paid"):   # STOCK-3: website checkout
+        return "issued"
     return doc.get("status") or ""
 
 
@@ -328,9 +330,10 @@ def deliver(db, org_ctx: dict, invoice_id: str, lines: list, note: Optional[str]
 
 def _open_list(db, org_id: str, statuses: tuple, field: str, location_id: Optional[str], limit: int) -> list:
     q = db.table("invoices").select("id, number, customer_name, status, issue_date, total, amount_paid, location_id, "
-                                    "created_by, updated_at").eq("org_id", org_id).eq("stock_tracked", True) \
+                                    "created_by, updated_at, web_state").eq("org_id", org_id).eq("stock_tracked", True) \
         .in_("status", list(statuses))
-    docs = _rows(q.order("issue_date").limit(500).execute())
+    docs = [d for d in _rows(q.order("issue_date").limit(500).execute())   # STOCK-3: drafts only as web checkouts
+            if d.get("status") != "draft" or d.get("web_state") == "holding"]
     if not docs:
         return []
     doc_loc = {d["id"]: d.get("location_id") for d in docs}
@@ -354,7 +357,8 @@ def _open_list(db, org_id: str, statuses: tuple, field: str, location_id: Option
         lines = by_doc.get(d["id"])
         if not lines:
             continue
-        out.append({"id": d["id"], "number": d.get("number"), "customer_name": d.get("customer_name"),
+        out.append({"id": d["id"], "number": d.get("number") or ("Website order" if d.get("web_state") else None),
+                    "web": bool(d.get("web_state")), "customer_name": d.get("customer_name"),
                     "status": d.get("status"), "issue_date": d.get("issue_date"), "updated_at": d.get("updated_at"),
                     "location": locs.get(d.get("location_id")), "rep_name": users.get(d.get("created_by")),
                     "balance": inv._f(inv._money(d.get("total") or 0) - inv._money(d.get("amount_paid") or 0)),
@@ -367,7 +371,7 @@ def _open_list(db, org_id: str, statuses: tuple, field: str, location_id: Option
 
 def held_list(db, org_id: str, location_id: Optional[str] = None, limit: int = 200) -> list:
     """Unpaid issued invoices holding stock, oldest first."""
-    return _open_list(db, org_id, UNPAID, "stock_held", location_id, limit)
+    return _open_list(db, org_id, UNPAID + ("draft",), "stock_held", location_id, limit)
 
 
 def to_deliver_list(db, org_id: str, location_id: Optional[str] = None, limit: int = 200) -> list:
@@ -434,12 +438,12 @@ def stock_check(db, org_ctx: dict, invoice_id: str) -> dict:
             "lines": out_lines, "can_approve": can_approve(org_ctx)}
 
 
-def _notify(db, org_id: str, user_ids: list, title: str, body: str) -> None:
+def _notify(db, org_id: str, user_ids: list, title: str, body: str, kind: str = "stock_approval") -> None:
     now = inv._now_iso()
     for uid in {u for u in user_ids if u}:
         try:
             db.table("notifications").insert({"org_id": org_id, "user_id": uid, "title": title[:200], "body": body[:1000],
-                                              "type": "stock_approval", "resource_type": "invoice", "resource_id": None,
+                                              "type": kind, "resource_type": "invoice", "resource_id": None,
                                               "is_read": False, "created_at": now}).execute()
         except Exception as exc:
             logger.warning("invoice_stock: notify failed user=%s: %s", uid, exc)

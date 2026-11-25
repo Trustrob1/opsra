@@ -583,6 +583,14 @@ def checkout(db, s: dict, cfg: dict) -> dict:
     ref = None
     if cfg.get("order_mode") == "team":                          # ORDER-CONFIRM-1: the owner wants stock confirmed by a person first
         return _hold_for_team(db, s, cfg, cart, total, out, note)
+    web = None
+    try:                                                         # STOCK-3: hold the stock for 2 hours while they pay
+        from app.services import web_order_stock_service as web_orders
+        web = web_orders.hold(db, s["org_id"], s["lead_id"], cart)
+    except Exception as exc:
+        if exc.__class__.__name__ == "WebShort":
+            return {"error": f"Sorry, {exc.message} Please change your cart and try again."}
+        logger.warning("webchat stock hold failed org=%s: %s", s.get("org_id"), exc)
     try:
         from app.services.paystack_storefront_service import generate_payment_link
         res = generate_payment_link(db=db, org_id=s["org_id"], lead_id=s["lead_id"], amount=total,
@@ -594,6 +602,14 @@ def checkout(db, s: dict, cfg: dict) -> dict:
 
     wc.log_event(db, s["org_id"], s["id"], "order", s.get("source"), ref=ref)      # WEBCHAT-5b
 
+    if web:
+        try:
+            if url:
+                web_orders.attach(db, s["org_id"], web["id"], ref)
+            else:
+                web_orders.drop(db, s["org_id"], web["id"])
+        except Exception as exc:
+            logger.warning("webchat stock hold update failed org=%s: %s", s.get("org_id"), exc)
     if not url:                                                  # no payment link possible (for example no Paystack): a person completes it
         return _hold_for_team(db, s, cfg, cart, total, out, note, ref=ref, log=False)     # the order event was logged just above
 

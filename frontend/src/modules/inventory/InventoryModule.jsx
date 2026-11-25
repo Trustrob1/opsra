@@ -3,9 +3,10 @@
  * STOCK-1 — the Inventory page: stock per product + size (all locations or one), low-stock filter, Receive stock and
  * Adjust (managers), each product's panel, the full history, and (managers) the settings and locations.
  * Shown to every product mode, like Invoices.
+ * STOCK-3 — Moves tab and Move stock (managers): stock sent between locations, received when it arrives.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Boxes, PackagePlus, Search, SlidersHorizontal } from 'lucide-react'
+import { Boxes, PackagePlus, Search, SlidersHorizontal, Truck } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { getStock, stockError, isPlanBlocked } from '../../services/inventory.service'
@@ -16,6 +17,7 @@ import StockHistory from './StockHistory'
 import InventorySettings from './InventorySettings'
 import InvoiceStockList from './InvoiceStockList'   // STOCK-2
 import StockApprovals from './StockApprovals'       // STOCK-2b
+import StockTransfers, { MoveStock } from './StockTransfers'   // STOCK-3
 
 export default function InventoryModule() {
   const isMobile = useIsMobile()
@@ -30,6 +32,7 @@ export default function InventoryModule() {
   const [panel, setPanel] = useState(null)        // a row
   const [form, setForm] = useState(null)          // { kind: 'receive' | 'adjust', preset }
   const [note, setNote] = useState('')
+  const [moved, setMoved] = useState(0)           // bumps the Moves list after Move stock
 
   useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 300); return () => clearTimeout(t) }, [q])
   const load = useCallback(() => getStock({ ...(dq ? { q: dq } : {}), ...(locationId ? { location_id: locationId } : {}), ...(low ? { low: true } : {}) })
@@ -68,7 +71,7 @@ export default function InventoryModule() {
     </div>
   )
   const lowBadge = <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: '#FFF3E0', color: '#C05A00', fontSize: 12, fontWeight: 700 }}>Low</span>
-  const done = (text) => { setForm(null); setPanel(null); setNote(text); load() }
+  const done = (text) => { setForm(null); setPanel(null); setNote(text); setMoved((n) => n + 1); load() }
   const filtered = !!(dq || locationId || low)
 
   return (
@@ -77,6 +80,7 @@ export default function InventoryModule() {
         <h1 style={{ margin: 0, fontSize: 22, color: ds.dark, flex: 1 }}>Inventory</h1>
         {canManage && enabled && <>
           <button type="button" style={btnG} onClick={() => setForm({ kind: 'adjust' })}><SlidersHorizontal size={16} />Adjust</button>
+          {locations.filter((l) => l.is_active).length > 1 && <button type="button" style={btnG} onClick={() => setForm({ kind: 'move' })}><Truck size={16} />Move stock</button>}
           <button type="button" style={btnP} onClick={() => setForm({ kind: 'receive' })}><PackagePlus size={16} />Receive stock</button>
         </>}
       </div>
@@ -86,6 +90,7 @@ export default function InventoryModule() {
         {enabled && chip(tab === 'deliver', 'To deliver', () => setTab('deliver'))}
         {enabled && chip(tab === 'held', 'Held', () => setTab('held'))}
         {enabled && canManage && chip(tab === 'approvals', 'Approvals', () => setTab('approvals'))}
+        {enabled && locations.length > 1 && chip(tab === 'moves', 'Moves', () => setTab('moves'))}
         {enabled && chip(tab === 'history', 'History', () => setTab('history'))}
         {canManage && chip(tab === 'settings', 'Settings', () => setTab('settings'))}
       </div>
@@ -95,6 +100,7 @@ export default function InventoryModule() {
       {tab === 'settings' && canManage ? <InventorySettings onChanged={load} />
         : tab === 'history' && enabled ? <StockHistory locations={locations} />
         : tab === 'approvals' && enabled && canManage ? <StockApprovals onChanged={load} />
+        : tab === 'moves' && enabled ? <StockTransfers canManage={canManage} onChanged={load} reloadKey={moved} />
         : (tab === 'deliver' || tab === 'held') && enabled ? <InvoiceStockList key={tab} kind={tab} locations={locations} onChanged={load} />
         : data && !enabled ? (
           <div style={{ ...card, maxWidth: 620 }}>
@@ -144,7 +150,7 @@ export default function InventoryModule() {
                     <b style={{ color: ds.dark }}>{r.title}</b>
                     <span style={{ whiteSpace: 'nowrap' }}><b style={{ color: ds.dark }}>{units(r.available)}</b>{r.low && lowBadge}</span>
                   </div>
-                  <div style={{ color: ds.gray, fontSize: 13.5 }}>{sizeText(r.variant)} · {units(r.on_hand)} on hand{r.held ? ` · ${units(r.held)} held` : ''}{r.sold_pending ? ` · ${units(r.sold_pending)} to deliver` : ''}</div>
+                  <div style={{ color: ds.gray, fontSize: 13.5 }}>{sizeText(r.variant)} · {units(r.on_hand)} on hand{r.held ? ` · ${units(r.held)} held` : ''}{r.sold_pending ? ` · ${units(r.sold_pending)} to deliver` : ''}{r.in_transit_in ? ` · ${units(r.in_transit_in)} on the way` : ''}</div>
                 </button>
               ))}
             </div>
@@ -164,7 +170,7 @@ export default function InventoryModule() {
                       <td style={{ ...td, fontWeight: 600, color: ds.dark }}>{r.title}{!r.product_active && <span style={{ color: ds.gray, fontWeight: 400 }}> (archived)</span>}</td>
                       <td style={td}>{sizeText(r.variant)}{r.old_size && <span style={{ color: ds.gray }}> (old size)</span>}</td>
                       <td style={{ ...td, color: ds.gray }}>{r.sku || '—'}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>{units(r.on_hand)}</td>
+                      <td style={{ ...td, textAlign: 'right' }}>{units(r.on_hand)}{r.in_transit_in ? <div style={{ color: ds.gray, fontSize: 12 }}>+{units(r.in_transit_in)} on the way</div> : null}</td>
                       <td style={{ ...td, textAlign: 'right', color: r.held ? ds.dark : ds.gray }}>{units(r.held)}</td>
                       <td style={{ ...td, textAlign: 'right', color: r.sold_pending ? ds.dark : ds.gray }}>{units(r.sold_pending)}</td>
                       <td style={{ ...td, textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>{units(r.available)}{r.low && lowBadge}</td>
@@ -182,6 +188,7 @@ export default function InventoryModule() {
         onReceive={(preset) => { setPanel(null); setForm({ kind: 'receive', preset }) }}
         onAdjust={(preset) => { setPanel(null); setForm({ kind: 'adjust', preset }) }} />}
       {form?.kind === 'receive' && <ReceiveStock locations={locations} preset={form.preset} onClose={() => setForm(null)} onDone={done} />}
+      {form?.kind === 'move' && <MoveStock locations={locations} onClose={() => setForm(null)} onDone={(text) => { done(text); setTab('moves') }} />}
       {form?.kind === 'adjust' && <AdjustStock locations={locations} preset={form.preset} onClose={() => setForm(null)} onDone={done} />}
     </div>
   )

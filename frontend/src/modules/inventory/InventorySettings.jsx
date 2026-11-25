@@ -2,9 +2,11 @@
  * frontend/src/modules/inventory/InventorySettings.jsx
  * STOCK-1 — managers: turn stock on (the first time copies today's numbers in once), the default "low stock at"
  * number, and locations (add, rename, link to a region, make main, turn off when empty).
+ * STOCK-3 — where website orders take stock from (the website shows that location's numbers) and the daily
+ * low-stock alert switch.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { MapPin, Star } from 'lucide-react'
+import { Globe, MapPin, Star } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { getStockSettings, saveStockSettings, getLocations, createLocation, updateLocation, stockError } from '../../services/inventory.service'
 import { card, lab, inp, btnP, btnG, disabled, errBox, units } from './stockUi'
@@ -99,7 +101,7 @@ export default function InventorySettings({ onChanged }) {
             <ul style={{ margin: '0 0 12px', paddingLeft: 18, color: ds.gray, fontSize: 13.5, lineHeight: 1.6 }}>
               {!settings.imported_at && <li>The first time, today's numbers are copied in once, into your main location (each size's Shopify quantity, or the product's stock number).</li>}
               <li>From then on Opsra's numbers are the true ones. Shopify sync keeps titles, prices and photos up to date but stops changing stock.</li>
-              <li>Next phase: issuing an invoice holds stock and blocks the sale when there isn't enough.</li>
+              <li>Issuing an invoice holds stock and blocks the sale when there isn't enough. Website checkouts hold stock for 2 hours while the customer pays.</li>
             </ul>
             {confirm ? (
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -121,7 +123,27 @@ export default function InventorySettings({ onChanged }) {
             onClick={() => save({ default_reorder_level: Number(reorder) }, 'Saved.')}>Save</button>
         </div>
         <p style={{ color: ds.gray, fontSize: 12.5, margin: '8px 0 0' }}>A product size shows as low when what's available across your locations is at or below this. You can set a different number per product size.</p>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, color: ds.dark, cursor: busy ? 'default' : 'pointer', minHeight: 32 }}>
+          <input type="checkbox" checked={settings.low_stock_alerts !== false} disabled={!!busy}
+            onChange={(e) => save({ low_stock_alerts: e.target.checked }, e.target.checked ? 'Low-stock alerts are on.' : 'Low-stock alerts are off.')}
+            style={{ width: 18, height: 18, accentColor: ds.teal }} />
+          Send me a daily alert when items run low
+        </label>
+        <p style={{ color: ds.gray, fontSize: 12.5, margin: '4px 0 0 28px' }}>Owners, operations managers and admins get an Opsra notification each morning; owners also get an email. An item is only repeated when its stock changes.</p>
       </section>
+
+      {settings.enabled && (
+        <section style={card}>
+          <h3 style={{ ...h, display: 'flex', alignItems: 'center', gap: 8 }}><Globe size={17} color={ds.teal} />Website orders</h3>
+          <div style={{ maxWidth: 320 }}><label style={lab} htmlFor="st-online">Website orders come from</label>
+            <select id="st-online" style={inp} disabled={!!busy} value={settings.online_location_id || ''}
+              onChange={(e) => save({ online_location_id: e.target.value || null }, 'Saved. Your website now shows this location\'s stock.')}>
+              <option value="">Main location ({locs.locations.find((l) => l.is_default)?.name || 'not set'})</option>
+              {locs.locations.filter((l) => l.is_active && !l.is_default).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select></div>
+          <p style={{ color: ds.gray, fontSize: 12.5, margin: '8px 0 0' }}>Your website, web chat shop and AI replies show what's available here. A website checkout holds the stock for 2 hours; when the customer pays, Opsra makes a paid invoice for it.</p>
+        </section>
+      )}
 
       <section style={card}>
         <h3 style={{ ...h, display: 'flex', alignItems: 'center', gap: 8 }}><MapPin size={17} color={ds.teal} />Locations</h3>
