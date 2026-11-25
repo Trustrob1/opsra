@@ -12,13 +12,13 @@
  * Totals shown while typing are a preview; the server works out the real ones on every save.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, Plus, Trash2, Download, Search, Package, CheckCircle2, XCircle, FileText, Ban } from 'lucide-react'
+import { X, Plus, Trash2, Download, Search, Package, CheckCircle2, XCircle, FileText, Ban, Sparkles } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import useAuthStore from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import {
   getInvoiceSettings, getDoc, createDoc, updateDoc, deleteDoc, issueDoc, voidDoc, acceptQuote, declineQuote,
-  convertQuote, pickContacts, pickProducts, downloadDocPdf, apiError,
+  convertQuote, pickContacts, pickProducts, downloadDocPdf, apiError, aiDraftLines,
 } from '../../services/invoices.service'
 import { naira, niceDate, todayYmd, TYPE_LABEL, lab, inp, btnP, btnG, btnDanger, disabled } from './invoiceUi'
 import StatusPill from './StatusPill'
@@ -297,6 +297,9 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
           <button type="button" style={btnG} onClick={() => addLine()}><Plus size={16} />Add line</button>
           <ProductPicker onPick={(p) => addLine({ product_id: p.id, description: p.title, quantity: 1, unit_price: p.price ?? '' })} />
+          {form.lead_id && <FillFromChat leadId={form.lead_id} onLines={(lines) => set({
+            items: [...form.items.filter((l) => l.description.trim() || l.product_id || l.unit_price !== ''), ...lines.map(toLine)],
+          })} />}
         </div>
       </section>
 
@@ -445,6 +448,30 @@ function IssuedView({ doc, isAdmin, onPaid }) {
       {kind === 'invoice' && <PaymentsPanel doc={doc} isAdmin={isAdmin} onChanged={onPaid} />}
       {doc.status !== 'void' && <SendPanel doc={doc} />}
       <p style={{ color: ds.gray, fontSize: 13, margin: 0 }}>Issued documents can't be changed. To fix a mistake, void it and make a new one.</p>
+    </div>
+  )
+}
+
+// INV-5: suggest lines from this customer's WhatsApp / web chat. Nothing is saved until the person saves the draft.
+function FillFromChat({ leadId, onLines }) {
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const go = async () => {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await aiDraftLines(leadId)
+      const lines = r?.lines || []
+      if (lines.length) onLines(lines)
+      const blanks = lines.filter((l) => l.unit_price == null).length
+      setMsg({ ok: lines.length > 0, text: lines.length
+        ? `Added ${lines.length} line${lines.length === 1 ? '' : 's'} from the chat. Check them before you issue.${blanks ? ` ${blanks} need a price.` : ''}${r.note ? ` ${r.note}` : ''}`
+        : (r?.note || 'Nothing in the chat looks like an agreed order.') })
+    } catch (e) { setMsg({ ok: false, text: apiError(e, 'Could not read the chat. Please add the lines yourself.') }) } finally { setBusy(false) }
+  }
+  return (
+    <div style={{ display: 'grid', gap: 4 }}>
+      <button type="button" style={disabled(btnG, busy)} disabled={busy} onClick={go}><Sparkles size={16} />{busy ? 'Reading the chat…' : 'Fill from chat'}</button>
+      {msg && <small role="status" style={{ color: msg.ok ? ds.gray : ds.red, maxWidth: 360 }}>{msg.text}</small>}
     </div>
   )
 }

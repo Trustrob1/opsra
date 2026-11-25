@@ -26,7 +26,8 @@ export default function InvoiceSettings() {
     const f = {}
     TEXT.forEach((k) => { f[k] = d[k] ?? '' })
     setForm({ ...f, vat_enabled: !!d.vat_enabled, vat_rate: String(d.vat_rate ?? 7.5), default_due_days: String(d.default_due_days ?? 7),
-      default_quote_valid_days: String(d.default_quote_valid_days ?? 14), brand_colour: d.brand_colour || '#0d9488' })
+      default_quote_valid_days: String(d.default_quote_valid_days ?? 14), brand_colour: d.brand_colour || '#0d9488',
+      reminders_enabled: !!d.reminders_enabled })
   }
   useEffect(() => { getInvoiceSettings().then(adopt).catch((e) => setMsg({ ok: false, text: apiError(e) })) }, [])
 
@@ -43,6 +44,7 @@ export default function InvoiceSettings() {
     body.default_due_days = parseInt(form.default_due_days, 10) || 0
     body.default_quote_valid_days = parseInt(form.default_quote_valid_days, 10) || 14
     body.brand_colour = form.brand_colour
+    body.reminders_enabled = !!form.reminders_enabled
     try { adopt(await saveInvoiceSettings(body)); setMsg({ ok: true, text: 'Saved. New documents will use these details.' }) }
     catch (e) { setMsg({ ok: false, text: apiError(e, 'Could not save. Check the details and try again.') }) }
     finally { setBusy('') }
@@ -136,6 +138,21 @@ export default function InvoiceSettings() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section style={card}>
+        <h3 style={h}>Reminders</h3>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', color: ds.dark }}>
+          <input type="checkbox" checked={!!form.reminders_enabled} onChange={set('reminders_enabled')} style={{ width: 18, height: 18, marginTop: 2 }} />
+          <span>Remind customers about overdue invoices
+            <small style={{ display: 'block', color: ds.gray, marginTop: 4 }}>
+              At 10am, 1, 7 and 14 days after the due date, the customer gets the invoice again with a link to pay. It goes by
+              WhatsApp if they messaged you in the last 24 hours, otherwise by email. If neither works, the person who made
+              the invoice gets a task to chase it. Paid and void invoices are never reminded.
+            </small>
+          </span>
+        </label>
+        <small style={{ display: 'block', color: ds.gray, marginTop: 10 }}>When a quote passes its date without an answer, the person who made it always gets a task to follow up.</small>
       </section>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

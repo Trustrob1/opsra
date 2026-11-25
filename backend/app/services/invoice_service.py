@@ -40,6 +40,7 @@ SETTINGS_FIELDS = (
     "quote_prefix", "invoice_prefix", "receipt_prefix",
     "vat_enabled", "vat_rate", "default_due_days", "default_quote_valid_days",
     "default_terms", "footer", "brand_colour", "email_reply_to",
+    "reminders_enabled",   # INV-5
 )
 DEFAULT_SETTINGS = {
     "business_name": None, "address": None, "phone": None, "email": None, "rc_number": None, "tin": None,
@@ -47,6 +48,7 @@ DEFAULT_SETTINGS = {
     "quote_prefix": "QT-", "invoice_prefix": "INV-", "receipt_prefix": "RCT-",
     "vat_enabled": False, "vat_rate": 7.5, "default_due_days": 7, "default_quote_valid_days": 14,
     "default_terms": None, "footer": None, "brand_colour": "#0d9488", "email_reply_to": None,
+    "reminders_enabled": False,
 }
 # What an issued document keeps of the settings (printed on it forever).
 ISSUER_FIELDS = ("business_name", "address", "phone", "email", "rc_number", "tin", "logo_url",

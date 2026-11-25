@@ -54,6 +54,11 @@ export const getReceiptSendOptions = (id) => api.get(`/api/v1/receipts/${id}/sen
 export const sendReceipt = (id, channel, email) => api.post(`/api/v1/receipts/${id}/send`, { channel, ...(email ? { email } : {}) }).then(d)
 export const downloadReceiptPdf = (id, filename) => savePdf(`/api/v1/receipts/${id}/pdf`, filename)
 
+// INV-5: report, receipts CSV, AI lines from the chat
+export const getInvoiceReport = (start, end) => api.get('/api/v1/invoices/report', { params: { start, end } }).then(d)
+export const downloadReceiptsCsv = (start, end) => savePdf(`/api/v1/invoices/report/receipts.csv?start=${start}&end=${end}`)
+export const aiDraftLines = (leadId) => api.post('/api/v1/invoices/ai-draft', { lead_id: leadId }).then(d)
+
 /** Fetch the PDF with the login token and save it (a plain link can't carry the token). */
 export const downloadDocPdf = (id, filename) => savePdf(`/api/v1/invoices/${id}/pdf`, filename)
 

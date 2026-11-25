@@ -14,6 +14,7 @@ import StatusPill from './StatusPill'
 import InvoiceEditor from './InvoiceEditor'
 import InvoiceSettings from './InvoiceSettings'
 import ReceiptsList from './ReceiptsList'   // INV-4
+import InvoiceReport from './InvoiceReport'   // INV-5
 
 const FILTERS = [
   ['', 'All'], ['draft', 'Drafts'], ['issued', 'Issued'], ['overdue', 'Overdue'], ['part_paid', 'Part paid'],
@@ -91,10 +92,12 @@ export default function InvoicesModule() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {chip(tab === 'docs', 'Documents', () => setTab('docs'))}
         {chip(tab === 'receipts', 'Receipts', () => setTab('receipts'))}
+        {chip(tab === 'report', 'Report', () => setTab('report'))}
         {isAdmin && chip(tab === 'settings', 'Settings', () => setTab('settings'))}
       </div>
 
-      {tab === 'settings' && isAdmin ? <InvoiceSettings /> : tab === 'receipts' ? <ReceiptsList isAdmin={isAdmin} onChanged={loadSummary} /> : (
+      {tab === 'settings' && isAdmin ? <InvoiceSettings /> : tab === 'receipts' ? <ReceiptsList isAdmin={isAdmin} onChanged={loadSummary} />
+        : tab === 'report' ? <InvoiceReport /> : (
         <>
           {summary && (
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>

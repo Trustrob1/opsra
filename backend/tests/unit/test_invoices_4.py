@@ -171,11 +171,16 @@ def test_send_receipt_auto_picks_whatsapp_then_email(monkeypatch):
     calls = {}
     with patch("app.services.whatsapp_service._is_lead_window_open", return_value=True), \
          patch("app.services.whatsapp_service.send_whatsapp_media_message", side_effect=lambda **k: calls.setdefault("media", k)), \
-         patch("app.services.whatsapp_service.send_whatsapp_message", side_effect=lambda **k: calls.setdefault("text", k)):
+         patch("app.services.whatsapp_service.send_whatsapp_message") as rep_send, \
+         patch("app.services.whatsapp_service.send_agent_text_message",
+               side_effect=lambda *a, **k: calls.setdefault("text", (a, k))):
         out = delivery.send_receipt(db, ORG, None, a["receipt"]["id"])
     assert out == {"channel": "whatsapp", "sent": True}
     assert calls["media"]["filename"] == "Receipt-RCT-0001.pdf"
-    text = calls["text"]["payload"].content
+    rep_send.assert_not_called()                     # INV-5: automatic send does not pause the AI
+    (args, kw) = calls["text"]
+    assert args[2] == "2348011111111" and args[3] == LEAD
+    text = args[4]
     assert "₦10,000" in text and "RCT-0001" in text and "Balance left on invoice INV-0001: ₦20,000" in text
     sent = []
     monkeypatch.setitem(sys.modules, "resend", SimpleNamespace(api_key=None, Emails=SimpleNamespace(send=sent.append)))

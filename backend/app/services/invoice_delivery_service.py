@@ -205,11 +205,33 @@ def _send_whatsapp(db, org_id: str, user_id: Optional[str], doc: dict, data: byt
     except Exception as exc:
         logger.error("invoice_delivery: whatsapp document failed org=%s doc=%s: %s", org_id, doc.get("id"), exc)
         raise inv.InvoiceError("INTEGRATION_ERROR", "WhatsApp did not accept the file. Please try again.", 503)
+    if user_id is None:   # INV-5: automatic send (receipt after Paystack, reminder) - bot path, the AI is not paused
+        _auto_text(db, org_id, doc, text or message_text(doc))
+        return
     try:   # the link text is a bonus: the PDF already went, so a failure here is only logged
         wa.send_whatsapp_message(db=db, org_id=org_id, user_id=user_id,
                                  payload=SendMessageRequest(content=text or message_text(doc), **ids))
     except Exception as exc:
         logger.warning("invoice_delivery: whatsapp link text failed org=%s doc=%s: %s", org_id, doc.get("id"), exc)
+
+
+def _auto_text(db, org_id: str, doc: dict, text: str) -> None:
+    """A system WhatsApp text (no person sent it): same path as the AI agent, so the customer's chat is not treated as
+    taken over by a person. S14: never raises."""
+    try:
+        from app.services import whatsapp_service as wa
+        src = None
+        if doc.get("lead_id"):
+            src = inv._one(db, "leads", org_id, doc["lead_id"], "id, whatsapp, phone")
+        elif doc.get("customer_id"):
+            src = inv._one(db, "customers", org_id, doc["customer_id"], "id, whatsapp, phone")
+        to = ((src or {}).get("whatsapp") or (src or {}).get("phone") or "").strip()
+        if not to:
+            return
+        phone_id, token, _ = wa._get_lead_wa_credentials(db, org_id, doc.get("lead_id"))
+        wa.send_agent_text_message(db, org_id, to, doc.get("lead_id"), text, phone_id=phone_id, access_token=token)
+    except Exception as exc:
+        logger.warning("invoice_delivery: automatic text failed org=%s doc=%s: %s", org_id, doc.get("id"), exc)
 
 
 def _send_webchat(db, org_id: str, user_id: Optional[str], doc: dict, data: bytes, name: str,
@@ -558,3 +580,70 @@ def public_verify(db, token: str, reference: str) -> dict:
     doc = _by_token(db, token)
     paid = pay.verify_return(db, doc, reference)
     return {"paid": paid, "doc": public_view(db, token)}
+
+
+# ───────────────────────────── INV-5: overdue reminders ─────────────────────────────
+
+def reminder_text(doc: dict) -> str:
+    first = (doc.get("customer_name") or "").split(" ")[0].strip()
+    hello = f"Hello {first}, " if first else "Hello, "
+    bal = doc.get("balance_due", doc.get("total"))
+    line = (f"{hello}this is a friendly reminder from {_business(doc)}: invoice {doc.get('number')} has "
+            f"{_naira(bal)} still to pay")
+    if doc.get("due_date"):
+        line += f" and was due on {_nice(doc['due_date'])}"
+    line += f". You can view it and pay here: {public_url(doc)}"
+    line += " If you have already paid, please reply with your receipt so we can update it. Thank you."
+    return line
+
+
+def reminder_email_bodies(doc: dict) -> tuple[str, str, str]:
+    biz = _business(doc)
+    subject = f"Reminder: invoice {doc.get('number')} from {biz}"
+    text = reminder_text(doc) + "\n\nThe invoice is attached."
+    url = public_url(doc) or ""
+    e = html.escape
+    colour = (doc.get("issuer") or {}).get("brand_colour") or "#0d9488"
+    if not re.match(r"^#[0-9a-fA-F]{6}$", str(colour)):
+        colour = "#0d9488"
+    body = (f'<div style="font-family:Arial,sans-serif;font-size:15px;color:#1a1a1a;max-width:560px">'
+            f'<p>{e(reminder_text(doc).split(" You can view it")[0])}.</p>'
+            f'<p><a href="{e(url)}" style="display:inline-block;background:{colour};color:#fff;padding:12px 20px;'
+            f'border-radius:8px;text-decoration:none;font-weight:bold">View and pay</a></p>'
+            f'<p style="color:#666;font-size:13px">If you have already paid, reply to this email with your receipt. '
+            f'The invoice is attached.</p></div>')
+    return subject, text, body
+
+
+def reminder_channel(db, org_id: str, doc: dict) -> tuple[Optional[str], Optional[str]]:
+    """(channel, email) for an automatic reminder: WhatsApp inside the 24-hour window, else email, else (None, None)."""
+    if (doc.get("lead_id") or doc.get("customer_id")) and _wa_window_open(db, org_id, doc):
+        return "whatsapp", None
+    em = (doc.get("customer_email") or "").strip()
+    if not em and (doc.get("lead_id") or doc.get("customer_id")):
+        try:
+            em = (inv._customer_snapshot(db, org_id, {"lead_id": doc.get("lead_id"),
+                                                       "customer_id": doc.get("customer_id")}).get("customer_email") or "").strip()
+        except Exception:
+            em = ""
+    if em and EMAIL_RE.match(em) and len(em) <= 254:
+        return "email", em
+    return None, None
+
+
+def send_reminder(db, org_id: str, doc_id: str, dry_run: bool = False) -> dict:
+    """One overdue reminder (PDF + link). {"channel": None} when there is no way to reach the customer."""
+    doc = inv.get_doc(db, org_id, doc_id)
+    if doc.get("doc_type") != "invoice" or doc.get("status") not in ("issued", "part_paid"):
+        return {"channel": None, "skipped": "not_open"}
+    channel, to = reminder_channel(db, org_id, doc)
+    if not channel or dry_run:
+        return {"channel": channel, "dry_run": dry_run}
+    data, name = _render(db, org_id, doc)
+    if channel == "whatsapp":
+        _send_whatsapp(db, org_id, None, doc, data, name, reminder_text(doc))
+    else:
+        _send_email(db, org_id, doc, data, name, to, reminder_email_bodies(doc))
+    inv._audit(db, org_id, None, "invoice.reminder_sent", doc["id"],
+               {"channel": channel, "reminder": int(doc.get("reminder_count") or 0) + 1})
+    return {"channel": channel}

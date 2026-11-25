@@ -140,6 +140,10 @@ class ReceiptIn(_Strict):
     _money = field_validator("amount")(_two_places)
 
 
+class AiDraftIn(_Strict):
+    lead_id: UUID
+
+
 class ReceiptSendIn(_Strict):
     channel: Literal["whatsapp", "webchat", "email"]
     email: Optional[str] = Field(default=None, max_length=254)
@@ -166,6 +170,7 @@ class SettingsIn(_Strict):
     footer: Optional[str] = Field(None, max_length=300)
     brand_colour: Optional[str] = Field(None, pattern=_COLOUR)
     email_reply_to: Optional[str] = Field(None, max_length=254)
+    reminders_enabled: Optional[bool] = None   # INV-5
 
     _money = field_validator("vat_rate")(_two_places)
 
@@ -234,6 +239,42 @@ async def get_summary(org: dict = Depends(get_current_org), db=Depends(get_supab
     out = inv.summary(db, org["org_id"])
     out["paid_this_month"] = pay.paid_this_month(db, org["org_id"])
     return ok(out)
+
+
+@router.get("/invoices/report")
+async def get_report(start: Optional[date] = None, end: Optional[date] = None,
+                     org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_report_service as rep
+    try:
+        return ok(rep.report(db, org["org_id"], start, end))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.get("/invoices/report/receipts.csv")
+async def get_report_csv(start: Optional[date] = None, end: Optional[date] = None,
+                         org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_report_service as rep
+    try:
+        text = rep.receipts_csv(db, org["org_id"], start, end)
+        s, e = rep.check_period(start, end)
+    except inv.InvoiceError as e:
+        return _fail(e)
+    return Response(content=text.encode("utf-8-sig"), media_type="text/csv", headers={
+        "Content-Disposition": f'attachment; filename="receipts-{s}-to-{e}.csv"', "Cache-Control": "no-store"})
+
+
+@router.post("/invoices/ai-draft")
+async def ai_draft(body: AiDraftIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_ai_service as ai
+    from app.services import webchat_service as wc
+    org_id = org["org_id"]
+    if wc.rate_limited(f"invai:{org_id}", 30, 3600):
+        return _fail(inv.InvoiceError("RATE_LIMITED", "That is a lot of AI drafts. Please wait a few minutes.", 429))
+    try:
+        return ok(ai.suggest_lines(db, org_id, str(body.lead_id)))
+    except inv.InvoiceError as e:
+        return _fail(e)
 
 
 @router.get("/invoices/products")

@@ -195,6 +195,7 @@ celery_app = Celery(
         "app.workers.plan_credit_worker",                # ← PLANS-3 (monthly credit a plan includes)
         "app.workers.order_confirm_worker",               # ← ORDER-GATE-1 (10 minute order confirmation check)
         "app.workers.webchat_worker",                    # ← WEBCHAT-1 (expire idle chat sessions)
+        "app.workers.invoice_worker",                    # ← INV-5 (overdue reminders, quote expiry)
         "app.workers.account_plan_worker",               # ← ACCOUNT-PLANS AP-2 (plan lapse + reminders)
         "app.workers.knowledge_refresh_worker",          # ← WA-AUTO-4c (re-read website / Google Doc sources)
         "app.workers.notification_retention_worker",     # ← NOTIF-CLEANUP (old notifications)
@@ -775,6 +776,15 @@ celery_app.conf.beat_schedule = {
     "webchat-sweep": {
         "task": "app.workers.webchat_worker.run_webchat_sweep",
         "schedule": crontab(minute=20),
+    },
+
+    # ------------------------------------------------------------------ #
+    # invoice-followup — Daily 10:00 WAT (09:00 UTC)  (INV-5)             #
+    # Overdue invoice reminders (opt-in per business) + quote expiry task. #
+    # ------------------------------------------------------------------ #
+    "invoice-followup": {
+        "task": "app.workers.invoice_worker.run_invoice_followup",
+        "schedule": crontab(hour=9, minute=0),
     },
 }
 
