@@ -22,6 +22,24 @@
   <link rel="apple-touch-startup-image" href="/apple-touch-icon.png" />
 
   <title>Opsra</title>
+
+  <!-- STOREFRONT-2: on a catalog link, ask for the catalog now, while the app is still downloading. -->
+  <script>
+    (function () {
+      try {
+        var m = location.pathname.match(/^\/(?:catalog|shop)\/([^\/?#]+)/)
+        if (!m || !window.fetch) return
+        var base = '%VITE_API_URL%'
+        if (base.charAt(0) === '%') base = 'http://localhost:8000'
+        var p = fetch(base + '/api/v1/public/catalog/' + m[1]).then(function (r) {
+          if (!r.ok) { var e = new Error('Catalog API error: ' + r.status); e.status = r.status; throw e }
+          return r.json()
+        })
+        p.catch(function () {})
+        window.__opsraCatalog = { slug: m[1], promise: p }
+      } catch (e) { /* the app loads the catalog itself */ }
+    })()
+  </script>
 </head>
   <body>
     <div id="root"></div>

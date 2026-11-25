@@ -1,8 +1,9 @@
 /**
  * frontend/src/catalog/storefront/StorefrontChrome.jsx
  * STORE-2/3: pieces shared by every Storefront page: font, colours, announcement bar, header, footer.
+ * STOREFRONT-2: sticky header with the uploaded logo, and a fuller footer (logo, trust points, WhatsApp).
  */
-import { readableOn, initials } from './storefrontLogic'
+import { readableOn, initials, trustPoints } from './storefrontLogic'
 import { INK, MUTED, LINE } from './storefrontTheme'
 
 export function Icon({ children, size = 22, stroke = INK, width = 1.8 }) {
@@ -34,11 +35,16 @@ export function ChromeStyles({ accent }) {
       .sf-nav { flex-grow: 1; display: flex; gap: 8px; font-size: 14px; font-weight: 600; overflow-x: auto; scrollbar-width: none }
       .sf-nav::-webkit-scrollbar { display: none }
       .sf-search-slot { flex-grow: 1; max-width: 460px }
+      .sf-headbar { position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,0.94); backdrop-filter: saturate(180%) blur(10px); -webkit-backdrop-filter: saturate(180%) blur(10px) }
+      .sf-logo-img { height: 44px; width: auto; max-width: 180px; object-fit: contain; display: block }
+      .sf-foot-grid { display: flex; gap: 32px; justify-content: space-between; flex-wrap: wrap; align-items: flex-start }
       @media (max-width: 900px) {
         .sf-wrap { padding: 0 16px }
         .sf-head { flex-wrap: wrap; gap: 8px 12px; padding: 8px 0 }
         .sf-nav { order: 3; flex-basis: 100%; padding-bottom: 4px }
         .sf-search-slot { order: 3; flex-basis: 100%; max-width: none }
+        .sf-logo-img { height: 36px; max-width: 140px }
+        .sf-has-logo .sf-brand-name { display: none }
       }
     `}</style>
   )
@@ -59,20 +65,20 @@ export function Announcement({ style }) {
 export function StorefrontHeader({ orgName, style, accent, onHome, cart, children }) {
   const onAccent = readableOn(accent)
   return (
-    <header style={{ borderBottom: `1px solid ${LINE}`, background: '#fff' }}>
+    <header className={`sf-headbar${style?.logo_url ? ' sf-has-logo' : ''}`} style={{ borderBottom: `1px solid ${LINE}` }}>
       <div className="sf-wrap sf-head">
         <button onClick={onHome} aria-label={`${orgName}, all products`} style={{
           display: 'flex', alignItems: 'center', gap: 10, border: 0, background: 'transparent', cursor: 'pointer', padding: 0, minHeight: 44, color: INK,
         }}>
           {style?.logo_url ? (
-            <img src={style.logo_url} alt="" style={{ height: 36, width: 'auto', borderRadius: 8 }} />
+            <img className="sf-logo-img" src={style.logo_url} alt="" />
           ) : (
             <span style={{
               width: 36, height: 36, borderRadius: 10, background: accent, color: onAccent,
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15,
             }}>{initials(orgName)}</span>
           )}
-          <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.01em' }}>{orgName}</span>
+          <span className="sf-brand-name" style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.01em' }}>{orgName}</span>
         </button>
         {children}
         {cart && (
@@ -93,10 +99,35 @@ export function StorefrontHeader({ orgName, style, accent, onHome, cart, childre
   )
 }
 
-export function StorefrontFooter({ orgName, hasWhatsApp }) {
+export function StorefrontFooter({ orgName, hasWhatsApp, style, waLink }) {
+  const points = trustPoints(style)
+  const year = new Date().getFullYear()
   return (
-    <footer style={{ marginTop: 88, borderTop: `1px solid ${LINE}`, padding: '28px 0 36px', textAlign: 'center', fontSize: 13, color: MUTED }}>
-      {orgName}{hasWhatsApp ? '. Message us on WhatsApp any time.' : ''}
+    <footer style={{ marginTop: 88, borderTop: `1px solid ${LINE}`, padding: '40px 0 32px', fontSize: 14, color: MUTED }}>
+      <div className="sf-foot-grid">
+        <div style={{ maxWidth: 360 }}>
+          {style?.logo_url
+            ? <img src={style.logo_url} alt={orgName} style={{ height: 40, width: 'auto', maxWidth: 180, objectFit: 'contain', display: 'block' }} />
+            : <div style={{ fontWeight: 800, fontSize: 18, color: INK }}>{orgName}</div>}
+          {hasWhatsApp && (
+            <p style={{ margin: '12px 0 0', lineHeight: 1.5 }}>
+              Questions? {waLink
+                ? <a href={waLink} target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700, textDecoration: 'underline' }}>Message us on WhatsApp</a>
+                : 'Message us on WhatsApp'} any time.
+            </p>
+          )}
+        </div>
+        {points.length > 0 && (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 10 }}>
+            {points.map((t) => (
+              <li key={t} style={{ display: 'flex', gap: 8, alignItems: 'center', color: INK, fontWeight: 600 }}>
+                <Icon size={18} width={2}><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>{t}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div style={{ marginTop: 28, paddingTop: 18, borderTop: `1px solid ${LINE}`, fontSize: 12.5 }}>&copy; {year} {orgName}</div>
     </footer>
   )
 }

@@ -149,6 +149,8 @@ def _public_config_fields(catalog_config: dict) -> dict:
         "tag_dimensions":             catalog_config.get("tag_dimensions", []),
         "gallery_section_label":      catalog_config.get("gallery_section_label", "Gallery"),
         "specifications_section_label": catalog_config.get("specifications_section_label", "Specifications"),
+        # STOREFRONT-2: the owner's uploaded logo, shown by Classic too (Storefront also gets it in `style`)
+        "logo_url":                   storefront.clean_https_url(catalog_config.get("logo_url")),
     }
 
 

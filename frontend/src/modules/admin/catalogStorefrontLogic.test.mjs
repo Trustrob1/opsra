@@ -5,7 +5,7 @@ import * as L from './catalogStorefrontLogic.js'
 
 // ---------------------------------------------------------------- Look
 test('lookFromConfig: defaults for an empty or junk config', () => {
-  assert.deepEqual(L.lookFromConfig(null), { template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '', chat_button: true })
+  assert.deepEqual(L.lookFromConfig(null), { template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '', chat_button: true, hero_title: '', hero_text: '', hero_image_url: '' })
   assert.equal(L.lookFromConfig({ template: 'weird' }).template, 'classic')
   assert.equal(L.lookFromConfig({ accent: 'red' }).accent, '')
   assert.deepEqual(L.lookFromConfig({ trust_points: 'x' }).trust_points, ['', '', ''])
@@ -13,7 +13,7 @@ test('lookFromConfig: defaults for an empty or junk config', () => {
 
 test('lookFromConfig: reads saved values', () => {
   const l = L.lookFromConfig({ template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B'], logo_url: 'https://x/y.png' })
-  assert.deepEqual(l, { template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B', ''], logo_url: 'https://x/y.png', chat_button: true })
+  assert.deepEqual(l, { template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B', ''], logo_url: 'https://x/y.png', chat_button: true, hero_title: '', hero_text: '', hero_image_url: '' })
 })
 
 test('effectiveAccent falls back to teal', () => {
@@ -24,13 +24,14 @@ test('effectiveAccent falls back to teal', () => {
 
 test('lookPayload: cleans and sends only the Storefront keys', () => {
   const r = L.lookPayload({ template: 'storefront', accent: ' #1F4FD8 ', announcement: '  Free   delivery ', trust_points: [' Pay  safely ', '', 'Fast'], logo_url: ' https://x/y.png ' })
-  assert.deepEqual(r.payload, { template: 'storefront', announcement: 'Free delivery', trust_points: ['Pay safely', 'Fast'], accent: '#1F4FD8', logo_url: 'https://x/y.png', chat_button: true })
-  assert.deepEqual(Object.keys(r.payload).sort(), ['accent', 'announcement', 'chat_button', 'logo_url', 'template', 'trust_points'])
+  assert.deepEqual(r.payload, { template: 'storefront', announcement: 'Free delivery', trust_points: ['Pay safely', 'Fast'], accent: '#1F4FD8', chat_button: true, hero_title: '', hero_text: '' })
+  // STOREFRONT-2: pictures are uploaded on their own, so saving the look never sends (or clears) them
+  assert.deepEqual(Object.keys(r.payload).sort(), ['accent', 'announcement', 'chat_button', 'hero_text', 'hero_title', 'template', 'trust_points'])
 })
 
 test('lookPayload: empty values are sent as empty so they clear', () => {
   const r = L.lookPayload({ template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '' })
-  assert.deepEqual(r.payload, { template: 'classic', announcement: '', trust_points: [], accent: '', logo_url: '', chat_button: true })
+  assert.deepEqual(r.payload, { template: 'classic', announcement: '', trust_points: [], accent: '', chat_button: true, hero_title: '', hero_text: '' })
 })
 
 test('lookPayload: owner-fixable errors', () => {
@@ -40,8 +41,9 @@ test('lookPayload: owner-fixable errors', () => {
   assert.match(L.lookPayload({ ...base, trust_points: ['a', 'b', 'c', 'd'] }).error, /up to 3/)
   assert.match(L.lookPayload({ ...base, accent: 'blue' }).error, /colour/)
   assert.match(L.lookPayload({ ...base, accent: '#12345' }).error, /colour/)
-  assert.match(L.lookPayload({ ...base, logo_url: 'http://x/y.png' }).error, /https/)
-  assert.match(L.lookPayload({ ...base, logo_url: 'https://x/a b.png' }).error, /https/)
+  assert.match(L.lookPayload({ ...base, hero_title: 'x'.repeat(61) }).error, /60/)
+  assert.match(L.lookPayload({ ...base, hero_text: 'x'.repeat(161) }).error, /160/)
+  assert.deepEqual(L.lookPayload({ ...base, hero_title: '  Sleep   well ' }).payload.hero_title, 'Sleep well')
   assert.equal(L.lookPayload({ ...base, announcement: 'x'.repeat(120) }).error, undefined)
 })
 

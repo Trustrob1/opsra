@@ -1,12 +1,15 @@
 /**
  * frontend/src/catalog/storefront/StorefrontListPage.jsx
  * STORE-3: Storefront look of the public product list (online-shop grid).
- * Search, category buttons, tag filters, "Help me choose" finder and size compare all keep working.
+ * Search, category buttons, tag filters and size compare all keep working.
+ * STOREFRONT-2: banner (owner's words/photo, else product photos), trust strip, "Shop by category" tiles and lifted cards.
+ * The "Help me choose" question finder was removed: Chioma (or WhatsApp) does that job.
  * Buying is by WhatsApp from the product page; cart and checkout arrive in STORE-4.
  */
 import { useMemo, useRef, useState } from 'react'
 import {
   resolveAccent, readableOn, categoryChips, otherFilterDims, filterItems, cardView, readUrlState, listUrl, quickAddState,
+  tint, heroView, categoryTiles, trustPoints,
 } from './storefrontLogic'
 import { cartVariantId } from './storefrontCart'
 import { askChioma } from './storefrontChat'
@@ -25,72 +28,8 @@ function Chip({ on, onClick, children }) {
   )
 }
 
-function Finder({ questions, accent, onAnswer, onClear, done, matchCount, itemWord }) {
-  const [open, setOpen] = useState(false)
-  const [step, setStep] = useState(0)
-  const onAccent = readableOn(accent)
-  const q = questions[step]
-
-  if (done) {
-    return (
-      <div style={{ marginTop: 20, padding: '18px 22px', borderRadius: 16, background: '#F1F6F5', display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>
-            {matchCount === 1 ? `1 ${itemWord} fits` : `${matchCount} ${itemWord}s fit`} your answers
-          </div>
-          <div style={{ marginTop: 3, fontSize: 14, color: '#3A3F44' }}>Scroll down to see them.</div>
-        </div>
-        <button onClick={() => { onClear(); setStep(0); setOpen(false) }} style={{
-          height: 46, padding: '0 22px', border: `1.5px solid ${INK}`, borderRadius: 12, background: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-        }}>Change answers</button>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ marginTop: 20, padding: '18px 22px', borderRadius: 16, background: '#F1F6F5' }}>
-      <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>Not sure which one?</div>
-          <div style={{ marginTop: 3, fontSize: 14, color: '#3A3F44' }}>
-            Answer {questions.length} quick {questions.length === 1 ? 'question' : 'questions'} and we will show the best fit.
-          </div>
-        </div>
-        <button aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{
-          height: 46, padding: '0 22px', border: 0, borderRadius: 12, background: accent, color: onAccent, fontSize: 14, fontWeight: 700, cursor: 'pointer',
-        }}>{open ? 'Close' : 'Help me choose'}</button>
-      </div>
-      {open && q && (
-        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${LINE}` }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: MUTED }}>Question {step + 1} of {questions.length}</div>
-          <div style={{ marginTop: 6, fontSize: 18, fontWeight: 800 }}>{q.text}</div>
-          <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            {(q.options || []).map((opt) => (
-              <button key={opt.id || opt.tag_value} onClick={() => {
-                onAnswer(q.map_to_catalog_tag, opt.tag_value, step + 1 >= questions.length)
-                if (step + 1 < questions.length) setStep(step + 1)
-                else setOpen(false)
-              }} style={{
-                minHeight: 44, padding: '0 18px', borderRadius: 22, border: '1px solid #C9C6BF', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: INK,
-              }}>{opt.label}</button>
-            ))}
-          </div>
-          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between' }}>
-            <button disabled={step === 0} onClick={() => { onClear(questions[step - 1]?.map_to_catalog_tag); setStep(step - 1) }} style={{
-              minHeight: 44, border: 0, background: 'transparent', fontSize: 14, fontWeight: 600, color: step === 0 ? '#B5B8BB' : INK, cursor: step === 0 ? 'default' : 'pointer', padding: 0,
-            }}>Back</button>
-            <button onClick={() => setOpen(false)} style={{ minHeight: 44, border: 0, background: 'transparent', fontSize: 14, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', padding: 0 }}>
-              Skip and browse all
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function StorefrontListPage({
-  orgName, orgSlug, waNumber, catalogConfig, style, wizardQuestions = [], items = [], onSelectItem, onShowCompare, headerCart, cart, chiomaChat,
+  orgName, orgSlug, waNumber, catalogConfig, style, items = [], onSelectItem, onShowCompare, headerCart, cart, chiomaChat,
 }) {
   useManrope()
   const accent = resolveAccent(style)
@@ -120,7 +59,6 @@ export default function StorefrontListPage({
   const [filters, setFilters] = useState(() => readUrlState(window.location.search, catalogConfig))
   const [search, setSearch] = useState('')
   const [showFilters, setShowFilters] = useState(false)
-  const [finderDone, setFinderDone] = useState(false)
 
   const chips = useMemo(() => categoryChips(items, catalogConfig, style), [items, catalogConfig, style])
   const dims = useMemo(() => otherFilterDims(catalogConfig), [catalogConfig])
@@ -148,7 +86,6 @@ export default function StorefrontListPage({
   function clearAll() {
     setFilters({})
     setSearch('')
-    setFinderDone(false)
     try { window.history.replaceState({}, '', listUrl(orgSlug, null, window.location.search)) } catch { /* address bar only */ }
   }
 
@@ -158,6 +95,15 @@ export default function StorefrontListPage({
 
   const heading = activeCategory || plural
   const countText = `${shown.length} ${shown.length === 1 ? singular.toLowerCase() : plural.toLowerCase()}`
+  const hero = useMemo(() => heroView(style, { orgName, plural, items }), [style, orgName, plural, items])
+  const tiles = useMemo(() => categoryTiles(items, chips), [items, chips])
+  const points = trustPoints(style)
+  const home = !anyActive
+  const waPlain = waNumber ? `https://wa.me/${String(waNumber).replace('+', '')}` : null
+  function scrollToProducts() {
+    const el = document.getElementById('sf-products')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <div className="sf-root" style={{ minHeight: '100vh', background: '#fff', fontFamily: FONT, color: INK }}>
@@ -165,6 +111,22 @@ export default function StorefrontListPage({
       <style>{`
         .sf-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 24px }
         .sf-chips { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }
+        .sf-hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 32px; align-items: center; border-radius: 28px; padding: 48px; overflow: hidden }
+        .sf-hero-art { position: relative; aspect-ratio: 5 / 4; border-radius: 20px; overflow: hidden }
+        .sf-collage { display: grid; grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; height: 100% }
+        .sf-collage > :first-child { grid-row: 1 / 3 }
+        .sf-trust { display: flex; gap: 12px 28px; flex-wrap: wrap; justify-content: center }
+        .sf-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px }
+        .sf-tile { position: relative; aspect-ratio: 4 / 3; border-radius: 18px; overflow: hidden; border: 0; padding: 0; cursor: pointer; text-align: left; color: #fff }
+        .sf-tile img, .sf-card-img img { transition: transform .35s ease }
+        .sf-tile:hover img, .sf-card:hover .sf-card-img img { transform: scale(1.04) }
+        .sf-card { transition: transform .2s ease }
+        .sf-card:hover { transform: translateY(-2px) }
+        @media (prefers-reduced-motion: reduce) { .sf-tile img, .sf-card-img img, .sf-card { transition: none } .sf-tile:hover img, .sf-card:hover .sf-card-img img, .sf-card:hover { transform: none } }
+        @media (max-width: 860px) {
+          .sf-hero { grid-template-columns: 1fr; padding: 28px 22px; gap: 22px; border-radius: 22px }
+          .sf-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px }
+        }
         @media (max-width: 1000px) { .sf-cards { grid-template-columns: repeat(3, minmax(0, 1fr)) } }
         @media (max-width: 700px) {
           .sf-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 14px }
@@ -189,20 +151,84 @@ export default function StorefrontListPage({
       </StorefrontHeader>
 
       <main className="sf-wrap">
-        <div style={{ marginTop: 36, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' }}>
-          <h1 style={{ margin: 0, fontSize: 'clamp(28px, 4.4vw, 40px)', lineHeight: 1.1, fontWeight: 800, letterSpacing: '-0.02em' }}>{heading}</h1>
-          <div aria-live="polite" style={{ fontSize: 14, color: MUTED }}>{countText}</div>
-        </div>
-
-        {chioma && (
-          <section aria-label="Chioma" style={{ marginTop: 20, padding: '16px 20px', borderRadius: 16, background: '#F5F4F0', display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        {home && (
+          <section className="sf-hero" aria-label={hero.title} style={{ marginTop: 24, background: `linear-gradient(135deg, ${tint(accent, 0.12)} 0%, ${tint(accent, 0.04)} 100%)` }}>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>Not sure which {singular.toLowerCase()}?</div>
-              <div style={{ marginTop: 2, fontSize: 14, color: MUTED }}>{chiomaShop ? 'Chioma can help you choose, answer your questions and take your order.' : 'Chioma can help you choose and answer your questions.'}</div>
+              {style?.hero_title && (   /* the default headline already names the shop */
+                <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: accent, marginBottom: 12 }}>{orgName}</div>
+              )}
+              <h1 style={{ margin: 0, fontSize: 'clamp(32px, 5vw, 54px)', lineHeight: 1.05, fontWeight: 800, letterSpacing: '-0.025em' }}>{hero.title}</h1>
+              <p style={{ margin: '16px 0 0', fontSize: 'clamp(15px, 1.6vw, 18px)', lineHeight: 1.55, color: '#3A3F44', maxWidth: 480 }}>{hero.text}</p>
+              <div style={{ marginTop: 28, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <button type="button" onClick={scrollToProducts} style={{
+                  minHeight: 52, padding: '0 28px', borderRadius: 14, border: 0, background: accent, color: onAccent, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                }}>Shop {plural.toLowerCase()}</button>
+                {chioma && (
+                  <button type="button" onClick={() => askChioma({ action: 'open' })} style={{
+                    minHeight: 52, padding: '0 24px', borderRadius: 14, border: `1.5px solid ${INK}`, background: 'rgba(255,255,255,0.7)', color: INK, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>Ask Chioma</button>
+                )}
+              </div>
             </div>
-            <button type="button" onClick={() => askChioma({ action: 'open' })} style={{ minHeight: 48, padding: '0 22px', borderRadius: 12, border: 0, background: accent, color: onAccent, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Speak to Chioma</button>
+            {(hero.image || hero.collage.length > 0) && (
+              <div className="sf-hero-art" aria-hidden="true">
+                {hero.image ? (
+                  <img src={hero.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                ) : hero.collage.length >= 3 ? (
+                  <div className="sf-collage">
+                    {hero.collage.map((u, i) => (
+                      <div key={u + i} style={{ borderRadius: 16, overflow: 'hidden', background: placeholder(i, 24) }}>
+                        <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <img src={hero.collage[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                )}
+              </div>
+            )}
           </section>
         )}
+
+        {home && points.length > 0 && (
+          <ul className="sf-trust" aria-label="Why shop with us" style={{ listStyle: 'none', margin: '20px 0 0', padding: '16px 20px', borderRadius: 16, border: `1px solid ${LINE}` }}>
+            {points.map((t) => (
+              <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700 }}>
+                <span style={{ width: 26, height: 26, borderRadius: 13, background: tint(accent, 0.12), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon size={15} stroke={accent} width={2.4}><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>
+                </span>
+                {t}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {home && tiles.length >= 2 && (
+          <section aria-labelledby="sf-cats" style={{ marginTop: 56 }}>
+            <h2 id="sf-cats" style={{ margin: 0, fontSize: 'clamp(22px, 3vw, 28px)', fontWeight: 800, letterSpacing: '-0.02em' }}>Shop by category</h2>
+            <div className="sf-tiles" style={{ marginTop: 20 }}>
+              {tiles.map((t, i) => (
+                <button key={t.name} type="button" className="sf-tile" onClick={() => { setFilter('category', t.name); scrollToProducts() }}
+                  aria-label={`${t.name}, ${t.count} ${t.count === 1 ? singular.toLowerCase() : plural.toLowerCase()}`}
+                  style={{ background: t.cover ? INK : placeholder(i, 24) }}>
+                  {t.cover && <img src={t.cover} alt="" loading="lazy" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+                  <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.62) 100%)' }} />
+                  <span style={{ position: 'absolute', left: 16, right: 16, bottom: 14 }}>
+                    <span style={{ display: 'block', fontSize: 17, fontWeight: 800, color: t.cover ? '#fff' : INK }}>{t.name}</span>
+                    <span style={{ display: 'block', marginTop: 2, fontSize: 13, fontWeight: 600, color: t.cover ? 'rgba(255,255,255,0.85)' : MUTED }}>{t.count} {t.count === 1 ? singular.toLowerCase() : plural.toLowerCase()}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <div id="sf-products" style={{ marginTop: home ? 56 : 36, scrollMarginTop: 96, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' }}>
+          {home
+            ? <h2 style={{ margin: 0, fontSize: 'clamp(22px, 3vw, 28px)', fontWeight: 800, letterSpacing: '-0.02em' }}>All {plural.toLowerCase()}</h2>
+            : <h1 style={{ margin: 0, fontSize: 'clamp(28px, 4.4vw, 40px)', lineHeight: 1.1, fontWeight: 800, letterSpacing: '-0.02em' }}>{heading}</h1>}
+          <div aria-live="polite" style={{ fontSize: 14, color: MUTED }}>{countText}</div>
+        </div>
 
         {(chips.length > 0 || dims.length > 0) && (
           <div className="sf-chips" role="group" aria-label="Browse by category" style={{ marginTop: 24 }}>
@@ -250,32 +276,6 @@ export default function StorefrontListPage({
           </div>
         )}
 
-        {wizardQuestions.length > 0 && (
-          <Finder
-            questions={wizardQuestions}
-            accent={accent}
-            done={finderDone}
-            matchCount={shown.length}
-            itemWord={singular.toLowerCase()}
-            onAnswer={(key, val, last) => {
-              setFilters((p) => ({ ...p, [key]: val }))
-              if (last) setFinderDone(true)
-            }}
-            onClear={(key) => {
-              if (key) {
-                setFilters((p) => ({ ...p, [key]: '' }))
-              } else {
-                setFilters((p) => {
-                  const next = { ...p }
-                  wizardQuestions.forEach((w) => { next[w.map_to_catalog_tag] = '' })
-                  return next
-                })
-                setFinderDone(false)
-              }
-            }}
-          />
-        )}
-
         {shown.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '72px 0' }}>
             <div style={{ fontSize: 20, fontWeight: 800 }}>No {plural.toLowerCase()} match.</div>
@@ -293,11 +293,11 @@ export default function StorefrontListPage({
               const cq = chiomaShop ? quickAddState(it, { cartOn: true, config: catalogConfig }) : null
               const mine = addState.id === it.id ? addState.phase : ''
               return (
-                <div key={it.id || it.slug}>
+                <div key={it.id || it.slug} className="sf-card">
                 <button onClick={() => onSelectItem(it)} style={{
                   display: 'block', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: 0, color: INK, width: '100%',
                 }}>
-                  <div style={{ position: 'relative', aspectRatio: '1 / 1.1', borderRadius: 16, overflow: 'hidden', background: placeholder(i, 24) }}>
+                  <div className="sf-card-img" style={{ position: 'relative', aspectRatio: '1 / 1.1', borderRadius: 18, overflow: 'hidden', background: placeholder(i, 24), boxShadow: '0 1px 2px rgba(20,24,27,0.06)' }}>
                     {v.cover && <img src={v.cover} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
                     {v.pct && !v.soldOut && (
                       <span style={{ position: 'absolute', left: 12, top: 12, padding: '5px 9px', borderRadius: 6, background: INK, color: '#fff', fontSize: 11, fontWeight: 800 }}>{v.pct}% OFF</span>
@@ -378,7 +378,7 @@ export default function StorefrontListPage({
           </section>
         )}
 
-        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} />
+        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} style={style} waLink={waPlain} />
       </main>
     </div>
   )

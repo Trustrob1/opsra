@@ -17,6 +17,8 @@ export const ANNOUNCEMENT_MAX = 120
 export const TRUST_POINTS_MAX = 3
 export const TRUST_POINT_CHARS = 40
 export const LOGO_URL_MAX = 300
+export const HERO_TITLE_MAX = 60      // STOREFRONT-2
+export const HERO_TEXT_MAX = 160      // STOREFRONT-2
 export const CATEGORY_MAX = 20
 export const CATEGORY_NAME_MAX = 40
 
@@ -38,6 +40,9 @@ export function lookFromConfig(config) {
     trust_points: [0, 1, 2].map((i) => pts[i] || ''),
     logo_url: String(c.logo_url || ''),
     chat_button: c.chat_button !== false,          // WEBCHAT-CATALOG-1: on unless the owner switched it off
+    hero_title: String(c.hero_title || ''),        // STOREFRONT-2: banner words
+    hero_text: String(c.hero_text || ''),
+    hero_image_url: String(c.hero_image_url || ''),   // shown only; uploads save it straight away
   }
 }
 
@@ -47,6 +52,7 @@ export const effectiveAccent = (look) => (isHex(look?.accent) ? look.accent : DE
 /**
  * What to send to PATCH /catalog/config. Only the Storefront fields, so saving the Look
  * can never overwrite the other catalog settings (and the other way round).
+ * STOREFRONT-2: the logo and banner photo are uploaded (and saved) on their own, so they are not part of this payload.
  * Returns { payload } or { error } with a message an owner can act on.
  */
 export function lookPayload(look) {
@@ -58,18 +64,19 @@ export function lookPayload(look) {
   if (long) return { error: `Each trust point can be up to ${TRUST_POINT_CHARS} characters. "${long.slice(0, 20)}..." is too long.` }
   const accent = String(look.accent || '').trim()
   if (accent && !isHex(accent)) return { error: 'Type the colour as a code like #0B6E74, or pick one of the four.' }
-  const logo = String(look.logo_url || '').trim()
-  if (logo && (!/^https:\/\//i.test(logo) || /\s/.test(logo) || logo.length > LOGO_URL_MAX)) {
-    return { error: 'The logo link must start with https:// and have no spaces.' }
-  }
+  const heroTitle = squash(look.hero_title)
+  if (heroTitle.length > HERO_TITLE_MAX) return { error: `The banner headline can be up to ${HERO_TITLE_MAX} characters.` }
+  const heroText = squash(look.hero_text)
+  if (heroText.length > HERO_TEXT_MAX) return { error: `The banner text can be up to ${HERO_TEXT_MAX} characters.` }
   return {
     payload: {
       template: look.template === 'storefront' ? 'storefront' : 'classic',
       announcement,
       trust_points: points,
       accent,
-      logo_url: logo,
       chat_button: look.chat_button !== false,
+      hero_title: heroTitle,
+      hero_text: heroText,
     },
   }
 }

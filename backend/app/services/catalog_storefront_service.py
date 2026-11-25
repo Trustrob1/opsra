@@ -8,6 +8,8 @@ STORE-1 - the "Storefront" look for the public catalog (backend only; no screen 
   shop_info(db, org_id)                          {"key": "wc_..."} when the cart can be used, else None
   chat_info(db, org_id, catalog_config)          {"key": "wc_..."} when the chat button can show (Storefront only), else None
   discount_percent(price, compare_at)            whole-number "% off", or None when there is no real discount
+  save_look_image(db, org_id, data, kind)        STOREFRONT-2: upload the logo or the banner photo (re-drawn, stored, saved)
+  remove_look_image(db, org_id, kind)            STOREFRONT-2: take it off again
 
 Rules
   * Classic is the default. Storefront shows only when the owner picked it AND the plan includes catalog_storefront.
@@ -34,6 +36,13 @@ ANNOUNCEMENT_MAX = 120
 TRUST_POINTS_MAX = 3
 TRUST_POINT_CHARS = 40
 LOGO_URL_MAX = 300
+HERO_TITLE_MAX = 60          # STOREFRONT-2: banner headline
+HERO_TEXT_MAX = 160          # STOREFRONT-2: banner line under the headline
+IMAGE_MAX_BYTES = 5 * 1024 * 1024
+LOOK_IMAGES = {              # kind -> (config field, longest side in px, saved as)
+    "logo": ("logo_url", 600, "PNG"),
+    "hero": ("hero_image_url", 1800, "JPEG"),
+}
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -57,6 +66,10 @@ def public_style(catalog_config: Optional[dict]) -> dict:
         "trust_points": [p for p in points if p],
         "accent": accent if isinstance(accent, str) and _HEX.match(accent) else None,
         "logo_url": clean_https_url(cfg.get("logo_url")),
+        # STOREFRONT-2: the banner at the top of the shop (all optional; the page has its own wording when empty)
+        "hero_title": _text(cfg.get("hero_title"), HERO_TITLE_MAX) or None,
+        "hero_text": _text(cfg.get("hero_text"), HERO_TEXT_MAX) or None,
+        "hero_image_url": clean_https_url(cfg.get("hero_image_url")),
         # STORE-1b: show the category menu / buttons (default on; the owner can turn it off)
         "show_categories": cfg.get("show_categories") is not False,
     }
@@ -143,3 +156,74 @@ def public_extras(db, org_id: str, catalog_config: Optional[dict]) -> dict:
         "chat": chat_info(db, org_id, catalog_config) if storefront else None,     # WEBCHAT-CATALOG-1
         "style": public_style(catalog_config) if storefront else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# STOREFRONT-2: logo and banner photo uploads
+# ---------------------------------------------------------------------------
+
+class LookImageError(Exception):
+    """A message the owner can act on; status is the HTTP status the router returns."""
+    def __init__(self, message: str, status: int = 422):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+
+
+def clean_image(data: bytes, max_side: int, fmt: str) -> bytes:
+    """Checks the bytes really are a PNG/JPEG/WebP picture and re-draws it (at most max_side px), which drops anything
+    hidden in the file. PNG keeps see-through parts (logos); JPEG keeps photos small."""
+    import io
+    if not data or len(data) > IMAGE_MAX_BYTES:
+        raise LookImageError("The picture must be under 5 MB.")
+    head = data[:12]
+    if not (head.startswith(b"\x89PNG\r\n\x1a\n") or head.startswith(b"\xff\xd8\xff")
+            or (head[:4] == b"RIFF" and head[8:12] == b"WEBP")):
+        raise LookImageError("Use a PNG, JPG or WebP picture.")
+    try:
+        from PIL import Image
+        Image.MAX_IMAGE_PIXELS = 40_000_000
+        img = Image.open(io.BytesIO(data))
+        img.load()
+        img = img.convert("RGBA" if fmt == "PNG" else "RGB")
+        img.thumbnail((max_side, max_side))
+        buf = io.BytesIO()
+        if fmt == "PNG":
+            img.save(buf, format="PNG", optimize=True)
+        else:
+            img.save(buf, format="JPEG", quality=84, optimize=True, progressive=True)
+        return buf.getvalue()
+    except LookImageError:
+        raise
+    except Exception as exc:
+        logger.info("storefront clean_image: unreadable picture: %s", exc)
+        raise LookImageError("That picture could not be read. Try another file.")
+
+
+def save_look_image(db, org_id: str, data: bytes, kind: str) -> dict:
+    """Stores the logo or banner photo in the public catalog bucket and saves its link in the catalog settings.
+    Returns the updated catalog config."""
+    import secrets
+    from app.services.catalog_service import update_catalog_config
+    if kind not in LOOK_IMAGES:
+        raise LookImageError("Unknown picture.", 404)
+    field, side, fmt = LOOK_IMAGES[kind]
+    out = clean_image(data, side, fmt)
+    ext, ctype = ("png", "image/png") if fmt == "PNG" else ("jpg", "image/jpeg")
+    path = f"{org_id}/catalog-look/{kind}-{secrets.token_hex(6)}.{ext}"
+    try:
+        db.storage.from_("catalog").upload(path=path, file=out, file_options={"content-type": ctype, "upsert": "true"})
+        url = (db.storage.from_("catalog").get_public_url(path) or "").split("?")[0]
+    except Exception as exc:
+        logger.error("storefront save_look_image: upload failed org=%s: %s", org_id, exc)
+        raise LookImageError("Could not save the picture. Please try again.", 503)
+    if not clean_https_url(url):
+        raise LookImageError("Could not save the picture. Please try again.", 503)
+    return update_catalog_config(db, org_id, {field: url})
+
+
+def remove_look_image(db, org_id: str, kind: str) -> dict:
+    from app.services.catalog_service import update_catalog_config
+    if kind not in LOOK_IMAGES:
+        raise LookImageError("Unknown picture.", 404)
+    return update_catalog_config(db, org_id, {LOOK_IMAGES[kind][0]: ""})

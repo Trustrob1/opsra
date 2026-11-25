@@ -293,3 +293,43 @@ test('quickAddState: add / choose / none', () => {
   assert.equal(quickAddState(null, on), null)
   assert.equal(quickAddState(plain), null)
 })
+
+// STOREFRONT-2
+import { tint, heroView, categoryTiles } from './storefrontLogic.js'
+
+test('tint turns a colour into a soft rgba', () => {
+  assert.equal(tint('#4C2DC9', 0.1), 'rgba(76, 45, 201, 0.1)')
+  assert.equal(tint('nope', 0.2), 'rgba(20, 24, 27, 0.2)')
+})
+
+test('heroView uses the owner wording and photo when set', () => {
+  const h = heroView({ hero_title: 'Sleep better', hero_text: 'Made in Lagos', hero_image_url: 'https://x/h.jpg' }, { orgName: 'RR' })
+  assert.equal(h.title, 'Sleep better')
+  assert.equal(h.text, 'Made in Lagos')
+  assert.equal(h.image, 'https://x/h.jpg')
+  assert.deepEqual(h.collage, [])
+})
+
+test('heroView falls back to plain wording and in-stock product photos', () => {
+  const items = [
+    { catalog_images: ['https://x/1.jpg'], available: false },
+    { catalog_images: [] },
+    { catalog_images: [{ url: 'https://x/2.jpg' }] },
+    { catalog_images: ['https://x/3.jpg'] },
+    { catalog_images: ['https://x/4.jpg'] },
+  ]
+  const h = heroView(null, { orgName: 'Royal Rest', plural: 'Mattresses', items })
+  assert.equal(h.title, 'Welcome to Royal Rest')
+  assert.match(h.text, /mattresses/)
+  assert.deepEqual(h.collage, ['https://x/2.jpg', 'https://x/3.jpg', 'https://x/4.jpg'])
+})
+
+test('categoryTiles picks the first product photo in each category', () => {
+  const items = [
+    { tags: { category: 'Pillows' } },
+    { tags: { category: ['Pillows'] }, catalog_images: ['https://x/p.jpg'] },
+    { tags: { category: 'Beds' } },
+  ]
+  const t = categoryTiles(items, [{ name: 'Pillows', count: 2 }, { name: 'Beds', count: 1 }])
+  assert.deepEqual(t, [{ name: 'Pillows', count: 2, cover: 'https://x/p.jpg' }, { name: 'Beds', count: 1, cover: '' }])
+})

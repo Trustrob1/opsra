@@ -378,7 +378,8 @@ export default function StorefrontItemPage({
           </section>
         )}
 
-        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} />
+        <StorefrontFooter orgName={orgName} hasWhatsApp={!!waNumber} style={style}
+          waLink={waNumber ? `https://wa.me/${String(waNumber).replace('+', '')}` : null} />
       </main>
     </div>
   )

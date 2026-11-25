@@ -273,3 +273,43 @@ export function listUrl(orgSlug, category, currentSearch = '') {
   const qs = p.toString()
   return `/catalog/${orgSlug}${qs ? '?' + qs : ''}`
 }
+
+// ---------------------------------------------------------------------------
+// STOREFRONT-2: banner, category tiles and soft accent colours
+// ---------------------------------------------------------------------------
+
+/** rgba() of a #RRGGBB colour at the given opacity (falls back to a light grey). */
+export function tint(hex, alpha) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(String(hex || ''))
+  if (!m) return `rgba(20, 24, 27, ${alpha})`
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
+
+/**
+ * The banner at the top of the shop. The owner's own words and photo when set; otherwise plain wording and up to
+ * three product photos (in-stock ones first). Never invents a promise (no delivery, no discount claims).
+ */
+export function heroView(style, { orgName = '', plural = 'Products', items = [] } = {}) {
+  const st = style || {}
+  const covers = (items || [])
+    .map((it, i) => ({ url: coverUrl(it), i, sold: it && it.available === false }))
+    .filter((c) => c.url)
+    .sort((a, b) => Number(a.sold) - Number(b.sold) || a.i - b.i)
+    .slice(0, 3)
+    .map((c) => c.url)
+  return {
+    title: (st.hero_title || '').trim() || (orgName ? `Welcome to ${orgName}` : `Our ${plural.toLowerCase()}`),
+    text: (st.hero_text || '').trim() || `Browse our ${plural.toLowerCase()} and order in a few taps.`,
+    image: st.hero_image_url || '',
+    collage: st.hero_image_url ? [] : covers,
+  }
+}
+
+/** "Shop by category" tiles: each category with its count and the photo of its first product that has one. */
+export function categoryTiles(items, chips) {
+  return (chips || []).map((c) => {
+    const withPhoto = (items || []).find((it) => tagValues(it, CATEGORY_KEY).includes(c.name) && coverUrl(it))
+    return { name: c.name, count: c.count, cover: withPhoto ? coverUrl(withPhoto) : '' }
+  })
+}

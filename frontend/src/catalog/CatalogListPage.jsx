@@ -159,6 +159,9 @@ export default function CatalogListPage({
         position: 'sticky', top: 0, zIndex: 10,
       }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          {catalogConfig?.logo_url && (   /* STOREFRONT-2: the owner's uploaded logo */
+            <img src={catalogConfig.logo_url} alt="" style={{ height: 44, width: 'auto', maxWidth: 180, objectFit: 'contain', display: 'block', marginBottom: 10 }} />
+          )}
           <p style={{
             fontFamily: "'Cormorant Garamond', serif",
             fontSize: 13, letterSpacing: '0.18em',

@@ -3,6 +3,8 @@
  * STORE-6: "Look" screen - share the catalog link and choose how the public catalog looks
  * (Classic or Storefront), with the Storefront colour, announcement, trust points and logo.
  * Saves only the Storefront fields, so it can never overwrite the other catalog settings.
+ * STOREFRONT-2: the logo (both looks) and the Storefront banner photo are uploaded here and saved straight away;
+ * the banner headline and text save with the rest of the look.
  */
 import { useEffect, useState } from 'react'
 import { ds } from '../../utils/ds'
@@ -10,7 +12,7 @@ import * as adminSvc from '../../services/admin.service'
 import { catalogErrorText } from './catalogErrors'
 import CatalogShare from './CatalogShare'
 import {
-  ACCENT_PRESETS, ANNOUNCEMENT_MAX, TRUST_POINT_CHARS, DEFAULT_ACCENT, isHex,
+  ACCENT_PRESETS, ANNOUNCEMENT_MAX, TRUST_POINT_CHARS, DEFAULT_ACCENT, isHex, HERO_TITLE_MAX, HERO_TEXT_MAX,
   lookFromConfig, lookPayload, lookChanged, effectiveAccent, storefrontLocked,
 } from './catalogStorefrontLogic'
 import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
@@ -49,6 +51,33 @@ function LookCard({ selected, locked, onPick, title, text, children }) {
   )
 }
 
+/** STOREFRONT-2: upload / change / remove one picture. Saves on its own (no "Save look" needed). */
+function PictureField({ id, label, help, url, wide, busy, onPick, onRemove }) {
+  return (
+    <div style={{ marginTop: 20 }}>
+      <span style={LABEL}>{label} <span style={{ fontWeight: 400 }}>(optional)</span></span>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{
+          width: wide ? 200 : 120, height: wide ? 112 : 64, borderRadius: 10, border: '1px dashed #C9D2DC', background: '#F7F9FB',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flex: 'none',
+        }}>
+          {url
+            ? <img src={url} alt={`Current ${label.toLowerCase()}`} style={{ width: '100%', height: '100%', objectFit: wide ? 'cover' : 'contain' }} />
+            : <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#7A8594' }}>None yet</span>}
+        </div>
+        <label htmlFor={id} style={{ ...BTN_GHOST, display: 'inline-flex', alignItems: 'center', opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
+          {busy ? 'Uploading…' : url ? 'Change' : 'Upload'}
+        </label>
+        <input id={id} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy}
+          style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
+          onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) onPick(f) }} />
+        {url && !busy && <button type="button" style={{ ...BTN_GHOST, color: '#B3261E' }} onClick={onRemove}>Remove</button>}
+      </div>
+      <div style={{ marginTop: 6, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>{help}</div>
+    </div>
+  )
+}
+
 export default function CatalogLook() {
   const [loaded, setLoaded] = useState(false)
   const [config, setConfig] = useState({})
@@ -57,6 +86,7 @@ export default function CatalogLook() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+  const [picBusy, setPicBusy] = useState('')     // STOREFRONT-2: 'logo' | 'hero' while uploading
 
   useEffect(() => {
     adminSvc.getCatalogConfigFull()
@@ -75,6 +105,24 @@ export default function CatalogLook() {
   const changed = lookChanged(look, config)
   const set = (k, v) => { setLook((p) => ({ ...p, [k]: v })); setError('') }
   const setPoint = (i, v) => setLook((p) => ({ ...p, trust_points: p.trust_points.map((t, n) => (n === i ? v : t)) }))
+
+  async function changePicture(kind, file) {
+    const field = kind === 'logo' ? 'logo_url' : 'hero_image_url'
+    if (file && file.size > 5 * 1024 * 1024) { setError('The picture must be under 5 MB.'); return }
+    setPicBusy(kind); setError('')
+    try {
+      const d = file ? await adminSvc.uploadCatalogLookImage(kind, file) : await adminSvc.removeCatalogLookImage(kind)
+      const c = d?.catalog_config || {}
+      setConfig(c)
+      setLook((p) => ({ ...p, [field]: String(c[field] || '') }))
+      setToast(file ? (kind === 'logo' ? 'Logo saved.' : 'Banner photo saved.') : 'Picture removed.')
+      setTimeout(() => setToast(''), 3000)
+    } catch (e) {
+      setError(catalogErrorText(e, 'Could not save the picture. Please try again.'))
+    } finally {
+      setPicBusy('')
+    }
+  }
 
   async function save() {
     const r = lookPayload(look)
@@ -135,6 +183,10 @@ export default function CatalogLook() {
           </p>
         )}
 
+        <PictureField id="cat-logo" label="Logo" url={look.logo_url} busy={picBusy === 'logo'}
+          help="Shown at the top of your catalog. PNG, JPG or WebP under 5 MB; a see-through PNG looks best. Without a logo, your shop name shows instead."
+          onPick={(f) => changePicture('logo', f)} onRemove={() => changePicture('logo', null)} />
+
         {isStore && (
           <div style={{ marginTop: 24 }}>
             <span style={LABEL}>Accent colour</span>
@@ -189,14 +241,28 @@ export default function CatalogLook() {
               </label>
             </div>
 
-            <div style={{ marginTop: 16 }}>
-              <label htmlFor="sf-logo" style={LABEL}>Logo link <span style={{ fontWeight: 400 }}>(optional)</span></label>
-              <input id="sf-logo" style={INPUT} value={look.logo_url} placeholder="https://..."
-                onChange={(e) => set('logo_url', e.target.value)} />
-              <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>
-                Without a logo, your shop name shows as initials in the accent colour.
+            <div style={{ marginTop: 20 }}>
+              <label htmlFor="sf-hero-title" style={LABEL}>Banner headline <span style={{ fontWeight: 400 }}>(optional)</span></label>
+              <input id="sf-hero-title" style={INPUT} value={look.hero_title} maxLength={HERO_TITLE_MAX + 20}
+                placeholder="Welcome to our shop"
+                onChange={(e) => set('hero_title', e.target.value)} />
+              <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: look.hero_title.length > HERO_TITLE_MAX ? '#e05c5c' : '#7A9BAD' }}>
+                {look.hero_title.length}/{HERO_TITLE_MAX}
               </div>
             </div>
+            <div style={{ marginTop: 12 }}>
+              <label htmlFor="sf-hero-text" style={LABEL}>Banner text <span style={{ fontWeight: 400 }}>(optional)</span></label>
+              <textarea id="sf-hero-text" rows={2} style={{ ...INPUT, resize: 'vertical' }} value={look.hero_text} maxLength={HERO_TEXT_MAX + 40}
+                placeholder="What you sell and why customers love it, in one short line."
+                onChange={(e) => set('hero_text', e.target.value)} />
+              <div style={{ marginTop: 4, fontFamily: ds.fontDm, fontSize: 12, color: look.hero_text.length > HERO_TEXT_MAX ? '#e05c5c' : '#7A9BAD' }}>
+                {look.hero_text.length}/{HERO_TEXT_MAX}. The banner is the big welcome block at the top of your shop.
+              </div>
+            </div>
+
+            <PictureField id="sf-hero-img" label="Banner photo" wide url={look.hero_image_url} busy={picBusy === 'hero'}
+              help="A wide photo works best (PNG, JPG or WebP, under 5 MB). Without one, your shop shows photos of your products."
+              onPick={(f) => changePicture('hero', f)} onRemove={() => changePicture('hero', null)} />
           </div>
         )}
 

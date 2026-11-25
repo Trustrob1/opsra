@@ -9,6 +9,8 @@
  * ones; the size-compare page stays Classic. Classic is unchanged.
  * STORE-4: Storefront shows the cart (web chat shop cart + Paystack checkout) when the business has it on.
  * STORE-5: /shop/{slug} is the short link; it opens the same catalog and the address bar then shows /catalog/{slug}.
+ * STOREFRONT-2: no "Loading catalog" screen. index.html starts the request early, a saved copy from the last visit shows at
+ * once (then refreshes quietly), and a first visit sees the page outline instead of a spinner.
  * WARNING: Full rewrite required for any edit (Pattern 51).
  */
 import { useState, useEffect } from 'react'
@@ -26,6 +28,11 @@ import useStorefrontCart from './storefront/useStorefrontCart'
 import { listUrl, resolveAccent } from './storefront/storefrontLogic'
 import { cleanSource, canUseCart, decorateLines, catalogPathFromShort } from './storefront/storefrontCart'
 import { SLOW_AFTER_MS } from './fetchRetry'
+import { shapeCatalog, readCachedCatalog, writeCachedCatalog, takePrefetch } from './catalogBoot'
+
+function _local() {
+  try { return window.localStorage } catch { return null }
+}
 
 const C = {
   bg:   '#FAFAF8',
@@ -55,13 +62,14 @@ function _parsePath() {
 export default function PublicCatalogShell() {
   const { orgSlug, itemSlug: initialItemSlug, isCompare: initialIsCompare, sizeValue: initialSizeValue } = _parsePath()
 
-  const [catalogData, setCatalogData]   = useState(null)
+  const [saved]                         = useState(() => readCachedCatalog(_local(), orgSlug))   // STOREFRONT-2
+  const [catalogData, setCatalogData]   = useState(() => (saved ? shapeCatalog(saved) : null))
   const [currentItem, setCurrentItem]   = useState(null)
   const [itemSlug, setItemSlug]         = useState(initialItemSlug)
   const [compareMode, setCompareMode]   = useState(initialIsCompare)
   const [sizeValue, setSizeValue]       = useState(initialSizeValue)
   const [compareItems, setCompareItems] = useState([])
-  const [loading, setLoading]           = useState(true)
+  const [loading, setLoading]           = useState(() => !saved)
   const [error, setError]               = useState(null)
   const [slow, setSlow]                 = useState(false)     // LOAD-RETRY-1: the first load is taking a while
   const [cartOpen, setCartOpen]         = useState(false)
@@ -76,21 +84,15 @@ export default function PublicCatalogShell() {
   useEffect(() => {
     if (!orgSlug) { setError('not_found'); setLoading(false); return }
 
-    const slowTimer = setTimeout(() => setSlow(true), SLOW_AFTER_MS)
-    getCatalogList(orgSlug)
+    const slowTimer = saved ? null : setTimeout(() => setSlow(true), SLOW_AFTER_MS)
+    // STOREFRONT-2: use the request index.html already started; if that one failed, ask again (with retries)
+    const early = takePrefetch(window, orgSlug)
+    const request = early ? early.catch(() => getCatalogList(orgSlug)) : getCatalogList(orgSlug)
+    request
         .then(data => {
           clearTimeout(slowTimer)
-          setCatalogData({
-            orgName:         data.org_name,
-            waNumber:        data.wa_number,
-            catalogConfig:   data.catalog_config,
-            wizardQuestions: data.wizard_questions || [],
-            items:           data.items || [],
-            template:        data.template === 'storefront' ? 'storefront' : 'classic',
-            shop:            data.shop || null,
-            chat:            data.chat || null,       // WEBCHAT-CATALOG-1
-            style:           data.style || null,
-          })
+          writeCachedCatalog(_local(), orgSlug, data)
+          setCatalogData(shapeCatalog(data))
         setLoading(false)
         // STORE-7: a tagged link that opens a real store is counted once per browser session
         let storage = null
@@ -99,11 +101,13 @@ export default function PublicCatalogShell() {
       })
       .catch(err => {
         clearTimeout(slowTimer)
+        // a saved copy is already on screen: keep showing it unless the catalog no longer exists
+        if (saved && err.status !== 404) return
         setError(err.status === 404 ? 'not_found' : 'error')
         setLoading(false)
       })
     return () => clearTimeout(slowTimer)
-  }, [orgSlug, source])
+  }, [orgSlug, source, saved])
 
   // Load individual item when itemSlug is set
   useEffect(() => {
@@ -179,28 +183,34 @@ export default function PublicCatalogShell() {
     window.scrollTo(0, 0)
   }
 
-  // ── Loading ──
+  // ── Loading (first visit only): the page outline, no spinner and no "Loading" words ──
   if (loading) {
+    const bar = (w, h, extra = {}) => <div className="cat-skel" style={{ width: w, height: h, borderRadius: 8, ...extra }} />
     return (
-      <div style={{
-        minHeight: '100vh', background: C.bg,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: "'Jost', sans-serif",
-      }}>
-        <div style={{ textAlign: 'center', color: C.muted }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: '50%',
-            border: `3px solid #E8E4DC`,
-            borderTopColor: C.teal,
-            animation: 'spin 0.8s linear infinite',
-            margin: '0 auto 16px',
-          }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          <p style={{ fontSize: 14 }}>Loading catalog…</p>
+      <div aria-busy="true" style={{ minHeight: '100vh', background: '#fff', fontFamily: "system-ui, sans-serif" }}>
+        <style>{`
+          .cat-skel { background: linear-gradient(90deg, #F1EFEB 25%, #F8F7F4 37%, #F1EFEB 63%); background-size: 400% 100%; animation: cat-skel 1.3s ease infinite }
+          .cat-skel-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px }
+          @media (max-width: 700px) { .cat-skel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px } }
+          @keyframes cat-skel { 0% { background-position: 100% 50% } 100% { background-position: 0 50% } }
+          @media (prefers-reduced-motion: reduce) { .cat-skel { animation: none } }
+        `}</style>
+        <div style={{ borderBottom: '1px solid #EEECE8' }}>
+          <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            {bar(40, 40, { borderRadius: 10 })}{bar(140, 18)}
+          </div>
+        </div>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '20px' }}>
+          {bar('100%', 'clamp(180px, 32vw, 340px)', { borderRadius: 20 })}
+          <div className="cat-skel-grid" style={{ marginTop: 32 }}>
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <div key={i}>{bar('100%', 0, { aspectRatio: '1 / 1.1', height: 'auto', borderRadius: 16 })}<div style={{ height: 12 }} />{bar('70%', 14)}<div style={{ height: 8 }} />{bar('40%', 14)}</div>
+            ))}
+          </div>
           {slow && (
-            <div role="status" style={{ marginTop: 14 }}>
+            <div role="status" style={{ marginTop: 28, textAlign: 'center', color: C.muted }}>
               <p style={{ fontSize: 14, margin: '0 0 12px' }}>Taking longer than usual. Your connection may be slow.</p>
-              <button onClick={() => window.location.reload()} style={{ background: C.teal, color: 'white', border: 'none', borderRadius: 8, padding: '10px 22px', fontSize: 14, fontFamily: "'Jost', sans-serif", cursor: 'pointer' }}>Tap to retry</button>
+              <button onClick={() => window.location.reload()} style={{ background: C.teal, color: 'white', border: 'none', borderRadius: 8, padding: '10px 22px', minHeight: 44, fontSize: 14, cursor: 'pointer' }}>Tap to retry</button>
             </div>
           )}
         </div>

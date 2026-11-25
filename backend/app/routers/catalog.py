@@ -107,6 +107,9 @@ class CatalogConfigUpdate(BaseModel):
     trust_points:              Optional[List[str]]           = Field(None, max_length=storefront.TRUST_POINTS_MAX)
     accent:                    Optional[str]                 = Field(None, pattern=r'^(#[0-9a-fA-F]{6})?$')
     logo_url:                  Optional[str]                 = Field(None, max_length=storefront.LOGO_URL_MAX)
+    hero_title:                Optional[str]                 = Field(None, max_length=storefront.HERO_TITLE_MAX)   # STOREFRONT-2
+    hero_text:                 Optional[str]                 = Field(None, max_length=storefront.HERO_TEXT_MAX)    # STOREFRONT-2
+    hero_image_url:            Optional[str]                 = Field(None, max_length=storefront.LOGO_URL_MAX)     # STOREFRONT-2
     chat_button:               Optional[bool]                = None      # WEBCHAT-CATALOG-1: "Chat with Chioma" on the Storefront (default on)
 
     @field_validator("trust_points")
@@ -119,14 +122,19 @@ class CatalogConfigUpdate(BaseModel):
             raise ValueError(f"Each point must be {storefront.TRUST_POINT_CHARS} characters or fewer.")
         return [p for p in out if p]
 
-    @field_validator("logo_url")
+    @field_validator("logo_url", "hero_image_url")
     @classmethod
     def logo_https(cls, v: Optional[str]) -> Optional[str]:
         if v is None or v == "":
             return v
         if storefront.clean_https_url(v) is None:
-            raise ValueError("Logo link must start with https:// and contain no spaces.")
+            raise ValueError("Picture link must start with https:// and contain no spaces.")
         return v
+
+    @field_validator("hero_title", "hero_text")
+    @classmethod
+    def squash_text(cls, v: Optional[str]) -> Optional[str]:
+        return v if v is None else " ".join(v.split())
 
 
 class CatalogItemUpdate(BaseModel):
@@ -205,6 +213,38 @@ async def patch_config(
     except Exception as exc:
         logger.warning("patch_config failed org=%s: %s", current_org["org_id"], exc)
         raise HTTPException(status_code=500, detail="Failed to update catalog config.")
+
+
+# ── Look pictures (STOREFRONT-2): logo and banner photo ────────────────────
+
+@router.post("/look/{kind}")
+async def upload_look_image(
+    kind: Literal["logo", "hero"],
+    file: UploadFile = File(...),
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_catalog_role(current_org)
+    data = await file.read(storefront.IMAGE_MAX_BYTES + 1)
+    try:
+        config = storefront.save_look_image(db, current_org["org_id"], data, kind)
+    except storefront.LookImageError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
+    return {"catalog_config": config, "storefront_allowed": storefront.storefront_allowed(db, current_org["org_id"])}
+
+
+@router.delete("/look/{kind}")
+async def delete_look_image(
+    kind: Literal["logo", "hero"],
+    current_org: dict = Depends(get_current_org),
+    db=Depends(get_supabase),
+):
+    _require_catalog_role(current_org)
+    try:
+        config = storefront.remove_look_image(db, current_org["org_id"], kind)
+    except storefront.LookImageError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
+    return {"catalog_config": config, "storefront_allowed": storefront.storefront_allowed(db, current_org["org_id"])}
 
 
 # ── Share (STORE-5) — static routes ────────────────────────────────────────

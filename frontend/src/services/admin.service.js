@@ -616,6 +616,15 @@ export const updateInternalIssueCategories = (payload) =>
 export const getCatalogConfigFull = () =>
   api.get('/api/v1/catalog/config').then(r => r.data)
 
+// STOREFRONT-2: kind is 'logo' or 'hero' (banner photo). Both save straight away and return { catalog_config, storefront_allowed }.
+export const uploadCatalogLookImage = (kind, file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post(`/api/v1/catalog/look/${kind}`, form).then(r => r.data)
+}
+export const removeCatalogLookImage = (kind) =>
+  api.delete(`/api/v1/catalog/look/${kind}`).then(r => r.data)
+
 export const getCatalogCategories = () =>
   api.get('/api/v1/catalog/categories').then(r => r.data)
 
