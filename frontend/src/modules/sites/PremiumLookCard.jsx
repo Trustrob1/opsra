@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { Check, Undo2 } from 'lucide-react'
 import { T, INPUT } from './sitesKit'
 import { Card, Button, Notice, SectionTitle, Field } from './sitesUi'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const HEX = /^#[0-9a-fA-F]{6}$/
 
@@ -117,6 +118,7 @@ export default function PremiumLookCard({ data, busy, previewing, error, onPrevi
             onChange={(e) => setCustom(e.target.value)} />
           <Button disabled={!HEX.test(custom) || busy} onClick={() => pick({ accent: custom.toUpperCase() })}>Preview colour</Button>
         </div>
+        {custom.trim() && !HEX.test(custom) && !busy && <WhyDisabled reason="Use a # and 6 letters or numbers, like #1F4FD8." />}
       </Field>
 
       {(fo.headlines || []).length > 1 && (

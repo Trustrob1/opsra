@@ -15,6 +15,7 @@ import { T, PALETTES, FONT_PAIRINGS, FONT_GROUP_LABELS, TOKENS, THEME_TOKEN_EXCL
 import { LOOKS, DEFAULT_TOKENS, coloursOf, tokenGlyph, previewStyles, ensureLookFonts, isHex, contrast, TEAL, LABEL_STYLE, tileStyle } from './lookKit'
 import LookPreview from './LookPreview'
 import LookTick from './LookTick'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const MAX_COLOURS = 30
 const LABEL = LABEL_STYLE
@@ -182,6 +183,7 @@ export default function LookStudio({ value, onChange, nicheKey, isMobile }) {
               )}
               <Button size="sm" variant="primary" disabled={!isHex(pickHex)} onClick={addColour} style={{ marginLeft: 'auto' }}>Add this colour</Button>
             </div>
+            {!isHex(pickHex) && <WhyDisabled reason="Type a colour like #1F4FD8 to add it." />}
           </div>
         )}
 

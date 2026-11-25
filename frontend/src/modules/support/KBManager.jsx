@@ -17,6 +17,7 @@ import {
   bulkImportKBArticles,
 } from '../../services/support.service'
 import { getKBCategories } from '../../services/admin.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const DEFAULT_CATEGORIES = [
   { key: 'product_overview', label: 'Product Overview', enabled: true },
@@ -212,7 +213,9 @@ function ArticleForm({ initial, onSave, onClose, saving, error, categories }) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 26px', borderTop: `1px solid ${ds.border}`, display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        <div style={{ padding: '16px 26px', borderTop: `1px solid ${ds.border}`, display: 'flex', gap: '10px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
+          <WhyDisabled style={{ margin: 0, marginRight: 'auto' }} reason={saving ? '' : !form.title.trim() ? 'Enter a title to save.'
+            : !form.content.trim() ? 'Write the article to save.' : isActionRequired && !form.action_label.trim() ? 'Enter the button label to save.' : ''} />
           <button
             onClick={onClose}
             style={{ padding: '9px 18px', borderRadius: '8px', border: `1px solid ${ds.border}`, background: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer', color: ds.gray }}

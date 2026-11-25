@@ -85,6 +85,7 @@ export default function StockItemPanel({ row, locations, canManage, onClose, onC
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
             <button type="button" style={disabled(btnG, busy || !costOk || !reorderOk)} disabled={busy || !costOk || !reorderOk} onClick={save}>{busy ? 'Saving…' : 'Save details'}</button>
             {msg && <span role="status" style={{ color: ds.green, fontSize: 13.5 }}>{msg}</span>}
+            {!costOk && <span role="status" style={{ color: ds.gray, fontSize: 13.5 }}>Cost price must be a number, like 25000 or 25000.50.</span>}
             {row.cost_price != null && <span style={{ color: ds.gray, fontSize: 13.5, marginLeft: 'auto' }}>Value on hand {naira(row.cost_price * row.on_hand)}</span>}
           </div>
           <p style={{ color: ds.gray, fontSize: 12.5, margin: '8px 0 0' }}>Leave "Low stock at" empty to use the business default. Only managers see cost prices.</p>

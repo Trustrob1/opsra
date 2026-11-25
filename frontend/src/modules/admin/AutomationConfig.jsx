@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import { getConversionTemplate, updateConversionTemplate } from '../../services/admin.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 export default function AutomationConfig() {
   const [templateName,  setTemplateName]  = useState('')
@@ -146,6 +147,7 @@ export default function AutomationConfig() {
           {saving ? 'Saving…' : 'Save Changes'}
         </button>
         {saveMsg && <span style={{ fontSize: 13, color: '#27AE60' }}>✓ {saveMsg}</span>}
+        <WhyDisabled style={{ margin: 0 }} reason={!saving && !isDirty && !saveMsg ? "No changes to save yet." : ''} />
         {saveErr && <span style={{ fontSize: 13, color: '#C0392B' }}>⚠ {saveErr}</span>}
       </div>
     </div>

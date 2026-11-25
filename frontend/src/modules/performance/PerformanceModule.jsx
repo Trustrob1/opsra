@@ -23,6 +23,7 @@ import {
   getOwnerDashboardSetup,
   setOwnerDashboardPin,
 } from '../../services/performance.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const _MANAGER_ROLES = ['owner', 'ops_manager']
 
@@ -264,6 +265,7 @@ function OwnerDashboardDrawer({ onClose }) {
                 >
                   {pinLoading ? 'Saving…' : setup?.pin_set ? 'Update PIN' : 'Set PIN'}
                 </button>
+                <WhyDisabled style={{ textAlign: 'center' }} reason={pinLoading ? '' : !pin ? 'Enter a PIN to save it.' : !pinConfirm ? 'Type the PIN again under Confirm PIN.' : ''} />
               </div>
 
               {/* Divider */}

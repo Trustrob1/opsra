@@ -9,6 +9,7 @@ import { ds } from '../../utils/ds'
 import { pickStockProducts, receiveStock, adjustStock, stockError } from '../../services/inventory.service'
 import StockModal from './StockModal'
 import { lab, inp, btnP, btnG, disabled, errBox, sizeText, units, ADJUST_REASONS } from './stockUi'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 let keySeq = 0
 const newKey = () => `l${++keySeq}`
@@ -79,6 +80,12 @@ export function ReceiveStock({ locations, preset, onClose, onDone }) {
   const total = lines.reduce((s, l) => s + (parseInt(l.quantity, 10) || 0), 0)
   const ready = locationId && lines.length > 0 && lines.every((l) => /^\d+$/.test(l.quantity) && Number(l.quantity) > 0
     && (!l.sizes.length || l.variant) && (l.unit_cost === '' || /^\d+(\.\d{1,2})?$/.test(l.unit_cost)))
+  const why = !locationId ? 'Choose the location to save.'   // HINT-1
+    : !lines.length ? 'Add at least one product to save.'
+    : lines.some((l) => l.sizes.length && !l.variant) ? 'Choose the size for every product to save.'
+    : lines.some((l) => !/^\d+$/.test(l.quantity) || Number(l.quantity) <= 0) ? 'Enter how many units came in for every product (whole numbers above 0).'
+    : lines.some((l) => l.unit_cost !== '' && !/^\d+(\.\d{1,2})?$/.test(l.unit_cost)) ? 'Unit cost must be a number, like 25000 or 25000.50.'
+    : ''
 
   const save = async () => {
     if (!ready || busy) return
@@ -98,7 +105,7 @@ export function ReceiveStock({ locations, preset, onClose, onDone }) {
   return (
     <StockModal title="Receive stock" icon={PackagePlus} onClose={onClose} busy={busy} width={760}
       footer={<>
-        <span style={{ color: ds.gray, fontSize: 13.5, marginRight: 'auto' }}>{total ? `${units(total)} unit${total === 1 ? '' : 's'} in` : 'Add the products that came in'}</span>
+        <span role="status" style={{ color: ds.gray, fontSize: 13.5, marginRight: 'auto' }}>{lines.length && why ? why : total ? `${units(total)} unit${total === 1 ? '' : 's'} in` : 'Add the products that came in'}</span>
         <button type="button" style={btnG} onClick={onClose} disabled={busy}>Cancel</button>
         <button type="button" style={disabled(btnP, !ready || busy)} disabled={!ready || busy} onClick={save}>{busy ? 'Saving…' : 'Add to stock'}</button>
       </>}>
@@ -156,6 +163,13 @@ export function AdjustStock({ locations, preset, onClose, onDone }) {
 
   const ready = locationId && prod && (!prod.sizes.length || variant) && /^\d+$/.test(qty)
     && (mode === 'set' || Number(qty) > 0) && reason && (reason !== 'other' || note.trim())
+  const why = !locationId ? 'Choose the location to save.'   // HINT-1
+    : !prod ? 'Choose the product to save.'
+    : prod.sizes.length && !variant ? 'Choose the size to save.'
+    : !/^\d+$/.test(qty) || (mode !== 'set' && Number(qty) <= 0) ? `Enter the number of units${mode === 'set' ? '' : ' (above 0)'} to save.`
+    : !reason ? 'Choose the reason to save.'
+    : reason === 'other' && !note.trim() ? 'Say what happened to save.'
+    : ''
 
   const save = async () => {
     if (!ready || busy) return
@@ -176,6 +190,7 @@ export function AdjustStock({ locations, preset, onClose, onDone }) {
   return (
     <StockModal title="Adjust stock" icon={SlidersHorizontal} onClose={onClose} busy={busy} width={560}
       footer={<>
+        <WhyDisabled reason={busy ? '' : why} style={{ margin: 0, marginRight: 'auto' }} />
         <button type="button" style={btnG} onClick={onClose} disabled={busy}>Cancel</button>
         <button type="button" style={disabled(btnP, !ready || busy)} disabled={!ready || busy} onClick={save}>{busy ? 'Saving…' : 'Save change'}</button>
       </>}>

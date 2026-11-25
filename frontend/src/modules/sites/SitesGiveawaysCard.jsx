@@ -9,6 +9,7 @@ import { listGiveaways, createGiveaway, closeGiveaway, reopenGiveaway, listGivea
 import { Card, Button, Badge, Notice, Spinner, Empty } from './sitesUi'
 import GiveawayFlier from './GiveawayFlier'
 import { T, INPUT } from './sitesKit'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const Th = ({ children }) => <th style={{ textAlign: 'left', padding: '10px 14px', fontSize: 11.5, color: T.muted, fontWeight: 600 }}>{children}</th>
 const Td = ({ children, ...r }) => <td style={{ padding: '10px 14px', verticalAlign: 'middle' }} {...r}>{children}</td>
@@ -94,6 +95,7 @@ export default function SitesGiveawaysCard({ isActive, canEdit, partners, showTo
             <label style={{ fontSize: 12.5, color: T.muted }}>Days at the normal rate before takedown
               <input style={{ ...INPUT, marginTop: 4 }} type="number" min="1" max="30" value={form.full_price_days} onChange={(e) => setForm({ ...form, full_price_days: e.target.value })} /></label>
             <Button variant="primary" loading={busy} disabled={!form.partner_id || form.title.trim().length < 3} onClick={create}>Create giveaway</Button>
+            <WhyDisabled reason={busy ? '' : !form.partner_id ? 'Choose the partner this giveaway belongs to.' : form.title.trim().length < 3 ? 'Give the giveaway a title (at least 3 letters).' : ''} />
           </div>
         </Card>
       )}

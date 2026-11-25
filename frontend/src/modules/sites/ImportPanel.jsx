@@ -19,6 +19,7 @@ import {
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, SectionTitle, Modal, Segmented } from './sitesUi'
 import { T, dateTime } from './sitesKit'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const who = (by) => (String(by || '').startsWith('user:') ? 'Staff' : 'System')
 
@@ -186,6 +187,7 @@ export default function ImportPanel({ siteId, canEdit, showToast, onSiteChanged 
           <input ref={input} type="file" accept=".zip,.html,.htm" onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null) }} />
           <Button variant="secondary" icon={ShieldCheck} loading={busy === 'check'} disabled={!file || !!busy} onClick={() => send(true)}>Check only</Button>
           <Button variant="primary" icon={UploadCloud} loading={busy === 'import'} disabled={!file || !!busy} onClick={() => send(false)}>Import</Button>
+          {!file && !busy && <WhyDisabled style={{ margin: 0 }} reason="Choose a .zip or .html file to check or import." />}
           {isImported && (
             <Button variant="secondary" icon={Undo2} loading={busy === 'standard'} disabled={!!busy} onClick={backToStandard}
               title="Show the Standard design again. Imported versions are kept.">Back to Standard</Button>

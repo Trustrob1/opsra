@@ -13,6 +13,7 @@ import {
   getBookingsFeed, listBookingStaff, getCalendly, connectCalendly, disconnectCalendly, apiError,
 } from '../../services/booking.service'
 import './booking.css'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.xl, padding: '20px 24px', marginBottom: 20, boxShadow: ds.cardShadow }
@@ -408,6 +409,7 @@ function CalendlyCard() {
           <input id="cal-token" type="password" autoComplete="off" style={inp} value={token} onChange={(e) => setToken(e.target.value)} />
           <p style={{ fontSize: 11.5, color: ds.gray, margin: '5px 0 10px' }}>In Calendly: Integrations &gt; API and webhooks &gt; Personal access tokens &gt; Generate new token. Paste it here. Opsra stores it privately and sets up the connection for you.</p>
           <button style={btnP} disabled={busy || token.trim().length < 20} onClick={connect}>{busy ? 'Connecting…' : 'Connect Calendly'}</button>
+          <WhyDisabled reason={busy ? '' : !token.trim() ? 'Paste your Calendly token to connect.' : token.trim().length < 20 ? 'That token looks too short. Paste the whole token.' : ''} />
         </div>
       )}
       {msg && <p role="status" style={{ fontSize: 13, color: msg.ok ? '#276749' : ds.red, marginBottom: 0 }}>{msg.t}</p>}

@@ -60,6 +60,7 @@ import PricingView from '../modules/sites/PricingView'                 // UI-2
 import { useIsMobile } from '../hooks/useIsMobile'
 import { ds } from '../utils/ds'               // the same colours and logo block as the main Opsra top bar
 import OpsraMark from '../components/OpsraMark'
+import WhyDisabled from '../shared/WhyDisabled'   // HINT-1
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -576,6 +577,7 @@ function PhoneChange({ token, builder, onUpdated, showToast }) {
               <Button variant="primary" size="sm" loading={busy} disabled={phone.replace(/\D/g, '').length < 9} onClick={sendCode}>Email me a code</Button>
               <Button size="sm" onClick={reset}>Cancel</Button>
             </div>
+            <WhyDisabled reason={!busy && phone.replace(/\D/g, '').length < 9 ? 'Type the full new number to get a code.' : ''} />
           </>
         )}
         {step === 'code' && (
@@ -588,6 +590,7 @@ function PhoneChange({ token, builder, onUpdated, showToast }) {
               <Button variant="primary" size="sm" loading={busy} disabled={code.length !== 6} onClick={confirm}>Confirm new number</Button>
               <Button size="sm" onClick={() => { setStep('number'); setCode(''); setError('') }}>Use a different number</Button>
             </div>
+            <WhyDisabled reason={!busy && code.length !== 6 ? 'Enter all 6 digits of the code.' : ''} />
           </>
         )}
         {error && <Notice tone="bad">{error}</Notice>}
@@ -927,6 +930,7 @@ function EditorView({ token, siteId, onBack, onCheckout, showToast }) {
         <Button variant="secondary" icon={Undo2} loading={undoing} onClick={doUndo}>Undo last change</Button>
         {site.status !== 'live' && (
           <Button variant="primary" icon={ShoppingCart} onClick={onCheckout} disabled={!site.rendered_html}
+            title={!site.rendered_html ? 'Your site preview is not ready yet' : undefined}
             style={{ marginLeft: 'auto' }}>
             Check out &amp; go live
           </Button>

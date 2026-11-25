@@ -10,6 +10,7 @@ import { Globe, MapPin, Star } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { getStockSettings, saveStockSettings, getLocations, createLocation, updateLocation, stockError } from '../../services/inventory.service'
 import { card, lab, inp, btnP, btnG, disabled, errBox, units } from './stockUi'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const h = { margin: '0 0 12px', fontSize: 16, color: ds.dark }
 
@@ -122,6 +123,7 @@ export default function InventorySettings({ onChanged }) {
           <button type="button" style={disabled(btnG, !!busy || !reorderOk)} disabled={!!busy || !reorderOk}
             onClick={() => save({ default_reorder_level: Number(reorder) }, 'Saved.')}>Save</button>
         </div>
+        <WhyDisabled reason={reorderOk ? '' : 'Enter a number of units to save.'} />
         <p style={{ color: ds.gray, fontSize: 12.5, margin: '8px 0 0' }}>A product size shows as low when what's available across your locations is at or below this. You can set a different number per product size.</p>
         <label style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, color: ds.dark, cursor: busy ? 'default' : 'pointer', minHeight: 32 }}>
           <input type="checkbox" checked={settings.low_stock_alerts !== false} disabled={!!busy}

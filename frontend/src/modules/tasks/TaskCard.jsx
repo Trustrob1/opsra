@@ -37,6 +37,7 @@ import { ds } from '../../utils/ds'
 import { completeTask, snoozeTask, updateTask, deleteTask, restoreTask } from '../../services/tasks.service'
 import useAuthStore from '../../store/authStore'
 import UserSelect   from '../../shared/UserSelect'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -376,6 +377,7 @@ export default function TaskCard({
               width: '100%', boxSizing: 'border-box', marginBottom: 8,
             }}
           />
+          <WhyDisabled reason={!submitting && !newAssignee ? 'Choose who to reassign it to.' : ''} style={{ margin: '0 0 6px' }} />
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={handleReassign}

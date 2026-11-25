@@ -8,6 +8,7 @@ import { Download, Send, Ban, Mail, MessageCircle, MessagesSquare } from 'lucide
 import { ds } from '../../utils/ds'
 import { downloadReceiptPdf, getReceiptSendOptions, sendReceipt, voidReceipt, apiError } from '../../services/invoices.service'
 import { inp, btnG, btnDanger, disabled } from './invoiceUi'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const NAMES = { whatsapp: 'WhatsApp', webchat: 'web chat', email: 'email' }
 const small = { ...btnG, minHeight: 36, padding: '0 10px', fontSize: 13 }
@@ -74,6 +75,7 @@ export default function ReceiptActions({ receipt, isAdmin, onChanged }) {
               placeholder="customer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             <button type="button" style={disabled(small, !emailOk || !!busy)} disabled={!emailOk || !!busy} onClick={() => send('email')}><Mail size={14} />{busy === 'email' ? 'Sending…' : 'Email'}</button>
           </div>
+          <WhyDisabled reason={!emailOk && !busy ? email.trim() ? "That email address doesn't look right." : 'Type the customer\'s email to send it.' : ''} style={{ margin: 0 }} />
         </div>
       ) : !msg && <small style={{ color: ds.gray }}>Loading…</small>)}
       {mode === 'void' && (
@@ -82,6 +84,7 @@ export default function ReceiptActions({ receipt, isAdmin, onChanged }) {
             placeholder="Why? e.g. the transfer bounced" value={reason} onChange={(e) => setReason(e.target.value)} />
           <button type="button" style={disabled({ ...small, color: '#fff', background: ds.red, borderColor: ds.red }, reason.trim().length < 3 || !!busy)}
             disabled={reason.trim().length < 3 || !!busy} onClick={doVoid}>{busy === 'void' ? 'Voiding…' : 'Void receipt'}</button>
+          <WhyDisabled reason={!busy && reason.trim().length < 3 ? 'Write the reason (at least 3 letters).' : ''} style={{ flexBasis: '100%', margin: 0 }} />
         </div>
       )}
       {msg && <div role="status" style={{ color: msg.ok ? ds.green : ds.red, fontSize: 13 }}>{msg.text}</div>}

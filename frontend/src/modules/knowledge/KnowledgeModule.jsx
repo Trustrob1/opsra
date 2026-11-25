@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ds } from '../../utils/ds'
 import { listKnowledge, addKnowledgeFile, addKnowledgeText, addKnowledgeWebsite, addKnowledgeGdoc, getKnowledgeSource, activateKnowledge, removeKnowledge, refreshKnowledge, setKnowledgeAutoRefresh, listKnowledgeGaps, answerKnowledgeGap, dismissKnowledgeGap, getKnowledgeCatalog, knowledgeError } from '../../services/knowledge.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const card = { background: ds.white, border: `1px solid ${ds.border}`, borderRadius: 14, padding: 20, marginBottom: 16 }
 const input = { width: '100%', boxSizing: 'border-box', border: `1.5px solid ${ds.border}`, borderRadius: 9, padding: '10px 12px', fontSize: 14, fontFamily: ds.fontDm, color: ds.dark, background: ds.light }
@@ -152,6 +153,7 @@ export default function KnowledgeModule() {
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: ds.dark, margin: '14px 0 5px' }} htmlFor="k-text">Answers the bot should know</label>
               <textarea id="k-text" rows={7} style={input} value={text} onChange={(e) => setText(e.target.value)} />
               <div style={{ marginTop: 14 }}><button type="button" style={btn(true, busy || !title.trim() || text.trim().length < 20)} disabled={busy || !title.trim() || text.trim().length < 20} onClick={saveText}>Add and preview</button></div>
+              <WhyDisabled reason={busy ? '' : !title.trim() ? 'Give it a title to add it.' : text.trim().length < 20 ? 'Write at least 20 characters of answers to add it.' : ''} />
             </>
           )}
         </div>

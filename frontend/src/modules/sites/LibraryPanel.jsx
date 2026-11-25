@@ -14,6 +14,7 @@ import {
 } from '../../services/sites.service'
 import { Card, Button, Badge, Notice, SectionTitle, Modal, Segmented, Field } from './sitesUi'
 import { T } from './sitesKit'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const KIND = { import: 'Uploaded page', premium: 'Premium design' }
 
@@ -134,6 +135,12 @@ export default function LibraryPanel({ site, presetKey, canEdit, showToast, onSi
             title="Try the next design in the rotation: not one this builder just used, least used first">Use the next design</Button>
         </div>
       )}
+      {canEdit && !busy && (!savable || !designs.some((d) => d.status === 'active')) && (
+        <WhyDisabled style={{ margin: '0 0 10px' }} reason={[
+          !savable && 'Saving needs a Premium design or an editable imported page on this site.',
+          !designs.some((d) => d.status === 'active') && 'There is no active design in the library to use yet.',
+        ].filter(Boolean).join(' ')} />
+      )}
 
       {designs.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: T.muted }}>No library designs yet. Make an imported page editable, then save it here.</p>
@@ -174,7 +181,10 @@ export default function LibraryPanel({ site, presetKey, canEdit, showToast, onSi
       <Modal open={!!saving} onClose={() => setSaving(null)} title="Save to the design library" width={560}
         footer={saving?.done
           ? <Button variant="primary" onClick={() => setSaving(null)}>Done</Button>
-          : <Button variant="primary" icon={BookmarkPlus} loading={busy === 'save'} disabled={!saving?.name?.trim() || !saving?.niche?.trim()} onClick={submitSave}>Save to library</Button>}>
+          : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <WhyDisabled style={{ margin: 0 }} reason={!saving?.name?.trim() ? 'Enter the design name to save.' : !saving?.niche?.trim() ? 'Choose the niche to save.' : ''} />
+            <Button variant="primary" icon={BookmarkPlus} loading={busy === 'save'} disabled={!saving?.name?.trim() || !saving?.niche?.trim()} onClick={submitSave}>Save to library</Button>
+          </span>}>
         {saving && !saving.done && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Field label="Design name" hint="For example: Warm kitchen">

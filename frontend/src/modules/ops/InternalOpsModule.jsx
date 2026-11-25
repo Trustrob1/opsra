@@ -26,6 +26,7 @@ import {
 import { toggleOwnerAttention } from '../../services/performance.service'
 import { getTeams, getTeamMetrics, getDepartments, getInternalIssueCategories, listUsers } from '../../services/admin.service'
 import DateRangePresets from './DateRangePresets'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const PRIORITIES  = ['critical', 'high', 'medium', 'low']
 const STATUSES    = ['open', 'in_progress', 'resolved']
@@ -696,6 +697,7 @@ function LogActivityModal({ logType, existingLog, allLogs, currentUserId, userTe
           </div>
         ))}
 
+        <WhyDisabled reason={!saving && validEntries.length === 0 ? 'Describe at least one activity to submit.' : ''} style={{ textAlign: 'right' }} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
           <button onClick={onClose} style={BTN_OUTLINE}>Cancel</button>
           <button onClick={handleSubmit} disabled={saving || validEntries.length === 0}

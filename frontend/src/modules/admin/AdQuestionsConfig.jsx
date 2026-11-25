@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import * as adminSvc from '../../services/admin.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const ACTION_LABELS = {
   bot_catalog: 'Bot replies with the catalogue link (no rep)',
@@ -96,6 +97,7 @@ export default function AdQuestionsConfig() {
                          padding: '10px 16px', fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
           Add question
         </button>
+        {rules.length >= 10 && <WhyDisabled reason="You can have up to 10 questions. Remove one to add another." style={{ flexBasis: '100%' }} />}
         <button type="button" onClick={save} disabled={saving}
                 style={{ background: ds.teal, color: 'white', border: 'none', borderRadius: 10, padding: '10px 20px',
                          fontFamily: ds.fontSyne, fontWeight: 600, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>

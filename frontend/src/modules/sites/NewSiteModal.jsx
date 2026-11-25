@@ -13,6 +13,7 @@ import { Check, Copy, ExternalLink } from 'lucide-react'
 import { Button, Field, Modal, Notice, Segmented, Spinner } from './sitesUi'
 import { INPUT, T } from './sitesKit'
 import { accessLimit, createMyForm, errorMessage, listPresets } from '../../services/builder_portal.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 export default function NewSiteModal({ open, onClose, token, onCreated, onSubscribe, optionSetId }) {
   const [presets, setPresets] = useState(null)
@@ -69,6 +70,7 @@ export default function NewSiteModal({ open, onClose, token, onCreated, onSubscr
         <Button variant="primary" onClick={onClose}>Done</Button>
       ) : (
         <>
+          <WhyDisabled style={{ margin: '0 auto 0 0' }} reason={!busy && presets && presets.length > 0 && !presetId ? 'Choose a design to continue.' : ''} />
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={busy} disabled={!presets || (presets.length > 0 && !presetId)} onClick={create}>
             {forClient ? 'Get a link for my client' : 'Get my form link'}

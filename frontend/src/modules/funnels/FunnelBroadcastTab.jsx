@@ -10,6 +10,7 @@ import { createBroadcast, listBroadcasts, cancelBroadcast, errorMessage } from '
 import { listTemplates } from '../../services/whatsapp.service'
 import { Card, SectionTitle, Button, Field, Segmented, Badge, Notice, Spinner, Empty, Modal } from './funnelUi'
 import { T, INPUT, money, num, dateTime, asList } from './funnelKit'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const STATUS = {
   queued: { tone: 'info', label: 'Queued' }, sending: { tone: 'info', label: 'Sending' }, done: { tone: 'good', label: 'Done' },
@@ -146,6 +147,8 @@ export default function FunnelBroadcastTab({ funnel, isActive, canEdit, showToas
                 <Button variant="primary" icon={Send} disabled={!check || !check.recipients || !check.within_budget}
                   onClick={() => setConfirm(true)}>{check?.recipients ? `Send to ${num(check.recipients)}` : 'Send'}</Button>
               </div>
+              <WhyDisabled style={{ margin: 0 }} reason={busy ? '' : !form.template_name ? 'Choose a template, then check who it goes to.'
+                : !check ? 'Press Check recipients before sending.' : !check.recipients ? 'Nobody matches this audience, so there is no one to send to.' : ''} />
             </div>
           )}
         </Card>

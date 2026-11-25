@@ -11,6 +11,7 @@ import { recordPayment, apiError } from '../../services/invoices.service'
 import { naira, niceDate, todayYmd, METHOD_LABEL, lab, inp, btnP, btnG, disabled } from './invoiceUi'
 import ReceiptActions from './ReceiptActions'
 import { PendingPaymentRow } from './PendingPayments'   // SALE-1
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 
 const MANUAL = ['bank_transfer', 'cash', 'pos', 'ussd', 'other']
@@ -29,6 +30,9 @@ export default function PaymentsPanel({ doc, isAdmin, onChanged }) {
   const startAdd = () => { setAdding(true); setMsg(null); set({ amount: String(left), paid_at: todayYmd() }) }
   const amount = parseFloat(String(f.amount).replace(/,/g, ''))
   const amountOk = Number.isFinite(amount) && amount > 0 && amount <= left && /^\d+(\.\d{1,2})?$/.test(String(f.amount).replace(/,/g, '').trim())
+  const amountWhy = amountOk ? '' : !String(f.amount).trim() ? 'Enter the amount paid.'   // HINT-1
+    : !/^\d+(\.\d{1,2})?$/.test(String(f.amount).replace(/,/g, '').trim()) || !(amount > 0) ? 'The amount must be a number above 0, like 50000 or 50000.50.'
+    : `The amount can't be more than the balance due (${naira(left)}).`
 
   const save = async () => {
     setBusy(true); setMsg(null)
@@ -86,6 +90,7 @@ export default function PaymentsPanel({ doc, isAdmin, onChanged }) {
           </div>
           <div><label style={lab} htmlFor="pay-note">Note on the receipt (optional)</label>
             <input id="pay-note" style={inp} maxLength={500} placeholder={`Payment for invoice ${doc.number}`} value={f.note} onChange={(e) => set({ note: e.target.value })} /></div>
+          <WhyDisabled reason={busy ? '' : amountWhy} style={{ textAlign: 'right' }} />
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button type="button" style={btnG} onClick={() => setAdding(false)}>Cancel</button>
             <button type="button" style={disabled(btnP, !amountOk || busy)} disabled={!amountOk || busy} onClick={save}>{busy ? 'Saving…' : doc.payments_need_approval ? 'Send for confirmation' : 'Save and make receipt'}</button>

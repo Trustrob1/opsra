@@ -13,6 +13,7 @@ import {
   removeDraftCategory, moveDraftCategory, entriesFromDraft, assignmentsFromItems, draftAssignments,
   toggleAssignment, assignmentCalls, categoriesChanged,
 } from './catalogStorefrontLogic'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const CARD = { background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', padding: 20 }
 const INPUT = {
@@ -206,6 +207,7 @@ export default function CatalogCategories({ onSaved }) {
           {saving ? 'Saving…' : 'Save categories'}
         </button>
         {toast && <span role="status" style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#1B6B49', fontWeight: 600 }}>{toast}</span>}
+        <WhyDisabled style={{ margin: 0 }} reason={!saving && !changed && !toast ? "No changes to save yet." : ''} />
       </div>
     </div>
   )

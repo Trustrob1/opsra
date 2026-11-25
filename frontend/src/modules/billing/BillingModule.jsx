@@ -14,6 +14,7 @@ import CreditsPanel from '../admin/CreditsPanel'
 import SharePanel from './SharePanel'
 import { ds } from '../../utils/ds'
 import { B, panel, panelTitle, panelSub, button, tile, tileDark, tileLabel, tileValue, emptyBox, BILLING_CSS } from './billingUi'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const card = panel
 const h3 = { ...panelTitle, margin: '0 0 12px' }
@@ -465,6 +466,7 @@ function TeamTab({ data, reload, setMsg, onOpenAdmin }) {
                 <button type="button" aria-label="One more user" style={btn(false)} disabled={add >= 50 || busy} onClick={() => setAdd((a) => Math.min(50, a + 1))}>+</button>
                 <span style={{ fontSize: 13, color: ds.gray }}>extra user{add === 1 ? '' : 's'}</span>
               </div>
+              {add >= 50 && <WhyDisabled reason="You can add up to 50 users at a time." />}
               <p style={{ fontSize: 13, color: ds.dark, margin: '12px 0' }}>
                 {quote
                   ? `${ngn(quote.total)} today, for the ${quote.days} day${quote.days === 1 ? '' : 's'} left on your plan (until ${day(quote.paid_until)}). After that they renew with your plan at ${ngn(t.price_ngn)} each a month.`
@@ -484,6 +486,7 @@ function TeamTab({ data, reload, setMsg, onOpenAdmin }) {
             <button type="button" aria-label="Keep one more" style={btn(false)} disabled={next >= t.seats || busy} onClick={() => setNext((n) => Math.min(t.seats, n + 1))}>+</button>
             <button type="button" style={btn(false)} disabled={busy || next === t.seats_next} onClick={saveNext}>Save</button>
           </div>
+          <WhyDisabled reason={!busy && next === t.seats_next ? 'Change the number to save.' : ''} />
         </div>
       )}
     </>

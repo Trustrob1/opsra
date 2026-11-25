@@ -51,6 +51,7 @@ import MessageComposer from './MessageComposer'
 import LogInteractionPanel from '../../shared/LogInteractionPanel'
 import LinkedTicketsPanel  from '../../shared/LinkedTicketsPanel'
 import TaskCard from '../tasks/TaskCard'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 // ── Churn risk badge ──────────────────────────────────────────────────────────
 const RISK_STYLE = {
@@ -1082,6 +1083,7 @@ export default function CustomerProfile({ customerId, onBack }) {
             >
               {contactSaving ? 'Adding…' : 'Add Contact'}
             </button>
+            <WhyDisabled reason={!contactSaving && !contactForm.phone_number.trim() ? 'Enter the phone number to add the contact.' : ''} />
           </div>
         </div>
       )}

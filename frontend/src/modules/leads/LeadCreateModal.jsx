@@ -24,6 +24,7 @@ import { getGrowthTeams } from '../../services/growth.service'
 import { getLeadFormConfig } from '../../services/admin.service'
 import { ds, SOURCE_LABELS, BRANCHES_OPTIONS } from '../../utils/ds'
 import UserSelect from '../../shared/UserSelect'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const SOURCES = Object.entries(SOURCE_LABELS)
 
@@ -131,6 +132,10 @@ export default function LeadCreateModal({ onClose, onCreated }) {
   }
 
   const isSubmitDisabled = submitting || !form.full_name || !form.source || !configRequiredMet
+  const missingCfg = visibleConfig.find(f => f.required && (form[f.key] || '').trim() === '')
+  const why = submitting ? '' : !form.full_name ? 'Enter the full name to create the lead.'   // HINT-1
+    : !form.source ? 'Choose the source to create the lead.'
+    : missingCfg ? `Fill in ${missingCfg.label} to create the lead.` : ''
 
   return (
     <ModalOverlay onClose={onClose}>
@@ -284,6 +289,7 @@ export default function LeadCreateModal({ onClose, onCreated }) {
           <p style={{ color: ds.red, fontSize: 13, marginBottom: 14 }}>⚠ {error}</p>
         )}
 
+        <WhyDisabled reason={why} style={{ textAlign: 'right', marginBottom: 6 }} />
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
           <button onClick={onClose} disabled={submitting} style={secondaryBtn}>
             Cancel

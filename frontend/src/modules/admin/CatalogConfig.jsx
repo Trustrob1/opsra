@@ -393,7 +393,7 @@ export default function CatalogConfig() {
                 {(btn.label || '').length}/24
               </div>
               <button aria-label={`Remove button ${i + 1}`} style={{ ...BTN_DANGER, minHeight: 44, minWidth: 44, opacity: buttons.length <= 2 ? 0.35 : 1 }}
-                onClick={() => removeBtn(i)} disabled={buttons.length <= 2}>
+                onClick={() => removeBtn(i)} disabled={buttons.length <= 2} title={buttons.length <= 2 ? 'Keep at least 2 buttons' : undefined}>
                 🗑
               </button>
             </div>

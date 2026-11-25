@@ -8,6 +8,7 @@ import { Link2, Copy, Send } from 'lucide-react'
 import { T, INPUT } from './sitesKit'
 import { Button, Field, Notice, Badge } from './sitesUi'
 import { money, STATUS, copyText } from './siteAddonsKit'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 export function StatusBadge({ status }) {
   const s = STATUS[status] || { tone: 'neutral', label: status || '—' }
@@ -112,6 +113,7 @@ export function PurchaseForm({ plans, labelOf, busy, error, canSend = true, onSu
         <Button variant="primary" icon={send && canSend ? Send : Link2} loading={busy} disabled={!plan || !picksDone} onClick={submit}>
           {submitLabel || (send && canSend ? 'Create and send payment link' : 'Create payment link')}
         </Button>
+        <WhyDisabled reason={busy ? '' : !plan ? 'Choose a plan first.' : !picksDone ? 'Make every choice for this plan first.' : ''} />
       </div>
     </div>
   )

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getWebchatChecklist, getWebchatStarters, getWebchatUnanswered, teachWebchat, dismissWebchatUnanswered, applyWebchatTemplate } from '../../services/webchat.service'
 import { ds } from '../../utils/ds'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
 const input = { boxSizing: 'border-box', minHeight: 40, padding: '8px 10px', border: `1px solid ${ds.border}`, borderRadius: ds.radius.sm, fontSize: 14, fontFamily: ds.fontDm }
@@ -34,6 +35,7 @@ function Row({ gap, buttons, onDone, setMsg }) {
         <button type="button" style={btn(true)} disabled={busy || !kw.trim() || !menuId} onClick={() => run(() => teachWebchat(gap.id, menuId, kw), 'Added. Chioma will now match that word.')}>Add</button>
         <button type="button" style={btn(false)} disabled={busy} onClick={() => run(() => dismissWebchatUnanswered(gap.id), 'Removed from the list.')}>Dismiss</button>
       </div>
+      <WhyDisabled reason={!busy && kw.trim() && !menuId ? 'Choose the button the word should lead to.' : ''} />
     </div>
   )
 }

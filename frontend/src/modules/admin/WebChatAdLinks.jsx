@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { ds } from '../../utils/ds'
 import { uploadWebchatAdImage, uploadWebchatAdVideo, getWebchatProducts, chatErrorMessage } from '../../services/webchat.service'
 import { shrinkImage } from './imageShrink'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
 const label = { display: 'block', fontSize: 12, fontWeight: 600, color: ds.dark, margin: '10px 0 4px', fontFamily: ds.fontDm }
@@ -205,6 +206,7 @@ export default function WebChatAdLinks({ data, cfg, set, setMsg }) {
       })}
 
       <button type="button" style={btn(true)} onClick={add} disabled={camps.length >= 30}>Add an ad</button>
+      {camps.length >= 30 && <WhyDisabled reason="You can have up to 30 ads. Remove one to add another." />}
     </div>
   )
 }

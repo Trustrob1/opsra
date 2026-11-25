@@ -11,6 +11,7 @@
 import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import { getSalesMode, updateSalesMode, getShopifyStatus } from '../../services/admin.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const MODES = [
   {
@@ -251,6 +252,7 @@ export default function SalesModeConfig() {
           {saving ? 'Saving…' : 'Save Changes'}
         </button>
         {saveMsg && <span style={{ fontSize: 13, color: '#27AE60' }}>✓ {saveMsg}</span>}
+        <WhyDisabled style={{ margin: 0 }} reason={!saving && pending === mode && !saveMsg ? 'Choose a different mode to save.' : ''} />
         {saveErr && <span style={{ fontSize: 13, color: '#C0392B' }}>⚠ {saveErr}</span>}
       </div>
     </div>

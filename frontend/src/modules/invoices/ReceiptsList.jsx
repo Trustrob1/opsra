@@ -12,6 +12,7 @@ import { naira, niceDate, todayYmd, METHOD_LABEL, card, lab, inp, btnP, btnG, di
 import ReceiptActions from './ReceiptActions'
 import RegionSelect from './RegionSelect'   // INV-SALES-2
 import { useRegions, lastRegion } from './useRegions'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const PAGE = 50
 const MANUAL = ['bank_transfer', 'cash', 'pos', 'ussd', 'other']
@@ -150,6 +151,9 @@ function NewReceipt({ onCancel, onDone }) {
       </div>
       <div><label style={lab} htmlFor="rc-desc">What it was for</label><input id="rc-desc" style={inp} maxLength={500} placeholder="e.g. 2 pillows" value={f.description} onChange={(e) => set({ description: e.target.value })} /></div>
       {err && <div role="alert" style={{ color: ds.red, fontSize: 14 }}>{err}</div>}
+      <WhyDisabled style={{ textAlign: 'right' }} reason={ok || busy ? '' : !f.customer_name.trim() ? 'Enter who paid.'
+        : !(/^\d+(\.\d{1,2})?$/.test(amount) && Number(amount) > 0) ? 'Enter the amount paid (a number above 0).'
+        : regions.length && !f.region ? 'Choose the region.' : 'Say what the payment was for.'} />
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         <button type="button" style={btnG} onClick={onCancel}>Cancel</button>
         <button type="button" style={disabled(btnP, !ok || busy)} disabled={!ok || busy} onClick={save}>{busy ? 'Saving…' : 'Make receipt'}</button>

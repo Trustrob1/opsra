@@ -24,6 +24,7 @@ import {
 } from '../../services/support.service'
 import { listTasks, completeTask } from '../../services/tasks.service'
 import { getTicketCategories } from '../../services/admin.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 // ---------------------------------------------------------------------------
 // Badge helpers (duplicated locally — no shared component layer yet)
@@ -70,6 +71,7 @@ function ResolveModal({ onConfirm, onClose, saving }) {
           value={notes}
           onChange={e => setNotes(e.target.value)}
         />
+        <WhyDisabled reason={!saving && !notes.trim() ? 'Say how it was resolved to mark it resolved.' : ''} />
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
           <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: '8px', border: `1px solid ${ds.border}`, background: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
           <button onClick={() => onConfirm(notes)} disabled={saving || !notes.trim()} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: ds.green, color: 'white', fontSize: '13px', fontWeight: 600, cursor: saving || !notes.trim() ? 'not-allowed' : 'pointer', opacity: saving || !notes.trim() ? 0.65 : 1 }}>
@@ -504,6 +506,7 @@ export default function TicketDetail({ ticketId, onBack, onUpdated, onKBArticleP
                     </div>
                   ))}
 
+                  <WhyDisabled reason={kbSaving ? '' : !kbForm.title?.trim() ? 'Enter a title to publish.' : !kbForm.content?.trim() ? 'Write the article to publish.' : ''} />
                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
                     <button onClick={() => { setKbForm(null); setKbSuggestion(null) }} style={{ padding: '8px 16px', borderRadius: '7px', border: `1px solid ${ds.border}`, background: 'white', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: ds.gray }}>
                       Dismiss

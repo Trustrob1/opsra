@@ -14,6 +14,7 @@
 import { useState } from 'react'
 import { markLost } from '../../services/leads.service'
 import { ds, LOST_REASON_LABELS } from '../../utils/ds'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const LOST_REASONS = Object.entries(LOST_REASON_LABELS)
 
@@ -104,6 +105,7 @@ export default function MarkLostModal({ leadId, leadName, defaultReason = '', on
           <p style={{ color: ds.red, fontSize: 13, marginBottom: 14 }}>⚠ {error}</p>
         )}
 
+        <WhyDisabled reason={!reason && !submitting ? 'Choose a reason to mark the lead as lost.' : ''} style={{ textAlign: 'right', marginBottom: 8 }} />
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} disabled={submitting} style={secondaryBtn}>

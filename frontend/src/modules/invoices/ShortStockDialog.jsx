@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { AlertTriangle, Send } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { lab, inp, btnP, btnG, disabled } from './invoiceUi'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 export default function ShortStockDialog({ check, busy, error, onIssue, onRequest, onClose }) {
   const short = check.lines.filter((l) => l.short)
@@ -52,6 +53,7 @@ export default function ShortStockDialog({ check, busy, error, onIssue, onReques
             ? 'The goods are held at the location you choose, and delivered from there.'
             : 'An owner, operations manager or admin must approve this. The goods are held for this customer while they decide, and the invoice is issued once approved.'}
         </small>
+        <WhyDisabled style={{ textAlign: 'right' }} reason={!busy && short.length > 0 && !stuck.length && !ready ? 'Choose a location for every item that is short.' : ''} />
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           <button type="button" style={btnG} disabled={busy} onClick={onClose}>{stuck.length ? 'Close' : 'Cancel'}</button>
           {check.can_approve

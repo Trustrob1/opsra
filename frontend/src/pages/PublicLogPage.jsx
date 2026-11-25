@@ -16,6 +16,7 @@
 
 import { useState, useEffect } from 'react'
 import { getPublicLogForm, submitPublicLog, submitPublicActivities } from '../services/performance_logs.service'
+import WhyDisabled from '../shared/WhyDisabled'   // HINT-1
 
 // ── Minimal inline styles (no Tailwind — standalone page outside AppShell) ───
 const S = {
@@ -228,6 +229,7 @@ function PinGate({ onVerified, contractorName, error, loading }) {
       >
         {loading ? 'Verifying…' : 'Continue →'}
       </button>
+      <WhyDisabled style={{ textAlign: 'center' }} reason={!loading && pin.length < 4 ? 'Enter your PIN (at least 4 digits).' : ''} />
     </div>
   )
 }

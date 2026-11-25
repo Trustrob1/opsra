@@ -13,6 +13,7 @@ import { Card, SectionTitle, Button, Notice, Spinner, Modal, Field } from './sit
 import { T, INPUT, dateOnly } from './sitesKit'
 import { PurchaseForm, PayLinkResult, StatusBadge } from './SiteAddonsParts'
 import { money } from './siteAddonsKit'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const CAP_LABELS = { ai_messages: 'AI replies this month', bulk_recipients: 'Bulk message recipients this month', bookings: 'Bookings this month' }
 
@@ -217,6 +218,7 @@ export default function SiteAddonsCard({ siteId, siteName, canEdit, showToast })
 
       <Modal open={modal === 'grant'} onClose={close} title="Give free access" width={520}
         footer={<>
+          <WhyDisabled style={{ margin: '0 auto 0 0' }} reason={busy === 'grant' ? '' : !grantPlan ? 'Choose what to switch on.' : grantNeedsPick ? 'Make your choice for this plan to switch it on.' : ''} />
           <Button onClick={close}>Close</Button>
           <Button variant="primary" loading={busy === 'grant'} disabled={!grantPlan || grantNeedsPick} onClick={doGrant}>Switch on</Button>
         </>}>

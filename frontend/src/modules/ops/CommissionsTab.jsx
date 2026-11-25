@@ -40,6 +40,7 @@ import {
   deleteCommissionRate,
 } from '../../services/growth.service'
 import DateRangePresets from './DateRangePresets'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const INP = {
   padding:      '8px 10px',
@@ -131,6 +132,9 @@ function RateConfig({ rates, canEdit, onAdd, onUpdate, onDelete }) {
             + Add
           </button>
         </div>
+      )}
+      {canEdit && (newName.trim() || newRate) && (!newName.trim() || !newRate) && (
+        <WhyDisabled reason={!newName.trim() ? 'Enter the name to add it.' : 'Enter the rate per unit to add it.'} />
       )}
     </div>
   )

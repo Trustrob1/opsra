@@ -13,6 +13,7 @@ import WebChatInsights from './WebChatInsights'
 import WebChatInstall from './WebChatInstall'
 import WebChatAdLinks from './WebChatAdLinks'
 import WebChatHelper from './WebChatHelper'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.lg, padding: 16, marginBottom: 16, boxShadow: ds.cardShadow }
 const label = { display: 'block', fontSize: 12, fontWeight: 600, color: ds.dark, margin: '10px 0 4px', fontFamily: ds.fontDm }
@@ -237,6 +238,7 @@ export default function WebChatSettings() {
               <input id="wc-wat2" style={input} value={testPhone} inputMode="tel" placeholder="Your WhatsApp number" onChange={(e) => setTestPhone(e.target.value)} />
               <button type="button" style={btn(false)} disabled={busy || !testPhone || !cfg.wa_template_name} onClick={sendTest}>Send test</button>
             </div>
+            <WhyDisabled reason={busy ? '' : !cfg.wa_template_name ? 'Enter the template name above to send a test.' : !testPhone ? 'Enter your WhatsApp number to send a test.' : ''} />
           </>
         )}
       </div>

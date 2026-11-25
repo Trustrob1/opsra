@@ -12,6 +12,7 @@ import { getCreditSummary } from '../../services/credits.service'
 import {
   getWaOnboarding, saveWaBasics, requestWaSetup, getWaTestStatus, completeWaOnboarding, waError,
 } from '../../services/waOnboarding.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const STEPS = ['About your business', 'Connect WhatsApp', 'Test it', 'Go live']
 const CHECKLIST = [
@@ -115,6 +116,7 @@ export default function WaSetupWizard({ onDone, onSkip, onOpenBilling }) {
             <div style={{ marginTop: 18 }}>
               <button type="button" style={primary(busy || !basics.what_you_sell.trim() || !basics.hours.trim())}
                 disabled={busy || !basics.what_you_sell.trim() || !basics.hours.trim()} onClick={saveAbout}>Save and continue</button>
+              <WhyDisabled reason={busy ? '' : !basics.what_you_sell.trim() ? 'Say what you sell to continue.' : !basics.hours.trim() ? 'Enter your opening hours to continue.' : ''} />
             </div>
           </div>
         )}
@@ -146,6 +148,7 @@ export default function WaSetupWizard({ onDone, onSkip, onOpenBilling }) {
                     disabled={busy || !conn.whatsapp_phone_id || !conn.whatsapp_waba_id || !conn.whatsapp_access_token} onClick={connect}>
                     {busy ? 'Checking with Meta…' : 'Connect'}
                   </button>
+                  <WhyDisabled reason={busy ? '' : !conn.whatsapp_phone_id ? 'Enter the phone number ID to connect.' : !conn.whatsapp_waba_id ? 'Enter the WhatsApp Business account ID to connect.' : !conn.whatsapp_access_token ? 'Enter the access token to connect.' : ''} />
                 </div>
                 <h3 style={{ fontSize: 15, margin: '24px 0 0', color: ds.dark }}>Or let us do it for you</h3>
                 {helpSent ? (

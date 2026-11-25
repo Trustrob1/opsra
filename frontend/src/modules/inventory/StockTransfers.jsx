@@ -31,6 +31,12 @@ export function MoveStock({ locations, onClose, onDone }) {
   const total = lines.reduce((s, l) => s + (parseInt(l.quantity, 10) || 0), 0)
   const ready = from && to && from !== to && lines.length > 0
     && lines.every((l) => /^\d+$/.test(l.quantity) && Number(l.quantity) > 0 && (!l.sizes.length || l.variant))
+  const why = !from || !to ? 'Choose where the stock leaves from and where it goes.'   // HINT-1
+    : from === to ? 'Choose two different locations.'
+    : !lines.length ? 'Add at least one product to send.'
+    : lines.some((l) => l.sizes.length && !l.variant) ? 'Choose the size for every product.'
+    : lines.some((l) => !/^\d+$/.test(l.quantity) || Number(l.quantity) <= 0) ? 'Enter how many units to send for every product.'
+    : ''
 
   const save = async () => {
     if (!ready || busy) return
@@ -57,7 +63,7 @@ export function MoveStock({ locations, onClose, onDone }) {
   return (
     <StockModal title="Move stock" icon={Truck} onClose={onClose} busy={busy} width={720}
       footer={<>
-        <span style={{ color: ds.gray, fontSize: 13.5, marginRight: 'auto' }}>{total ? `${units(total)} unit${total === 1 ? '' : 's'} to move` : 'Add what you are sending'}</span>
+        <span style={{ color: ds.gray, fontSize: 13.5, marginRight: 'auto' }}>{why && (lines.length || from === to) ? why : total ? `${units(total)} unit${total === 1 ? '' : 's'} to move` : 'Add what you are sending'}</span>
         <button type="button" style={btnG} onClick={onClose} disabled={busy}>Cancel</button>
         <button type="button" style={disabled(btnP, !ready || busy)} disabled={!ready || busy} onClick={save}>{busy ? 'Sending…' : 'Send stock'}</button>
       </>}>
@@ -137,6 +143,7 @@ function TransferCard({ t, canManage, onChanged, onError }) {
         open ? (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {!valid && <span role="alert" style={{ color: ds.red, fontSize: 13, flexBasis: '100%' }}>A number is more than what's still on the way.</span>}
+            {valid && !any && !busy && <span role="status" style={{ color: ds.gray, fontSize: 13, flexBasis: '100%' }}>Enter how many units arrived to mark it received.</span>}
             <button type="button" style={disabled(btnP, !!busy || !valid || !any)} disabled={!!busy || !valid || !any}
               onClick={() => run('recv', () => receiveTransfer(t.id, { lines: entered }))}>{busy === 'recv' ? 'Saving…' : 'Mark received'}</button>
             <button type="button" style={disabled(btnG, !!busy || !valid)} disabled={!!busy || !valid}

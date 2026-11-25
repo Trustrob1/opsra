@@ -25,6 +25,7 @@ import LibraryPanel from './LibraryPanel'
 import SiteAddonsCard from './SiteAddonsCard'
 import SiteCaptureCard from './SiteCaptureCard'
 import SiteChatButtonCard from './SiteChatButtonCard'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -161,7 +162,7 @@ export default function SiteEditorPanel({ siteId, canEdit, isMobile, showToast, 
           {site.rendered_html ? 'View preview' : 'Render to preview'}
         </Button>
         <Button variant="secondary" icon={ExternalLink} onClick={() => window.open(previewUrl, '_blank', 'noopener')}
-          disabled={!site.rendered_html}>Open live preview URL</Button>
+          disabled={!site.rendered_html} title={!site.rendered_html ? 'Press Render preview first' : undefined}>Open live preview URL</Button>
         <Button variant="primary" icon={RefreshCw} loading={rendering} onClick={doRender}>Render preview</Button>
         {canEdit && (
           <Button variant="secondary" icon={CloudUpload} loading={publishing} onClick={doPublish}

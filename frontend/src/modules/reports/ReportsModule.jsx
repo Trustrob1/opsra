@@ -40,6 +40,7 @@ import {
 // getTeams(), the same list TeamsConfig.jsx / UserManagement.jsx /
 // InternalOpsModule.jsx already use.
 import { getTeams } from '../../services/admin.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1117,6 +1118,7 @@ function FilterPanel({ filters, setFilters, sections, setSections, teams, users,
           fontSize: 14, fontWeight: 600, fontFamily: ds.fontSyne }}>
         {loading ? 'Loading…' : 'Apply Filters'}
       </button>
+      <WhyDisabled reason={sections.length === 0 ? 'Choose at least one section to show or download the report.' : ''} style={{ textAlign: 'center' }} />
     </div>
   )
 

@@ -37,6 +37,7 @@ import { ds } from '../../utils/ds'
 import UserSelect from '../../shared/UserSelect'
 import useAuthStore from '../../store/authStore'
 import { BookingActions, BookingRowActions } from '../booking/BookingTools'   // BOOKING-1
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 // ── Status display config ─────────────────────────────────────────────────────
 
@@ -810,6 +811,7 @@ function LogOutcomeModal({ leadId, demo, onLogged, onClose, meetingLabel = 'Demo
         onCancel={onClose}
         saving={saving}
         disabled={!outcome}
+        why={!outcome ? 'Choose how the demo went to log it.' : ''}
         confirmLabel={isAttended ? '✓ Log & Generate Recap' : '✓ Log Outcome'}
       />
     </Modal>
@@ -845,8 +847,10 @@ function Modal({ title, onClose, children }) {
   )
 }
 
-function ModalActions({ onConfirm, onCancel, saving, disabled, confirmLabel = 'Confirm' }) {
+function ModalActions({ onConfirm, onCancel, saving, disabled, why, confirmLabel = 'Confirm' }) {
   return (
+    <>
+    <WhyDisabled reason={saving ? '' : why} style={{ margin: '8px 0 0' }} />
     <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
       <button
         onClick={onConfirm}
@@ -872,6 +876,7 @@ function ModalActions({ onConfirm, onCancel, saving, disabled, confirmLabel = 'C
         Cancel
       </button>
     </div>
+    </>
   )
 }
 

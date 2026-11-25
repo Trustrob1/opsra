@@ -17,6 +17,7 @@ import {
   connectWhatsApp,
   disconnectWhatsApp,
 } from '../../services/admin.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 export default function WhatsAppIntegration() {
   const [status, setStatus]                   = useState(null)
@@ -364,6 +365,7 @@ export default function WhatsAppIntegration() {
                   {saving ? 'Verifying with Meta…' : 'Connect'}
                 </button>
               </div>
+              <WhyDisabled style={{ textAlign: 'right' }} reason={saving ? '' : !form.whatsapp_phone_id.trim() ? 'Enter the phone number ID to connect.' : !form.whatsapp_access_token.trim() ? 'Enter the access token to connect.' : ''} />
             </form>
           </div>
         </div>

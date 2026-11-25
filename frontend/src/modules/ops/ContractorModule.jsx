@@ -41,6 +41,7 @@ import {
   parseContractKpis,
 } from '../../services/contractors.service'
 import { KPI_TEMPLATES } from './contractorKpiTemplates'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -1684,9 +1685,14 @@ function ContractorCreateModal({ onClose, onCreated }) {
             {step === 0 ? 'Cancel' : '← Back'}
           </Btn>
           {step < STEPS.length - 1 ? (
-            <Btn onClick={() => setStep(p => p + 1)} disabled={!canNext()}>
-              Next →
-            </Btn>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+              <WhyDisabled style={{ margin: 0 }} reason={canNext() ? '' : step === 0
+                ? (!fullName.trim() ? 'Enter the full name to continue.' : 'Enter the role to continue.')
+                : (!contractStart ? 'Choose the contract start date to continue.' : 'Enter the fee to continue.')} />
+              <Btn onClick={() => setStep(p => p + 1)} disabled={!canNext()}>
+                Next →
+              </Btn>
+            </span>
           ) : (
             <Btn onClick={handleSubmit} disabled={saving}>
               {saving ? 'Saving…' : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Check size={13} />Save Contractor</span>}
@@ -1804,6 +1810,7 @@ function LogLinkSetup({ contractor, onRefresh }) {
           </button>
         )}
       </div>
+      {!logUrl && !generating && pin.length < 4 && <WhyDisabled reason="Set a PIN of 4 to 6 digits to make the link." />}
     </div>
   )
 }

@@ -13,6 +13,7 @@ import {
   ACCENT_PRESETS, ANNOUNCEMENT_MAX, TRUST_POINT_CHARS, DEFAULT_ACCENT, isHex,
   lookFromConfig, lookPayload, lookChanged, effectiveAccent, storefrontLocked,
 } from './catalogStorefrontLogic'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const CARD = { background: 'white', borderRadius: 12, border: '1px solid #E1E5EC', padding: 24, marginBottom: 20 }
 const H = { fontFamily: ds.fontSyne, fontWeight: 700, fontSize: 15, color: '#1B1F28', margin: '0 0 6px' }
@@ -206,6 +207,7 @@ export default function CatalogLook() {
             {saving ? 'Saving…' : 'Save look'}
           </button>
           {toast && <span role="status" style={{ fontFamily: ds.fontDm, fontSize: 13, color: '#1B6B49', fontWeight: 600 }}>{toast}</span>}
+          <WhyDisabled style={{ margin: 0 }} reason={!saving && !changed && !toast ? "No changes to save yet." : ''} />
         </div>
       </div>
     </div>

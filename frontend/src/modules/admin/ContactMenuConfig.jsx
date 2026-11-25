@@ -14,6 +14,7 @@ import { useState, useEffect } from 'react'
 import { ds } from '../../utils/ds'
 import { getContactMenus, updateContactMenus } from '../../services/admin.service'
 import { getBookingSettings } from '../../services/booking.service'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ function ItemEditor({ items, setItems, sectionKey, actionOptions = ACTION_OPTION
           + Add item
         </button>
       </div>
+      {items.length >= 10 && <WhyDisabled reason="A menu can have up to 10 items. Remove one to add another." />}
 
       {items.length === 0 && (
         <div style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', padding: '20px 0' }}>

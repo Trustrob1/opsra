@@ -10,6 +10,7 @@ import { ds } from '../../utils/ds'
 import { approvePayment, rejectPayment, cancelPayment, apiError } from '../../services/invoices.service'
 import useAuthStore from '../../store/authStore'
 import { naira, niceDate, METHOD_LABEL, inp, btnP, btnG, btnDanger, disabled } from './invoiceUi'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 export function PendingPaymentRow({ p, canConfirm, showInvoice = false, onChanged }) {
   const me = useAuthStore((s) => s.user?.id)
@@ -55,6 +56,7 @@ export function PendingPaymentRow({ p, canConfirm, showInvoice = false, onChange
           <button type="button" style={btnG} disabled={!!busy} onClick={() => { setRejecting(false); setReason('') }}>Cancel</button>
           <button type="button" style={disabled(btnDanger, !!busy || reason.trim().length < 3)} disabled={!!busy || reason.trim().length < 3}
             onClick={run('reject', () => rejectPayment(p.id, reason.trim()))}>{busy === 'reject' ? 'Rejecting…' : 'Reject payment'}</button>
+          <WhyDisabled reason={!busy && reason.trim().length < 3 ? 'Write the reason (at least 3 letters).' : ''} style={{ flexBasis: '100%', margin: 0 }} />
         </div>
       )}
       {p.status === 'rejected' && <small style={{ color: ds.red }}>Rejected{p.decided_by_name ? ` by ${p.decided_by_name}` : ''}: {p.decision_note}</small>}

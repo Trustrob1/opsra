@@ -16,6 +16,7 @@ import { ds } from '../../utils/ds'
 import { createTask } from '../../services/tasks.service'
 import useAuthStore from '../../store/authStore'
 import UserSelect   from '../../shared/UserSelect'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const PRIORITIES = ['critical', 'high', 'medium', 'low']
 const MODULES    = [
@@ -184,9 +185,10 @@ export default function CreateTaskModal({ onClose, onCreated }) {
 
         {/* Footer */}
         <div style={{
-          display: 'flex', gap: 10, justifyContent: 'flex-end',
+          display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap',
           padding: '0 24px 20px',
         }}>
+          <WhyDisabled reason={!loading && !title.trim() ? 'Enter a title to create the task.' : ''} style={{ margin: 0, marginRight: 'auto' }} />
           <button onClick={onClose} style={btnGhost}>Cancel</button>
           <button
             onClick={handleSubmit}

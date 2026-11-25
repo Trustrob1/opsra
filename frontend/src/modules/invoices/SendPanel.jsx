@@ -8,6 +8,7 @@ import { Send, Copy, Check, Mail, MessageCircle, MessagesSquare } from 'lucide-r
 import { ds } from '../../utils/ds'
 import { getSendOptions, sendDoc, apiError } from '../../services/invoices.service'
 import { niceDate, lab, inp, btnG, disabled } from './invoiceUi'
+import WhyDisabled from '../../shared/WhyDisabled'   // HINT-1
 
 const NAMES = { whatsapp: 'WhatsApp', webchat: 'web chat', email: 'email' }
 
@@ -78,6 +79,7 @@ export default function SendPanel({ doc, onSent }) {
             <Mail size={16} />{busy === 'email' ? 'Sending…' : 'Send email'}
           </button>
         </div>
+        <WhyDisabled reason={!emailOk && !busy ? email.trim() ? "That email address doesn't look right." : 'Type the customer\'s email to send it.' : ''} />
       </div>
       {opts.link && (
         <div>

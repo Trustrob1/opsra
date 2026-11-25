@@ -697,6 +697,7 @@ export default function QualificationFlow() {
                           style={{ ...S.iconBtn, fontSize: 11 }}
                           onClick={() => addOption(idx)}
                           disabled={(q.options || []).length >= (q.type === 'list_select' ? 10 : 3)}
+                          title={(q.options || []).length >= (q.type === 'list_select' ? 10 : 3) ? `This question can have up to ${q.type === 'list_select' ? 10 : 3} options` : undefined}
                         >
                           + Option
                         </button>
