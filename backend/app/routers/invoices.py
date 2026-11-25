@@ -74,6 +74,7 @@ class ItemIn(_Strict):
     description: Optional[str] = Field(None, max_length=500)
     quantity: Decimal = Field(..., gt=0, le=1_000_000)
     unit_price: Optional[Decimal] = Field(None, ge=0, le=100_000_000_000)
+    variant: Optional[str] = Field(None, max_length=100)   # INV-SALES-2 size
 
     _money = field_validator("quantity", "unit_price")(_two_places)
 
@@ -92,6 +93,7 @@ class _DocFields(_Strict):
     due_date: Optional[date] = None
     notes: Optional[str] = Field(None, max_length=5000)
     terms: Optional[str] = Field(None, max_length=5000)
+    region: Optional[str] = Field(None, max_length=255)   # INV-SALES-1 (checked against the business's regions)
     items: Optional[List[ItemIn]] = Field(None, max_length=inv.MAX_ITEMS)
 
     _money = field_validator("discount")(_two_places)
@@ -136,6 +138,7 @@ class ReceiptIn(_Strict):
     reference: Optional[str] = Field(None, max_length=200)
     paid_at: Optional[date] = None
     description: str = Field(..., min_length=1, max_length=500)
+    region: Optional[str] = Field(None, max_length=255)   # INV-SALES-1
 
     _money = field_validator("amount")(_two_places)
 
@@ -171,6 +174,7 @@ class SettingsIn(_Strict):
     brand_colour: Optional[str] = Field(None, pattern=_COLOUR)
     email_reply_to: Optional[str] = Field(None, max_length=254)
     reminders_enabled: Optional[bool] = None   # INV-5
+    sales_record_enabled: Optional[bool] = None   # INV-SALES-1
 
     _money = field_validator("vat_rate")(_two_places)
 
@@ -275,6 +279,25 @@ async def ai_draft(body: AiDraftIn, org: dict = Depends(get_current_org), db=Dep
         return ok(ai.suggest_lines(db, org_id, str(body.lead_id)))
     except inv.InvoiceError as e:
         return _fail(e)
+
+
+# INV-SALES-1 ─ declared before /invoices/{doc_id}
+@router.get("/invoices/regions")
+async def get_regions(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_sales_service as sales
+    org_id, _ = _ids(org)
+    return ok({"regions": sales.regions(db, org_id)})
+
+
+@router.get("/invoices/part-paid")
+async def get_part_paid(start: Optional[date] = None, end: Optional[date] = None,
+                        rep: Optional[str] = Query(None, max_length=200), region: Optional[str] = Query(None, max_length=255),
+                        org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_sales_service as sales
+    org_id, _ = _ids(org)
+    if start and end and start > end:
+        return _fail(inv.InvoiceError("VALIDATION_ERROR", "The start date is after the end date.", 422, "start"))
+    return ok(sales.part_paid_summary(db, org_id, start, end, rep, region))
 
 
 @router.get("/invoices/products")

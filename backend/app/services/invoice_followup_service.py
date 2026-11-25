@@ -102,6 +102,11 @@ def run(db, dry_run: bool = False, on: Optional[date] = None) -> dict:
     except Exception as exc:
         logger.error("invoice_followup: quote expiry step failed: %s", exc)
         out["failed"] += 1
+    # INV-SALES-1: paid invoices that did not reach Sales Record when they were paid
+    from app.services import invoice_sales_service as sales
+    r = sales.retry_missing(db, dry_run=dry_run)
+    out["sales_missing"], out["sales_added"] = r["checked"], r["added"]
+    out["failed"] += r["failed"]
     return out
 
 

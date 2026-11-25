@@ -41,6 +41,7 @@ SETTINGS_FIELDS = (
     "vat_enabled", "vat_rate", "default_due_days", "default_quote_valid_days",
     "default_terms", "footer", "brand_colour", "email_reply_to",
     "reminders_enabled",   # INV-5
+    "sales_record_enabled", "sales_record_since",   # INV-SALES-1 (since is set by save_settings, never sent in)
 )
 DEFAULT_SETTINGS = {
     "business_name": None, "address": None, "phone": None, "email": None, "rc_number": None, "tin": None,
@@ -49,6 +50,7 @@ DEFAULT_SETTINGS = {
     "vat_enabled": False, "vat_rate": 7.5, "default_due_days": 7, "default_quote_valid_days": 14,
     "default_terms": None, "footer": None, "brand_colour": "#0d9488", "email_reply_to": None,
     "reminders_enabled": False,
+    "sales_record_enabled": False, "sales_record_since": None,
 }
 # What an issued document keeps of the settings (printed on it forever).
 ISSUER_FIELDS = ("business_name", "address", "phone", "email", "rc_number", "tin", "logo_url",
@@ -171,7 +173,9 @@ def get_settings(db, org_id: str) -> dict:
 
 
 def save_settings(db, org_id: str, data: dict) -> dict:
-    row = {k: v for k, v in data.items() if k in SETTINGS_FIELDS}
+    row = {k: v for k, v in data.items() if k in SETTINGS_FIELDS and k != "sales_record_since"}
+    if row.get("sales_record_enabled") is True and not get_settings(db, org_id).get("sales_record_enabled"):
+        row["sales_record_since"] = _now_iso()   # INV-SALES-1: only invoices paid from now on go to Sales Record
     if "vat_rate" in row and row["vat_rate"] is not None:
         row["vat_rate"] = _f(_d(row["vat_rate"]))
     row["org_id"] = org_id
@@ -210,8 +214,29 @@ def _customer_snapshot(db, org_id: str, data: dict) -> dict:
     return snap
 
 
+def product_sizes(prod: Optional[dict]) -> list:
+    """INV-SALES-2: the sizes a catalogue product is sold in ([{title, price}]), from its Shopify variants.
+    A product with one 'Default Title' variant has no sizes."""
+    out, seen = [], set()
+    for v in ((prod or {}).get("variants") or []) if isinstance((prod or {}).get("variants"), list) else []:
+        if not isinstance(v, dict):
+            continue
+        title = str(v.get("title") or v.get("option1") or "").strip()[:100]
+        if not title or title.lower() == "default title" or title.lower() in seen:
+            continue
+        seen.add(title.lower())
+        try:
+            price = float(v.get("price")) if v.get("price") not in (None, "") else None
+        except (TypeError, ValueError):
+            price = None
+        out.append({"title": title, "price": price})
+    return out
+
+
 def _resolve_items(db, org_id: str, items: list) -> list:
-    """Catalogue lines: product must be the org's; description / price default to the product's."""
+    """Catalogue lines: product must be the org's; description / price default to the product's.
+    INV-SALES-2: a size (variant) must be one of the product's sizes; it sets the price when none is typed and is added
+    to the line text so the customer sees it. Typed lines may carry a size as free text."""
     if len(items) > MAX_ITEMS:
         raise InvoiceError("VALIDATION_ERROR", f"At most {MAX_ITEMS} lines.", 422, "items")
     out = []
@@ -219,14 +244,27 @@ def _resolve_items(db, org_id: str, items: list) -> list:
         it = dict(it)
         pid = it.get("product_id")
         if pid:
-            prod = _one(db, "products", org_id, pid, "id, title, price")
+            prod = _one(db, "products", org_id, pid, "id, title, price, variants")
             if not prod:
                 raise InvoiceError("NOT_FOUND", "Product not found.", 404, "product_id")
             it["product_id"] = prod["id"]
             if not (it.get("description") or "").strip():
                 it["description"] = prod.get("title") or "Item"
+            sizes = product_sizes(prod)
+            want = str(it.get("variant") or "").strip()
+            size = None
+            if want:
+                size = next((s for s in sizes if s["title"].lower() == want.lower()), None)
+                if not size:
+                    raise InvoiceError("VALIDATION_ERROR", f"Choose one of the sizes for {prod.get('title') or 'this product'}.",
+                                       422, "variant")
+            it["variant"] = size["title"] if size else None
             if it.get("unit_price") is None:
-                it["unit_price"] = prod.get("price") or 0
+                it["unit_price"] = (size or {}).get("price") if (size or {}).get("price") is not None else (prod.get("price") or 0)
+        else:
+            it["variant"] = (str(it.get("variant") or "").strip()[:100]) or None
+        if it.get("variant") and it["variant"].lower() not in str(it.get("description") or "").lower():
+            it["description"] = f"{str(it.get('description') or '').strip()} - {it['variant']}"[:500]
         desc = (it.get("description") or "").strip()
         if not desc:
             raise InvoiceError("VALIDATION_ERROR", "Every line needs a description.", 422, "description")
@@ -244,7 +282,7 @@ def _write_items(db, org_id: str, doc_id: str, lines: list) -> None:
         db.table("invoice_items").insert([{
             "invoice_id": doc_id, "org_id": org_id, "product_id": ln.get("product_id"),
             "description": ln["description"], "quantity": _f(ln["quantity"]), "unit_price": _f(ln["unit_price"]),
-            "line_total": _f(ln["line_total"]), "position": ln["position"],
+            "line_total": _f(ln["line_total"]), "position": ln["position"], "variant": ln.get("variant"),
         } for ln in lines]).execute()
 
 
@@ -286,6 +324,14 @@ def get_doc(db, org_id: str, doc_id: str) -> dict:
         .order("position").execute()
     doc = _decorate(doc)
     doc["items"] = (items.data or []) if items else []
+    if doc.get("status") == "draft":   # INV-SALES-2: the editor offers each product line's sizes
+        pids = sorted({i["product_id"] for i in doc["items"] if i.get("product_id")})
+        if pids:
+            prods = db.table("products").select("id, variants").eq("org_id", org_id).in_("id", pids).execute()
+            by_id = {p["id"]: product_sizes(p) for p in ((prods.data or []) if prods else [])}
+            for i in doc["items"]:
+                if i.get("product_id"):
+                    i["sizes"] = by_id.get(i["product_id"], [])
     return doc
 
 
@@ -341,6 +387,9 @@ def create_draft(db, org_id: str, user_id: Optional[str], data: dict) -> dict:
         "terms": data.get("terms") if data.get("terms") is not None else settings.get("default_terms"),
         "created_by": user_id,
     }
+    if data.get("region") is not None:   # INV-SALES-1
+        from app.services import invoice_sales_service as sales
+        row["region"] = sales.clean_region(db, org_id, data.get("region"))
     res = db.table("invoices").insert(row).execute()
     doc = res.data[0]
     _write_items(db, org_id, doc["id"], totals["lines"])
@@ -374,6 +423,9 @@ def update_draft(db, org_id: str, user_id: Optional[str], doc_id: str, data: dic
     for k in ("notes", "terms", "currency"):
         if k in data:
             patch[k] = data[k]
+    if "region" in data:   # INV-SALES-1
+        from app.services import invoice_sales_service as sales
+        patch["region"] = sales.clean_region(db, org_id, data.get("region"))
     if "items" in data:
         lines = _resolve_items(db, org_id, data.get("items") or [])
     else:
@@ -414,6 +466,22 @@ def next_number(db, org_id: str, kind: str, prefix: str) -> str:
     return f"{prefix or ''}{int(value):04d}"
 
 
+def _sizes_picked(db, org_id: str, doc_id: str) -> None:
+    """INV-SALES-2: every catalogue line whose product comes in sizes must have its size picked."""
+    res = db.table("invoice_items").select("product_id, description, variant").eq("invoice_id", doc_id) \
+        .eq("org_id", org_id).execute()
+    lines = [i for i in ((res.data or []) if res else []) if i.get("product_id") and not i.get("variant")]
+    if not lines:
+        return
+    prods = db.table("products").select("id, title, variants").eq("org_id", org_id) \
+        .in_("id", sorted({i["product_id"] for i in lines})).execute()
+    sized = {p["id"]: p.get("title") for p in ((prods.data or []) if prods else []) if product_sizes(p)}
+    for i in lines:
+        if i["product_id"] in sized:
+            raise InvoiceError("VALIDATION_ERROR", f"Choose the size for {sized[i['product_id']] or i.get('description')}.",
+                               422, "variant")
+
+
 def issue(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
     doc = _draft_or_raise(db, org_id, doc_id)
     items = db.table("invoice_items").select("id").eq("invoice_id", doc["id"]).eq("org_id", org_id).execute()
@@ -423,6 +491,10 @@ def issue(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
         raise InvoiceError("VALIDATION_ERROR", "The total must be more than 0.", 422, "total")
     if not (doc.get("customer_name") or "").strip():
         raise InvoiceError("VALIDATION_ERROR", "Add the customer's name before issuing.", 422, "customer_name")
+    from app.services import invoice_sales_service as sales   # INV-SALES-1
+    if not doc.get("region") and sales.region_required(db, org_id):
+        raise InvoiceError("VALIDATION_ERROR", "Choose the region before issuing.", 422, "region")
+    _sizes_picked(db, org_id, doc["id"])   # INV-SALES-2
     settings = get_settings(db, org_id)
     kind = doc["doc_type"]
     number = next_number(db, org_id, kind, settings.get(f"{kind}_prefix"))
@@ -496,7 +568,7 @@ def convert_quote(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
     row = {
         "org_id": org_id, "doc_type": "invoice", "status": "draft",
         **{k: quote.get(k) for k in ("lead_id", "customer_id", "customer_name", "customer_phone",
-                                     "customer_email", "customer_address", "currency", "notes", "terms")},
+                                     "customer_email", "customer_address", "currency", "notes", "terms", "region")},
         **_totals_row(totals), "converted_from_id": quote["id"], "created_by": user_id,
     }
     res = db.table("invoices").insert(row).execute()
@@ -518,14 +590,14 @@ def _needle(q: Optional[str]) -> str:
 
 
 def search_products(db, org_id: str, q: Optional[str] = None, limit: int = 20) -> list:
-    query = db.table("products").select("id, title, price, image_url, available, is_active").eq("org_id", org_id)
+    query = db.table("products").select("id, title, price, image_url, available, is_active, variants").eq("org_id", org_id)
     needle = _needle(q)
     if needle:
         query = query.ilike("title", f"%{needle}%")
     res = query.order("title").limit(200).execute()
     rows = [r for r in ((res.data or []) if res else []) if r.get("is_active") is not False]
     return [{"id": r["id"], "title": r.get("title"), "price": r.get("price"), "image_url": r.get("image_url"),
-             "available": r.get("available")} for r in rows[:limit]]
+             "available": r.get("available"), "sizes": product_sizes(r)} for r in rows[:limit]]
 
 
 def search_contacts(db, org_id: str, q: Optional[str] = None, limit: int = 10) -> list:

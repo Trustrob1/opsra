@@ -27,7 +27,7 @@ export default function InvoiceSettings() {
     TEXT.forEach((k) => { f[k] = d[k] ?? '' })
     setForm({ ...f, vat_enabled: !!d.vat_enabled, vat_rate: String(d.vat_rate ?? 7.5), default_due_days: String(d.default_due_days ?? 7),
       default_quote_valid_days: String(d.default_quote_valid_days ?? 14), brand_colour: d.brand_colour || '#0d9488',
-      reminders_enabled: !!d.reminders_enabled })
+      reminders_enabled: !!d.reminders_enabled, sales_record_enabled: !!d.sales_record_enabled })
   }
   useEffect(() => { getInvoiceSettings().then(adopt).catch((e) => setMsg({ ok: false, text: apiError(e) })) }, [])
 
@@ -45,6 +45,7 @@ export default function InvoiceSettings() {
     body.default_quote_valid_days = parseInt(form.default_quote_valid_days, 10) || 14
     body.brand_colour = form.brand_colour
     body.reminders_enabled = !!form.reminders_enabled
+    body.sales_record_enabled = !!form.sales_record_enabled
     try { adopt(await saveInvoiceSettings(body)); setMsg({ ok: true, text: 'Saved. New documents will use these details.' }) }
     catch (e) { setMsg({ ok: false, text: apiError(e, 'Could not save. Check the details and try again.') }) }
     finally { setBusy('') }
@@ -138,6 +139,22 @@ export default function InvoiceSettings() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section style={card}>
+        <h3 style={h}>Sales Record</h3>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', color: ds.dark }}>
+          <input type="checkbox" checked={!!form.sales_record_enabled} onChange={set('sales_record_enabled')} style={{ width: 18, height: 18, marginTop: 2 }} />
+          <span>Add paid invoices to Sales Record
+            <small style={{ display: 'block', color: ds.gray, marginTop: 4 }}>
+              When an invoice is fully paid, each line goes into Business Activities &gt; Sales Record with the rep who made
+              the invoice, its region, product, size and units, so commissions count it. A receipt with no invoice goes in
+              as one sale. Part-paid invoices show in their own card there and count once they are fully paid. Only invoices
+              paid after you turn this on are added. If you also type sales into the Google Sheet, leave invoiced sales out
+              of it, or they will be counted twice.
+            </small>
+          </span>
+        </label>
       </section>
 
       <section style={card}>

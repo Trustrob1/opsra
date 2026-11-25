@@ -10,6 +10,8 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { listReceipts, createReceipt, pickContacts, apiError } from '../../services/invoices.service'
 import { naira, niceDate, todayYmd, METHOD_LABEL, card, lab, inp, btnP, btnG, disabled } from './invoiceUi'
 import ReceiptActions from './ReceiptActions'
+import RegionSelect from './RegionSelect'   // INV-SALES-2
+import { useRegions, lastRegion } from './useRegions'
 
 const PAGE = 50
 const MANUAL = ['bank_transfer', 'cash', 'pos', 'ussd', 'other']
@@ -84,7 +86,9 @@ export default function ReceiptsList({ isAdmin, onChanged }) {
 }
 
 function NewReceipt({ onCancel, onDone }) {
-  const [f, setF] = useState({ lead_id: null, customer_name: '', amount: '', method: 'cash', paid_at: todayYmd(), reference: '', description: '' })
+  const regions = useRegions()
+  const [f, setF] = useState({ lead_id: null, customer_name: '', amount: '', method: 'cash', paid_at: todayYmd(), reference: '', description: '', region: '' })
+  useEffect(() => { if (regions.length) setF((x) => (x.region ? x : { ...x, region: lastRegion(regions) })) }, [regions])
   const [found, setFound] = useState([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -99,13 +103,14 @@ function NewReceipt({ onCancel, onDone }) {
   }, [f.customer_name, f.lead_id])
 
   const amount = String(f.amount).replace(/,/g, '').trim()
-  const ok = /^\d+(\.\d{1,2})?$/.test(amount) && Number(amount) > 0 && f.customer_name.trim() && f.description.trim()
+  const ok = /^\d+(\.\d{1,2})?$/.test(amount) && Number(amount) > 0 && f.customer_name.trim() && f.description.trim() && (!regions.length || f.region)
   const save = async () => {
     setBusy(true); setErr('')
     try {
       await createReceipt({
         ...(f.lead_id ? { lead_id: f.lead_id } : {}), customer_name: f.customer_name.trim(), amount, method: f.method,
         paid_at: f.paid_at || null, reference: f.reference.trim() || null, description: f.description.trim(),
+        ...(f.region ? { region: f.region } : {}),
       })
       onDone()
     } catch (e) { setErr(apiError(e, 'Could not make the receipt. Please try again.')) } finally { setBusy(false) }
@@ -138,6 +143,7 @@ function NewReceipt({ onCancel, onDone }) {
           </select></div>
         <div><label style={lab} htmlFor="rc-date">Date paid</label><input id="rc-date" type="date" style={inp} max={todayYmd()} value={f.paid_at} onChange={(e) => set({ paid_at: e.target.value })} /></div>
         <div><label style={lab} htmlFor="rc-ref">Reference (optional)</label><input id="rc-ref" style={inp} maxLength={200} value={f.reference} onChange={(e) => set({ reference: e.target.value })} /></div>
+        <RegionSelect id="rc-region" regions={regions} value={f.region} onChange={(v) => set({ region: v })} />
       </div>
       <div><label style={lab} htmlFor="rc-desc">What it was for</label><input id="rc-desc" style={inp} maxLength={500} placeholder="e.g. 2 pillows" value={f.description} onChange={(e) => set({ description: e.target.value })} /></div>
       {err && <div role="alert" style={{ color: ds.red, fontSize: 14 }}>{err}</div>}

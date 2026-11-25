@@ -83,7 +83,7 @@ def test_dry_run_counts_but_sends_and_writes_nothing(mail):
     with patch("app.services.whatsapp_service._is_lead_window_open", return_value=False):
         out = fu.run(db, dry_run=True, on=TODAY)
     assert out == {"dry_run": True, "orgs": 1, "reminders_sent": 1, "no_channel": 0, "quotes_expired": 0,
-                   "skipped_plan": 0, "failed": 0}
+                   "skipped_plan": 0, "failed": 0, "sales_missing": 0, "sales_added": 0}   # INV-SALES-1 keys
     assert not mail and _row(db, "invoices", d["id"]).get("reminder_count", 0) == 0
     assert len(db.rows("audit_logs")) == before
 

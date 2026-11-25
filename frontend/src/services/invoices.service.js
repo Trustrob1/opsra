@@ -54,6 +54,10 @@ export const getReceiptSendOptions = (id) => api.get(`/api/v1/receipts/${id}/sen
 export const sendReceipt = (id, channel, email) => api.post(`/api/v1/receipts/${id}/send`, { channel, ...(email ? { email } : {}) }).then(d)
 export const downloadReceiptPdf = (id, filename) => savePdf(`/api/v1/receipts/${id}/pdf`, filename)
 
+// INV-SALES-2: regions (Data Sources) and the part-paid card on Sales Record
+export const getInvoiceRegions = () => api.get('/api/v1/invoices/regions').then(d)
+export const getPartPaid = (params) => api.get('/api/v1/invoices/part-paid', { params }).then(d)
+
 // INV-5: report, receipts CSV, AI lines from the chat
 export const getInvoiceReport = (start, end) => api.get('/api/v1/invoices/report', { params: { start, end } }).then(d)
 export const downloadReceiptsCsv = (start, end) => savePdf(`/api/v1/invoices/report/receipts.csv?start=${start}&end=${end}`)

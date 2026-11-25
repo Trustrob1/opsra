@@ -65,6 +65,8 @@ import {
 import { ds } from '../../utils/ds'
 import { getDirectSales, getDirectSalesSummary, getDirectSalesFilterOptions, getCommissionRates } from '../../services/growth.service'
 import DateRangePresets from './DateRangePresets'
+import { getPartPaid } from '../../services/invoices.service'   // INV-SALES-2
+import InvoiceEditor from '../invoices/InvoiceEditor'           // INV-SALES-2
 
 const INP = {
   padding:      '8px 10px',
@@ -620,6 +622,8 @@ export default function SalesRecordTab({ isActive }) {
             <Kpi label="Average Sale Value" value={fmtCurrency(kpis.avgSale)} delta={kpiDeltas?.avgSale} />
           </div>
 
+          <PartPaidCard dateFrom={dateFrom} dateTo={dateTo} repName={repName} fmtCurrency={fmtCurrency} />
+
           <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
             <BreakdownCard title="Revenue by Region" rows={regionBreakdown} formatValue={fmtCurrency} />
             <BreakdownCard title="Reconciled vs. Pending" rows={statusBreakdown} formatValue={fmtCurrency} />
@@ -663,10 +667,11 @@ export default function SalesRecordTab({ isActive }) {
                       <td style={{ padding: '10px 14px', fontSize: 13, color: '#1B1F28', fontWeight: 500 }}>
                         {s.amount != null ? fmtCurrency(s.amount) : '—'}
                       </td>
-                      <td style={{ padding: '10px 14px' }}>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         {s.reconciliation_status
                           ? <Badge text={s.reconciliation_status} tone={s.reconciliation_status === 'Reconciled' ? 'rec' : 'pen'} />
                           : <Badge text="—" tone="none" />}
+                        {s.import_source === 'invoice' && <span title={s.notes || 'From a paid invoice'} style={{ marginLeft: 6 }}><Badge text="Invoice" tone="none" /></span>}
                       </td>
                     </tr>
                   ))}
@@ -682,6 +687,75 @@ export default function SalesRecordTab({ isActive }) {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// INV-SALES-2: invoices that are part paid (issued in the chosen dates, made by the chosen rep). Not counted in the
+// revenue above until fully paid. Hidden when the business has no invoices (plan) or the lookup fails.
+function PartPaidCard({ dateFrom, dateTo, repName, fmtCurrency }) {
+  const [data, setData] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [docId, setDocId] = useState(null)
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    let live = true
+    const params = {}
+    if (dateFrom) params.start = dateFrom
+    if (dateTo) params.end = dateTo
+    if (repName) params.rep = repName
+    getPartPaid(params).then((d) => { if (live) setData(d) }).catch(() => { if (live) setData(null) })
+    return () => { live = false }
+  }, [dateFrom, dateTo, repName, tick])
+  if (!data) return null
+  const cell = { padding: '8px 12px', fontSize: 13, color: '#1B1F28' }
+  return (
+    <div style={{ ...CARD, marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 200px' }}>
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1B1F28', margin: 0 }}>Part-paid invoices</p>
+          <p style={{ fontSize: 12, color: '#5B6270', margin: '2px 0 0' }}>Counted in the revenue above once fully paid.</p>
+        </div>
+        <Stat label="Invoices" value={data.count.toLocaleString()} />
+        <Stat label="Received so far" value={fmtCurrency(data.received)} />
+        <Stat label="Still owed" value={fmtCurrency(data.owed)} />
+        {data.count > 0 && (
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+            style={{ ...INP, cursor: 'pointer', fontWeight: 600, minHeight: 36 }}>{open ? 'Hide list' : 'See list'}</button>
+        )}
+      </div>
+      {open && data.items.length > 0 && (
+        <div style={{ overflowX: 'auto', marginTop: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ background: '#F8FBFC' }}>
+              {['Invoice', 'Customer', 'Rep', 'Region', 'Total', 'Paid', 'Balance'].map((h) => (
+                <th key={h} style={{ textAlign: ['Total', 'Paid', 'Balance'].includes(h) ? 'right' : 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px' }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>{data.items.map((it) => (
+              <tr key={it.id} style={{ borderTop: '1px solid #F0F7FA' }}>
+                <td style={cell}><button type="button" onClick={() => setDocId(it.id)} style={{ background: 'none', border: 'none', padding: 0, color: ds.teal, fontWeight: 600, cursor: 'pointer', fontSize: 13, minHeight: 32 }}>{it.number}</button></td>
+                <td style={cell}>{it.customer_name || '—'}</td>
+                <td style={cell}>{it.rep_name || 'Not recorded'}</td>
+                <td style={{ ...cell, color: '#5B6270' }}>{it.region || '—'}</td>
+                <td style={{ ...cell, textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtCurrency(it.total)}</td>
+                <td style={{ ...cell, textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtCurrency(it.amount_paid)}</td>
+                <td style={{ ...cell, textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600 }}>{fmtCurrency(it.balance)}</td>
+              </tr>))}</tbody>
+          </table>
+          {data.count > data.items.length && <p style={{ fontSize: 12, color: '#5B6270', margin: '8px 0 0' }}>Showing the newest {data.items.length}. Open Invoices to see them all.</p>}
+        </div>
+      )}
+      {docId && <InvoiceEditor docId={docId} onClose={() => setDocId(null)} onChanged={() => setTick((n) => n + 1)} />}
+    </div>
+  )
+}
+
+function Stat({ label, value }) {
+  return (
+    <div style={{ minWidth: 120 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#5B6270', textTransform: 'uppercase', letterSpacing: '0.6px' }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: '#1B1F28', marginTop: 2 }}>{value}</div>
     </div>
   )
 }

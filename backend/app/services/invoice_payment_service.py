@@ -130,6 +130,9 @@ def _recompute(db, org_id: str, invoice_id: str) -> tuple[dict, bool]:
         new = old
     db.table("invoices").update({"amount_paid": inv._f(paid), "status": new, "updated_at": inv._now_iso()}) \
         .eq("id", invoice_id).eq("org_id", org_id).execute()
+    if new == "paid" or old == "paid":   # INV-SALES-1: add to / take out of Sales Record (never raises)
+        from app.services import invoice_sales_service as sales
+        sales.sync_invoice(db, org_id, invoice_id)
     return inv.get_doc(db, org_id, invoice_id), (new == "paid" and old != "paid")
 
 
@@ -214,14 +217,19 @@ def standalone_receipt(db, org_id: str, user_id: Optional[str], data: dict) -> d
     description = (data.get("description") or "").strip()
     if not description:
         raise inv.InvoiceError("VALIDATION_ERROR", "Say what the payment was for.", 422, "description")
+    from app.services import invoice_sales_service as sales   # INV-SALES-1
+    region = sales.clean_region(db, org_id, data.get("region"))
+    if not region and sales.region_required(db, org_id):
+        raise inv.InvoiceError("VALIDATION_ERROR", "Choose the region.", 422, "region")
     row = {
         "invoice_id": None, "lead_id": snap.get("lead_id"), "customer_id": snap.get("customer_id"),
         "customer_name": snap.get("customer_name"), "amount": inv._f(amount), "currency": "NGN", "method": method,
         "reference": (data.get("reference") or "").strip()[:200] or None, "description": description[:500],
-        "paid_at": _paid_at(data.get("paid_at")), "recorded_by": user_id,
+        "paid_at": _paid_at(data.get("paid_at")), "recorded_by": user_id, "region": region,
     }
     receipt = _insert_receipt(db, org_id, row)
     receipt["_contact"] = {k: snap.get(k) for k in ("customer_phone", "customer_email", "customer_address")}
+    sales.sync_receipt(db, org_id, receipt)
     inv._audit(db, org_id, user_id, "receipt.recorded", receipt["id"], {"receipt": receipt["number"],
                                                                         "amount": inv._f(amount), "standalone": True})
     return receipt
@@ -238,6 +246,9 @@ def void_receipt(db, org_id: str, user_id: Optional[str], receipt_id: str, reaso
         .eq("id", r["id"]).eq("org_id", org_id).execute()
     if r.get("invoice_id"):
         _recompute(db, org_id, r["invoice_id"])
+    else:   # INV-SALES-1: a voided standalone receipt leaves Sales Record
+        from app.services import invoice_sales_service as sales
+        sales.sync_receipt(db, org_id, {**r, "voided_at": inv._now_iso()})
     inv._audit(db, org_id, user_id, "receipt.voided", r.get("invoice_id") or r["id"],
                {"receipt": r.get("number"), "reason": reason[:500]})
     return get_receipt(db, org_id, r["id"])

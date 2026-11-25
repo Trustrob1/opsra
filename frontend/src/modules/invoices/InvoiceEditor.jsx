@@ -24,10 +24,13 @@ import { naira, niceDate, todayYmd, TYPE_LABEL, lab, inp, btnP, btnG, btnDanger,
 import StatusPill from './StatusPill'
 import SendPanel from './SendPanel'   // INV-3
 import PaymentsPanel from './PaymentsPanel'   // INV-4
+import RegionSelect from './RegionSelect'   // INV-SALES-2
+import { useRegions, lastRegion } from './useRegions'
 
 let _key = 0
 const newKey = () => `l${++_key}`
-const toLine = (it) => ({ key: newKey(), product_id: it.product_id || null, description: it.description || '', quantity: String(it.quantity ?? 1), unit_price: it.unit_price == null ? '' : String(it.unit_price) })
+const toLine = (it) => ({ key: newKey(), product_id: it.product_id || null, description: it.description || '', quantity: String(it.quantity ?? 1), unit_price: it.unit_price == null ? '' : String(it.unit_price),
+  variant: it.variant || '', sizes: Array.isArray(it.sizes) ? it.sizes : null })   // INV-SALES-2: size picked + the product's sizes
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return Number.isFinite(n) ? n : 0 }
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
 
@@ -41,6 +44,7 @@ function fromDoc(doc) {
     apply_vat: Number(doc.vat_rate || 0) > 0,
     issue_date: doc.issue_date || '', due_date: doc.due_date || '',
     notes: doc.notes || '', terms: doc.terms || '',
+    region: doc.region || '',
   }
 }
 
@@ -55,11 +59,13 @@ function payload(f) {
       description: l.description.trim() || null,
       quantity: String(num(l.quantity) || 0),
       unit_price: l.unit_price === '' ? null : String(num(l.unit_price)),
+      ...(l.variant ? { variant: l.variant } : {}),
     })),
     discount: String(num(f.discount)),
     apply_vat: !!f.apply_vat,
     issue_date: f.issue_date || null, due_date: f.due_date || null,
     notes: opt(f.notes), terms: opt(f.terms),
+    region: f.region || null,
   }
 }
 
@@ -76,6 +82,13 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
   const [voidReason, setVoidReason] = useState('')
   const autoMade = useRef(false)
   const dirty = useRef(false)
+  const regions = useRegions()   // INV-SALES-2
+
+  // A draft with no region starts on the region this person used last (not counted as a change).
+  useEffect(() => {
+    if (!regions.length) return
+    setForm((f) => (f && !f.region && (!doc || doc.status === 'draft') ? { ...f, region: lastRegion(regions) } : f))
+  }, [regions, doc])
 
   const set = (patch) => { dirty.current = true; setForm((f) => ({ ...f, ...patch })) }
 
@@ -102,7 +115,7 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
         } else {
           setForm({ doc_type: type, lead_id: null, customer_name: '', customer_phone: '', customer_email: '', customer_address: '',
             items: [toLine({ quantity: 1 })], discount: '', apply_vat: !!s.vat_enabled, issue_date: '', due_date: '',
-            notes: '', terms: s.default_terms || '' })
+            notes: '', terms: s.default_terms || '', region: '' })
         }
       } catch (e) { if (live) setErr(apiError(e, 'Could not open this document. Please try again.')) }
     })()
@@ -154,6 +167,9 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
     if (!form.customer_name.trim()) { setErr("Add the customer's name first."); return }
     if (!form.items.some((l) => l.description.trim() && num(l.quantity) > 0)) { setErr('Add at least one line first.'); return }
     if (preview.total <= 0) { setErr('The total must be more than ₦0.'); return }
+    if (regions.length && !form.region) { setErr('Choose the region first.'); return }
+    const noSize = form.items.find((l) => l.sizes?.length && !l.variant)
+    if (noSize) { setErr(`Choose the size for ${noSize.description || 'each product'}.`); return }
     run('issue', async () => {
       const d = await saveDraft()
       const issued = await issueDoc(d.id)
@@ -206,7 +222,7 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
         <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 16 : 22 }}>
           {err && <div role="alert" style={{ background: '#FFF5F5', border: '1px solid #F5C2C2', color: '#9B2C2C', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>{err}</div>}
           {!form && !err && <p style={{ color: ds.gray }}>Loading…</p>}
-          {form && editable && <DraftForm form={form} set={set} settings={settings} preview={preview} isNew={!doc} isMobile={isMobile} />}
+          {form && editable && <DraftForm form={form} set={set} settings={settings} preview={preview} isNew={!doc} isMobile={isMobile} regions={regions} />}
           {form && !editable && <IssuedView doc={doc} isAdmin={isAdmin} onPaid={() => { load(doc.id).catch(() => {}); onChanged?.() }} />}
         </div>
 
@@ -248,11 +264,18 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
 
 // ───────────────────────────── draft form ─────────────────────────────
 
-function DraftForm({ form, set, settings, preview, isNew, isMobile }) {
+function DraftForm({ form, set, settings, preview, isNew, isMobile, regions }) {
   const grid2 = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }
   const setLine = (key, patch) => set({ items: form.items.map((l) => (l.key === key ? { ...l, ...patch } : l)) })
   const removeLine = (key) => set({ items: form.items.filter((l) => l.key !== key) })
   const addLine = (it = { quantity: 1 }) => set({ items: [...form.items.filter((l) => l.description.trim() || l.product_id || l.unit_price !== ''), toLine(it)] })
+  // INV-SALES-2: picking a size sets its price and swaps the size at the end of the line text
+  const pickSize = (l, title) => {
+    const size = (l.sizes || []).find((s) => s.title === title)
+    let desc = l.description
+    if (l.variant && desc.endsWith(` - ${l.variant}`)) desc = desc.slice(0, -(l.variant.length + 3))
+    setLine(l.key, { variant: title, description: desc, ...(size && size.price != null ? { unit_price: String(size.price) } : {}) })
+  }
   const kind = form.doc_type
 
   return (
@@ -269,6 +292,7 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile }) {
       <section>
         <h3 style={{ fontSize: 15, margin: '0 0 10px', color: ds.dark }}>Customer</h3>
         <ContactSearch onPick={(c) => set({ lead_id: c.id, customer_name: c.full_name || '', customer_phone: c.whatsapp || c.phone || '', customer_email: c.email || '', customer_address: c.location || '' })} />
+        {regions?.length > 0 && <div style={{ ...grid2, marginTop: 10 }}><RegionSelect regions={regions} value={form.region} onChange={(v) => set({ region: v })} /></div>}
         <div style={{ ...grid2, marginTop: 10 }}>
           <div><label style={lab} htmlFor="inv-cn">Name</label><input id="inv-cn" style={inp} maxLength={200} value={form.customer_name} onChange={(e) => set({ customer_name: e.target.value })} /></div>
           <div><label style={lab} htmlFor="inv-cp">Phone</label><input id="inv-cp" style={inp} maxLength={30} inputMode="tel" value={form.customer_phone} onChange={(e) => set({ customer_phone: e.target.value })} /></div>
@@ -286,8 +310,17 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile }) {
         )}
         {form.items.map((l, i) => (
           <div key={l.key} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 80px 140px 130px 40px', gap: 8, marginBottom: 8, alignItems: 'center', ...(isMobile ? { padding: 10, border: `1px solid ${ds.border}`, borderRadius: 10 } : {}) }}>
-            <input style={{ ...inp, ...(isMobile ? { gridColumn: '1 / -1' } : {}) }} maxLength={500} placeholder="What you are selling" aria-label={`Line ${i + 1} description`}
-              value={l.description} onChange={(e) => setLine(l.key, { description: e.target.value })} />
+            <div style={{ display: 'grid', gap: 6, ...(isMobile ? { gridColumn: '1 / -1' } : {}) }}>
+              <input style={inp} maxLength={500} placeholder="What you are selling" aria-label={`Line ${i + 1} description`}
+                value={l.description} onChange={(e) => setLine(l.key, { description: e.target.value })} />
+              {l.sizes?.length > 0 && (
+                <select style={{ ...inp, borderColor: l.variant ? ds.border : ds.accent }} aria-label={`Line ${i + 1} size`}
+                  value={l.variant} onChange={(e) => pickSize(l, e.target.value)}>
+                  <option value="">Choose the size</option>
+                  {l.sizes.map((s) => <option key={s.title} value={s.title}>{s.title}{s.price != null ? ` · ${naira(s.price)}` : ''}</option>)}
+                </select>
+              )}
+            </div>
             <input style={inp} inputMode="decimal" aria-label={`Line ${i + 1} quantity`} value={l.quantity} onChange={(e) => setLine(l.key, { quantity: e.target.value })} />
             <input style={inp} inputMode="decimal" placeholder="0.00" aria-label={`Line ${i + 1} unit price`} value={l.unit_price} onChange={(e) => setLine(l.key, { unit_price: e.target.value })} />
             <div style={{ textAlign: 'right', fontWeight: 600, color: ds.dark, fontSize: 14 }}>{naira(round2(num(l.quantity) * num(l.unit_price)))}</div>
@@ -296,7 +329,12 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile }) {
         ))}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
           <button type="button" style={btnG} onClick={() => addLine()}><Plus size={16} />Add line</button>
-          <ProductPicker onPick={(p) => addLine({ product_id: p.id, description: p.title, quantity: 1, unit_price: p.price ?? '' })} />
+          <ProductPicker onPick={(p) => {
+            const sizes = p.sizes || []
+            const only = sizes.length === 1 ? sizes[0] : null
+            addLine({ product_id: p.id, description: p.title, quantity: 1, sizes, variant: only ? only.title : '',
+              unit_price: only && only.price != null ? only.price : (sizes.length ? '' : (p.price ?? '')) })
+          }} />
           {form.lead_id && <FillFromChat leadId={form.lead_id} onLines={(lines) => set({
             items: [...form.items.filter((l) => l.description.trim() || l.product_id || l.unit_price !== ''), ...lines.map(toLine)],
           })} />}
@@ -398,7 +436,7 @@ function ProductPicker({ onPick }) {
           <button key={p.id} type="button" onClick={() => onPick(p)}
             style={{ display: 'flex', width: '100%', gap: 10, alignItems: 'center', border: 'none', background: '#fff', borderRadius: 8, padding: '8px 10px', marginBottom: 4, cursor: 'pointer', fontFamily: ds.fontDm, minHeight: 44, textAlign: 'left' }}>
             <span style={{ flex: 1, color: ds.dark, fontWeight: 600 }}>{p.title}</span>
-            <span style={{ color: ds.gray }}>{p.price != null ? naira(p.price) : 'No price'}</span>
+            <span style={{ color: ds.gray }}>{p.sizes?.length > 1 ? `${p.sizes.length} sizes` : (p.price != null ? naira(p.price) : 'No price')}</span>
             <Plus size={16} color={ds.teal} />
           </button>
         ))}
@@ -420,6 +458,7 @@ function IssuedView({ doc, isAdmin, onPaid }) {
         </div>
         <div><div style={lab}>Date</div><div>{niceDate(doc.issue_date)}</div></div>
         <div><div style={lab}>{kind === 'quote' ? 'Valid until' : 'Due date'}</div><div>{niceDate(doc.due_date)}</div></div>
+        {doc.region && <div><div style={lab}>Region</div><div>{doc.region}</div></div>}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr style={{ textAlign: 'left', ...lab }}><th style={{ padding: 6 }}>Description</th><th style={{ padding: 6, textAlign: 'right' }}>Qty</th><th style={{ padding: 6, textAlign: 'right' }}>Unit price</th><th style={{ padding: 6, textAlign: 'right' }}>Amount</th></tr></thead>

@@ -1109,6 +1109,9 @@ def clear_imported_sales(
     the watermark is a separate call the frontend makes right after.
     """
     _require_owner_or_ops(org)
+    if import_source == "invoice":   # INV-SALES-1: invoice sales leave only by voiding the receipt
+        raise HTTPException(status_code=422, detail={"code": "INVOICE_SALES",
+            "message": "Sales from paid invoices can't be cleared here. Void the receipt in Invoices instead."})
     db.table("direct_sales").delete().eq("org_id", org["org_id"]).eq("import_source", import_source).execute()
     return _success(None, f"Cleared all sales imported from '{import_source}'")
 
@@ -1170,7 +1173,7 @@ def delete_direct_sale(
 ):
     _require_owner(org)
     existing = (
-        db.table("direct_sales").select("id")
+        db.table("direct_sales").select("id, import_source")
         .eq("id", sale_id).eq("org_id", org["org_id"])
         .maybe_single().execute()
     )
@@ -1179,6 +1182,9 @@ def delete_direct_sale(
         data = data[0] if data else None
     if not data:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Direct sale not found"})
+    if data.get("import_source") == "invoice":   # INV-SALES-1: the daily worker would only add it back
+        raise HTTPException(status_code=422, detail={"code": "INVOICE_SALES",
+            "message": "This sale came from a paid invoice. Void the receipt in Invoices to remove it."})
     db.table("direct_sales").delete().eq("id", sale_id).eq("org_id", org["org_id"]).execute()
     return _success(None, "Direct sale deleted")
 
