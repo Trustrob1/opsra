@@ -33,6 +33,21 @@ MAX_QTY = 10
 CARD_DESC_CHARS = 160
 
 
+_TAG_BLOCK = re.compile(r"<(script|style)\b.*?(</\1\s*>|$)", re.I | re.S)
+_TAG = re.compile(r"<[^>]*>")
+_TAG_OPEN_END = re.compile(r"<[^>]*$")
+
+
+def _plain(text) -> str:
+    """AD-PRODUCT-1b: a catalogue description as plain words. Synced descriptions can hold page markup (<div id=...>, <p>, &nbsp;); the visitor, and the
+    AI, must only ever see the words. Tags (even one cut off at the end), script and style blocks are dropped, entities decoded, spaces collapsed."""
+    import html as _html
+    s = _TAG_BLOCK.sub(" ", str(text or ""))
+    s = _TAG.sub(" ", s)
+    s = _TAG_OPEN_END.sub(" ", s)
+    return " ".join(_html.unescape(s).split())
+
+
 def _num(v) -> float:
     try:
         return float(v)
@@ -82,7 +97,7 @@ def _stock_state(p: dict, variant_id) -> Optional[str]:
 
 def _card(p: dict) -> dict:
     imgs = p.get("catalog_images") or []
-    desc = (p.get("catalog_description") or p.get("description") or "").strip()
+    desc = _plain(p.get("catalog_description") or p.get("description") or "")
     return {
         "id": str(p.get("id")), "title": str(p.get("title") or "Product")[:80], "price": _num(p.get("price")),
         "image_url": wc._clean_url(imgs[0]) if imgs else None,
@@ -111,7 +126,7 @@ def _rank(rows: list[dict], q: Optional[str]) -> list[dict]:
         return rows
 
     def score(p):
-        blob = f"{p.get('title') or ''} {p.get('catalog_description') or p.get('description') or ''}".lower()
+        blob = f"{p.get('title') or ''} {_plain(p.get('catalog_description') or p.get('description') or '')}".lower()
         return sum(1 for w in words if w in blob)
     ranked = sorted(rows, key=score, reverse=True)
     hits = [p for p in ranked if score(p) > 0]
@@ -194,7 +209,7 @@ def facts_for_prompt(db, org_id: str, text: str, viewing_id: Optional[str] = Non
                 ranked = [seen] + [p for p in ranked if str(p.get("id")) != str(viewing_id)][:max(limit - 1, 0)]
         out = []
         for p in ranked:
-            desc = " ".join(str(p.get("catalog_description") or p.get("description") or "").split())[:FACT_DESC_CHARS]
+            desc = _plain(p.get("catalog_description") or p.get("description") or "")[:FACT_DESC_CHARS]
             out.append({"id": str(p["id"]), "title": str(p.get("title") or "Product")[:80], "price": _num(p.get("price")),
                         "in_stock": _stock_state(p, None) is None, "blurb": desc})
         return out
@@ -294,7 +309,7 @@ def product_line(db, s: dict, cfg: dict) -> str:
         return ""
     try:
         title = str(p.get("title") or "")[:80]
-        desc = " ".join(str(p.get("catalog_description") or p.get("description") or "").split())
+        desc = _plain(p.get("catalog_description") or p.get("description") or "")
         price = _num(p.get("price"))
         facts = []
         if price > 0:
@@ -401,7 +416,7 @@ def product_answer(db, s: dict, cfg: dict, question: str) -> Optional[str]:
         if not p or not (p.get("title") or "").strip():
             return None
         title = str(p.get("title") or "")[:80]
-        desc = " ".join(str(p.get("catalog_description") or p.get("description") or "").split())
+        desc = _plain(p.get("catalog_description") or p.get("description") or "")
         price = _num(p.get("price"))
         in_stock = _stock_state(p, None) is None
         if not desc and price <= 0:
