@@ -51,7 +51,21 @@ function fromDoc(doc) {
     notes: doc.notes || '', terms: doc.terms || '',
     region: doc.region || '',
     location_id: doc.location_id || '', loc_picked: !!doc.location_id,   // STOCK-2
+    bank_account_id: doc.bank_account_id || '', bank_picked: !!doc.bank_account_id,   // BANK-1
   }
+}
+
+// BANK-1: the account a document shows: the one picked on it, else the region's account, else the default.
+function pickBank(accounts, form) {
+  const list = accounts || []
+  if (!list.length) return null
+  if (form?.bank_picked && form.bank_account_id) {
+    const hit = list.find((a) => a.id === form.bank_account_id)
+    if (hit) return hit
+  }
+  const region = (form?.region || '').trim().toLowerCase()
+  const byRegion = region && list.find((a) => (a.region || '').toLowerCase() === region)
+  return byRegion || list.find((a) => a.is_default) || list[0]
 }
 
 function payload(f) {
@@ -73,6 +87,7 @@ function payload(f) {
     notes: opt(f.notes), terms: opt(f.terms),
     region: f.region || null,
     ...(f.doc_type === 'invoice' ? { location_id: f.location_id || null } : {}),   // STOCK-2
+    bank_account_id: f.bank_picked ? (f.bank_account_id || null) : null,   // BANK-1: blank = follow the region
   }
 }
 
@@ -134,7 +149,8 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
         } else {
           setForm({ doc_type: type, lead_id: null, customer_name: '', customer_phone: '', customer_email: '', customer_address: '',
             items: [toLine({ quantity: 1 })], discount: '', apply_vat: !!s.vat_enabled, issue_date: '', due_date: '',
-            notes: '', terms: s.default_terms || '', region: '', location_id: '', loc_picked: false })
+            notes: '', terms: s.default_terms || '', region: '', location_id: '', loc_picked: false,
+            bank_account_id: '', bank_picked: false })
         }
       } catch (e) { if (live) setErr(apiError(e, 'Could not open this document. Please try again.')) }
     })()
@@ -323,6 +339,8 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile, regions, sto
   const leftFor = (l, size) => (avail ? Number(avail[l.product_id]?.[size ?? ''] ?? 0) : null)
   const locName = stock?.locations.find((x) => x.id === form.location_id)?.name || 'this location'
   const grid2 = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }
+  const bankList = settings?.bank_accounts || []   // BANK-1
+  const bank = pickBank(bankList, form)
   const setLine = (key, patch) => set({ items: form.items.map((l) => (l.key === key ? { ...l, ...patch } : l)) })
   const removeLine = (key) => set({ items: form.items.filter((l) => l.key !== key) })
   const addLine = (it = { quantity: 1 }) => set({ items: [...form.items.filter((l) => l.description.trim() || l.product_id || l.unit_price !== ''), toLine(it)] })
@@ -362,6 +380,17 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile, regions, sto
                 <small style={{ color: ds.gray }}>Issuing holds the goods here until the invoice is paid or voided.</small>
               </div>
             )}
+          </div>
+        )}
+        {bankList.length > 1 && (
+          <div style={{ ...grid2, marginTop: 10 }}>
+            <div><label style={lab} htmlFor="inv-bank">{kind0 === 'quote' ? 'Pay into (used when this becomes an invoice)' : 'Pay into'}</label>
+              <select id="inv-bank" style={inp} value={bank?.id || ''}
+                onChange={(e) => set({ bank_account_id: e.target.value, bank_picked: true })}>
+                {bankList.map((a) => <option key={a.id} value={a.id}>{a.label}{a.region ? ` (${a.region})` : a.is_default ? ' (default)' : ''}</option>)}
+              </select>
+              {bank && <small style={{ color: ds.gray }}>{bank.bank_name} · {bank.account_number}{bank.account_name ? ` · ${bank.account_name}` : ''}{!form.bank_picked ? (bank.region ? ' · matches the region' : ' · default account') : ''}</small>}
+            </div>
           </div>
         )}
         <div style={{ ...grid2, marginTop: 10 }}>
@@ -542,6 +571,10 @@ function IssuedView({ doc, isAdmin, onPaid }) {
         <div><div style={lab}>Date</div><div>{niceDate(doc.issue_date)}</div></div>
         <div><div style={lab}>{kind === 'quote' ? 'Valid until' : 'Due date'}</div><div>{niceDate(doc.due_date)}</div></div>
         {doc.region && <div><div style={lab}>Region</div><div>{doc.region}</div></div>}
+        {kind === 'invoice' && doc.issuer?.account_number && (   // BANK-1: the account printed on it
+          <div><div style={lab}>Pay into</div><div>{doc.issuer.bank_name} · {doc.issuer.account_number}</div>
+            {doc.issuer.account_name && <div style={{ color: ds.gray }}>{doc.issuer.account_name}</div>}</div>
+        )}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr style={{ textAlign: 'left', ...lab }}><th style={{ padding: 6 }}>Description</th><th style={{ padding: 6, textAlign: 'right' }}>Qty</th><th style={{ padding: 6, textAlign: 'right' }}>Unit price</th><th style={{ padding: 6, textAlign: 'right' }}>Amount</th></tr></thead>

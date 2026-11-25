@@ -3,6 +3,7 @@
  * INV-2 — what prints on the business's quotes, invoices and receipts (admin only; the server checks again).
  * Changes apply to documents issued from now on; issued ones keep the details they were issued with.
  * REPORT-1 — which reps' payments wait, who else may confirm them, and the emailed reports (daily sales, weekly).
+ * BANK-1 — several bank accounts; each can be linked to a region (picked automatically on invoices) and one is the default.
  */
 import { useEffect, useRef, useState } from 'react'
 import { Upload, Trash2 } from 'lucide-react'
@@ -11,8 +12,9 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { getInvoiceSettings, saveInvoiceSettings, uploadInvoiceLogo, removeInvoiceLogo, apiError, getSettingsPeople,
   sendTestReport } from '../../services/invoices.service'
 import { card, lab, inp, btnP, btnG, disabled } from './invoiceUi'
+import { useRegions } from './useRegions'   // BANK-1
 
-const TEXT = ['business_name', 'address', 'phone', 'email', 'rc_number', 'tin', 'bank_name', 'account_name', 'account_number',
+const TEXT = ['business_name', 'address', 'phone', 'email', 'rc_number', 'tin',
   'quote_prefix', 'invoice_prefix', 'receipt_prefix', 'default_terms', 'footer', 'email_reply_to']
 
 export default function InvoiceSettings() {
@@ -23,6 +25,7 @@ export default function InvoiceSettings() {
   const [msg, setMsg] = useState(null)   // { ok: bool, text }
   const fileRef = useRef(null)
   const [people, setPeople] = useState([])   // REPORT-1
+  const regions = useRegions()   // BANK-1
 
   const adopt = (d) => {
     setS(d)
@@ -33,7 +36,9 @@ export default function InvoiceSettings() {
       reminders_enabled: !!d.reminders_enabled, sales_record_enabled: !!d.sales_record_enabled,
       payments_need_approval: !!d.payments_need_approval,   // SALE-1
       payment_confirm_reps: d.payment_confirm_reps || [], payment_confirmers: d.payment_confirmers || [],   // REPORT-1
-      report_emails: (d.report_emails || []).join(', '), daily_sales_report: !!d.daily_sales_report, weekly_reports: !!d.weekly_reports })
+      report_emails: (d.report_emails || []).join(', '), daily_sales_report: !!d.daily_sales_report, weekly_reports: !!d.weekly_reports,
+      bank_accounts: (d.bank_accounts || []).map((a) => ({ id: a.id, label: a.label || '', bank_name: a.bank_name || '',
+        account_name: a.account_name || '', account_number: a.account_number || '', region: a.region || '', is_default: !!a.is_default })) })
   }
   useEffect(() => { getInvoiceSettings().then(adopt).catch((e) => setMsg({ ok: false, text: apiError(e) })) }, [])
   useEffect(() => { getSettingsPeople().then((p) => setPeople(p || [])).catch(() => setPeople([])) }, [])
@@ -42,6 +47,16 @@ export default function InvoiceSettings() {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
   const toggleIn = (k, id) => setForm((f) => ({ ...f, [k]: f[k].includes(id) ? f[k].filter((x) => x !== id) : [...f[k], id] }))
   const reps = people.filter((p) => !p.manager)
+  // BANK-1: bank account rows
+  const setAcct = (i, patch) => setForm((f) => ({ ...f, bank_accounts: f.bank_accounts.map((a, j) => (j === i ? { ...a, ...patch }
+    : patch.is_default ? { ...a, is_default: false } : patch.region && a.region === patch.region ? { ...a, region: '' } : a)) }))
+  const addAcct = () => setForm((f) => ({ ...f, bank_accounts: [...f.bank_accounts,
+    { id: '', label: '', bank_name: '', account_name: '', account_number: '', region: '', is_default: f.bank_accounts.length === 0 }] }))
+  const dropAcct = (i) => setForm((f) => {
+    const left = f.bank_accounts.filter((_, j) => j !== i)
+    if (left.length && !left.some((a) => a.is_default)) left[0] = { ...left[0], is_default: true }
+    return { ...f, bank_accounts: left }
+  })
   const sendTest = async (kind) => {
     setBusy(kind); setMsg(null)
     try {
@@ -69,6 +84,12 @@ export default function InvoiceSettings() {
     body.report_emails = form.report_emails.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean)
     body.daily_sales_report = !!form.daily_sales_report
     body.weekly_reports = !!form.weekly_reports
+    const accts = form.bank_accounts.filter((a) => a.bank_name.trim() || a.account_number.trim() || a.account_name.trim())   // BANK-1
+    const bad = accts.find((a) => !a.bank_name.trim() || !/^[0-9]{6,20}$/.test(a.account_number.replace(/\s+/g, '')))
+    if (bad) { setBusy(''); setMsg({ ok: false, text: 'Each bank account needs the bank name and an account number of 6 to 20 digits.' }); return }
+    body.bank_accounts = accts.map((a) => ({ ...(a.id ? { id: a.id } : {}), label: a.label.trim() || null, bank_name: a.bank_name.trim(),
+      account_name: a.account_name.trim() || null, account_number: a.account_number.replace(/\s+/g, ''), region: a.region || null,
+      is_default: !!a.is_default }))
     try { adopt(await saveInvoiceSettings(body)); setMsg({ ok: true, text: 'Saved. New documents will use these details.' }) }
     catch (e) { setMsg({ ok: false, text: apiError(e, 'Could not save. Check the details and try again.') }) }
     finally { setBusy('') }
@@ -118,11 +139,42 @@ export default function InvoiceSettings() {
       </section>
 
       <section style={card}>
-        <h3 style={h}>Bank details (printed on invoices)</h3>
-        <div style={grid}>
-          {field('bank_name', 'Bank', { maxLength: 100 })}
-          {field('account_number', 'Account number', { maxLength: 20, inputMode: 'numeric' })}
-          {field('account_name', 'Account name', { maxLength: 200 })}
+        <h3 style={h}>Bank accounts (printed on invoices)</h3>
+        <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 12px' }}>
+          {regions.length ? 'Link an account to a region and invoices for that region show it automatically. The person making the invoice can still choose another. The default is used when no account matches.'
+            : 'Add each account customers can pay into. The person making an invoice chooses which one it shows; the default is picked first.'}
+        </p>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {form.bank_accounts.map((a, i) => (
+            <div key={i} style={{ border: `1px solid ${ds.border}`, borderRadius: 10, padding: 12, display: 'grid', gap: 10 }}>
+              <div style={grid}>
+                <div><label style={lab} htmlFor={`ba-label-${i}`}>Name for this account</label>
+                  <input id={`ba-label-${i}`} style={inp} maxLength={60} placeholder="For example: Lagos account" value={a.label} onChange={(e) => setAcct(i, { label: e.target.value })} /></div>
+                <div><label style={lab} htmlFor={`ba-bank-${i}`}>Bank</label>
+                  <input id={`ba-bank-${i}`} style={inp} maxLength={100} value={a.bank_name} onChange={(e) => setAcct(i, { bank_name: e.target.value })} /></div>
+                <div><label style={lab} htmlFor={`ba-no-${i}`}>Account number</label>
+                  <input id={`ba-no-${i}`} style={inp} maxLength={20} inputMode="numeric" value={a.account_number} onChange={(e) => setAcct(i, { account_number: e.target.value })} /></div>
+                <div><label style={lab} htmlFor={`ba-name-${i}`}>Account name</label>
+                  <input id={`ba-name-${i}`} style={inp} maxLength={200} value={a.account_name} onChange={(e) => setAcct(i, { account_name: e.target.value })} /></div>
+                {regions.length > 0 && (
+                  <div><label style={lab} htmlFor={`ba-region-${i}`}>Use for region</label>
+                    <select id={`ba-region-${i}`} style={inp} value={a.region} onChange={(e) => setAcct(i, { region: e.target.value })}>
+                      <option value="">No region</option>
+                      {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select></div>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, cursor: 'pointer' }}>
+                  <input type="radio" name="ba-default" checked={a.is_default} onChange={() => setAcct(i, { is_default: true })} />Default account
+                </label>
+                <button type="button" style={{ ...btnG, marginLeft: 'auto' }} onClick={() => dropAcct(i)}><Trash2 size={16} />Remove</button>
+              </div>
+            </div>
+          ))}
+          {form.bank_accounts.length < 10
+            ? <button type="button" style={{ ...btnG, justifySelf: 'start' }} onClick={addAcct}>+ Add a bank account</button>
+            : <small style={{ color: ds.gray }}>You can have up to 10 bank accounts.</small>}
         </div>
       </section>
 

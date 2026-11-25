@@ -102,6 +102,7 @@ class _DocFields(_Strict):
     terms: Optional[str] = Field(None, max_length=5000)
     region: Optional[str] = Field(None, max_length=255)   # INV-SALES-1 (checked against the business's regions)
     location_id: Optional[UUID] = None   # STOCK-2: where the stock comes from (checked against the business's locations)
+    bank_account_id: Optional[str] = Field(None, max_length=40)   # BANK-1: blank = the region's account, else the default
     items: Optional[List[ItemIn]] = Field(None, max_length=inv.MAX_ITEMS)
 
     _money = field_validator("discount")(_two_places)
@@ -187,6 +188,16 @@ class ReceiptSendIn(_Strict):
     email: Optional[str] = Field(default=None, max_length=254)
 
 
+class BankAccountIn(_Strict):   # BANK-1
+    id: Optional[str] = Field(None, max_length=40)
+    label: Optional[str] = Field(None, max_length=60)
+    bank_name: str = Field(..., min_length=1, max_length=100)
+    account_name: Optional[str] = Field(None, max_length=200)
+    account_number: str = Field(..., pattern=r"^[0-9]{6,20}$")
+    region: Optional[str] = Field(None, max_length=255)
+    is_default: bool = False
+
+
 class SettingsIn(_Strict):
     business_name: Optional[str] = Field(None, max_length=200)
     address: Optional[str] = Field(None, max_length=500)
@@ -216,6 +227,7 @@ class SettingsIn(_Strict):
     report_emails: Optional[List[str]] = Field(None, max_length=10)
     daily_sales_report: Optional[bool] = None
     weekly_reports: Optional[bool] = None
+    bank_accounts: Optional[List[BankAccountIn]] = Field(None, max_length=10)   # BANK-1
 
     _money = field_validator("vat_rate")(_two_places)
 
@@ -659,7 +671,7 @@ async def doc_pdf(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
         doc = inv.get_doc(db, org_id, str(doc_id))
     except inv.InvoiceError as e:
         return _fail(e)
-    settings = inv.get_settings(db, org_id) if not doc.get("issuer") else {}
+    settings = inv.settings_for_doc(inv.get_settings(db, org_id), doc) if not doc.get("issuer") else {}   # BANK-1
     data, name = pdf.render(doc, settings, doc["doc_type"])
     if not data:
         return _fail(inv.InvoiceError("INTEGRATION_ERROR", "Could not make the PDF. Please try again.", 503))

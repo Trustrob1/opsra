@@ -22,6 +22,7 @@ audit log write never raises (S14).
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
@@ -45,6 +46,7 @@ SETTINGS_FIELDS = (
     "payments_need_approval",   # SALE-1
     "payment_confirm_reps", "payment_confirmers",   # REPORT-1: these reps' payments wait; these people may confirm
     "report_emails", "daily_sales_report", "weekly_reports",   # REPORT-1: emailed reports
+    "bank_accounts",   # BANK-1: several accounts, each can be linked to a region; one is the default
 )
 DEFAULT_SETTINGS = {
     "business_name": None, "address": None, "phone": None, "email": None, "rc_number": None, "tin": None,
@@ -57,7 +59,12 @@ DEFAULT_SETTINGS = {
     "payments_need_approval": False,   # SALE-1
     "payment_confirm_reps": [], "payment_confirmers": [],   # REPORT-1
     "report_emails": [], "daily_sales_report": False, "weekly_reports": False,
+    "bank_accounts": [],   # BANK-1
 }
+BANK_FIELDS = ("bank_name", "account_name", "account_number")
+MAX_BANK_ACCOUNTS = 10
+_BANK_ID = re.compile(r"^[a-z0-9-]{1,40}$")
+_ACCT_NO = re.compile(r"^[0-9]{6,20}$")
 # What an issued document keeps of the settings (printed on it forever).
 ISSUER_FIELDS = ("business_name", "address", "phone", "email", "rc_number", "tin", "logo_url",
                  "bank_name", "account_name", "account_number", "footer", "brand_colour")
@@ -168,6 +175,7 @@ def get_settings(db, org_id: str) -> dict:
         out["saved"] = True
     else:
         out["saved"] = False
+    out["bank_accounts"] = bank_accounts(out)   # BANK-1
     if not (out.get("business_name") or "").strip():   # INV-3: saved settings without a name also use the organisation name
         try:
             org = db.table("organisations").select("name").eq("id", org_id).limit(1).execute()
@@ -178,8 +186,99 @@ def get_settings(db, org_id: str) -> dict:
     return out
 
 
+# ───────────────────────────── BANK-1: bank accounts ─────────────────────────────
+
+def bank_accounts(settings: dict) -> list:
+    """The business's accounts. Before BANK-1 there was one account in bank_name/account_name/account_number:
+    it shows as a single default account (id "main") until the list is saved."""
+    accts = [a for a in (settings.get("bank_accounts") or []) if isinstance(a, dict) and a.get("account_number")]
+    if accts:
+        return accts
+    if settings.get("account_number"):
+        return [{"id": "main", "label": settings.get("bank_name") or "Main account",
+                 **{k: settings.get(k) for k in BANK_FIELDS}, "region": None, "is_default": True}]
+    return []
+
+
+def clean_bank_accounts(db, org_id: str, items) -> list:
+    """Check the accounts an admin saves: real account numbers, known regions, a region on one account only,
+    exactly one default (the first, if none is ticked)."""
+    from app.services import invoice_sales_service as sales
+    items = list(items or [])
+    if len(items) > MAX_BANK_ACCOUNTS:
+        raise InvoiceError("VALIDATION_ERROR", f"You can have up to {MAX_BANK_ACCOUNTS} bank accounts.", 422, "bank_accounts")
+    out, used_ids, used_regions = [], set(), set()
+    for raw in items:
+        if not isinstance(raw, dict):
+            raise InvoiceError("VALIDATION_ERROR", "Each bank account needs its details.", 422, "bank_accounts")
+        number = re.sub(r"\s+", "", str(raw.get("account_number") or ""))
+        if not _ACCT_NO.match(number):
+            raise InvoiceError("VALIDATION_ERROR", "Each account number must be 6 to 20 digits.", 422, "bank_accounts")
+        bank = str(raw.get("bank_name") or "").strip()[:100]
+        if not bank:
+            raise InvoiceError("VALIDATION_ERROR", "Each account needs the bank name.", 422, "bank_accounts")
+        aid = str(raw.get("id") or "").strip().lower()
+        if not _BANK_ID.match(aid) or aid in used_ids:
+            aid = secrets.token_hex(4)
+        used_ids.add(aid)
+        region = sales.clean_region(db, org_id, raw.get("region")) if raw.get("region") else None
+        if region:
+            if region.lower() in used_regions:
+                raise InvoiceError("VALIDATION_ERROR", f"{region} is already linked to another account.", 422, "bank_accounts")
+            used_regions.add(region.lower())
+        out.append({"id": aid, "label": (str(raw.get("label") or "").strip()[:60] or bank),
+                    "bank_name": bank, "account_name": (str(raw.get("account_name") or "").strip()[:200] or None),
+                    "account_number": number, "region": region, "is_default": bool(raw.get("is_default"))})
+    first = next((a for a in out if a["is_default"]), out[0] if out else None)
+    for a in out:
+        a["is_default"] = a is first
+    return out
+
+
+def resolve_bank(settings: dict, doc: Optional[dict]) -> Optional[dict]:
+    """Which account a document shows: the one picked on it, else the one linked to its region, else the default."""
+    accts = bank_accounts(settings)
+    if not accts:
+        return None
+    doc = doc or {}
+    if doc.get("bank_account_id"):
+        hit = next((a for a in accts if a["id"] == doc["bank_account_id"]), None)
+        if hit:
+            return hit
+    region = (doc.get("region") or "").strip().lower()
+    if region:
+        hit = next((a for a in accts if (a.get("region") or "").lower() == region), None)
+        if hit:
+            return hit
+    return next((a for a in accts if a.get("is_default")), accts[0])
+
+
+def settings_for_doc(settings: dict, doc: Optional[dict]) -> dict:
+    """The settings with the bank details swapped for this document's account (drafts print live settings)."""
+    out = dict(settings or {})
+    acct = resolve_bank(out, doc)
+    if acct:   # no accounts at all: leave whatever single-account details are saved
+        for k in BANK_FIELDS:
+            out[k] = acct.get(k)
+    return out
+
+
+def clean_bank_account_id(settings: dict, value) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if not any(a["id"] == text for a in bank_accounts(settings)):
+        raise InvoiceError("VALIDATION_ERROR", "Choose one of your bank accounts.", 422, "bank_account_id")
+    return text
+
+
 def save_settings(db, org_id: str, data: dict) -> dict:
     row = {k: v for k, v in data.items() if k in SETTINGS_FIELDS and k != "sales_record_since"}
+    if "bank_accounts" in row:   # BANK-1: the default account also fills the old single-account fields
+        row["bank_accounts"] = clean_bank_accounts(db, org_id, row["bank_accounts"])
+        default = next((a for a in row["bank_accounts"] if a["is_default"]), None)
+        for k in BANK_FIELDS:
+            row[k] = default.get(k) if default else None
     if row.get("sales_record_enabled") is True and not get_settings(db, org_id).get("sales_record_enabled"):
         row["sales_record_since"] = _now_iso()   # INV-SALES-1: only invoices paid from now on go to Sales Record
     if "vat_rate" in row and row["vat_rate"] is not None:
@@ -419,6 +518,8 @@ def create_draft(db, org_id: str, user_id: Optional[str], data: dict) -> dict:
     if data.get("location_id") is not None:   # STOCK-2
         from app.services import invoice_stock_service as inv_stock
         row["location_id"] = inv_stock.clean_location(db, org_id, data.get("location_id"))
+    if data.get("bank_account_id"):   # BANK-1
+        row["bank_account_id"] = clean_bank_account_id(settings, data.get("bank_account_id"))
     res = db.table("invoices").insert(row).execute()
     doc = res.data[0]
     _write_items(db, org_id, doc["id"], totals["lines"])
@@ -464,6 +565,8 @@ def update_draft(db, org_id: str, user_id: Optional[str], doc_id: str, data: dic
     if "location_id" in data:   # STOCK-2
         from app.services import invoice_stock_service as inv_stock
         patch["location_id"] = inv_stock.clean_location(db, org_id, data.get("location_id"))
+    if "bank_account_id" in data:   # BANK-1
+        patch["bank_account_id"] = clean_bank_account_id(settings, data.get("bank_account_id"))
     if "items" in data:
         lines = _resolve_items(db, org_id, data.get("items") or [])
     else:
@@ -563,7 +666,7 @@ def _issue_numbered(db, org_id: str, user_id: Optional[str], doc: dict) -> dict:
         due = issue_day + timedelta(days=int(days))
     patch = {
         "number": number, "status": "issued", "issue_date": str(issue_day), "due_date": str(due),
-        "issuer": {k: settings.get(k) for k in ISSUER_FIELDS},
+        "issuer": {k: v for k, v in settings_for_doc(settings, doc).items() if k in ISSUER_FIELDS},   # BANK-1
         "public_token": secrets.token_urlsafe(24),
         "issued_at": _now_iso(), "issued_by": user_id, "updated_at": _now_iso(),
     }
@@ -633,7 +736,7 @@ def convert_quote(db, org_id: str, user_id: Optional[str], doc_id: str) -> dict:
         "org_id": org_id, "doc_type": "invoice", "status": "draft",
         **{k: quote.get(k) for k in ("lead_id", "customer_id", "customer_name", "customer_phone",
                                      "customer_email", "customer_address", "currency", "notes", "terms", "region",
-                                     "location_id")},
+                                     "location_id", "bank_account_id")},   # BANK-1 keeps the chosen account
         **_totals_row(totals), "converted_from_id": quote["id"], "created_by": user_id,
     }
     res = db.table("invoices").insert(row).execute()

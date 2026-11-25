@@ -171,7 +171,7 @@ def options(db, org_id: str, doc: dict) -> dict:
 # ───────────────────────────── send ─────────────────────────────
 
 def _render(db, org_id: str, doc: dict) -> tuple[bytes, str]:
-    settings = inv.get_settings(db, org_id) if not doc.get("issuer") else {}
+    settings = inv.settings_for_doc(inv.get_settings(db, org_id), doc) if not doc.get("issuer") else {}   # BANK-1
     data, name = pdf.render(doc, settings, doc["doc_type"])
     if not data:
         raise inv.InvoiceError("INTEGRATION_ERROR", "Could not make the PDF. Please try again.", 503)
