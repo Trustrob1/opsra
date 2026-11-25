@@ -1243,7 +1243,7 @@ function AppShell() {
         {(view === 'superadmin' || view === 'superadmin_health' || view === 'superadmin_create_org') && isPlatformOrg && (
           <div style={{ animation: 'fadeIn 0.25s ease' }}><SuperadminShell initial={view === 'superadmin_create_org' ? 'create' : 'health'} /></div>
         )}
-        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing', 'knowledge', 'webchat'].includes(view) && (
+        {!['leads', 'lead-profile', 'demo-queue', 'whatsapp', 'support', 'renewal', 'ops', 'tasks', 'admin', 'conversations', 'commissions', 'superadmin', 'superadmin_create_org', 'superadmin_health', 'reports', 'performance', 'project-planner', 'business-activities', 'event-funnels', 'sites', 'billing', 'knowledge', 'webchat', 'invoices'].includes(view) && (
           <ComingSoon navId={view} />
         )}
       </main>
