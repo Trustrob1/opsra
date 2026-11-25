@@ -167,7 +167,7 @@ export default function CatalogListPage({
             fontSize: 13, letterSpacing: '0.18em',
             textTransform: 'uppercase', color: C.muted,
             margin: '0 0 4px',
-          }}>{orgName}</p>
+          }}>{catalogConfig?.logo_url && catalogConfig?.show_name_with_logo === false ? '' : orgName}</p>
           <h1 style={{
             fontFamily: "'Cormorant Garamond', serif",
             fontSize: 30, fontWeight: 700,

@@ -40,6 +40,7 @@ export function lookFromConfig(config) {
     trust_points: [0, 1, 2].map((i) => pts[i] || ''),
     logo_url: String(c.logo_url || ''),
     chat_button: c.chat_button !== false,          // WEBCHAT-CATALOG-1: on unless the owner switched it off
+    show_name_with_logo: c.show_name_with_logo !== false,   // STOREFRONT-3: shop name beside the logo
     hero_title: String(c.hero_title || ''),        // STOREFRONT-2: banner words
     hero_text: String(c.hero_text || ''),
     hero_image_url: String(c.hero_image_url || ''),   // shown only; uploads save it straight away
@@ -75,6 +76,7 @@ export function lookPayload(look) {
       trust_points: points,
       accent,
       chat_button: look.chat_button !== false,
+      show_name_with_logo: look.show_name_with_logo !== false,
       hero_title: heroTitle,
       hero_text: heroText,
     },

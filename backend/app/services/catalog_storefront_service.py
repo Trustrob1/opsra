@@ -72,6 +72,8 @@ def public_style(catalog_config: Optional[dict]) -> dict:
         "hero_image_url": clean_https_url(cfg.get("hero_image_url")),
         # STORE-1b: show the category menu / buttons (default on; the owner can turn it off)
         "show_categories": cfg.get("show_categories") is not False,
+        # STOREFRONT-3: show the shop name next to the logo (default on; only matters when there is a logo)
+        "show_name_with_logo": cfg.get("show_name_with_logo") is not False,
     }
 
 

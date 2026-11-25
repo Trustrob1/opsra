@@ -5,7 +5,7 @@ import * as L from './catalogStorefrontLogic.js'
 
 // ---------------------------------------------------------------- Look
 test('lookFromConfig: defaults for an empty or junk config', () => {
-  assert.deepEqual(L.lookFromConfig(null), { template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '', chat_button: true, hero_title: '', hero_text: '', hero_image_url: '' })
+  assert.deepEqual(L.lookFromConfig(null), { template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '', chat_button: true, show_name_with_logo: true, hero_title: '', hero_text: '', hero_image_url: '' })
   assert.equal(L.lookFromConfig({ template: 'weird' }).template, 'classic')
   assert.equal(L.lookFromConfig({ accent: 'red' }).accent, '')
   assert.deepEqual(L.lookFromConfig({ trust_points: 'x' }).trust_points, ['', '', ''])
@@ -13,7 +13,7 @@ test('lookFromConfig: defaults for an empty or junk config', () => {
 
 test('lookFromConfig: reads saved values', () => {
   const l = L.lookFromConfig({ template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B'], logo_url: 'https://x/y.png' })
-  assert.deepEqual(l, { template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B', ''], logo_url: 'https://x/y.png', chat_button: true, hero_title: '', hero_text: '', hero_image_url: '' })
+  assert.deepEqual(l, { template: 'storefront', accent: '#1F4FD8', announcement: 'Hi', trust_points: ['A', 'B', ''], logo_url: 'https://x/y.png', chat_button: true, show_name_with_logo: true, hero_title: '', hero_text: '', hero_image_url: '' })
 })
 
 test('effectiveAccent falls back to teal', () => {
@@ -24,14 +24,14 @@ test('effectiveAccent falls back to teal', () => {
 
 test('lookPayload: cleans and sends only the Storefront keys', () => {
   const r = L.lookPayload({ template: 'storefront', accent: ' #1F4FD8 ', announcement: '  Free   delivery ', trust_points: [' Pay  safely ', '', 'Fast'], logo_url: ' https://x/y.png ' })
-  assert.deepEqual(r.payload, { template: 'storefront', announcement: 'Free delivery', trust_points: ['Pay safely', 'Fast'], accent: '#1F4FD8', chat_button: true, hero_title: '', hero_text: '' })
+  assert.deepEqual(r.payload, { template: 'storefront', announcement: 'Free delivery', trust_points: ['Pay safely', 'Fast'], accent: '#1F4FD8', chat_button: true, show_name_with_logo: true, hero_title: '', hero_text: '' })
   // STOREFRONT-2: pictures are uploaded on their own, so saving the look never sends (or clears) them
-  assert.deepEqual(Object.keys(r.payload).sort(), ['accent', 'announcement', 'chat_button', 'hero_text', 'hero_title', 'template', 'trust_points'])
+  assert.deepEqual(Object.keys(r.payload).sort(), ['accent', 'announcement', 'chat_button', 'hero_text', 'hero_title', 'show_name_with_logo', 'template', 'trust_points'])
 })
 
 test('lookPayload: empty values are sent as empty so they clear', () => {
   const r = L.lookPayload({ template: 'classic', accent: '', announcement: '', trust_points: ['', '', ''], logo_url: '' })
-  assert.deepEqual(r.payload, { template: 'classic', announcement: '', trust_points: [], accent: '', chat_button: true, hero_title: '', hero_text: '' })
+  assert.deepEqual(r.payload, { template: 'classic', announcement: '', trust_points: [], accent: '', chat_button: true, show_name_with_logo: true, hero_title: '', hero_text: '' })
 })
 
 test('lookPayload: owner-fixable errors', () => {
@@ -232,4 +232,10 @@ test('chat_button: on by default, off only when the owner saved false, and a cha
   assert.equal(L.lookPayload(off).payload.chat_button, false)
   assert.equal(L.lookChanged(off, {}), true)
   assert.equal(L.lookChanged(L.lookFromConfig({ chat_button: false }), { chat_button: false }), false)
+})
+
+test('STOREFRONT-3: name beside the logo is on by default and can be turned off', () => {
+  assert.equal(L.lookFromConfig({}).show_name_with_logo, true)
+  assert.equal(L.lookFromConfig({ show_name_with_logo: false }).show_name_with_logo, false)
+  assert.equal(L.lookPayload({ ...L.lookFromConfig({}), show_name_with_logo: false }).payload.show_name_with_logo, false)
 })

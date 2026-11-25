@@ -110,6 +110,7 @@ class CatalogConfigUpdate(BaseModel):
     hero_title:                Optional[str]                 = Field(None, max_length=storefront.HERO_TITLE_MAX)   # STOREFRONT-2
     hero_text:                 Optional[str]                 = Field(None, max_length=storefront.HERO_TEXT_MAX)    # STOREFRONT-2
     hero_image_url:            Optional[str]                 = Field(None, max_length=storefront.LOGO_URL_MAX)     # STOREFRONT-2
+    show_name_with_logo:       Optional[bool]                = None      # STOREFRONT-3: shop name beside the logo (default on)
     chat_button:               Optional[bool]                = None      # WEBCHAT-CATALOG-1: "Chat with Chioma" on the Storefront (default on)
 
     @field_validator("trust_points")

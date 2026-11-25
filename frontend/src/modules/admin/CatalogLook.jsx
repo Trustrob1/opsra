@@ -186,6 +186,16 @@ export default function CatalogLook() {
         <PictureField id="cat-logo" label="Logo" url={look.logo_url} busy={picBusy === 'logo'}
           help="Shown at the top of your catalog. PNG, JPG or WebP under 5 MB; a see-through PNG looks best. Without a logo, your shop name shows instead."
           onPick={(f) => changePicture('logo', f)} onRemove={() => changePicture('logo', null)} />
+        {look.logo_url && (   /* STOREFRONT-3: some logos already contain the name */
+          <label htmlFor="cat-logo-name" style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+            <input id="cat-logo-name" type="checkbox" checked={look.show_name_with_logo !== false} onChange={(e) => set('show_name_with_logo', e.target.checked)}
+              style={{ width: 22, height: 22, marginTop: 1, flex: 'none' }} />
+            <span>
+              <span style={{ ...LABEL, display: 'block', marginBottom: 2 }}>Show the shop name next to the logo</span>
+              <span style={{ fontFamily: ds.fontDm, fontSize: 12, color: '#5B6270' }}>Turn this off if your logo already has your name in it. Press Save look after changing it.</span>
+            </span>
+          </label>
+        )}
 
         {isStore && (
           <div style={{ marginTop: 24 }}>

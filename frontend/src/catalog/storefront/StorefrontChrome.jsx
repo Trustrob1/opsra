@@ -43,7 +43,7 @@ export function ChromeStyles({ accent }) {
       .sf-foot-grid { display: flex; gap: 32px; justify-content: space-between; flex-wrap: wrap; align-items: flex-start }
       .sf-menu { flex-grow: 1; display: flex; justify-content: center; gap: 4px; overflow-x: auto; scrollbar-width: none }
       .sf-menu::-webkit-scrollbar { display: none }
-      .sf-menu-btn { display: none }
+      .sf-icon-btn.sf-menu-btn { display: none }
       .sf-menu-link { border: 0; background: transparent; cursor: pointer; font-size: 14px; font-weight: 700; min-height: 44px; padding: 0 12px; white-space: nowrap; color: ${INK}; border-radius: 10px }
       .sf-menu-link:hover { background: #F4F2EE }
       .sf-icon-btn { width: 44px; height: 44px; border: 0; background: transparent; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 12px; position: relative }
@@ -53,7 +53,7 @@ export function ChromeStyles({ accent }) {
       .sf-foot-cols { display: grid; grid-template-columns: 1.4fr repeat(3, minmax(0, 1fr)); gap: 32px }
       @media (max-width: 900px) {
         .sf-menu { display: none }
-        .sf-menu-btn { display: flex }
+        .sf-icon-btn.sf-menu-btn { display: flex }
         .sf-topbar-item + .sf-topbar-item { display: none }
         .sf-trust-cards { grid-template-columns: 1fr; gap: 10px }
         .sf-foot-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 20px }
@@ -141,7 +141,9 @@ export function StorefrontHeader({ orgName, style, accent, onHome, cart, links =
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15,
             }}>{initials(orgName)}</span>
           )}
-          <span className="sf-brand-name" style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.01em' }}>{orgName}</span>
+          {!(style?.logo_url && style.show_name_with_logo === false) && (   /* STOREFRONT-3: the owner can hide the name beside a logo */
+            <span className="sf-brand-name" style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.01em' }}>{orgName}</span>
+          )}
         </button>
         {links.length > 0 ? (
           <nav className="sf-menu" aria-label="Shop menu">
