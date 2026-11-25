@@ -29,6 +29,7 @@ export const STATUS = {
   expired:   ['Expired', '#FFF9E0', '#A07C00'],
 }
 export const TYPE_LABEL = { quote: 'Quote', invoice: 'Invoice' }
+export const METHOD_LABEL = { bank_transfer: 'Bank transfer', cash: 'Cash', pos: 'POS', ussd: 'USSD', paystack: 'Paystack (online)', other: 'Other' }
 
 export const card = { background: '#fff', border: `1px solid ${ds.border}`, borderRadius: ds.radius.xl, padding: '18px 20px', boxShadow: ds.cardShadow }
 export const lab = { display: 'block', fontSize: 11, fontWeight: 600, color: ds.gray, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }

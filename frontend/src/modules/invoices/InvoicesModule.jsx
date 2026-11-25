@@ -13,6 +13,7 @@ import { naira, nairaShort, niceDate, TYPE_LABEL, card, inp, btnP, btnG } from '
 import StatusPill from './StatusPill'
 import InvoiceEditor from './InvoiceEditor'
 import InvoiceSettings from './InvoiceSettings'
+import ReceiptsList from './ReceiptsList'   // INV-4
 
 const FILTERS = [
   ['', 'All'], ['draft', 'Drafts'], ['issued', 'Issued'], ['overdue', 'Overdue'], ['part_paid', 'Part paid'],
@@ -87,18 +88,18 @@ export default function InvoicesModule() {
         <button type="button" style={btnP} onClick={() => setEditor({ initial: { doc_type: 'invoice' } })}><Plus size={16} />New invoice</button>
       </div>
 
-      {isAdmin && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {chip(tab === 'docs', 'Documents', () => setTab('docs'))}
-          {chip(tab === 'settings', 'Settings', () => setTab('settings'))}
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {chip(tab === 'docs', 'Documents', () => setTab('docs'))}
+        {chip(tab === 'receipts', 'Receipts', () => setTab('receipts'))}
+        {isAdmin && chip(tab === 'settings', 'Settings', () => setTab('settings'))}
+      </div>
 
-      {tab === 'settings' && isAdmin ? <InvoiceSettings /> : (
+      {tab === 'settings' && isAdmin ? <InvoiceSettings /> : tab === 'receipts' ? <ReceiptsList isAdmin={isAdmin} onChanged={loadSummary} /> : (
         <>
           {summary && (
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
               {tile('Owed to you', nairaShort(summary.outstanding_amount), `${summary.outstanding_count} unpaid invoice${summary.outstanding_count === 1 ? '' : 's'}`)}
+              {tile('Paid this month', nairaShort(summary.paid_this_month), 'from receipts', ds.green)}
               {tile('Overdue', nairaShort(summary.overdue_amount), `${summary.overdue_count} invoice${summary.overdue_count === 1 ? '' : 's'}`, summary.overdue_count ? ds.red : undefined)}
               {tile('Open quotes', nairaShort(summary.open_quotes_amount), `${summary.open_quotes} waiting for an answer`)}
               {tile('Drafts', String(summary.drafts), 'not issued yet')}

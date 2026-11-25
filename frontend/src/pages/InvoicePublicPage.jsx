@@ -2,11 +2,13 @@
  * frontend/src/pages/InvoicePublicPage.jsx
  * INV-3 — /i/<token>: the customer's own page for a quote or invoice from a business on Opsra.
  * Shows the document, a PDF download, the business's bank details (invoices), and Accept / Decline (open quotes).
- * Pay-now by card comes with INV-4. No login, no Opsra menus; styled with the business's own colour.
+ * INV-4: Pay now (card / transfer / USSD through the business's own Paystack) when the business has it connected; after
+ * Paystack sends the customer back here (?reference=...) the payment is checked and the receipt shows at once.
+ * No login, no Opsra menus; styled with the business's own colour.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Download, CheckCircle2, XCircle, Copy, Check } from 'lucide-react'
-import { getPublicDoc, answerQuote, publicPdfUrl, publicError } from '../services/invoicesPublic.service'
+import { Download, CheckCircle2, XCircle, Copy, Check, CreditCard } from 'lucide-react'
+import { getPublicDoc, answerQuote, publicPdfUrl, publicError, startPayment, verifyPayment, publicReceiptUrl } from '../services/invoicesPublic.service'
 
 const naira = (n) => `₦${Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const day = (v) => (v ? new Date(`${String(v).slice(0, 10)}T12:00:00`).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
@@ -29,7 +31,23 @@ export default function InvoicePublicPage({ token }) {
   const load = useCallback(() => getPublicDoc(token).then(setDoc).catch((e) => {
     setGone(e?.response?.status === 404 ? 'This link is not valid. Please ask the business to send it again.' : publicError(e, 'Could not load this page. Please try again.'))
   }), [token])
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    // INV-4: back from Paystack? Check the payment first, then show the page.
+    const ref = new URLSearchParams(window.location.search).get('reference')
+    if (!ref || !/^inv_[0-9a-f]{32}_[0-9a-f]{8}$/.test(ref)) { load(); return }
+    window.history.replaceState(null, '', window.location.pathname)
+    verifyPayment(token, ref).then((r) => {
+      setDoc(r.doc)
+      setMsg(r.paid ? { ok: true, text: 'Payment received. Thank you! Your receipt is below.' }
+        : { ok: false, text: 'We could not confirm the payment yet. If money left your account, it will show here shortly.' })
+    }).catch(() => load())
+  }, [load, token])
+
+  const payNow = async () => {
+    setBusy('pay'); setMsg(null)
+    try { const r = await startPayment(token); window.location.assign(r.checkout_url) }
+    catch (e) { setMsg({ ok: false, text: publicError(e) }); setBusy('') }
+  }
   useEffect(() => {
     if (!doc) return
     const kind = doc.doc_type === 'quote' ? 'Quote' : 'Invoice'
@@ -97,9 +115,14 @@ export default function InvoicePublicPage({ token }) {
             {!quote && Number(doc.amount_paid) > 0 && <><Line k="Paid" v={naira(doc.amount_paid)} /><Line k={<b>Balance due</b>} v={<b>{naira(doc.balance_due)}</b>} /></>}
           </div>
 
+          {!quote && doc.can_pay && (
+            <button type="button" disabled={!!busy} onClick={payNow} style={{ ...btn(colour, '#fff'), opacity: busy ? 0.6 : 1 }}>
+              <CreditCard size={18} />{busy === 'pay' ? 'Opening payment…' : `Pay ${naira(doc.balance_due)} now`}</button>
+          )}
+
           {bank && (
             <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 10, padding: 14, display: 'grid', gap: 6 }}>
-              <b style={{ color: '#111827' }}>Pay {naira(due)} by bank transfer</b>
+              <b style={{ color: '#111827' }}>{doc.can_pay ? 'Or pay' : 'Pay'} {naira(due)} by bank transfer</b>
               <Line k="Bank" v={iss.bank_name} />
               <Line k="Account name" v={iss.account_name} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -109,6 +132,20 @@ export default function InvoicePublicPage({ token }) {
                   aria-label="Copy account number">{iss.account_number}{copied ? <Check size={16} color="#11643F" /> : <Copy size={16} color="#6B7280" />}</button>
               </div>
               <small style={{ color: '#6B7280' }}>Use {doc.number} as the payment reference, then send the receipt to {iss.business_name}.</small>
+            </div>
+          )}
+
+          {!quote && (doc.receipts || []).length > 0 && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div style={{ color: '#6B7280', fontSize: 12.5, fontWeight: 600 }}>Payments received</div>
+              {doc.receipts.map((r) => (
+                <div key={r.token} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 14 }}>
+                  <span style={{ color: '#111827', fontWeight: 600 }}>{naira(r.amount)}</span>
+                  <span style={{ color: '#6B7280' }}>{day(r.paid_at)} · {r.number}</span>
+                  <a href={publicReceiptUrl(r.token)} rel="nofollow" style={{ marginLeft: 'auto', color: colour, fontWeight: 700, minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Download size={16} />Receipt</a>
+                </div>
+              ))}
             </div>
           )}
 

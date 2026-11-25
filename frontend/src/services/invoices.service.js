@@ -45,9 +45,20 @@ export const convertQuote = (id) => api.post(`/api/v1/invoices/${id}/convert`).t
 export const getSendOptions = (id) => api.get(`/api/v1/invoices/${id}/send-options`).then(d)
 export const sendDoc = (id, channel, email) => api.post(`/api/v1/invoices/${id}/send`, { channel, ...(email ? { email } : {}) }).then(d)
 
+// INV-4: payments and receipts
+export const recordPayment = (id, body) => api.post(`/api/v1/invoices/${id}/payments`, body).then(d)
+export const listReceipts = (params = {}) => api.get('/api/v1/receipts', { params }).then(d)
+export const createReceipt = (body) => api.post('/api/v1/receipts', body).then(d)
+export const voidReceipt = (id, reason) => api.post(`/api/v1/receipts/${id}/void`, { reason }).then(d)
+export const getReceiptSendOptions = (id) => api.get(`/api/v1/receipts/${id}/send-options`).then(d)
+export const sendReceipt = (id, channel, email) => api.post(`/api/v1/receipts/${id}/send`, { channel, ...(email ? { email } : {}) }).then(d)
+export const downloadReceiptPdf = (id, filename) => savePdf(`/api/v1/receipts/${id}/pdf`, filename)
+
 /** Fetch the PDF with the login token and save it (a plain link can't carry the token). */
-export async function downloadDocPdf(id, filename) {
-  const res = await api.get(`/api/v1/invoices/${id}/pdf`, { responseType: 'blob' })
+export const downloadDocPdf = (id, filename) => savePdf(`/api/v1/invoices/${id}/pdf`, filename)
+
+async function savePdf(path, filename) {
+  const res = await api.get(path, { responseType: 'blob' })
   const url = URL.createObjectURL(res.data)
   const name = filename || (/filename="([^"]+)"/.exec(res.headers?.['content-disposition'] || '')?.[1]) || 'document.pdf'
   const a = document.createElement('a')

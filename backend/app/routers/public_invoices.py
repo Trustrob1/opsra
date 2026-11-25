@@ -8,6 +8,10 @@ is the only key. Prefix /api/v1.
   GET  /public/invoices/{token}/pdf       the PDF
   POST /public/invoices/{token}/accept    the customer accepts an issued quote (the team gets a task)
   POST /public/invoices/{token}/decline   or declines it
+  INV-4:
+  POST /public/invoices/{token}/pay       start a Paystack checkout for the balance (business's own Paystack)
+  POST /public/invoices/{token}/verify    after Paystack sends the customer back: check and record the payment
+  GET  /public/receipts/{token}/pdf       a receipt PDF (each receipt has its own token)
 
 Open for every product mode and not plan-gated: a document that was sent stays readable.
 Rate limited per IP (hashed). Errors use the standard envelope.
@@ -19,6 +23,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.database import get_supabase
 from app.models.common import ok
@@ -95,3 +100,41 @@ async def decline(token: str, request: Request, db=Depends(get_supabase)):
         return ok(delivery.public_answer(db, token, False))
     except inv.InvoiceError as e:
         return _fail(e)
+
+
+class VerifyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reference: str = Field(..., min_length=10, max_length=60, pattern=r"^inv_[0-9a-f]{32}_[0-9a-f]{8}$")
+
+
+@router.post("/public/invoices/{token}/pay")
+async def pay(token: str, request: Request, db=Depends(get_supabase)):
+    if _limited(request, "pay", 10, 600):
+        return _fail(_SLOW)
+    try:
+        return ok({"checkout_url": delivery.public_pay(db, token)})
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/public/invoices/{token}/verify")
+async def verify(token: str, body: VerifyIn, request: Request, db=Depends(get_supabase)):
+    if _limited(request, "verify", 20, 600):
+        return _fail(_SLOW)
+    try:
+        return ok(delivery.public_verify(db, token, body.reference))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.get("/public/receipts/{token}/pdf")
+async def receipt_pdf(token: str, request: Request, db=Depends(get_supabase)):
+    if _limited(request, "pdf", 20, 600):
+        return _fail(_SLOW)
+    try:
+        data, name = delivery.public_receipt_pdf(db, token)
+    except inv.InvoiceError as e:
+        return _fail(e)
+    return Response(content=data, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex"})

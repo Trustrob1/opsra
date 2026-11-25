@@ -187,7 +187,8 @@ def _http_message(exc: Exception, fallback: str) -> str:
     return fallback
 
 
-def _send_whatsapp(db, org_id: str, user_id: Optional[str], doc: dict, data: bytes, name: str) -> None:
+def _send_whatsapp(db, org_id: str, user_id: Optional[str], doc: dict, data: bytes, name: str,
+                   text: Optional[str] = None) -> None:
     from fastapi import HTTPException
     from app.models.whatsapp import SendMessageRequest
     from app.services import whatsapp_service as wa
@@ -206,12 +207,13 @@ def _send_whatsapp(db, org_id: str, user_id: Optional[str], doc: dict, data: byt
         raise inv.InvoiceError("INTEGRATION_ERROR", "WhatsApp did not accept the file. Please try again.", 503)
     try:   # the link text is a bonus: the PDF already went, so a failure here is only logged
         wa.send_whatsapp_message(db=db, org_id=org_id, user_id=user_id,
-                                 payload=SendMessageRequest(content=message_text(doc), **ids))
+                                 payload=SendMessageRequest(content=text or message_text(doc), **ids))
     except Exception as exc:
         logger.warning("invoice_delivery: whatsapp link text failed org=%s doc=%s: %s", org_id, doc.get("id"), exc)
 
 
-def _send_webchat(db, org_id: str, user_id: Optional[str], doc: dict, data: bytes, name: str) -> None:
+def _send_webchat(db, org_id: str, user_id: Optional[str], doc: dict, data: bytes, name: str,
+                  text: Optional[str] = None) -> None:
     from app.services import webchat_attachment_service as att
     from app.services import webchat_service as wc
     s = _webchat_session(db, org_id, doc)
@@ -226,7 +228,7 @@ def _send_webchat(db, org_id: str, user_id: Optional[str], doc: dict, data: byte
         logger.error("invoice_delivery: web chat file failed org=%s doc=%s: %s", org_id, doc.get("id"), exc)
         raise inv.InvoiceError("INTEGRATION_ERROR", "Could not put the file in the chat. Please try again.", 503)
     try:
-        wc.rep_send(db, org_id, str(doc["lead_id"]), message_text(doc), user_id)
+        wc.rep_send(db, org_id, str(doc["lead_id"]), text or message_text(doc), user_id)
     except Exception as exc:
         logger.warning("invoice_delivery: web chat link text failed org=%s doc=%s: %s", org_id, doc.get("id"), exc)
 
@@ -261,7 +263,8 @@ def email_bodies(doc: dict) -> tuple[str, str, str]:
     return subject, text, body
 
 
-def _send_email(db, org_id: str, doc: dict, data: bytes, name: str, to: str) -> None:
+def _send_email(db, org_id: str, doc: dict, data: bytes, name: str, to: str,
+                bodies: Optional[tuple] = None) -> None:
     api_key = os.environ.get("RESEND_API_KEY", "")
     if not api_key:
         raise inv.InvoiceError("INTEGRATION_ERROR", "Email is not set up on this server.", 503)
@@ -271,7 +274,7 @@ def _send_email(db, org_id: str, doc: dict, data: bytes, name: str, to: str) -> 
     if not reply_to:
         st = inv.get_settings(db, org_id)
         reply_to = next((x.strip() for x in (st.get("email_reply_to"), st.get("email")) if x and EMAIL_RE.match(str(x).strip())), None)
-    subject, text, body = email_bodies(doc)
+    subject, text, body = bodies or email_bodies(doc)
     msg = {"from": f"{_clean_name(_business(doc))} <{sender}>", "to": [to], "subject": subject[:200],
            "text": text, "html": body, "attachments": [{"filename": name, "content": list(data)}]}
     if reply_to:
@@ -351,6 +354,13 @@ def public_view(db, token: str) -> dict:
         "voided": status == "void",
         "pdf_name": pdf.filename(doc, doc["doc_type"]),
     }
+    if doc["doc_type"] == "invoice":   # INV-4
+        from app.services import invoice_payment_service as pay
+        out["can_pay"] = pay.can_pay(db, doc)
+        out["receipts"] = [{"number": r.get("number"), "amount": r.get("amount"), "paid_at": r.get("paid_at"),
+                            "method": r.get("method"), "token": r.get("public_token")}
+                           for r in pay.receipts_for_invoice(db, doc["org_id"], doc["id"])
+                           if not r.get("voided_at") and r.get("public_token")]
     if out["voided"]:   # a cancelled document shows no bank details
         for k in ("bank_name", "account_name", "account_number"):
             out["issuer"][k] = None
@@ -414,3 +424,137 @@ def draft_for_lead(db, org_id: str, lead_id: str) -> Optional[str]:
     except Exception as exc:
         logger.warning("invoice_delivery: draft for lead failed org=%s lead=%s: %s", org_id, lead_id, exc)
         return None
+
+
+# ───────────────────────────── INV-4: receipts ─────────────────────────────
+
+RECEIPT_CHANNELS = ("whatsapp", "email", "webchat")
+
+
+def receipt_text(r: dict) -> str:
+    """The short note that goes with a receipt PDF."""
+    first = (r.get("customer_name") or "").split(" ")[0].strip()
+    hello = f"Hello {first}, " if first else "Hello, "
+    biz = _business(r)
+    line = f"{hello}thank you. {biz} has received {_naira(r.get('amount'))} from you"
+    if r.get("paid_at"):
+        line += f" on {_nice(r['paid_at'])}"
+    line += f". Your receipt {r.get('number')} is attached."
+    if r.get("invoice_number"):
+        bal = float(r.get("invoice_balance") or 0)
+        line += (f" Invoice {r['invoice_number']} is now fully paid." if bal <= 0
+                 else f" Balance left on invoice {r['invoice_number']}: {_naira(bal)}.")
+    return line
+
+
+def receipt_email_bodies(r: dict) -> tuple[str, str, str]:
+    biz = _business(r)
+    subject = f"Receipt {r.get('number')} from {biz}"
+    text = receipt_text(r)
+    footer = ((r.get("issuer") or {}).get("footer") or "").strip()
+    if footer:
+        text += f"\n\n{footer}"
+    e = html.escape
+    body = (f'<div style="font-family:Arial,sans-serif;font-size:15px;color:#1a1a1a;max-width:560px">'
+            f'<p>{e(receipt_text(r))}</p>'
+            f'<p style="color:#666;font-size:13px">You can reply to this email to reach {e(biz)}.</p>'
+            + (f'<p style="color:#666;font-size:13px">{e(footer)}</p>' if footer else "") + "</div>")
+    return subject, text, body
+
+
+def _receipt_email(db, org_id: str, r: dict) -> Optional[str]:
+    em = (r.get("customer_email") or "").strip()
+    if not em and (r.get("lead_id") or r.get("customer_id")):
+        try:
+            em = (inv._customer_snapshot(db, org_id, {"lead_id": r.get("lead_id"),
+                                                       "customer_id": r.get("customer_id")}).get("customer_email") or "").strip()
+        except Exception:
+            em = ""
+    return em if em and EMAIL_RE.match(em) else None
+
+
+def receipt_options(db, org_id: str, r: dict) -> dict:
+    lead = _lead_contact(db, org_id, r.get("lead_id"))
+    has_wa = bool(r.get("customer_id") or (lead and (lead.get("whatsapp") or lead.get("phone"))))
+    if r.get("voided_at"):
+        no = {"ok": False, "reason": "This receipt is void."}
+        return {"channels": {"whatsapp": no, "webchat": no, "email": {**no, "to": None}}}
+    if not has_wa:
+        wa = {"ok": False, "reason": "No WhatsApp number for this customer."}
+    elif not _wa_window_open(db, org_id, r):
+        wa = {"ok": False, "reason": "The customer has not messaged in the last 24 hours, so WhatsApp will not deliver it."}
+    else:
+        wa = {"ok": True, "reason": None}
+    s = _webchat_session(db, org_id, r)
+    webchat = ({"ok": True, "reason": None} if s and s.get("status") == "active"
+               else {"ok": False, "reason": "This customer has no open web chat."})
+    to = _receipt_email(db, org_id, r)
+    email = {"ok": True, "reason": None if to else "Type the customer's email address.", "to": to}
+    return {"channels": {"whatsapp": wa, "webchat": webchat, "email": email}}
+
+
+def send_receipt(db, org_id: str, user_id: Optional[str], receipt_id: str, channel: Optional[str] = None,
+                 email: Optional[str] = None) -> dict:
+    """Send a receipt PDF. channel None = pick for the customer (WhatsApp if the window is open, else email, else web
+    chat); with nothing usable it returns {"channel": None} instead of raising (used after a Paystack payment)."""
+    from app.services import invoice_payment_service as pay
+    r = pay.receipt_doc(db, org_id, pay.get_receipt(db, org_id, receipt_id))
+    if r.get("voided_at"):
+        raise inv.InvoiceError("INVALID_TRANSITION", "This receipt is void and cannot be sent.", 400)
+    to = None
+    if channel is None:
+        opts = receipt_options(db, org_id, r)["channels"]
+        if opts["whatsapp"]["ok"]:
+            channel = "whatsapp"
+        elif opts["email"].get("to"):
+            channel, to = "email", opts["email"]["to"]
+        elif opts["webchat"]["ok"]:
+            channel = "webchat"
+        else:
+            return {"channel": None, "sent": False}
+    elif channel not in RECEIPT_CHANNELS:
+        raise inv.InvoiceError("VALIDATION_ERROR", "Choose WhatsApp, web chat or email.", 422, "channel")
+    if channel == "email" and not to:
+        to = (email or _receipt_email(db, org_id, r) or "").strip()
+        if not to or not EMAIL_RE.match(to) or len(to) > 254:
+            raise inv.InvoiceError("VALIDATION_ERROR", "Type a valid email address.", 422, "email")
+    if channel == "whatsapp" and not (r.get("lead_id") or r.get("customer_id")):
+        raise inv.InvoiceError("VALIDATION_ERROR", "This receipt is not linked to a contact with WhatsApp.", 422)
+    if channel == "webchat" and not r.get("lead_id"):
+        raise inv.InvoiceError("VALIDATION_ERROR", "This customer has no web chat.", 422)
+    data, name = pay.render_receipt(db, org_id, r)
+    text = receipt_text(r)
+    if channel == "whatsapp":
+        _send_whatsapp(db, org_id, user_id, r, data, name, text)
+    elif channel == "webchat":
+        _send_webchat(db, org_id, user_id, r, data, name, text)
+    else:
+        _send_email(db, org_id, r, data, name, to, receipt_email_bodies(r))
+    inv._audit(db, org_id, user_id, "receipt.sent", r.get("invoice_id") or r["id"],
+               {"receipt": r.get("number"), "channel": channel, **({"to": to} if to else {})})
+    return {"channel": channel, "sent": True}
+
+
+def public_receipt_pdf(db, token: str) -> tuple[bytes, str]:
+    if not isinstance(token, str) or not TOKEN_RE.match(token):
+        raise inv.InvoiceError("NOT_FOUND", "This link is not valid.", 404)
+    res = db.table("receipts").select("*").eq("public_token", token).limit(1).execute()
+    rows = (res.data or []) if res else []
+    if not rows:
+        raise inv.InvoiceError("NOT_FOUND", "This link is not valid.", 404)
+    from app.services import invoice_payment_service as pay
+    return pay.render_receipt(db, rows[0]["org_id"], rows[0])
+
+
+def public_pay(db, token: str) -> str:
+    """Start a Paystack checkout for the balance. Returns the URL to send the customer to."""
+    from app.services import invoice_payment_service as pay
+    doc = _by_token(db, token)
+    return pay.start_checkout(db, doc, public_url(doc))
+
+
+def public_verify(db, token: str, reference: str) -> dict:
+    from app.services import invoice_payment_service as pay
+    doc = _by_token(db, token)
+    paid = pay.verify_return(db, doc, reference)
+    return {"paid": paid, "doc": public_view(db, token)}

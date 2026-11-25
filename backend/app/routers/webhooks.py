@@ -4204,6 +4204,12 @@ async def receive_paystack_storefront_webhook(request: Request, db=Depends(get_s
             site_order_service.on_payment_confirmed(db=db, org_id=org_id, reference=reference)
         except Exception as exc:
             logger.error("[PAYSTACK-STOREFRONT] site order hook failed org=%s ref=%s: %s", org_id, reference, exc)
+        # INV-4: an invoice paid online gets its receipt (no-op for other references). S14.
+        try:
+            from app.services import invoice_payment_service as _inv_pay
+            _inv_pay.on_payment_confirmed(db, org_id, reference)
+        except Exception as exc:
+            logger.error("[PAYSTACK-STOREFRONT] invoice hook failed org=%s ref=%s: %s", org_id, reference, exc)
 
     _log_webhook(
         db, route="/webhooks/payment/paystack-storefront", org_id=org_id,

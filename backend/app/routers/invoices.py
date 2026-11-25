@@ -114,6 +114,37 @@ class SendIn(_Strict):
     email: Optional[str] = Field(default=None, max_length=254)
 
 
+Method = Literal["bank_transfer", "cash", "pos", "ussd", "other"]
+
+
+class PaymentIn(_Strict):
+    amount: Decimal = Field(..., gt=0, le=Decimal("1000000000"))
+    method: Method
+    reference: Optional[str] = Field(None, max_length=200)
+    paid_at: Optional[date] = None
+    note: Optional[str] = Field(None, max_length=500)
+
+    _money = field_validator("amount")(_two_places)
+
+
+class ReceiptIn(_Strict):
+    lead_id: Optional[UUID] = None
+    customer_id: Optional[UUID] = None
+    customer_name: Optional[str] = Field(None, max_length=200)
+    amount: Decimal = Field(..., gt=0, le=Decimal("1000000000"))
+    method: Method
+    reference: Optional[str] = Field(None, max_length=200)
+    paid_at: Optional[date] = None
+    description: str = Field(..., min_length=1, max_length=500)
+
+    _money = field_validator("amount")(_two_places)
+
+
+class ReceiptSendIn(_Strict):
+    channel: Literal["whatsapp", "webchat", "email"]
+    email: Optional[str] = Field(default=None, max_length=254)
+
+
 class SettingsIn(_Strict):
     business_name: Optional[str] = Field(None, max_length=200)
     address: Optional[str] = Field(None, max_length=500)
@@ -199,7 +230,10 @@ async def delete_logo(org: dict = Depends(require_admin), db=Depends(get_supabas
 
 @router.get("/invoices/summary")
 async def get_summary(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
-    return ok(inv.summary(db, org["org_id"]))
+    from app.services import invoice_payment_service as pay
+    out = inv.summary(db, org["org_id"])
+    out["paid_this_month"] = pay.paid_this_month(db, org["org_id"])
+    return ok(out)
 
 
 @router.get("/invoices/products")
@@ -242,9 +276,15 @@ async def create_doc(body: DocCreate, org: dict = Depends(get_current_org), db=D
 @router.get("/invoices/{doc_id}")
 async def get_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     try:
-        return ok(inv.get_doc(db, org["org_id"], str(doc_id)))
+        doc = inv.get_doc(db, org["org_id"], str(doc_id))
     except inv.InvoiceError as e:
         return _fail(e)
+    if doc.get("doc_type") == "invoice":   # INV-4
+        from app.services import invoice_payment_service as pay
+        doc["receipts"] = pay.receipts_for_invoice(db, org["org_id"], doc["id"])
+        for r in doc["receipts"]:
+            r.pop("public_token", None)
+    return ok(doc)
 
 
 @router.patch("/invoices/{doc_id}")
@@ -347,5 +387,96 @@ async def send_doc(doc_id: UUID, body: SendIn, org: dict = Depends(get_current_o
         return _fail(inv.InvoiceError("RATE_LIMITED", "That is a lot of sending. Please wait a few minutes.", 429))
     try:
         return ok(delivery.send(db, org_id, user_id, str(doc_id), body.channel, body.email))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+# ── INV-4: payments and receipts ──
+
+@router.post("/invoices/{doc_id}/payments", status_code=201)
+async def record_payment(doc_id: UUID, body: PaymentIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_payment_service as pay
+    org_id, user_id = _ids(org)
+    try:
+        out = pay.record_payment(db, org_id, user_id, str(doc_id), _body(body))
+    except inv.InvoiceError as e:
+        return _fail(e)
+    out["receipt"].pop("public_token", None)
+    return ok(out)
+
+
+@router.get("/receipts")
+async def list_receipts(
+    invoice_id: Optional[UUID] = None,
+    lead_id: Optional[UUID] = None,
+    q: Optional[str] = Query(None, max_length=100),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=100_000),
+    org: dict = Depends(get_current_org), db=Depends(get_supabase),
+):
+    from app.services import invoice_payment_service as pay
+    return ok(pay.list_receipts(db, org["org_id"], str(invoice_id) if invoice_id else None,
+                                str(lead_id) if lead_id else None, q, limit, offset))
+
+
+@router.post("/receipts", status_code=201)
+async def new_receipt(body: ReceiptIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_payment_service as pay
+    org_id, user_id = _ids(org)
+    try:
+        r = pay.standalone_receipt(db, org_id, user_id, _body(body))
+    except inv.InvoiceError as e:
+        return _fail(e)
+    r.pop("public_token", None)
+    r.pop("_contact", None)
+    return ok(r)
+
+
+@router.post("/receipts/{receipt_id}/void")
+async def void_receipt(receipt_id: UUID, body: VoidIn, org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    from app.services import invoice_payment_service as pay
+    org_id, user_id = _ids(org)
+    try:
+        r = pay.void_receipt(db, org_id, user_id, str(receipt_id), body.reason)
+    except inv.InvoiceError as e:
+        return _fail(e)
+    r.pop("public_token", None)
+    return ok(r)
+
+
+@router.get("/receipts/{receipt_id}/pdf")
+async def receipt_pdf(receipt_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_payment_service as pay
+    org_id = org["org_id"]
+    try:
+        data, name = pay.render_receipt(db, org_id, pay.get_receipt(db, org_id, str(receipt_id)))
+    except inv.InvoiceError as e:
+        return _fail(e)
+    return Response(content=data, media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "no-store"})
+
+
+@router.get("/receipts/{receipt_id}/send-options")
+async def receipt_send_options(receipt_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_delivery_service as delivery
+    from app.services import invoice_payment_service as pay
+    org_id = org["org_id"]
+    try:
+        r = pay.receipt_doc(db, org_id, pay.get_receipt(db, org_id, str(receipt_id)))
+    except inv.InvoiceError as e:
+        return _fail(e)
+    return ok(delivery.receipt_options(db, org_id, r))
+
+
+@router.post("/receipts/{receipt_id}/send")
+async def send_receipt(receipt_id: UUID, body: ReceiptSendIn, org: dict = Depends(get_current_org),
+                       db=Depends(get_supabase)):
+    from app.services import invoice_delivery_service as delivery
+    from app.services import webchat_service as wc
+    org_id, user_id = _ids(org)
+    if wc.rate_limited(f"invsend:{org_id}", 120, 3600):
+        return _fail(inv.InvoiceError("RATE_LIMITED", "That is a lot of sending. Please wait a few minutes.", 429))
+    try:
+        return ok(delivery.send_receipt(db, org_id, user_id, str(receipt_id), body.channel, body.email))
     except inv.InvoiceError as e:
         return _fail(e)

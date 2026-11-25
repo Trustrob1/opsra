@@ -23,6 +23,7 @@ import {
 import { naira, niceDate, todayYmd, TYPE_LABEL, lab, inp, btnP, btnG, btnDanger, disabled } from './invoiceUi'
 import StatusPill from './StatusPill'
 import SendPanel from './SendPanel'   // INV-3
+import PaymentsPanel from './PaymentsPanel'   // INV-4
 
 let _key = 0
 const newKey = () => `l${++_key}`
@@ -206,7 +207,7 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
           {err && <div role="alert" style={{ background: '#FFF5F5', border: '1px solid #F5C2C2', color: '#9B2C2C', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>{err}</div>}
           {!form && !err && <p style={{ color: ds.gray }}>Loading…</p>}
           {form && editable && <DraftForm form={form} set={set} settings={settings} preview={preview} isNew={!doc} isMobile={isMobile} />}
-          {form && !editable && <IssuedView doc={doc} />}
+          {form && !editable && <IssuedView doc={doc} isAdmin={isAdmin} onPaid={() => { load(doc.id).catch(() => {}); onChanged?.() }} />}
         </div>
 
         {form && (
@@ -405,7 +406,7 @@ function ProductPicker({ onPick }) {
 
 // ───────────────────────────── issued (read-only) ─────────────────────────────
 
-function IssuedView({ doc }) {
+function IssuedView({ doc, isAdmin, onPaid }) {
   const kind = doc.doc_type
   return (
     <div style={{ display: 'grid', gap: 16, fontSize: 14 }}>
@@ -441,6 +442,7 @@ function IssuedView({ doc }) {
       {doc.terms && <div><div style={lab}>Terms</div><div style={{ whiteSpace: 'pre-wrap' }}>{doc.terms}</div></div>}
       {doc.status === 'void' && <div style={{ background: '#F3F4F6', borderRadius: 10, padding: 12, color: ds.gray }}>Voided {niceDate(doc.voided_at)}{doc.void_reason ? `: ${doc.void_reason}` : ''}</div>}
       {doc.converted_from_id && <div style={{ color: ds.gray, fontSize: 13 }}>Made from a quote.</div>}
+      {kind === 'invoice' && <PaymentsPanel doc={doc} isAdmin={isAdmin} onChanged={onPaid} />}
       {doc.status !== 'void' && <SendPanel doc={doc} />}
       <p style={{ color: ds.gray, fontSize: 13, margin: 0 }}>Issued documents can't be changed. To fix a mistake, void it and make a new one.</p>
     </div>

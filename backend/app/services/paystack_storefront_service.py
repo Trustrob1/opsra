@@ -389,6 +389,9 @@ def mark_paid(db: Any, org_id: str, reference: str) -> None:
         from app.services import site_order_service
         if phone_number and site_order_service.is_site_order_reference(db, org_id, reference):
             phone_number = ""
+        # INV-4: invoice payments get their receipt from invoice_payment_service instead.
+        if phone_number and str(reference).startswith("inv_"):
+            phone_number = ""
         if phone_number:
             from app.services import whatsapp_service
             balance_due = progress["balance_due"] or 0
