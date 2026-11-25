@@ -219,6 +219,12 @@ export default function App() {
     return <WebChatPage chatKey={_chatMatch[1]} />
   }
   // BILL-4 — a business's invoice-style billing page (the token names the business; no login).
+  // INV-3 — a customer's quote or invoice from a business on Opsra (no login; the token is the key)
+  const _invMatch = window.location.pathname.match(/^\/i\/([A-Za-z0-9_-]{20,64})$/)
+  if (_invMatch) {
+    const InvoicePublicPage = require('./pages/InvoicePublicPage').default
+    return <InvoicePublicPage token={_invMatch[1]} />
+  }
   const _payMatch = window.location.pathname.match(/^\/pay\/([A-Za-z0-9_-]{20,80})$/)
   if (_payMatch) {
     const PayLinkPage = require('./pages/PayLinkPage').default

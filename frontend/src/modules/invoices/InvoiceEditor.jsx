@@ -22,6 +22,7 @@ import {
 } from '../../services/invoices.service'
 import { naira, niceDate, todayYmd, TYPE_LABEL, lab, inp, btnP, btnG, btnDanger, disabled } from './invoiceUi'
 import StatusPill from './StatusPill'
+import SendPanel from './SendPanel'   // INV-3
 
 let _key = 0
 const newKey = () => `l${++_key}`
@@ -440,7 +441,8 @@ function IssuedView({ doc }) {
       {doc.terms && <div><div style={lab}>Terms</div><div style={{ whiteSpace: 'pre-wrap' }}>{doc.terms}</div></div>}
       {doc.status === 'void' && <div style={{ background: '#F3F4F6', borderRadius: 10, padding: 12, color: ds.gray }}>Voided {niceDate(doc.voided_at)}{doc.void_reason ? `: ${doc.void_reason}` : ''}</div>}
       {doc.converted_from_id && <div style={{ color: ds.gray, fontSize: 13 }}>Made from a quote.</div>}
-      <p style={{ color: ds.gray, fontSize: 13, margin: 0 }}>Issued documents can't be changed. To fix a mistake, void it and make a new one. Sending it to the customer by WhatsApp, web chat or email comes in the next update; for now, download the PDF and send it in the chat.</p>
+      {doc.status !== 'void' && <SendPanel doc={doc} />}
+      <p style={{ color: ds.gray, fontSize: 13, margin: 0 }}>Issued documents can't be changed. To fix a mistake, void it and make a new one.</p>
     </div>
   )
 }

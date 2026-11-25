@@ -3601,6 +3601,13 @@ def _handle_post_qual_cta_reply(
                    "payment details shortly. 💳"
             )
             task_title = f"Send invoice to {lead_name}"
+            # INV-3: start a draft invoice for this lead so the team only has to add the lines and send it
+            try:
+                from app.services import invoice_delivery_service as _inv_delivery
+                if _inv_delivery.draft_for_lead(db, org_id, lead_id):
+                    task_title = f"Send invoice to {lead_name} (draft ready in Invoices)"
+            except Exception as _inv_exc:  # S14
+                logger.warning("_handle_post_qual_cta_reply: invoice draft failed lead=%s: %s", lead_id, _inv_exc)
 
         elif selected_id == "talk_to_sales":
             confirmation = (

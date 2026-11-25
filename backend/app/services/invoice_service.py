@@ -158,6 +158,7 @@ def get_settings(db, org_id: str) -> dict:
         out["saved"] = True
     else:
         out["saved"] = False
+    if not (out.get("business_name") or "").strip():   # INV-3: saved settings without a name also use the organisation name
         try:
             org = db.table("organisations").select("name").eq("id", org_id).limit(1).execute()
             if org and org.data:

@@ -41,6 +41,9 @@ export const voidDoc    = (id, reason) => api.post(`/api/v1/invoices/${id}/void`
 export const acceptQuote  = (id) => api.post(`/api/v1/invoices/${id}/accept`).then(d)
 export const declineQuote = (id) => api.post(`/api/v1/invoices/${id}/decline`).then(d)
 export const convertQuote = (id) => api.post(`/api/v1/invoices/${id}/convert`).then(d)
+// INV-3: send to the customer
+export const getSendOptions = (id) => api.get(`/api/v1/invoices/${id}/send-options`).then(d)
+export const sendDoc = (id, channel, email) => api.post(`/api/v1/invoices/${id}/send`, { channel, ...(email ? { email } : {}) }).then(d)
 
 /** Fetch the PDF with the login token and save it (a plain link can't carry the token). */
 export async function downloadDocPdf(id, filename) {

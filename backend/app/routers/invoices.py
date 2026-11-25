@@ -24,6 +24,9 @@ Plan feature: `invoices` (whole router, plan_gate.require).
   GET    /invoices/summary                  money owed, overdue, open quotes, drafts
   GET    /invoices/products?q=              catalogue items for the line picker
   GET    /invoices/contacts?q=              leads to bill (open to every product mode)
+  INV-3:
+  GET    /invoices/{id}/send-options        the customer's link and which channels can be used now
+  POST   /invoices/{id}/send                {channel: whatsapp|webchat|email, email?} send the PDF + link
 
 S1/S2: org_id comes only from get_current_org (the JWT). Ids in bodies are checked against the org in the service.
 S3/S4: every body field has a length or range limit; notes/terms max 5,000 characters.
@@ -58,11 +61,21 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _two_places(v: Optional[Decimal]) -> Optional[Decimal]:
+    """At most 2 decimal places (kobo). Done here, not with Field(max_digits=...), because pydantic 2.7 (pinned in
+    requirements.txt) cannot apply max_digits to an Optional[Decimal] and the app then fails to start."""
+    if v is not None and v.as_tuple().exponent < -2 and v != v.quantize(Decimal("0.01")):
+        raise ValueError("Use at most 2 decimal places.")
+    return v
+
+
 class ItemIn(_Strict):
     product_id: Optional[UUID] = None
     description: Optional[str] = Field(None, max_length=500)
-    quantity: Decimal = Field(..., gt=0, le=1_000_000, max_digits=12, decimal_places=2)
-    unit_price: Optional[Decimal] = Field(None, ge=0, le=100_000_000_000, max_digits=14, decimal_places=2)
+    quantity: Decimal = Field(..., gt=0, le=1_000_000)
+    unit_price: Optional[Decimal] = Field(None, ge=0, le=100_000_000_000)
+
+    _money = field_validator("quantity", "unit_price")(_two_places)
 
 
 class _DocFields(_Strict):
@@ -73,13 +86,15 @@ class _DocFields(_Strict):
     customer_email: Optional[str] = Field(None, max_length=254)
     customer_address: Optional[str] = Field(None, max_length=500)
     currency: Optional[Literal["NGN"]] = None
-    discount: Optional[Decimal] = Field(None, ge=0, le=100_000_000_000, max_digits=14, decimal_places=2)
+    discount: Optional[Decimal] = Field(None, ge=0, le=100_000_000_000)
     apply_vat: Optional[bool] = None
     issue_date: Optional[date] = None
     due_date: Optional[date] = None
     notes: Optional[str] = Field(None, max_length=5000)
     terms: Optional[str] = Field(None, max_length=5000)
     items: Optional[List[ItemIn]] = Field(None, max_length=inv.MAX_ITEMS)
+
+    _money = field_validator("discount")(_two_places)
 
 
 class DocCreate(_DocFields):
@@ -92,6 +107,11 @@ class DocPatch(_DocFields):
 
 class VoidIn(_Strict):
     reason: str = Field(..., min_length=3, max_length=500)
+
+
+class SendIn(_Strict):
+    channel: Literal["whatsapp", "webchat", "email"]
+    email: Optional[str] = Field(default=None, max_length=254)
 
 
 class SettingsIn(_Strict):
@@ -108,13 +128,15 @@ class SettingsIn(_Strict):
     invoice_prefix: Optional[str] = Field(None, max_length=10, pattern=r"^[A-Za-z0-9/_-]*$")
     receipt_prefix: Optional[str] = Field(None, max_length=10, pattern=r"^[A-Za-z0-9/_-]*$")
     vat_enabled: Optional[bool] = None
-    vat_rate: Optional[Decimal] = Field(None, ge=0, le=100, max_digits=5, decimal_places=2)
+    vat_rate: Optional[Decimal] = Field(None, ge=0, le=100)
     default_due_days: Optional[int] = Field(None, ge=0, le=365)
     default_quote_valid_days: Optional[int] = Field(None, ge=1, le=365)
     default_terms: Optional[str] = Field(None, max_length=5000)
     footer: Optional[str] = Field(None, max_length=300)
     brand_colour: Optional[str] = Field(None, pattern=_COLOUR)
     email_reply_to: Optional[str] = Field(None, max_length=254)
+
+    _money = field_validator("vat_rate")(_two_places)
 
     @field_validator("email", "email_reply_to")
     @classmethod
@@ -302,3 +324,28 @@ async def doc_pdf(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
         return _fail(inv.InvoiceError("INTEGRATION_ERROR", "Could not make the PDF. Please try again.", 503))
     return Response(content=data, media_type="application/pdf", headers={
         "Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "no-store"})
+
+
+# ── INV-3: sending ──
+
+@router.get("/invoices/{doc_id}/send-options")
+async def send_options(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_delivery_service as delivery
+    try:
+        doc = inv.get_doc(db, org["org_id"], str(doc_id))
+    except inv.InvoiceError as e:
+        return _fail(e)
+    return ok(delivery.options(db, org["org_id"], doc))
+
+
+@router.post("/invoices/{doc_id}/send")
+async def send_doc(doc_id: UUID, body: SendIn, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    from app.services import invoice_delivery_service as delivery
+    from app.services import webchat_service as wc
+    org_id, user_id = _ids(org)
+    if wc.rate_limited(f"invsend:{org_id}", 120, 3600):
+        return _fail(inv.InvoiceError("RATE_LIMITED", "That is a lot of sending. Please wait a few minutes.", 429))
+    try:
+        return ok(delivery.send(db, org_id, user_id, str(doc_id), body.channel, body.email))
+    except inv.InvoiceError as e:
+        return _fail(e)
