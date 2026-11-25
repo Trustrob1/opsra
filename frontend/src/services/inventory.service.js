@@ -1,0 +1,28 @@
+/**
+ * frontend/src/services/inventory.service.js
+ * STOCK-1 — stock per product + size + location (backend: routers/inventory.py).
+ * Uses the shared api instance (JWT). org_id is never sent; the server takes it from the token.
+ */
+import api from './api'
+
+const d = (res) => res.data?.data
+
+export const isPlanBlocked = (e) => e?.response?.data?.detail?.code === 'PLAN_REQUIRED'
+export const stockError = (e, fallback = 'Something went wrong. Please try again.') =>
+  isPlanBlocked(e)
+    ? 'Inventory is not included in your plan. Open Billing to see the plans.'
+    : (e?.response?.data?.error?.message ?? e?.response?.data?.detail?.message
+      ?? (typeof e?.response?.data?.detail === 'string' ? e.response.data.detail : null) ?? fallback)
+export const errorField = (e) => e?.response?.data?.error?.field || null
+
+export const getStock          = (params = {}) => api.get('/api/v1/inventory', { params }).then(d)
+export const getStockSettings  = () => api.get('/api/v1/inventory/settings').then(d)
+export const saveStockSettings = (body) => api.put('/api/v1/inventory/settings', body).then(d)
+export const getLocations      = () => api.get('/api/v1/inventory/locations').then(d)
+export const createLocation    = (body) => api.post('/api/v1/inventory/locations', body).then(d)
+export const updateLocation    = (id, body) => api.patch(`/api/v1/inventory/locations/${id}`, body).then(d)
+export const pickStockProducts = (q) => api.get('/api/v1/inventory/products', { params: q ? { q } : {} }).then(d)
+export const getStockHistory   = (params = {}) => api.get('/api/v1/inventory/history', { params }).then(d)
+export const receiveStock      = (body) => api.post('/api/v1/inventory/receive', body).then(d)
+export const adjustStock       = (body) => api.post('/api/v1/inventory/adjust', body).then(d)
+export const updateStockItem   = (body) => api.patch('/api/v1/inventory/items', body).then(d)

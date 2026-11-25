@@ -279,6 +279,14 @@ def sync_product(db, org_id: str, shopify_product: dict, tag_dimensions: list = 
             "updated_at":       now,
         }
 
+        # STOCK-1: once the business keeps its stock in Opsra, Opsra owns inventory_count (stock_apply keeps it).
+        try:
+            from app.services.inventory_service import stock_on
+            if stock_on(db, org_id):
+                row.pop("inventory_count", None)
+        except Exception as exc:
+            logger.warning("shopify sync: stock check failed org=%s: %s", org_id, exc)
+
         # First sync only: generate slug and set catalog_visible
         # Never overwrite these — admin may have customised them
         if not existing:
