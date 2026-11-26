@@ -484,9 +484,12 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         junk = not re.search(r"[A-Za-z0-9]{2}", visitor_text or "")      # COST: an emoji, a lone letter or '???' is not worth an AI call
         ai = webchat_ai_service.answer(db, s, cfg, visitor_text) if (kind == "text" and not junk) else None
         if not ai and asked_before and kind == "text" and not junk:
-            out.append(wc.append_message(db, s, "bot", _REPLY_TO_TEAM))      # SIZE-CONFIRM-2: they answered her question; no AI, so the team takes it
+            # SIZE-CONFIRM-2: they answered her question and there is no AI answer, so the team takes it.
+            # HANDOFF-CONTACT-1: a real hand-over, not just a button: the team is told and a visitor with no details is
+            # asked for a name and number in the chat, so the promised team member can reach them.
             _record_gap(db, s, visitor_text)
-            choices = [{"id": "human", "label": "Leave a message" if handover.is_away(cfg) else "Talk to the team"}]
+            return _to_team(db, s, cfg, out, "The assistant could not answer: " + visitor_text,
+                            reply_text=None if handover.is_away(cfg) else _REPLY_TO_TEAM)
         elif not ai and loose_item and loose_item.get("action") not in ("human", "booking"):
             out.append(wc.append_message(db, s, "bot", _answer_text(loose_item)))        # no AI answer: the old keyword answer beats "I cannot answer"
             wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
