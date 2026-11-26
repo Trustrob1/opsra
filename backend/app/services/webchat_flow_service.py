@@ -64,6 +64,11 @@ def _match_item(cfg: dict, text: str, strict: bool = False) -> Optional[dict]:
     return best
 
 
+# SIZE-CONFIRM-2: an answer that asks the visitor something ("Tell me how you sleep ..."). Their next message is a reply to it,
+# so it must never be keyword-matched to another button (the "I sleep all ways" -> "Will I sleep hot?" mistake).
+_ASKS_VISITOR = re.compile(r"\?\s*$|\btell me\b|\blet me know\b|\bwhich (?:one|size|type)\b", re.I)
+_REPLY_TO_TEAM = "Thanks! Let me get a team member to help you with that."
+
 _BOOK_Q = re.compile(r"\b(?:book|booking|appointment|schedule|reserve)\b", re.I)
 
 
@@ -343,6 +348,9 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
 
     if kind == "menu" and state.get("size_ask"):
         wc.set_state(db, s, size_ask=None)                 # SIZE-CONFIRM-1: they tapped something else, so the size question is dropped
+    asked_before = kind == "text" and bool(state.get("bot_asked"))      # SIZE-CONFIRM-2: Chioma's last answer asked them something
+    if state.get("bot_asked") and not _replay:
+        wc.set_state(db, s, bot_asked=False)
     if kind == "text" and not _replay:
         sz = size_step.handle(db, s, cfg, visitor_text)   # SIZE-CONFIRM-1: "6*6" is read back as a named size and confirmed before any price
         if sz:
@@ -451,7 +459,8 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
         reply_text = _ad_shortcut_text(db, s, cfg, item, ad_sc) if ad_sc else _answer_text(item)          # AD-PRODUCT-1: this ad's own wording, or the general answer plus a catalogue line
         out.append(wc.append_message(db, s, "bot", reply_text))
         bk_offer = _booking_offer(cfg, reply_text) if item.get("action") != "booking" else None
-        wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1, open_offer=(bk_offer or {}).get("id"))
+        wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1, open_offer=(bk_offer or {}).get("id"),
+                     bot_asked=bool(_ASKS_VISITOR.search(reply_text or "")))
         just_answered = True
         choices = _ad_followups(cfg, s, item) if ad_sc else smart.related(cfg, item)                # SMART-1: where to go next, so the visitor is never at a dead end
     elif kind == "text" and (info := smart.info_answer(cfg, visitor_text)):
@@ -474,7 +483,11 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
     else:
         junk = not re.search(r"[A-Za-z0-9]{2}", visitor_text or "")      # COST: an emoji, a lone letter or '???' is not worth an AI call
         ai = webchat_ai_service.answer(db, s, cfg, visitor_text) if (kind == "text" and not junk) else None
-        if not ai and loose_item and loose_item.get("action") not in ("human", "booking"):
+        if not ai and asked_before and kind == "text" and not junk:
+            out.append(wc.append_message(db, s, "bot", _REPLY_TO_TEAM))      # SIZE-CONFIRM-2: they answered her question; no AI, so the team takes it
+            _record_gap(db, s, visitor_text)
+            choices = [{"id": "human", "label": "Leave a message" if handover.is_away(cfg) else "Talk to the team"}]
+        elif not ai and loose_item and loose_item.get("action") not in ("human", "booking"):
             out.append(wc.append_message(db, s, "bot", _answer_text(loose_item)))        # no AI answer: the old keyword answer beats "I cannot answer"
             wc.set_state(db, s, answers=int(state.get("answers") or 0) + 1)
             just_answered = True

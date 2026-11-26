@@ -126,3 +126,43 @@ def test_ai_gets_sizes_and_the_confirm_rule():
 def test_flow_runs_the_size_step_before_the_ai():
     src = open(__import__("app.services.webchat_flow_service", fromlist=["x"]).__file__, encoding="utf-8").read()
     assert src.index("size_step.handle(") < src.index("offer_item = _open_offer_item(cfg, s)") < src.index("webchat_ai_service.answer(")
+
+
+# SIZE-CONFIRM-2: "show me all sizes", "bigger size", and replies to Chioma's own question
+@pytest.mark.parametrize("text", ["Show me all sizes and types", "what sizes do you have", "which sizes are available", "sizes do you have?"])
+def test_asking_for_sizes_shows_the_size_list_without_prices(chat, text):
+    r = z.handle(None, chat, CFG, text)
+    assert "sizes" in r["text"] and "₦" not in r["text"] and r["choices"][0]["label"].startswith("Single")
+    r2 = z.handle(None, chat, CFG, r["choices"][-1]["label"])            # tapping a size is the confirmation
+    assert "₦" in r2["text"]
+
+
+def test_bigger_size_with_nothing_chosen_asks_which(chat):
+    r = z.handle(None, chat, CFG, "How much is the bigger size")
+    assert "Which size" in r["text"] and "₦" not in r["text"] and len(r["choices"]) >= 5
+
+
+def test_bigger_size_after_a_confirmed_size_reads_back_the_next_one(chat):
+    z.handle(None, chat, CFG, "5 by 6")
+    z.handle(None, chat, CFG, "yes")
+    assert chat["state"]["size_last"] == "Queen"
+    r = z.handle(None, chat, CFG, "how much is the bigger size")
+    assert "Standard king" in r["text"] and "₦" not in r["text"] and [c["label"] for c in r["choices"]] == ["Yes", "No"]
+    r2 = z.handle(None, chat, CFG, "smaller")
+    assert r2 is None or "₦" not in r2["text"]
+
+
+def test_biggest_size_says_so(chat):
+    z.handle(None, chat, CFG, "7 by 7")
+    z.handle(None, chat, CFG, "yes")
+    r = z.handle(None, chat, CFG, "do you have a bigger size")
+    assert "biggest" in r["text"]
+
+
+def test_a_reply_to_chiomas_question_is_not_keyword_matched():
+    from app.services import webchat_flow_service as f
+    assert f._ASKS_VISITOR.search("Happy to help. Tell me how you sleep (on your back, on your side, or both), and I will suggest the best fit.")
+    assert f._ASKS_VISITOR.search("What is your budget?")
+    assert not f._ASKS_VISITOR.search("Shipping is free nationwide. Lagos and Abuja get same-day delivery.")
+    src = open(f.__file__, encoding="utf-8").read()
+    assert src.index("if not ai and asked_before") < src.index("elif not ai and loose_item")

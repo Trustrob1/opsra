@@ -29,6 +29,9 @@ _SEP = r"\s*(?:ft\.?|feet|foot|'|in\.?|inch(?:es)?|cm)?\s*(?:x|×|\*|by|on|/|-)\
 _PAIR = re.compile(_NUM + _SEP + _NUM + r"\s*(ft\.?|feet|foot|'|in\.?|inch(?:es|i)?|\"|cm)?", re.I)
 _THICK = re.compile(r"(\d{1,2}(?:\.\d)?)\s*(?:inch(?:es|i)?|in\b|\")(?:\s*thick)?", re.I)
 _YES_EXTRA = re.compile(r"^(?:correct|exactly|that'?s (?:it|right|correct)|right|yes o|yes ma|yes sir|confirm(?:ed)?)\b", re.I)
+_LIST_Q = re.compile(r"\b(?:all|what|which|available|other|show me|list|your)\b[^?.!]{0,30}\bsizes?\b|\bsizes?\b[^?.!]{0,30}\b(?:available|do you have|you have|are there)\b", re.I)
+_BIGGER = re.compile(r"\b(?:bigger|biggest|larger|largest|wider|big size|next size up)\b", re.I)
+_SMALLER = re.compile(r"\b(?:smaller|smallest|small size|next size down)\b", re.I)
 _UNIT_IN = re.compile(r"^(in\.?|inch(?:es|i)?|\")$", re.I)
 
 
@@ -139,6 +142,13 @@ def _confirm_text(z: dict, thickness: Optional[float]) -> str:
     return f"Just to be sure, you mean the {z['name']} size, {nice_ft(z['dims'])}{th}? 😊"
 
 
+def _confirmed(db, s: dict, sizes: list, z: dict, thickness: Optional[float]) -> dict:
+    from app.services import webchat_service as wc
+    wc.set_state(db, s, size_last=z["name"])            # remembered, so "bigger size" later means the next one up
+    t, ids = _products_text(sizes, z, thickness)
+    return _reply(t, cards=ids)
+
+
 def _products_text(sizes: list, z: dict, thickness: Optional[float]) -> tuple:
     """The reply after a yes, and the product ids for cards."""
     same = [y for y in sizes if y["name"].lower() == z["name"].lower() and y["in_stock"]]
@@ -176,13 +186,34 @@ def handle(db, s: dict, cfg: dict, text: str) -> Optional[dict]:
         if not (cfg.get("shop_enabled") or cfg.get("products_read")):
             return None
         pend = (s.get("state") or {}).get("size_ask")
+        last = (s.get("state") or {}).get("size_last")                # the size they confirmed earlier in this chat
         said = parse_size(text)
-        if not pend and not said:
+        wants_list = not said and bool(_LIST_Q.search(text or ""))
+        rel = None if said else ("up" if _BIGGER.search(text or "") else "down" if _SMALLER.search(text or "") else None)
+        if not pend and not said and not wants_list and not rel:
             return None                                # most messages: nothing to do, no database trip
         sizes = catalogue_sizes(shop._fetch_all(db, s["org_id"]))
         if not sizes:
             return None
         yes_no = [{"id": "say", "label": "Yes"}, {"id": "say", "label": "No"}]
+        menu = size_menu(sizes)
+        if (wants_list or rel) and not pend:
+            if rel and last:                             # "bigger size" after a confirmed size: the next one up (or down), confirmed first
+                i = next((k for k, y in enumerate(menu) if y["name"].lower() == last.lower()), None)
+                j = None if i is None else (i + 1 if rel == "up" else i - 1)
+                if j is not None and 0 <= j < len(menu):
+                    z = menu[j]
+                    wc.set_state(db, s, size_ask={"name": z["name"], "thickness": None})
+                    return _reply(_confirm_text(z, None), choices=yes_no)
+                if j is not None:
+                    edge = "biggest" if rel == "up" else "smallest"
+                    wc.set_state(db, s, size_ask={"name": None, "thickness": None})
+                    return _reply(f"The {last} is our {edge} size. Here are all our sizes, which one would you like?",
+                                  choices=[{"id": "say", "label": y["label"][:40]} for y in menu])
+            wc.set_state(db, s, size_ask={"name": None, "thickness": None})
+            lead = ("Sure! Which size do you have in mind? Here they are, from smallest to biggest."
+                    if rel else "Here are our sizes, from smallest to biggest. Which one would you like?")
+            return _reply(lead, choices=[{"id": "say", "label": y["label"][:40]} for y in menu])
         if pend:
             wc.set_state(db, s, size_ask=None)          # asked once: whatever they say next settles it
             low = str(text or "").strip().lower().rstrip(". ")
@@ -191,17 +222,19 @@ def handle(db, s: dict, cfg: dict, text: str) -> Optional[dict]:
                 named = [z for z in sizes if re.search(r"\b" + re.escape(z["name"].lower()) + r"\b", low)]
                 picked = max(named, key=lambda z: len(z["name"])) if named else None
             if picked:                                  # chose a size from our own list: that is their confirmation
-                t, ids = _products_text(sizes, picked, pend.get("thickness"))
-                return _reply(t, cards=ids)
+                return _confirmed(db, s, sizes, picked, pend.get("thickness"))
             if pend.get("name") and (contact.is_yes(text) or _YES_EXTRA.match(low)):
                 z = next((y for y in sizes if y["name"].lower() == pend["name"].lower()), None)
                 if z:
-                    t, ids = _products_text(sizes, z, pend.get("thickness"))
-                    return _reply(t, cards=ids)
+                    return _confirmed(db, s, sizes, z, pend.get("thickness"))
             if pend.get("name") and contact.is_no(text) and not said:      # "no, 6 by 7" is a new size: read back below
                 wc.set_state(db, s, size_ask={"name": None, "thickness": pend.get("thickness")})
                 return _reply("No problem. Which of our sizes do you need?",
                               choices=[{"id": "say", "label": z["label"][:40]} for z in size_menu(sizes)])
+            if not said and (wants_list or rel):
+                wc.set_state(db, s, size_ask={"name": None, "thickness": pend.get("thickness")})
+                return _reply("Here are our sizes, from smallest to biggest. Which one would you like?",
+                              choices=[{"id": "say", "label": y["label"][:40]} for y in menu])
             if not said:
                 return None                             # they moved on to something else: answer that as normal
         z = best_size(sizes, said["dims"])
