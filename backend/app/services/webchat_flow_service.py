@@ -29,6 +29,7 @@ from app.services import webchat_greeting_service as greet
 from app.services import webchat_handover_service as handover
 from app.services import webchat_guard_service as guard
 from app.services import webchat_smart_service as smart
+from app.services import webchat_size_service as size_step
 from app.services import knowledge_gap_service as kgap
 
 
@@ -339,6 +340,22 @@ def handle_message(db, s: dict, cfg: dict, *, kind: str, menu_id: Optional[str] 
                 res["choices"] = r["choices"]
             return res
         wc.set_state(db, s, contact_step=None, contact_tries=0, contact_tmp={}, contact_optional=False, contact_nudged=True)   # tapped an option: moved on, do not nag
+
+    if kind == "menu" and state.get("size_ask"):
+        wc.set_state(db, s, size_ask=None)                 # SIZE-CONFIRM-1: they tapped something else, so the size question is dropped
+    if kind == "text" and not _replay:
+        sz = size_step.handle(db, s, cfg, visitor_text)   # SIZE-CONFIRM-1: "6*6" is read back as a named size and confirmed before any price
+        if sz:
+            out.append(wc.append_message(db, s, "bot", sz["text"]))
+            res = {"messages": out, "ask_contact": False, "ask_email": False, "form": None, "human": False, "cards": []}
+            if sz["choices"]:
+                res["choices"] = sz["choices"]
+            else:
+                wc.set_state(db, s, answers=int((s.get("state") or {}).get("answers") or 0) + 1)
+                res["choices"] = [{"id": "human", "label": "Leave a message" if handover.is_away(cfg) else "Talk to the team"}]
+            if sz["cards_ids"] and cfg.get("shop_enabled"):
+                res["cards"] = webchat_shop_service.cards_for(db, s["org_id"], sz["cards_ids"])
+            return res
 
     offer_item = _open_offer_item(cfg, s)
     if offer_item and not _replay:

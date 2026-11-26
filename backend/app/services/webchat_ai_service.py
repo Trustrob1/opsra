@@ -171,6 +171,8 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
         if cat:
             def _line(c: dict) -> str:
                 tail = f" | {sanitise_for_prompt(c['blurb'], max_length=300)}" if c.get("blurb") else ""
+                if c.get("sizes"):                              # SIZE-CONFIRM-1: each size with its own price
+                    tail = f" | sizes: {sanitise_for_prompt(c['sizes'], max_length=400)}" + tail
                 price = f"N{c['price']:,.0f}" if (c.get("price") or 0) > 0 else "price on request"      # no price set: never say N0
                 return (f"- id={c['id']} | {sanitise_for_prompt(c['title'], max_length=80)} | {price} | "
                         f"{'in stock' if c.get('in_stock') else 'out of stock'}{tail}")
@@ -185,6 +187,11 @@ def build_system_prompt(db, s: dict, cfg: dict, text: str) -> str:
                                 "whether it is in stock, using only what <products> says. You cannot show product cards, add to a cart or take "
                                 "payment. If a product is not listed there, do not guess: say a team member will reply, and set handoff to true. "
                                 "Never say an item is in stock unless <products> says so.")
+            if any(c.get("sizes") for c in cat):          # SIZE-CONFIRM-1: only for businesses whose products come in sizes
+                changing.append("Visitors write sizes in many ways (6*6, 6x6, 6 by 6, 72 by 72 inches). If the visitor names a size and has not "
+                                "yet confirmed it, do not give any price yet: say back the size you understood using the size name and feet from "
+                                "<products> (for example \"Just to be sure, you mean the Standard king size, 6 by 6 ft?\") and wait for them to "
+                                "confirm. Once they confirm, give that size's price from the sizes listed for each product.")
             if viewing_id and any(c["id"] == str(viewing_id) for c in cat):
                 title = next(c["title"] for c in cat if c["id"] == str(viewing_id))
                 changing.append(f"The visitor opened this chat from the page of {sanitise_for_prompt(title, max_length=80)} "

@@ -210,8 +210,9 @@ def facts_for_prompt(db, org_id: str, text: str, viewing_id: Optional[str] = Non
         out = []
         for p in ranked:
             desc = _plain(p.get("catalog_description") or p.get("description") or "")[:FACT_DESC_CHARS]
+            from app.services import webchat_size_service as sz
             out.append({"id": str(p["id"]), "title": str(p.get("title") or "Product")[:80], "price": _num(p.get("price")),
-                        "in_stock": _stock_state(p, None) is None, "blurb": desc})
+                        "in_stock": _stock_state(p, None) is None, "blurb": desc, "sizes": sz.sizes_for_prompt(p)})   # SIZE-CONFIRM-1
         return out
     except Exception as exc:
         logger.warning("webchat shop facts failed org=%s: %s", org_id, exc)
